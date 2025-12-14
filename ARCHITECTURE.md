@@ -6,16 +6,14 @@ This section provides a high-level overview of the project's directory and file 
 
 
 [Project Root]/
-├── backend/              # Contains all server-side code and APIs
-│   ├── src/              # Main source code for backend services
-│   │   ├── api/          # API endpoints and controllers
-│   │   ├── client/       # Business logic and service implementations
-│   │   ├── models/       # Database models/schemas
-│   │   └── utils/        # Backend utility functions
-│   ├── config/           # Backend configuration files
-│   ├── tests/            # Backend unit and integration tests
-│   └── Dockerfile        # Dockerfile for backend deployment
-├── frontend/             # Contains all client-side code for user interfaces
+
+├── cmd/                  # Main source code for backend services
+├── internal/             # Code that is internal
+├── pkg/                  # Code that is ok to be used when this is 
+├── config/               # Backend configuration files
+├── test/                 # Backend unit and integration tests
+├── build/Dockerfile      # Dockerfile for backend deployment
+├── web/                  # Contains all client-side code for user interfaces
 │   ├── src/              # Main source code for frontend applications
 │   │   ├── components/   # Reusable UI components
 │   │   ├── pages/        # Application pages/views

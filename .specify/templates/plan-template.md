@@ -31,7 +31,17 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Before proceeding, verify compliance with [.specify/memory/constitution.md](.specify/memory/constitution.md):
+
+- [ ] **Security-First**: Are security features enabled by default? No bypasses or optional security?
+- [ ] **Architecture Docs**: Will ARCHITECTURE.md be updated if this touches architecture?
+- [ ] **ADRs**: Does this require an ADR in adrs/ for major decisions?
+- [ ] **Library-First Security**: Are we using vetted libraries for crypto/security (no custom implementations)?
+- [ ] **API Documentation**: Will docs/ be updated for any new/changed APIs?
+- [ ] **Domain Model**: Are new domain concepts documented in ARCHITECTURE.md Glossary?
+- [ ] **Hexagonal Architecture**: Does domain logic use ports (interfaces) with clear adapter separation?
+
+*If any check fails, document justification or stop and clarify requirements.*
 
 ## Project Structure
 

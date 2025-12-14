@@ -95,10 +95,29 @@
 - **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
 - **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
 
+### Security Requirements *(mandatory for security-critical features)*
+
+<!--
+  Per Constitution Principle I: Security-First Development
+  Security features must be enabled by default and fail closed.
+-->
+
+- **SR-001**: Security controls MUST be enabled by default (explicit configuration required to disable)
+- **SR-002**: Cryptographic operations MUST use vetted libraries (per Constitution Principle III)
+- **SR-003**: System MUST fail closed on security verification failures (no silent fallbacks)
+- **SR-004**: Security-critical operations MUST emit structured audit logs
+
+*Example of security requirements that need library verification:*
+
+- **SR-005**: Signature verification MUST use [IMPLEMENTATION NOTE: Go crypto/* or golang.org/x/crypto packages]
+- **SR-006**: Encryption MUST NOT have plaintext fallbacks [IMPLEMENTATION NOTE: No optional security]
+
 ### Key Entities *(include if feature involves data)*
 
 - **[Entity 1]**: [What it represents, key attributes without implementation]
 - **[Entity 2]**: [What it represents, relationships to other entities]
+
+*Domain concepts should be added to ARCHITECTURE.md Glossary (per Constitution Principle V)*
 
 ## Success Criteria *(mandatory)*
 

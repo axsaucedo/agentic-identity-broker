@@ -150,12 +150,22 @@ Examples of foundational tasks (adjust based on your project):
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] TXXX [P] Documentation updates in docs/
+### Constitution Compliance (MANDATORY)
+
+- [ ] TXXX Update ARCHITECTURE.md with architectural changes and new domain concepts
+- [ ] TXXX Update ARCHITECTURE.md Glossary with new domain terms
+- [ ] TXXX [P] Create/update ADR in adrs/ for major architectural decisions
+- [ ] TXXX [P] Update end-user documentation in docs/ for new/changed APIs
+- [ ] TXXX Verify security features are enabled by default (no optional bypasses)
+- [ ] TXXX Verify domain logic uses ports (interfaces) and adapters
+- [ ] TXXX [P] Add structured logging for security-critical operations
+
+### Additional Polish
+
 - [ ] TXXX Code cleanup and refactoring
 - [ ] TXXX Performance optimization across all stories
 - [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
-- [ ] TXXX Security hardening
-- [ ] TXXX Run quickstart.md validation
+- [ ] TXXX Run quickstart.md validation (if exists)
 
 ---
 
