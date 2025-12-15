@@ -1,33 +1,40 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 0.0.0 → 1.0.0
-Rationale: Initial constitution establishment with comprehensive security-first principles for agentic identity broker
+Version Change: 1.0.0 → 1.1.0
+Rationale: Added Principle VII (Configuration-Driven Design) and Principle VIII (Test-Driven Development)
+  to improve operational flexibility and code quality through systematic configuration and testing disciplines.
+
+Modified Principles: None
 
 Added Principles:
-- I. Security-First Development
-- II. Architecture Documentation & Decision Records
-- III. Library-First Security Implementation
-- IV. Documentation & API Transparency
-- V. Domain-Driven Design & Glossary Management
-- VI. Hexagonal Architecture & Clean Boundaries
+- VII. Configuration-Driven Design (NEW)
+- VIII. Test-Driven Development & Automated Testing (NEW)
 
-Added Sections:
-- Core Principles (all 6 principles)
-- Development Requirements
-- Governance
+Added Sections: None (integrated into Core Principles)
+
+Removed Sections: None
 
 Templates Status:
-- ✅ plan-template.md: Constitution Check section exists and will enforce principles
-- ✅ spec-template.md: Requirements section aligned with security and documentation requirements
-- ✅ tasks-template.md: Task phases support DDD, architecture updates, and documentation
-- ⚠️ ARCHITECTURE.md: Needs updating to document directory structure per Principle VI
-- ⚠️ docs/: Directory exists but empty - will be populated as features are implemented
+- ✅ plan-template.md: Constitution Check section exists and updated with new principles
+- ✅ spec-template.md: Requirements section aligned with testing requirements
+- ✅ tasks-template.md: Task phases support test-first approach and configuration integration
+- ✅ ARCHITECTURE.md: Updated with configuration subsystem per feature 002-flexible-configuration
+- ✅ docs/: Now populated with configuration guide (docs/configuration.md)
+- ✅ examples/config/: Complete set of deployment examples created
 
-Follow-up TODOs:
-- RATIFICATION_DATE: Set to initial ratification date (defaulted to 2025-12-14)
-- Verify adrs/ directory structure matches ADR format requirements
-- Populate initial ARCHITECTURE.md glossary section as domain concepts emerge
+Follow-up TODOs: None - all principles fully defined
+
+Rationale for Principle VII (Configuration-Driven Design):
+  The 002-flexible-configuration feature established a production-ready configuration system using
+  Viper/Cobra/godotenv with multiple sources and clear precedence. This principle codifies the
+  requirement that all future features MUST use this system rather than implementing ad-hoc
+  configuration, reducing duplication and ensuring consistency.
+
+Rationale for Principle VIII (Test-Driven Development):
+  Automated tests provide better coverage, regression prevention, and documentation than manual
+  validation. This principle establishes TDD as the default approach, with Bash/manual validation
+  reserved only for infrastructure-level concerns (e.g., CI/CD workflows, deployment verification).
 -->
 
 # Agentic Identity Broker Constitution
@@ -113,6 +120,46 @@ Backend architecture MUST use hexagonal architecture with clear port/adapter sep
 
 **Rationale**: Hexagonal architecture enables testability, flexibility, and maintainability by decoupling domain logic from infrastructure concerns.
 
+### VII. Configuration-Driven Design
+
+All runtime configuration MUST use the unified configuration system; ad-hoc configuration is forbidden.
+
+**Rules**:
+- Features MUST NOT implement custom configuration loading; they MUST use the system-wide configuration port defined in [internal/ports/config.go](internal/ports/config.go)
+- All configuration settings MUST support multiple sources (files, environment variables, CLI flags) with clear precedence
+- Configuration structure MUST be defined in [internal/config/schema.go](internal/config/schema.go) with validation rules enforced at startup
+- End-user documentation for feature-specific configuration MUST be added to [docs/configuration.md](docs/configuration.md)
+- Feature-specific configuration examples MUST be added to [examples/config/](examples/config/) directory
+- Configuration guide [examples/config/README.md](examples/config/README.md) MUST be referenced and updated as new features add configuration options
+- See [Flexible Configuration Feature Documentation](docs/configuration.md) for complete usage guidance
+- Implementation reference: [Feature 002 - Flexible Configuration](specs/002-flexible-configuration/)
+
+**Rationale**: Unified configuration prevents duplication, ensures consistent precedence rules across
+the system, reduces operational confusion, and simplifies deployment across development/staging/production
+environments. The 002-flexible-configuration feature established this system; all features MUST integrate
+with it rather than bypassing it.
+
+### VIII. Test-Driven Development & Automated Testing
+
+Code quality and correctness MUST be ensured through automated tests, not manual Bash validation.
+
+**Rules**:
+- New features MUST include automated tests (unit, integration, or both) written before or alongside implementation (TDD)
+- Automated tests MUST cover happy paths, error cases, and edge cases
+- Test files MUST use the Go standard library testing package or established testing frameworks (testify for assertions only)
+- Table-driven tests MUST be used for validation logic and parameterized scenarios
+- Bash scripts MUST NOT be used for code correctness validation; they are reserved for infrastructure tasks (CI/CD, deployment, system-level checks)
+- Test coverage MUST be verifiable via `go test ./... -cover` for Go packages
+- Tests MUST be maintainable, readable, and include clear assertions with meaningful failure messages
+- Integration tests MUST test real behavior end-to-end (e.g., actual file I/O, database operations)
+- Unit tests MUST isolate functionality via mocking/interfaces where appropriate
+- See [task templates](./templates/tasks-template.md) for test organization patterns
+
+**Rationale**: Automated tests catch regressions early, document expected behavior, enable refactoring
+with confidence, and scale better than manual validation. Bash-based validation is fragile and
+unmaintainable; it MUST be reserved for infrastructure concerns (e.g., smoke tests in CI/CD) rather
+than code correctness.
+
 ## Development Requirements
 
 ### Compliance Checklist
@@ -127,6 +174,9 @@ Before any feature PR is merged, verify:
 - [ ] Domain logic uses ports (interfaces) and adapters are separated
 - [ ] No custom cryptography; security features use vetted libraries
 - [ ] Structured logging present for security-critical operations
+- [ ] New features use the system configuration port, not custom config loading
+- [ ] Automated tests included (unit, integration, or both) with meaningful coverage
+- [ ] No Bash scripts used for code correctness validation (only infrastructure tasks)
 
 ### When Constraints Cannot Be Met
 
@@ -136,6 +186,20 @@ If Principle III (Library-First Security) cannot be satisfied:
 2. Document the specific security requirement and why existing libraries are insufficient
 3. Escalate to project maintainers for guidance
 4. Do NOT proceed with custom cryptographic code without explicit approval
+
+If Principle VII (Configuration-Driven Design) cannot be satisfied:
+
+1. STOP implementation immediately
+2. Document the specific configuration requirement and why the unified system is insufficient
+3. Escalate to project maintainers for guidance
+4. Do NOT implement custom configuration without explicit approval
+
+If Principle VIII (TDD & Automated Testing) cannot be satisfied:
+
+1. Document the specific reason why automated testing is not feasible
+2. Propose alternative validation approach (e.g., infrastructure-level testing)
+3. Escalate to project maintainers for exception approval
+4. Do NOT use Bash scripts for code correctness validation without explicit justification
 
 ## Governance
 
@@ -159,4 +223,4 @@ If Principle III (Library-First Security) cannot be satisfied:
 - Reviewers MUST challenge complexity and request justification when principles are violated
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
 
-**Version**: 1.0.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-14
+**Version**: 1.1.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-15

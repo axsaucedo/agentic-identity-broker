@@ -1,0 +1,50 @@
+# Agentic Identity Broker - Production Configuration
+# Use this configuration for production environments
+# IMPORTANT: All sensitive values MUST be provided via environment variables
+# Never commit actual values to version control
+# To run: identity-broker --config ./examples/config/config.production.yaml
+
+log:
+  # Production uses info level (reduce noise while maintaining visibility)
+  # Override with --log-level flag if needed at runtime
+  level: ${IDENTITY_BROKER_LOG_LEVEL:info}
+  # JSON format enables structured logging for monitoring and log aggregation
+  format: ${IDENTITY_BROKER_LOG_FORMAT:json}
+
+# Future sections for expanded configuration:
+# server:
+#   # Bind to all interfaces in containerized environments
+#   host: 0.0.0.0
+#   port: 8080
+#   # TLS is mandatory in production
+#   tls_enabled: true
+#   # Paths to TLS certificates (typically mounted via secrets)
+#   tls_cert_path: ${IDENTITY_BROKER_TLS_CERT_PATH:/etc/identity-broker/tls/cert.pem}
+#   tls_key_path: ${IDENTITY_BROKER_TLS_KEY_PATH:/etc/identity-broker/tls/key.pem}
+#   # Request timeout
+#   request_timeout: 30s
+#
+# database:
+#   # Connection string MUST come from environment variable in production
+#   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}
+#   # Connection pool settings for high availability
+#   max_connections: 100
+#   connection_idle_timeout: 5m
+#   # Require SSL for database connections
+#   ssl_mode: require
+#
+# auth:
+#   # JWT secret MUST come from environment variable, never hardcoded
+#   jwt_secret: ${IDENTITY_BROKER_JWT_SECRET}
+#   # Token expiry should be kept short in production
+#   token_expiry: 1h
+#   # Refresh token expiry
+#   refresh_token_expiry: 7d
+#
+# monitoring:
+#   # Metrics endpoint for Prometheus
+#   metrics_enabled: true
+#   metrics_port: 9090
+#   # Health check settings
+#   health_check_enabled: true
+#   health_check_interval: 30s

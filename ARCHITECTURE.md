@@ -42,39 +42,66 @@ Provide a simple block diagram (e.g., a C4 Model Level 1: System Context diagram
 ## 3. Core Components
 (List and briefly describe the main components of the system. For each, include its primary responsibility and key technologies used.)
 
-### 3.1. Frontend
+### 3.1. Identity Broker Service
 
-Name: [e.g., Web App, Mobile App]
+Name: Agentic Identity Broker
 
-Description: Briefly describe its primary purpose, key functionalities, and how users or other systems interact with it. E.g., 'The main user interface for interacting with the system, allowing users to manage their profiles, view data dashboards, and initiate workflows.'
+Description: Core service providing secure identity management, authentication, and authorization for AI agents and autonomous systems. Implements hexagonal architecture with clear separation of domain logic, ports, and adapters.
 
-Technologies: [e.g., React, Next.js, Vue.js, Swift/Kotlin, HTML/CSS/JS]
+Technologies: Go 1.21+, Viper (configuration), Cobra (CLI)
 
-Deployment: [e.g., Vercel, Netlify, S3/CloudFront]
+Deployment: Containerized service (Docker), deployable to Kubernetes, AWS ECS, or standalone
 
-### 3.2. Backend Services
+#### 3.1.1. Configuration Subsystem
 
-(Repeat for each significant backend service. Add more as needed.)
+**Purpose**: Flexible multi-source configuration management with environment-specific support, security-first design, and clear precedence rules.
 
-#### 3.2.1. [Service Name 1]
+**Architecture**: Hexagonal (ports and adapters pattern)
 
-Name: [e.g., User Management Service, Data Processing API]
+**Components**:
+- **Port** (internal/ports/config.go): ConfigPort interface defining domain boundary
+- **Adapter** (internal/config/loader.go): Viper-based implementation loading from multiple sources
+- **Domain Types** (internal/domain/config/): LogLevel, LogFormat enums with validation
+- **Domain Errors** (internal/domain/config/errors.go): ConfigError with error wrapping support
 
-Description: [Briefly describe its purpose, e.g., "Handles user authentication and profile management."]
+**Configuration Sources** (in precedence order, lowest to highest):
+1. **Defaults**: Built-in default values (log.level=info, log.format=text)
+2. **.env Files**: Environment-specific files (.env → .env.local → .env.{GO_ENV} → .env.{GO_ENV}.local)
+3. **YAML File**: config.yaml with ${VAR} environment variable substitution
+4. **CLI Flags**: Command-line flags (--log-level, --log-format, --config)
 
-Technologies: [e.g., Node.js (Express), Python (Django/Flask), Java (Spring Boot), Go]
+**Security Features**:
+- Sensitive value redaction (IDENTITY_BROKER_* prefix and keywords: password, secret, token, key)
+- Command injection prevention (rejects $(cmd), backticks, shell metacharacters)
+- Circular reference detection (max depth: 10)
+- Fail-closed on errors (graceful termination with clear messages)
+- File permission validation
+- Structured audit logging (JSON to stdout)
 
-Deployment: [e.g., AWS EC2, Kubernetes, Serverless (Lambda/Cloud Functions)]
+**Flow**:
+```
+Application Startup
+  → Load Defaults
+  → Load .env Files (godotenv)
+  → Load YAML (Viper)
+  → Expand ${VAR} References (with security validation)
+  → Bind CLI Flags (Cobra)
+  → Unmarshal to Config struct
+  → Validate (custom validators)
+  → Emit Audit Log
+  → Display Startup Summary
+  → Return Config to Application
+```
 
-#### 3.2.2. [Service Name 2]
+**Performance**: Configuration loading completes in <250ms (within 5s startup budget)
 
-Name: [e.g., Analytics Service, Notification Service]
+**Technologies**:
+- Viper v1.19.0+ (unified configuration management)
+- Cobra v1.8.1+ (CLI framework)
+- godotenv v1.5.1+ (.env file support)
+- Custom validators (fast, zero-allocation validation)
 
-Description: [Briefly describe its purpose.]
-
-Technologies: [e.g., Python, Kafka, Redis]
-
-Deployment: [e.g., AWS ECS, Google Cloud Run]
+**Future Extensions**: Hot-reloading (Reload method defined but not implemented), additional config categories (server, database, auth)
 
 ## 4. Data Stores
 
@@ -160,6 +187,30 @@ Date of Last Update: [YYYY-MM-DD]
 
 Define any project-specific terms or acronyms.)
 
-[Acronym]: [Full Definition]
+### Configuration Domain
 
-[Term]: [Explanation]
+**Configuration Schema**: The complete structure defining all valid configuration options including their types, default values, validation rules, and sensitivity level. Represented by the Config struct in code.
+
+**Configuration Source**: A source of configuration data (defaults, .env files, YAML file, CLI flags) with associated precedence level and loading mechanism. Each source contributes values that may override lower-precedence sources.
+
+**Environment Variable Reference**: A placeholder in configuration (using ${VAR_NAME} syntax) that references an environment variable for runtime substitution. Supports nested expansion with circular reference detection.
+
+**Source Precedence**: The priority order determining which configuration value wins when multiple sources provide the same key. Order (lowest to highest): Defaults < .env Files < YAML < CLI Flags.
+
+**Sensitive Value**: Configuration value that should be redacted in logs and output. Identified by IDENTITY_BROKER_ prefix or keywords (password, secret, token, key, credential, auth).
+
+**ConfigPort**: Hexagonal architecture port (interface) for accessing configuration. Domain logic depends on this interface, not concrete implementations.
+
+**Configuration Adapter**: Implementation of ConfigPort using Viper/Cobra/godotenv. Located in internal/config/ directory.
+
+### General Acronyms
+
+**ADR**: Architecture Decision Record - Documents important architectural decisions and their rationale
+
+**CLI**: Command-Line Interface
+
+**YAML**: Yet Another Markup Language (configuration file format)
+
+**TLS**: Transport Layer Security
+
+**RBAC**: Role-Based Access Control

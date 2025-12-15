@@ -1,0 +1,3 @@
+log:
+  level: ${IDENTITY_BROKER_LOG_LEVEL}
+  format: ${IDENTITY_BROKER_LOG_FORMAT}

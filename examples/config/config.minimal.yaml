@@ -1,0 +1,9 @@
+# Agentic Identity Broker - Minimal Configuration
+# This is the most minimal valid configuration using all defaults
+# Log settings are optional - if not provided, defaults are used:
+#   level: info
+#   format: text
+
+log:
+  level: info
+  format: text

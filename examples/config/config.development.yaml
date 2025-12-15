@@ -1,0 +1,23 @@
+# Agentic Identity Broker - Development Configuration
+# Use this configuration for local development environments
+# To run: identity-broker --config ./examples/config/config.development.yaml
+
+log:
+  # Development uses debug level for detailed logs
+  level: debug
+  # Text format is easier to read during development
+  format: text
+
+# Future sections for expanded configuration:
+# server:
+#   host: localhost
+#   port: 8080
+#   tls_enabled: false
+#
+# database:
+#   connection_string: postgresql://user:password@localhost:5432/identity_broker_dev
+#   max_connections: 10
+#
+# auth:
+#   jwt_secret: dev-secret-key-do-not-use-in-production
+#   token_expiry: 24h

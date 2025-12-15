@@ -1,0 +1,27 @@
+# Agentic Identity Broker - Staging Configuration
+# Use this configuration for staging/pre-production environments
+# Environment variables should be set separately for sensitive values
+# To run: IDENTITY_BROKER_LOG_LEVEL=info IDENTITY_BROKER_LOG_FORMAT=json identity-broker --config ./examples/config/config.staging.yaml
+
+log:
+  # Staging uses info level for normal operation
+  level: ${IDENTITY_BROKER_LOG_LEVEL:info}
+  # JSON format for structured logging and log aggregation
+  format: ${IDENTITY_BROKER_LOG_FORMAT:json}
+
+# Future sections for expanded configuration:
+# server:
+#   host: 0.0.0.0
+#   port: 8080
+#   tls_enabled: true
+#   tls_cert_path: /etc/identity-broker/tls/cert.pem
+#   tls_key_path: /etc/identity-broker/tls/key.pem
+#
+# database:
+#   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}
+#   max_connections: 20
+#   ssl_mode: require
+#
+# auth:
+#   jwt_secret: ${IDENTITY_BROKER_JWT_SECRET}
+#   token_expiry: 12h
