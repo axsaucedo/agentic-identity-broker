@@ -28,6 +28,13 @@ server:
     # Shorter timeout for faster development cycles
     timeout: 5s
 
+storage:
+  # Development uses in-memory storage for rapid iteration
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+
 # Future sections for expanded configuration:
 # database:
 #   connection_string: postgresql://user:password@localhost:5432/identity_broker_dev

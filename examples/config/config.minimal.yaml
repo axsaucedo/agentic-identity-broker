@@ -7,3 +7,9 @@
 log:
   level: info
   format: text
+
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s

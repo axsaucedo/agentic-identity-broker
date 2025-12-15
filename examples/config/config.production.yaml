@@ -38,6 +38,17 @@ server:
     # Adjust based on your application's longest request duration
     timeout: 60s
 
+storage:
+  # Production uses PostgreSQL for persistence and high availability
+  backend: postgres
+  postgres:
+    # Connection URL MUST come from environment variable in production
+    # Uses in-memory backend if not provided (for testing/demos)
+    connection_url: ${IDENTITY_BROKER_STORAGE_POSTGRES_URL:postgresql://localhost:5432/identity_broker}
+  timeouts:
+    read: 5s
+    write: 10s
+
 # Future sections for expanded configuration:
 # database:
 #   # Connection string MUST come from environment variable in production

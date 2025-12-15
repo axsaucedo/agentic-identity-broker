@@ -110,6 +110,11 @@ func (l *Loader) setDefaults() {
 	l.v.SetDefault("server.admin.bind", serverDefaults.Admin.Bind)
 	l.v.SetDefault("server.shutdown.timeout", serverDefaults.Shutdown.Timeout)
 
+	// Storage configuration defaults
+	l.v.SetDefault("storage.backend", "memory")
+	l.v.SetDefault("storage.timeouts.read", "5s")
+	l.v.SetDefault("storage.timeouts.write", "10s")
+
 	// Bind environment variables explicitly
 	// This ensures env vars override YAML config (proper precedence)
 	// Note: BindEnv errors are not critical - viper will continue with defaults
@@ -120,6 +125,8 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("server.admin.port", "IDENTITY_BROKER_SERVER_ADMIN_PORT")
 	_ = l.v.BindEnv("server.admin.bind", "IDENTITY_BROKER_SERVER_ADMIN_BIND")
 	_ = l.v.BindEnv("server.shutdown.timeout", "IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT")
+	_ = l.v.BindEnv("storage.backend", "IDENTITY_BROKER_STORAGE_BACKEND")
+	_ = l.v.BindEnv("storage.postgres.connection_url", "IDENTITY_BROKER_STORAGE_POSTGRES_URL")
 
 	// Record defaults source
 	l.sources = append(l.sources, ports.ConfigSource{
@@ -132,6 +139,7 @@ func (l *Loader) setDefaults() {
 			"server.enduser.port", "server.enduser.bind",
 			"server.admin.port", "server.admin.bind",
 			"server.shutdown.timeout",
+			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
 		},
 	})
 }

@@ -30,6 +30,13 @@ server:
     # Standard timeout for staging environment
     timeout: 30s
 
+storage:
+  # Staging uses in-memory storage for quick iteration
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+
 # Future sections for expanded configuration:
 # database:
 #   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}
