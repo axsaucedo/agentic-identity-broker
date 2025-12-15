@@ -145,26 +145,26 @@ Implement durable production-grade storage with connection pooling and schema ve
 
 ### PostgreSQL Adapter Core
 
-- [ ] T046 [P] [US2] Create `internal/adapters/storage/postgres/adapter.go` with Adapter struct (db *sqlx.DB, config, timeouts)
-- [ ] T047 [P] [US2] Implement NewAdapter() factory function for PostgreSQL adapter
-- [ ] T048 [US2] Implement Initialize() in postgres adapter: connect via sqlx, configure pool (25 max, 5 min), verify schema
-- [ ] T049 [US2] Implement schema verification method in postgres adapter with expected version checking (FR-013)
-- [ ] T050 [US2] Implement Close() in postgres adapter with graceful pool shutdown
-- [ ] T051 [US2] Implement HealthCheck() in postgres adapter with Ping validation
-- [ ] T052 [US2] Implement CreateUser() in postgres adapter with 10s write timeout, parameterized queries, duplicate key error mapping
-- [ ] T053 [US2] Implement GetUser() in postgres adapter with 5s read timeout, sqlx struct scanning, not-found error mapping
-- [ ] T054 [US2] Implement UpdateUser() in postgres adapter with 10s write timeout, existence checking
-- [ ] T055 [US2] Implement DeleteUser() in postgres adapter with 10s write timeout
-- [ ] T056 [US2] Implement ListUsers() in postgres adapter with 5s read timeout, optional filtering, pagination support
+- [x] T046 [P] [US2] Create `internal/adapters/storage/postgres/adapter.go` with Adapter struct (db *sqlx.DB, config, timeouts)
+- [x] T047 [P] [US2] Implement NewAdapter() factory function for PostgreSQL adapter
+- [x] T048 [US2] Implement Initialize() in postgres adapter: connect via sqlx, configure pool (25 max, 5 min), verify schema
+- [x] T049 [US2] Implement schema verification method in postgres adapter with expected version checking (FR-013)
+- [x] T050 [US2] Implement Close() in postgres adapter with graceful pool shutdown
+- [x] T051 [US2] Implement HealthCheck() in postgres adapter with Ping validation
+- [x] T052 [US2] Implement CreateUser() in postgres adapter with 10s write timeout, parameterized queries, duplicate key error mapping
+- [x] T053 [US2] Implement GetUser() in postgres adapter with 5s read timeout, sqlx struct scanning, not-found error mapping
+- [x] T054 [US2] Implement UpdateUser() in postgres adapter with 10s write timeout, existence checking
+- [x] T055 [US2] Implement DeleteUser() in postgres adapter with 10s write timeout
+- [x] T056 [US2] Implement ListUsers() in postgres adapter with 5s read timeout, optional filtering, pagination support
 
 ### PostgreSQL Error Mapping
 
-- [ ] T057 [US2] Create error mapping functions in postgres adapter for PostgreSQL-specific errors (duplicate key 23505, connection errors, timeouts)
-- [ ] T058 [US2] Implement StorageError wrapping for all database operations
+- [x] T057 [US2] Create error mapping functions in postgres adapter for PostgreSQL-specific errors (duplicate key 23505, connection errors, timeouts)
+- [x] T058 [US2] Implement StorageError wrapping for all database operations
 
 ### PostgreSQL Connection Pooling
 
-- [ ] T059 [US2] Configure connection pool in postgres adapter: MaxOpenConns=25, MaxIdleConns=5, MaxConnLifetime=1h, MaxConnIdleTime=15m
+- [x] T059 [US2] Configure connection pool in postgres adapter: MaxOpenConns=25, MaxIdleConns=5, MaxConnLifetime=1h, MaxConnIdleTime=15m
 - [ ] T060 [US2] Test connection pool behavior with concurrent access (1,000+ operations per SC-005)
 
 ### PostgreSQL Migration & Schema Setup
@@ -182,12 +182,12 @@ Implement durable production-grade storage with connection pooling and schema ve
 
 ### PostgreSQL Tests
 
-- [ ] T068 [P] [US2] Create `internal/adapters/storage/postgres/adapter_test.go` with unit tests (mocked queries)
-- [ ] T069 [P] [US2] Create `test/integration/storage/postgres_test.go` with testcontainers-based integration tests
-- [ ] T070 [US2] Write integration test for schema version checking (both valid and mismatch scenarios)
-- [ ] T071 [US2] Write integration test for timeout enforcement (read 5s, write 10s)
-- [ ] T072 [US2] Write integration test for connection failure scenarios
-- [ ] T073 [US2] Write integration test for duplicate key detection
+- [x] T068 [P] [US2] Create `internal/adapters/storage/postgres/adapter_test.go` with unit tests (mocked queries)
+- [x] T069 [P] [US2] Create `test/integration/storage/postgres_test.go` with testcontainers-based integration tests
+- [x] T070 [US2] Write integration test for schema version checking (both valid and mismatch scenarios)
+- [x] T071 [US2] Write integration test for timeout enforcement (read 5s, write 10s)
+- [x] T072 [US2] Write integration test for connection failure scenarios
+- [x] T073 [US2] Write integration test for duplicate key detection
 - [ ] T074 [US2] Run PostgreSQL integration tests in CI with Docker container
 
 ### PostgreSQL Documentation
