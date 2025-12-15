@@ -267,7 +267,7 @@ Cross-cutting concerns, comprehensive testing, and final documentation.
 
 ### Documentation & ADRs
 
-- [ ] T110 Create Architecture Decision Record: `adrs/004-storage-layer-architecture.md`
+- [x] T110 Create Architecture Decision Record: `adrs/004-storage-layer-architecture.md`
 - [ ] T111 Document hexagonal architecture pattern in ARCHITECTURE.md
 - [ ] T112 Create contributor guide: `docs/storage-extension-guide.md` for adding new entities
 - [ ] T113 Add storage layer troubleshooting guide to docs/

@@ -119,9 +119,9 @@ const (
 // StorageConfig contains configuration for the storage layer.
 // Specifies which backend (memory or postgres) to use and its parameters.
 type StorageConfig struct {
-	Backend  string              `mapstructure:"backend" validate:"required,oneof=memory postgres"`
-	Postgres PostgresConfig      `mapstructure:"postgres"`
-	Timeouts StorageTimeouts     `mapstructure:"timeouts" validate:"required"`
+	Backend  string          `mapstructure:"backend" validate:"required,oneof=memory postgres"`
+	Postgres PostgresConfig  `mapstructure:"postgres"`
+	Timeouts StorageTimeouts `mapstructure:"timeouts" validate:"required"`
 }
 
 // PostgresConfig contains PostgreSQL-specific connection parameters.

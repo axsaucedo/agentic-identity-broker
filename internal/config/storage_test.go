@@ -94,8 +94,8 @@ func TestStorageConfigValidation_PostgresNoURL(t *testing.T) {
 
 func TestStorageConfigValidation_PostgresInvalidURL(t *testing.T) {
 	tests := []struct {
-		name string
-		url  string
+		name  string
+		url   string
 		valid bool
 	}{
 		{

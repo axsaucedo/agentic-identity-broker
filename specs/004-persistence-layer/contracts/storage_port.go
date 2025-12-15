@@ -39,11 +39,11 @@ import (
 //   - internal/adapters/storage/postgres: PostgreSQL adapter
 //
 // Lifecycle:
-//   1. Create adapter via factory: storage.NewAdapter(config)
-//   2. Call Initialize(ctx) - fails startup if error (FR-007)
-//   3. Perform operations via repository interfaces
-//   4. Call HealthCheck(ctx) periodically to verify backend health
-//   5. Call Close(ctx) during graceful shutdown
+//  1. Create adapter via factory: storage.NewAdapter(config)
+//  2. Call Initialize(ctx) - fails startup if error (FR-007)
+//  3. Perform operations via repository interfaces
+//  4. Call HealthCheck(ctx) periodically to verify backend health
+//  5. Call Close(ctx) during graceful shutdown
 //
 // Example Usage:
 //
