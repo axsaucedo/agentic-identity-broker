@@ -218,8 +218,8 @@ Enable runtime storage backend selection without code changes.
 - [x] T082 [US3] Create development configuration (`config.dev.yaml`) with in-memory backend
 - [x] T083 [US3] Create production configuration (`config.prod.yaml`) with PostgreSQL backend
 - [x] T084 [US3] Create testing configuration (`config.test.yaml`) with in-memory backend for automated tests
-- [ ] T085 [US3] Document configuration switching procedures for operators
-- [ ] T086 [US3] Add configuration precedence documentation (env > YAML > defaults)
+- [x] T085 [US3] Document configuration switching procedures for operators
+- [x] T086 [US3] Add configuration precedence documentation (env > YAML > defaults)
 
 ### Runtime Verification
 
@@ -241,13 +241,13 @@ Cross-cutting concerns, comprehensive testing, and final documentation.
 
 ### Comprehensive Testing
 
-- [ ] T093 Create `test/integration/storage/` test suite with shared fixtures
-- [ ] T094 Write end-to-end tests for full lifecycle (init → CRUD → health → close)
-- [ ] T095 Write concurrent stress tests for both adapters (1000+ operations)
-- [ ] T096 Write timeout tests for all operations (verify 5s reads, 10s writes)
-- [ ] T097 Write error recovery tests (connection failures, graceful degradation)
-- [ ] T098 Run full test suite with race detector: `go test -race ./...`
-- [ ] T099 Achieve minimum 80% code coverage for storage layer (measure with `go tool cover`)
+- [x] T093 Create `test/integration/storage/` test suite with shared fixtures
+- [x] T094 Write end-to-end tests for full lifecycle (init → CRUD → health → close)
+- [x] T095 Write concurrent stress tests for both adapters (1000+ operations)
+- [x] T096 Write timeout tests for all operations (verify 5s reads, 10s writes)
+- [x] T097 Write error recovery tests (connection failures, graceful degradation)
+- [x] T098 Run full test suite with race detector: `go test -race ./...`
+- [x] T099 Achieve minimum 80% code coverage for storage layer (measure with `go tool cover`)
 
 ### Performance & Benchmarking
 
