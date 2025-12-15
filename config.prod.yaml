@@ -1,0 +1,14 @@
+# Production Configuration
+# PostgreSQL storage for persistent, scalable deployments
+
+log:
+  level: info
+  format: json
+
+storage:
+  backend: postgres
+  postgres:
+    connection_url: ${IDENTITY_BROKER_STORAGE_POSTGRES_URL}
+  timeouts:
+    read: 5s
+    write: 10s

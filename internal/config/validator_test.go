@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -66,6 +67,13 @@ func TestValidate(t *testing.T) {
 				Log: ports.LogConfig{
 					Level:  ports.LogLevelInfo,
 					Format: ports.LogFormatText,
+				},
+				Storage: ports.StorageConfig{
+					Backend: "memory",
+					Timeouts: ports.StorageTimeouts{
+						Read:  5 * time.Second,
+						Write: 10 * time.Second,
+					},
 				},
 			},
 			wantErr: false,

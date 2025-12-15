@@ -208,29 +208,29 @@ Enable runtime storage backend selection without code changes.
 
 ### Configuration Integration
 
-- [ ] T078 [P] [US3] Integrate StorageConfig into main application configuration loading (`cmd/identity-broker/main.go`)
-- [ ] T079 [P] [US3] Implement backend factory selection logic in main startup sequence
-- [ ] T080 [US3] Add configuration validation before adapter initialization
-- [ ] T081 [US3] Implement clear error messages for configuration validation failures
+- [x] T078 [P] [US3] Integrate StorageConfig into main application configuration loading (`cmd/identity-broker/main.go`)
+- [x] T079 [P] [US3] Implement backend factory selection logic in main startup sequence
+- [x] T080 [US3] Add configuration validation before adapter initialization
+- [x] T081 [US3] Implement clear error messages for configuration validation failures
 
 ### Configuration Examples & Documentation
 
-- [ ] T082 [US3] Create development configuration (`config.dev.yaml`) with in-memory backend
-- [ ] T083 [US3] Create production configuration (`config.prod.yaml`) with PostgreSQL backend
-- [ ] T084 [US3] Create testing configuration (`config.test.yaml`) with in-memory backend for automated tests
+- [x] T082 [US3] Create development configuration (`config.dev.yaml`) with in-memory backend
+- [x] T083 [US3] Create production configuration (`config.prod.yaml`) with PostgreSQL backend
+- [x] T084 [US3] Create testing configuration (`config.test.yaml`) with in-memory backend for automated tests
 - [ ] T085 [US3] Document configuration switching procedures for operators
 - [ ] T086 [US3] Add configuration precedence documentation (env > YAML > defaults)
 
 ### Runtime Verification
 
-- [ ] T087 [US3] Write tests that verify backend selection based on configuration
+- [x] T087 [US3] Write tests that verify backend selection based on configuration
 - [ ] T088 [US3] Add environment variable override tests (IDENTITY_BROKER_STORAGE_BACKEND)
-- [ ] T089 [US3] Test that wrong backend type fails startup with clear error message
+- [x] T089 [US3] Test that wrong backend type fails startup with clear error message
 
 ### Backend Switching Tests
 
-- [ ] T090 [US3] Create integration test that verifies memory → postgres backend switch
-- [ ] T091 [US3] Create integration test for invalid backend configuration handling
+- [x] T090 [US3] Create integration test that verifies memory → postgres backend switch
+- [x] T091 [US3] Create integration test for invalid backend configuration handling
 - [ ] T092 [US3] Create integration test for missing required PostgreSQL parameters
 
 ---
