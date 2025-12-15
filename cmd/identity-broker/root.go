@@ -75,9 +75,29 @@ func run(cmd *cobra.Command, args []string) error {
 		"enduser_port", cfg.Server.EndUser.Port,
 		"admin_port", cfg.Server.Admin.Port)
 
-	if err := mgr.Start(sigCtx); err != nil {
-		logger.Error("Server error", "error", err)
-		return fmt.Errorf("server error: %w", err)
+	// Run servers in a goroutine
+	var startErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		startErr = mgr.Start(sigCtx)
+	}()
+
+	// Wait for either signal or server completion
+	<-sigCtx.Done()
+
+	// Signal received, initiate graceful shutdown
+	logger.Info("Shutdown signal received, initiating graceful shutdown")
+	if err := mgr.Shutdown(context.Background()); err != nil {
+		logger.Error("Shutdown error", "error", err)
+		return fmt.Errorf("shutdown error: %w", err)
+	}
+
+	// Wait for Start() to finish
+	<-done
+	if startErr != nil && startErr != context.Canceled {
+		logger.Error("Server error", "error", startErr)
+		return fmt.Errorf("server error: %w", startErr)
 	}
 
 	logger.Info("Servers shut down successfully")
