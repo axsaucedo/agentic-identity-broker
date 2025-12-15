@@ -98,8 +98,28 @@ func (l *Loader) Reload(ctx context.Context) error {
 // setDefaults sets default configuration values.
 // Records source metadata for audit logging.
 func (l *Loader) setDefaults() {
+	// Log configuration defaults
 	l.v.SetDefault("log.level", string(config.LogLevelInfo))
 	l.v.SetDefault("log.format", string(config.LogFormatText))
+
+	// Server configuration defaults
+	serverDefaults := ports.DefaultServerConfig()
+	l.v.SetDefault("server.enduser.port", serverDefaults.EndUser.Port)
+	l.v.SetDefault("server.enduser.bind", serverDefaults.EndUser.Bind)
+	l.v.SetDefault("server.admin.port", serverDefaults.Admin.Port)
+	l.v.SetDefault("server.admin.bind", serverDefaults.Admin.Bind)
+	l.v.SetDefault("server.shutdown.timeout", serverDefaults.Shutdown.Timeout)
+
+	// Bind environment variables explicitly
+	// This ensures env vars override YAML config (proper precedence)
+	// Note: BindEnv errors are not critical - viper will continue with defaults
+	_ = l.v.BindEnv("log.level", "IDENTITY_BROKER_LOG_LEVEL")
+	_ = l.v.BindEnv("log.format", "IDENTITY_BROKER_LOG_FORMAT")
+	_ = l.v.BindEnv("server.enduser.port", "IDENTITY_BROKER_SERVER_ENDUSER_PORT")
+	_ = l.v.BindEnv("server.enduser.bind", "IDENTITY_BROKER_SERVER_ENDUSER_BIND")
+	_ = l.v.BindEnv("server.admin.port", "IDENTITY_BROKER_SERVER_ADMIN_PORT")
+	_ = l.v.BindEnv("server.admin.bind", "IDENTITY_BROKER_SERVER_ADMIN_BIND")
+	_ = l.v.BindEnv("server.shutdown.timeout", "IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT")
 
 	// Record defaults source
 	l.sources = append(l.sources, ports.ConfigSource{
@@ -107,7 +127,12 @@ func (l *Loader) setDefaults() {
 		Path:       "defaults",
 		Precedence: 0,
 		LoadedAt:   time.Now(),
-		Keys:       []string{"log.level", "log.format"},
+		Keys: []string{
+			"log.level", "log.format",
+			"server.enduser.port", "server.enduser.bind",
+			"server.admin.port", "server.admin.bind",
+			"server.shutdown.timeout",
+		},
 	})
 }
 
@@ -329,22 +354,35 @@ func (l *Loader) expandWithCircularCheck(value string, visited map[string]bool, 
 
 	// Expand ${VAR} patterns
 	result := os.Expand(value, func(varName string) string {
+		// Parse variable name and default value
+		// Supports ${VAR:default} syntax
+		actualVarName := varName
+		defaultValue := ""
+		if idx := strings.Index(varName, ":"); idx >= 0 {
+			actualVarName = varName[:idx]
+			defaultValue = varName[idx+1:]
+		}
+
 		// Check for circular reference
-		if visited[varName] {
+		if visited[actualVarName] {
 			// Build circular chain for error message
 			chain := []string{}
 			for v := range visited {
 				chain = append(chain, v)
 			}
-			chain = append(chain, varName)
-			expansionErrors = append(expansionErrors, fmt.Sprintf("CIRCULAR:%s→%s", strings.Join(chain, "→"), varName))
+			chain = append(chain, actualVarName)
+			expansionErrors = append(expansionErrors, fmt.Sprintf("CIRCULAR:%s→%s", strings.Join(chain, "→"), actualVarName))
 			return ""
 		}
 
 		// Get environment variable value
-		varValue, exists := os.LookupEnv(varName)
+		varValue, exists := os.LookupEnv(actualVarName)
 		if !exists {
-			expansionErrors = append(expansionErrors, fmt.Sprintf("UNDEFINED:%s", varName))
+			// Use default value if provided
+			if defaultValue != "" {
+				return defaultValue
+			}
+			expansionErrors = append(expansionErrors, fmt.Sprintf("UNDEFINED:%s", actualVarName))
 			return ""
 		}
 
@@ -355,7 +393,7 @@ func (l *Loader) expandWithCircularCheck(value string, visited map[string]bool, 
 			for k, v := range visited {
 				newVisited[k] = v
 			}
-			newVisited[varName] = true
+			newVisited[actualVarName] = true
 
 			// Recursively expand
 			expanded, err := l.expandWithCircularCheck(varValue, newVisited, depth+1)
@@ -438,6 +476,41 @@ func (l *Loader) bindFlags() error {
 		logFormat, _ := l.cmd.Flags().GetString("log-format")
 		l.v.Set("log.format", logFormat)
 		cliKeys = append(cliKeys, "log.format")
+	}
+
+	// Bind server.enduser.port flag
+	if l.cmd.Flags().Changed("server.enduser.port") {
+		port, _ := l.cmd.Flags().GetInt("server.enduser.port")
+		l.v.Set("server.enduser.port", port)
+		cliKeys = append(cliKeys, "server.enduser.port")
+	}
+
+	// Bind server.enduser.bind flag
+	if l.cmd.Flags().Changed("server.enduser.bind") {
+		bind, _ := l.cmd.Flags().GetString("server.enduser.bind")
+		l.v.Set("server.enduser.bind", bind)
+		cliKeys = append(cliKeys, "server.enduser.bind")
+	}
+
+	// Bind server.admin.port flag
+	if l.cmd.Flags().Changed("server.admin.port") {
+		port, _ := l.cmd.Flags().GetInt("server.admin.port")
+		l.v.Set("server.admin.port", port)
+		cliKeys = append(cliKeys, "server.admin.port")
+	}
+
+	// Bind server.admin.bind flag
+	if l.cmd.Flags().Changed("server.admin.bind") {
+		bind, _ := l.cmd.Flags().GetString("server.admin.bind")
+		l.v.Set("server.admin.bind", bind)
+		cliKeys = append(cliKeys, "server.admin.bind")
+	}
+
+	// Bind server.shutdown.timeout flag
+	if l.cmd.Flags().Changed("server.shutdown.timeout") {
+		timeout, _ := l.cmd.Flags().GetDuration("server.shutdown.timeout")
+		l.v.Set("server.shutdown.timeout", timeout)
+		cliKeys = append(cliKeys, "server.shutdown.timeout")
 	}
 
 	// Record CLI source if any flags were set

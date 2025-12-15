@@ -8,12 +8,27 @@ log:
   # Text format is easier to read during development
   format: text
 
+server:
+  # End-user server configuration (public-facing API)
+  enduser:
+    # Lower port for easier local testing (no sudo required)
+    port: 3000
+    # Bind to localhost only for development security
+    bind: 127.0.0.1
+
+  # Admin server configuration (internal management API)
+  admin:
+    # Sequential port for convenience
+    port: 3001
+    # Bind to localhost only for development security
+    bind: 127.0.0.1
+
+  # Graceful shutdown configuration
+  shutdown:
+    # Shorter timeout for faster development cycles
+    timeout: 5s
+
 # Future sections for expanded configuration:
-# server:
-#   host: localhost
-#   port: 8080
-#   tls_enabled: false
-#
 # database:
 #   connection_string: postgresql://user:password@localhost:5432/identity_broker_dev
 #   max_connections: 10

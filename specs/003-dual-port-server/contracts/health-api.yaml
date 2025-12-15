@@ -1,0 +1,126 @@
+openapi: 3.0.3
+info:
+  title: Identity Broker Health Check API
+  description: Health check endpoints for dual-port HTTP servers (end-user and admin)
+  version: 1.0.0
+  contact:
+    name: Agentic Identity Broker
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: End-user server (default port 8000)
+  - url: http://localhost:14000
+    description: Admin server (default port 14000)
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: |
+        Returns the current health status of the HTTP server. Each server (end-user and admin)
+        has its own independent health endpoint that reports only that server's status.
+
+        **Status Codes**:
+        - `200 OK`: Server is healthy and accepting requests
+        - `503 Service Unavailable`: Server is starting, shutting down, or unhealthy
+
+        **Health States**:
+        - `healthy`: Server is operational and processing requests normally
+        - `starting`: Server is initializing (binding to port, setting up routes)
+        - `shutting_down`: Graceful shutdown in progress, completing in-flight requests
+        - `unhealthy`: Server encountered an error and requires restart
+      operationId: getHealth
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  summary: Healthy server
+                  value:
+                    status: healthy
+                    server: enduser
+                    timestamp: '2025-12-15T10:30:00Z'
+                    uptime_seconds: 3600
+        '503':
+          description: Server is unavailable (starting, shutting down, or unhealthy)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                starting:
+                  summary: Server starting
+                  value:
+                    status: starting
+                    server: admin
+                    timestamp: '2025-12-15T10:25:00Z'
+                    uptime_seconds: 0
+                shutting_down:
+                  summary: Server shutting down
+                  value:
+                    status: shutting_down
+                    server: enduser
+                    timestamp: '2025-12-15T11:30:00Z'
+                    uptime_seconds: 7200
+                unhealthy:
+                  summary: Server unhealthy
+                  value:
+                    status: unhealthy
+                    server: admin
+                    timestamp: '2025-12-15T10:35:00Z'
+                    uptime_seconds: 600
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - server
+        - timestamp
+        - uptime_seconds
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - starting
+            - shutting_down
+            - unhealthy
+          description: Current health state of the server
+          example: healthy
+        server:
+          type: string
+          enum:
+            - enduser
+            - admin
+          description: Server identifier (enduser or admin)
+          example: enduser
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the health check
+          example: '2025-12-15T10:30:00Z'
+        uptime_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of seconds since the server started
+          example: 3600
+      example:
+        status: healthy
+        server: enduser
+        timestamp: '2025-12-15T10:30:00Z'
+        uptime_seconds: 3600
+
+tags:
+  - name: Health
+    description: Health check and monitoring endpoints

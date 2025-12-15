@@ -209,10 +209,67 @@ This section provides a comprehensive quick-reference table for all configuratio
 
 ### Current Configuration Options
 
+#### Logging Configuration
+
 | Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
 |--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
 | `log.level` | enum | `info` | `debug`, `info`, `warn`, `error` | No | `IDENTITY_BROKER_LOG_LEVEL` | `--log-level` | Sets logging verbosity level. Use `debug` for troubleshooting, `info` for normal operation, `warn` for production. |
 | `log.format` | enum | `text` | `text`, `json` | No | `IDENTITY_BROKER_LOG_FORMAT` | `--log-format` | Sets log output format. Use `json` for production and log aggregation systems. |
+
+#### Server Configuration
+
+The Identity Broker runs two independent HTTP servers on separate ports:
+- **End-User Server**: Public-facing API for authentication and identity operations (default port 8000)
+- **Admin Server**: Internal management API for monitoring and administration (default port 14000)
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
+|--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
+| `server.enduser.port` | integer | `8000` | 1-65535 | No | `IDENTITY_BROKER_SERVER_ENDUSER_PORT` | `--server.enduser.port` | Port for end-user server. Must differ from admin port. |
+| `server.enduser.bind` | string | `::` | IPv4/IPv6 address or hostname | No | `IDENTITY_BROKER_SERVER_ENDUSER_BIND` | `--server.enduser.bind` | Bind address for end-user server. Use `::` for dual-stack (IPv6+IPv4), `0.0.0.0` for IPv4 only, or `127.0.0.1` for localhost only. |
+| `server.admin.port` | integer | `14000` | 1-65535 | No | `IDENTITY_BROKER_SERVER_ADMIN_PORT` | `--server.admin.port` | Port for admin server. Must differ from end-user port. |
+| `server.admin.bind` | string | `::` | IPv4/IPv6 address or hostname | No | `IDENTITY_BROKER_SERVER_ADMIN_BIND` | `--server.admin.bind` | Bind address for admin server. In production, restrict to private network (e.g., `10.0.1.0`) or use firewall rules. |
+| `server.shutdown.timeout` | duration | `30s` | 1s-5m | No | `IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT` | `--server.shutdown.timeout` | Maximum time to wait for in-flight requests to complete during graceful shutdown. Use longer timeouts (60s) in production. |
+
+**Server Configuration Notes:**
+- Both servers start atomically - if one fails to bind, both are stopped
+- Servers run independently after startup - failure of one doesn't affect the other
+- Health endpoints are available on both servers at `/health`
+- Graceful shutdown waits for in-flight requests to complete (up to timeout)
+
+#### IPv4/IPv6 Dual-Stack Support
+
+The Identity Broker supports flexible network binding:
+
+- **Dual-Stack (default)**: Bind to `::` accepts both IPv6 and IPv4 connections on systems with dual-stack support
+- **IPv6 Only**: Bind to `::1` (localhost) or specific IPv6 addresses
+- **IPv4 Only**: Bind to `0.0.0.0` (all interfaces) or `127.0.0.1` (localhost) for IPv4-only systems
+- **Automatic Fallback**: If IPv6 binding fails, automatically falls back to IPv4 with a warning log
+
+**Example YAML configurations** are provided in `examples/config/`:
+- `config.ipv6-only.yaml` - Dual-stack with IPv6 preference
+- `config.ipv4-only.yaml` - IPv4-only configuration
+
+#### Graceful Shutdown
+
+The broker implements graceful shutdown to ensure requests complete cleanly:
+
+1. On receiving SIGTERM or SIGINT signal, health status changes to `shutting_down`
+2. New requests are rejected with HTTP 503 Service Unavailable
+3. In-flight requests are allowed to complete (up to `server.shutdown.timeout`)
+4. After timeout, remaining connections are forcefully closed
+5. Process exits cleanly
+
+**Example:**
+```bash
+# Start broker
+identity-broker &
+
+# Graceful shutdown (waits for requests)
+kill -TERM $(pgrep identity-broker)
+
+# Force shutdown (immediate)
+kill -KILL $(pgrep identity-broker)
+```
 
 **Notes:**
 - All configuration options have built-in defaults and are optional unless marked "Required"

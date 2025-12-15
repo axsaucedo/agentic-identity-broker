@@ -5,11 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
+	"os/signal"
 	"sort"
+	"syscall"
 	"time"
 
+	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/spf13/cobra"
 )
@@ -48,13 +53,61 @@ func run(cmd *cobra.Command, args []string) error {
 	// Display startup summary
 	displayStartupSummary(loader, cfg)
 
-	// TODO: Initialize and run application services
+	// Initialize logger
+	logger := initializeLogger(cfg.Log)
+	logger.Info("Agentic Identity Broker starting",
+		"log_level", cfg.Log.Level,
+		"log_format", cfg.Log.Format)
 
-	fmt.Println("\nAgentic Identity Broker starting...")
-	fmt.Printf("Log Level: %s\n", cfg.Log.Level)
-	fmt.Printf("Log Format: %s\n", cfg.Log.Format)
+	// Create server instances
+	enduserServer := httpAdapter.NewServer("enduser", cfg.Server.EndUser, logger)
+	adminServer := httpAdapter.NewServer("admin", cfg.Server.Admin, logger)
 
+	// Create server manager
+	mgr := server.NewManager(enduserServer, adminServer, cfg.Server.Shutdown.Timeout, logger)
+
+	// Setup signal handling for graceful shutdown
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Start servers (blocking)
+	logger.Info("Starting dual-port HTTP servers",
+		"enduser_port", cfg.Server.EndUser.Port,
+		"admin_port", cfg.Server.Admin.Port)
+
+	if err := mgr.Start(sigCtx); err != nil {
+		logger.Error("Server error", "error", err)
+		return fmt.Errorf("server error: %w", err)
+	}
+
+	logger.Info("Servers shut down successfully")
 	return nil
+}
+
+// initializeLogger creates a structured logger based on configuration.
+func initializeLogger(logCfg ports.LogConfig) *slog.Logger {
+	var level slog.Level
+	switch logCfg.Level {
+	case ports.LogLevelDebug:
+		level = slog.LevelDebug
+	case ports.LogLevelInfo:
+		level = slog.LevelInfo
+	case ports.LogLevelWarn:
+		level = slog.LevelWarn
+	case ports.LogLevelError:
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	var handler slog.Handler
+	if logCfg.Format == ports.LogFormatJSON {
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	}
+
+	return slog.New(handler)
 }
 
 // displayStartupSummary shows configuration details at startup.
@@ -78,6 +131,11 @@ func displayStartupSummary(loader *config.Loader, cfg interface{}) {
 	if c, ok := cfg.(*ports.Config); ok {
 		displayConfigValue("log.level", string(c.Log.Level), keyToSource["log.level"])
 		displayConfigValue("log.format", string(c.Log.Format), keyToSource["log.format"])
+		displayConfigValue("server.enduser.port", fmt.Sprintf("%d", c.Server.EndUser.Port), keyToSource["server.enduser.port"])
+		displayConfigValue("server.enduser.bind", c.Server.EndUser.Bind, keyToSource["server.enduser.bind"])
+		displayConfigValue("server.admin.port", fmt.Sprintf("%d", c.Server.Admin.Port), keyToSource["server.admin.port"])
+		displayConfigValue("server.admin.bind", c.Server.Admin.Bind, keyToSource["server.admin.bind"])
+		displayConfigValue("server.shutdown.timeout", c.Server.Shutdown.Timeout.String(), keyToSource["server.shutdown.timeout"])
 	}
 
 	fmt.Println("\n=== Configuration Sources ===")
@@ -114,16 +172,6 @@ func formatSource(source ports.ConfigSource) string {
 	default:
 		return string(source.Type)
 	}
-}
-
-// sortKeys returns a sorted list of keys from a map.
-func sortKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // emitAuditLog outputs a structured JSON audit log to stdout.
@@ -187,4 +235,11 @@ func init() {
 	// Logging configuration flags
 	rootCmd.PersistentFlags().String("log-level", "", "log level: debug, info, warn, error")
 	rootCmd.PersistentFlags().String("log-format", "", "log format: text, json")
+
+	// Server configuration flags
+	rootCmd.PersistentFlags().Int("server.enduser.port", 0, "end-user server port (default: 8000)")
+	rootCmd.PersistentFlags().String("server.enduser.bind", "", "end-user server bind address (default: ::)")
+	rootCmd.PersistentFlags().Int("server.admin.port", 0, "admin server port (default: 14000)")
+	rootCmd.PersistentFlags().String("server.admin.bind", "", "admin server bind address (default: ::)")
+	rootCmd.PersistentFlags().Duration("server.shutdown.timeout", 0, "graceful shutdown timeout (default: 30s)")
 }

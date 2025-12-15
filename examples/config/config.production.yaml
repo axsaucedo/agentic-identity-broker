@@ -11,19 +11,34 @@ log:
   # JSON format enables structured logging for monitoring and log aggregation
   format: ${IDENTITY_BROKER_LOG_FORMAT:json}
 
+server:
+  # End-user server configuration (public-facing API)
+  enduser:
+    # Standard port for end-user traffic
+    port: 8000
+    # Bind to all interfaces (dual-stack IPv6/IPv4)
+    # In containerized environments, this allows traffic from load balancers
+    bind: "::"
+
+  # Admin server configuration (internal management API)
+  admin:
+    # Standard admin port
+    port: 14000
+    # SECURITY: In production, admin server should be restricted to private network
+    # Options:
+    #   - Use firewall rules to restrict access
+    #   - Bind to internal IP (e.g., 10.0.1.0)
+    #   - Use separate network namespace in Kubernetes
+    # For this example, we bind to all interfaces but firewall rules should restrict access
+    bind: "::"
+
+  # Graceful shutdown configuration
+  shutdown:
+    # Longer timeout in production to allow in-flight requests to complete
+    # Adjust based on your application's longest request duration
+    timeout: 60s
+
 # Future sections for expanded configuration:
-# server:
-#   # Bind to all interfaces in containerized environments
-#   host: 0.0.0.0
-#   port: 8080
-#   # TLS is mandatory in production
-#   tls_enabled: true
-#   # Paths to TLS certificates (typically mounted via secrets)
-#   tls_cert_path: ${IDENTITY_BROKER_TLS_CERT_PATH:/etc/identity-broker/tls/cert.pem}
-#   tls_key_path: ${IDENTITY_BROKER_TLS_KEY_PATH:/etc/identity-broker/tls/key.pem}
-#   # Request timeout
-#   request_timeout: 30s
-#
 # database:
 #   # Connection string MUST come from environment variable in production
 #   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}

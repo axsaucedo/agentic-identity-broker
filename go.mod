@@ -1,13 +1,15 @@
 module github.com/agentic-identity-broker/agentic-identity-broker
 
-go 1.23.0
+go 1.24.0
 
 toolchain go1.24.5
 
 require (
+	github.com/go-chi/chi/v5 v5.2.3
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	golang.org/x/sync v0.16.0
 )
 
 require (

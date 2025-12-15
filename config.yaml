@@ -1,3 +1,23 @@
+# Agentic Identity Broker Configuration
+# This is the default configuration file for development
+
+# Logging configuration
 log:
   level: ${IDENTITY_BROKER_LOG_LEVEL}
   format: ${IDENTITY_BROKER_LOG_FORMAT}
+
+# Server configuration - dual-port HTTP servers
+server:
+  # End-user facing server (public API)
+  enduser:
+    port: 8000
+    bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+
+  # Admin server (internal management API)
+  admin:
+    port: 14000
+    bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+
+  # Graceful shutdown configuration
+  shutdown:
+    timeout: 30s # Maximum time to wait for in-flight requests to complete

@@ -9,14 +9,28 @@ log:
   # JSON format for structured logging and log aggregation
   format: ${IDENTITY_BROKER_LOG_FORMAT:json}
 
+server:
+  # End-user server configuration (public-facing API)
+  enduser:
+    # Standard port for end-user traffic
+    port: 8000
+    # Bind to all interfaces (dual-stack IPv6/IPv4)
+    bind: "::"
+
+  # Admin server configuration (internal management API)
+  admin:
+    # Standard admin port
+    port: 14000
+    # Bind to all interfaces in staging for testing
+    # In production, this should be restricted to internal network
+    bind: "::"
+
+  # Graceful shutdown configuration
+  shutdown:
+    # Standard timeout for staging environment
+    timeout: 30s
+
 # Future sections for expanded configuration:
-# server:
-#   host: 0.0.0.0
-#   port: 8080
-#   tls_enabled: true
-#   tls_cert_path: /etc/identity-broker/tls/cert.pem
-#   tls_key_path: /etc/identity-broker/tls/key.pem
-#
 # database:
 #   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}
 #   max_connections: 20

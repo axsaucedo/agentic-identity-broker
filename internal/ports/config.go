@@ -33,8 +33,44 @@ type ConfigPort interface {
 
 // Config represents the complete application configuration schema.
 type Config struct {
-	Log LogConfig `mapstructure:"log" validate:"required"`
-	// Future: Server, Database, Auth, etc.
+	Log    LogConfig    `mapstructure:"log" validate:"required"`
+	Server ServerConfig `mapstructure:"server" validate:"required"`
+	// Future: Database, Auth, etc.
+}
+
+// ServerConfig contains configuration for both HTTP servers.
+type ServerConfig struct {
+	EndUser  ServerInstanceConfig `mapstructure:"enduser" validate:"required"`
+	Admin    ServerInstanceConfig `mapstructure:"admin" validate:"required"`
+	Shutdown ShutdownConfig       `mapstructure:"shutdown" validate:"required"`
+}
+
+// ServerInstanceConfig contains configuration for a single HTTP server instance.
+type ServerInstanceConfig struct {
+	Port int    `mapstructure:"port" validate:"required,min=1,max=65535"`
+	Bind string `mapstructure:"bind" validate:"required"`
+}
+
+// ShutdownConfig contains graceful shutdown settings.
+type ShutdownConfig struct {
+	Timeout time.Duration `mapstructure:"timeout" validate:"required"`
+}
+
+// DefaultServerConfig returns default server configuration values.
+func DefaultServerConfig() ServerConfig {
+	return ServerConfig{
+		EndUser: ServerInstanceConfig{
+			Port: 8000,
+			Bind: "::", // Dual-stack (IPv6 with IPv4 fallback)
+		},
+		Admin: ServerInstanceConfig{
+			Port: 14000,
+			Bind: "::",
+		},
+		Shutdown: ShutdownConfig{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
 // LogConfig contains logging-related configuration.
