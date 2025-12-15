@@ -2,6 +2,9 @@
 - Go 1.23.0+ (primary language) (002-flexible-configuration)
 - Node.js 18+ (for Docusaurus), Markdown for content + Docusaurus 3.x, React 18+, MDX for enhanced markdown (001-end-user-docs)
 - File-based (markdown files in `docs/` directory) (001-end-user-docs)
+- sqlx v1.3.5+ (PostgreSQL adapter) (004-persistence-layer)
+- pgx v5 (PostgreSQL driver) (004-persistence-layer)
+- In-memory (maps with sync.RWMutex), PostgreSQL 12+ (004-persistence-layer)
 - just command runner for task automation
 - Air for hot-reload development
 - golangci-lint for code quality
@@ -9,6 +12,7 @@
 ## Recent Changes
 - 002-flexible-configuration: Added Go 1.21+ and flexible configuration system
 - 001-end-user-docs: Added Node.js 18+ (for Docusaurus), Markdown for content + Docusaurus 3.x, React 18+, MDX for enhanced markdown
+- 004-persistence-layer: Added sqlx v1.3.5+, pgx v5, in-memory and PostgreSQL storage layer
 
 ## Development Workflow
 

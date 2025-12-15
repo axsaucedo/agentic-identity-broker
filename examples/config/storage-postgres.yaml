@@ -1,0 +1,7 @@
+storage:
+  backend: postgres
+  postgres:
+    connection_url: "postgresql://identity_broker:password@localhost:5432/identity_broker?sslmode=require"
+  timeouts:
+    read: 5s
+    write: 10s

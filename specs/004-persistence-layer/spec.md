@@ -119,7 +119,7 @@ System administrators need the ability to configure storage backend at deploymen
 - **SC-003**: Storage backend can be switched between in-memory and PostgreSQL by changing configuration alone, without code modifications
 - **SC-004**: 100% of storage initialization failures result in clear error messages identifying the root cause
 - **SC-005**: PostgreSQL connection failures during startup prevent application from starting in an inconsistent state
-- **SC-007**: Storage read operations complete or timeout within 5 seconds; write operations complete or timeout within 10 seconds
+- **SC-006**: Storage read operations complete or timeout within 5 seconds; write operations complete or timeout within 10 seconds
 
 ## Assumptions *(mandatory)*
 

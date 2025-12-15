@@ -19,7 +19,68 @@ func Validate(cfg *ports.Config) error {
 		return formatValidationError("log.format", string(cfg.Log.Format), "text or json", err)
 	}
 
+	// Validate storage configuration
+	if err := validateStorageConfig(&cfg.Storage); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// validateStorageConfig validates the storage configuration.
+// Ensures backend is valid and backend-specific parameters are present.
+func validateStorageConfig(sc *ports.StorageConfig) error {
+	// Validate backend value
+	if sc.Backend != "memory" && sc.Backend != "postgres" {
+		return formatValidationError("storage.backend", sc.Backend, "memory or postgres", nil)
+	}
+
+	// Validate storage timeouts
+	if err := validateStorageTimeouts(&sc.Timeouts); err != nil {
+		return err
+	}
+
+	// Validate backend-specific parameters
+	if sc.Backend == "postgres" {
+		if err := validatePostgresConfig(&sc.Postgres); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateStorageTimeouts validates storage timeout configuration.
+func validateStorageTimeouts(st *ports.StorageTimeouts) error {
+	if st.Read <= 0 {
+		return formatValidationError("storage.timeouts.read", st.Read.String(), "positive duration", nil)
+	}
+	if st.Write <= 0 {
+		return formatValidationError("storage.timeouts.write", st.Write.String(), "positive duration", nil)
+	}
+	return nil
+}
+
+// validatePostgresConfig validates PostgreSQL-specific configuration.
+func validatePostgresConfig(pc *ports.PostgresConfig) error {
+	if pc.ConnectionURL == "" {
+		return formatValidationError("storage.postgres.connection_url", "", "non-empty PostgreSQL connection URL", nil)
+	}
+
+	// Validate connection URL format
+	if !isValidPostgresURL(pc.ConnectionURL) {
+		return formatValidationError("storage.postgres.connection_url", pc.ConnectionURL, "valid postgresql:// URL", nil)
+	}
+
+	return nil
+}
+
+// isValidPostgresURL checks if a string is a valid PostgreSQL URL format.
+func isValidPostgresURL(s string) bool {
+	if s == "" {
+		return false
+	}
+	return (len(s) > 13 && (s[:13] == "postgresql://" || s[:11] == "postgres://"))
 }
 
 // validateLogLevel validates the log level value.

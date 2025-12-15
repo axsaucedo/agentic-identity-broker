@@ -887,43 +887,55 @@ func TestEntityService(t *testing.T) {
 
 ## Hexagonal Architecture Mapping
 
-### Ports (Interfaces)
+### Ports (Interfaces - Segregated per Interface Segregation Principle)
 
-**Storage Port** (`internal/ports/storage.go`):
+**Storage Lifecycle Port** (`internal/ports/storage.go`):
 ```go
 package ports
 
 import "context"
 
-// StoragePort defines the interface for persistence operations.
-// This is a hexagonal architecture port - domain logic depends on this interface.
-type StoragePort interface {
-    // Entity operations
-    GetByID(ctx context.Context, id string) (*Entity, error)
-    Create(ctx context.Context, entity *Entity) error
-    Update(ctx context.Context, entity *Entity) error
-    Delete(ctx context.Context, id string) error
-    List(ctx context.Context, filter ListFilter) ([]*Entity, error)
+// StorageLifecycle manages storage backend lifecycle operations.
+// Small, focused interface following Interface Segregation Principle.
+type StorageLifecycle interface {
+    // Initialize performs storage backend initialization and verification.
+    // For PostgreSQL: connects to database, verifies schema
+    // For in-memory: initializes empty storage structures
+    Initialize(ctx context.Context) error
 
-    // Health and lifecycle
-    Health(ctx context.Context) error
-    Close() error
+    // Close gracefully closes storage connections and releases resources.
+    Close(ctx context.Context) error
+
+    // HealthCheck verifies storage backend is operational.
+    HealthCheck(ctx context.Context) error
 }
 
-// Entity represents a stored entity (example domain model)
-type Entity struct {
+// UserRepository defines storage operations for user entities.
+// Small, focused interface - separate concern from lifecycle.
+type UserRepository interface {
+    CreateUser(ctx context.Context, user *User) error
+    GetUser(ctx context.Context, id string) (*User, error)
+    UpdateUser(ctx context.Context, user *User) error
+    DeleteUser(ctx context.Context, id string) error
+    ListUsers(ctx context.Context, filter *UserFilter) ([]*User, error)
+}
+
+// User represents a user domain entity
+type User struct {
     ID        string
-    Name      string
+    Email     string
     CreatedAt time.Time
     UpdatedAt time.Time
 }
 
-// ListFilter contains filtering options for list queries
-type ListFilter struct {
+// UserFilter contains filtering options for list queries
+type UserFilter struct {
     Limit  int
     Offset int
 }
 ```
+
+**Note**: ProductRepository is intentionally NOT defined in Phase 1. See quickstart.md for the pattern to follow when adding new entity repositories in future phases.
 
 ### Adapters
 

@@ -541,9 +541,9 @@ Map implementation to specification success criteria:
 - **SC-002**: PostgreSQL adapter persists data across restarts ✓ (integration test verifies)
 - **SC-003**: Backend switchable via config ✓ (factory pattern with config.Backend selection)
 - **SC-004**: All initialization errors return clear messages ✓ (domain errors with context)
-- **SC-005**: 1,000+ concurrent operations ✓ (RWMutex for memory, connection pool for PostgreSQL)
-- **SC-006**: PostgreSQL startup failure prevents inconsistent state ✓ (Initialize() error aborts startup)
-- **SC-007**: Timeout enforcement ✓ (context.WithTimeout in adapter methods)
+- **SC-005**: PostgreSQL startup failure prevents inconsistent state ✓ (Initialize() error aborts startup)
+- **SC-006**: Timeout enforcement ✓ (context.WithTimeout in adapter methods)
+- **SC-007**: 1,000+ concurrent operations ✓ (RWMutex for memory, connection pool for PostgreSQL)
 
 ## Implementation Notes
 

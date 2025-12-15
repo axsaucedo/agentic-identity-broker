@@ -33,9 +33,9 @@ type ConfigPort interface {
 
 // Config represents the complete application configuration schema.
 type Config struct {
-	Log    LogConfig    `mapstructure:"log" validate:"required"`
-	Server ServerConfig `mapstructure:"server" validate:"required"`
-	// Future: Database, Auth, etc.
+	Log     LogConfig     `mapstructure:"log" validate:"required"`
+	Server  ServerConfig  `mapstructure:"server" validate:"required"`
+	Storage StorageConfig `mapstructure:"storage" validate:"required"`
 }
 
 // ServerConfig contains configuration for both HTTP servers.
@@ -115,3 +115,24 @@ const (
 	SourceTypeYAML    SourceType = "yaml"     // YAML file (Precedence: 2)
 	SourceTypeCLI     SourceType = "cli"      // Command-line flags (Precedence: 3)
 )
+
+// StorageConfig contains configuration for the storage layer.
+// Specifies which backend (memory or postgres) to use and its parameters.
+type StorageConfig struct {
+	Backend  string              `mapstructure:"backend" validate:"required,oneof=memory postgres"`
+	Postgres PostgresConfig      `mapstructure:"postgres"`
+	Timeouts StorageTimeouts     `mapstructure:"timeouts" validate:"required"`
+}
+
+// PostgresConfig contains PostgreSQL-specific connection parameters.
+// Only used when StorageConfig.Backend is "postgres".
+type PostgresConfig struct {
+	ConnectionURL string `mapstructure:"connection_url" validate:"required_if=Backend postgres"`
+}
+
+// StorageTimeouts defines timeout durations for storage operations.
+// Applied to all backends to prevent indefinite hangs.
+type StorageTimeouts struct {
+	Read  time.Duration `mapstructure:"read" validate:"required"`
+	Write time.Duration `mapstructure:"write" validate:"required"`
+}
