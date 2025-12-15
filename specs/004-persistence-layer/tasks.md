@@ -103,27 +103,27 @@ Implement ephemeral storage for development and testing (zero-configuration opti
 
 ### Memory Adapter Core
 
-- [ ] T026 [P] [US1] Create `internal/adapters/storage/memory/adapter.go` with Adapter struct (mu sync.RWMutex, users map[string]*storage.User)
-- [ ] T027 [P] [US1] Implement Initialize() method in memory adapter (returns nil immediately, no I/O)
-- [ ] T028 [P] [US1] Implement Close() method in memory adapter (clears internal map, no-op cleanup)
-- [ ] T029 [P] [US1] Implement HealthCheck() method in memory adapter (returns nil, always healthy)
-- [ ] T030 [US1] Implement CreateUser() in memory adapter with RWMutex Lock, duplicate key checking, data copying
-- [ ] T031 [US1] Implement GetUser() in memory adapter with RLock (concurrent reads), data copying to prevent external mutation
-- [ ] T032 [US1] Implement UpdateUser() in memory adapter with Lock, existence checking, immutable update pattern
-- [ ] T033 [US1] Implement DeleteUser() in memory adapter with Lock, existence checking
-- [ ] T034 [US1] Implement ListUsers() in memory adapter with RLock, optional filtering support, data copying for all results
+- [x] T026 [P] [US1] Create `internal/adapters/storage/memory/adapter.go` with Adapter struct (mu sync.RWMutex, users map[string]*storage.User)
+- [x] T027 [P] [US1] Implement Initialize() method in memory adapter (returns nil immediately, no I/O)
+- [x] T028 [P] [US1] Implement Close() method in memory adapter (clears internal map, no-op cleanup)
+- [x] T029 [P] [US1] Implement HealthCheck() method in memory adapter (returns nil, always healthy)
+- [x] T030 [US1] Implement CreateUser() in memory adapter with RWMutex Lock, duplicate key checking, data copying
+- [x] T031 [US1] Implement GetUser() in memory adapter with RLock (concurrent reads), data copying to prevent external mutation
+- [x] T032 [US1] Implement UpdateUser() in memory adapter with Lock, existence checking, immutable update pattern
+- [x] T033 [US1] Implement DeleteUser() in memory adapter with Lock, existence checking
+- [x] T034 [US1] Implement ListUsers() in memory adapter with RLock, optional filtering support, data copying for all results
 
 ### Memory Adapter Tests
 
-- [ ] T035 [P] [US1] Create `internal/adapters/storage/memory/adapter_test.go` with table-driven tests for all operations
-- [ ] T036 [US1] Write concurrent access tests in memory adapter test file (100+ concurrent readers to verify RLock works)
-- [ ] T037 [US1] Write isolation tests to verify separate in-memory instances don't share data
-- [ ] T038 [US1] Write timeout tests to verify context cancellation doesn't crash adapter
-- [ ] T039 [US1] Add race detector tests: `go test -race ./internal/adapters/storage/memory/...`
+- [x] T035 [P] [US1] Create `internal/adapters/storage/memory/adapter_test.go` with table-driven tests for all operations
+- [x] T036 [US1] Write concurrent access tests in memory adapter test file (100+ concurrent readers to verify RLock works)
+- [x] T037 [US1] Write isolation tests to verify separate in-memory instances don't share data
+- [x] T038 [US1] Write timeout tests to verify context cancellation doesn't crash adapter
+- [x] T039 [US1] Add race detector tests: `go test -race ./internal/adapters/storage/memory/...`
 
 ### Memory Adapter Documentation & Configuration
 
-- [ ] T040 [US1] Create in-memory configuration example in `examples/config/storage-memory.yaml` with backend=memory, timeouts
+- [x] T040 [US1] Create in-memory configuration example in `examples/config/storage-memory.yaml` with backend=memory, timeouts
 - [ ] T041 [US1] Update quickstart guide section on in-memory implementation with usage examples
 - [ ] T042 [US1] Create `internal/adapters/storage/memory/README.md` documenting in-memory limitations and use cases
 
@@ -131,7 +131,7 @@ Implement ephemeral storage for development and testing (zero-configuration opti
 
 - [ ] T043 [US1] Integrate memory adapter into main application startup in `cmd/identity-broker/main.go`
 - [ ] T044 [US1] Test full lifecycle: initialize → CRUD → health check → close in integration tests
-- [ ] T045 [US1] Verify startup time < 1 second (SC-001) with benchmarks
+- [x] T045 [US1] Verify startup time < 1 second (SC-001) with benchmarks
 
 ---
 
