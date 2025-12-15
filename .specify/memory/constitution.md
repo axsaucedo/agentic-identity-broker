@@ -1,40 +1,44 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.0.0 → 1.1.0
-Rationale: Added Principle VII (Configuration-Driven Design) and Principle VIII (Test-Driven Development)
-  to improve operational flexibility and code quality through systematic configuration and testing disciplines.
+Version Change: 1.1.0 → 1.2.0
+Rationale: Materially expanded Principle II (Architecture Documentation & Decision Records) to make ADRs
+  binding and added Principle IX (Persistence Pattern Consistency) to enforce established storage patterns
+  from quickstart.md for all new entities requiring persistence.
 
-Modified Principles: None
+Modified Principles:
+- II. Architecture Documentation & Decision Records: Added binding requirement that ADRs are not merely
+  documentation but binding architectural decisions that MUST be followed
 
 Added Principles:
-- VII. Configuration-Driven Design (NEW)
-- VIII. Test-Driven Development & Automated Testing (NEW)
+- IX. Persistence Pattern Consistency (NEW)
 
 Added Sections: None (integrated into Core Principles)
 
 Removed Sections: None
 
 Templates Status:
-- ✅ plan-template.md: Constitution Check section exists and updated with new principles
-- ✅ spec-template.md: Requirements section aligned with testing requirements
-- ✅ tasks-template.md: Task phases support test-first approach and configuration integration
-- ✅ ARCHITECTURE.md: Updated with configuration subsystem per feature 002-flexible-configuration
-- ✅ docs/: Now populated with configuration guide (docs/configuration.md)
-- ✅ examples/config/: Complete set of deployment examples created
+- ✅ plan-template.md: Constitution Check section includes ADR and persistence pattern requirements
+- ✅ spec-template.md: Requirements section aligned with persistence patterns
+- ✅ tasks-template.md: Task phases support persistence implementation per quickstart.md
+- ✅ ARCHITECTURE.md: Will be updated with persistence subsystem (004-persistence-layer)
+- ✅ specs/004-persistence-layer/quickstart.md: Established as canonical persistence pattern reference
+- ✅ adrs/: ADR 004 (Storage Layer Architecture) established as binding pattern
 
 Follow-up TODOs: None - all principles fully defined
 
-Rationale for Principle VII (Configuration-Driven Design):
-  The 002-flexible-configuration feature established a production-ready configuration system using
-  Viper/Cobra/godotenv with multiple sources and clear precedence. This principle codifies the
-  requirement that all future features MUST use this system rather than implementing ad-hoc
-  configuration, reducing duplication and ensuring consistency.
+Rationale for Principle II Enhancement:
+  ADRs document major architectural decisions but must be understood as binding constraints, not optional
+  suggestions. When an ADR establishes a pattern (e.g., ADR 004: interface segregation, sqlx for PostgreSQL),
+  all subsequent code must follow that pattern unless a new ADR explicitly supersedes it. This prevents
+  architectural drift and ensures consistency.
 
-Rationale for Principle VIII (Test-Driven Development):
-  Automated tests provide better coverage, regression prevention, and documentation than manual
-  validation. This principle establishes TDD as the default approach, with Bash/manual validation
-  reserved only for infrastructure-level concerns (e.g., CI/CD workflows, deployment verification).
+Rationale for Principle IX (Persistence Pattern Consistency):
+  The 004-persistence-layer feature established comprehensive persistence patterns documented in
+  specs/004-persistence-layer/quickstart.md including: small focused interfaces (StorageLifecycle,
+  per-entity repositories), hexagonal architecture separation, sqlx/pgx usage, error wrapping patterns,
+  and testing strategies. This principle codifies that all future entities requiring persistence MUST
+  follow these established patterns to maintain architectural consistency.
 -->
 
 # Agentic Identity Broker Constitution
@@ -56,7 +60,7 @@ Security is NON-NEGOTIABLE and MUST NOT be bypassed or made optional in this cod
 
 ### II. Architecture Documentation & Decision Records
 
-Architecture and major decisions MUST be documented and kept in sync with implementation.
+Architecture and major decisions MUST be documented, and Architecture Decision Records are BINDING.
 
 **Rules**:
 - [ARCHITECTURE.md](ARCHITECTURE.md) is the single source of truth for system architecture
@@ -65,8 +69,14 @@ Architecture and major decisions MUST be documented and kept in sync with implem
 - Major architectural decisions MUST be recorded in [adrs/](adrs/) directory as Architecture Decision Records
 - ADR files MUST follow the format `NNN-decision-title.md` (e.g., `001-hexagonal-architecture.md`)
 - ADRs MUST include: Context, Decision, Consequences, Status (Proposed/Accepted/Deprecated/Superseded)
+- **ADRs with status "Accepted" are BINDING**: all code MUST follow patterns and decisions documented in accepted ADRs
+- Deviation from accepted ADRs is NOT permitted without creating a new superseding ADR
+- When an ADR establishes a pattern (e.g., interface design, library choice, architectural pattern), that pattern MUST be followed consistently across the codebase
+- ADRs supersede ad-hoc implementation choices: if an ADR exists for a domain (e.g., ADR 004 for storage), implementers MUST follow it
 
-**Rationale**: Agents and developers require rapid, accurate understanding of architectural constraints to contribute effectively and maintain consistency across the system.
+**Rationale**: Agents and developers require rapid, accurate understanding of architectural constraints to contribute effectively and maintain consistency across the system. Making ADRs binding (not merely advisory) prevents architectural drift, ensures pattern consistency, and makes architectural governance explicit and enforceable.
+
+**Example**: ADR 004 (Storage Layer Architecture) establishes interface segregation, sqlx for PostgreSQL, and specific error handling patterns. Any new storage-backed entity must follow these decisions, not introduce alternative approaches.
 
 ### III. Library-First Security Implementation
 
@@ -160,6 +170,45 @@ with confidence, and scale better than manual validation. Bash-based validation 
 unmaintainable; it MUST be reserved for infrastructure concerns (e.g., smoke tests in CI/CD) rather
 than code correctness.
 
+### IX. Persistence Pattern Consistency
+
+All entities requiring persistence MUST follow established patterns documented in quickstart.md.
+
+**Rules**:
+- New entities requiring persistence MUST follow patterns in [specs/004-persistence-layer/quickstart.md](specs/004-persistence-layer/quickstart.md)
+- Storage interfaces MUST use small, focused interfaces following Interface Segregation Principle:
+  - Separate repository interface per entity (e.g., `UserRepository`, `ProductRepository`)
+  - Lifecycle operations in separate interface (`StorageLifecycle`)
+  - Maximum 5-7 methods per repository interface
+- Repository interfaces MUST be defined in [internal/ports/storage.go](internal/ports/storage.go)
+- Adapters MUST implement all repository interfaces:
+  - In-memory adapter in `internal/adapters/storage/memory/` (for development/testing)
+  - PostgreSQL adapter in `internal/adapters/storage/postgres/` (for production)
+- PostgreSQL adapters MUST use sqlx library (not raw database/sql or ORM)
+- All storage errors MUST be wrapped in domain `StorageError` type (never expose adapter-specific errors)
+- Storage operations MUST respect configured timeouts (5s read, 10s write defaults)
+- Adapter factory pattern MUST be used: return `*Adapter` struct with accessor methods
+- Domain services MUST depend on specific repository interfaces, NOT concrete adapters
+- All new repositories MUST include:
+  - Unit tests for both in-memory and PostgreSQL adapters
+  - Integration tests for PostgreSQL adapter using testcontainers
+  - Table-driven tests for validation logic
+- See [ADR 004: Storage Layer Architecture](adrs/004-storage-layer-architecture.md) for binding architectural decisions
+
+**Rationale**: The 004-persistence-layer feature established comprehensive, battle-tested persistence
+patterns following Go best practices (small interfaces, Interface Segregation Principle, hexagonal
+architecture). Requiring all entities to follow these patterns ensures consistency, maintainability,
+and prevents ad-hoc persistence implementations that violate architectural principles. The patterns
+are documented in quickstart.md and enforced via ADR 004.
+
+**Example**: When adding a `Session` entity that needs persistence, the implementer must:
+1. Define `SessionRepository` interface in `internal/ports/storage.go`
+2. Implement methods in both memory and postgres adapters
+3. Add `Sessions() SessionRepository` accessor to Adapter struct
+4. Use sqlx for PostgreSQL queries (not GORM or raw database/sql)
+5. Wrap all errors in `domain.StorageError`
+6. Write unit and integration tests following quickstart.md patterns
+
 ## Development Requirements
 
 ### Compliance Checklist
@@ -169,6 +218,7 @@ Before any feature PR is merged, verify:
 - [ ] Security controls are enabled by default and fail closed
 - [ ] [ARCHITECTURE.md](ARCHITECTURE.md) reflects architectural changes (if any)
 - [ ] Major decisions recorded in [adrs/](adrs/) with correct numbering
+- [ ] Code follows patterns established in accepted ADRs (especially ADR 004 for persistence)
 - [ ] End-user documentation in [docs/](docs/) updated for new/changed APIs
 - [ ] Domain concepts added to [ARCHITECTURE.md](ARCHITECTURE.md) Glossary section
 - [ ] Domain logic uses ports (interfaces) and adapters are separated
@@ -177,8 +227,17 @@ Before any feature PR is merged, verify:
 - [ ] New features use the system configuration port, not custom config loading
 - [ ] Automated tests included (unit, integration, or both) with meaningful coverage
 - [ ] No Bash scripts used for code correctness validation (only infrastructure tasks)
+- [ ] New persistence entities follow quickstart.md patterns (if applicable)
 
 ### When Constraints Cannot Be Met
+
+If Principle II (Binding ADRs) requires deviation:
+
+1. STOP implementation immediately
+2. Document why the accepted ADR pattern cannot be followed
+3. Draft a new ADR proposing an alternative approach with rationale
+4. Mark the new ADR as superseding the previous ADR
+5. Do NOT implement the deviation without an accepted superseding ADR
 
 If Principle III (Library-First Security) cannot be satisfied:
 
@@ -201,6 +260,14 @@ If Principle VIII (TDD & Automated Testing) cannot be satisfied:
 3. Escalate to project maintainers for exception approval
 4. Do NOT use Bash scripts for code correctness validation without explicit justification
 
+If Principle IX (Persistence Pattern Consistency) cannot be satisfied:
+
+1. STOP implementation immediately
+2. Document why quickstart.md patterns cannot be followed for this specific entity
+3. Propose alternative approach with technical justification
+4. Create an ADR documenting the exception and rationale
+5. Do NOT implement non-standard persistence patterns without an accepted ADR
+
 ## Governance
 
 ### Amendment Procedure
@@ -221,6 +288,8 @@ If Principle VIII (TDD & Automated Testing) cannot be satisfied:
 
 - All PRs MUST verify compliance with this constitution
 - Reviewers MUST challenge complexity and request justification when principles are violated
+- Reviewers MUST verify adherence to accepted ADRs (Principle II)
+- Reviewers MUST verify persistence implementations follow quickstart.md patterns (Principle IX)
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
 
-**Version**: 1.1.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-15
+**Version**: 1.2.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-15
