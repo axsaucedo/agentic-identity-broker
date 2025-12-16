@@ -104,6 +104,15 @@ install-tools:
     fi
     @echo "Tools installation complete"
 
+# Run integration tests (requires Docker for PostgreSQL tests)
+test-integration:
+    @echo "Running integration tests..."
+    go test -tags=integration -v ./test/integration/storage/...
+
+# Run all unit tests with coverage
+test-all: test test-integration
+    @echo "All tests completed"
+
 # Run all quality checks (fmt, vet, lint, test)
 check: fmt vet lint test
     @echo "All checks passed!"
