@@ -124,7 +124,7 @@ func TestCreateUser(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 			defer cancel()
 
-			adapter.Initialize(ctx)
+			_ = adapter.Initialize(ctx)
 
 			err := adapter.CreateUser(ctx, tt.user)
 
@@ -145,7 +145,7 @@ func TestCreateUser_Duplicate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
 		ID:        "user123",
@@ -170,7 +170,7 @@ func TestGetUser(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
 		ID:        "user123",
@@ -179,7 +179,7 @@ func TestGetUser(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	adapter.CreateUser(ctx, user)
+	_ = adapter.CreateUser(ctx, user)
 
 	retrieved, err := adapter.GetUser(ctx, "user123")
 	assert.NoError(t, err)
@@ -193,7 +193,7 @@ func TestGetUser_NotFound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	_, err := adapter.GetUser(ctx, "nonexistent")
 	assert.Error(t, err)
@@ -207,7 +207,7 @@ func TestUpdateUser(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
 		ID:        "user123",
@@ -216,7 +216,7 @@ func TestUpdateUser(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	adapter.CreateUser(ctx, user)
+	_ = adapter.CreateUser(ctx, user)
 
 	// Update with new email
 	user.Email = "newemail@example.com"
@@ -235,7 +235,7 @@ func TestUpdateUser_NotFound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
 		ID:        "nonexistent",
@@ -256,7 +256,7 @@ func TestDeleteUser(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
 		ID:        "user123",
@@ -265,7 +265,7 @@ func TestDeleteUser(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	adapter.CreateUser(ctx, user)
+	_ = adapter.CreateUser(ctx, user)
 
 	err := adapter.DeleteUser(ctx, "user123")
 	assert.NoError(t, err)
@@ -280,7 +280,7 @@ func TestDeleteUser_Idempotent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	// Delete non-existent user (should not error)
 	err := adapter.DeleteUser(ctx, "nonexistent")
@@ -292,7 +292,7 @@ func TestListUsers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	// Create multiple users
 	for i := 1; i <= 3; i++ {
@@ -302,7 +302,7 @@ func TestListUsers(t *testing.T) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		adapter.CreateUser(ctx, user)
+		_ = adapter.CreateUser(ctx, user)
 	}
 
 	users, err := adapter.ListUsers(ctx, nil)
@@ -315,7 +315,7 @@ func TestListUsers_WithPagination(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	// Create 10 users
 	for i := 1; i <= 10; i++ {
@@ -325,7 +325,7 @@ func TestListUsers_WithPagination(t *testing.T) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		adapter.CreateUser(ctx, user)
+		_ = adapter.CreateUser(ctx, user)
 	}
 
 	filter := &ports.UserFilter{
@@ -344,7 +344,7 @@ func TestConcurrentReads(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
 		ID:        "user123",
@@ -352,7 +352,7 @@ func TestConcurrentReads(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	adapter.CreateUser(ctx, user)
+	_ = adapter.CreateUser(ctx, user)
 
 	// 100 concurrent reads
 	var wg sync.WaitGroup
@@ -378,7 +378,7 @@ func TestConcurrentWritesAndReads(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	var wg sync.WaitGroup
 	var writeErrors int32
@@ -425,7 +425,7 @@ func TestContextCancellation(t *testing.T) {
 	adapter := NewAdapter()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	adapter.Initialize(context.Background())
+	_ = adapter.Initialize(context.Background())
 
 	user := &ports.User{
 		ID:        "user123",
@@ -434,7 +434,7 @@ func TestContextCancellation(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	adapter.CreateUser(context.Background(), user)
+	_ = adapter.CreateUser(context.Background(), user)
 
 	// Cancel context
 	cancel()
@@ -455,8 +455,8 @@ func TestDataIsolation(t *testing.T) {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel2()
 
-	adapter1.Initialize(ctx1)
-	adapter2.Initialize(ctx2)
+	_ = adapter1.Initialize(ctx1)
+	_ = adapter2.Initialize(ctx2)
 
 	user := &ports.User{
 		ID:        "user123",
@@ -465,7 +465,7 @@ func TestDataIsolation(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	adapter1.CreateUser(ctx1, user)
+	_ = adapter1.CreateUser(ctx1, user)
 
 	// User should not exist in adapter2 (different instances)
 	_, err := adapter2.GetUser(ctx2, "user123")
@@ -476,7 +476,7 @@ func TestDataIsolation(t *testing.T) {
 func BenchmarkCreateUser(b *testing.B) {
 	adapter := NewAdapter()
 	ctx := context.Background()
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -486,14 +486,14 @@ func BenchmarkCreateUser(b *testing.B) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		adapter.CreateUser(ctx, user)
+		_ = adapter.CreateUser(ctx, user)
 	}
 }
 
 func BenchmarkGetUser(b *testing.B) {
 	adapter := NewAdapter()
 	ctx := context.Background()
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
 		ID:        "user123",
@@ -501,18 +501,18 @@ func BenchmarkGetUser(b *testing.B) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	adapter.CreateUser(ctx, user)
+	_ = adapter.CreateUser(ctx, user)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		adapter.GetUser(ctx, "user123")
+		_, _ = adapter.GetUser(ctx, "user123")
 	}
 }
 
 func BenchmarkListUsers(b *testing.B) {
 	adapter := NewAdapter()
 	ctx := context.Background()
-	adapter.Initialize(ctx)
+	_ = adapter.Initialize(ctx)
 
 	// Create 1000 users
 	for i := 1; i <= 1000; i++ {
@@ -522,11 +522,11 @@ func BenchmarkListUsers(b *testing.B) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		adapter.CreateUser(ctx, user)
+		_ = adapter.CreateUser(ctx, user)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		adapter.ListUsers(ctx, nil)
+		_, _ = adapter.ListUsers(ctx, nil)
 	}
 }
