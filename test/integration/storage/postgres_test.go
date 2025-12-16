@@ -6,7 +6,9 @@ package storage
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,6 +20,20 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
+
+// init disables Ryuk for Podman compatibility
+// Ryuk tries to use "bridge" network which is a reserved network mode in Podman
+// See: https://golang.testcontainers.org/system_requirements/using_podman/
+func init() {
+	// Disable Ryuk only if user hasn't explicitly configured it
+	// This is needed because Ryuk requires Docker's "bridge" network name,
+	// which conflicts with Podman's network mode system
+	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
+		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+	}
+
+	_ = filepath.Join("", "") // Use filepath package to avoid unused import
+}
 
 // canAccessContainerRuntime checks if Docker or Podman is available on this system
 func canAccessContainerRuntime() error {
@@ -49,12 +65,22 @@ func setupPostgresContainer(ctx context.Context) (testcontainers.Container, stri
 			"POSTGRES_DB":       "testdb",
 		},
 		WaitingFor: wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(30 * time.Second),
+		// Use "podman" network on Podman (available by default)
+		// On Docker, this will use the default network. Podman requires explicit network for container communication.
+		Networks: []string{"podman"},
 	}
 
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	genericReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
-	})
+	}
+
+	// If DOCKER_HOST is set (Podman mode), explicitly use Podman provider
+	if os.Getenv("DOCKER_HOST") != "" {
+		genericReq.ProviderType = testcontainers.ProviderPodman
+	}
+
+	container, err := testcontainers.GenericContainer(ctx, genericReq)
 	if err != nil {
 		return nil, "", err
 	}

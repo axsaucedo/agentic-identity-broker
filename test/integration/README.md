@@ -22,7 +22,7 @@ just test-integration
 
 #### With Podman
 
-Podman is supported as an alternative to Docker. Note: testcontainers-go v0.40.0 has limitations with Podman on some platforms.
+Podman is fully supported as an alternative to Docker, including on macOS.
 
 **On Linux with rootless Podman:**
 ```bash
@@ -33,20 +33,23 @@ go test -tags=integration -v ./test/integration/storage/...
 
 **On macOS with Podman machine:**
 ```bash
-# Start the Podman machine
+# Start the Podman machine and get the socket path
 podman machine start
 
-# Attempt to run integration tests
-# Note: May skip if testcontainers-go can't access the socket (this is expected behavior)
+# The output will show the socket path, typically:
+# /var/folders/42/xfyh9ksn6sndqbtl0ybbtr700000gn/T/podman/podman-machine-default-api.sock
+
+# Set DOCKER_HOST environment variable
+export DOCKER_HOST='unix:///var/folders/42/xfyh9ksn6sndqbtl0ybbtr700000gn/T/podman/podman-machine-default-api.sock'
+
+# Run tests
 go test -tags=integration -v ./test/integration/storage/...
+
+# Or with justfile
+just test-integration
 ```
 
-**Known Issues:**
-- testcontainers-go v0.40.0 requires rootless container support which Podman on macOS (via VM) may not expose correctly
-- Podman on macOS uses SSH connections to the VM, which testcontainers-go may not auto-detect
-- When integration with Podman fails, tests gracefully skip with appropriate message
-- For reliable integration testing on macOS, Docker Desktop is recommended
-- See: https://golang.testcontainers.org/ for testcontainers-go configuration options
+**Note:** The postgres_test.go init function automatically disables Ryuk cleanup by default. This is necessary because Ryuk tries to use a network named "bridge", which conflicts with Podman's network mode system (where "bridge" is a reserved network mode, not a network name). This is handled transparently - no additional configuration needed.
 
 ## Test Organization
 
@@ -104,27 +107,38 @@ If neither is available, tests are skipped with appropriate message.
 
 ## Troubleshooting
 
-### "Podman socket not found" error
-```bash
-# Check if podman socket is running
-ls -l /run/podman/podman.sock
+### "Connection refused" or "Cannot connect to container runtime"
 
-# Start podman socket if not running
-podman system service --time=0 unix:///run/podman/podman.sock &
-```
-
-### "Connection refused" error
+**On macOS with Podman:**
 ```bash
-# Verify DOCKER_HOST is set correctly
+# Verify DOCKER_HOST is set correctly with podman socket path
 echo $DOCKER_HOST
 
-# Try connecting directly
-curl --unix-socket /run/podman/podman.sock http://localhost/v1.0.0/libpod/info
+# Start podman machine if not running
+podman machine start
+
+# Get the correct socket path from podman machine start output
+# It will be something like:
+# unix:///var/folders/42/xfyh9ksn6sndqbtl0ybbtr700000gn/T/podman/podman-machine-default-api.sock
+
+# Export and retry tests
+export DOCKER_HOST='unix:///<your-socket-path>'
+go test -tags=integration -v ./test/integration/storage/...
 ```
 
-### Container fails to start
+**On Linux with rootless Podman:**
 ```bash
-# Check if image is available
+# Verify socket exists
+ls -l $XDG_RUNTIME_DIR/podman/podman.sock
+
+# Set DOCKER_HOST if needed
+export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
+go test -tags=integration -v ./test/integration/storage/...
+```
+
+### Container image not available
+```bash
+# Check if postgres:15-alpine image is available
 podman images | grep postgres
 
 # Pull image manually if needed
@@ -142,8 +156,8 @@ podman ps -a | grep postgres
 # Clean up if needed
 podman rm -f $(podman ps -aq --filter ancestor=postgres:15-alpine)
 
-# Disable Ryuk cleanup for debugging
-TESTCONTAINERS_RYUK_DISABLED=true go test -tags=integration -v ./test/integration/storage/...
+# Run tests with debug output
+TESTCONTAINERS_LOGS=true go test -tags=integration -v ./test/integration/storage/...
 ```
 
 ## CI/CD Integration
