@@ -1,0 +1,500 @@
+// Package postgres implements PostgreSQL storage adapters.
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+// UserGrantRepository implements ports.UserGrantRepository using PostgreSQL.
+type UserGrantRepository struct {
+	adapter *Adapter
+}
+
+// NewUserGrantRepository creates a new PostgreSQL user grant repository.
+// The adapter must be initialized before use.
+func NewUserGrantRepository(adapter *Adapter) *UserGrantRepository {
+	return &UserGrantRepository{
+		adapter: adapter,
+	}
+}
+
+// Create creates a new user grant or updates existing grant for same principal+agent (upsert).
+// The grant ID should be generated before calling this method.
+// Uses ON CONFLICT to implement upsert semantics (one grant per principal-agent pair).
+func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGrant) error {
+	if r.adapter.db == nil {
+		return storage.NewStorageError(
+			"CreateUserGrant",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	if grant == nil {
+		return storage.NewStorageError(
+			"CreateUserGrant",
+			storage.ErrorKindValidation,
+			nil,
+			"grant cannot be nil",
+		)
+	}
+
+	// Generate ID if not provided
+	if grant.ID == "" {
+		grant.ID = uuid.New().String()
+	}
+
+	// Validate before storing
+	if err := grant.ValidateForCreate(); err != nil {
+		return storage.NewStorageError(
+			"CreateUserGrant",
+			storage.ErrorKindValidation,
+			err,
+			"grant validation failed",
+		)
+	}
+
+	// Marshal delegated tokens to JSONB
+	tokensJSON, err := json.Marshal(grant.DelegatedOAuth2Tokens)
+	if err != nil {
+		return storage.NewStorageError(
+			"CreateUserGrant",
+			storage.ErrorKindUnknown,
+			err,
+			"failed to marshal delegated tokens",
+		)
+	}
+
+	// Create context with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
+	defer cancel()
+
+	// Use ON CONFLICT to implement upsert semantics
+	query := `
+		INSERT INTO user_grants (
+			id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (principal, agent_id)
+		DO UPDATE SET
+			valid_until = EXCLUDED.valid_until,
+			delegated_oauth2_tokens = EXCLUDED.delegated_oauth2_tokens,
+			updated_at = EXCLUDED.updated_at
+		RETURNING id
+	`
+
+	var returnedID string
+	err = r.adapter.db.QueryRowContext(
+		ctxTimeout,
+		query,
+		grant.ID,
+		grant.Principal,
+		grant.AgentID,
+		grant.ValidUntil,
+		tokensJSON,
+		grant.CreatedAt,
+		grant.UpdatedAt,
+	).Scan(&returnedID)
+
+	if err != nil {
+		return r.handlePostgresError("CreateUserGrant", err)
+	}
+
+	// Update grant ID if it was changed by upsert
+	grant.ID = returnedID
+
+	return nil
+}
+
+// Get retrieves a user grant by ID.
+// Returns StorageError with Kind=NotFound if grant not found.
+func (r *UserGrantRepository) Get(ctx context.Context, id string) (*storage.UserGrant, error) {
+	if r.adapter.db == nil {
+		return nil, storage.NewStorageError(
+			"GetUserGrant",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	// Create context with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	query := `
+		SELECT id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		FROM user_grants
+		WHERE id = $1
+	`
+
+	var grant storage.UserGrant
+	var tokensJSON []byte
+
+	err := r.adapter.db.QueryRowContext(ctxTimeout, query, id).Scan(
+		&grant.ID,
+		&grant.Principal,
+		&grant.AgentID,
+		&grant.ValidUntil,
+		&tokensJSON,
+		&grant.CreatedAt,
+		&grant.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, storage.NewStorageError(
+				"GetUserGrant",
+				storage.ErrorKindNotFound,
+				ports.ErrNotFound,
+				"user grant not found",
+			)
+		}
+		return nil, r.handlePostgresError("GetUserGrant", err)
+	}
+
+	// Unmarshal JSONB tokens
+	if err := json.Unmarshal(tokensJSON, &grant.DelegatedOAuth2Tokens); err != nil {
+		return nil, storage.NewStorageError(
+			"GetUserGrant",
+			storage.ErrorKindUnknown,
+			err,
+			"failed to unmarshal delegated tokens",
+		)
+	}
+
+	return grant.Copy(), nil
+}
+
+// Update updates an existing user grant.
+// Returns StorageError with Kind=NotFound if grant not found.
+func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGrant) error {
+	if r.adapter.db == nil {
+		return storage.NewStorageError(
+			"UpdateUserGrant",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	if grant == nil {
+		return storage.NewStorageError(
+			"UpdateUserGrant",
+			storage.ErrorKindValidation,
+			nil,
+			"grant cannot be nil",
+		)
+	}
+
+	// Validate before updating
+	if err := grant.Validate(); err != nil {
+		return storage.NewStorageError(
+			"UpdateUserGrant",
+			storage.ErrorKindValidation,
+			err,
+			"grant validation failed",
+		)
+	}
+
+	// Marshal delegated tokens to JSONB
+	tokensJSON, err := json.Marshal(grant.DelegatedOAuth2Tokens)
+	if err != nil {
+		return storage.NewStorageError(
+			"UpdateUserGrant",
+			storage.ErrorKindUnknown,
+			err,
+			"failed to marshal delegated tokens",
+		)
+	}
+
+	// Create context with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
+	defer cancel()
+
+	query := `
+		UPDATE user_grants
+		SET valid_until = $2,
+		    delegated_oauth2_tokens = $3,
+		    updated_at = $4
+		WHERE id = $1
+	`
+
+	result, err := r.adapter.db.ExecContext(
+		ctxTimeout,
+		query,
+		grant.ID,
+		grant.ValidUntil,
+		tokensJSON,
+		grant.UpdatedAt,
+	)
+
+	if err != nil {
+		return r.handlePostgresError("UpdateUserGrant", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return storage.NewStorageError(
+			"UpdateUserGrant",
+			storage.ErrorKindUnknown,
+			err,
+			"failed to get rows affected",
+		)
+	}
+
+	if rowsAffected == 0 {
+		return storage.NewStorageError(
+			"UpdateUserGrant",
+			storage.ErrorKindNotFound,
+			ports.ErrNotFound,
+			"user grant not found",
+		)
+	}
+
+	return nil
+}
+
+// Delete deletes a user grant by ID.
+// Idempotent: returns nil if grant doesn't exist.
+func (r *UserGrantRepository) Delete(ctx context.Context, id string) error {
+	if r.adapter.db == nil {
+		return storage.NewStorageError(
+			"DeleteUserGrant",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	// Create context with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
+	defer cancel()
+
+	query := `DELETE FROM user_grants WHERE id = $1`
+
+	_, err := r.adapter.db.ExecContext(ctxTimeout, query, id)
+	if err != nil {
+		return r.handlePostgresError("DeleteUserGrant", err)
+	}
+
+	// Idempotent: success even if no rows deleted
+	return nil
+}
+
+// ListByPrincipalAndAgent retrieves all grants for a principal and specific agent.
+// Includes expired grants (filtering happens in service layer).
+// Returns empty slice if no grants exist (not an error).
+func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+	if r.adapter.db == nil {
+		return nil, storage.NewStorageError(
+			"ListUserGrants",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	// Create context with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	query := `
+		SELECT id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		FROM user_grants
+		WHERE principal = $1 AND agent_id = $2
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.adapter.db.QueryContext(ctxTimeout, query, principal, agentID)
+	if err != nil {
+		return nil, r.handlePostgresError("ListUserGrants", err)
+	}
+	defer rows.Close()
+
+	var grants []*storage.UserGrant
+
+	for rows.Next() {
+		var grant storage.UserGrant
+		var tokensJSON []byte
+
+		err := rows.Scan(
+			&grant.ID,
+			&grant.Principal,
+			&grant.AgentID,
+			&grant.ValidUntil,
+			&tokensJSON,
+			&grant.CreatedAt,
+			&grant.UpdatedAt,
+		)
+		if err != nil {
+			return nil, storage.NewStorageError(
+				"ListUserGrants",
+				storage.ErrorKindUnknown,
+				err,
+				"failed to scan grant row",
+			)
+		}
+
+		// Unmarshal JSONB tokens
+		if err := json.Unmarshal(tokensJSON, &grant.DelegatedOAuth2Tokens); err != nil {
+			return nil, storage.NewStorageError(
+				"ListUserGrants",
+				storage.ErrorKindUnknown,
+				err,
+				"failed to unmarshal delegated tokens",
+			)
+		}
+
+		grants = append(grants, grant.Copy())
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError(
+			"ListUserGrants",
+			storage.ErrorKindUnknown,
+			err,
+			"error iterating grant rows",
+		)
+	}
+
+	return grants, nil
+}
+
+// FindByPrincipalAndAgent retrieves the grant for a principal and agent pair.
+// Returns StorageError with Kind=NotFound if grant not found.
+func (r *UserGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal string, agentID string) (*storage.UserGrant, error) {
+	if r.adapter.db == nil {
+		return nil, storage.NewStorageError(
+			"FindUserGrant",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	// Create context with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	query := `
+		SELECT id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		FROM user_grants
+		WHERE principal = $1 AND agent_id = $2
+		LIMIT 1
+	`
+
+	var grant storage.UserGrant
+	var tokensJSON []byte
+
+	err := r.adapter.db.QueryRowContext(ctxTimeout, query, principal, agentID).Scan(
+		&grant.ID,
+		&grant.Principal,
+		&grant.AgentID,
+		&grant.ValidUntil,
+		&tokensJSON,
+		&grant.CreatedAt,
+		&grant.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, storage.NewStorageError(
+				"FindUserGrant",
+				storage.ErrorKindNotFound,
+				ports.ErrNotFound,
+				"user grant not found",
+			)
+		}
+		return nil, r.handlePostgresError("FindUserGrant", err)
+	}
+
+	// Unmarshal JSONB tokens
+	if err := json.Unmarshal(tokensJSON, &grant.DelegatedOAuth2Tokens); err != nil {
+		return nil, storage.NewStorageError(
+			"FindUserGrant",
+			storage.ErrorKindUnknown,
+			err,
+			"failed to unmarshal delegated tokens",
+		)
+	}
+
+	return grant.Copy(), nil
+}
+
+// DeleteByAgent deletes all grants associated with an agent.
+// Used during cascade deletion when agent is deleted (FR-021).
+// Idempotent: returns nil if agent has no grants.
+func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID string) error {
+	if r.adapter.db == nil {
+		return storage.NewStorageError(
+			"DeleteGrantsByAgent",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	// Create context with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
+	defer cancel()
+
+	query := `DELETE FROM user_grants WHERE agent_id = $1`
+
+	_, err := r.adapter.db.ExecContext(ctxTimeout, query, agentID)
+	if err != nil {
+		return r.handlePostgresError("DeleteGrantsByAgent", err)
+	}
+
+	// Idempotent: success even if no rows deleted
+	return nil
+}
+
+// handlePostgresError converts PostgreSQL errors to StorageError.
+func (r *UserGrantRepository) handlePostgresError(operation string, err error) error {
+	if pgErr, ok := err.(*pgconn.PgError); ok {
+		switch pgErr.Code {
+		case "23505": // unique_violation
+			return storage.NewStorageError(
+				operation,
+				storage.ErrorKindConflict,
+				err,
+				fmt.Sprintf("conflict: %s", pgErr.Detail),
+			)
+		case "23503": // foreign_key_violation
+			return storage.NewStorageError(
+				operation,
+				storage.ErrorKindNotFound,
+				err,
+				fmt.Sprintf("foreign key violation: %s", pgErr.Detail),
+			)
+		}
+	}
+
+	// Check for context errors in the wrapped error
+	if err == context.DeadlineExceeded {
+		return storage.NewStorageError(
+			operation,
+			storage.ErrorKindTimeout,
+			err,
+			"operation timed out",
+		)
+	}
+
+	// Default to connection error
+	return storage.NewStorageError(
+		operation,
+		storage.ErrorKindConnection,
+		err,
+		"PostgreSQL operation failed",
+	)
+}

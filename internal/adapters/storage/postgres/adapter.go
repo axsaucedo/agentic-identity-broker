@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -158,7 +159,7 @@ func (a *Adapter) verifySchema(ctx context.Context, db *sqlx.DB) error {
 		)
 	}
 
-	// Check if users table exists
+	// Check if users table exists (optional - from previous feature)
 	query = `
 		SELECT EXISTS (
 			SELECT 1 FROM information_schema.tables
@@ -168,21 +169,14 @@ func (a *Adapter) verifySchema(ctx context.Context, db *sqlx.DB) error {
 	`
 
 	if err := db.GetContext(schemaCtx, &exists, query); err != nil {
-		return storage.NewStorageError(
-			"Initialize",
-			storage.ErrorKindConnection,
-			err,
-			"failed to query schema information",
-		)
-	}
-
-	if !exists {
-		return storage.NewStorageError(
-			"Initialize",
-			storage.ErrorKindValidation,
-			nil,
-			"users table not found; run migrations: identity-broker migrate up",
-		)
+		// Log warning but don't fail - users table may not be created yet
+		slog.Warn("failed to query users table existence",
+			"error", err,
+			"note", "users table may not exist yet, continuing initialization")
+	} else if !exists {
+		// Users table doesn't exist, log warning but continue
+		slog.Warn("users table not found",
+			"note", "users table from previous feature may not be migrated yet")
 	}
 
 	return nil

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
+	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
@@ -18,14 +20,16 @@ import (
 // Server implements the ServerPort interface using the chi router framework.
 // It manages the lifecycle of a single HTTP server instance.
 type Server struct {
-	name        string                     // Server identifier ("enduser" or "admin")
-	config      ports.ServerInstanceConfig // Server configuration (port, bind address)
-	router      *chi.Mux                   // Chi router for request routing
-	httpServer  *http.Server               // Underlying HTTP server
-	healthState int32                      // Atomic health state (using ports.HealthState as int32)
-	startTime   time.Time                  // Time when server started serving requests
-	logger      *slog.Logger               // Structured logger
-	agentRepo   ports.AgentRepository      // Agent repository (optional)
+	name        string                                  // Server identifier ("enduser" or "admin")
+	config      ports.ServerInstanceConfig              // Server configuration (port, bind address)
+	router      *chi.Mux                                // Chi router for request routing
+	httpServer  *http.Server                            // Underlying HTTP server
+	healthState int32                                   // Atomic health state (using ports.HealthState as int32)
+	startTime   time.Time                               // Time when server started serving requests
+	logger      *slog.Logger                            // Structured logger
+	agentRepo   ports.AgentRepository                   // Agent repository (optional)
+	serviceRepo ports.ThirdpartyOAuth2ServiceRepository // OAuth2 service repository (optional)
+	grantRepo   ports.UserGrantRepository               // User grant repository (optional)
 }
 
 // NewServer creates a new HTTP server instance.
@@ -51,6 +55,18 @@ func (s *Server) Name() string {
 // This should be called before Listen() to ensure handlers have access to the repository.
 func (s *Server) SetAgentRepository(repo ports.AgentRepository) {
 	s.agentRepo = repo
+}
+
+// SetServiceRepository sets the OAuth2 service repository for this server.
+// This should be called before Listen() to ensure handlers have access to the repository.
+func (s *Server) SetServiceRepository(repo ports.ThirdpartyOAuth2ServiceRepository) {
+	s.serviceRepo = repo
+}
+
+// SetGrantRepository sets the user grant repository for this server.
+// This should be called before Listen() to ensure handlers have access to the repository.
+func (s *Server) SetGrantRepository(repo ports.UserGrantRepository) {
+	s.grantRepo = repo
 }
 
 // Listen binds to the configured address and port and returns a listener.
@@ -178,6 +194,10 @@ func (s *Server) setupRoutes() {
 		s.setupAdminRoutes()
 	}
 
+	if s.name == "enduser" {
+		s.setupEnduserRoutes()
+	}
+
 	s.logger.Debug("Routes configured",
 		"server", s.name)
 }
@@ -188,6 +208,26 @@ func (s *Server) setupAdminRoutes() {
 		// Agent management routes will be registered here
 		// This is called from setupRoutes(), after agentRepo is set
 		s.registerAgentRoutes(r)
+	})
+}
+
+// setupEnduserRoutes registers enduser API routes (consent management).
+func (s *Server) setupEnduserRoutes() {
+	// Only register consent routes if all required repositories are available
+	if s.agentRepo == nil || s.serviceRepo == nil || s.grantRepo == nil {
+		s.logger.Warn("Consent routes not registered - missing required repositories",
+			"has_agent_repo", s.agentRepo != nil,
+			"has_service_repo", s.serviceRepo != nil,
+			"has_grant_repo", s.grantRepo != nil)
+		return
+	}
+
+	// Create consent service
+	consentService := consentservice.NewService(s.agentRepo, s.serviceRepo, s.grantRepo)
+
+	s.router.Route("/api/consent", func(r chi.Router) {
+		// Register consent management routes
+		s.registerConsentRoutes(r, consentService)
 	})
 }
 
@@ -209,6 +249,25 @@ func (s *Server) registerAgentRoutes(r chi.Router) {
 		r.Get("/{agent-id}", agentsHandler.GetAgent)       // GET /api/agents/:agent-id
 		r.Put("/{agent-id}", agentsHandler.UpdateAgent)    // PUT /api/agents/:agent-id
 		r.Delete("/{agent-id}", agentsHandler.DeleteAgent) // DELETE /api/agents/:agent-id
+	})
+}
+
+// registerConsentRoutes registers consent management routes.
+func (s *Server) registerConsentRoutes(r chi.Router, consentService *consentservice.Service) {
+	s.logger.Debug("Registering consent routes")
+
+	// Create handlers
+	agentInfoHandler := consent.NewAgentInfoHandler(consentService, s.logger)
+	grantsHandler := consent.NewGrantsHandler(consentService, s.logger)
+
+	// Register routes
+	r.Route("/agent/{agent-id}", func(r chi.Router) {
+		// Agent consent info endpoint (FR-009, FR-025)
+		r.Get("/", agentInfoHandler.GetAgentConsentInfo) // GET /api/consent/agent/:agent-id
+
+		// User grants endpoints (FR-011 through FR-014)
+		r.Get("/grants", grantsHandler.GetGrants)    // GET /api/consent/agent/:agent-id/grants
+		r.Post("/grants", grantsHandler.CreateGrant) // POST /api/consent/agent/:agent-id/grants
 	})
 }
 

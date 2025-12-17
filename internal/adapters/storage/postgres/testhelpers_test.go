@@ -95,6 +95,23 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 
 	ctx := context.Background()
 
+	// First, create schema_migrations table
+	schemaSQL := `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version BIGINT PRIMARY KEY,
+			dirty BOOLEAN NOT NULL DEFAULT FALSE
+		);
+	`
+	exitCode, _, err := container.Exec(ctx, []string{
+		"psql",
+		"-U", "testuser",
+		"-d", "testdb",
+		"-c", schemaSQL,
+	})
+	if err != nil || exitCode != 0 {
+		t.Logf("Warning: Failed to create schema_migrations table (exit %d): %v", exitCode, err)
+	}
+
 	// Find project root (where migrations folder is)
 	projectRoot, err := findProjectRoot()
 	require.NoError(t, err)
@@ -102,17 +119,20 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 	migrationsDir := filepath.Join(projectRoot, "migrations")
 
 	// Read and apply each migration file
-	migrations := []string{
-		"001_create_agents.up.sql",
-		"002_create_thirdparty_services.up.sql",
-		"003_create_user_grants.up.sql",
+	migrations := []struct {
+		file    string
+		version int64
+	}{
+		{"001_create_agents.up.sql", 1},
+		{"002_create_thirdparty_services.up.sql", 2},
+		{"003_create_user_grants.up.sql", 3},
 	}
 
 	for _, migration := range migrations {
-		migrationPath := filepath.Join(migrationsDir, migration)
+		migrationPath := filepath.Join(migrationsDir, migration.file)
 		data, err := os.ReadFile(migrationPath)
 		if err != nil {
-			t.Logf("Warning: Could not read migration %s: %v", migration, err)
+			t.Logf("Warning: Could not read migration %s: %v", migration.file, err)
 			continue
 		}
 
@@ -125,8 +145,18 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 		})
 
 		if err != nil || exitCode != 0 {
-			t.Logf("Warning: Migration %s failed (exit %d): %v", migration, exitCode, err)
+			t.Logf("Warning: Migration %s failed (exit %d): %v", migration.file, exitCode, err)
+			continue
 		}
+
+		// Record migration version
+		versionSQL := fmt.Sprintf("INSERT INTO schema_migrations (version, dirty) VALUES (%d, FALSE) ON CONFLICT DO NOTHING;", migration.version)
+		container.Exec(ctx, []string{
+			"psql",
+			"-U", "testuser",
+			"-d", "testdb",
+			"-c", versionSQL,
+		})
 	}
 }
 
