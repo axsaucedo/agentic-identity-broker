@@ -68,6 +68,26 @@ func TestValidate(t *testing.T) {
 					Level:  ports.LogLevelInfo,
 					Format: ports.LogFormatText,
 				},
+				Server: ports.ServerConfig{
+					EndUser: ports.ServerInstanceConfig{
+						Port: 8000,
+						Bind: "::",
+						Authentication: ports.AuthenticationConfig{
+							Preauth: ports.PreauthConfig{
+								PrincipalHeaderName: "X-Remote-User",
+							},
+						},
+					},
+					Admin: ports.ServerInstanceConfig{
+						Port: 14000,
+						Bind: "::",
+						Authentication: ports.AuthenticationConfig{
+							Preauth: ports.PreauthConfig{
+								PrincipalHeaderName: "X-Remote-User",
+							},
+						},
+					},
+				},
 				Storage: ports.StorageConfig{
 					Backend: "memory",
 					Timeouts: ports.StorageTimeouts{
@@ -97,6 +117,117 @@ func TestValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
+		},
+		{
+			name: "missing enduser principal header name",
+			cfg: &ports.Config{
+				Log: ports.LogConfig{
+					Level:  ports.LogLevelInfo,
+					Format: ports.LogFormatText,
+				},
+				Server: ports.ServerConfig{
+					EndUser: ports.ServerInstanceConfig{
+						Port: 8000,
+						Bind: "::",
+						Authentication: ports.AuthenticationConfig{
+							Preauth: ports.PreauthConfig{
+								PrincipalHeaderName: "",
+							},
+						},
+					},
+					Admin: ports.ServerInstanceConfig{
+						Port: 14000,
+						Bind: "::",
+						Authentication: ports.AuthenticationConfig{
+							Preauth: ports.PreauthConfig{
+								PrincipalHeaderName: "X-Remote-User",
+							},
+						},
+					},
+				},
+				Storage: ports.StorageConfig{
+					Backend: "memory",
+					Timeouts: ports.StorageTimeouts{
+						Read:  5 * time.Second,
+						Write: 10 * time.Second,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing admin principal header name",
+			cfg: &ports.Config{
+				Log: ports.LogConfig{
+					Level:  ports.LogLevelInfo,
+					Format: ports.LogFormatText,
+				},
+				Server: ports.ServerConfig{
+					EndUser: ports.ServerInstanceConfig{
+						Port: 8000,
+						Bind: "::",
+						Authentication: ports.AuthenticationConfig{
+							Preauth: ports.PreauthConfig{
+								PrincipalHeaderName: "X-Remote-User",
+							},
+						},
+					},
+					Admin: ports.ServerInstanceConfig{
+						Port: 14000,
+						Bind: "::",
+						Authentication: ports.AuthenticationConfig{
+							Preauth: ports.PreauthConfig{
+								PrincipalHeaderName: "",
+							},
+						},
+					},
+				},
+				Storage: ports.StorageConfig{
+					Backend: "memory",
+					Timeouts: ports.StorageTimeouts{
+						Read:  5 * time.Second,
+						Write: 10 * time.Second,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "custom principal header names pass validation",
+			cfg: &ports.Config{
+				Log: ports.LogConfig{
+					Level:  ports.LogLevelInfo,
+					Format: ports.LogFormatText,
+				},
+				Server: ports.ServerConfig{
+					EndUser: ports.ServerInstanceConfig{
+						Port: 8000,
+						Bind: "::",
+						Authentication: ports.AuthenticationConfig{
+							Preauth: ports.PreauthConfig{
+								PrincipalHeaderName: "X-Authenticated-User",
+							},
+						},
+					},
+					Admin: ports.ServerInstanceConfig{
+						Port: 14000,
+						Bind: "::",
+						Authentication: ports.AuthenticationConfig{
+							Preauth: ports.PreauthConfig{
+								PrincipalHeaderName: "X-Admin-User",
+							},
+						},
+					},
+				},
+				Storage: ports.StorageConfig{
+					Backend: "memory",
+					Timeouts: ports.StorageTimeouts{
+						Read:  5 * time.Second,
+						Write: 10 * time.Second,
+					},
+				},
+			},
+			wantErr: false,
 		},
 	}
 

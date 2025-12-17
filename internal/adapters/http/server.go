@@ -158,7 +158,11 @@ func (s *Server) setupRoutes() {
 	s.router.Use(RecoveryMiddleware(s.logger))
 	s.router.Use(LoggingMiddleware(s.logger))
 
-	// Register health endpoint
+	// Apply optional principal middleware to all routes
+	// This extracts principal if present, but doesn't reject requests without one
+	s.router.Use(OptionalPrincipalMiddleware(s.config.Authentication, s.logger))
+
+	// Register public health endpoint (no principal required)
 	s.router.Get("/health", s.handleHealth())
 
 	s.logger.Debug("Routes configured",

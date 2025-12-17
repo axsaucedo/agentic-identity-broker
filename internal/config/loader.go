@@ -106,8 +106,10 @@ func (l *Loader) setDefaults() {
 	serverDefaults := ports.DefaultServerConfig()
 	l.v.SetDefault("server.enduser.port", serverDefaults.EndUser.Port)
 	l.v.SetDefault("server.enduser.bind", serverDefaults.EndUser.Bind)
+	l.v.SetDefault("server.enduser.authentication.preauth.principal_header_name", serverDefaults.EndUser.Authentication.Preauth.PrincipalHeaderName)
 	l.v.SetDefault("server.admin.port", serverDefaults.Admin.Port)
 	l.v.SetDefault("server.admin.bind", serverDefaults.Admin.Bind)
+	l.v.SetDefault("server.admin.authentication.preauth.principal_header_name", serverDefaults.Admin.Authentication.Preauth.PrincipalHeaderName)
 	l.v.SetDefault("server.shutdown.timeout", serverDefaults.Shutdown.Timeout)
 
 	// Storage configuration defaults
@@ -122,8 +124,10 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("log.format", "IDENTITY_BROKER_LOG_FORMAT")
 	_ = l.v.BindEnv("server.enduser.port", "IDENTITY_BROKER_SERVER_ENDUSER_PORT")
 	_ = l.v.BindEnv("server.enduser.bind", "IDENTITY_BROKER_SERVER_ENDUSER_BIND")
+	_ = l.v.BindEnv("server.enduser.authentication.preauth.principal_header_name", "IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME")
 	_ = l.v.BindEnv("server.admin.port", "IDENTITY_BROKER_SERVER_ADMIN_PORT")
 	_ = l.v.BindEnv("server.admin.bind", "IDENTITY_BROKER_SERVER_ADMIN_BIND")
+	_ = l.v.BindEnv("server.admin.authentication.preauth.principal_header_name", "IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME")
 	_ = l.v.BindEnv("server.shutdown.timeout", "IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT")
 	_ = l.v.BindEnv("storage.backend", "IDENTITY_BROKER_STORAGE_BACKEND")
 	_ = l.v.BindEnv("storage.postgres.connection_url", "IDENTITY_BROKER_STORAGE_POSTGRES_URL")
@@ -137,7 +141,9 @@ func (l *Loader) setDefaults() {
 		Keys: []string{
 			"log.level", "log.format",
 			"server.enduser.port", "server.enduser.bind",
+			"server.enduser.authentication.preauth.principal_header_name",
 			"server.admin.port", "server.admin.bind",
+			"server.admin.authentication.preauth.principal_header_name",
 			"server.shutdown.timeout",
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
 		},

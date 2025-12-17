@@ -47,8 +47,27 @@ type ServerConfig struct {
 
 // ServerInstanceConfig contains configuration for a single HTTP server instance.
 type ServerInstanceConfig struct {
-	Port int    `mapstructure:"port" validate:"required,min=1,max=65535"`
-	Bind string `mapstructure:"bind" validate:"required"`
+	Port           int                    `mapstructure:"port" validate:"required,min=1,max=65535"`
+	Bind           string                 `mapstructure:"bind" validate:"required"`
+	Authentication AuthenticationConfig   `mapstructure:"authentication"`
+}
+
+// AuthenticationConfig holds authentication configuration for a server.
+type AuthenticationConfig struct {
+	// Preauth holds configuration for pre-authentication (reverse proxy) mode
+	Preauth PreauthConfig `mapstructure:"preauth"`
+
+	// Future: JWT configuration can be added here without breaking changes
+	// JWT JWTConfig `mapstructure:"jwt"`
+}
+
+// PreauthConfig holds configuration for reverse proxy pre-authentication.
+type PreauthConfig struct {
+	// PrincipalHeaderName is the HTTP header from which principals are extracted
+	// This header is set by a trusted reverse proxy after authentication.
+	// Example values: "X-Remote-User", "X-Authenticated-User", "Remote-User"
+	// Default: "X-Remote-User"
+	PrincipalHeaderName string `mapstructure:"principal_header_name" validate:"required,min=1"`
 }
 
 // ShutdownConfig contains graceful shutdown settings.
@@ -62,10 +81,20 @@ func DefaultServerConfig() ServerConfig {
 		EndUser: ServerInstanceConfig{
 			Port: 8000,
 			Bind: "::", // Dual-stack (IPv6 with IPv4 fallback)
+			Authentication: AuthenticationConfig{
+				Preauth: PreauthConfig{
+					PrincipalHeaderName: "X-Remote-User",
+				},
+			},
 		},
 		Admin: ServerInstanceConfig{
 			Port: 14000,
 			Bind: "::",
+			Authentication: AuthenticationConfig{
+				Preauth: PreauthConfig{
+					PrincipalHeaderName: "X-Remote-User",
+				},
+			},
 		},
 		Shutdown: ShutdownConfig{
 			Timeout: 30 * time.Second,

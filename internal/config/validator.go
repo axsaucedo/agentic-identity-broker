@@ -19,9 +19,45 @@ func Validate(cfg *ports.Config) error {
 		return formatValidationError("log.format", string(cfg.Log.Format), "text or json", err)
 	}
 
+	// Validate server configuration
+	if err := validateServerConfig(&cfg.Server); err != nil {
+		return err
+	}
+
 	// Validate storage configuration
 	if err := validateStorageConfig(&cfg.Storage); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// validateServerConfig validates the server configuration for all instances.
+// Ensures required authentication settings are properly configured.
+func validateServerConfig(sc *ports.ServerConfig) error {
+	// Validate EndUser server authentication
+	if err := validateServerInstanceAuth(&sc.EndUser, "server.enduser"); err != nil {
+		return err
+	}
+
+	// Validate Admin server authentication
+	if err := validateServerInstanceAuth(&sc.Admin, "server.admin"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateServerInstanceAuth validates authentication configuration for a server instance.
+func validateServerInstanceAuth(sic *ports.ServerInstanceConfig, prefix string) error {
+	// Validate preauth principal header name
+	if sic.Authentication.Preauth.PrincipalHeaderName == "" {
+		return formatValidationError(
+			prefix+".authentication.preauth.principal_header_name",
+			"",
+			"non-empty HTTP header name",
+			nil,
+		)
 	}
 
 	return nil
