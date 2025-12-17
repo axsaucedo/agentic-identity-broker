@@ -10,16 +10,16 @@ import (
 // Agent represents an AI agent registered in the identity broker.
 // An agent can request delegated permissions from users to access third-party services.
 type Agent struct {
-	ID                     string     `json:"id" db:"id"`
-	ClientID               string     `json:"client_id" db:"client_id"`
-	ExternalID             *string    `json:"external_id,omitempty" db:"external_id"`
-	DisplayName            string     `json:"display_name" db:"display_name"`
-	Description            string     `json:"description" db:"description"`
-	GovernanceURL          *string    `json:"governance_url,omitempty" db:"governance_url"`
-	UserDocumentationURL   *string    `json:"user_documentation_url,omitempty" db:"user_documentation_url"`
-	AgentInterfaceURL      *string    `json:"agent_interface_url,omitempty" db:"agent_interface_url"`
-	CreatedAt              time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt              time.Time  `json:"updated_at" db:"updated_at"`
+	ID                   string    `json:"id" db:"id"`
+	ClientID             string    `json:"client_id" db:"client_id"`
+	ExternalID           *string   `json:"external_id,omitempty" db:"external_id"`
+	DisplayName          string    `json:"display_name" db:"display_name"`
+	Description          string    `json:"description" db:"description"`
+	GovernanceURL        *string   `json:"governance_url,omitempty" db:"governance_url"`
+	UserDocumentationURL *string   `json:"user_documentation_url,omitempty" db:"user_documentation_url"`
+	AgentInterfaceURL    *string   `json:"agent_interface_url,omitempty" db:"agent_interface_url"`
+	CreatedAt            time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Validate performs validation on the Agent entity.

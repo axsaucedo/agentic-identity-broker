@@ -43,7 +43,7 @@ func NewService(
 
 // AgentConsentInfo contains all information needed for a user to make a consent decision.
 type AgentConsentInfo struct {
-	Agent                    *storage.Agent
+	Agent                       *storage.Agent
 	AvailableThirdpartyServices []*storage.ThirdpartyOAuth2Service
 }
 
@@ -73,17 +73,17 @@ func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID string) (*Age
 	}
 
 	return &AgentConsentInfo{
-		Agent:                    agent.Copy(),
+		Agent:                       agent.Copy(),
 		AvailableThirdpartyServices: redactedServices,
 	}, nil
 }
 
 // GrantRequest represents a request to grant or update permissions.
 type GrantRequest struct {
-	Principal              string
-	AgentID                string
-	ValidUntil             *time.Time
-	DelegatedOAuth2Tokens  []storage.DelegatedToken
+	Principal             string
+	AgentID               string
+	ValidUntil            *time.Time
+	DelegatedOAuth2Tokens []storage.DelegatedToken
 }
 
 // GrantConsent creates or updates a user grant (upsert semantics per FR-013, FR-015).

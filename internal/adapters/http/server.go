@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
@@ -24,6 +25,7 @@ type Server struct {
 	healthState int32                      // Atomic health state (using ports.HealthState as int32)
 	startTime   time.Time                  // Time when server started serving requests
 	logger      *slog.Logger               // Structured logger
+	agentRepo   ports.AgentRepository      // Agent repository (optional)
 }
 
 // NewServer creates a new HTTP server instance.
@@ -43,6 +45,12 @@ func NewServer(name string, config ports.ServerInstanceConfig, logger *slog.Logg
 // Name returns the server identifier.
 func (s *Server) Name() string {
 	return s.name
+}
+
+// SetAgentRepository sets the agent repository for this server.
+// This should be called before Listen() to ensure handlers have access to the repository.
+func (s *Server) SetAgentRepository(repo ports.AgentRepository) {
+	s.agentRepo = repo
 }
 
 // Listen binds to the configured address and port and returns a listener.
@@ -165,6 +173,47 @@ func (s *Server) setupRoutes() {
 	// Register public health endpoint (no principal required)
 	s.router.Get("/health", s.handleHealth())
 
+	// Register API routes based on server type
+	if s.name == "admin" && s.agentRepo != nil {
+		s.setupAdminRoutes()
+	}
+
 	s.logger.Debug("Routes configured",
-		"endpoints", []string{"/health"})
+		"server", s.name)
+}
+
+// setupAdminRoutes registers admin API routes.
+func (s *Server) setupAdminRoutes() {
+	s.router.Route("/api", func(r chi.Router) {
+		// Agent management routes will be registered here
+		// This is called from setupRoutes(), after agentRepo is set
+		s.registerAgentRoutes(r)
+	})
+}
+
+// registerAgentRoutes registers agent CRUD routes.
+func (s *Server) registerAgentRoutes(r chi.Router) {
+	if s.agentRepo == nil {
+		return
+	}
+
+	s.logger.Debug("Registering agent routes")
+
+	// Create agents handler
+	agentsHandler := admin.NewAgentsHandler(s.agentRepo, s.logger)
+
+	// Register agent routes
+	r.Route("/agents", func(r chi.Router) {
+		r.Post("/", agentsHandler.CreateAgent)             // POST /api/agents
+		r.Get("/", agentsHandler.ListAgents)               // GET /api/agents
+		r.Get("/{agent-id}", agentsHandler.GetAgent)       // GET /api/agents/:agent-id
+		r.Put("/{agent-id}", agentsHandler.UpdateAgent)    // PUT /api/agents/:agent-id
+		r.Delete("/{agent-id}", agentsHandler.DeleteAgent) // DELETE /api/agents/:agent-id
+	})
+}
+
+// Router returns the underlying chi router.
+// This is useful for registering additional routes from outside the server package.
+func (s *Server) Router() *chi.Mux {
+	return s.router
 }

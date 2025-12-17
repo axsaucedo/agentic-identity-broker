@@ -12,16 +12,16 @@ import (
 // ThirdpartyOAuth2Service represents an external OAuth2 provider that agents can access
 // on behalf of users (e.g., GitHub, Google, Databricks).
 type ThirdpartyOAuth2Service struct {
-	ID            string              `json:"id" db:"id"`
-	DisplayName   string              `json:"display_name" db:"display_name"`
-	ClientID      string              `json:"client_id" db:"client_id"`
-	ClientSecret  string              `json:"-" db:"client_secret_encrypted"` // Never serialized to JSON
-	IssuerURI     string              `json:"issuer_uri" db:"issuer_uri"`
-	Discovery     DiscoveryConfig     `json:"discovery" db:"-"`
-	Endpoints     OAuth2Endpoints     `json:"endpoints" db:"-"`
-	Scopes        []OAuthScope        `json:"scopes" db:"scopes"`
-	CreatedAt     time.Time           `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time           `json:"updated_at" db:"updated_at"`
+	ID           string          `json:"id" db:"id"`
+	DisplayName  string          `json:"display_name" db:"display_name"`
+	ClientID     string          `json:"client_id" db:"client_id"`
+	ClientSecret string          `json:"-" db:"client_secret_encrypted"` // Never serialized to JSON
+	IssuerURI    string          `json:"issuer_uri" db:"issuer_uri"`
+	Discovery    DiscoveryConfig `json:"discovery" db:"-"`
+	Endpoints    OAuth2Endpoints `json:"endpoints" db:"-"`
+	Scopes       []OAuthScope    `json:"scopes" db:"scopes"`
+	CreatedAt    time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at" db:"updated_at"`
 }
 
 // DiscoveryConfig holds OAuth2 endpoint discovery configuration.

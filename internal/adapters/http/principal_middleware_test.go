@@ -265,31 +265,31 @@ func TestRequirePrincipalMiddleware_HandlerNotCalled(t *testing.T) {
 // TestOptionalPrincipalMiddleware_ValidPrincipal tests that valid principals are extracted in optional mode.
 func TestOptionalPrincipalMiddleware_ValidPrincipal(t *testing.T) {
 	tests := []struct {
-		name              string
-		headerName        string
-		headerValue       string
-		expectedPrincipal string
+		name                string
+		headerName          string
+		headerValue         string
+		expectedPrincipal   string
 		shouldHavePrincipal bool
 	}{
 		{
-			name:              "simple username",
-			headerName:        "X-Remote-User",
-			headerValue:       "alice",
-			expectedPrincipal: "alice",
+			name:                "simple username",
+			headerName:          "X-Remote-User",
+			headerValue:         "alice",
+			expectedPrincipal:   "alice",
 			shouldHavePrincipal: true,
 		},
 		{
-			name:              "with whitespace trimming",
-			headerName:        "X-Remote-User",
-			headerValue:       "  bob  ",
-			expectedPrincipal: "bob",
+			name:                "with whitespace trimming",
+			headerName:          "X-Remote-User",
+			headerValue:         "  bob  ",
+			expectedPrincipal:   "bob",
 			shouldHavePrincipal: true,
 		},
 		{
-			name:              "unicode preserved",
-			headerName:        "X-Remote-User",
-			headerValue:       "用户",
-			expectedPrincipal: "用户",
+			name:                "unicode preserved",
+			headerName:          "X-Remote-User",
+			headerValue:         "用户",
+			expectedPrincipal:   "用户",
 			shouldHavePrincipal: true,
 		},
 	}

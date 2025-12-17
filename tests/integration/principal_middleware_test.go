@@ -73,49 +73,49 @@ func TestPrincipalMiddlewareExtraction(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	tests := []struct {
-		name               string
-		method             string
-		path               string
-		headerName         string
-		headerValue        string
-		expectedStatus     int
-		expectedPrincipal  string
+		name              string
+		method            string
+		path              string
+		headerName        string
+		headerValue       string
+		expectedStatus    int
+		expectedPrincipal string
 	}{
 		{
-			name:               "protected route with valid principal",
-			method:             http.MethodPost,
-			path:               "/protected",
-			headerName:         "X-Remote-User",
-			headerValue:        "alice@example.com",
-			expectedStatus:     http.StatusOK,
-			expectedPrincipal:  "alice@example.com",
+			name:              "protected route with valid principal",
+			method:            http.MethodPost,
+			path:              "/protected",
+			headerName:        "X-Remote-User",
+			headerValue:       "alice@example.com",
+			expectedStatus:    http.StatusOK,
+			expectedPrincipal: "alice@example.com",
 		},
 		{
-			name:               "protected route without principal header",
-			method:             http.MethodPost,
-			path:               "/protected",
-			headerName:         "",
-			headerValue:        "",
-			expectedStatus:     http.StatusUnauthorized,
-			expectedPrincipal:  "",
+			name:              "protected route without principal header",
+			method:            http.MethodPost,
+			path:              "/protected",
+			headerName:        "",
+			headerValue:       "",
+			expectedStatus:    http.StatusUnauthorized,
+			expectedPrincipal: "",
 		},
 		{
-			name:               "public route with principal",
-			method:             http.MethodGet,
-			path:               "/public",
-			headerName:         "X-Remote-User",
-			headerValue:        "bob",
-			expectedStatus:     http.StatusOK,
-			expectedPrincipal:  "bob",
+			name:              "public route with principal",
+			method:            http.MethodGet,
+			path:              "/public",
+			headerName:        "X-Remote-User",
+			headerValue:       "bob",
+			expectedStatus:    http.StatusOK,
+			expectedPrincipal: "bob",
 		},
 		{
-			name:               "public route without principal",
-			method:             http.MethodGet,
-			path:               "/public",
-			headerName:         "",
-			headerValue:        "",
-			expectedStatus:     http.StatusOK,
-			expectedPrincipal:  "",
+			name:              "public route without principal",
+			method:            http.MethodGet,
+			path:              "/public",
+			headerName:        "",
+			headerValue:       "",
+			expectedStatus:    http.StatusOK,
+			expectedPrincipal: "",
 		},
 	}
 

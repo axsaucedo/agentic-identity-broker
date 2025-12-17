@@ -47,9 +47,9 @@ type ServerConfig struct {
 
 // ServerInstanceConfig contains configuration for a single HTTP server instance.
 type ServerInstanceConfig struct {
-	Port           int                    `mapstructure:"port" validate:"required,min=1,max=65535"`
-	Bind           string                 `mapstructure:"bind" validate:"required"`
-	Authentication AuthenticationConfig   `mapstructure:"authentication"`
+	Port           int                  `mapstructure:"port" validate:"required,min=1,max=65535"`
+	Bind           string               `mapstructure:"bind" validate:"required"`
+	Authentication AuthenticationConfig `mapstructure:"authentication"`
 }
 
 // AuthenticationConfig holds authentication configuration for a server.

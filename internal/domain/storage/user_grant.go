@@ -11,13 +11,13 @@ import (
 // UserGrant represents a user delegating specific permissions to an agent
 // for one or more third-party OAuth2 services.
 type UserGrant struct {
-	ID                     string            `json:"id" db:"id"`
-	Principal              string            `json:"principal" db:"principal"`
-	AgentID                string            `json:"agent_id" db:"agent_id"`
-	ValidUntil             *time.Time        `json:"valid_until,omitempty" db:"valid_until"`
-	DelegatedOAuth2Tokens  []DelegatedToken  `json:"delegated_oauth2_tokens" db:"delegated_oauth2_tokens"`
-	CreatedAt              time.Time         `json:"created_at" db:"created_at"`
-	UpdatedAt              time.Time         `json:"updated_at" db:"updated_at"`
+	ID                    string           `json:"id" db:"id"`
+	Principal             string           `json:"principal" db:"principal"`
+	AgentID               string           `json:"agent_id" db:"agent_id"`
+	ValidUntil            *time.Time       `json:"valid_until,omitempty" db:"valid_until"`
+	DelegatedOAuth2Tokens []DelegatedToken `json:"delegated_oauth2_tokens" db:"delegated_oauth2_tokens"`
+	CreatedAt             time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt             time.Time        `json:"updated_at" db:"updated_at"`
 }
 
 // DelegatedToken represents delegation of specific scopes to a third-party service.

@@ -16,7 +16,7 @@ func TestWithPrincipal(t *testing.T) {
 		"user123",
 		"alice.smith",
 		"user+tag@example.com",
-		"用户",       // Chinese characters
+		"用户",      // Chinese characters
 		"🚀rocket", // Emoji
 	}
 
