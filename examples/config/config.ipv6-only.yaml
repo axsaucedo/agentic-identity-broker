@@ -17,6 +17,12 @@ server:
     # Bind to dual-stack (IPv6 with IPv4 fallback)
     # :: accepts both IPv6 and IPv4 connections on systems with dual-stack support
     bind: "::"
+    # Authentication configuration for end-user server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Remote-User
 
   # Admin server configuration (internal management API)
   admin:
@@ -25,6 +31,12 @@ server:
     # Bind to IPv6 localhost only
     # ::1 is the IPv6 loopback address (equivalent to 127.0.0.1 in IPv4)
     bind: "::1"
+    # Authentication configuration for admin server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Remote-User
 
   # Graceful shutdown configuration
   shutdown:

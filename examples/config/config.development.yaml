@@ -15,6 +15,14 @@ server:
     port: 3000
     # Bind to localhost only for development security
     bind: 127.0.0.1
+    # Authentication configuration for end-user server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        # In development, you can use curl to send test principals:
+        # curl -H "X-Custom-Principal: testuser" http://localhost:3000/api/endpoint
+        principal_header_name: X-Custom-Principal
 
   # Admin server configuration (internal management API)
   admin:
@@ -22,6 +30,12 @@ server:
     port: 3001
     # Bind to localhost only for development security
     bind: 127.0.0.1
+    # Authentication configuration for admin server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Custom-Principal
 
   # Graceful shutdown configuration
   shutdown:

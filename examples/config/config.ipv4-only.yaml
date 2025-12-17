@@ -17,6 +17,12 @@ server:
     # Bind to all IPv4 interfaces
     # 0.0.0.0 accepts connections from any IPv4 address
     bind: "0.0.0.0"
+    # Authentication configuration for end-user server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Remote-User
 
   # Admin server configuration (internal management API)
   admin:
@@ -26,6 +32,12 @@ server:
     # 127.0.0.1 is the IPv4 loopback address
     # Restricts admin access to local machine only
     bind: "127.0.0.1"
+    # Authentication configuration for admin server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Remote-User
 
   # Graceful shutdown configuration
   shutdown:

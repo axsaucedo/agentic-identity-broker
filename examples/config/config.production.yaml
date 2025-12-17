@@ -19,6 +19,14 @@ server:
     # Bind to all interfaces (dual-stack IPv6/IPv4)
     # In containerized environments, this allows traffic from load balancers
     bind: "::"
+    # Authentication configuration for end-user server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        # Set by trusted reverse proxy (nginx, Traefik, HAProxy, etc.)
+        # SECURITY: Never expose Identity Broker directly - always use a reverse proxy
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER:X-Remote-User}
 
   # Admin server configuration (internal management API)
   admin:
@@ -31,6 +39,12 @@ server:
     #   - Use separate network namespace in Kubernetes
     # For this example, we bind to all interfaces but firewall rules should restrict access
     bind: "::"
+    # Authentication configuration for admin server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER:X-Remote-User}
 
   # Graceful shutdown configuration
   shutdown:
