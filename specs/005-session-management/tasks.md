@@ -152,13 +152,13 @@ This document breaks down the implementation of request principal extraction int
 
 ### Tasks
 
-- [ ] T021 [P] [US3] Add missing principal validation (401 response) to RequirePrincipalMiddleware in internal/adapters/http/principal_middleware.go
-- [ ] T022 [P] [US3] Add empty principal validation (401 response) to RequirePrincipalMiddleware in internal/adapters/http/principal_middleware.go
-- [ ] T023 [P] [US3] Add whitespace-only principal validation (401 response) to RequirePrincipalMiddleware in internal/adapters/http/principal_middleware.go
-- [ ] T024 [P] [US3] Add max length validation (400 response) to RequirePrincipalMiddleware in internal/adapters/http/principal_middleware.go
-- [ ] T025 [US3] Write unit tests for missing principal scenarios in internal/adapters/http/principal_middleware_test.go
-- [ ] T026 [US3] Write unit tests for invalid principal scenarios in internal/adapters/http/principal_middleware_test.go
-- [ ] T027 [US3] Write integration tests for edge cases in tests/integration/principal_middleware_test.go
+- [x] T021 [P] [US3] Add missing principal validation (401 response) to RequirePrincipalMiddleware in internal/adapters/http/principal_middleware.go
+- [x] T022 [P] [US3] Add empty principal validation (401 response) to RequirePrincipalMiddleware in internal/adapters/http/principal_middleware.go
+- [x] T023 [P] [US3] Add whitespace-only principal validation (401 response) to RequirePrincipalMiddleware in internal/adapters/http/principal_middleware.go
+- [x] T024 [P] [US3] Add max length validation (400 response) to RequirePrincipalMiddleware in internal/adapters/http/principal_middleware.go
+- [x] T025 [US3] Write unit tests for missing principal scenarios in internal/adapters/http/principal_middleware_test.go
+- [x] T026 [US3] Write unit tests for invalid principal scenarios in internal/adapters/http/principal_middleware_test.go
+- [x] T027 [US3] Write integration tests for edge cases in tests/integration/principal_middleware_test.go
 
 **Test Scenarios** (from spec.md):
 - Missing header → 401 Unauthorized
@@ -192,14 +192,14 @@ This document breaks down the implementation of request principal extraction int
 
 ### Tasks
 
-- [ ] T028 [P] Update ARCHITECTURE.md with Principal and Request Context glossary entries in ARCHITECTURE.md
-- [ ] T029 [P] Document authentication.preauth.principal_header_name configuration in docs/configuration.md
-- [ ] T030 [P] Create middleware usage guide in docs/api/middleware.md
-- [ ] T031 [P] Write performance benchmarks for context operations in internal/domain/principal/context_bench_test.go
-- [ ] T032 [P] Write performance benchmarks for middleware in internal/adapters/http/principal_middleware_bench_test.go
-- [ ] T033 Run all tests with `just test` and verify >90% coverage
-- [ ] T034 Run performance benchmarks and verify <1ms latency at p95
-- [ ] T035 Manual end-to-end test with reverse proxy configuration (nginx/Traefik)
+- [x] T028 [P] Update ARCHITECTURE.md with Principal and Request Context glossary entries in ARCHITECTURE.md
+- [x] T029 [P] Document authentication.preauth.principal_header_name configuration in docs/configuration.md
+- [x] T030 [P] Create middleware usage guide in docs/api/middleware.md
+- [x] T031 [P] Write performance benchmarks for context operations in internal/domain/principal/context_bench_test.go
+- [x] T032 [P] Write performance benchmarks for middleware in internal/adapters/http/principal_middleware_bench_test.go
+- [x] T033 Run all tests with `just test` and verify >90% coverage
+- [x] T034 Run performance benchmarks and verify <1ms latency at p95
+- [x] T035 Manual end-to-end test with reverse proxy configuration (nginx/Traefik)
 
 **Completion Criteria**:
 - ✅ ARCHITECTURE.md updated with domain concepts

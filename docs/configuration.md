@@ -271,6 +271,89 @@ kill -TERM $(pgrep identity-broker)
 kill -KILL $(pgrep identity-broker)
 ```
 
+#### Authentication Configuration
+
+Pre-authentication mode allows the Identity Broker to trust authenticated principals from a reverse proxy. The reverse proxy handles user authentication and passes the authenticated user identifier via an HTTP header.
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | Description |
+|--------|------|---------------|--------------|-----------|----------------------|-------------|
+| `server.enduser.authentication.preauth.principal_header_name` | string | `X-Remote-User` | Any HTTP header name | No | `IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME` | HTTP header containing the authenticated user principal for end-user server |
+| `server.admin.authentication.preauth.principal_header_name` | string | `X-Remote-User` | Any HTTP header name | No | `IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME` | HTTP header containing the authenticated user principal for admin server |
+
+**Pre-Authentication Configuration Notes:**
+- The principal header must be set by a **trusted reverse proxy only** (nginx, Traefik, HAProxy, etc.)
+- Never expose the Identity Broker to untrusted networks - always use a reverse proxy for authentication
+- The principal value is trimmed of leading/trailing whitespace
+- Maximum principal length: 200 characters (longer principals are rejected with 400 Bad Request)
+- Empty/missing headers result in 401 Unauthorized on protected routes
+- Optional authentication routes allow missing principals
+
+**Example YAML configurations:**
+
+Development (custom header):
+```yaml
+server:
+  enduser:
+    port: 8000
+    bind: "::"
+    authentication:
+      preauth:
+        principal_header_name: X-Authenticated-User
+  admin:
+    port: 14000
+    bind: "::"
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
+```
+
+Production (environment variable):
+```yaml
+server:
+  enduser:
+    port: 8000
+    bind: "::"
+    authentication:
+      preauth:
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER}
+  admin:
+    port: 14000
+    bind: "10.0.1.0"  # Restrict to private network
+    authentication:
+      preauth:
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER}
+```
+
+Then set the environment variable:
+```bash
+export IDENTITY_BROKER_PRINCIPAL_HEADER="X-Authenticated-User"
+```
+
+**Nginx Reverse Proxy Example:**
+```nginx
+upstream identity_broker {
+    server localhost:8000;
+}
+
+server {
+    listen 80;
+    server_name api.example.com;
+
+    location / {
+        auth_request /auth;
+        proxy_pass http://identity_broker;
+        proxy_set_header X-Remote-User $remote_user;
+    }
+
+    location = /auth {
+        internal;
+        auth_basic "Restricted";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+        return 200;
+    }
+}
+```
+
 **Notes:**
 - All configuration options have built-in defaults and are optional unless marked "Required"
 - Environment variables follow the pattern: `IDENTITY_BROKER_{SECTION}_{KEY}` (uppercased)
