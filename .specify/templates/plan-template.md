@@ -33,15 +33,30 @@
 
 Before proceeding, verify compliance with [.specify/memory/constitution.md](.specify/memory/constitution.md):
 
+**Design Preconditions (BLOCKING)**:
+
+- [ ] **Domain Model**: Have entities, aggregates, value objects been identified and documented?
+- [ ] **Domain Concepts**: Will new domain terms be added to ARCHITECTURE.md Glossary?
+- [ ] **Configuration Design**: Have all config requirements been identified with YAML examples?
+- [ ] **Config Examples**: Will example YAML snippets be added to examples/config/?
+- [ ] **API Design First**: Will APIs be designed (OpenAPI spec) and confirmed BEFORE implementation?
+- [ ] **API Documentation**: Will OpenAPI specs be created in `/api/enduser/` or `/api/admin/` as applicable?
+- [ ] **API Changes**: Are all API changes confirmed by user/stakeholder (document in PR)?
+- [ ] **Database Design**: Will all schema changes use go-migrate naming in `/migrations/`?
+
+**Implementation Considerations**:
+
 - [ ] **Security-First**: Are security features enabled by default? No bypasses or optional security?
 - [ ] **Architecture Docs**: Will ARCHITECTURE.md be updated if this touches architecture?
 - [ ] **ADRs**: Does this require an ADR in adrs/ for major decisions?
 - [ ] **Library-First Security**: Are we using vetted libraries for crypto/security (no custom implementations)?
-- [ ] **API Documentation**: Will docs/ be updated for any new/changed APIs?
-- [ ] **Domain Model**: Are new domain concepts documented in ARCHITECTURE.md Glossary?
+- [ ] **Zalando Guidelines**: Will APIs follow Zalando RESTful API and Event Guidelines?
+- [ ] **End-User Docs**: Will API documentation be rendered in `docs/api/` with examples?
+- [ ] **Migration Testing**: Will migrations be tested (apply/rollback) in PostgreSQL integration tests?
 - [ ] **Hexagonal Architecture**: Does domain logic use ports (interfaces) with clear adapter separation?
+- [ ] **Persistence Patterns**: If adding persistence, will it follow specs/004-persistence-layer/quickstart.md?
 
-*If any check fails, document justification or stop and clarify requirements.*
+*If any BLOCKING check fails, stop and clarify requirements. Implementation cannot begin until all preconditions complete.*
 
 ## Project Structure
 

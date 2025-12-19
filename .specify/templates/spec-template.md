@@ -85,7 +85,7 @@
 ### Functional Requirements
 
 - **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
-- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]  
+- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]
 - **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
 - **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
 - **FR-005**: System MUST [behavior, e.g., "log all security events"]
@@ -94,6 +94,84 @@
 
 - **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
 - **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
+
+### Domain Model *(if applicable - document before API or database design)*
+
+<!--
+  Per Constitution Principle V (Domain-Driven Design & Glossary Management):
+  Domain concepts must be explicitly modeled and documented.
+-->
+
+**Entities** (things with unique identity):
+- **[Entity 1]**: [Brief description, key attributes, lifecycle, invariants]
+- **[Entity 2]**: [Brief description, relationships to other entities]
+
+**Aggregates** (consistency boundaries):
+- **[Aggregate]**: [Root entity, contained entities, invariants]
+
+**Value Objects** (things without identity):
+- **[Value Object]**: [What it represents, immutability constraints]
+
+**Domain Events** (state changes of business significance):
+- **[Event 1]**: [When it occurs, what changed]
+
+*All domain terms should be added to ARCHITECTURE.md Glossary section*
+
+### Configuration Requirements *(if applicable - document before implementation)*
+
+<!--
+  Per Constitution Principle VII (Configuration-Driven Design):
+  Configuration requirements must be designed with examples before implementation.
+-->
+
+**Configuration Parameters**:
+- **[PARAMETER_NAME]**: [Type, purpose, default value, example]
+
+**Example YAML Configuration**:
+```yaml
+# Feature-specific configuration
+[feature_name]:
+  [parameter_1]: [example_value]
+  [parameter_2]: [example_value]
+  nested:
+    [parameter_3]: [example_value]
+```
+
+**Configuration Location**: Will be added to `examples/config/[feature_name].yaml` and referenced in `examples/config/README.md`
+
+### API Requirements *(if applicable - design before database)*
+
+<!--
+  Per Constitution Principle IV (API Documentation & OpenAPI Transparency) and
+  Principle X (API-First Development): APIs must be designed before implementation.
+-->
+
+- **API-001**: All end-user APIs MUST be documented in `/api/enduser/openapi.yaml` (OpenAPI 3.0+ format)
+- **API-002**: All administrative APIs MUST be documented in `/api/admin/openapi.yaml` (OpenAPI 3.0+ format)
+- **API-003**: API documentation MUST include: endpoint paths, HTTP methods, parameters, request/response bodies, error codes, examples, authentication requirements
+- **API-004**: End-user API documentation MUST be rendered in `docs/api/` with examples for typical use cases
+- **API-005**: APIs MUST follow Zalando RESTful API and Event Guidelines (https://opensource.zalando.com/restful-api-guidelines/)
+- **API-006**: All API changes MUST be confirmed by user/stakeholder before implementation begins
+- **API-007**: API design decisions (naming conventions, error response format, pagination) MUST be documented in ARCHITECTURE.md or ADR
+
+*Example of API requirement clarification:*
+
+- **API-008**: System exposes [endpoint name] via [NEEDS CLARIFICATION: HTTP method and path not yet designed - coordinate with user]
+
+### Database Requirements *(if applicable)*
+
+<!--
+  Per Constitution Principle IX (Persistence Pattern Consistency & Database Migration Management):
+  All database schema changes must use go-migrate naming conventions and be tested.
+-->
+
+- **DB-001**: All database schema changes MUST be in `/migrations/` directory using go-migrate naming conventions
+- **DB-002**: Migration file format MUST be: `[NNN]_[description].up.sql` and `[NNN]_[description].down.sql` (where NNN is sequential: 004, 005, 006...)
+  - Example: `004_create_sessions_table.up.sql`, `004_create_sessions_table.down.sql`
+- **DB-003**: Each migration MUST be atomic (fully apply or fully rollback on failure)
+- **DB-004**: All migrations MUST be tested in PostgreSQL integration tests (apply, rollback, repeat without data loss)
+- **DB-005**: All PostgreSQL-backed repositories MUST have integration tests verifying persistence behavior
+- **DB-006**: If adding new entities with persistence, implementations MUST follow `specs/004-persistence-layer/quickstart.md` patterns
 
 ### Security Requirements *(mandatory for security-critical features)*
 
