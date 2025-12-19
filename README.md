@@ -244,9 +244,75 @@ cp .env.example .env
 
 ### Development Workflow
 
+There are several ways to develop the consent frontend depending on your needs.
+
+#### Quick Start with Justfile (Recommended)
+
+The easiest way to run both backend and frontend:
+
+```bash
+# Terminal 1: Start Go backend
+just run
+
+# Terminal 2: Start frontend dev server with hot reload
+just web-dev
+```
+
+Access the frontend at http://localhost:3000 (Vite dev server with HMR)
+API requests automatically proxy to http://localhost:8000 (Go backend)
+
+**How the Vite Proxy Works:**
+
+The Vite dev server is configured to proxy API requests from the frontend to the backend:
+
+```
+Browser Request: http://localhost:3000/api/consent/agents
+       ↓
+Vite Dev Server (port 3000)
+       ↓ (proxy configuration in vite.config.ts)
+       ↓ Automatically injects: X-Remote-User: dev@example.com
+Go Backend (port 8000)
+       ↓
+API Handler returns JSON
+       ↓
+Vite proxies response back to browser
+```
+
+**Authentication During Development:**
+The Vite proxy automatically adds the `X-Remote-User: dev@example.com` header to all API requests. This simulates the authentication header that would normally be set by an upstream proxy (oauth2-proxy, nginx, etc.) in production. All API requests appear as if they're coming from the authenticated user `dev@example.com`.
+
+This setup provides:
+- **Hot Module Replacement (HMR)**: Instant updates without page reload
+- **Same-origin requests**: No CORS issues during development
+- **API debugging**: See requests in Go backend logs
+- **Frontend debugging**: Use React DevTools in browser
+- **Simulated authentication**: X-Remote-User header automatically injected for local testing
+
+**All Frontend Commands:**
+
+```bash
+just web-install          # Install npm dependencies
+just web-dev              # Start Vite dev server (port 3000)
+just web-build            # Build production bundle to web/dist/consent/
+just build-all            # Build both Go backend and frontend
+```
+
+#### Alternative: Integrated Build (No HMR)
+
+Build frontend and run from Go backend:
+```bash
+cd web && npm run build && cd .. && just run
+```
+
+Access at http://localhost:8000/consent (no hot reload, requires rebuild for changes)
+
+#### Frontend-Only Development
+
 **Start Development Server:**
 ```bash
-npm run dev
+cd web && npm run dev
+# or from project root:
+just web-dev
 ```
 This starts the Vite dev server at http://localhost:3000 with hot module replacement.
 
@@ -265,8 +331,10 @@ npm run format            # Format code with Prettier
 **Build for Production:**
 ```bash
 npm run build
+# or from project root:
+just web-build
 ```
-This compiles TypeScript and bundles the app to `dist/consent/` directory.
+This compiles TypeScript and bundles the app to `web/dist/consent/` directory.
 
 **Preview Production Build:**
 ```bash
@@ -277,35 +345,11 @@ npm run preview
 
 The frontend is served by the Go backend at `/consent`:
 
-1. **Build the frontend**: `npm run build` (creates `web/dist/consent/`)
+1. **Build the frontend**: `just web-build` (creates `web/dist/consent/`)
 2. **Start the backend**: `just run` (from project root)
-3. **Access the app**: http://localhost:8080/consent
+3. **Access the app**: http://localhost:8000/consent
 
 The backend serves static files from `web/dist/consent/` and handles API requests at `/api/consent/*`.
-
-### Local Development (Both Frontend and Backend)
-
-**Option 1: Frontend Proxy (Recommended)**
-
-Run both servers independently:
-```bash
-# Terminal 1: Start Go backend
-just run
-
-# Terminal 2: Start frontend dev server
-cd web && npm run dev
-```
-
-Vite dev server (port 3000) proxies API requests to Go backend (port 8080).
-
-**Option 2: Integrated Build**
-
-Build frontend and run from Go backend:
-```bash
-cd web && npm run build && cd .. && just run
-```
-
-Access at http://localhost:8080/consent (no hot reload).
 
 ### Environment Variables
 
@@ -394,7 +438,7 @@ VITE_DEV_SERVER_PORT=3001 npm run dev
 ```
 
 **API Connection Issues:**
-- Verify Go backend is running on port 8080
+- Verify Go backend is running on port 8000
 - Check Vite proxy configuration in `vite.config.ts`
 - Ensure CORS is configured correctly
 
