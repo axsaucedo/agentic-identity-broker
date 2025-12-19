@@ -224,4 +224,10 @@ type UserGrantRepository interface {
 	// Returns error if storage operation fails.
 	// It is safe to call with non-existent agent (idempotent).
 	DeleteByAgent(ctx context.Context, agentID string) error
+
+	// ListByPrincipal retrieves all active grants for a principal across all agents.
+	// Filters expired grants (valid_until < NOW()).
+	// Returns empty slice if no active grants exist (not an error).
+	// Returns StorageError for connection/timeout issues.
+	ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error)
 }

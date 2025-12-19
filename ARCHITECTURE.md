@@ -13,16 +13,28 @@ This section provides a high-level overview of the project's directory and file 
 ├── config/               # Backend configuration files
 ├── test/                 # Backend unit and integration tests
 ├── build/Dockerfile      # Dockerfile for backend deployment
-├── web/                  # Contains all client-side code for user interfaces
-│   ├── src/              # Main source code for frontend applications
+├── web/                  # Single Page Application (Consent Frontend)
+│   ├── src/              # Main source code for React application
 │   │   ├── components/   # Reusable UI components
-│   │   ├── pages/        # Application pages/views
+│   │   │   ├── consent/  # Consent-specific components (DelegationCard, ServiceCard, etc.)
+│   │   │   ├── layout/   # Layout components (AppLayout)
+│   │   │   └── ui/       # Generic UI components (Button, Switch, DatePicker, etc.)
+│   │   ├── pages/        # Application pages/views (ConsentOverviewPage, AgentGrantDetailPage)
+│   │   ├── hooks/        # Custom React hooks (useConsent, useAgentGrants, useToggleGrant)
+│   │   ├── services/     # Frontend services
+│   │   │   ├── api/      # API client and service layer (axios-based)
+│   │   │   └── storage/  # Client-side storage utilities
+│   │   ├── types/        # TypeScript type definitions
+│   │   ├── utils/        # Utility functions (validation, formatting)
 │   │   ├── assets/       # Images, fonts, and other static assets
-│   │   ├── services/     # Frontend services for API interaction
-│   │   └── store/        # State management (e.g., Redux, Vuex, Context API)
-│   ├── public/           # Publicly accessible assets (e.g., index.html)
-│   ├── tests/            # Frontend unit and E2E tests
-│   └── package.json      # Frontend dependencies and scripts
+│   │   └── styles/       # Global styles (Tailwind CSS)
+│   ├── public/           # Publicly accessible assets (favicon, etc.)
+│   ├── dist/consent/     # Build output directory (served by Go backend)
+│   ├── tests/            # Frontend unit and integration tests (Vitest)
+│   ├── package.json      # Frontend dependencies and scripts
+│   ├── vite.config.ts    # Vite build configuration
+│   ├── tsconfig.json     # TypeScript configuration
+│   └── tailwind.config.ts # Tailwind CSS v4.0 configuration
 ├── docs/                 # Project documentation (e.g., API docs, setup guides)
 ├── scripts/              # Automation scripts (e.g., deployment, data seeding)
 ├── .github/              # GitHub Actions or other CI/CD configurations
@@ -102,6 +114,163 @@ Application Startup
 - Custom validators (fast, zero-allocation validation)
 
 **Future Extensions**: Hot-reloading (Reload method defined but not implemented), additional config categories (server, database, auth)
+
+#### 3.1.2. Single Page Application (Consent Frontend)
+
+**Purpose**: User-facing web interface for managing OAuth2 consent delegations to AI agents.
+
+**Architecture**: React 18 Single Page Application with TypeScript, served from Go backend
+
+**Technology Stack**:
+- **Frontend Framework**: React 18.2+ with TypeScript 5.3+
+- **Build Tool**: Vite 5.0+ (fast ESM-based bundler)
+- **Styling**: Tailwind CSS v4.0 (utility-first CSS framework)
+- **UI Components**: Headless UI 1.7+ (accessible, unstyled components)
+- **HTTP Client**: Axios 1.6+ (promise-based HTTP client)
+- **Router**: React Router DOM 6.20+ (client-side routing)
+- **Testing**: Vitest 1.0+ (fast unit test framework)
+- **State Management**: React hooks + Context API (no external state library)
+
+**Directory Structure**:
+```
+web/
+├── src/
+│   ├── components/       # React components
+│   │   ├── consent/      # Consent-specific components
+│   │   │   ├── DelegationCard.tsx        # Agent delegation card
+│   │   │   ├── DelegationList.tsx        # List of delegations
+│   │   │   ├── ServiceCard.tsx           # OAuth2 service card
+│   │   │   ├── ServiceGrantList.tsx      # List of service grants
+│   │   │   ├── ScopeList.tsx             # Scope selection UI
+│   │   │   ├── GrantStatusBadge.tsx      # Grant status indicator
+│   │   │   └── GrantValidityControl.tsx  # Expiration date control
+│   │   ├── layout/       # Layout components
+│   │   │   └── AppLayout.tsx             # Main app layout
+│   │   └── ui/           # Reusable UI components
+│   │       ├── Button.tsx                # Button component
+│   │       ├── Switch.tsx                # Toggle switch
+│   │       ├── DatePicker.tsx            # Date picker
+│   │       ├── ErrorBoundary.tsx         # Error boundary
+│   │       ├── InlineError.tsx           # Error display
+│   │       ├── EmptyState.tsx            # Empty state UI
+│   │       └── Skeleton.tsx              # Loading skeleton
+│   ├── pages/            # Application pages
+│   │   ├── ConsentOverviewPage.tsx       # List of all agent delegations
+│   │   ├── AgentGrantDetailPage.tsx      # Agent-specific grant management
+│   │   └── ErrorPage.tsx                 # Error page
+│   ├── hooks/            # Custom React hooks
+│   │   ├── useConsent.ts                 # Fetch agent delegations
+│   │   ├── useAgentGrants.ts             # Fetch agent grants
+│   │   ├── useToggleGrant.ts             # Toggle grant scopes
+│   │   ├── useUpdateValidity.ts          # Update grant expiration
+│   │   └── useRetry.ts                   # Retry with exponential backoff
+│   ├── services/         # Service layer
+│   │   ├── api/          # API clients
+│   │   │   ├── client.ts                 # Axios client configuration
+│   │   │   ├── consent.ts                # Consent API methods
+│   │   │   └── index.ts                  # API exports
+│   │   └── storage/      # Client-side storage
+│   │       └── session.ts                # Session storage utilities
+│   ├── types/            # TypeScript types
+│   │   ├── consent.ts                    # Consent domain types
+│   │   └── index.ts                      # Type exports
+│   ├── utils/            # Utility functions
+│   │   └── validation.ts                 # Input validation
+│   ├── App.tsx           # Root component
+│   └── main.tsx          # Application entry point
+├── dist/consent/         # Build output (served by Go)
+├── vite.config.ts        # Vite configuration
+├── tsconfig.json         # TypeScript configuration
+├── tailwind.config.ts    # Tailwind CSS configuration
+└── package.json          # Dependencies and scripts
+```
+
+**Build Pipeline**:
+1. **Development**: `npm run dev` runs Vite dev server (http://localhost:3000)
+2. **Build**: `npm run build` compiles TypeScript and bundles with Vite
+3. **Output**: Static files written to `dist/consent/` directory
+4. **Deployment**: Go backend serves files from `dist/consent/` at `/consent` path
+
+**SPA Serving Pattern**:
+```
+User Request: /consent/agents
+  ↓
+Go HTTP Server (Port 8080)
+  ↓
+Static File Handler (/consent/*)
+  ↓ (404 fallback for client-side routes)
+Serve index.html
+  ↓
+Browser loads React app
+  ↓
+React Router handles /agents route
+  ↓
+Component fetches data from /api/consent/agents
+  ↓
+Go API Handler returns JSON
+```
+
+**Key Features**:
+- **Client-Side Routing**: React Router handles all `/consent/*` routes without page reloads
+- **History API Fallback**: Go backend serves `index.html` for all `/consent/*` paths (SPA fallback)
+- **API Integration**: Frontend makes requests to `/api/consent/*` endpoints on same domain
+- **CSRF Protection**: All mutating requests include CSRF token from cookie
+- **Session Management**: Principal extracted from `X-Principal` header (set by reverse proxy)
+- **Type Safety**: Full TypeScript coverage with strict mode enabled
+- **Responsive Design**: Tailwind CSS utilities for mobile-first responsive UI
+- **Accessibility**: Headless UI components ensure WCAG 2.1 compliance
+- **Error Handling**: Error boundaries and retry logic for resilient UX
+
+**Component Hierarchy**:
+```
+App
+├── ErrorBoundary
+│   └── AppLayout
+│       ├── ConsentOverviewPage
+│       │   └── DelegationList
+│       │       └── DelegationCard (per agent)
+│       │           └── GrantStatusBadge
+│       └── AgentGrantDetailPage
+│           ├── ServiceGrantList
+│           │   └── ServiceCard (per OAuth2 service)
+│           │       ├── Switch (toggle grant)
+│           │       └── ScopeList (scope checkboxes)
+│           └── GrantValidityControl
+│               └── DatePicker (expiration date)
+```
+
+**State Management**:
+- **Local State**: React `useState` for component-level state
+- **Server State**: Custom hooks with axios for API data fetching
+- **Context**: React Context API for global UI state (theme, error messages)
+- **No Redux/MobX**: Hooks + Context sufficient for current requirements
+
+**API Communication**:
+- **Base URL**: `/api` (relative, same origin)
+- **Authentication**: Session-based (X-Principal header from proxy)
+- **CSRF**: X-CSRF-Token header required for POST/PUT/DELETE
+- **Error Handling**: Axios interceptors for global error handling
+- **Retry Logic**: Exponential backoff for transient failures
+
+**Testing Strategy**:
+- **Unit Tests**: Vitest for component and hook testing
+- **Integration Tests**: Test component + API interactions with mocked backend
+- **E2E Tests**: (Future) Playwright for full user flows
+- **Coverage Target**: >80% for critical paths
+
+**Performance Optimizations**:
+- **Code Splitting**: Lazy loading of routes with React.lazy()
+- **Tree Shaking**: Vite removes unused code automatically
+- **Minification**: Terser minification in production builds
+- **Caching**: Immutable asset URLs with content hashing
+- **Bundle Size**: Target <200KB gzipped for initial load
+
+**Security Considerations**:
+- **XSS Prevention**: React escapes all user input by default
+- **CSRF Protection**: Token-based CSRF protection for mutating requests
+- **Content Security Policy**: (Future) CSP headers from Go backend
+- **Dependency Scanning**: Regular npm audit for vulnerabilities
+- **TypeScript**: Compile-time type checking prevents runtime errors
 
 ## 4. Data Stores
 

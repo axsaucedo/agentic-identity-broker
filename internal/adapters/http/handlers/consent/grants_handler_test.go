@@ -117,7 +117,44 @@ func TestCreateGrant_InvalidJSON(t *testing.T) {
 }
 
 func TestCreateGrant_EmptyTokensRevokes(t *testing.T) {
-	t.Skip("Skipping - requires service interface injection for proper testing")
+	revokeCalled := false
+	mockService := &mockConsentService{
+		revokeConsentFunc: func(ctx context.Context, principal, agentID string) error {
+			revokeCalled = true
+			if principal != "user@example.com" {
+				t.Errorf("expected principal 'user@example.com', got '%s'", principal)
+			}
+			if agentID != "agent-123" {
+				t.Errorf("expected agentID 'agent-123', got '%s'", agentID)
+			}
+			return nil
+		},
+	}
+	handler := NewGrantsHandler(mockService, nil)
+
+	// Create request with empty tokens (revoke)
+	reqBody := GrantRequest{
+		DelegatedOAuth2Tokens: []DelegatedTokenRequest{},
+	}
+
+	req := newRequestWithPrincipal("POST", "/api/consent/agent/agent-123/grants", "user@example.com", reqBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "agent-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.CreateGrant(rr, req)
+
+	// Verify RevokeConsent was called
+	if !revokeCalled {
+		t.Error("expected RevokeConsent to be called")
+	}
+
+	// Verify response
+	if rr.Code != http.StatusNoContent {
+		t.Errorf("expected status %d, got %d", http.StatusNoContent, rr.Code)
+	}
 }
 
 func TestCreateGrant_ValidUntilInPast(t *testing.T) {
@@ -278,9 +315,224 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// This test demonstrates the expected behavior
-			// Full implementation requires service interface injection
-			t.Skip("Requires service interface for proper mocking")
+			// Create mock service that returns the error
+			mockService := &mockConsentService{
+				grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
+					return nil, tt.serviceError
+				},
+			}
+			handler := NewGrantsHandler(mockService, nil)
+
+			// Create valid request
+			reqBody := GrantRequest{
+				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+					{
+						ThirdpartyOAuth2ServiceID: "github",
+						Scopes:                    []string{"repo"},
+					},
+				},
+			}
+
+			req := newRequestWithPrincipal("POST", "/api/consent/agent/agent-123/grants", "user@example.com", reqBody)
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("agent-id", "agent-123")
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+			rr := httptest.NewRecorder()
+
+			handler.CreateGrant(rr, req)
+
+			// Verify response code
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
+			}
+
+			// Verify error message
+			var errResp ErrorResponse
+			if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+				t.Fatalf("failed to decode error response: %v", err)
+			}
+
+			if errResp.Error != tt.expectedError {
+				t.Errorf("expected error '%s', got '%s'", tt.expectedError, errResp.Error)
+			}
 		})
+	}
+}
+
+// TestCreateGrant_Success verifies successful grant creation
+func TestCreateGrant_Success(t *testing.T) {
+	// Create mock service
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+
+	var capturedRequest *consent.GrantRequest
+	mockService := &mockConsentService{
+		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
+			capturedRequest = req
+			return &storage.UserGrant{
+				ID:         "grant-new-123",
+				Principal:  "user@example.com",
+				AgentID:    "agent-123",
+				ValidUntil: &futureTime,
+				DelegatedOAuth2Tokens: []storage.DelegatedToken{
+					{
+						ThirdpartyOAuth2ServiceID: "github",
+						Scopes:                    []string{"repo", "user"},
+					},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil)
+
+	// Create request
+	reqBody := GrantRequest{
+		ValidUntil: &futureTime,
+		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+			{
+				ThirdpartyOAuth2ServiceID: "github",
+				Scopes:                    []string{"repo", "user"},
+			},
+		},
+	}
+
+	req := newRequestWithPrincipal("POST", "/api/consent/agent/agent-123/grants", "user@example.com", reqBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "agent-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.CreateGrant(rr, req)
+
+	// Verify service was called and request was captured
+	if capturedRequest == nil {
+		t.Fatal("expected grant request to be passed to service")
+	}
+	if capturedRequest.Principal != "user@example.com" {
+		t.Errorf("expected principal 'user@example.com', got '%s'", capturedRequest.Principal)
+	}
+	if capturedRequest.AgentID != "agent-123" {
+		t.Errorf("expected agent_id 'agent-123', got '%s'", capturedRequest.AgentID)
+	}
+
+	// Verify response
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected status %d, got %d", http.StatusCreated, rr.Code)
+	}
+
+	var response GrantResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.ID != "grant-new-123" {
+		t.Errorf("expected ID 'grant-new-123', got '%s'", response.ID)
+	}
+	if response.Principal != "user@example.com" {
+		t.Errorf("expected principal 'user@example.com', got '%s'", response.Principal)
+	}
+	if response.AgentID != "agent-123" {
+		t.Errorf("expected agent_id 'agent-123', got '%s'", response.AgentID)
+	}
+}
+
+// TestGetGrants_Success verifies successful grant retrieval
+func TestGetGrants_Success(t *testing.T) {
+	now := time.Now()
+
+	mockService := &mockConsentService{
+		getActiveGrantsFunc: func(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error) {
+			return []*storage.UserGrant{
+				{
+					ID:        "grant-1",
+					Principal: "user@example.com",
+					AgentID:   "agent-123",
+					DelegatedOAuth2Tokens: []storage.DelegatedToken{
+						{
+							ThirdpartyOAuth2ServiceID: "github",
+							Scopes:                    []string{"repo"},
+						},
+					},
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+				{
+					ID:        "grant-2",
+					Principal: "user@example.com",
+					AgentID:   "agent-123",
+					DelegatedOAuth2Tokens: []storage.DelegatedToken{
+						{
+							ThirdpartyOAuth2ServiceID: "google",
+							Scopes:                    []string{"email"},
+						},
+					},
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil)
+
+	req := newRequestWithPrincipal("GET", "/api/consent/agent/agent-123/grants", "user@example.com", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "agent-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.GetGrants(rr, req)
+
+	// Verify response
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	var response []GrantResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(response) != 2 {
+		t.Errorf("expected 2 grants, got %d", len(response))
+	}
+}
+
+// TestGetGrants_AgentNotFound verifies agent not found error
+func TestGetGrants_AgentNotFound(t *testing.T) {
+	mockService := &mockConsentService{
+		getActiveGrantsFunc: func(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error) {
+			return nil, consent.ErrAgentNotFound
+		},
+	}
+	handler := NewGrantsHandler(mockService, nil)
+
+	req := newRequestWithPrincipal("GET", "/api/consent/agent/unknown-agent/grants", "user@example.com", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "unknown-agent")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.GetGrants(rr, req)
+
+	// Verify response
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, rr.Code)
+	}
+
+	var errResp ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if errResp.Error != "agent not found" {
+		t.Errorf("expected error 'agent not found', got '%s'", errResp.Error)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
 )
@@ -16,12 +17,12 @@ import (
 // GrantsHandler handles HTTP requests for user grants management.
 // Implements FR-011 through FR-014 (grant CRUD operations).
 type GrantsHandler struct {
-	consentService *consent.Service
+	consentService ConsentService
 	logger         *slog.Logger
 }
 
 // NewGrantsHandler creates a new grants handler.
-func NewGrantsHandler(consentService *consent.Service, logger *slog.Logger) *GrantsHandler {
+func NewGrantsHandler(consentService ConsentService, logger *slog.Logger) *GrantsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -65,29 +66,29 @@ type GrantResponse struct {
 func (h *GrantsHandler) GetGrants(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "agent-id")
 
-	// Extract principal from session context
-	principal, ok := r.Context().Value("principal").(string)
-	if !ok || principal == "" {
+	// Extract principal from context
+	principalValue, ok := principal.FromContext(r.Context())
+	if !ok || principalValue == "" {
 		h.logger.Warn("principal not found in context")
 		h.writeError(w, http.StatusUnauthorized, "unauthorized", "")
 		return
 	}
 
 	ctx := r.Context()
-	grants, err := h.consentService.GetActiveGrants(ctx, principal, agentID)
+	grants, err := h.consentService.GetActiveGrants(ctx, principalValue, agentID)
 	if err != nil {
 		// Check if it's an agent not found error
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found",
 				"agent_id", agentID,
-				"principal", principal)
+				"principal", principalValue)
 			h.writeError(w, http.StatusNotFound, "agent not found", "")
 			return
 		}
 
 		h.logger.Error("failed to get grants",
 			"agent_id", agentID,
-			"principal", principal,
+			"principal", principalValue,
 			"error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
@@ -101,10 +102,13 @@ func (h *GrantsHandler) GetGrants(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("grants retrieved",
 		"agent_id", agentID,
-		"principal", principal,
+		"principal", principalValue,
 		"count", len(response))
 
-	h.writeJSON(w, http.StatusOK, response)
+	// Wrap in data envelope to match frontend expectations
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data": response,
+	})
 }
 
 // CreateGrant handles POST /api/consent/agent/:agent-id/grants
@@ -121,9 +125,9 @@ func (h *GrantsHandler) GetGrants(w http.ResponseWriter, r *http.Request) {
 func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "agent-id")
 
-	// Extract principal from session
-	principal, ok := r.Context().Value("principal").(string)
-	if !ok || principal == "" {
+	// Extract principal from context
+	principalValue, ok := principal.FromContext(r.Context())
+	if !ok || principalValue == "" {
 		h.logger.Warn("principal not found in context")
 		h.writeError(w, http.StatusUnauthorized, "unauthorized", "")
 		return
@@ -134,7 +138,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.Warn("invalid request body",
 			"error", err,
-			"principal", principal,
+			"principal", principalValue,
 			"agent_id", agentID)
 		h.writeError(w, http.StatusBadRequest, "invalid request", "request body must be valid JSON")
 		return
@@ -142,18 +146,18 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 
 	// Special case: empty tokens = revoke
 	if len(req.DelegatedOAuth2Tokens) == 0 {
-		err := h.consentService.RevokeConsent(r.Context(), principal, agentID)
+		err := h.consentService.RevokeConsent(r.Context(), principalValue, agentID)
 		if err != nil {
 			h.logger.Error("failed to revoke consent",
 				"agent_id", agentID,
-				"principal", principal,
+				"principal", principalValue,
 				"error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			return
 		}
 
 		h.logger.Info("grant revoked",
-			"principal", principal,
+			"principal", principalValue,
 			"agent_id", agentID)
 
 		w.WriteHeader(http.StatusNoContent)
@@ -164,7 +168,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	if req.ValidUntil != nil && req.ValidUntil.Before(time.Now()) {
 		h.logger.Warn("valid_until is in the past",
 			"valid_until", req.ValidUntil,
-			"principal", principal,
+			"principal", principalValue,
 			"agent_id", agentID)
 		h.writeError(w, http.StatusBadRequest, "invalid request", "valid_until must be in the future")
 		return
@@ -181,7 +185,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 
 	// Create grant request
 	grantReq := &consent.GrantRequest{
-		Principal:             principal,
+		Principal:             principalValue,
 		AgentID:               agentID,
 		ValidUntil:            req.ValidUntil,
 		DelegatedOAuth2Tokens: tokens,
@@ -194,7 +198,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found",
 				"agent_id", agentID,
-				"principal", principal)
+				"principal", principalValue)
 			h.writeError(w, http.StatusNotFound, "agent not found", "")
 			return
 		}
@@ -202,7 +206,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, consent.ErrInvalidScopes) {
 			h.logger.Warn("invalid scopes requested",
 				"agent_id", agentID,
-				"principal", principal,
+				"principal", principalValue,
 				"error", err)
 			h.writeError(w, http.StatusBadRequest, "invalid scopes", err.Error())
 			return
@@ -211,7 +215,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, consent.ErrServiceNotFound) {
 			h.logger.Warn("service not found",
 				"agent_id", agentID,
-				"principal", principal,
+				"principal", principalValue,
 				"error", err)
 			h.writeError(w, http.StatusBadRequest, "service not found", err.Error())
 			return
@@ -219,7 +223,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 
 		h.logger.Error("failed to grant consent",
 			"agent_id", agentID,
-			"principal", principal,
+			"principal", principalValue,
 			"error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
@@ -227,12 +231,15 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 
 	// Audit logging
 	h.logger.Info("grant created",
-		"principal", principal,
+		"principal", principalValue,
 		"agent_id", agentID,
 		"grant_id", grant.ID)
 
 	response := h.toGrantResponse(grant)
-	h.writeJSON(w, http.StatusCreated, response)
+	// Wrap in data envelope to match frontend expectations
+	h.writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"data": response,
+	})
 }
 
 // toGrantResponse converts a UserGrant to GrantResponse.

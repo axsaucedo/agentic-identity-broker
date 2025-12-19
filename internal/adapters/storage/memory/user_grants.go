@@ -239,6 +239,26 @@ func principalAgentKey(principal string, agentID string) string {
 	return principal + ":" + agentID
 }
 
+// ListByPrincipal retrieves all active grants for a principal across all agents.
+// Filters expired grants (valid_until < NOW()).
+// Returns empty slice if no active grants exist (not an error).
+// Returns deep copies to prevent external mutation.
+func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var activeGrants []storage.UserGrant
+
+	// Iterate through all grants and filter by principal
+	for _, grant := range r.grants {
+		if grant.Principal == principal && grant.IsActive() {
+			activeGrants = append(activeGrants, *grant.Copy())
+		}
+	}
+
+	return activeGrants, nil
+}
+
 // removeGrantFromAgentIndex removes a grant ID from the agent's grant list.
 func (r *UserGrantRepository) removeGrantFromAgentIndex(agentID string, grantID string) {
 	grantIDs, exists := r.grantIDsByAgent[agentID]

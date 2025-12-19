@@ -3,7 +3,7 @@
 
 # Logging configuration
 log:
-  level: ${IDENTITY_BROKER_LOG_LEVEL}
+  level: debug
   format: ${IDENTITY_BROKER_LOG_FORMAT}
 
 # Server configuration - dual-port HTTP servers
@@ -12,11 +12,19 @@ server:
   enduser:
     port: 8000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+    # Authentication - preauth mode (trust principals from reverse proxy headers)
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
 
   # Admin server (internal management API)
   admin:
     port: 14000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+    # Authentication - preauth mode (trust principals from reverse proxy headers)
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
 
   # Graceful shutdown configuration
   shutdown:

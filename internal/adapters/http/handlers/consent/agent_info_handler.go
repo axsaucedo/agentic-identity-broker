@@ -61,12 +61,6 @@ type AgentConsentInfoResponse struct {
 	RequestedServices []RequestedService `json:"requested_services"`
 }
 
-// ErrorResponse represents an error response.
-type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message,omitempty"`
-}
-
 // GetAgentConsentInfo handles GET /api/consent/agent/:agent-id
 // Returns agent metadata and all available third-party OAuth2 services.
 //

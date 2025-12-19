@@ -215,10 +215,207 @@ We welcome contributions! Please follow these guidelines:
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
+## Consent Frontend Development
+
+The consent frontend is a React-based Single Page Application (SPA) for managing OAuth2 delegations to AI agents.
+
+### Prerequisites
+
+- Node.js 18.0.0 or higher
+- npm (comes with Node.js)
+
+### Setup
+
+1. Navigate to the web directory:
+```bash
+cd web
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Configure environment (optional):
+```bash
+# Create .env file for local development
+cp .env.example .env
+```
+
+### Development Workflow
+
+**Start Development Server:**
+```bash
+npm run dev
+```
+This starts the Vite dev server at http://localhost:3000 with hot module replacement.
+
+**Run Tests:**
+```bash
+npm run test              # Run tests in watch mode
+npm run test:coverage     # Generate coverage report
+```
+
+**Lint and Format:**
+```bash
+npm run lint              # Run ESLint
+npm run format            # Format code with Prettier
+```
+
+**Build for Production:**
+```bash
+npm run build
+```
+This compiles TypeScript and bundles the app to `dist/consent/` directory.
+
+**Preview Production Build:**
+```bash
+npm run preview
+```
+
+### Integration with Go Backend
+
+The frontend is served by the Go backend at `/consent`:
+
+1. **Build the frontend**: `npm run build` (creates `web/dist/consent/`)
+2. **Start the backend**: `just run` (from project root)
+3. **Access the app**: http://localhost:8080/consent
+
+The backend serves static files from `web/dist/consent/` and handles API requests at `/api/consent/*`.
+
+### Local Development (Both Frontend and Backend)
+
+**Option 1: Frontend Proxy (Recommended)**
+
+Run both servers independently:
+```bash
+# Terminal 1: Start Go backend
+just run
+
+# Terminal 2: Start frontend dev server
+cd web && npm run dev
+```
+
+Vite dev server (port 3000) proxies API requests to Go backend (port 8080).
+
+**Option 2: Integrated Build**
+
+Build frontend and run from Go backend:
+```bash
+cd web && npm run build && cd .. && just run
+```
+
+Access at http://localhost:8080/consent (no hot reload).
+
+### Environment Variables
+
+Frontend configuration (optional `.env` file in `web/` directory):
+
+```bash
+# API base URL (defaults to /api)
+VITE_API_BASE_URL=/api
+
+# Development server port (defaults to 3000)
+VITE_DEV_SERVER_PORT=3000
+```
+
+### Project Structure
+
+```
+web/
+├── src/
+│   ├── components/       # React components
+│   │   ├── consent/      # Consent-specific components
+│   │   ├── layout/       # Layout components
+│   │   └── ui/           # Reusable UI components
+│   ├── pages/            # Application pages
+│   ├── hooks/            # Custom React hooks
+│   ├── services/         # API client and services
+│   ├── types/            # TypeScript type definitions
+│   └── utils/            # Utility functions
+├── dist/consent/         # Build output (served by Go backend)
+├── package.json          # Dependencies and scripts
+├── vite.config.ts        # Vite configuration
+├── tsconfig.json         # TypeScript configuration
+└── tailwind.config.ts    # Tailwind CSS configuration
+```
+
+### Technology Stack
+
+- **React 18.2+**: Frontend framework
+- **TypeScript 5.3+**: Type-safe JavaScript
+- **Vite 5.0+**: Fast build tool with HMR
+- **Tailwind CSS v4.0**: Utility-first CSS framework
+- **Headless UI**: Accessible UI components
+- **Axios**: HTTP client
+- **React Router DOM**: Client-side routing
+- **Vitest**: Unit testing framework
+
+### Testing
+
+**Run Tests:**
+```bash
+npm run test
+```
+
+**Coverage Report:**
+```bash
+npm run test:coverage
+open coverage/index.html
+```
+
+**Test Structure:**
+- Unit tests: `*.test.tsx` or `*.test.ts`
+- Integration tests: `*.integration.test.tsx`
+- Test files located next to source files
+
+### Deployment
+
+**Build for Production:**
+```bash
+npm run build
+```
+
+Output: `web/dist/consent/` directory with optimized static files.
+
+**Deploy with Go Backend:**
+1. Build frontend: `cd web && npm run build`
+2. Build Go binary: `just build-release`
+3. Deploy `bin/identity-broker` with embedded `web/dist/consent/`
+
+The Go backend automatically serves the SPA from the embedded directory.
+
+### Troubleshooting
+
+**Port Already in Use:**
+```bash
+# Change port in vite.config.ts or use environment variable
+VITE_DEV_SERVER_PORT=3001 npm run dev
+```
+
+**API Connection Issues:**
+- Verify Go backend is running on port 8080
+- Check Vite proxy configuration in `vite.config.ts`
+- Ensure CORS is configured correctly
+
+**Build Errors:**
+```bash
+# Clear node_modules and reinstall
+rm -rf node_modules package-lock.json
+npm install
+```
+
+**TypeScript Errors:**
+```bash
+# Regenerate TypeScript types
+npm run build
+```
+
 ## Documentation
 
 - [Architecture Overview](ARCHITECTURE.md) - System architecture and design decisions
 - [User Documentation](docs/) - End-user guides and tutorials
+- [API Documentation](docs/api/) - REST API reference
 - [Documentation Site](assets/docusaurus/) - Full documentation website
 
 Run the documentation server locally:

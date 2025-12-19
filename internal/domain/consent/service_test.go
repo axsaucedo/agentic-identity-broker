@@ -213,6 +213,19 @@ func (m *mockGrantRepo) DeleteByAgent(ctx context.Context, agentID string) error
 	return nil
 }
 
+func (m *mockGrantRepo) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	result := []storage.UserGrant{}
+	for _, grant := range m.grants {
+		if grant.Principal == principal && grant.IsActive() {
+			result = append(result, *grant.Copy())
+		}
+	}
+	return result, nil
+}
+
 // Test cases
 
 func TestService_GetAgentConsentInfo(t *testing.T) {
@@ -471,4 +484,215 @@ func TestService_GetActiveGrants(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, grants)
 	})
+}
+
+func TestService_GetAgentDelegations(t *testing.T) {
+	ctx := context.Background()
+
+	agent1 := &storage.Agent{
+		ID:          "agent-1",
+		ClientID:    "test-client-1",
+		DisplayName: "Test Agent 1",
+		Description: "First test agent",
+	}
+
+	agent2 := &storage.Agent{
+		ID:          "agent-2",
+		ClientID:    "test-client-2",
+		DisplayName: "Test Agent 2",
+		Description: "Second test agent",
+	}
+
+	now := time.Now()
+	future := now.Add(24 * time.Hour)
+	past := now.Add(-24 * time.Hour)
+
+	tests := []struct {
+		name          string
+		principal     string
+		grants        map[string]*storage.UserGrant
+		agents        map[string]*storage.Agent
+		expectedCount int
+		expectError   bool
+		validate      func(t *testing.T, delegations []AgentDelegation)
+	}{
+		{
+			name:          "empty grants returns empty list",
+			principal:     "user@example.com",
+			grants:        map[string]*storage.UserGrant{},
+			agents:        map[string]*storage.Agent{"agent-1": agent1},
+			expectedCount: 0,
+			expectError:   false,
+		},
+		{
+			name:      "single grant returns one delegation",
+			principal: "user@example.com",
+			grants: map[string]*storage.UserGrant{
+				"grant-1": {
+					ID:         "grant-1",
+					Principal:  "user@example.com",
+					AgentID:    "agent-1",
+					ValidUntil: &future,
+					DelegatedOAuth2Tokens: []storage.DelegatedToken{
+						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"repo"}},
+					},
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			},
+			agents:        map[string]*storage.Agent{"agent-1": agent1},
+			expectedCount: 1,
+			expectError:   false,
+			validate: func(t *testing.T, delegations []AgentDelegation) {
+				require.Len(t, delegations, 1)
+				assert.Equal(t, "agent-1", delegations[0].AgentID)
+				assert.Equal(t, "Test Agent 1", delegations[0].DisplayName)
+				assert.Equal(t, 1, delegations[0].ActiveGrantCount)
+			},
+		},
+		{
+			name:      "multiple grants for same agent groups correctly",
+			principal: "user@example.com",
+			grants: map[string]*storage.UserGrant{
+				"grant-1": {
+					ID:         "grant-1",
+					Principal:  "user@example.com",
+					AgentID:    "agent-1",
+					ValidUntil: &future,
+					DelegatedOAuth2Tokens: []storage.DelegatedToken{
+						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"repo"}},
+					},
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			},
+			agents:        map[string]*storage.Agent{"agent-1": agent1},
+			expectedCount: 1,
+			expectError:   false,
+			validate: func(t *testing.T, delegations []AgentDelegation) {
+				require.Len(t, delegations, 1)
+				assert.Equal(t, "agent-1", delegations[0].AgentID)
+				assert.Equal(t, 1, delegations[0].ActiveGrantCount)
+			},
+		},
+		{
+			name:      "multiple agents returns multiple delegations",
+			principal: "user@example.com",
+			grants: map[string]*storage.UserGrant{
+				"grant-1": {
+					ID:         "grant-1",
+					Principal:  "user@example.com",
+					AgentID:    "agent-1",
+					ValidUntil: &future,
+					DelegatedOAuth2Tokens: []storage.DelegatedToken{
+						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"repo"}},
+					},
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+				"grant-2": {
+					ID:         "grant-2",
+					Principal:  "user@example.com",
+					AgentID:    "agent-2",
+					ValidUntil: &future,
+					DelegatedOAuth2Tokens: []storage.DelegatedToken{
+						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"user"}},
+					},
+					CreatedAt: now,
+					UpdatedAt: now.Add(1 * time.Hour),
+				},
+			},
+			agents: map[string]*storage.Agent{
+				"agent-1": agent1,
+				"agent-2": agent2,
+			},
+			expectedCount: 2,
+			expectError:   false,
+			validate: func(t *testing.T, delegations []AgentDelegation) {
+				require.Len(t, delegations, 2)
+
+				// Find each agent in results
+				var agent1Delegation, agent2Delegation *AgentDelegation
+				for i := range delegations {
+					if delegations[i].AgentID == "agent-1" {
+						agent1Delegation = &delegations[i]
+					}
+					if delegations[i].AgentID == "agent-2" {
+						agent2Delegation = &delegations[i]
+					}
+				}
+
+				require.NotNil(t, agent1Delegation)
+				require.NotNil(t, agent2Delegation)
+				assert.Equal(t, "Test Agent 1", agent1Delegation.DisplayName)
+				assert.Equal(t, "Test Agent 2", agent2Delegation.DisplayName)
+				assert.Equal(t, 1, agent1Delegation.ActiveGrantCount)
+				assert.Equal(t, 1, agent2Delegation.ActiveGrantCount)
+			},
+		},
+		{
+			name:      "expired grants are filtered out",
+			principal: "user@example.com",
+			grants: map[string]*storage.UserGrant{
+				"grant-1": {
+					ID:         "grant-1",
+					Principal:  "user@example.com",
+					AgentID:    "agent-1",
+					ValidUntil: &past, // Expired
+					DelegatedOAuth2Tokens: []storage.DelegatedToken{
+						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"repo"}},
+					},
+					CreatedAt: now.Add(-48 * time.Hour),
+					UpdatedAt: now.Add(-48 * time.Hour),
+				},
+			},
+			agents:        map[string]*storage.Agent{"agent-1": agent1},
+			expectedCount: 0,
+			expectError:   false,
+		},
+		{
+			name:      "grants for different principal are not included",
+			principal: "user@example.com",
+			grants: map[string]*storage.UserGrant{
+				"grant-1": {
+					ID:         "grant-1",
+					Principal:  "other@example.com",
+					AgentID:    "agent-1",
+					ValidUntil: &future,
+					DelegatedOAuth2Tokens: []storage.DelegatedToken{
+						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"repo"}},
+					},
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			},
+			agents:        map[string]*storage.Agent{"agent-1": agent1},
+			expectedCount: 0,
+			expectError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewService(
+				&mockAgentRepo{agents: tt.agents},
+				&mockServiceRepo{services: map[string]*storage.ThirdpartyOAuth2Service{}},
+				&mockGrantRepo{grants: tt.grants},
+			)
+
+			delegations, err := svc.GetAgentDelegations(ctx, tt.principal)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Len(t, delegations, tt.expectedCount)
+
+			if tt.validate != nil {
+				tt.validate(t, delegations)
+			}
+		})
+	}
 }

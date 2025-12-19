@@ -15,8 +15,11 @@ import (
 // Adapters implement both StorageLifecycle and repository interfaces (UserRepository, etc.)
 // This struct is returned by NewAdapter factory function.
 type Adapter struct {
-	lifecycle ports.StorageLifecycle
-	users     ports.UserRepository
+	lifecycle   ports.StorageLifecycle
+	users       ports.UserRepository
+	agents      ports.AgentRepository
+	services    ports.ThirdpartyOAuth2ServiceRepository
+	userGrants  ports.UserGrantRepository
 }
 
 // NewAdapter creates a storage adapter based on configuration.
@@ -45,8 +48,11 @@ func NewAdapter(config *ports.StorageConfig) (*Adapter, error) {
 func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	memAdapter := memory.NewAdapter()
 	return &Adapter{
-		lifecycle: memAdapter,
-		users:     memAdapter,
+		lifecycle:   memAdapter,
+		users:       memAdapter,
+		agents:      memory.NewAgentRepository(),
+		services:    memory.NewThirdpartyServiceRepository(),
+		userGrants:  memory.NewUserGrantRepository(),
 	}, nil
 }
 
@@ -57,8 +63,11 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		return nil, fmt.Errorf("failed to create PostgreSQL adapter: %w", err)
 	}
 	return &Adapter{
-		lifecycle: pgAdapter,
-		users:     pgAdapter,
+		lifecycle:   pgAdapter,
+		users:       pgAdapter,
+		agents:      postgres.NewAgentRepository(pgAdapter),
+		services:    postgres.NewThirdpartyServiceRepository(pgAdapter, nil), // TODO: Initialize proper EncryptionPort
+		userGrants:  postgres.NewUserGrantRepository(pgAdapter),
 	}, nil
 }
 
@@ -72,4 +81,22 @@ func (a *Adapter) Lifecycle() ports.StorageLifecycle {
 // Used for CRUD operations on user entities.
 func (a *Adapter) Users() ports.UserRepository {
 	return a.users
+}
+
+// Agents returns the AgentRepository interface implementation.
+// Used for agent entity CRUD operations.
+func (a *Adapter) Agents() ports.AgentRepository {
+	return a.agents
+}
+
+// Services returns the ThirdpartyOAuth2ServiceRepository interface implementation.
+// Used for OAuth2 service configuration CRUD operations.
+func (a *Adapter) Services() ports.ThirdpartyOAuth2ServiceRepository {
+	return a.services
+}
+
+// UserGrants returns the UserGrantRepository interface implementation.
+// Used for user grant CRUD operations.
+func (a *Adapter) UserGrants() ports.UserGrantRepository {
+	return a.userGrants
 }

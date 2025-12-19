@@ -459,6 +459,86 @@ func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID string)
 	return nil
 }
 
+// ListByPrincipal retrieves all active grants for a principal across all agents.
+// Filters expired grants (valid_until < NOW()).
+// Returns empty slice if no active grants exist (not an error).
+func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+	if r.adapter.db == nil {
+		return nil, storage.NewStorageError(
+			"ListByPrincipal",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	// Create context with timeout
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	query := `
+		SELECT id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		FROM user_grants
+		WHERE principal = $1
+		  AND (valid_until IS NULL OR valid_until > NOW())
+		ORDER BY updated_at DESC
+	`
+
+	rows, err := r.adapter.db.QueryContext(ctxTimeout, query, principal)
+	if err != nil {
+		return nil, r.handlePostgresError("ListByPrincipal", err)
+	}
+	defer rows.Close()
+
+	var grants []storage.UserGrant
+
+	for rows.Next() {
+		var grant storage.UserGrant
+		var tokensJSON []byte
+
+		err := rows.Scan(
+			&grant.ID,
+			&grant.Principal,
+			&grant.AgentID,
+			&grant.ValidUntil,
+			&tokensJSON,
+			&grant.CreatedAt,
+			&grant.UpdatedAt,
+		)
+		if err != nil {
+			return nil, storage.NewStorageError(
+				"ListByPrincipal",
+				storage.ErrorKindUnknown,
+				err,
+				"failed to scan grant row",
+			)
+		}
+
+		// Unmarshal JSONB tokens
+		if err := json.Unmarshal(tokensJSON, &grant.DelegatedOAuth2Tokens); err != nil {
+			return nil, storage.NewStorageError(
+				"ListByPrincipal",
+				storage.ErrorKindUnknown,
+				err,
+				"failed to unmarshal delegated tokens",
+			)
+		}
+
+		grants = append(grants, *grant.Copy())
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError(
+			"ListByPrincipal",
+			storage.ErrorKindUnknown,
+			err,
+			"error iterating grant rows",
+		)
+	}
+
+	return grants, nil
+}
+
 // handlePostgresError converts PostgreSQL errors to StorageError.
 func (r *UserGrantRepository) handlePostgresError(operation string, err error) error {
 	if pgErr, ok := err.(*pgconn.PgError); ok {

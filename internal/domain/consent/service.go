@@ -233,6 +233,191 @@ func (s *Service) validateScopes(ctx context.Context, delegations []storage.Dele
 	return nil
 }
 
+// AgentDelegation represents aggregated information about grants for a specific agent.
+// This is used for the consent management UI to display active delegations.
+type AgentDelegation struct {
+	AgentID          string     `json:"agentId"`
+	DisplayName      string     `json:"displayName"`
+	LogoURL          *string    `json:"logoUrl,omitempty"`
+	ActiveGrantCount int        `json:"activeGrantCount"`
+	LastModifiedAt   time.Time  `json:"lastModifiedAt"`
+	ExpiresAt        *time.Time `json:"expiresAt,omitempty"`
+}
+
+// AgentDetail represents detailed information about an agent for User Story 2.
+// This provides all metadata needed for the agent-specific grants view.
+type AgentDetail struct {
+	AgentID              string  `json:"agentId"`
+	DisplayName          string  `json:"displayName"`
+	Description          string  `json:"description"`
+	LogoURL              *string `json:"logoUrl,omitempty"`
+	GovernanceURL        *string `json:"governanceUrl,omitempty"`
+	UserDocumentationURL *string `json:"userDocumentationUrl,omitempty"`
+	AgentInterfaceURL    *string `json:"agentInterfaceUrl,omitempty"`
+}
+
+// ServiceScope represents a permission scope within a third-party service.
+type ServiceScope struct {
+	Value       string `json:"value"`
+	Description string `json:"description"`
+}
+
+// ThirdpartyService represents a third-party service with its available scopes.
+// This is used in the agent detail view to show what services an agent can request.
+type ThirdpartyService struct {
+	ServiceID   string         `json:"serviceId"`
+	DisplayName string         `json:"displayName"`
+	LogoURL     *string        `json:"logoUrl,omitempty"`
+	Scopes      []ServiceScope `json:"scopes"`
+}
+
+// GetAgentDetail retrieves detailed information about an agent and its available services.
+// This is used for User Story 2: Review Agent-Specific Grants.
+// Returns agent metadata and all available third-party services with their scopes.
+// Returns ErrAgentNotFound if the agent doesn't exist.
+func (s *Service) GetAgentDetail(ctx context.Context, agentID string) (*AgentDetail, []ThirdpartyService, error) {
+	// Fetch agent
+	agent, err := s.agentRepo.Get(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil, nil, ErrAgentNotFound
+		}
+		return nil, nil, fmt.Errorf("failed to get agent: %w", err)
+	}
+	if agent == nil {
+		return nil, nil, ErrAgentNotFound
+	}
+
+	// Fetch all available third-party services (FR-025: all services available to all agents)
+	services, err := s.serviceRepo.List(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to list third-party services: %w", err)
+	}
+
+	// Convert agent to AgentDetail
+	agentDetail := &AgentDetail{
+		AgentID:              agent.ID,
+		DisplayName:          agent.DisplayName,
+		Description:          agent.Description,
+		LogoURL:              nil, // TODO: add logo_url field to Agent entity
+		GovernanceURL:        agent.GovernanceURL,
+		UserDocumentationURL: agent.UserDocumentationURL,
+		AgentInterfaceURL:    agent.AgentInterfaceURL,
+	}
+
+	// Convert services to ThirdpartyService DTOs
+	thirdpartyServices := make([]ThirdpartyService, len(services))
+	for i, svc := range services {
+		scopes := make([]ServiceScope, len(svc.Scopes))
+		for j, scope := range svc.Scopes {
+			scopes[j] = ServiceScope{
+				Value:       scope.ScopeValue,
+				Description: scope.Description,
+			}
+		}
+
+		thirdpartyServices[i] = ThirdpartyService{
+			ServiceID:   svc.ID,
+			DisplayName: svc.DisplayName,
+			LogoURL:     nil, // TODO: add logo_url field to ThirdpartyOAuth2Service entity
+			Scopes:      scopes,
+		}
+	}
+
+	return agentDetail, thirdpartyServices, nil
+}
+
+// GetUserGrants retrieves all grants for a specific principal and agent.
+// This is used for User Story 2 to display what permissions the user has already granted to an agent.
+// Returns empty slice if no grants exist (not an error).
+// Returns ErrAgentNotFound if the agent doesn't exist.
+func (s *Service) GetUserGrants(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+	// Verify agent exists first
+	agent, err := s.agentRepo.Get(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil, ErrAgentNotFound
+		}
+		return nil, fmt.Errorf("failed to get agent: %w", err)
+	}
+	if agent == nil {
+		return nil, ErrAgentNotFound
+	}
+
+	// Fetch grants for this principal and agent
+	grants, err := s.grantRepo.ListByPrincipalAndAgent(ctx, principal, agentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list grants: %w", err)
+	}
+
+	// Return copies to prevent external mutation
+	result := make([]*storage.UserGrant, len(grants))
+	for i, grant := range grants {
+		result[i] = grant.Copy()
+	}
+
+	return result, nil
+}
+
+// GetAgentDelegations retrieves all agent delegations for a principal.
+// Groups grants by agent_id and returns summary information for each agent.
+// Returns empty slice if no grants exist (not an error).
+func (s *Service) GetAgentDelegations(ctx context.Context, principal string) ([]AgentDelegation, error) {
+	// Fetch all active grants for this principal
+	grants, err := s.grantRepo.ListByPrincipal(ctx, principal)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list grants: %w", err)
+	}
+
+	// Group grants by agent_id
+	agentMap := make(map[string]*AgentDelegation)
+
+	for _, grant := range grants {
+		delegation, exists := agentMap[grant.AgentID]
+		if !exists {
+			// Fetch agent information
+			agent, err := s.agentRepo.Get(ctx, grant.AgentID)
+			if err != nil {
+				// If agent not found, skip this grant (defensive: should not happen)
+				if errors.Is(err, ports.ErrNotFound) {
+					continue
+				}
+				return nil, fmt.Errorf("failed to get agent %s: %w", grant.AgentID, err)
+			}
+
+			delegation = &AgentDelegation{
+				AgentID:          grant.AgentID,
+				DisplayName:      agent.DisplayName,
+				LogoURL:          nil, // TODO: add logo_url field to Agent entity
+				ActiveGrantCount: 0,
+				LastModifiedAt:   grant.UpdatedAt,
+				ExpiresAt:        grant.ValidUntil,
+			}
+			agentMap[grant.AgentID] = delegation
+		}
+
+		// Update delegation stats
+		delegation.ActiveGrantCount++
+		if grant.UpdatedAt.After(delegation.LastModifiedAt) {
+			delegation.LastModifiedAt = grant.UpdatedAt
+		}
+		// Update ExpiresAt to the earliest expiration if multiple grants exist
+		if grant.ValidUntil != nil {
+			if delegation.ExpiresAt == nil || grant.ValidUntil.Before(*delegation.ExpiresAt) {
+				delegation.ExpiresAt = grant.ValidUntil
+			}
+		}
+	}
+
+	// Convert map to slice
+	delegations := make([]AgentDelegation, 0, len(agentMap))
+	for _, delegation := range agentMap {
+		delegations = append(delegations, *delegation)
+	}
+
+	return delegations, nil
+}
+
 // generateID is a placeholder for ID generation.
 // In production, this would use UUID v4 generation.
 func generateID() string {

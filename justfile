@@ -58,6 +58,7 @@ clean:
     @echo "Cleaning build artifacts..."
     rm -rf bin
     rm -rf coverage
+    rm -rf web/node_modules web/dist
     @echo "Clean complete"
 
 # Download and tidy Go module dependencies
@@ -116,6 +117,29 @@ test-all: test test-integration
 # Run all quality checks (fmt, vet, lint, test)
 check: fmt vet lint test
     @echo "All checks passed!"
+
+# =============================================================================
+# Web Development Targets
+# =============================================================================
+
+# Install web dependencies
+web-install:
+    @echo "Installing web dependencies..."
+    cd web && npm install
+
+# Start web development server
+web-dev:
+    @echo "Starting web development server..."
+    cd web && npm run dev
+
+# Build web frontend
+web-build:
+    @echo "Building web frontend..."
+    cd web && npm run build
+
+# Build both Go backend and web frontend
+build-all: build web-build
+    @echo "✓ Build complete: Go backend and web frontend"
 
 # =============================================================================
 # Documentation Targets

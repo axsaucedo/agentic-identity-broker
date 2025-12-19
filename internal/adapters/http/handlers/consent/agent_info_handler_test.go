@@ -25,6 +25,9 @@ type mockConsentService struct {
 	getActiveGrantsFunc     func(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error)
 	grantConsentFunc        func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
 	revokeConsentFunc       func(ctx context.Context, principal, agentID string) error
+	getAgentDelegationsFunc func(ctx context.Context, principal string) ([]consent.AgentDelegation, error)
+	getAgentDetailFunc      func(ctx context.Context, agentID string) (*consent.AgentDetail, []consent.ThirdpartyService, error)
+	getUserGrantsFunc       func(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error)
 }
 
 //nolint:unused // Used in tests
@@ -57,6 +60,30 @@ func (m *mockConsentService) RevokeConsent(ctx context.Context, principal, agent
 		return m.revokeConsentFunc(ctx, principal, agentID)
 	}
 	return errors.New("not implemented")
+}
+
+//nolint:unused // Used in tests
+func (m *mockConsentService) GetAgentDelegations(ctx context.Context, principal string) ([]consent.AgentDelegation, error) {
+	if m.getAgentDelegationsFunc != nil {
+		return m.getAgentDelegationsFunc(ctx, principal)
+	}
+	return nil, errors.New("not implemented")
+}
+
+//nolint:unused // Used in tests
+func (m *mockConsentService) GetAgentDetail(ctx context.Context, agentID string) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
+	if m.getAgentDetailFunc != nil {
+		return m.getAgentDetailFunc(ctx, agentID)
+	}
+	return nil, nil, errors.New("not implemented")
+}
+
+//nolint:unused // Used in tests
+func (m *mockConsentService) GetUserGrants(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error) {
+	if m.getUserGrantsFunc != nil {
+		return m.getUserGrantsFunc(ctx, principal, agentID)
+	}
+	return nil, errors.New("not implemented")
 }
 
 func TestGetAgentConsentInfo_Success(t *testing.T) {
@@ -418,4 +445,8 @@ func (m *mockGrantRepo) FindByPrincipalAndAgent(ctx context.Context, principal s
 
 func (m *mockGrantRepo) DeleteByAgent(ctx context.Context, agentID string) error {
 	return nil
+}
+
+func (m *mockGrantRepo) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+	return nil, nil
 }

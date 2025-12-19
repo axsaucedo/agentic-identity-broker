@@ -13,6 +13,7 @@ import (
 	"time"
 
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
+	storageAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -59,9 +60,30 @@ func run(cmd *cobra.Command, args []string) error {
 		"log_level", cfg.Log.Level,
 		"log_format", cfg.Log.Format)
 
+	// Initialize storage adapter
+	storage, err := storageAdapter.NewAdapter(&cfg.Storage)
+	if err != nil {
+		return fmt.Errorf("failed to create storage adapter: %w", err)
+	}
+
 	// Create server instances
 	enduserServer := httpAdapter.NewServer("enduser", cfg.Server.EndUser, logger)
 	adminServer := httpAdapter.NewServer("admin", cfg.Server.Admin, logger)
+
+	// Attach repositories to servers for consent management
+	// Both servers need these to handle consent-related requests
+	if storage.Agents() != nil {
+		enduserServer.SetAgentRepository(storage.Agents())
+		adminServer.SetAgentRepository(storage.Agents())
+	}
+	if storage.Services() != nil {
+		enduserServer.SetServiceRepository(storage.Services())
+		adminServer.SetServiceRepository(storage.Services())
+	}
+	if storage.UserGrants() != nil {
+		enduserServer.SetGrantRepository(storage.UserGrants())
+		adminServer.SetGrantRepository(storage.UserGrants())
+	}
 
 	// Create server manager
 	mgr := server.NewManager(enduserServer, adminServer, cfg.Server.Shutdown.Timeout, logger)
