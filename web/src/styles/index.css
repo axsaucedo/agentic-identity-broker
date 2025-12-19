@@ -1,0 +1,118 @@
+@import './fonts.css';
+@import 'tailwindcss';
+
+/* Premium design tokens */
+:root {
+  --color-cream: #faf9f7;
+  --color-sand: #f5f1ed;
+  --color-taupe: #e8e3de;
+  --color-navy-700: #1f3f6d;
+  --color-emerald-600: #16a34a;
+  --color-text-primary: #0d1829;
+  --color-text-secondary: #4a5366;
+  --color-text-tertiary: #7a8899;
+
+  font-family: 'Manrope', sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  background-color: var(--color-cream);
+  letter-spacing: -0.01em;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-width: 320px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--color-cream) 0%, var(--color-sand) 100%);
+}
+
+#root {
+  width: 100%;
+}
+
+/* Premium typography */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+p {
+  color: var(--color-text-secondary);
+}
+
+/* Distinctive link styling */
+a {
+  color: var(--color-navy-700);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+a:hover {
+  color: var(--color-text-primary);
+}
+
+/* Premium card system */
+.card {
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px 0 rgb(0 0 0 / 0.04), inset 0 1px 0 0 rgb(255 255 255 / 1);
+  border: 1px solid #f0ede8;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.card:hover {
+  box-shadow: 0 8px 20px -4px rgb(0 0 0 / 0.1), inset 0 1px 0 0 rgb(255 255 255 / 1);
+  transform: translateY(-2px);
+}
+
+/* Scrollbar refinement */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #d4cfc8;
+  border-radius: 4px;
+  backdrop-filter: blur(10px);
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #bbb3a8;
+}
+
+/* Utility classes */
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Premium fade animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Focus ring for accessibility with premium styling */
+*:focus-visible {
+  outline: 2px solid var(--color-navy-700);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

@@ -1,0 +1,626 @@
+# Configuration Guide
+
+This guide explains how to configure the Agentic Identity Broker for different deployment environments.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Configuration Sources](#configuration-sources)
+- [Precedence Rules](#precedence-rules)
+- [Environment-Specific Configuration](#environment-specific-configuration)
+- [YAML Configuration](#yaml-configuration)
+- [Command-Line Flags](#command-line-flags)
+- [Configuration Reference](#configuration-reference)
+- [Available Settings](#available-settings)
+- [Security Best Practices](#security-best-practices)
+- [Troubleshooting](#troubleshooting)
+
+## Overview
+
+The Identity Broker supports multiple configuration sources with clear precedence rules. You can combine .env files, YAML configuration, and command-line flags to achieve flexible, environment-specific configuration without code changes.
+
+### Key Features
+
+- **Multiple Sources**: .env files, YAML, CLI flags
+- **Environment Variable Substitution**: Use `${VAR_NAME}` in YAML files
+- **Environment-Specific**: Automatic loading of .env.{environment} files
+- **Secure by Default**: Sensitive values automatically redacted in logs
+- **Clear Validation**: Helpful error messages with fix instructions
+- **Audit Logging**: JSON audit log of all configuration sources
+
+## Configuration Sources
+
+The Identity Broker loads configuration from four sources (in order of precedence):
+
+### 1. Built-in Defaults
+
+Default values applied if no other source provides a value:
+- `log.level`: `info`
+- `log.format`: `text`
+
+### 2. .env Files
+
+Environment-specific files loaded automatically based on the `GO_ENV` environment variable:
+
+1. `.env` - Base configuration (committed to git as .env.example)
+2. `.env.local` - Local overrides (gitignored)
+3. `.env.{GO_ENV}` - Environment-specific (e.g., .env.production)
+4. `.env.{GO_ENV}.local` - Environment-specific local overrides (gitignored)
+
+**Example** `.env`:
+```bash
+# Base configuration
+IDENTITY_BROKER_LOG_LEVEL=info
+IDENTITY_BROKER_LOG_FORMAT=text
+```
+
+**Example** `.env.production`:
+```bash
+# Production overrides
+IDENTITY_BROKER_LOG_LEVEL=warn
+IDENTITY_BROKER_LOG_FORMAT=json
+```
+
+### 3. YAML Configuration File
+
+Optional YAML file for structured configuration. Supports environment variable substitution using `${VAR_NAME}` syntax.
+
+**File Location** (in order of precedence):
+1. Path from `--config` CLI flag
+2. Path from `IDENTITY_BROKER_CONFIG_PATH` environment variable
+3. `config.yaml` in current directory
+
+**Example** `config.yaml`:
+```yaml
+log:
+  level: ${IDENTITY_BROKER_LOG_LEVEL}
+  format: ${IDENTITY_BROKER_LOG_FORMAT}
+```
+
+### 4. Command-Line Flags
+
+Highest precedence - overrides all other sources.
+
+```bash
+identity-broker --log-level debug --log-format json
+```
+
+## Precedence Rules
+
+When the same configuration key is provided by multiple sources, the value from the highest-precedence source wins:
+
+```
+CLI Flags > YAML > .env Files > Defaults
+   (3)       (2)      (1)        (0)
+```
+
+**Example**:
+- Defaults set `log.level=info`
+- `.env` sets `IDENTITY_BROKER_LOG_LEVEL=warn`
+- `config.yaml` sets `log.level=${IDENTITY_BROKER_LOG_LEVEL}` (expands to `warn`)
+- CLI flag `--log-level=debug` is provided
+
+**Result**: `log.level=debug` (from CLI flag)
+
+## Environment-Specific Configuration
+
+Use the `GO_ENV` environment variable to control which .env files are loaded:
+
+### Development (default)
+```bash
+# GO_ENV defaults to "development" if not set
+identity-broker
+
+# Loads: .env → .env.local → .env.development → .env.development.local
+```
+
+### Production
+```bash
+GO_ENV=production identity-broker
+
+# Loads: .env → .env.local → .env.production → .env.production.local
+```
+
+### Staging
+```bash
+GO_ENV=staging identity-broker
+
+# Loads: .env → .env.local → .env.staging → .env.staging.local
+```
+
+## YAML Configuration
+
+### Basic Structure
+
+```yaml
+log:
+  level: info    # debug, info, warn, error
+  format: text   # text, json
+```
+
+### Environment Variable Substitution
+
+Reference environment variables using `${VAR_NAME}` syntax:
+
+```yaml
+log:
+  level: ${IDENTITY_BROKER_LOG_LEVEL}
+  format: ${IDENTITY_BROKER_LOG_FORMAT}
+```
+
+### Nested Variable References
+
+Environment variables can reference other environment variables:
+
+```bash
+# In .env
+BASE_LEVEL=info
+IDENTITY_BROKER_LOG_LEVEL=${BASE_LEVEL}
+```
+
+```yaml
+# In config.yaml
+log:
+  level: ${IDENTITY_BROKER_LOG_LEVEL}  # Expands to "info"
+```
+
+**Note**: Circular references are detected and will cause an error. Maximum expansion depth is 10 levels.
+
+### Security Validation
+
+The following patterns are **rejected** for security:
+- Command substitution: `$(command)` or backticks
+- Shell metacharacters: `;`, `|`, `&`, `>`, `<`
+- These protections prevent command injection attacks
+
+## Command-Line Flags
+
+### Available Flags
+
+```bash
+identity-broker [flags]
+
+Flags:
+  -c, --config string       config file path (overrides IDENTITY_BROKER_CONFIG_PATH)
+      --log-level string    log level: debug, info, warn, error
+      --log-format string   log format: text, json
+  -h, --help               help for identity-broker
+```
+
+### Examples
+
+```bash
+# Override log level
+identity-broker --log-level debug
+
+# Use custom config file
+identity-broker --config /etc/identity-broker/config.yaml
+
+# Multiple flags
+identity-broker --log-level debug --log-format json
+
+# Short form for config
+identity-broker -c config.production.yaml --log-level warn
+```
+
+## Configuration Reference
+
+This section provides a comprehensive quick-reference table for all configuration options. For detailed explanations and examples, see the [Available Settings](#available-settings) section below.
+
+### Current Configuration Options
+
+#### Logging Configuration
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
+|--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
+| `log.level` | enum | `info` | `debug`, `info`, `warn`, `error` | No | `IDENTITY_BROKER_LOG_LEVEL` | `--log-level` | Sets logging verbosity level. Use `debug` for troubleshooting, `info` for normal operation, `warn` for production. |
+| `log.format` | enum | `text` | `text`, `json` | No | `IDENTITY_BROKER_LOG_FORMAT` | `--log-format` | Sets log output format. Use `json` for production and log aggregation systems. |
+
+#### Server Configuration
+
+The Identity Broker runs two independent HTTP servers on separate ports:
+- **End-User Server**: Public-facing API for authentication and identity operations (default port 8000)
+- **Admin Server**: Internal management API for monitoring and administration (default port 14000)
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
+|--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
+| `server.enduser.port` | integer | `8000` | 1-65535 | No | `IDENTITY_BROKER_SERVER_ENDUSER_PORT` | `--server.enduser.port` | Port for end-user server. Must differ from admin port. |
+| `server.enduser.bind` | string | `::` | IPv4/IPv6 address or hostname | No | `IDENTITY_BROKER_SERVER_ENDUSER_BIND` | `--server.enduser.bind` | Bind address for end-user server. Use `::` for dual-stack (IPv6+IPv4), `0.0.0.0` for IPv4 only, or `127.0.0.1` for localhost only. |
+| `server.admin.port` | integer | `14000` | 1-65535 | No | `IDENTITY_BROKER_SERVER_ADMIN_PORT` | `--server.admin.port` | Port for admin server. Must differ from end-user port. |
+| `server.admin.bind` | string | `::` | IPv4/IPv6 address or hostname | No | `IDENTITY_BROKER_SERVER_ADMIN_BIND` | `--server.admin.bind` | Bind address for admin server. In production, restrict to private network (e.g., `10.0.1.0`) or use firewall rules. |
+| `server.shutdown.timeout` | duration | `30s` | 1s-5m | No | `IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT` | `--server.shutdown.timeout` | Maximum time to wait for in-flight requests to complete during graceful shutdown. Use longer timeouts (60s) in production. |
+
+**Server Configuration Notes:**
+- Both servers start atomically - if one fails to bind, both are stopped
+- Servers run independently after startup - failure of one doesn't affect the other
+- Health endpoints are available on both servers at `/health`
+- Graceful shutdown waits for in-flight requests to complete (up to timeout)
+
+#### IPv4/IPv6 Dual-Stack Support
+
+The Identity Broker supports flexible network binding:
+
+- **Dual-Stack (default)**: Bind to `::` accepts both IPv6 and IPv4 connections on systems with dual-stack support
+- **IPv6 Only**: Bind to `::1` (localhost) or specific IPv6 addresses
+- **IPv4 Only**: Bind to `0.0.0.0` (all interfaces) or `127.0.0.1` (localhost) for IPv4-only systems
+- **Automatic Fallback**: If IPv6 binding fails, automatically falls back to IPv4 with a warning log
+
+**Example YAML configurations** are provided in `examples/config/`:
+- `config.ipv6-only.yaml` - Dual-stack with IPv6 preference
+- `config.ipv4-only.yaml` - IPv4-only configuration
+
+#### Graceful Shutdown
+
+The broker implements graceful shutdown to ensure requests complete cleanly:
+
+1. On receiving SIGTERM or SIGINT signal, health status changes to `shutting_down`
+2. New requests are rejected with HTTP 503 Service Unavailable
+3. In-flight requests are allowed to complete (up to `server.shutdown.timeout`)
+4. After timeout, remaining connections are forcefully closed
+5. Process exits cleanly
+
+**Example:**
+```bash
+# Start broker
+identity-broker &
+
+# Graceful shutdown (waits for requests)
+kill -TERM $(pgrep identity-broker)
+
+# Force shutdown (immediate)
+kill -KILL $(pgrep identity-broker)
+```
+
+#### Authentication Configuration
+
+Pre-authentication mode allows the Identity Broker to trust authenticated principals from a reverse proxy. The reverse proxy handles user authentication and passes the authenticated user identifier via an HTTP header.
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | Description |
+|--------|------|---------------|--------------|-----------|----------------------|-------------|
+| `server.enduser.authentication.preauth.principal_header_name` | string | `X-Remote-User` | Any HTTP header name | No | `IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME` | HTTP header containing the authenticated user principal for end-user server |
+| `server.admin.authentication.preauth.principal_header_name` | string | `X-Remote-User` | Any HTTP header name | No | `IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME` | HTTP header containing the authenticated user principal for admin server |
+
+**Pre-Authentication Configuration Notes:**
+- The principal header must be set by a **trusted reverse proxy only** (nginx, Traefik, HAProxy, etc.)
+- Never expose the Identity Broker to untrusted networks - always use a reverse proxy for authentication
+- The principal value is trimmed of leading/trailing whitespace
+- Maximum principal length: 200 characters (longer principals are rejected with 400 Bad Request)
+- Empty/missing headers result in 401 Unauthorized on protected routes
+- Optional authentication routes allow missing principals
+
+**Example YAML configurations:**
+
+Development (custom header):
+```yaml
+server:
+  enduser:
+    port: 8000
+    bind: "::"
+    authentication:
+      preauth:
+        principal_header_name: X-Authenticated-User
+  admin:
+    port: 14000
+    bind: "::"
+    authentication:
+      preauth:
+        principal_header_name: X-Remote-User
+```
+
+Production (environment variable):
+```yaml
+server:
+  enduser:
+    port: 8000
+    bind: "::"
+    authentication:
+      preauth:
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER}
+  admin:
+    port: 14000
+    bind: "10.0.1.0"  # Restrict to private network
+    authentication:
+      preauth:
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER}
+```
+
+Then set the environment variable:
+```bash
+export IDENTITY_BROKER_PRINCIPAL_HEADER="X-Authenticated-User"
+```
+
+**Nginx Reverse Proxy Example:**
+```nginx
+upstream identity_broker {
+    server localhost:8000;
+}
+
+server {
+    listen 80;
+    server_name api.example.com;
+
+    location / {
+        auth_request /auth;
+        proxy_pass http://identity_broker;
+        proxy_set_header X-Remote-User $remote_user;
+    }
+
+    location = /auth {
+        internal;
+        auth_basic "Restricted";
+        auth_basic_user_file /etc/nginx/.htpasswd;
+        return 200;
+    }
+}
+```
+
+**Notes:**
+- All configuration options have built-in defaults and are optional unless marked "Required"
+- Environment variables follow the pattern: `IDENTITY_BROKER_{SECTION}_{KEY}` (uppercased)
+- CLI flags follow the pattern: `--{section}-{key}` (lowercase with hyphens)
+- See [Precedence Rules](#precedence-rules) for how values from different sources are resolved
+- For YAML configuration syntax, see [YAML Configuration](#yaml-configuration)
+
+### Future Configuration Options
+
+The following configuration sections are planned for future releases. This table documents the intended structure for extensibility:
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
+|--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
+| `server.host` | string | `0.0.0.0` | Any valid hostname/IP | No | `IDENTITY_BROKER_SERVER_HOST` | `--server-host` | Server bind address. Use `127.0.0.1` for local-only access. |
+| `server.port` | integer | `8080` | 1-65535 | No | `IDENTITY_BROKER_SERVER_PORT` | `--server-port` | Server listen port for HTTP requests. |
+| `server.tls.enabled` | boolean | `false` | `true`, `false` | No | `IDENTITY_BROKER_SERVER_TLS_ENABLED` | `--server-tls-enabled` | Enable TLS/HTTPS for secure connections. |
+| `server.tls.cert_file` | string | - | Valid file path | Yes (if TLS enabled) | `IDENTITY_BROKER_SERVER_TLS_CERT_FILE` | `--server-tls-cert-file` | Path to TLS certificate file (PEM format). |
+| `server.tls.key_file` | string | - | Valid file path | Yes (if TLS enabled) | `IDENTITY_BROKER_SERVER_TLS_KEY_FILE` | `--server-tls-key-file` | Path to TLS private key file (PEM format). |
+| `database.type` | enum | `postgres` | `postgres`, `mysql`, `sqlite` | No | `IDENTITY_BROKER_DATABASE_TYPE` | `--database-type` | Database backend type for persistent storage. |
+| `database.host` | string | `localhost` | Valid hostname/IP | Yes | `IDENTITY_BROKER_DATABASE_HOST` | `--database-host` | Database server hostname or IP address. |
+| `database.port` | integer | `5432` | 1-65535 | No | `IDENTITY_BROKER_DATABASE_PORT` | `--database-port` | Database server port (defaults: PostgreSQL 5432, MySQL 3306). |
+| `database.name` | string | `identity_broker` | Valid database name | Yes | `IDENTITY_BROKER_DATABASE_NAME` | `--database-name` | Database name to use for broker data. |
+| `database.username` | string | - | Valid username | Yes | `IDENTITY_BROKER_DATABASE_USERNAME` | `--database-username` | Database authentication username. |
+| `database.password` | string | - | Any string | Yes | `IDENTITY_BROKER_DATABASE_PASSWORD` | N/A | Database authentication password. Sensitive - redacted in logs. |
+| `database.ssl_mode` | enum | `prefer` | `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full` | No | `IDENTITY_BROKER_DATABASE_SSL_MODE` | `--database-ssl-mode` | SSL/TLS mode for database connections. |
+| `database.max_connections` | integer | `25` | 1-1000 | No | `IDENTITY_BROKER_DATABASE_MAX_CONNECTIONS` | `--database-max-connections` | Maximum number of open database connections in pool. |
+| `auth.jwt.secret` | string | - | Base64 string (min 32 bytes) | Yes | `IDENTITY_BROKER_AUTH_JWT_SECRET` | N/A | JWT signing secret key. Sensitive - redacted in logs. |
+| `auth.jwt.expiry` | duration | `1h` | Valid duration (e.g., `30m`, `2h`) | No | `IDENTITY_BROKER_AUTH_JWT_EXPIRY` | `--auth-jwt-expiry` | JWT token expiration duration. |
+| `auth.session.timeout` | duration | `24h` | Valid duration | No | `IDENTITY_BROKER_AUTH_SESSION_TIMEOUT` | `--auth-session-timeout` | User session inactivity timeout. |
+| `auth.providers` | list | `[]` | Array of provider configs | Yes | N/A | N/A | List of configured identity providers (OAuth, SAML, etc.). |
+
+**Future Options Notes:**
+- Options in this table are for planning and design purposes
+- Not yet implemented in the current release
+- Structure may change based on requirements and feedback
+- Sensitive fields (passwords, secrets, keys) will never have CLI flags for security
+- Duration values accept formats like: `30s`, `5m`, `1h`, `24h`
+
+### Naming Conventions
+
+The configuration system follows consistent naming patterns across all sources:
+
+1. **YAML Paths**: Use dot notation with lowercase keys (e.g., `log.level`, `server.tls.enabled`)
+2. **Environment Variables**: Prefix + uppercase + underscores (e.g., `IDENTITY_BROKER_LOG_LEVEL`, `IDENTITY_BROKER_SERVER_TLS_ENABLED`)
+3. **CLI Flags**: Lowercase with hyphens (e.g., `--log-level`, `--server-tls-enabled`)
+4. **Nested Config**: Each level adds a separator (`.` in YAML, `_` in env vars, `-` in flags)
+
+### Configuration by Use Case
+
+**Development Environment:**
+```yaml
+log:
+  level: debug
+  format: text
+```
+
+**Production Environment:**
+```yaml
+log:
+  level: warn
+  format: json
+```
+
+**Troubleshooting:**
+```bash
+# Temporarily override to debug level
+identity-broker --log-level debug
+```
+
+For complete configuration examples and detailed explanations, continue to the [Available Settings](#available-settings) section.
+
+## Available Settings
+
+### Logging Configuration
+
+#### log.level
+
+**Description**: Sets the logging verbosity level.
+
+**Valid Values**: `debug`, `info`, `warn`, `error`
+
+**Default**: `info`
+
+**Environment Variable**: `IDENTITY_BROKER_LOG_LEVEL`
+
+**CLI Flag**: `--log-level`
+
+**Examples**:
+```bash
+# .env file
+IDENTITY_BROKER_LOG_LEVEL=debug
+
+# YAML file
+log:
+  level: warn
+
+# CLI flag
+--log-level error
+```
+
+#### log.format
+
+**Description**: Sets the log output format.
+
+**Valid Values**: `text`, `json`
+
+**Default**: `text`
+
+**Environment Variable**: `IDENTITY_BROKER_LOG_FORMAT`
+
+**CLI Flag**: `--log-format`
+
+**Examples**:
+```bash
+# .env file
+IDENTITY_BROKER_LOG_FORMAT=json
+
+# YAML file
+log:
+  format: json
+
+# CLI flag
+--log-format json
+```
+
+**Recommendation**: Use `json` format in production for structured logging and log aggregation.
+
+## Security Best Practices
+
+### Sensitive Values
+
+Any configuration key starting with `IDENTITY_BROKER_` or containing these keywords is considered sensitive and will be redacted in logs:
+- `PASSWORD`
+- `SECRET`
+- `TOKEN`
+- `KEY`
+- `CREDENTIAL`
+- `AUTH`
+
+**Example**:
+```bash
+IDENTITY_BROKER_API_KEY=secret123
+DB_PASSWORD=mypassword
+```
+
+Both values will be shown as `***REDACTED***` in startup summary and audit logs.
+
+### Never Commit Secrets
+
+1. Use `.env.local` and `.env.{environment}.local` for local secrets (gitignored)
+2. Commit `.env.example` and `.env.production.example` as templates
+3. Use environment variables or secret management systems in production
+
+### File Permissions
+
+Configuration files should not be world-readable:
+
+```bash
+# Recommended permissions
+chmod 600 .env
+chmod 600 config.yaml
+```
+
+### Environment Variable Injection
+
+The system validates against command injection attempts. The following will be rejected:
+
+```yaml
+# REJECTED: Command substitution
+log:
+  level: $(malicious_command)
+
+# REJECTED: Shell metacharacters
+database:
+  host: localhost; rm -rf /
+```
+
+## Troubleshooting
+
+### Configuration Not Loading
+
+**Symptom**: Application uses default values instead of your configuration.
+
+**Solutions**:
+1. Check file locations - .env files must be in the current directory or use absolute paths
+2. Verify environment variable names start with `IDENTITY_BROKER_`
+3. Check YAML syntax is valid (use `yamllint` or online validator)
+4. Use `--help` to verify flag names
+
+### Undefined Environment Variable Error
+
+**Symptom**: Error message: "environment variable 'VAR_NAME' is not set"
+
+**Cause**: YAML file references `${VAR_NAME}` but variable doesn't exist in environment.
+
+**Solutions**:
+1. Set the environment variable: `export VAR_NAME=value`
+2. Add to .env file: `VAR_NAME=value`
+3. Remove the ${} reference from YAML and use a literal value
+
+### Invalid Configuration Value
+
+**Symptom**: Error message: "invalid value 'X' for field 'Y'"
+
+**Cause**: Configuration value doesn't match expected format or enum values.
+
+**Solutions**:
+1. Check error message for expected values (e.g., "expected: debug, info, warn, or error")
+2. Verify spelling and case (values are case-sensitive)
+3. Check for extra whitespace or quotes in values
+
+### Circular Reference Detected
+
+**Symptom**: Error message: "circular reference detected: VAR1 → VAR2 → VAR1"
+
+**Cause**: Environment variables reference each other in a loop.
+
+**Solution**: Break the circular dependency:
+
+```bash
+# WRONG
+VAR1=${VAR2}
+VAR2=${VAR1}
+
+# CORRECT
+VAR1=value1
+VAR2=${VAR1}
+```
+
+### Viewing Effective Configuration
+
+To see which configuration values are being used and from which sources:
+
+```bash
+identity-broker
+
+# Output shows:
+# === Configuration Summary ===
+#   log.level: debug [source: cli]
+#   log.format: json [source: yaml (/path/to/config.yaml)]
+#
+# === Configuration Sources ===
+#   [0] default: defaults (loaded at ...)
+#   [1] env_file: /path/to/.env (loaded at ...)
+#   [2] yaml: /path/to/config.yaml (loaded at ...)
+#   [3] cli: cli (loaded at ...)
+```
+
+### Audit Log
+
+For compliance and troubleshooting, check the JSON audit log (first output on startup):
+
+```json
+{
+  "timestamp": "2025-12-15T09:00:00Z",
+  "event": "configuration_loaded",
+  "sources": [...],
+  "keys": ["log.level", "log.format"],
+  "redacted_keys": []
+}
+```
+
+## Getting Help
+
+- Review error messages carefully - they include fix instructions
+- Check the startup summary to see which sources were loaded
+- Verify file paths are absolute or relative to current directory
+- Ensure GO_ENV matches your environment name
+- Review [ADR 002](../adrs/002-configuration-libraries.md) for implementation details
+- Check [ARCHITECTURE.md](../ARCHITECTURE.md) for configuration subsystem architecture

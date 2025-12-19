@@ -1,0 +1,649 @@
+openapi: 3.0.3
+info:
+  title: Consent Management API
+  description: |
+    API endpoints for user consent management in the agentic identity broker.
+    Allows users to view and manage delegations to agents with fine-grained
+    service and scope control.
+  version: 1.0.0
+  contact:
+    name: Identity Broker Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server
+
+security:
+  - SessionAuth: []
+
+tags:
+  - name: Consent
+    description: User consent management operations
+  - name: User
+    description: Current user information
+
+paths:
+  /api/me:
+    get:
+      tags:
+        - User
+      summary: Get current user information
+      description: |
+        Returns information about the currently authenticated user,
+        including principal, display name, and profile picture.
+      operationId: getUserInfo
+      responses:
+        '200':
+          description: User information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetUserInfoResponse'
+              examples:
+                userWithPicture:
+                  summary: User with profile picture
+                  value:
+                    data:
+                      principal: user@example.com
+                      displayName: Jane Doe
+                      pictureUrl: https://cdn.example.com/users/jane.jpg
+                userWithoutPicture:
+                  summary: User without profile picture
+                  value:
+                    data:
+                      principal: alice@company.com
+                      displayName: Alice Smith
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/consent/agents:
+    get:
+      tags:
+        - Consent
+      summary: List agents with active grants
+      description: |
+        Returns a list of all agents to which the current user has
+        delegated access, including grant summaries and expiration info.
+      operationId: getAgentDelegations
+      responses:
+        '200':
+          description: Agent delegations retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAgentDelegationsResponse'
+              examples:
+                multipleDelegations:
+                  summary: User with multiple active delegations
+                  value:
+                    data:
+                      - agentId: 550e8400-e29b-41d4-a716-446655440000
+                        displayName: Data Analysis Assistant
+                        logoUrl: https://cdn.example.com/agents/data-assistant.png
+                        activeGrantCount: 3
+                        lastModifiedAt: '2025-12-17T14:30:00Z'
+                        expiresAt: null
+                      - agentId: 660e8400-e29b-41d4-a716-446655440001
+                        displayName: Document Processor
+                        activeGrantCount: 2
+                        lastModifiedAt: '2025-12-16T09:15:00Z'
+                        expiresAt: '2026-01-15T00:00:00Z'
+                noDelegations:
+                  summary: User with no delegations
+                  value:
+                    data: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/consent/agent/{agentId}:
+    get:
+      tags:
+        - Consent
+      summary: Get agent detail and available services
+      description: |
+        Returns detailed information about a specific agent, including
+        all available third-party OAuth2 services and their scopes.
+      operationId: getAgentDetail
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Agent detail retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAgentDetailResponse'
+              examples:
+                agentWithServices:
+                  $ref: '#/components/examples/AgentDetailExample'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AgentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/consent/agent/{agentId}/grants:
+    get:
+      tags:
+        - Consent
+      summary: Get user's grants for an agent
+      description: |
+        Returns the current user's active grants for the specified agent,
+        including all delegated services and scopes.
+      operationId: getAgentGrants
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Grants retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAgentGrantsResponse'
+              examples:
+                existingGrant:
+                  $ref: '#/components/examples/ExistingGrantExample'
+                noGrants:
+                  summary: No existing grants
+                  value:
+                    data: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AgentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Consent
+      summary: Create or update grant for an agent
+      description: |
+        Creates a new grant or updates an existing grant for the specified agent.
+        One grant per user-agent pair; subsequent calls update the existing grant.
+        Submitting empty delegatedTokens array revokes the grant.
+      operationId: createOrUpdateGrant
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrUpdateGrantRequest'
+            examples:
+              createIndefiniteGrant:
+                summary: Create indefinite grant
+                value:
+                  delegatedTokens:
+                    - serviceId: google-drive-service-id
+                      scopes: [read:files, write:files]
+                    - serviceId: github-service-id
+                      scopes: [read:repos, write:repos]
+              createExpiringGrant:
+                summary: Create grant with expiration
+                value:
+                  delegatedTokens:
+                    - serviceId: google-drive-service-id
+                      scopes: [read:files]
+                  validUntil: '2026-06-01T00:00:00Z'
+              revokeGrant:
+                summary: Revoke grant (empty delegations)
+                value:
+                  delegatedTokens: []
+      responses:
+        '200':
+          description: Grant created or updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrUpdateGrantResponse'
+              examples:
+                grantCreated:
+                  $ref: '#/components/examples/GrantCreatedExample'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AgentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+      description: Session token cookie set by authentication system
+
+  parameters:
+    AgentIdParam:
+      name: agentId
+      in: path
+      required: true
+      description: Unique agent identifier (UUID)
+      schema:
+        type: string
+        format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440000
+
+  schemas:
+    # User Info
+    UserInfo:
+      type: object
+      required:
+        - principal
+        - displayName
+      properties:
+        principal:
+          type: string
+          description: User's principal identifier
+          example: user@example.com
+        displayName:
+          type: string
+          description: Human-readable display name
+          example: Jane Doe
+        pictureUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user's profile picture
+          example: https://cdn.example.com/users/jane.jpg
+
+    GetUserInfoResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/UserInfo'
+
+    # Agent Delegation
+    AgentDelegation:
+      type: object
+      required:
+        - agentId
+        - displayName
+        - activeGrantCount
+        - lastModifiedAt
+      properties:
+        agentId:
+          type: string
+          format: uuid
+          description: Unique agent identifier
+        displayName:
+          type: string
+          description: Agent's display name
+          example: Data Analysis Assistant
+        logoUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to agent's logo
+        activeGrantCount:
+          type: integer
+          minimum: 0
+          description: Number of active service grants
+          example: 3
+        lastModifiedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of last grant modification
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional grant expiration (null = indefinite)
+
+    GetAgentDelegationsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentDelegation'
+
+    # Agent Detail
+    AgentDetail:
+      type: object
+      required:
+        - agentId
+        - displayName
+        - description
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          example: Data Analysis Assistant
+        description:
+          type: string
+          example: Analyzes datasets and generates insights
+        logoUrl:
+          type: string
+          format: uri
+          nullable: true
+        governanceUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Link to agent governance documentation
+        userDocumentationUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Link to user-facing documentation
+        agentInterfaceUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Link to agent's public interface
+
+    # Third-Party Service
+    ThirdpartyService:
+      type: object
+      required:
+        - serviceId
+        - displayName
+        - scopes
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+          description: Unique service identifier
+        displayName:
+          type: string
+          example: Google Drive
+        logoUrl:
+          type: string
+          format: uri
+          nullable: true
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceScope'
+
+    ServiceScope:
+      type: object
+      required:
+        - value
+        - description
+      properties:
+        value:
+          type: string
+          description: OAuth2 scope value
+          example: read:files
+        description:
+          type: string
+          description: Human-readable scope description
+          example: Read files from your Google Drive
+
+    GetAgentDetailResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - agent
+            - services
+          properties:
+            agent:
+              $ref: '#/components/schemas/AgentDetail'
+            services:
+              type: array
+              items:
+                $ref: '#/components/schemas/ThirdpartyService'
+
+    # User Grant
+    UserGrant:
+      type: object
+      required:
+        - grantId
+        - agentId
+        - principal
+        - delegatedTokens
+        - createdAt
+        - updatedAt
+      properties:
+        grantId:
+          type: string
+          format: uuid
+          description: Unique grant identifier
+        agentId:
+          type: string
+          format: uuid
+          description: Agent receiving the grant
+        principal:
+          type: string
+          description: User who created the grant
+        delegatedTokens:
+          type: array
+          items:
+            $ref: '#/components/schemas/DelegatedToken'
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional expiration (null = indefinite)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DelegatedToken:
+      type: object
+      required:
+        - serviceId
+        - scopes
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          example: [read:files, write:files]
+
+    GetAgentGrantsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserGrant'
+
+    # Request/Response for Grant Creation
+    CreateOrUpdateGrantRequest:
+      type: object
+      required:
+        - delegatedTokens
+      properties:
+        delegatedTokens:
+          type: array
+          items:
+            type: object
+            required:
+              - serviceId
+              - scopes
+            properties:
+              serviceId:
+                type: string
+                format: uuid
+              scopes:
+                type: array
+                items:
+                  type: string
+                minItems: 1
+          description: Service delegations (empty array = revoke grant)
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional expiration (omit for indefinite)
+
+    CreateOrUpdateGrantResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/UserGrant'
+
+    # Error Response
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - code
+        - message
+      properties:
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        code:
+          type: string
+          description: Machine-readable error code
+          example: INVALID_SCOPES
+        message:
+          type: string
+          description: Human-readable error message
+          example: One or more requested scopes do not exist
+        details:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: Field-level validation errors
+          example:
+            delegatedTokens[1].scopes:
+              - Scope 'admin:everything' does not exist for service 'github-service-id'
+
+  responses:
+    Unauthorized:
+      description: Authentication required or session expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: 401
+            code: UNAUTHORIZED
+            message: Authentication required
+
+    AgentNotFound:
+      description: Agent not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: 404
+            code: AGENT_NOT_FOUND
+            message: Agent with specified ID does not exist
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: 400
+            code: VALIDATION_ERROR
+            message: Request validation failed
+            details:
+              delegatedTokens[0].serviceId:
+                - serviceId is required
+              validUntil:
+                - validUntil must be a future date
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status: 500
+            code: INTERNAL_ERROR
+            message: An unexpected error occurred
+
+  examples:
+    AgentDetailExample:
+      value:
+        data:
+          agent:
+            agentId: 550e8400-e29b-41d4-a716-446655440000
+            displayName: Data Analysis Assistant
+            description: Analyzes datasets and generates insights
+            logoUrl: https://cdn.example.com/agents/data-assistant.png
+            governanceUrl: https://example.com/governance/data-assistant
+            userDocumentationUrl: https://docs.example.com/agents/data-assistant
+          services:
+            - serviceId: google-drive-service-id
+              displayName: Google Drive
+              logoUrl: https://cdn.example.com/services/google-drive.png
+              scopes:
+                - value: read:files
+                  description: Read files from your Google Drive
+                - value: write:files
+                  description: Create and update files in your Google Drive
+            - serviceId: github-service-id
+              displayName: GitHub
+              scopes:
+                - value: read:repos
+                  description: Read access to repositories
+                - value: write:repos
+                  description: Write access to repositories
+
+    ExistingGrantExample:
+      value:
+        data:
+          - grantId: 770e8400-e29b-41d4-a716-446655440002
+            agentId: 550e8400-e29b-41d4-a716-446655440000
+            principal: user@example.com
+            delegatedTokens:
+              - serviceId: google-drive-service-id
+                scopes: [read:files, write:files]
+              - serviceId: github-service-id
+                scopes: [read:repos]
+            validUntil: '2026-06-01T00:00:00Z'
+            createdAt: '2025-12-18T10:00:00Z'
+            updatedAt: '2025-12-18T10:00:00Z'
+
+    GrantCreatedExample:
+      value:
+        data:
+          grantId: 770e8400-e29b-41d4-a716-446655440002
+          agentId: 550e8400-e29b-41d4-a716-446655440000
+          principal: user@example.com
+          delegatedTokens:
+            - serviceId: google-drive-service-id
+              scopes: [read:files, write:files]
+            - serviceId: github-service-id
+              scopes: [read:repos, write:repos]
+          validUntil: null
+          createdAt: '2025-12-18T10:00:00Z'
+          updatedAt: '2025-12-18T10:00:00Z'

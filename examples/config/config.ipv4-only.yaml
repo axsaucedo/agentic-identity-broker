@@ -1,0 +1,45 @@
+# Agentic Identity Broker - IPv4-Only Configuration
+# Use this configuration for IPv4-only environments
+# Useful for systems without IPv6 support or when IPv6 must be explicitly disabled
+# To run: identity-broker --config ./examples/config/config.ipv4-only.yaml
+
+log:
+  # Info level for normal operation
+  level: info
+  # JSON format for structured logging
+  format: json
+
+server:
+  # End-user server configuration (public-facing API)
+  enduser:
+    # Standard port for end-user traffic
+    port: 8000
+    # Bind to all IPv4 interfaces
+    # 0.0.0.0 accepts connections from any IPv4 address
+    bind: "0.0.0.0"
+    # Authentication configuration for end-user server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Remote-User
+
+  # Admin server configuration (internal management API)
+  admin:
+    # Standard admin port
+    port: 14000
+    # Bind to IPv4 localhost only
+    # 127.0.0.1 is the IPv4 loopback address
+    # Restricts admin access to local machine only
+    bind: "127.0.0.1"
+    # Authentication configuration for admin server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Remote-User
+
+  # Graceful shutdown configuration
+  shutdown:
+    # Standard timeout
+    timeout: 30s

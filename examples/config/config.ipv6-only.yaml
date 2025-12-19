@@ -1,0 +1,44 @@
+# Agentic Identity Broker - IPv6-Only Configuration
+# Use this configuration for IPv6-only environments
+# Tests dual-stack binding with IPv6 preference
+# To run: identity-broker --config ./examples/config/config.ipv6-only.yaml
+
+log:
+  # Info level for normal operation
+  level: info
+  # JSON format for structured logging
+  format: json
+
+server:
+  # End-user server configuration (public-facing API)
+  enduser:
+    # Standard port for end-user traffic
+    port: 8000
+    # Bind to dual-stack (IPv6 with IPv4 fallback)
+    # :: accepts both IPv6 and IPv4 connections on systems with dual-stack support
+    bind: "::"
+    # Authentication configuration for end-user server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Remote-User
+
+  # Admin server configuration (internal management API)
+  admin:
+    # Standard admin port
+    port: 14000
+    # Bind to IPv6 localhost only
+    # ::1 is the IPv6 loopback address (equivalent to 127.0.0.1 in IPv4)
+    bind: "::1"
+    # Authentication configuration for admin server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: X-Remote-User
+
+  # Graceful shutdown configuration
+  shutdown:
+    # Standard timeout
+    timeout: 30s
