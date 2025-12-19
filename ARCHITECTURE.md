@@ -272,6 +272,68 @@ App
 - **Dependency Scanning**: Regular npm audit for vulnerabilities
 - **TypeScript**: Compile-time type checking prevents runtime errors
 
+#### 3.1.3. Public API Documentation
+
+**Purpose**: Comprehensive OpenAPI 3.0.3 documentation of all HTTP APIs exposed by the Identity Broker service.
+
+**Architecture**: Dual-port HTTP server with clear separation between end-user and administrative APIs.
+
+**API Specifications**:
+
+- **[/api/enduser/openapi.yaml](/api/enduser/openapi.yaml)** - End-user server (Port 8000)
+  - Canonical OpenAPI documentation for all end-user facing APIs
+  - Endpoints: Health check, user info, consent management (agent delegations, service grants)
+  - Authentication: Pre-authentication via reverse proxy (X-Remote-User header) + session-based
+  - Response envelope: Consistent `{"data": ...}` structure for resource endpoints
+  - Error handling: Standardized error response format with code and message
+
+- **[/api/admin/openapi.yaml](/api/admin/openapi.yaml)** - Admin server (Port 14000)
+  - Canonical OpenAPI documentation for all administrative APIs
+  - Endpoints: Health check, agent management (CRUD), service management (CRUD)
+  - Authentication: Pre-authentication via reverse proxy (admin-level access controlled upstream)
+  - Security emphasis: Client secrets always redacted in responses (SR-003)
+  - Referential integrity: 409 Conflict responses when deleting services with active grants
+  - OAuth2 support: Service metadata for OIDC discovery
+
+**Key Features**:
+- **OpenAPI 3.0.3 Compliant**: Specifications follow OpenAPI 3.0.3 standard for interoperability
+- **Zalando Guidelines Compliant**: APIs follow Zalando RESTful API and Event Guidelines (https://opensource.zalando.com/restful-api-guidelines/)
+- **Pre-Implementation Design**: All APIs designed and documented before implementation (Constitution Principle X)
+- **Examples Included**: Realistic examples for all endpoints covering success and error cases
+- **User-Confirmed**: API specifications confirmed with users/stakeholders before implementation (Constitution Principle IV & X)
+
+**Dual-Port Architecture**:
+```
+End-User Server (Port 8000):
+  ├── GET /health
+  ├── GET /api/me
+  └── /api/consent/*
+      ├── GET /agents
+      ├── GET /agent/{agent-id}
+      ├── POST /agent/{agent-id}/grants
+
+Admin Server (Port 14000):
+  ├── GET /health
+  ├── /api/agents/*
+  │   ├── POST / (create)
+  │   ├── GET / (list)
+  │   ├── GET /{id}
+  │   ├── PUT /{id}
+  │   └── DELETE /{id}
+  └── /api/services/*
+      ├── POST / (create)
+      ├── GET / (list)
+      ├── GET /{id}
+      ├── PUT /{id}
+      └── DELETE /{id}
+```
+
+**Usage**:
+- Import specifications into Swagger UI, Redoc, or other OpenAPI tooling
+- Generate API client libraries for multiple languages via OpenAPI generators
+- Validate API implementation compliance against documented spec
+- Reference for integration testing and contract validation
+
 ## 4. Data Stores
 
 (List and describe the databases and other persistent storage solutions used.)
