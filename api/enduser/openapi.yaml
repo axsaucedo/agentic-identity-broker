@@ -1,0 +1,1083 @@
+openapi: 3.0.3
+info:
+  title: Agentic Identity Broker - End-User API
+  description: |
+    End-user API endpoints for the Agentic Identity Broker running on port 8000.
+
+    This API provides consent management capabilities allowing users to:
+    - View their user information
+    - List agents they have granted access to
+    - Review detailed agent information and available services
+    - View and manage grants for specific agents
+    - Grant, update, or revoke delegated access to third-party services
+
+    ## Authentication
+
+    All API endpoints (except `/health`) require authentication via:
+    1. **Pre-authentication**: Reverse proxy (e.g., oauth2-proxy, nginx) validates the user
+    2. **Principal Header**: Principal extracted from `X-Remote-User` header (configurable)
+    3. **Session Cookie**: Session-based authentication established after pre-auth
+
+    The `X-Remote-User` header is set by the upstream authentication proxy and contains
+    the user's principal identifier (typically email address or UUID).
+
+    ## CORS
+
+    CORS is enabled for all `/api/*` routes on the end-user server to support browser-based
+    single-page applications.
+
+    ## Response Format
+
+    - **Success responses**: Most endpoints wrap data in a `{"data": ...}` envelope
+    - **Error responses**: Follow format `{"error": "code", "message": "description"}`
+    - **Date/Time format**: ISO 8601 (RFC3339) format, e.g., `2025-12-19T10:30:00Z`
+
+    ## API Guidelines
+
+    This API follows the Zalando RESTful API Guidelines with emphasis on:
+    - Resource-oriented design
+    - Consistent error handling
+    - Clear HTTP status code semantics
+    - Comprehensive validation messages
+  version: 1.0.0
+  contact:
+    name: Agentic Identity Broker Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server (end-user port)
+  - url: https://broker.example.com
+    description: Production server
+
+security:
+  - SessionAuth: []
+  - PrincipalHeader: []
+
+tags:
+  - name: Health
+    description: Health check and monitoring endpoints (no authentication required)
+  - name: User
+    description: Current user information
+  - name: Consent
+    description: User consent and delegation management
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: |
+        Returns the current health status of the end-user HTTP server.
+
+        This endpoint does not require authentication and is intended for:
+        - Load balancer health checks
+        - Kubernetes liveness/readiness probes
+        - Monitoring systems
+        - Service discovery health validation
+
+        **Status Codes**:
+        - `200 OK`: Server is healthy and accepting requests
+        - `503 Service Unavailable`: Server is starting, shutting down, or unhealthy
+
+        **Health States**:
+        - `healthy`: Server is operational and processing requests normally
+        - `starting`: Server is initializing (binding to port, setting up routes)
+        - `shutting_down`: Graceful shutdown in progress, completing in-flight requests
+        - `unhealthy`: Server encountered an error and requires restart
+      operationId: getHealth
+      tags:
+        - Health
+      security: []  # No authentication required
+      responses:
+        '200':
+          description: Server is healthy and accepting requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  summary: Healthy server
+                  value:
+                    status: healthy
+                    server: enduser
+                    timestamp: '2025-12-19T10:30:00Z'
+                    uptime_seconds: 3600
+        '503':
+          description: Server is unavailable (starting, shutting down, or unhealthy)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                starting:
+                  summary: Server starting up
+                  value:
+                    status: starting
+                    server: enduser
+                    timestamp: '2025-12-19T10:25:00Z'
+                    uptime_seconds: 0
+                shutting_down:
+                  summary: Server shutting down gracefully
+                  value:
+                    status: shutting_down
+                    server: enduser
+                    timestamp: '2025-12-19T11:30:00Z'
+                    uptime_seconds: 7200
+                unhealthy:
+                  summary: Server in unhealthy state
+                  value:
+                    status: unhealthy
+                    server: enduser
+                    timestamp: '2025-12-19T10:35:00Z'
+                    uptime_seconds: 600
+
+  /api/me:
+    get:
+      summary: Get current user information
+      description: |
+        Returns information about the currently authenticated user.
+
+        The user information includes:
+        - **Principal**: Unique identifier (email, UUID, etc.) from authentication system
+        - **Display Name**: Human-readable name for display in UI
+        - **Picture URL**: Optional avatar/profile picture URL
+
+        The principal is extracted from the `X-Remote-User` header set by the
+        upstream authentication proxy (oauth2-proxy, nginx, etc.).
+
+        **Use Cases**:
+        - Display user info in application header
+        - Show "logged in as" indicators
+        - Personalize UI with user's name/avatar
+        - Verify authentication status
+      operationId: getCurrentUser
+      tags:
+        - User
+      responses:
+        '200':
+          description: User information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetUserInfoResponse'
+              examples:
+                userWithPicture:
+                  summary: User with profile picture
+                  value:
+                    data:
+                      principal: user@example.com
+                      displayName: Jane Doe
+                      pictureUrl: https://cdn.example.com/users/jane.jpg
+                userWithoutPicture:
+                  summary: User without profile picture
+                  value:
+                    data:
+                      principal: alice@company.com
+                      displayName: Alice Smith
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/consent/agents:
+    get:
+      summary: List agents with active delegations
+      description: |
+        Returns a list of all agents to which the current user has granted access.
+
+        Each agent delegation includes:
+        - **Agent ID**: Unique identifier for the agent
+        - **Display Name**: Human-readable agent name
+        - **Logo URL**: Optional agent logo/icon
+        - **Active Grant Count**: Number of third-party services delegated
+        - **Last Modified**: When the delegation was last updated
+        - **Expires At**: Optional expiration date (null = indefinite)
+
+        **Response Characteristics**:
+        - Returns empty array if user has no active delegations
+        - Only includes agents with at least one active grant
+        - Ordered by last modified date (newest first)
+
+        **Use Cases**:
+        - Dashboard showing all active agent delegations
+        - Quick overview of user's consent status
+        - Navigation to detailed agent management
+      operationId: getAgentDelegations
+      tags:
+        - Consent
+      responses:
+        '200':
+          description: Agent delegations retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAgentDelegationsResponse'
+              examples:
+                multipleDelegations:
+                  summary: User with multiple active delegations
+                  value:
+                    data:
+                      - agentId: 550e8400-e29b-41d4-a716-446655440000
+                        displayName: Data Analysis Assistant
+                        logoUrl: https://cdn.example.com/agents/data-assistant.png
+                        activeGrantCount: 3
+                        lastModifiedAt: '2025-12-17T14:30:00Z'
+                        expiresAt: null
+                      - agentId: 660e8400-e29b-41d4-a716-446655440001
+                        displayName: Document Processor
+                        activeGrantCount: 2
+                        lastModifiedAt: '2025-12-16T09:15:00Z'
+                        expiresAt: '2026-01-15T00:00:00Z'
+                noDelegations:
+                  summary: User with no delegations
+                  value:
+                    data: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/consent/agent/{agent-id}:
+    get:
+      summary: Get agent detail and available services
+      description: |
+        Returns detailed information about a specific agent and all available
+        third-party OAuth2 services that can be delegated to that agent.
+
+        **Agent Detail Includes**:
+        - Agent metadata (name, description, logo)
+        - Governance documentation URL
+        - User documentation URL
+        - Agent interface URL
+
+        **Service Information Includes**:
+        - Service ID (UUID)
+        - Service name (e.g., "Google Drive", "GitHub")
+        - Service logo URL
+        - Available scopes with human-readable descriptions
+
+        **Use Cases**:
+        - Display agent information before granting access
+        - Show available services and permissions
+        - Help users make informed consent decisions
+        - Link to governance and documentation
+      operationId: getAgentDetail
+      tags:
+        - Consent
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Agent detail retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAgentDetailResponse'
+              examples:
+                agentWithServices:
+                  summary: Agent with multiple services
+                  value:
+                    data:
+                      agent:
+                        agentId: 550e8400-e29b-41d4-a716-446655440000
+                        displayName: Data Analysis Assistant
+                        description: Analyzes datasets and generates insights using advanced algorithms
+                        logoUrl: https://cdn.example.com/agents/data-assistant.png
+                        governanceUrl: https://example.com/governance/data-assistant
+                        userDocumentationUrl: https://docs.example.com/agents/data-assistant
+                        agentInterfaceUrl: https://agents.example.com/data-assistant
+                      services:
+                        - serviceId: google-drive-service-id
+                          displayName: Google Drive
+                          logoUrl: https://cdn.example.com/services/google-drive.png
+                          scopes:
+                            - value: read:files
+                              description: Read files from your Google Drive
+                            - value: write:files
+                              description: Create and update files in your Google Drive
+                        - serviceId: github-service-id
+                          displayName: GitHub
+                          logoUrl: https://cdn.example.com/services/github.png
+                          scopes:
+                            - value: read:repos
+                              description: Read access to repositories
+                            - value: write:repos
+                              description: Write access to repositories
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AgentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/consent/agent/{agent-id}/grants:
+    get:
+      summary: Get user's grants for an agent
+      description: |
+        Returns all active grants the authenticated user has granted to the specified agent.
+
+        **Grant Information Includes**:
+        - Grant ID (UUID)
+        - Principal (user identifier)
+        - Agent ID
+        - Valid until date (null = indefinite)
+        - Delegated OAuth2 tokens (services and scopes)
+        - Creation timestamp
+        - Last update timestamp
+
+        **Response Characteristics**:
+        - Returns empty array if no grants exist
+        - Only includes active (non-expired) grants
+        - Typically one grant per user-agent pair (upsert semantics)
+
+        **Use Cases**:
+        - Check if user has existing grants before showing consent UI
+        - Pre-populate consent form with current grants
+        - Display current delegation status
+      operationId: getAgentGrants
+      tags:
+        - Consent
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Grants retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAgentGrantsResponse'
+              examples:
+                existingGrant:
+                  summary: User has existing grant
+                  value:
+                    data:
+                      - id: 770e8400-e29b-41d4-a716-446655440002
+                        principal: user@example.com
+                        agent_id: 550e8400-e29b-41d4-a716-446655440000
+                        valid_until: '2026-06-01T00:00:00Z'
+                        delegated_oauth2_tokens:
+                          - thirdparty_oauth2_service_id: google-drive-service-id
+                            scopes: [read:files, write:files]
+                          - thirdparty_oauth2_service_id: github-service-id
+                            scopes: [read:repos]
+                        created_at: '2025-12-18T10:00:00Z'
+                        updated_at: '2025-12-18T10:00:00Z'
+                noGrants:
+                  summary: No existing grants
+                  value:
+                    data: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AgentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create or update grant for an agent
+      description: |
+        Creates a new grant or updates an existing grant for the specified agent.
+
+        **Upsert Semantics**:
+        - One grant per user-agent pair
+        - Subsequent POSTs update the existing grant
+        - Previous delegated tokens are replaced (not merged)
+
+        **Grant Expiration**:
+        - `valid_until` is optional (omit for indefinite grant)
+        - Must be a future date if specified
+        - Expired grants are automatically filtered out
+
+        **Revocation (Special Case)**:
+        - Submit empty `delegated_oauth2_tokens` array to revoke
+        - Returns `204 No Content` on successful revocation
+        - Deletes the grant entirely
+
+        **Validation**:
+        - All service IDs must exist and be available to the agent
+        - All scopes must be valid for the specified services
+        - At least one scope required per service
+        - Returns `400 Bad Request` with details if validation fails
+
+        **Use Cases**:
+        - User grants initial access to an agent
+        - User updates existing grant (adds/removes services or scopes)
+        - User revokes all access to an agent
+      operationId: createOrUpdateGrant
+      tags:
+        - Consent
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      requestBody:
+        required: true
+        description: Grant request with delegated services and optional expiration
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrUpdateGrantRequest'
+            examples:
+              createIndefiniteGrant:
+                summary: Create indefinite grant
+                value:
+                  delegated_oauth2_tokens:
+                    - thirdparty_oauth2_service_id: google-drive-service-id
+                      scopes: [read:files, write:files]
+                    - thirdparty_oauth2_service_id: github-service-id
+                      scopes: [read:repos, write:repos]
+              createExpiringGrant:
+                summary: Create grant with expiration
+                value:
+                  delegated_oauth2_tokens:
+                    - thirdparty_oauth2_service_id: google-drive-service-id
+                      scopes: [read:files]
+                  valid_until: '2026-06-01T00:00:00Z'
+              updateGrant:
+                summary: Update existing grant (replace services)
+                value:
+                  delegated_oauth2_tokens:
+                    - thirdparty_oauth2_service_id: github-service-id
+                      scopes: [read:repos]
+              revokeGrant:
+                summary: Revoke grant (empty delegations)
+                value:
+                  delegated_oauth2_tokens: []
+      responses:
+        '201':
+          description: Grant created or updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrUpdateGrantResponse'
+              examples:
+                grantCreated:
+                  summary: New grant created
+                  value:
+                    data:
+                      id: 770e8400-e29b-41d4-a716-446655440002
+                      principal: user@example.com
+                      agent_id: 550e8400-e29b-41d4-a716-446655440000
+                      valid_until: null
+                      delegated_oauth2_tokens:
+                        - thirdparty_oauth2_service_id: google-drive-service-id
+                          scopes: [read:files, write:files]
+                        - thirdparty_oauth2_service_id: github-service-id
+                          scopes: [read:repos, write:repos]
+                      created_at: '2025-12-19T10:00:00Z'
+                      updated_at: '2025-12-19T10:00:00Z'
+        '204':
+          description: Grant revoked successfully (empty delegated_oauth2_tokens)
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AgentNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+      description: |
+        Session token cookie set after successful pre-authentication.
+        The session is established by the authentication system and maintained
+        by the identity broker for the duration of the user's session.
+
+    PrincipalHeader:
+      type: apiKey
+      in: header
+      name: X-Remote-User
+      description: |
+        Principal identifier header set by upstream authentication proxy.
+        This header contains the authenticated user's principal (email, UUID, etc.)
+        and is used to identify the user for all API operations.
+
+        **Configuration**:
+        - Header name is configurable via `principal_header` config option
+        - Default: `X-Remote-User`
+        - Common alternatives: `X-Forwarded-User`, `X-Auth-User`
+
+        **Security**:
+        - This header MUST be set by a trusted authentication proxy
+        - Direct requests with this header will be rejected if not from trusted source
+        - Typically set by oauth2-proxy, nginx auth_request, or similar
+
+  parameters:
+    AgentIdParam:
+      name: agent-id
+      in: path
+      required: true
+      description: |
+        Unique agent identifier (UUID format).
+
+        The agent ID identifies a specific agent in the system. Agents are
+        registered in the identity broker and represent AI assistants or
+        automated systems that require delegated access to user resources.
+      schema:
+        type: string
+        format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440000
+
+  schemas:
+    # Health Check Schemas
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - server
+        - timestamp
+        - uptime_seconds
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - starting
+            - shutting_down
+            - unhealthy
+          description: |
+            Current health state of the server:
+            - `healthy`: Operational and processing requests
+            - `starting`: Initializing (binding port, setting up routes)
+            - `shutting_down`: Graceful shutdown in progress
+            - `unhealthy`: Error state, requires restart
+          example: healthy
+        server:
+          type: string
+          enum:
+            - enduser
+            - admin
+          description: Server identifier (always "enduser" for this API)
+          example: enduser
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the health check (UTC)
+          example: '2025-12-19T10:30:00Z'
+        uptime_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of seconds since the server started accepting requests
+          example: 3600
+
+    # User Info Schemas
+    UserInfo:
+      type: object
+      required:
+        - principal
+        - displayName
+      properties:
+        principal:
+          type: string
+          description: |
+            User's unique principal identifier from authentication system.
+            Typically an email address or UUID.
+          example: user@example.com
+        displayName:
+          type: string
+          description: |
+            Human-readable display name for the user.
+            Used in UI for personalization and identification.
+          example: Jane Doe
+        pictureUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Optional URL to user's profile picture or avatar.
+            Should be a publicly accessible HTTPS URL.
+          example: https://cdn.example.com/users/jane.jpg
+
+    GetUserInfoResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/UserInfo'
+
+    # Agent Delegation Schemas
+    AgentDelegation:
+      type: object
+      required:
+        - agentId
+        - displayName
+        - activeGrantCount
+        - lastModifiedAt
+      properties:
+        agentId:
+          type: string
+          format: uuid
+          description: Unique agent identifier
+          example: 550e8400-e29b-41d4-a716-446655440000
+        displayName:
+          type: string
+          description: Human-readable agent name
+          example: Data Analysis Assistant
+        logoUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional URL to agent's logo or icon
+          example: https://cdn.example.com/agents/data-assistant.png
+        activeGrantCount:
+          type: integer
+          minimum: 0
+          description: |
+            Number of third-party services currently delegated to this agent.
+            Reflects the count of delegated_oauth2_tokens in the active grant.
+          example: 3
+        lastModifiedAt:
+          type: string
+          format: date-time
+          description: |
+            ISO 8601 timestamp when the delegation was last modified.
+            Corresponds to the grant's updated_at timestamp.
+          example: '2025-12-17T14:30:00Z'
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Optional grant expiration timestamp (ISO 8601).
+            Null value indicates indefinite grant (no expiration).
+          example: '2026-01-15T00:00:00Z'
+
+    GetAgentDelegationsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentDelegation'
+          description: |
+            Array of agent delegations. Empty array if user has no active delegations.
+
+    # Agent Detail Schemas
+    AgentDetail:
+      type: object
+      required:
+        - agentId
+        - displayName
+        - description
+      properties:
+        agentId:
+          type: string
+          format: uuid
+          description: Unique agent identifier
+          example: 550e8400-e29b-41d4-a716-446655440000
+        displayName:
+          type: string
+          description: Human-readable agent name
+          example: Data Analysis Assistant
+        description:
+          type: string
+          description: |
+            Detailed description of the agent's purpose and capabilities.
+            Helps users understand what the agent does before granting access.
+          example: Analyzes datasets and generates insights using advanced algorithms
+        logoUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional URL to agent's logo or icon
+          example: https://cdn.example.com/agents/data-assistant.png
+        governanceUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Optional link to agent governance documentation.
+            Should explain policies, compliance, and oversight.
+          example: https://example.com/governance/data-assistant
+        userDocumentationUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Optional link to user-facing documentation.
+            Should explain how to use the agent and what to expect.
+          example: https://docs.example.com/agents/data-assistant
+        agentInterfaceUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Optional link to the agent's public interface or web UI.
+            Where users can interact with the agent directly.
+          example: https://agents.example.com/data-assistant
+
+    ServiceScope:
+      type: object
+      required:
+        - value
+        - description
+      properties:
+        value:
+          type: string
+          description: |
+            OAuth2 scope value (machine-readable identifier).
+            Follows OAuth 2.0 scope syntax conventions.
+          example: read:files
+        description:
+          type: string
+          description: |
+            Human-readable description of what this scope allows.
+            Should be clear and understandable to end users.
+          example: Read files from your Google Drive
+
+    ThirdpartyService:
+      type: object
+      required:
+        - serviceId
+        - displayName
+        - scopes
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+          description: |
+            Unique service identifier (UUID).
+            Used in grant requests to specify which service to delegate.
+          example: google-drive-service-id
+        displayName:
+          type: string
+          description: Human-readable service name
+          example: Google Drive
+        logoUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional URL to service's logo or icon
+          example: https://cdn.example.com/services/google-drive.png
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceScope'
+          minItems: 1
+          description: |
+            Array of available scopes for this service.
+            Users select which scopes to grant when creating a delegation.
+
+    GetAgentDetailResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - agent
+            - services
+          properties:
+            agent:
+              $ref: '#/components/schemas/AgentDetail'
+            services:
+              type: array
+              items:
+                $ref: '#/components/schemas/ThirdpartyService'
+              description: |
+                Array of available third-party services that can be delegated
+                to this agent. Empty array if no services are available.
+
+    # User Grant Schemas
+    DelegatedToken:
+      type: object
+      required:
+        - thirdparty_oauth2_service_id
+        - scopes
+      properties:
+        thirdparty_oauth2_service_id:
+          type: string
+          format: uuid
+          description: |
+            Service identifier (UUID) from the available services list.
+            Must be a valid service available to the agent.
+          example: google-drive-service-id
+        scopes:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: |
+            Array of OAuth2 scope values to delegate.
+            Each scope must be valid for the specified service.
+          example: [read:files, write:files]
+
+    UserGrant:
+      type: object
+      required:
+        - id
+        - principal
+        - agent_id
+        - delegated_oauth2_tokens
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique grant identifier
+          example: 770e8400-e29b-41d4-a716-446655440002
+        principal:
+          type: string
+          description: User principal who created the grant
+          example: user@example.com
+        agent_id:
+          type: string
+          format: uuid
+          description: Agent receiving the delegated access
+          example: 550e8400-e29b-41d4-a716-446655440000
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Optional grant expiration (ISO 8601 format).
+            Null indicates indefinite grant (no expiration).
+            Expired grants are filtered out automatically.
+          example: '2026-06-01T00:00:00Z'
+        delegated_oauth2_tokens:
+          type: array
+          items:
+            $ref: '#/components/schemas/DelegatedToken'
+          minItems: 0
+          description: |
+            Array of delegated service tokens.
+            Empty array is only allowed when revoking (POST endpoint).
+
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when grant was created
+          example: '2025-12-18T10:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when grant was last updated
+          example: '2025-12-19T14:30:00Z'
+
+    GetAgentGrantsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserGrant'
+          description: |
+            Array of user grants for the specified agent.
+            Typically contains one grant (upsert semantics).
+            Empty array if no grants exist.
+
+    CreateOrUpdateGrantRequest:
+      type: object
+      required:
+        - delegated_oauth2_tokens
+      properties:
+        delegated_oauth2_tokens:
+          type: array
+          items:
+            $ref: '#/components/schemas/DelegatedToken'
+          minItems: 0
+          description: |
+            Array of service delegations to grant to the agent.
+
+            **Special Case**: Empty array `[]` revokes the grant entirely
+            and returns `204 No Content`.
+
+            **Validation**:
+            - Each service ID must exist and be available to the agent
+            - Each scope must be valid for the specified service
+            - At least one scope required per service (minItems: 1 on scopes array)
+          example:
+            - thirdparty_oauth2_service_id: google-drive-service-id
+              scopes: [read:files, write:files]
+            - thirdparty_oauth2_service_id: github-service-id
+              scopes: [read:repos]
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Optional grant expiration (ISO 8601 format).
+
+            **Validation**:
+            - Must be a future date if specified
+            - Omit for indefinite grant (no expiration)
+
+            **Behavior**:
+            - Expired grants are automatically filtered out in queries
+            - Users can extend expiration by updating the grant
+          example: '2026-06-01T00:00:00Z'
+
+    CreateOrUpdateGrantResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/UserGrant'
+
+    # Error Response Schemas
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: |
+            Machine-readable error code or type.
+            Used for programmatic error handling.
+          example: unauthorized
+        message:
+          type: string
+          description: |
+            Optional human-readable error message.
+            Provides additional context about the error.
+            May be empty for generic errors.
+          example: authentication required
+
+  responses:
+    Unauthorized:
+      description: |
+        Authentication required or session expired.
+
+        **Common Causes**:
+        - No `X-Remote-User` header (authentication proxy not configured)
+        - Invalid or expired session cookie
+        - Principal not found in request context
+
+        **Resolution**:
+        - Ensure upstream authentication proxy is properly configured
+        - Re-authenticate through login flow
+        - Check session cookie validity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: unauthorized
+            message: authentication required
+
+    BadRequest:
+      description: |
+        Invalid request parameters or format.
+
+        **Common Causes**:
+        - Missing required path parameters
+        - Invalid UUID format for agent-id
+        - Malformed request body
+
+        **Resolution**:
+        - Check API documentation for required parameters
+        - Validate UUIDs match format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+        - Ensure request body is valid JSON
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missingAgentId:
+              summary: Missing agent ID
+              value:
+                error: bad request
+                message: agent ID is required
+            invalidJson:
+              summary: Invalid JSON
+              value:
+                error: invalid request
+                message: request body must be valid JSON
+
+    ValidationError:
+      description: |
+        Request validation failed.
+
+        **Common Causes**:
+        - Invalid service IDs (service doesn't exist or not available to agent)
+        - Invalid scopes (scope doesn't exist for the specified service)
+        - Invalid date format or past date for valid_until
+        - Empty scopes array for a service
+
+        **Resolution**:
+        - Use GET `/api/consent/agent/{agent-id}` to see available services and scopes
+        - Ensure valid_until is in ISO 8601 format and in the future
+        - Provide at least one scope per service
+        - Verify service IDs match available services
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalidScopes:
+              summary: Invalid scopes for service
+              value:
+                error: invalid scopes
+                message: One or more requested scopes do not exist for the specified service
+            pastDate:
+              summary: Past date for valid_until
+              value:
+                error: invalid request
+                message: valid_until must be in the future
+            serviceNotFound:
+              summary: Service not found
+              value:
+                error: service not found
+                message: Service with specified ID does not exist or is not available to this agent
+
+    AgentNotFound:
+      description: |
+        Agent with specified ID does not exist.
+
+        **Common Causes**:
+        - Invalid agent ID (typo or incorrect UUID)
+        - Agent has been deleted
+        - Agent is not registered in the system
+
+        **Resolution**:
+        - Verify agent ID from GET `/api/consent/agents` endpoint
+        - Check if agent still exists in the system
+        - Contact administrator if agent should exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: not found
+            message: agent not found
+
+    InternalServerError:
+      description: |
+        Internal server error occurred.
+
+        **Common Causes**:
+        - Database connection failure
+        - Unexpected service error
+        - Resource temporarily unavailable
+
+        **Resolution**:
+        - Retry the request after a short delay
+        - Check server health via GET `/health` endpoint
+        - Contact administrator if error persists
+        - Check server logs for detailed error information
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: internal server error
+            message: ''
