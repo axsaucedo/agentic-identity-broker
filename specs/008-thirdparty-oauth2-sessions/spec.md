@@ -11,6 +11,7 @@
 
 - Q: What happens when user initiates multiple OAuth2 flows for the same service simultaneously (race condition)? → A: Use database unique constraint (principal, service_id); first successful callback wins, subsequent callbacks see existing session and skip token storage
 - Q: How does system handle third-party authorization endpoint returning an error instead of authorization code? → A: Parse OAuth2 error response (error, error_description); redirect to sessions page with user-friendly error message displayed; allow immediate retry
+- Q: How does system handle network failures during token exchange? → A: Retry token exchange up to 3 times with exponential backoff (1s, 2s, 4s); if all retries fail, display error message allowing user to retry OAuth2 flow
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -50,6 +51,7 @@ A user needs to authenticate with a third-party service by initiating an OAuth2 
 6. **Given** OAuth2 flow completes successfully, **When** user returns to the sessions page, **Then** system displays the newly established session with status indicators
 7. **Given** state token validation fails at callback, **When** system detects mismatch, **Then** system rejects the callback with error and does not store any tokens
 8. **Given** third-party returns OAuth2 error in callback (e.g., access_denied, invalid_scope), **When** system processes callback, **Then** system parses error and error_description parameters, redirects user to sessions page with user-friendly error message, and Login button remains available for retry
+9. **Given** token exchange request fails due to network error, **When** system attempts token exchange, **Then** system retries up to 3 times with exponential backoff (1s, 2s, 4s), and if all retries fail, displays error message allowing user to restart OAuth2 flow
 
 ---
 
@@ -94,8 +96,8 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 
 - **Multiple simultaneous OAuth2 flows for same service**: Database unique constraint on (principal, service_id) ensures first successful callback wins. Subsequent callbacks detect existing session and skip token storage, preventing race conditions and token corruption.
 - **Third-party authorization errors**: When third-party returns OAuth2 error (e.g., access_denied, invalid_scope, server_error), system parses error and error_description parameters from callback URL, redirects user to sessions page with user-friendly error message, and allows immediate retry via Login button.
+- **Network failures during token exchange**: System retries token exchange request up to 3 times with exponential backoff (1s, 2s, 4s delays). If all retries fail, displays error message to user allowing them to retry the entire OAuth2 flow from the beginning.
 - What happens when access token expires but refresh token is still valid?
-- How does system handle network failures during token exchange?
 - What happens if a third-party service is deleted while user sessions exist?
 - How does system handle malformed or missing callback parameters from third-party?
 - What happens when redirect_uri validation fails (domain mismatch)?
@@ -125,6 +127,7 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 - **FR-018**: System MUST delete stored tokens (access and refresh) when user terminates a session
 - **FR-019**: Both authorize and callback endpoints MUST require authenticated principal (user must be logged in)
 - **FR-020**: System MUST handle OAuth2 error responses from third-party services gracefully by parsing error and error_description parameters from callback URL, displaying user-friendly error messages on sessions page, and allowing immediate retry
+- **FR-021**: System MUST retry failed token exchange requests up to 3 times with exponential backoff delays (1 second, 2 seconds, 4 seconds) before displaying error message to user
 
 ### Domain Model
 
