@@ -36,7 +36,7 @@ describe('ServiceCard', () => {
 
   const mockGrants: DelegatedToken[] = [
     {
-      serviceId: 'github',
+      thirdparty_oauth2_service_id: 'github',
       scopes: ['read:user', 'repo'],
     },
   ];
@@ -63,7 +63,9 @@ describe('ServiceCard', () => {
   it('displays available scopes count', () => {
     render(<ServiceCard service={mockService} />);
 
-    expect(screen.getByText('Available Scopes (3)')).toBeInTheDocument();
+    // The scope count is now in the aria-label of the expand button
+    const expandButton = screen.getByRole('button', { name: /available scopes \(3\)/i });
+    expect(expandButton).toBeInTheDocument();
   });
 
   it('expands and collapses scope list on button click', () => {
@@ -95,7 +97,7 @@ describe('ServiceCard', () => {
   it('shows singular text for single granted scope', () => {
     const singleGrant: DelegatedToken[] = [
       {
-        serviceId: 'github',
+        thirdparty_oauth2_service_id: 'github',
         scopes: ['read:user'],
       },
     ];
@@ -108,14 +110,17 @@ describe('ServiceCard', () => {
   it('displays active grant status badge', () => {
     render(<ServiceCard service={mockService} grants={mockGrants} />);
 
-    expect(screen.getByRole('status', { name: /grant status: active/i })).toBeInTheDocument();
+    // The grant status badge is now using the design system GrantStatusBadge component
+    // which uses "approved" status instead of "active"
+    expect(screen.getByText('Approved')).toBeInTheDocument();
   });
 
   it('shows view-only notice when grants exist', () => {
     render(<ServiceCard service={mockService} grants={mockGrants} />);
 
+    // The view-only notice text has been updated
     expect(
-      screen.getByText('Grant editing will be available in a future update')
+      screen.getByText('Enable edit mode to modify this grant')
     ).toBeInTheDocument();
   });
 
@@ -123,9 +128,9 @@ describe('ServiceCard', () => {
     render(<ServiceCard service={mockService} />);
 
     expect(screen.queryByText(/scopes granted/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText('Approved')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Grant editing will be available in a future update')
+      screen.queryByText('Enable edit mode to modify this grant')
     ).not.toBeInTheDocument();
   });
 

@@ -7,11 +7,20 @@
  * - Suggested date shortcuts (1 month, 3 months, 1 year)
  * - Current date display
  * - Validation
+ *
+ * Refactored to use design system primitives:
+ * - Stack for layout
+ * - Button for suggested date shortcuts
+ * - Checkbox from design system
+ * - DatePicker from design system
  */
 
 import React, { useMemo } from 'react';
 import { addMonths, addYears, format } from 'date-fns';
-import { DatePicker } from '../ui/DatePicker';
+import { Stack } from '../../design-system/components/layout/Stack';
+import { Button } from '../../design-system/components/primitives/Button';
+import { Checkbox } from '../../design-system/components/inputs/Checkbox';
+import { DatePicker } from '../../design-system/components/inputs/DatePicker';
 import type { GrantValidityState } from '../../types/consent';
 
 interface GrantValidityControlProps {
@@ -77,35 +86,29 @@ export function GrantValidityControl({
   const hasExpiration = !value.noExpiration;
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <Stack gap="md" className={className}>
       {/* Current date info */}
-      <div className="text-sm text-gray-600">
+      <p className="text-sm text-gray-600">
         Today: <span className="font-medium">{format(today, 'MMMM d, yyyy')}</span>
-      </div>
+      </p>
 
       {/* Expiration checkbox */}
-      <div className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          id="grant-expires"
-          checked={hasExpiration}
-          onChange={handleCheckboxChange}
-          className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-        />
-        <label htmlFor="grant-expires" className="text-sm font-medium text-gray-700">
-          Grant expires on a specific date
-        </label>
-      </div>
+      <Checkbox
+        id="grant-expires"
+        checked={hasExpiration}
+        onChange={handleCheckboxChange}
+        label="Grant expires on a specific date"
+      />
 
       {/* Date picker (only shown when checkbox is checked) */}
       {hasExpiration && (
-        <div className="pl-7 space-y-3">
+        <Stack gap="sm" className="pl-7">
           <DatePicker
             value={value.expiresAt || null}
             onChange={handleDateChange}
             minDate={tomorrow}
             label="Expiration date"
-            error={
+            errorMessage={
               value.expiresAt && value.expiresAt <= today
                 ? 'Expiration date must be in the future'
                 : undefined
@@ -113,34 +116,36 @@ export function GrantValidityControl({
           />
 
           {/* Suggested dates */}
-          <div>
-            <p className="text-xs text-gray-600 mb-2">Quick suggestions:</p>
-            <div className="flex flex-wrap gap-2">
+          <Stack gap="xs">
+            <p className="text-xs text-gray-600">Quick suggestions:</p>
+            <Stack direction="row" gap="sm" wrap>
               {suggestedDates.map((suggestion) => (
-                <button
+                <Button
                   key={suggestion.label}
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => handleSuggestedDateClick(suggestion.date)}
-                  className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                  className="bg-gray-100 text-gray-700 hover:bg-gray-200"
                 >
                   {suggestion.label}
                   <span className="ml-1.5 text-gray-500">
                     ({format(suggestion.date, 'MMM d, yyyy')})
                   </span>
-                </button>
+                </Button>
               ))}
-            </div>
-          </div>
-        </div>
+            </Stack>
+          </Stack>
+        </Stack>
       )}
 
       {/* No expiration message */}
       {!hasExpiration && (
-        <div className="pl-7 text-sm text-gray-600">
+        <p className="pl-7 text-sm text-gray-600">
           This grant will remain active indefinitely until manually revoked.
-        </div>
+        </p>
       )}
-    </div>
+    </Stack>
   );
 }
 

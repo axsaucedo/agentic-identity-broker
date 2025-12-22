@@ -1,15 +1,20 @@
 /* Font declarations - Distinctive aesthetic choices */
 /*
- * Display: Poppins (geometric sans-serif) - Bold, confident, authoritative
+ * Display: Crimson Pro (refined serif) - Trust, authority, seriousness for consent UI
  * Body: Manrope (humanist sans-serif) - Warm, readable, approachable
  * Mono: JetBrains Mono - Precise, technical, trust-inducing for security contexts
  *
+ * The serif/sans contrast creates the "Refined Trust Architecture" aesthetic:
+ * Crimson Pro headings establish gravitas and trustworthiness, while Manrope
+ * body text maintains approachability. This typographic pairing is the defining
+ * visual element of the entire design system.
+ *
  * Performance: font-display: swap prevents FOUT and improves Core Web Vitals
  */
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@300;400;600;700;900&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --font-display: 'Poppins', sans-serif;
+  --font-display: 'Crimson Pro', serif;
   --font-sans: 'Manrope', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }

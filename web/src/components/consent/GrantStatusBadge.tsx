@@ -2,14 +2,16 @@
  * GrantStatusBadge component displays the status of a grant.
  *
  * Features:
- * - Color-coded badge (active: green, expired: gray, pending: yellow)
+ * - Color-coded badge (active: success, expired: neutral, pending: warning)
  * - Expiration date display
- * - Icon support
+ * - Icon indicators
  * - Accessible with proper ARIA labels
+ * Uses the design system Badge component for consistency
  */
 
 import React from 'react';
 import { format, isPast } from 'date-fns';
+import { Badge } from '@design-system/components/primitives/Badge';
 
 type GrantStatus = 'active' | 'expired' | 'pending';
 
@@ -22,7 +24,7 @@ interface GrantStatusBadgeProps {
 
 /**
  * GrantStatusBadge displays a colored badge indicating grant status.
- * Shows expiration date if available.
+ * Shows expiration date if available. Uses design system Badge component.
  */
 export function GrantStatusBadge({ status, expiresAt }: GrantStatusBadgeProps) {
   // Parse expiration date if provided
@@ -32,37 +34,79 @@ export function GrantStatusBadge({ status, expiresAt }: GrantStatusBadgeProps) {
   // Override status if expiration date is in the past
   const effectiveStatus: GrantStatus = isExpired ? 'expired' : status;
 
-  // Badge styling based on status
-  const getBadgeStyles = () => {
+  // Map status to design system Badge variant and icon
+  const getStatusConfig = () => {
     switch (effectiveStatus) {
       case 'active':
         return {
-          container: 'bg-green-100 text-green-800 border-green-200',
-          icon: 'text-green-600',
+          variant: 'success' as const,
           label: 'Active',
+          icon: (
+            <svg
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              className="w-full h-full"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          ),
         };
       case 'expired':
         return {
-          container: 'bg-gray-100 text-gray-600 border-gray-200',
-          icon: 'text-gray-500',
+          variant: 'neutral' as const,
           label: 'Expired',
+          icon: (
+            <svg
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              className="w-full h-full"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          ),
         };
       case 'pending':
         return {
-          container: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-          icon: 'text-yellow-600',
+          variant: 'warning' as const,
           label: 'Pending',
+          icon: (
+            <svg
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              className="w-full h-full"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          ),
         };
       default:
         return {
-          container: 'bg-gray-100 text-gray-600 border-gray-200',
-          icon: 'text-gray-500',
+          variant: 'neutral' as const,
           label: 'Unknown',
+          icon: null,
         };
     }
   };
 
-  const styles = getBadgeStyles();
+  const config = getStatusConfig();
 
   // Format expiration text
   const getExpirationText = () => {
@@ -79,63 +123,16 @@ export function GrantStatusBadge({ status, expiresAt }: GrantStatusBadgeProps) {
 
   return (
     <div className="inline-flex items-center gap-2">
-      {/* Status badge */}
-      <span
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${styles.container}`}
+      {/* Status badge using design system */}
+      <Badge
+        variant={config.variant}
+        size="md"
+        showDot={effectiveStatus === 'active'}
+        iconBefore={config.icon}
         role="status"
-        aria-label={`Grant status: ${styles.label}`}
       >
-        {/* Status icon */}
-        {effectiveStatus === 'active' && (
-          <svg
-            className={`w-3.5 h-3.5 ${styles.icon}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        )}
-        {effectiveStatus === 'expired' && (
-          <svg
-            className={`w-3.5 h-3.5 ${styles.icon}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        )}
-        {effectiveStatus === 'pending' && (
-          <svg
-            className={`w-3.5 h-3.5 ${styles.icon}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        )}
-        <span>{styles.label}</span>
-      </span>
+        {config.label}
+      </Badge>
 
       {/* Expiration date */}
       {expirationText && (

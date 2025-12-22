@@ -1,27 +1,31 @@
 /**
- * AppLayout component provides consistent layout structure across the app.
+ * AppLayout component wraps the design system AppLayout with a custom header.
  *
  * Includes:
- * - Header with navigation
- * - Main content area with responsive padding
- * - Footer
+ * - Sticky header with branding, navigation, and user info
+ * - Main content area with responsive padding and premium styling
  */
 
 import React, { ReactNode } from 'react';
+import { useConsent } from '@hooks/useConsent';
+import { Avatar } from '@design-system/components/primitives/Avatar';
+import { AppLayout as DesignSystemAppLayout } from '@design-system/components/layout/AppLayout/AppLayout';
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 /**
- * Header component with branding and navigation.
+ * Header component with branding, navigation, and user info.
  * Premium design with gradient backdrop and refined typography.
  */
 function Header() {
+  const { userInfo } = useConsent();
+
   return (
-    <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-taupe">
+    <div className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-8">
+        <div className="flex items-center justify-between h-20 gap-8">
           {/* Logo and branding */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <div className="w-9 h-9 bg-gradient-to-br from-navy-600 to-navy-700 rounded-lg flex items-center justify-center shadow-md">
@@ -40,7 +44,7 @@ function Header() {
               </svg>
             </div>
             <div>
-              <h1 className="font-display text-base font-bold text-navy-900 leading-tight">
+              <h1 className="text-base font-bold text-navy-900 leading-tight">
                 Consent Management
               </h1>
               <p className="text-xs text-slate-600 font-medium">
@@ -50,87 +54,59 @@ function Header() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex items-center gap-8 ml-auto">
+          <nav className="flex items-center gap-6 ml-auto">
             <a
               href="/consent"
               className="text-sm font-medium text-slate-700 hover:text-navy-700 transition-colors duration-200"
             >
               My Agents
             </a>
-            <a
-              href="/docs"
-              className="text-sm font-medium text-slate-700 hover:text-navy-700 transition-colors duration-200"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Documentation
-            </a>
+
+            {/* User info with avatar */}
+            {userInfo && (
+              <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
+                <Avatar
+                  src={userInfo.pictureUrl}
+                  alt={userInfo.displayName}
+                  initials={userInfo.displayName.charAt(0).toUpperCase()}
+                  size="sm"
+                  shape="circle"
+                />
+                <div className="flex flex-col min-w-0">
+                  <p className="text-sm font-medium text-navy-900 truncate">
+                    {userInfo.displayName}
+                  </p>
+                  <p className="text-xs text-slate-600 truncate">
+                    {userInfo.principal}
+                  </p>
+                </div>
+              </div>
+            )}
           </nav>
         </div>
       </div>
-    </header>
+    </div>
   );
 }
 
 /**
- * Footer component with links and copyright.
- * Refined minimal design with premium spacing.
- */
-function Footer() {
-  const currentYear = new Date().getFullYear();
-
-  return (
-    <footer className="bg-white/50 backdrop-blur-sm border-t border-taupe mt-auto">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="text-sm text-slate-600">
-            <p>&copy; {currentYear} Agentic Identity Broker. All rights reserved.</p>
-          </div>
-
-          <div className="flex gap-8">
-            <a
-              href="/privacy"
-              className="text-sm font-medium text-slate-600 hover:text-navy-700 transition-colors duration-200"
-            >
-              Privacy Policy
-            </a>
-            <a
-              href="/terms"
-              className="text-sm font-medium text-slate-600 hover:text-navy-700 transition-colors duration-200"
-            >
-              Terms of Service
-            </a>
-            <a
-              href="/support"
-              className="text-sm font-medium text-slate-600 hover:text-navy-700 transition-colors duration-200"
-            >
-              Support
-            </a>
-          </div>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
-/**
- * Main layout wrapper that provides consistent structure.
- * Premium layout with refined spacing and background gradient.
+ * Main layout wrapper that extends the design system AppLayout with custom styling.
+ * Provides consistent structure with premium gradient background and spacing.
  */
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-cream via-sand to-taupe/20">
-      <Header />
-
-      <main className="flex-1 w-full">
+    <div className="bg-gradient-to-br from-cream via-sand to-taupe/20">
+      <DesignSystemAppLayout
+        header={<Header />}
+        stickyHeader={true}
+        className="bg-transparent"
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="animate-fade-in-up">
             {children}
           </div>
         </div>
-      </main>
-
-      <Footer />
+      </DesignSystemAppLayout>
     </div>
   );
 }

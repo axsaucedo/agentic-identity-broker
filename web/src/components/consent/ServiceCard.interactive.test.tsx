@@ -71,8 +71,8 @@ describe('ServiceCard - Interactive Mode', () => {
       />
     );
 
-    // Expand scopes
-    const expandButton = screen.getByText(/Select Scopes/);
+    // Expand scopes - use getByRole with aria-label
+    const expandButton = screen.getByRole('button', { name: /select scopes/i });
     fireEvent.click(expandButton);
 
     // Check that checkboxes are rendered
@@ -93,7 +93,7 @@ describe('ServiceCard - Interactive Mode', () => {
     );
 
     // Expand scopes
-    const expandButton = screen.getByText(/Select Scopes/);
+    const expandButton = screen.getByRole('button', { name: /select scopes/i });
     fireEvent.click(expandButton);
 
     // Find and click first scope checkbox
@@ -131,7 +131,7 @@ describe('ServiceCard - Interactive Mode', () => {
     );
 
     // Expand scopes
-    const expandButton = screen.getByText(/Select Scopes/);
+    const expandButton = screen.getByRole('button', { name: /select scopes/i });
     fireEvent.click(expandButton);
 
     expect(screen.getByText('Select all')).toBeInTheDocument();
@@ -151,7 +151,7 @@ describe('ServiceCard - Interactive Mode', () => {
     );
 
     // Expand scopes
-    const expandButton = screen.getByText(/Select Scopes/);
+    const expandButton = screen.getByRole('button', { name: /select scopes/i });
     fireEvent.click(expandButton);
 
     // Click select all
@@ -178,7 +178,7 @@ describe('ServiceCard - Interactive Mode', () => {
     );
 
     // Expand scopes
-    const expandButton = screen.getByText(/Select Scopes/);
+    const expandButton = screen.getByRole('button', { name: /select scopes/i });
     fireEvent.click(expandButton);
 
     // Click deselect all
@@ -216,7 +216,7 @@ describe('ServiceCard - Interactive Mode', () => {
     );
 
     // Expand scopes
-    const expandButton = screen.getByText(/Select Scopes/);
+    const expandButton = screen.getByRole('button', { name: /select scopes/i });
     fireEvent.click(expandButton);
 
     // Check that the selected scope is checked

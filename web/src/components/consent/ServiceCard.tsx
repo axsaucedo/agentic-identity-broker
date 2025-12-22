@@ -9,14 +9,21 @@
  * - Grant status badge
  * - Interactive mode with toggles and checkboxes (Phase 5)
  * - View-only mode (Phase 4)
+ *
+ * Refactored to use design system primitives (Phase 9).
  */
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ThirdpartyService, DelegatedToken } from '../../types/consent';
+import { Card } from '@design-system/components/data-display/Card';
+import { Stack } from '@design-system/components/layout/Stack';
+import { Button } from '@design-system/components/primitives/Button';
+import { Avatar } from '@design-system/components/primitives/Avatar';
+import { Switch } from '@design-system/components/inputs/Switch';
+import { StatusIndicator } from '@design-system/components/data-display/StatusIndicator';
+import { Alert } from '@design-system/components/feedback/Alert';
 import { ScopeList } from './ScopeList';
-import { GrantStatusBadge } from './GrantStatusBadge';
-import { Switch } from '../ui/Switch';
 
 interface ServiceCardProps {
   /** Third-party service information */
@@ -110,40 +117,58 @@ export function ServiceCard({
   };
 
   return (
-    <div className="card overflow-hidden">
+    <Card padding="none" hover="none" border="subtle">
       {/* Service header */}
-      <div className={`p-6 ${isExpanded ? 'border-b border-dotted border-slate/10' : ''}`}>
-        <div className="flex items-start gap-4">
-          {/* Service logo */}
-          <div className="flex-shrink-0">
-            {service.logoUrl ? (
-              <img
-                src={service.logoUrl}
-                alt={`${service.displayName} logo`}
-                className="w-12 h-12 rounded-lg object-cover"
-              />
-            ) : (
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <span className="text-white text-lg font-semibold">
-                  {service.displayName.charAt(0).toUpperCase()}
-                </span>
-              </div>
-            )}
-          </div>
+      <div className="p-6">
+        <Stack direction="row" gap="md" align="start">
+          {/* Service logo using Avatar component */}
+          <Avatar
+            src={service.logoUrl}
+            alt={`${service.displayName} logo`}
+            initials={service.displayName.charAt(0).toUpperCase()}
+            size="lg"
+            shape="rounded"
+          />
 
           {/* Service info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
+          <Stack gap="sm" className="flex-1 min-w-0">
+            <Stack direction="row" justify="space-between" align="start" gap="md">
+              <Stack gap="xs" className="flex-1 min-w-0">
                 <h3 className="text-lg font-semibold text-navy-900">
                   {service.displayName}
                 </h3>
+                {/* Status and scopes indicators */}
                 {!isEditable && hasGrant && grantStatus && (
-                  <div className="mt-2">
-                    <GrantStatusBadge status={grantStatus} expiresAt={null} />
-                  </div>
+                  <Stack direction="row" gap="md" align="center" className="flex-wrap">
+                    <StatusIndicator
+                      label={grantStatus.charAt(0).toUpperCase() + grantStatus.slice(1)}
+                      variant="success"
+                      icon={
+                        <svg
+                          className="w-full h-full"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      }
+                    />
+                    <StatusIndicator
+                      label={
+                        grantedScopes.length === 1
+                          ? '1 scope granted'
+                          : `${grantedScopes.length} scopes granted`
+                      }
+                    />
+                  </Stack>
                 )}
-              </div>
+              </Stack>
 
               {/* Interactive toggle (editable mode only) */}
               {isEditable && (
@@ -151,38 +176,43 @@ export function ServiceCard({
                   checked={isServiceEnabled}
                   onChange={handleServiceToggle}
                   label={isServiceEnabled ? 'Enabled' : 'Disabled'}
+                  size="md"
                 />
               )}
-            </div>
+            </Stack>
 
-            {/* Grant summary */}
-            {!isEditable && hasGrant && (
-              <p className="mt-2 text-sm text-slate-600">
-                {grantedScopes.length === 1
-                  ? '1 scope granted'
-                  : `${grantedScopes.length} scopes granted`}
-              </p>
-            )}
+            {/* Grant summary (editable mode) */}
             {isEditable && isServiceEnabled && localSelectedScopes.size > 0 && (
-              <p className="mt-2 text-sm text-slate-600">
-                {localSelectedScopes.size === 1
-                  ? '1 scope selected'
-                  : `${localSelectedScopes.size} scopes selected`}
-              </p>
+              <StatusIndicator
+                label={
+                  localSelectedScopes.size === 1
+                    ? '1 scope selected'
+                    : `${localSelectedScopes.size} scopes selected`
+                }
+                variant="info"
+              />
             )}
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       </div>
 
       {/* Expandable scope section */}
       {(!isEditable || isServiceEnabled) && (
-        <div>
+        <>
+          {/* Divider between header and scope section */}
+          {isExpanded && <div className="border-t border-dotted border-slate/10" />}
+
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
             className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-slate/5 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-navy-500"
             aria-expanded={isExpanded}
             aria-controls={`scopes-${service.serviceId}`}
+            aria-label={
+              isEditable
+                ? `Select Scopes (${service.scopes.length})`
+                : `Available Scopes (${service.scopes.length})`
+            }
           >
             {isExpanded && (
               <span className="text-sm font-medium text-slate-700">
@@ -196,6 +226,7 @@ export function ServiceCard({
               viewBox="0 0 24 24"
               animate={{ rotate: isExpanded ? 180 : 0 }}
               transition={{ duration: 0.2 }}
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -219,28 +250,30 @@ export function ServiceCard({
                 <div className="px-6 pb-4">
                   {/* Select all/none buttons (editable mode only) */}
                   {isEditable && (
-                    <div className="flex gap-2 mb-3">
-                      <button
-                        type="button"
+                    <Stack direction="row" gap="xs" className="mb-3" align="center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={handleSelectAll}
-                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700 focus:outline-none focus:underline"
+                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700 h-auto py-0 px-0"
                       >
                         Select all
-                      </button>
+                      </Button>
                       <span className="text-xs text-slate-400">|</span>
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={handleDeselectAll}
-                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700 focus:outline-none focus:underline"
+                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700 h-auto py-0 px-0"
                       >
                         Deselect all
-                      </button>
-                    </div>
+                      </Button>
+                    </Stack>
                   )}
 
                   {/* Scope list */}
                   {isEditable ? (
-                    <div className="divide-y divide-dotted divide-slate/10">
+                    <Stack gap="xs" className="divide-y divide-dotted divide-slate/10">
                       {service.scopes.map((scope) => {
                         const isChecked = localSelectedScopes.has(scope.value);
 
@@ -249,14 +282,16 @@ export function ServiceCard({
                             key={scope.value}
                             className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
                           >
-                            {/* Checkbox */}
-                            <input
-                              type="checkbox"
-                              id={`scope-${service.serviceId}-${scope.value}`}
-                              checked={isChecked}
-                              onChange={(e) => handleScopeToggle(scope.value, e.target.checked)}
-                              className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                            />
+                            {/* Checkbox using design system */}
+                            <div className="flex-shrink-0 pt-0.5">
+                              <input
+                                type="checkbox"
+                                id={`scope-${service.serviceId}-${scope.value}`}
+                                checked={isChecked}
+                                onChange={(e) => handleScopeToggle(scope.value, e.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                              />
+                            </div>
 
                             {/* Scope details */}
                             <div className="flex-1 min-w-0">
@@ -283,7 +318,7 @@ export function ServiceCard({
                           </div>
                         );
                       })}
-                    </div>
+                    </Stack>
                   ) : (
                     <ScopeList
                       scopes={service.scopes}
@@ -295,31 +330,18 @@ export function ServiceCard({
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </>
       )}
 
       {/* View-only notice (only in non-editable mode with grants) */}
       {!isEditable && hasGrant && (
-        <div className="px-6 py-3 bg-emerald-50 text-sm text-emerald-700">
-          <div className="flex items-center gap-2">
-            <svg
-              className="w-4 h-4 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <span>Enable edit mode to modify this grant</span>
-          </div>
+        <div className="px-6 pb-3">
+          <Alert variant="info">
+            Enable edit mode to modify this grant
+          </Alert>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 

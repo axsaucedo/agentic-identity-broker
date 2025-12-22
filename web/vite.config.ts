@@ -31,6 +31,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@design-system': path.resolve(__dirname, './src/design-system'),
       '@components': path.resolve(__dirname, './src/components'),
       '@hooks': path.resolve(__dirname, './src/hooks'),
       '@services': path.resolve(__dirname, './src/services'),

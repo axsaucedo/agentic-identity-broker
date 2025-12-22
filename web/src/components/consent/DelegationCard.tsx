@@ -13,6 +13,9 @@
 import React, { memo } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
 import type { AgentDelegation } from '../../types/consent';
+import { Card } from '@design-system/components/data-display/Card';
+import { Stack } from '@design-system/components/layout/Stack';
+import { Avatar } from '@design-system/components/primitives/Avatar';
 
 interface DelegationCardProps {
   /** Agent delegation data */
@@ -46,83 +49,82 @@ function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
     : null;
 
   return (
-    <button
-      type="button"
+    <Card
+      padding="spacious"
+      hover="none"
+      clickable
       onClick={onClick}
-      className="card p-6 w-full text-left transition-all duration-200 hover:shadow-lg hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      className="w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
     >
-      {/* Agent logo and name */}
-      <div className="flex items-start gap-4">
-        {/* Logo */}
-        <div className="flex-shrink-0">
-          {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt={`${displayName} logo`}
-              className="w-12 h-12 rounded-lg object-cover"
-            />
-          ) : (
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white text-lg font-semibold">
-                {displayName.charAt(0).toUpperCase()}
-              </span>
-            </div>
-          )}
-        </div>
+      <Stack gap="md">
+        {/* Agent logo, name, and arrow */}
+        <Stack direction="row" gap="md" align="start">
+          {/* Logo */}
+          <Avatar
+            src={logoUrl}
+            alt={`${displayName} logo`}
+            initials={displayName.charAt(0).toUpperCase()}
+            shape="rounded"
+            size="lg"
+            className="flex-shrink-0"
+          />
 
-        {/* Agent info */}
-        <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-gray-900 truncate">
-            {displayName}
-          </h3>
-          <p className="mt-1 text-sm text-gray-600">
-            {activeGrantCount === 1
-              ? '1 service'
-              : `${activeGrantCount} services`}
-          </p>
-        </div>
+          {/* Agent info */}
+          <Stack gap="xs" className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold text-gray-900 truncate">
+              {displayName}
+            </h3>
+            <p className="text-sm text-gray-600">
+              {activeGrantCount === 1
+                ? '1 service'
+                : `${activeGrantCount} services`}
+            </p>
+          </Stack>
 
-        {/* Arrow icon */}
-        <div className="flex-shrink-0 text-gray-400">
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-        </div>
-      </div>
-
-      {/* Metadata row */}
-      <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
-        <span>Updated {lastModifiedText}</span>
-        {expirationText && (
-          <span className="flex items-center gap-1">
+          {/* Arrow icon */}
+          <div className="flex-shrink-0 text-gray-400">
             <svg
-              className="w-4 h-4"
+              className="w-5 h-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                d="M9 5l7 7-7 7"
               />
             </svg>
-            {expirationText}
-          </span>
-        )}
-      </div>
-    </button>
+          </div>
+        </Stack>
+
+        {/* Metadata row */}
+        <Stack direction="row" justify="space-between" align="center">
+          <span className="text-xs text-gray-500">Updated {lastModifiedText}</span>
+          {expirationText && (
+            <Stack direction="row" gap="xs" align="center">
+              <svg
+                className="w-4 h-4 text-gray-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span className="text-xs text-gray-500">{expirationText}</span>
+            </Stack>
+          )}
+        </Stack>
+      </Stack>
+    </Card>
   );
 }
 

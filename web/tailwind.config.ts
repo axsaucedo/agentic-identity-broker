@@ -67,9 +67,10 @@ export default {
           800: '#3a2b23',
           900: '#2a1b13',
         },
+
       },
       fontFamily: {
-        display: ['Poppins', 'sans-serif'],
+        display: ['Crimson Pro', 'serif'],
         sans: ['Manrope', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
@@ -88,6 +89,8 @@ export default {
         'fade-in': 'fadeIn 0.5s ease-out',
         'slide-up': 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
         'scale-in': 'scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        'progress-stripes': 'progressStripes 1s linear infinite',
+        'progress-indeterminate': 'progressIndeterminate 1.5s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -101,6 +104,15 @@ export default {
         scaleIn: {
           '0%': { transform: 'scale(0.95)', opacity: '0' },
           '100%': { transform: 'scale(1)', opacity: '1' },
+        },
+        progressStripes: {
+          '0%': { backgroundPosition: '1rem 0' },
+          '100%': { backgroundPosition: '0 0' },
+        },
+        progressIndeterminate: {
+          '0%': { left: '-30%' },
+          '50%': { left: '100%' },
+          '100%': { left: '100%' },
         },
       },
       typography: {

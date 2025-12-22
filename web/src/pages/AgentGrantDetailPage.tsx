@@ -23,6 +23,9 @@ import { InlineError } from '@components/ui/InlineError';
 import { Button } from '@components/ui/Button';
 import { Switch } from '@components/ui/Switch';
 import { useToast } from '@components/ui/Toast';
+import { Breadcrumb } from '@design-system/components/navigation/Breadcrumb';
+import { Card } from '@design-system/components/data-display/Card';
+import { Stack } from '@design-system/components/layout/Stack';
 import { ServiceGrantList } from '@components/consent/ServiceGrantList';
 import { ServiceCard } from '@components/consent/ServiceCard';
 import { GrantValidityControl } from '@components/consent/GrantValidityControl';
@@ -197,16 +200,13 @@ export function AgentGrantDetailPage() {
       <AppLayout>
         <div className="space-y-6">
           {/* Breadcrumb skeleton */}
-          <nav className="flex items-center gap-2 text-sm">
-            <Link to="/" className="text-navy-600 hover:text-navy-700">
-              Delegations
-            </Link>
-            <span className="text-slate-400">/</span>
-            <Skeleton width="120px" height="1rem" />
-          </nav>
+          <Breadcrumb items={[
+            { label: 'Delegations', href: '/' },
+            { label: <Skeleton width="120px" height="1rem" /> },
+          ]} />
 
           {/* Agent header skeleton */}
-          <div className="card p-6">
+          <Card padding="default">
             <div className="flex items-start gap-4">
               <Skeleton width="80px" height="80px" className="rounded-lg" />
               <div className="flex-1 space-y-3">
@@ -215,7 +215,7 @@ export function AgentGrantDetailPage() {
                 <Skeleton width="40%" height="1rem" />
               </div>
             </div>
-          </div>
+          </Card>
 
           {/* Services skeleton */}
           <div className="space-y-4">
@@ -236,13 +236,10 @@ export function AgentGrantDetailPage() {
       <AppLayout>
         <div className="space-y-6">
           {/* Breadcrumb */}
-          <nav className="flex items-center gap-2 text-sm">
-            <Link to="/" className="text-navy-600 hover:text-navy-700">
-              Delegations
-            </Link>
-            <span className="text-slate-400">/</span>
-            <span className="text-slate-600">Agent Details</span>
-          </nav>
+          <Breadcrumb items={[
+            { label: 'Delegations', href: '/' },
+            { label: 'Agent Details' },
+          ]} />
 
           <InlineError error={error} onRetry={refetch} />
         </div>
@@ -273,21 +270,13 @@ export function AgentGrantDetailPage() {
       <PageTransition>
         <div className="space-y-6">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-sm" aria-label="Breadcrumb">
-          <Link
-            to="/"
-            className="text-navy-600 hover:text-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-500 focus:ring-offset-2 rounded"
-          >
-            Delegations
-          </Link>
-          <span className="text-slate-400" aria-hidden="true">
-            /
-          </span>
-          <span className="text-navy-900 font-medium">{agent.displayName}</span>
-        </nav>
+        <Breadcrumb items={[
+          { label: 'Delegations', href: '/' },
+          { label: agent.displayName },
+        ]} />
 
         {/* Agent header card */}
-        <div className="card p-6">
+        <Card padding="default">
           <div className="flex items-start gap-6">
             {/* Agent logo */}
             <div className="flex-shrink-0">
@@ -396,7 +385,7 @@ export function AgentGrantDetailPage() {
               </div>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* Validation errors */}
         {validationErrors.length > 0 && (

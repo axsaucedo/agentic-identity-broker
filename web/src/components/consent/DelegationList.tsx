@@ -2,15 +2,16 @@
  * DelegationList component displays a grid of delegation cards.
  *
  * Features:
- * - Responsive grid layout
+ * - Responsive grid layout using design system Grid component
  * - Framer Motion stagger animations
  * - Handles empty states
  * - Memoized for performance with large lists
  */
 
-import React, { memo, useCallback } from 'react';
+import React, { memo } from 'react';
 import { motion } from 'framer-motion';
 import { DelegationCard } from './DelegationCard';
+import { Grid } from '@design-system/components/layout/Grid';
 import type { AgentDelegation } from '../../types/consent';
 
 interface DelegationListProps {
@@ -53,24 +54,29 @@ function DelegationListComponent({
 
   return (
     <motion.div
-      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
-      {delegations.map((delegation) => {
-        // Create stable callback for each card
-        const handleClick = () => onDelegationClick(delegation.agentId);
+      <Grid
+        columns={1}
+        gap="lg"
+        className="md:grid-cols-2 lg:grid-cols-3"
+      >
+        {delegations.map((delegation) => {
+          // Create stable callback for each card
+          const handleClick = () => onDelegationClick(delegation.agentId);
 
-        return (
-          <motion.div key={delegation.agentId} variants={itemVariants}>
-            <DelegationCard
-              delegation={delegation}
-              onClick={handleClick}
-            />
-          </motion.div>
-        );
-      })}
+          return (
+            <motion.div key={delegation.agentId} variants={itemVariants}>
+              <DelegationCard
+                delegation={delegation}
+                onClick={handleClick}
+              />
+            </motion.div>
+          );
+        })}
+      </Grid>
     </motion.div>
   );
 }

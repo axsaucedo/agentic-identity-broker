@@ -37,37 +37,14 @@ export function ConsentOverviewPage() {
     <AppLayout>
       <PageTransition>
         <div className="space-y-6">
-        {/* Page header with user info */}
+        {/* Page header */}
         <div>
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold text-gray-900">
-                My Agent Delegations
-              </h2>
-              <p className="mt-2 text-gray-600">
-                Manage which agents have access to your third-party services.
-              </p>
-            </div>
-
-            {/* Display user principal when available */}
-            {userInfo && (
-              <div className="flex items-center gap-3">
-                {userInfo.pictureUrl && (
-                  <img
-                    src={userInfo.pictureUrl}
-                    alt={userInfo.displayName}
-                    className="w-10 h-10 rounded-full"
-                  />
-                )}
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">
-                    {userInfo.displayName}
-                  </p>
-                  <p className="text-xs text-gray-500">{userInfo.principal}</p>
-                </div>
-              </div>
-            )}
-          </div>
+          <h2 className="text-2xl font-semibold text-gray-900">
+            My Agent Delegations
+          </h2>
+          <p className="mt-2 text-gray-600">
+            Manage which agents have access to your third-party services.
+          </p>
         </div>
 
         {/* Content area with three states */}

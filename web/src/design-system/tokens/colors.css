@@ -1,0 +1,41 @@
+/**
+ * Design System Color Tokens
+ * TailwindCSS v4 @theme directive for semantic color tokens
+ *
+ * Usage in components:
+ * - bg-trust-deep, text-trust-deep
+ * - bg-cta, text-cta
+ * - bg-success-primary, text-success-primary
+ */
+
+@theme {
+  /* Primary - Trust & Authority */
+  --color-trust-deep: #0d1829;
+  --color-trust-hover: #172136;
+  --color-trust: #1E4D6B;
+  --color-trust-light: #E8F1F5;
+
+  /* Call-to-Action - Amber tones for important actions */
+  --color-cta: #D97706;
+  --color-cta-hover: #B45309;
+
+  /* Success - Green tones for positive actions */
+  --color-success-primary: #059669;
+  --color-success-light: #D1FAE5;
+  --color-success-dark: #047857;
+
+  /* Error - Red tones for destructive actions */
+  --color-error-primary: #DC2626;
+  --color-error-light: #FEE2E2;
+  --color-error-dark: #991B1B;
+
+  /* Warning - Amber/Orange tones for caution */
+  --color-warning-primary: #F59E0B;
+  --color-warning-light: #FEF3C7;
+  --color-warning-dark: #D97706;
+
+  /* Info - Blue tones for informational content */
+  --color-info-primary: #3B82F6;
+  --color-info-light: #DBEAFE;
+  --color-info-dark: #1E40AF;
+}
