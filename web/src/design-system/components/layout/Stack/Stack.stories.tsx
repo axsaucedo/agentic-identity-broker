@@ -80,8 +80,8 @@ const StackItem = ({
   height?: string;
 }) => {
   const variantClasses = {
-    default: 'bg-navy-100 text-navy-900 border-navy-200',
-    highlight: 'bg-emerald-100 text-emerald-900 border-emerald-200',
+    default: 'bg-trust-light text-trust-deep border-neutral-200',
+    highlight: 'bg-success-light text-success-dark border-success-light',
     accent: 'bg-sand text-secondary-900 border-slate',
   };
 
@@ -222,7 +222,7 @@ export const Alignment: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Align Start
         </div>
-        <Stack direction="row" gap="md" align="start" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200 min-h-[120px]">
+        <Stack direction="row" gap="md" align="start" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200 min-h-[120px]">
           <StackItem height="40px">Short</StackItem>
           <StackItem height="60px">Medium</StackItem>
           <StackItem height="80px">Tall</StackItem>
@@ -233,7 +233,7 @@ export const Alignment: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Align Center
         </div>
-        <Stack direction="row" gap="md" align="center" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200 min-h-[120px]">
+        <Stack direction="row" gap="md" align="center" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200 min-h-[120px]">
           <StackItem height="40px">Short</StackItem>
           <StackItem height="60px">Medium</StackItem>
           <StackItem height="80px">Tall</StackItem>
@@ -244,7 +244,7 @@ export const Alignment: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Align End
         </div>
-        <Stack direction="row" gap="md" align="end" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200 min-h-[120px]">
+        <Stack direction="row" gap="md" align="end" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200 min-h-[120px]">
           <StackItem height="40px">Short</StackItem>
           <StackItem height="60px">Medium</StackItem>
           <StackItem height="80px">Tall</StackItem>
@@ -255,7 +255,7 @@ export const Alignment: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Align Stretch (Default)
         </div>
-        <Stack direction="row" gap="md" align="stretch" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200 min-h-[120px]">
+        <Stack direction="row" gap="md" align="stretch" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200 min-h-[120px]">
           <StackItem>Stretch 1</StackItem>
           <StackItem>Stretch 2</StackItem>
           <StackItem>Stretch 3</StackItem>
@@ -281,7 +281,7 @@ export const Justify: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Justify Start (Default)
         </div>
-        <Stack direction="row" gap="md" justify="start" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200">
+        <Stack direction="row" gap="md" justify="start" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200">
           <StackItem>Item 1</StackItem>
           <StackItem>Item 2</StackItem>
           <StackItem>Item 3</StackItem>
@@ -292,7 +292,7 @@ export const Justify: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Justify Center
         </div>
-        <Stack direction="row" gap="md" justify="center" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200">
+        <Stack direction="row" gap="md" justify="center" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200">
           <StackItem>Item 1</StackItem>
           <StackItem>Item 2</StackItem>
           <StackItem>Item 3</StackItem>
@@ -303,7 +303,7 @@ export const Justify: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Justify End
         </div>
-        <Stack direction="row" gap="md" justify="end" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200">
+        <Stack direction="row" gap="md" justify="end" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200">
           <StackItem>Item 1</StackItem>
           <StackItem>Item 2</StackItem>
           <StackItem>Item 3</StackItem>
@@ -314,7 +314,7 @@ export const Justify: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Justify Space Between
         </div>
-        <Stack direction="row" gap="md" justify="space-between" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200">
+        <Stack direction="row" gap="md" justify="space-between" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200">
           <StackItem>Item 1</StackItem>
           <StackItem>Item 2</StackItem>
           <StackItem>Item 3</StackItem>
@@ -325,7 +325,7 @@ export const Justify: Story = {
         <div className="mb-2 text-sm font-semibold text-secondary-600">
           Justify Space Around
         </div>
-        <Stack direction="row" gap="md" justify="space-around" className="bg-white p-4 rounded-lg border-2 border-dashed border-navy-200">
+        <Stack direction="row" gap="md" justify="space-around" className="bg-white p-4 rounded-lg border-2 border-dashed border-neutral-200">
           <StackItem>Item 1</StackItem>
           <StackItem>Item 2</StackItem>
           <StackItem>Item 3</StackItem>
@@ -344,7 +344,7 @@ export const Responsive: Story = {
   render: () => (
     <div className="space-y-8 bg-cream p-6 rounded-xl">
       <div className="bg-white rounded-lg p-6 shadow-md-premium">
-        <h2 className="text-xl font-display font-semibold text-navy-900 mb-4">
+        <h2 className="text-xl font-display font-semibold text-trust-deep mb-4">
           Responsive Stack Behavior
         </h2>
         <p className="text-secondary-600 mb-4">
@@ -368,7 +368,7 @@ export const Responsive: Story = {
       </div>
 
       <div className="bg-white rounded-lg p-6 shadow-md-premium">
-        <h3 className="text-lg font-display font-semibold text-navy-900 mb-3">
+        <h3 className="text-lg font-display font-semibold text-trust-deep mb-3">
           Mobile-First Approach
         </h3>
         <p className="text-secondary-600 mb-4">
@@ -398,7 +398,7 @@ export const Nested: Story = {
     <Stack gap="lg" className="bg-cream p-6 rounded-xl">
       {/* Header with horizontal stack */}
       <Stack direction="row" justify="space-between" align="center" className="bg-white p-4 rounded-lg shadow-sm">
-        <div className="text-lg font-display font-bold text-navy-900">
+        <div className="text-lg font-display font-bold text-trust-deep">
           Application Header
         </div>
         <Stack direction="row" gap="sm">
@@ -409,7 +409,7 @@ export const Nested: Story = {
 
       {/* Main content area */}
       <Stack gap="md" className="bg-white p-6 rounded-lg shadow-sm">
-        <h2 className="text-xl font-display font-semibold text-navy-900">
+        <h2 className="text-xl font-display font-semibold text-trust-deep">
           Main Content Section
         </h2>
 
@@ -483,14 +483,14 @@ export const RealWorldExamples: Story = {
     <Stack gap="xl" className="bg-cream p-6 rounded-xl">
       {/* Button Group Pattern */}
       <div className="bg-white p-6 rounded-lg shadow-md-premium">
-        <h3 className="text-lg font-display font-semibold text-navy-900 mb-4">
+        <h3 className="text-lg font-display font-semibold text-trust-deep mb-4">
           Button Group Pattern
         </h3>
         <Stack direction="row" gap="sm" justify="end">
-          <button className="px-4 py-2 rounded-lg border-2 border-navy-200 text-navy-900 hover:bg-navy-50">
+          <button className="px-4 py-2 rounded-lg border-2 border-neutral-200 text-trust-deep hover:bg-trust-light">
             Cancel
           </button>
-          <button className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
+          <button className="px-4 py-2 rounded-lg bg-success-primary text-white hover:bg-success-hover">
             Confirm
           </button>
         </Stack>
@@ -498,7 +498,7 @@ export const RealWorldExamples: Story = {
 
       {/* Form Layout Pattern */}
       <div className="bg-white p-6 rounded-lg shadow-md-premium">
-        <h3 className="text-lg font-display font-semibold text-navy-900 mb-4">
+        <h3 className="text-lg font-display font-semibold text-trust-deep mb-4">
           Form Layout Pattern
         </h3>
         <Stack gap="md">
@@ -523,10 +523,10 @@ export const RealWorldExamples: Story = {
             />
           </div>
           <Stack direction="row" gap="sm" justify="end">
-            <button className="px-4 py-2 rounded-lg border-2 border-navy-200 text-navy-900">
+            <button className="px-4 py-2 rounded-lg border-2 border-neutral-200 text-trust-deep">
               Cancel
             </button>
-            <button className="px-4 py-2 rounded-lg bg-emerald-600 text-white">
+            <button className="px-4 py-2 rounded-lg bg-success-primary text-white">
               Submit
             </button>
           </Stack>
@@ -536,14 +536,14 @@ export const RealWorldExamples: Story = {
       {/* Navigation Pattern */}
       <div className="bg-white p-4 rounded-lg shadow-md-premium">
         <Stack direction="row" justify="space-between" align="center">
-          <div className="text-xl font-display font-bold text-navy-900">
+          <div className="text-xl font-display font-bold text-trust-deep">
             Logo
           </div>
           <Stack direction="row" gap="md" align="center">
-            <a href="#" className="text-navy-900 hover:text-emerald-600">Home</a>
-            <a href="#" className="text-navy-900 hover:text-emerald-600">About</a>
-            <a href="#" className="text-navy-900 hover:text-emerald-600">Contact</a>
-            <button className="px-4 py-2 rounded-lg bg-emerald-600 text-white">
+            <a href="#" className="text-trust-deep hover:text-success-primary">Home</a>
+            <a href="#" className="text-trust-deep hover:text-success-primary">About</a>
+            <a href="#" className="text-trust-deep hover:text-success-primary">Contact</a>
+            <button className="px-4 py-2 rounded-lg bg-success-primary text-white">
               Sign In
             </button>
           </Stack>
@@ -552,24 +552,24 @@ export const RealWorldExamples: Story = {
 
       {/* Card Grid with Wrapping */}
       <div className="bg-white p-6 rounded-lg shadow-md-premium">
-        <h3 className="text-lg font-display font-semibold text-navy-900 mb-4">
+        <h3 className="text-lg font-display font-semibold text-trust-deep mb-4">
           Card Grid with Wrapping
         </h3>
         <Stack direction="row" gap="md" wrap={true}>
-          <div className="bg-navy-50 p-4 rounded-lg border-2 border-navy-200 min-w-[150px]">
-            <div className="font-semibold text-navy-900 mb-2">Feature 1</div>
+          <div className="bg-trust-light p-4 rounded-lg border-2 border-neutral-200 min-w-[150px]">
+            <div className="font-semibold text-trust-deep mb-2">Feature 1</div>
             <div className="text-sm text-secondary-600">Description</div>
           </div>
-          <div className="bg-navy-50 p-4 rounded-lg border-2 border-navy-200 min-w-[150px]">
-            <div className="font-semibold text-navy-900 mb-2">Feature 2</div>
+          <div className="bg-trust-light p-4 rounded-lg border-2 border-neutral-200 min-w-[150px]">
+            <div className="font-semibold text-trust-deep mb-2">Feature 2</div>
             <div className="text-sm text-secondary-600">Description</div>
           </div>
-          <div className="bg-navy-50 p-4 rounded-lg border-2 border-navy-200 min-w-[150px]">
-            <div className="font-semibold text-navy-900 mb-2">Feature 3</div>
+          <div className="bg-trust-light p-4 rounded-lg border-2 border-neutral-200 min-w-[150px]">
+            <div className="font-semibold text-trust-deep mb-2">Feature 3</div>
             <div className="text-sm text-secondary-600">Description</div>
           </div>
-          <div className="bg-navy-50 p-4 rounded-lg border-2 border-navy-200 min-w-[150px]">
-            <div className="font-semibold text-navy-900 mb-2">Feature 4</div>
+          <div className="bg-trust-light p-4 rounded-lg border-2 border-neutral-200 min-w-[150px]">
+            <div className="font-semibold text-trust-deep mb-2">Feature 4</div>
             <div className="text-sm text-secondary-600">Description</div>
           </div>
         </Stack>
@@ -591,7 +591,7 @@ export const Accessibility: Story = {
     <div className="bg-cream p-8">
       <Stack gap="md" className="bg-white rounded-lg shadow-md-premium p-6">
         <div>
-          <h2 className="text-xl font-display font-semibold text-navy-900 mb-3">
+          <h2 className="text-xl font-display font-semibold text-trust-deep mb-3">
             Accessibility Features
           </h2>
           <p className="text-secondary-600">
@@ -601,11 +601,11 @@ export const Accessibility: Story = {
 
         <Stack gap="md">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Semantic HTML</h3>
+              <h3 className="font-semibold text-trust-deep">Semantic HTML</h3>
               <p className="text-sm text-secondary-600">
                 Uses standard div elements with flexbox, no ARIA required
               </p>
@@ -613,11 +613,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Logical Source Order</h3>
+              <h3 className="font-semibold text-trust-deep">Logical Source Order</h3>
               <p className="text-sm text-secondary-600">
                 Visual order matches DOM order for screen readers
               </p>
@@ -625,11 +625,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Touch-Friendly Spacing</h3>
+              <h3 className="font-semibold text-trust-deep">Touch-Friendly Spacing</h3>
               <p className="text-sm text-secondary-600">
                 Gap options ensure adequate spacing for touch targets (minimum 44x44px)
               </p>
@@ -637,11 +637,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Responsive & Flexible</h3>
+              <h3 className="font-semibold text-trust-deep">Responsive & Flexible</h3>
               <p className="text-sm text-secondary-600">
                 Works across all viewport sizes and zoom levels
               </p>
@@ -649,11 +649,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">No Motion Dependencies</h3>
+              <h3 className="font-semibold text-trust-deep">No Motion Dependencies</h3>
               <p className="text-sm text-secondary-600">
                 Pure layout component with no animations (respects prefers-reduced-motion)
               </p>

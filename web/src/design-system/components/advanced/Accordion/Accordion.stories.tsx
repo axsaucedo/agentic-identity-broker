@@ -103,7 +103,7 @@ const Badge: React.FC<{ children: React.ReactNode; variant?: 'primary' | 'neutra
     className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
       variant === 'primary'
         ? 'bg-trust-deep text-white'
-        : 'bg-gray-100 text-gray-700'
+        : 'bg-neutral-100 text-neutral-700'
     }`}
   >
     {children}
@@ -133,7 +133,7 @@ const basicItems: AccordionItem[] = [
     id: '1',
     title: 'What is the Agentic Identity Broker?',
     content: (
-      <p className="text-gray-700">
+      <p className="text-neutral-700">
         The Agentic Identity Broker is a secure OAuth 2.0/OIDC proxy that enables
         AI agents to access protected resources on behalf of users while maintaining
         strict consent and scope management.
@@ -145,11 +145,11 @@ const basicItems: AccordionItem[] = [
     title: 'How does consent management work?',
     content: (
       <div className="space-y-3">
-        <p className="text-gray-700">
+        <p className="text-neutral-700">
           Users grant explicit consent for agents to access specific scopes. All
           consents are tracked and can be revoked at any time.
         </p>
-        <ul className="list-disc list-inside space-y-1 text-gray-700">
+        <ul className="list-disc list-inside space-y-1 text-neutral-700">
           <li>Granular scope-based permissions</li>
           <li>Expiration time controls</li>
           <li>Real-time revocation</li>
@@ -163,10 +163,10 @@ const basicItems: AccordionItem[] = [
     title: 'What security measures are in place?',
     content: (
       <div className="space-y-3">
-        <p className="text-gray-700">
+        <p className="text-neutral-700">
           The broker implements multiple layers of security to protect user data:
         </p>
-        <ul className="list-disc list-inside space-y-1 text-gray-700">
+        <ul className="list-disc list-inside space-y-1 text-neutral-700">
           <li>OAuth 2.0 and OpenID Connect standards</li>
           <li>Secure session management with short-lived tokens</li>
           <li>Rate limiting and anomaly detection</li>
@@ -247,22 +247,22 @@ export const WithDescriptions: Story = {
         content: (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Display Name
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-neutral-300 rounded-md"
                 defaultValue="John Doe"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Email Address
               </label>
               <input
                 type="email"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-neutral-300 rounded-md"
                 defaultValue="john@example.com"
               />
             </div>
@@ -277,19 +277,19 @@ export const WithDescriptions: Story = {
           <div className="space-y-3">
             <label className="flex items-center gap-2">
               <input type="checkbox" defaultChecked className="rounded" />
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-neutral-700">
                 Allow agents to access my profile information
               </span>
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" defaultChecked className="rounded" />
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-neutral-700">
                 Send security alerts via email
               </span>
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" className="rounded" />
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-neutral-700">
                 Require 2FA for sensitive operations
               </span>
             </label>
@@ -304,15 +304,15 @@ export const WithDescriptions: Story = {
           <div className="space-y-3">
             <label className="flex items-center gap-2">
               <input type="checkbox" defaultChecked className="rounded" />
-              <span className="text-sm text-gray-700">Email notifications</span>
+              <span className="text-sm text-neutral-700">Email notifications</span>
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" className="rounded" />
-              <span className="text-sm text-gray-700">Push notifications</span>
+              <span className="text-sm text-neutral-700">Push notifications</span>
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" defaultChecked className="rounded" />
-              <span className="text-sm text-gray-700">Weekly digest</span>
+              <span className="text-sm text-neutral-700">Weekly digest</span>
             </label>
           </div>
         ),
@@ -333,7 +333,7 @@ export const WithIcons: Story = {
         title: 'Profile Information',
         icon: <UserIcon />,
         content: (
-          <p className="text-gray-700">
+          <p className="text-neutral-700">
             Update your name, photo, and other personal details visible to other users.
           </p>
         ),
@@ -343,7 +343,7 @@ export const WithIcons: Story = {
         title: 'Security Settings',
         icon: <SecurityIcon />,
         content: (
-          <p className="text-gray-700">
+          <p className="text-neutral-700">
             Manage passwords, two-factor authentication, and active sessions.
           </p>
         ),
@@ -353,7 +353,7 @@ export const WithIcons: Story = {
         title: 'Notification Settings',
         icon: <BellIcon />,
         content: (
-          <p className="text-gray-700">
+          <p className="text-neutral-700">
             Control how and when you receive notifications from the platform.
           </p>
         ),
@@ -363,7 +363,7 @@ export const WithIcons: Story = {
         title: 'Documentation',
         icon: <DocumentIcon />,
         content: (
-          <p className="text-gray-700">
+          <p className="text-neutral-700">
             Access guides, API documentation, and integration examples.
           </p>
         ),
@@ -385,17 +385,17 @@ export const WithBadges: Story = {
         badge: <Badge variant="primary">3</Badge>,
         content: (
           <div className="space-y-2">
-            <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-              <span className="text-sm text-gray-700">Research Assistant</span>
-              <span className="text-xs text-gray-500">Last active 5m ago</span>
+            <div className="flex items-center justify-between p-2 bg-neutral-50 rounded">
+              <span className="text-sm text-neutral-700">Research Assistant</span>
+              <span className="text-xs text-neutral-500">Last active 5m ago</span>
             </div>
-            <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-              <span className="text-sm text-gray-700">Data Analyzer</span>
-              <span className="text-xs text-gray-500">Last active 1h ago</span>
+            <div className="flex items-center justify-between p-2 bg-neutral-50 rounded">
+              <span className="text-sm text-neutral-700">Data Analyzer</span>
+              <span className="text-xs text-neutral-500">Last active 1h ago</span>
             </div>
-            <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-              <span className="text-sm text-gray-700">Content Generator</span>
-              <span className="text-xs text-gray-500">Last active 2h ago</span>
+            <div className="flex items-center justify-between p-2 bg-neutral-50 rounded">
+              <span className="text-sm text-neutral-700">Content Generator</span>
+              <span className="text-xs text-neutral-500">Last active 2h ago</span>
             </div>
           </div>
         ),
@@ -405,7 +405,7 @@ export const WithBadges: Story = {
         title: 'Pending Requests',
         badge: <Badge>7</Badge>,
         content: (
-          <p className="text-gray-700">
+          <p className="text-neutral-700">
             You have 7 pending consent requests waiting for your approval.
           </p>
         ),
@@ -415,7 +415,7 @@ export const WithBadges: Story = {
         title: 'Revoked Permissions',
         badge: <Badge>12</Badge>,
         content: (
-          <p className="text-gray-700">
+          <p className="text-neutral-700">
             View history of revoked agent permissions and access logs.
           </p>
         ),
@@ -434,26 +434,26 @@ export const WithDisabled: Story = {
       {
         id: '1',
         title: 'Available Feature',
-        content: <p className="text-gray-700">This feature is available for use.</p>,
+        content: <p className="text-neutral-700">This feature is available for use.</p>,
       },
       {
         id: '2',
         title: 'Coming Soon',
         description: 'This feature is currently under development',
         disabled: true,
-        content: <p className="text-gray-700">Content not accessible.</p>,
+        content: <p className="text-neutral-700">Content not accessible.</p>,
       },
       {
         id: '3',
         title: 'Premium Only',
         description: 'Upgrade to access this feature',
         disabled: true,
-        content: <p className="text-gray-700">Content not accessible.</p>,
+        content: <p className="text-neutral-700">Content not accessible.</p>,
       },
       {
         id: '4',
         title: 'Another Available Feature',
-        content: <p className="text-gray-700">This feature is also available.</p>,
+        content: <p className="text-neutral-700">This feature is also available.</p>,
       },
     ],
     defaultOpen: '1',
@@ -472,7 +472,7 @@ export const Nested: Story = {
         icon: <SecurityIcon />,
         content: (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-neutral-600 mb-4">
               Configure authentication providers and authorization rules.
             </p>
             <Accordion
@@ -482,7 +482,7 @@ export const Nested: Story = {
                   id: '1-1',
                   title: 'OAuth Providers',
                   content: (
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-neutral-700">
                       Configure Google, GitHub, and other OAuth providers.
                     </p>
                   ),
@@ -491,7 +491,7 @@ export const Nested: Story = {
                   id: '1-2',
                   title: 'SAML Configuration',
                   content: (
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-neutral-700">
                       Set up enterprise SAML SSO integration.
                     </p>
                   ),
@@ -500,7 +500,7 @@ export const Nested: Story = {
                   id: '1-3',
                   title: 'Role-Based Access',
                   content: (
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-neutral-700">
                       Define roles and permissions for your organization.
                     </p>
                   ),
@@ -516,7 +516,7 @@ export const Nested: Story = {
         icon: <SettingsIcon />,
         content: (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-neutral-600 mb-4">
               Manage AI agents and their access permissions.
             </p>
             <Accordion
@@ -526,7 +526,7 @@ export const Nested: Story = {
                   id: '2-1',
                   title: 'Agent Registry',
                   content: (
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-neutral-700">
                       View and manage registered AI agents.
                     </p>
                   ),
@@ -535,7 +535,7 @@ export const Nested: Story = {
                   id: '2-2',
                   title: 'Scope Configuration',
                   content: (
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-neutral-700">
                       Define available scopes and permissions.
                     </p>
                   ),
@@ -563,27 +563,27 @@ export const CustomContent: Story = {
         content: (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Agent Name
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-trust-deep focus:border-transparent"
+                className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:ring-2 focus:ring-trust-deep focus:border-transparent"
                 placeholder="My Research Assistant"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Description
               </label>
               <textarea
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-trust-deep focus:border-transparent"
+                className="w-full px-3 py-2 border border-neutral-300 rounded-md focus:ring-2 focus:ring-trust-deep focus:border-transparent"
                 rows={3}
                 placeholder="Describe what this agent does..."
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
                 Allowed Scopes
               </label>
               <div className="space-y-2">
@@ -605,7 +605,7 @@ export const CustomContent: Story = {
               <button className="px-4 py-2 bg-trust-deep text-white rounded-md hover:bg-trust-800 transition-colors">
                 Save Changes
               </button>
-              <button className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors">
+              <button className="px-4 py-2 border border-neutral-300 text-neutral-700 rounded-md hover:bg-neutral-50 transition-colors">
                 Cancel
               </button>
             </div>
@@ -627,13 +627,13 @@ export const CustomContent: Story = {
             ].map((log, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
+                className="flex items-center justify-between p-3 bg-neutral-50 rounded-md"
               >
                 <div>
-                  <div className="text-sm font-medium text-gray-900">
+                  <div className="text-sm font-medium text-neutral-900">
                     {log.action}
                   </div>
-                  <div className="text-xs text-gray-500">{log.time}</div>
+                  <div className="text-xs text-neutral-500">{log.time}</div>
                 </div>
                 <span
                   className={`px-2 py-1 text-xs font-medium rounded ${
@@ -666,25 +666,25 @@ export const ControlledMode: Story = {
         <div className="flex gap-2">
           <button
             onClick={() => setOpenIds(['1'])}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+            className="px-3 py-1.5 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50"
           >
             Open First
           </button>
           <button
             onClick={() => setOpenIds(['2'])}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+            className="px-3 py-1.5 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50"
           >
             Open Second
           </button>
           <button
             onClick={() => setOpenIds(['1', '2', '3'])}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+            className="px-3 py-1.5 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50"
           >
             Open All
           </button>
           <button
             onClick={() => setOpenIds([])}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+            className="px-3 py-1.5 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50"
           >
             Close All
           </button>
@@ -695,7 +695,7 @@ export const ControlledMode: Story = {
           defaultOpen={openIds}
           onChange={setOpenIds}
         />
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-neutral-600">
           Open items: {openIds.length > 0 ? openIds.join(', ') : 'none'}
         </div>
       </div>
@@ -723,17 +723,17 @@ export const FAQLayout: Story = {
         title: 'How do I register a new AI agent?',
         content: (
           <div className="space-y-3">
-            <p className="text-gray-700">
+            <p className="text-neutral-700">
               To register a new AI agent, follow these steps:
             </p>
-            <ol className="list-decimal list-inside space-y-2 text-gray-700">
+            <ol className="list-decimal list-inside space-y-2 text-neutral-700">
               <li>Navigate to the Agent Management section</li>
               <li>Click the "Register New Agent" button</li>
               <li>Provide agent name, description, and callback URL</li>
               <li>Select the required OAuth scopes</li>
               <li>Save and copy your client credentials</li>
             </ol>
-            <p className="text-gray-700 pt-2">
+            <p className="text-neutral-700 pt-2">
               Store your client secret securely - it won't be shown again.
             </p>
           </div>
@@ -744,11 +744,11 @@ export const FAQLayout: Story = {
         title: 'Can I revoke agent access at any time?',
         content: (
           <div className="space-y-3">
-            <p className="text-gray-700">
+            <p className="text-neutral-700">
               Yes, you have complete control over agent access. You can revoke
               permissions at any time through the Consent Management dashboard.
             </p>
-            <p className="text-gray-700">
+            <p className="text-neutral-700">
               When you revoke access, all active sessions for that agent are
               immediately terminated, and any access tokens are invalidated.
             </p>
@@ -760,10 +760,10 @@ export const FAQLayout: Story = {
         title: 'What happens when a consent expires?',
         content: (
           <div className="space-y-3">
-            <p className="text-gray-700">
+            <p className="text-neutral-700">
               When a consent reaches its expiration time:
             </p>
-            <ul className="list-disc list-inside space-y-1 text-gray-700">
+            <ul className="list-disc list-inside space-y-1 text-neutral-700">
               <li>The agent can no longer access your protected resources</li>
               <li>Active access tokens are invalidated</li>
               <li>The agent must request consent again to restore access</li>
@@ -776,7 +776,7 @@ export const FAQLayout: Story = {
         id: '4',
         title: 'How are my credentials stored?',
         content: (
-          <p className="text-gray-700">
+          <p className="text-neutral-700">
             All sensitive data is encrypted at rest using industry-standard AES-256
             encryption. Access tokens are short-lived and stored with additional
             encryption layers. We follow OWASP best practices for credential management.
@@ -788,17 +788,17 @@ export const FAQLayout: Story = {
         title: 'What is scope-based access control?',
         content: (
           <div className="space-y-3">
-            <p className="text-gray-700">
+            <p className="text-neutral-700">
               Scopes define granular permissions for what an agent can access. Instead
               of giving blanket access to your account, you grant specific capabilities:
             </p>
-            <ul className="list-disc list-inside space-y-1 text-gray-700">
+            <ul className="list-disc list-inside space-y-1 text-neutral-700">
               <li><strong>profile:read</strong> - View basic profile information</li>
               <li><strong>email:read</strong> - Access email address</li>
               <li><strong>documents:read</strong> - Read your documents</li>
               <li><strong>documents:write</strong> - Create or modify documents</li>
             </ul>
-            <p className="text-gray-700 pt-2">
+            <p className="text-neutral-700 pt-2">
               You can grant or revoke individual scopes without affecting others.
             </p>
           </div>
@@ -809,16 +809,16 @@ export const FAQLayout: Story = {
         title: 'Is there an audit log of agent activity?',
         content: (
           <div className="space-y-3">
-            <p className="text-gray-700">
+            <p className="text-neutral-700">
               Yes, we maintain comprehensive audit logs of all agent activity:
             </p>
-            <ul className="list-disc list-inside space-y-1 text-gray-700">
+            <ul className="list-disc list-inside space-y-1 text-neutral-700">
               <li>Every API request made by agents on your behalf</li>
               <li>Consent grants and revocations</li>
               <li>Authentication events</li>
               <li>Failed access attempts</li>
             </ul>
-            <p className="text-gray-700 pt-2">
+            <p className="text-neutral-700 pt-2">
               Access your complete audit trail in the Activity section of your dashboard.
             </p>
           </div>
@@ -843,20 +843,20 @@ export const SettingsPanel: Story = {
         content: (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Organization Name
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-neutral-300 rounded-md"
                 defaultValue="Acme Corporation"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Default Token Lifetime
               </label>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded-md">
+              <select className="w-full px-3 py-2 border border-neutral-300 rounded-md">
                 <option>15 minutes</option>
                 <option>30 minutes</option>
                 <option selected>1 hour</option>
@@ -867,7 +867,7 @@ export const SettingsPanel: Story = {
             <div className="pt-2">
               <label className="flex items-center gap-2">
                 <input type="checkbox" defaultChecked className="rounded" />
-                <span className="text-sm text-gray-700">
+                <span className="text-sm text-neutral-700">
                   Enable automatic consent renewal
                 </span>
               </label>
@@ -884,44 +884,44 @@ export const SettingsPanel: Story = {
         content: (
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-3">
+              <h4 className="text-sm font-medium text-neutral-900 mb-3">
                 Authentication Methods
               </h4>
               <div className="space-y-2">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" defaultChecked className="rounded" />
-                  <span className="text-sm text-gray-700">OAuth 2.0</span>
+                  <span className="text-sm text-neutral-700">OAuth 2.0</span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" defaultChecked className="rounded" />
-                  <span className="text-sm text-gray-700">OpenID Connect</span>
+                  <span className="text-sm text-neutral-700">OpenID Connect</span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" className="rounded" />
-                  <span className="text-sm text-gray-700">SAML 2.0</span>
+                  <span className="text-sm text-neutral-700">SAML 2.0</span>
                 </label>
               </div>
             </div>
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-3">
+              <h4 className="text-sm font-medium text-neutral-900 mb-3">
                 Security Policies
               </h4>
               <div className="space-y-2">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" defaultChecked className="rounded" />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-neutral-700">
                     Require 2FA for admin actions
                   </span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" defaultChecked className="rounded" />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-neutral-700">
                     Enforce strong passwords
                   </span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" className="rounded" />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-neutral-700">
                     Enable IP whitelisting
                   </span>
                 </label>
@@ -938,37 +938,37 @@ export const SettingsPanel: Story = {
         content: (
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-3">
+              <h4 className="text-sm font-medium text-neutral-900 mb-3">
                 Email Notifications
               </h4>
               <div className="space-y-2">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" defaultChecked className="rounded" />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-neutral-700">
                     New consent requests
                   </span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" defaultChecked className="rounded" />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-neutral-700">
                     Security alerts
                   </span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" className="rounded" />
-                  <span className="text-sm text-gray-700">
+                  <span className="text-sm text-neutral-700">
                     Weekly activity summary
                   </span>
                 </label>
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
                 Alert Email Address
               </label>
               <input
                 type="email"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-neutral-300 rounded-md"
                 defaultValue="security@acme.com"
               />
             </div>
@@ -983,26 +983,26 @@ export const SettingsPanel: Story = {
         content: (
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-3">
+              <h4 className="text-sm font-medium text-neutral-900 mb-3">
                 API Configuration
               </h4>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
                     API Base URL
                   </label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-md bg-neutral-50"
                     value="https://api.example.com"
                     readOnly
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
                     Rate Limit
                   </label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-md">
+                  <select className="w-full px-3 py-2 border border-neutral-300 rounded-md">
                     <option>100 requests/minute</option>
                     <option selected>1000 requests/minute</option>
                     <option>10000 requests/minute</option>

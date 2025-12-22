@@ -190,6 +190,44 @@
 - **SR-005**: Signature verification MUST use [IMPLEMENTATION NOTE: Go crypto/* or golang.org/x/crypto packages]
 - **SR-006**: Encryption MUST NOT have plaintext fallbacks [IMPLEMENTATION NOTE: No optional security]
 
+### Frontend/Design System Requirements *(if applicable - document before implementation)*
+
+<!--
+  Per Constitution Principle XI (Design System Compliance & Consistency):
+  Frontend components must use the design system; universal patterns must be contributed back.
+-->
+
+**Design System Compliance**:
+- All frontend components MUST use design system located at `web/src/design-system/`
+- Documentation entrypoint: [web/src/design-system/docs/INDEX.md](../web/src/design-system/docs/INDEX.md)
+- Before implementation, review:
+  - [DECISION_TREES.md](../web/src/design-system/docs/DECISION_TREES.md) for variant selection
+  - [COMPONENT_PAIRING_GUIDE.md](../web/src/design-system/docs/COMPONENT_PAIRING_GUIDE.md) for composition patterns
+  - [COMMON_MISTAKES.md](../web/src/design-system/docs/COMMON_MISTAKES.md) to avoid anti-patterns
+
+**Component Classification**:
+- **Application-Specific Components**: [List components specific to this feature]
+  - Location: `web/src/components/[feature]/`
+  - Must use design system primitives (Button, Card, Badge, etc.)
+- **Universal Components** (if any): [List components applicable across the application]
+  - Location: `web/src/design-system/components/[category]/`
+  - Must include Storybook stories
+  - Must follow Refined Trust Architecture aesthetic
+
+**Design Tokens Usage**:
+- Use semantic tokens: `trust-deep`, `trust`, `success-primary`, `error-primary`, `neutral-*`
+- DO NOT use extended palettes: `navy-700`, `emerald-600`, `gray-*`
+- DO NOT bypass design tokens with custom CSS
+
+**Accessibility Requirements**:
+- WCAG 2.1 AA compliance mandatory (4.5:1 text contrast, 3:1 UI component contrast)
+- Semantic HTML with proper ARIA attributes
+- Keyboard navigation support for all interactive elements
+
+*Example clarification needed:*
+
+- **FE-001**: Feature requires [component type] component with [specific behavior] [NEEDS CLARIFICATION: Is this universal or app-specific? Should it be added to design system?]
+
 ### Key Entities *(include if feature involves data)*
 
 - **[Entity 1]**: [What it represents, key attributes without implementation]

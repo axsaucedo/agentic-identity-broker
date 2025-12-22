@@ -26,10 +26,10 @@ const tooltipVariants = cva(
     variants: {
       theme: {
         // Dark theme (default) - high contrast
-        dark: 'bg-gray-900 text-white',
+        dark: 'bg-neutral-900 text-white',
 
         // Light theme - subtle with border
-        light: 'bg-white text-gray-900 border border-gray-300 shadow-md',
+        light: 'bg-white text-neutral-900 border border-neutral-300 shadow-md',
       },
       position: {
         top: '',
@@ -48,8 +48,8 @@ const tooltipVariants = cva(
 const arrowVariants = cva('absolute w-2 h-2 rotate-45', {
   variants: {
     theme: {
-      dark: 'bg-gray-900',
-      light: 'bg-white border-gray-300',
+      dark: 'bg-neutral-900',
+      light: 'bg-white border-neutral-300',
     },
     position: {
       top: 'bottom-[-4px] left-1/2 -translate-x-1/2',

@@ -23,9 +23,9 @@ const textareaVariants = cva(
   {
     variants: {
       variant: {
-        default: 'border-gray-300 text-gray-900 placeholder-gray-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
-        error: 'border-error-primary bg-error-light/20 text-gray-900 placeholder-gray-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
-        success: 'border-success-primary bg-success-light/20 text-gray-900 placeholder-gray-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
+        default: 'border-neutral-300 text-neutral-900 placeholder-neutral-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
+        error: 'border-error-primary bg-error-light/20 text-neutral-900 placeholder-neutral-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
+        success: 'border-success-primary bg-success-light/20 text-neutral-900 placeholder-neutral-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
       },
     },
     defaultVariants: {
@@ -132,7 +132,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
         {label && (
           <label
             htmlFor={id}
-            className="block text-sm font-medium text-gray-900 mb-2"
+            className="block text-sm font-medium text-neutral-900 mb-2"
           >
             {label}
             {required && <span className="ml-1 text-error-primary">*</span>}
@@ -156,7 +156,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
           onChange={handleChange}
           className={cn(
             textareaVariants({ variant }),
-            disabled && 'bg-gray-50 cursor-not-allowed opacity-60',
+            disabled && 'bg-neutral-50 cursor-not-allowed opacity-60',
             autoGrow && 'min-h-[2.5rem] overflow-hidden',
             className
           )}
@@ -172,7 +172,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
             <span className="text-xs text-success-primary font-medium">{successMessage}</span>
           )}
           {helperText && !errorMessage && !successMessage && (
-            <span className="text-xs text-gray-600">{helperText}</span>
+            <span className="text-xs text-neutral-600">{helperText}</span>
           )}
 
           {/* Character count on right */}
@@ -180,7 +180,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
             <span
               className={cn(
                 'text-xs ml-auto',
-                charCount > maxLength! * 0.8 ? 'text-warning-primary' : 'text-gray-500'
+                charCount > maxLength! * 0.8 ? 'text-warning-primary' : 'text-neutral-500'
               )}
             >
               {displayCharCount}

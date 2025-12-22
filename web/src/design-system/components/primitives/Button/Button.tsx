@@ -22,20 +22,20 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary: Deep navy - most important actions
+        // Primary: Deep navy (trust) - most important actions
         primary: 'bg-trust-deep text-white border-transparent hover:bg-trust-hover focus:ring-trust shadow-md hover:shadow-lg hover:-translate-y-px',
 
         // Secondary: Success green - secondary actions
-        secondary: 'bg-emerald-600 text-white border-transparent hover:bg-emerald-700 focus:ring-emerald-500 shadow-md hover:shadow-lg hover:-translate-y-px',
+        secondary: 'bg-success-primary text-white border-transparent hover:bg-success-hover focus:ring-success-primary shadow-md hover:shadow-lg hover:-translate-y-px',
 
-        // Outline: White bg with navy border - tertiary actions
-        outline: 'bg-white text-navy-900 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus:ring-navy-700 shadow-sm',
+        // Outline: White bg with trust border - tertiary actions
+        outline: 'bg-white text-trust-deep border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400 focus:ring-trust shadow-sm',
 
         // Ghost: Transparent bg - subtle actions
-        ghost: 'bg-transparent text-navy-900 hover:bg-gray-100 focus:ring-navy-700',
+        ghost: 'bg-transparent text-trust-deep hover:bg-neutral-100 focus:ring-trust',
 
-        // Danger: Red - destructive actions
-        danger: 'bg-red-600 text-white border-transparent hover:bg-red-700 focus:ring-red-500 shadow-md hover:shadow-lg hover:-translate-y-px',
+        // Danger: Error red - destructive actions
+        danger: 'bg-error-primary text-white border-transparent hover:bg-error-hover focus:ring-error-primary shadow-md hover:shadow-lg hover:-translate-y-px',
       },
       size: {
         sm: 'px-3 py-1.5 text-sm h-9',

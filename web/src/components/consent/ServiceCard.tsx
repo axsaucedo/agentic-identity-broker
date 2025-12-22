@@ -134,7 +134,7 @@ export function ServiceCard({
           <Stack gap="sm" className="flex-1 min-w-0">
             <Stack direction="row" justify="space-between" align="start" gap="md">
               <Stack gap="xs" className="flex-1 min-w-0">
-                <h3 className="text-lg font-semibold text-navy-900">
+                <h3 className="text-lg font-semibold text-trust-deep">
                   {service.displayName}
                 </h3>
                 {/* Status and scopes indicators */}
@@ -205,7 +205,7 @@ export function ServiceCard({
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-slate/5 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-navy-500"
+            className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-slate/5 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-trust"
             aria-expanded={isExpanded}
             aria-controls={`scopes-${service.serviceId}`}
             aria-label={
@@ -255,7 +255,7 @@ export function ServiceCard({
                         variant="ghost"
                         size="sm"
                         onClick={handleSelectAll}
-                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700 h-auto py-0 px-0"
+                        className="text-xs font-medium text-success-primary hover:text-success-hover h-auto py-0 px-0"
                       >
                         Select all
                       </Button>
@@ -264,7 +264,7 @@ export function ServiceCard({
                         variant="ghost"
                         size="sm"
                         onClick={handleDeselectAll}
-                        className="text-xs font-medium text-emerald-600 hover:text-emerald-700 h-auto py-0 px-0"
+                        className="text-xs font-medium text-success-primary hover:text-success-hover h-auto py-0 px-0"
                       >
                         Deselect all
                       </Button>
@@ -289,7 +289,7 @@ export function ServiceCard({
                                 id={`scope-${service.serviceId}-${scope.value}`}
                                 checked={isChecked}
                                 onChange={(e) => handleScopeToggle(scope.value, e.target.checked)}
-                                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                className="h-4 w-4 rounded border-slate-300 text-success-primary focus:ring-success-primary"
                               />
                             </div>
 
@@ -301,14 +301,14 @@ export function ServiceCard({
                               >
                                 <code
                                   className={`text-sm font-mono font-medium break-all ${
-                                    isChecked ? 'text-emerald-700' : 'text-navy-900'
+                                    isChecked ? 'text-success-hover' : 'text-trust-deep'
                                   }`}
                                 >
                                   {scope.value}
                                 </code>
                                 <p
                                   className={`mt-1 text-sm ${
-                                    isChecked ? 'text-emerald-600' : 'text-slate-600'
+                                    isChecked ? 'text-success-primary' : 'text-slate-600'
                                   }`}
                                 >
                                   {scope.description}

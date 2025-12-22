@@ -71,10 +71,10 @@ function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
 
           {/* Agent info */}
           <Stack gap="xs" className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-gray-900 truncate">
+            <h3 className="text-lg font-semibold text-neutral-900 truncate">
               {displayName}
             </h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-neutral-600">
               {activeGrantCount === 1
                 ? '1 service'
                 : `${activeGrantCount} services`}
@@ -82,7 +82,7 @@ function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
           </Stack>
 
           {/* Arrow icon */}
-          <div className="flex-shrink-0 text-gray-400">
+          <div className="flex-shrink-0 text-neutral-400">
             <svg
               className="w-5 h-5"
               fill="none"
@@ -102,11 +102,11 @@ function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
 
         {/* Metadata row */}
         <Stack direction="row" justify="space-between" align="center">
-          <span className="text-xs text-gray-500">Updated {lastModifiedText}</span>
+          <span className="text-xs text-neutral-500">Updated {lastModifiedText}</span>
           {expirationText && (
             <Stack direction="row" gap="xs" align="center">
               <svg
-                className="w-4 h-4 text-gray-500"
+                className="w-4 h-4 text-neutral-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -119,7 +119,7 @@ function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
                   d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <span className="text-xs text-gray-500">{expirationText}</span>
+              <span className="text-xs text-neutral-500">{expirationText}</span>
             </Stack>
           )}
         </Stack>

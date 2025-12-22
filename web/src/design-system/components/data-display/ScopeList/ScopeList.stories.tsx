@@ -308,9 +308,9 @@ export const Selectable: Story = {
 
     return (
       <div className="space-y-4">
-        <div className="p-4 bg-gray-100 rounded-lg">
-          <p className="text-sm font-medium text-gray-700">Selected scopes:</p>
-          <p className="text-sm text-gray-600 mt-1">
+        <div className="p-4 bg-neutral-100 rounded-lg">
+          <p className="text-sm font-medium text-neutral-700">Selected scopes:</p>
+          <p className="text-sm text-neutral-600 mt-1">
             {selectedIds.length > 0 ? selectedIds.join(', ') : 'None'}
           </p>
         </div>
@@ -444,8 +444,8 @@ export const CustomEmptyState: Story = {
     size: 'default',
     empty: (
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-1">No permissions requested</h3>
-        <p className="text-sm text-gray-600">
+        <h3 className="text-lg font-medium text-neutral-900 mb-1">No permissions requested</h3>
+        <p className="text-sm text-neutral-600">
           This application doesn't require any special permissions.
         </p>
       </div>
@@ -469,9 +469,9 @@ export const PreSelected: Story = {
 
     return (
       <div className="space-y-4">
-        <div className="p-4 bg-gray-100 rounded-lg">
-          <p className="text-sm font-medium text-gray-700">Selected scopes:</p>
-          <p className="text-sm text-gray-600 mt-1">
+        <div className="p-4 bg-neutral-100 rounded-lg">
+          <p className="text-sm font-medium text-neutral-700">Selected scopes:</p>
+          <p className="text-sm text-neutral-600 mt-1">
             {selectedIds.length > 0 ? selectedIds.join(', ') : 'None'}
           </p>
         </div>
@@ -542,8 +542,8 @@ export const ConsentFlow: Story = {
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Grant Permissions</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-2xl font-bold text-neutral-900 mb-2">Grant Permissions</h2>
+          <p className="text-sm text-neutral-600">
             Application "Example App" is requesting access to your account
           </p>
         </div>
@@ -586,16 +586,16 @@ export const ConsentFlow: Story = {
         />
 
         {/* Summary */}
-        <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm font-medium text-gray-700">Summary</p>
-          <p className="text-sm text-gray-600 mt-1">
+        <div className="p-4 bg-neutral-50 rounded-lg">
+          <p className="text-sm font-medium text-neutral-700">Summary</p>
+          <p className="text-sm text-neutral-600 mt-1">
             {selectedIds.length} of {googleScopes.length} permissions selected
           </p>
         </div>
 
         {/* Actions */}
         <div className="flex gap-3 justify-end">
-          <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+          <button className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-300 rounded-lg hover:bg-neutral-50">
             Cancel
           </button>
           <button
@@ -619,16 +619,16 @@ export const AllFeatures: Story = {
 
     return (
       <div className="space-y-4">
-        <div className="p-4 bg-gray-100 rounded-lg">
-          <p className="text-sm font-medium text-gray-700 mb-2">Features enabled:</p>
-          <ul className="text-xs text-gray-600 space-y-1">
+        <div className="p-4 bg-neutral-100 rounded-lg">
+          <p className="text-sm font-medium text-neutral-700 mb-2">Features enabled:</p>
+          <ul className="text-xs text-neutral-600 space-y-1">
             <li>✓ Selectable scopes with checkboxes</li>
             <li>✓ Search/filter by name, description, or category</li>
             <li>✓ Expandable/collapsible categories</li>
             <li>✓ Risk level badges (low, medium, high)</li>
             <li>✓ Category icons</li>
           </ul>
-          <p className="text-sm font-medium text-gray-700 mt-3">
+          <p className="text-sm font-medium text-neutral-700 mt-3">
             Selected: {selectedIds.length} scope{selectedIds.length !== 1 ? 's' : ''}
           </p>
         </div>

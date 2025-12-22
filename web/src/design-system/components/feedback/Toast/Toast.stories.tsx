@@ -117,8 +117,8 @@ export const Variants: Story = {
         )}
 
         {!toasts.info && !toasts.success && !toasts.warning && !toasts.error && (
-          <div className="text-center p-8 border border-dashed border-gray-300 rounded-lg">
-            <p className="text-gray-600 mb-4">All toasts dismissed</p>
+          <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
+            <p className="text-neutral-600 mb-4">All toasts dismissed</p>
             <button
               onClick={() =>
                 setToasts({
@@ -264,8 +264,8 @@ export const WithActions: Story = {
         )}
 
         {!toasts.action1 && !toasts.action2 && !toasts.action3 && (
-          <div className="text-center p-8 border border-dashed border-gray-300 rounded-lg">
-            <p className="text-gray-600 mb-4">All toasts dismissed</p>
+          <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
+            <p className="text-neutral-600 mb-4">All toasts dismissed</p>
             <button
               onClick={() =>
                 setToasts({ action1: true, action2: true, action3: true })
@@ -298,11 +298,11 @@ export const WithTimer: Story = {
 
     return (
       <div className="space-y-4 max-w-2xl">
-        <div className="p-6 border border-dashed border-gray-300 rounded-lg">
-          <h4 className="text-sm font-semibold text-gray-900 mb-3">
+        <div className="p-6 border border-dashed border-neutral-300 rounded-lg">
+          <h4 className="text-sm font-semibold text-neutral-900 mb-3">
             Auto-Dismiss Demo
           </h4>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-neutral-600 mb-4">
             Click the buttons below to show toasts that auto-dismiss after 5
             seconds. You can also manually dismiss them before the timer ends.
           </p>
@@ -413,11 +413,11 @@ export const Stacked: Story = {
 
     return (
       <div className="space-y-4">
-        <div className="p-6 border border-dashed border-gray-300 rounded-lg max-w-2xl">
-          <h4 className="text-sm font-semibold text-gray-900 mb-3">
+        <div className="p-6 border border-dashed border-neutral-300 rounded-lg max-w-2xl">
+          <h4 className="text-sm font-semibold text-neutral-900 mb-3">
             Toast Stack Manager
           </h4>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-neutral-600 mb-4">
             Add multiple toasts to see how they stack. Toasts appear at the top
             of the stack and stack downward.
           </p>
@@ -448,12 +448,12 @@ export const Stacked: Story = {
             </button>
             <button
               onClick={() => setToasts([])}
-              className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              className="px-3 py-2 text-sm bg-neutral-600 text-white rounded-md hover:bg-neutral-700 transition-colors"
             >
               Clear All
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-3">
+          <p className="text-xs text-neutral-500 mt-3">
             Active toasts: {toasts.length}
           </p>
         </div>
@@ -490,13 +490,13 @@ export const Positions: Story = {
     >(null);
 
     return (
-      <div className="h-96 relative border border-dashed border-gray-300 rounded-lg">
+      <div className="h-96 relative border border-dashed border-neutral-300 rounded-lg">
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
-            <h4 className="text-sm font-semibold text-gray-900 mb-3">
+            <h4 className="text-sm font-semibold text-neutral-900 mb-3">
               Choose a Position
             </h4>
-            <p className="text-sm text-gray-600 mb-4 max-w-md">
+            <p className="text-sm text-neutral-600 mb-4 max-w-md">
               Click a button to show a toast in that corner. Toasts will appear
               with a slide-in animation from their respective edge.
             </p>
@@ -566,11 +566,11 @@ export const CustomDuration: Story = {
 
     return (
       <div className="space-y-4 max-w-2xl">
-        <div className="p-6 border border-dashed border-gray-300 rounded-lg">
-          <h4 className="text-sm font-semibold text-gray-900 mb-3">
+        <div className="p-6 border border-dashed border-neutral-300 rounded-lg">
+          <h4 className="text-sm font-semibold text-neutral-900 mb-3">
             Duration Options
           </h4>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-neutral-600 mb-4">
             Configure how long toasts remain visible before auto-dismissing.
             Choose from quick (3s), standard (5s), or extended (10s) durations.
           </p>
@@ -601,7 +601,7 @@ export const CustomDuration: Story = {
                 setActiveToast('persistent');
               }}
               disabled={activeToast === 'persistent'}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-neutral-600 text-white rounded-md hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               No Auto-Dismiss
             </button>
@@ -667,8 +667,8 @@ export const Playground: Story = {
 
     if (!isVisible) {
       return (
-        <div className="text-center p-8 border border-dashed border-gray-300 rounded-lg">
-          <p className="text-gray-600 mb-4">Toast dismissed</p>
+        <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
+          <p className="text-neutral-600 mb-4">Toast dismissed</p>
           <button
             onClick={() => setIsVisible(true)}
             className="px-4 py-2 bg-trust-deep text-white rounded-md hover:bg-trust-hover transition-colors"
@@ -762,8 +762,8 @@ export const WithTitle: Story = {
         )}
 
         {!toasts.toast1 && !toasts.toast2 && !toasts.toast3 && !toasts.toast4 && (
-          <div className="text-center p-8 border border-dashed border-gray-300 rounded-lg">
-            <p className="text-gray-600 mb-4">All toasts dismissed</p>
+          <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
+            <p className="text-neutral-600 mb-4">All toasts dismissed</p>
             <button
               onClick={() =>
                 setToasts({
@@ -811,12 +811,12 @@ export const RealWorldExamples: Story = {
     return (
       <div className="space-y-6 max-w-3xl">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <h3 className="text-lg font-semibold text-neutral-900 mb-4">
             Consent Management Scenarios
           </h3>
 
-          <div className="p-6 border border-dashed border-gray-300 rounded-lg mb-4">
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="p-6 border border-dashed border-neutral-300 rounded-lg mb-4">
+            <p className="text-sm text-neutral-600 mb-4">
               Simulate common consent management notifications:
             </p>
             <div className="flex gap-2 flex-wrap">

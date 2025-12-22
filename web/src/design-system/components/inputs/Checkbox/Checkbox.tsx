@@ -28,7 +28,7 @@ const checkboxVariants = cva(
         lg: 'w-6 h-6',
       },
       variant: {
-        default: 'border-gray-300 bg-white text-trust-deep',
+        default: 'border-neutral-300 bg-white text-trust-deep',
         error: 'border-error-primary bg-error-light/20 text-error-primary',
         success: 'border-success-primary bg-success-light/20 text-success-primary',
       },
@@ -122,7 +122,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
                 htmlFor={id}
                 className={cn(
                   'text-sm font-medium',
-                  disabled ? 'text-gray-500 cursor-not-allowed' : 'text-gray-900 cursor-pointer'
+                  disabled ? 'text-neutral-500 cursor-not-allowed' : 'text-neutral-900 cursor-pointer'
                 )}
               >
                 {label}
@@ -130,7 +130,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             )}
 
             {description && !errorMessage && !successMessage && (
-              <p className="text-xs text-gray-600">{description}</p>
+              <p className="text-xs text-neutral-600">{description}</p>
             )}
 
             {errorMessage && (

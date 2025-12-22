@@ -18,11 +18,11 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const statusIndicatorVariants = cva(
-  'inline-flex items-center gap-1 text-xs text-gray-500',
+  'inline-flex items-center gap-1 text-xs text-neutral-500',
   {
     variants: {
       variant: {
-        default: 'text-gray-500',
+        default: 'text-neutral-500',
         success: 'text-success-primary',
         warning: 'text-warning-primary',
         error: 'text-error-primary',

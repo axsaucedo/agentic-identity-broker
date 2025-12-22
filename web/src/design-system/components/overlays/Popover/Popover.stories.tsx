@@ -150,7 +150,7 @@ export const Positions: Story = {
 
           {/* Center placeholder */}
           <div className="col-start-2 flex justify-center">
-            <div className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-sm text-gray-500">
+            <div className="w-24 h-24 rounded-lg border-2 border-dashed border-neutral-300 flex items-center justify-center text-sm text-neutral-500">
               Trigger
             </div>
           </div>
@@ -207,16 +207,16 @@ export const WithHeader: Story = {
         >
           <div className="space-y-3">
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-1">Name</p>
-              <p className="font-medium text-gray-900">John Doe</p>
+              <p className="text-xs font-medium text-neutral-500 mb-1">Name</p>
+              <p className="font-medium text-neutral-900">John Doe</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-1">Email</p>
-              <p className="text-gray-700">john.doe@example.com</p>
+              <p className="text-xs font-medium text-neutral-500 mb-1">Email</p>
+              <p className="text-neutral-700">john.doe@example.com</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-1">Role</p>
-              <p className="text-gray-700">Administrator</p>
+              <p className="text-xs font-medium text-neutral-500 mb-1">Role</p>
+              <p className="text-neutral-700">Administrator</p>
             </div>
           </div>
         </Popover>
@@ -393,11 +393,11 @@ export const WideContent: Story = {
         >
           <div className="space-y-3">
             <p>This is a large popover at 500px width.</p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-neutral-600">
               Perfect for more detailed content or data tables.
             </p>
-            <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
-              <p className="text-xs font-medium text-gray-700">
+            <div className="p-3 bg-neutral-50 rounded-md border border-neutral-200">
+              <p className="text-xs font-medium text-neutral-700">
                 Example content area with more space
               </p>
             </div>
@@ -423,10 +423,10 @@ export const KeyboardFocus: Story = {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-8">
         <div className="text-center max-w-md mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-lg font-semibold text-neutral-900 mb-2">
             Keyboard Navigation
           </h3>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-neutral-600">
             Try using Tab to navigate between buttons, then press Enter or Space
             to open the popover. Press Escape to close.
           </p>
@@ -436,7 +436,7 @@ export const KeyboardFocus: Story = {
           <Popover
             trigger={
               <button
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-trust-deep focus:ring-offset-2"
+                className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-300 rounded-md hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-trust-deep focus:ring-offset-2"
                 tabIndex={0}
               >
                 <span className="flex items-center gap-2">
@@ -458,7 +458,7 @@ export const KeyboardFocus: Story = {
           <Popover
             trigger={
               <button
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-trust-deep focus:ring-offset-2"
+                className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-300 rounded-md hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-trust-deep focus:ring-offset-2"
                 tabIndex={0}
               >
                 <span className="flex items-center gap-2">
@@ -537,7 +537,7 @@ export const Controlled: Story = {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-6">
         <div className="text-center">
-          <p className="text-sm text-gray-600 mb-3">
+          <p className="text-sm text-neutral-600 mb-3">
             External controls (controlled mode):
           </p>
           <div className="flex gap-2 justify-center">
@@ -556,7 +556,7 @@ export const Controlled: Story = {
               Close Popover
             </Button>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-neutral-500 mt-2">
             Current state: {isOpen ? 'Open' : 'Closed'}
           </p>
         </div>
@@ -592,7 +592,7 @@ export const ConsentExamples: Story = {
   render: () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-[500px] gap-6">
-        <h3 className="text-lg font-semibold text-gray-900">
+        <h3 className="text-lg font-semibold text-neutral-900">
           Consent Management Use Cases
         </h3>
 
@@ -658,18 +658,18 @@ export const ConsentExamples: Story = {
           >
             <div className="space-y-3 text-sm">
               <div>
-                <p className="font-medium text-gray-900 mb-1">
+                <p className="font-medium text-neutral-900 mb-1">
                   Marketing Dashboard
                 </p>
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-neutral-600">
                   Granted on Dec 1, 2025 - Expires in 15 days
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-700 mb-1">
+                <p className="text-xs font-medium text-neutral-700 mb-1">
                   Permissions:
                 </p>
-                <ul className="text-xs text-gray-600 space-y-0.5 pl-3">
+                <ul className="text-xs text-neutral-600 space-y-0.5 pl-3">
                   <li>• Basic profile access</li>
                   <li>• Usage data (read-only)</li>
                 </ul>

@@ -42,10 +42,10 @@ const cardVariants = cva(
       },
       border: {
         // Subtle: Ring-based border for softer appearance
-        subtle: 'ring-1 ring-gray-200',
+        subtle: 'ring-1 ring-neutral-200',
 
         // Bordered: Solid border for stronger definition
-        bordered: 'border border-gray-300',
+        bordered: 'border border-neutral-300',
       },
       hover: {
         // None: Static card
@@ -59,7 +59,7 @@ const cardVariants = cva(
         white: 'bg-white',
 
         // Gray-50: Subtle gray background
-        'gray-50': 'bg-gray-50',
+        'neutral-50': 'bg-neutral-50',
 
         // Blue-50: Light blue background for highlights
         'blue-50': 'bg-blue-50',
@@ -235,7 +235,7 @@ export const Card = React.forwardRef<HTMLElement, CardProps>(
               >
                 {headerIcon ? (
                   <Stack direction="row" gap="sm" align="center">
-                    <span className="flex items-center text-gray-700">
+                    <span className="flex items-center text-neutral-700">
                       {headerIcon}
                     </span>
                     {header}

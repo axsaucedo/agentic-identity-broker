@@ -181,36 +181,36 @@ export const Ellipsis: Story = {
           />
         </div>
 
-        <div className="text-sm text-gray-600 space-y-2">
+        <div className="text-sm text-neutral-600 space-y-2">
           <p className="font-medium">Try these pages to see ellipsis behavior:</p>
           <div className="flex gap-2">
             <button
               onClick={() => setCurrentPage(1)}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+              className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-sm"
             >
               First (1)
             </button>
             <button
               onClick={() => setCurrentPage(5)}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+              className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-sm"
             >
               Early (5)
             </button>
             <button
               onClick={() => setCurrentPage(25)}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+              className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-sm"
             >
               Middle (25)
             </button>
             <button
               onClick={() => setCurrentPage(45)}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+              className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-sm"
             >
               Late (45)
             </button>
             <button
               onClick={() => setCurrentPage(50)}
-              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+              className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 rounded text-sm"
             >
               Last (50)
             </button>
@@ -349,11 +349,11 @@ export const Interactive: Story = {
 
     return (
       <div className="space-y-6">
-        <div className="p-6 bg-gray-50 rounded-lg">
+        <div className="p-6 bg-neutral-50 rounded-lg">
           <h3 className="text-lg font-semibold mb-2">
             Current Page: {currentPage}
           </h3>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-neutral-600">
             Click on page numbers or use prev/next buttons to navigate.
           </p>
         </div>
@@ -374,7 +374,7 @@ export const Interactive: Story = {
           </button>
           <button
             onClick={() => setCurrentPage(Math.ceil(totalPages / 2))}
-            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm"
+            className="px-4 py-2 bg-neutral-600 text-white rounded-md hover:bg-neutral-700 transition-colors text-sm"
           >
             Jump to Middle
           </button>
@@ -395,7 +395,7 @@ export const Responsive: Story = {
         <p className="text-sm font-medium text-neutral-700 mb-3">
           Mobile (320px) - Use simple mode or small size
         </p>
-        <div className="w-80 border-2 border-dashed border-gray-300 p-4">
+        <div className="w-80 border-2 border-dashed border-neutral-300 p-4">
           <Pagination
             size="sm"
             variant="simple"
@@ -411,7 +411,7 @@ export const Responsive: Story = {
         <p className="text-sm font-medium text-neutral-700 mb-3">
           Tablet (768px) - Medium with reduced maxVisible
         </p>
-        <div className="w-[768px] border-2 border-dashed border-gray-300 p-4">
+        <div className="w-[768px] border-2 border-dashed border-neutral-300 p-4">
           <Pagination
             size="md"
             currentPage={5}
@@ -426,7 +426,7 @@ export const Responsive: Story = {
         <p className="text-sm font-medium text-neutral-700 mb-3">
           Desktop (1024px+) - Full pagination
         </p>
-        <div className="w-full border-2 border-dashed border-gray-300 p-4">
+        <div className="w-full border-2 border-dashed border-neutral-300 p-4">
           <Pagination
             size="md"
             currentPage={5}

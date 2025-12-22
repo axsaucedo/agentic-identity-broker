@@ -36,7 +36,7 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
         <div className="flex justify-center">{icon}</div>
       ) : (
         <svg
-          className="mx-auto h-12 w-12 text-gray-400"
+          className="mx-auto h-12 w-12 text-neutral-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -52,10 +52,10 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
       )}
 
       {/* Title */}
-      <h3 className="mt-4 text-lg font-semibold text-gray-900">{title}</h3>
+      <h3 className="mt-4 text-lg font-semibold text-neutral-900">{title}</h3>
 
       {/* Description */}
-      <p className="mt-2 text-sm text-gray-600 max-w-md mx-auto">{description}</p>
+      <p className="mt-2 text-sm text-neutral-600 max-w-md mx-auto">{description}</p>
 
       {/* Optional action button */}
       {action && (

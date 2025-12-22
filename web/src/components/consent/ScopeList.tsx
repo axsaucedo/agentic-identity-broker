@@ -45,7 +45,7 @@ export function ScopeList({ scopes, grantedScopes = [], isExpanded }: ScopeListP
             <div className="flex-shrink-0 mt-0.5">
               {granted ? (
                 <svg
-                  className="w-5 h-5 text-emerald-600"
+                  className="w-5 h-5 text-success-primary"
                   fill="currentColor"
                   viewBox="0 0 20 20"
                   aria-label="Granted"
@@ -65,20 +65,20 @@ export function ScopeList({ scopes, grantedScopes = [], isExpanded }: ScopeListP
               <div className="flex items-start justify-between gap-2">
                 <code
                   className={`text-sm font-mono font-medium break-all ${
-                    granted ? 'text-emerald-700' : 'text-navy-900'
+                    granted ? 'text-success-hover' : 'text-trust-deep'
                   }`}
                 >
                   {scope.value}
                 </code>
                 {granted && (
-                  <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                  <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success-light text-success-hover">
                     Granted
                   </span>
                 )}
               </div>
               <p
                 className={`mt-1 text-sm ${
-                  granted ? 'text-emerald-600' : 'text-slate-600'
+                  granted ? 'text-success-primary' : 'text-slate-600'
                 }`}
               >
                 {scope.description}

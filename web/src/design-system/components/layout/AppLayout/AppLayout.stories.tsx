@@ -74,13 +74,13 @@ const SampleHeader = () => (
   <div className="flex items-center justify-between px-6 py-4">
     <div className="flex items-center gap-3">
       <div className="w-8 h-8 bg-trust-deep rounded-md" />
-      <h1 className="text-xl font-bold text-navy-900">Agentic Identity Broker</h1>
+      <h1 className="text-xl font-bold text-trust-deep">Agentic Identity Broker</h1>
     </div>
     <nav className="flex items-center gap-4">
-      <a href="#" className="text-sm font-medium text-navy-700 hover:text-trust">
+      <a href="#" className="text-sm font-medium text-trust hover:text-trust">
         Dashboard
       </a>
-      <a href="#" className="text-sm font-medium text-navy-700 hover:text-trust">
+      <a href="#" className="text-sm font-medium text-trust hover:text-trust">
         Settings
       </a>
       <Button size="sm" variant="outline">
@@ -101,25 +101,25 @@ const SampleSidebar = () => (
       </a>
       <a
         href="#"
-        className="px-4 py-2 rounded-md text-sm font-medium text-navy-700 hover:bg-gray-200 transition-colors"
+        className="px-4 py-2 rounded-md text-sm font-medium text-trust hover:bg-neutral-200 transition-colors"
       >
         Applications
       </a>
       <a
         href="#"
-        className="px-4 py-2 rounded-md text-sm font-medium text-navy-700 hover:bg-gray-200 transition-colors"
+        className="px-4 py-2 rounded-md text-sm font-medium text-trust hover:bg-neutral-200 transition-colors"
       >
         Sessions
       </a>
       <a
         href="#"
-        className="px-4 py-2 rounded-md text-sm font-medium text-navy-700 hover:bg-gray-200 transition-colors"
+        className="px-4 py-2 rounded-md text-sm font-medium text-trust hover:bg-neutral-200 transition-colors"
       >
         Audit Logs
       </a>
       <a
         href="#"
-        className="px-4 py-2 rounded-md text-sm font-medium text-navy-700 hover:bg-gray-200 transition-colors"
+        className="px-4 py-2 rounded-md text-sm font-medium text-trust hover:bg-neutral-200 transition-colors"
       >
         Settings
       </a>
@@ -131,58 +131,58 @@ const SampleContent = () => (
   <Container padding="lg" size="xl">
     <Stack gap="lg">
       <div>
-        <h2 className="text-3xl font-bold text-navy-900 mb-2">Dashboard</h2>
-        <p className="text-gray-600">
+        <h2 className="text-3xl font-bold text-trust-deep mb-2">Dashboard</h2>
+        <p className="text-neutral-600">
           Welcome to your identity management dashboard.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-          <h3 className="text-lg font-semibold text-navy-900 mb-2">
+        <div className="p-6 bg-white border border-neutral-200 rounded-lg shadow-sm">
+          <h3 className="text-lg font-semibold text-trust-deep mb-2">
             Active Sessions
           </h3>
           <p className="text-3xl font-bold text-trust">127</p>
         </div>
-        <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-          <h3 className="text-lg font-semibold text-navy-900 mb-2">
+        <div className="p-6 bg-white border border-neutral-200 rounded-lg shadow-sm">
+          <h3 className="text-lg font-semibold text-trust-deep mb-2">
             Applications
           </h3>
           <p className="text-3xl font-bold text-trust">12</p>
         </div>
-        <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-          <h3 className="text-lg font-semibold text-navy-900 mb-2">
+        <div className="p-6 bg-white border border-neutral-200 rounded-lg shadow-sm">
+          <h3 className="text-lg font-semibold text-trust-deep mb-2">
             Active Users
           </h3>
           <p className="text-3xl font-bold text-trust">89</p>
         </div>
       </div>
 
-      <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-        <h3 className="text-lg font-semibold text-navy-900 mb-4">
+      <div className="p-6 bg-white border border-neutral-200 rounded-lg shadow-sm">
+        <h3 className="text-lg font-semibold text-trust-deep mb-4">
           Recent Activity
         </h3>
         <Stack gap="md">
-          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+          <div className="flex justify-between items-center py-2 border-b border-neutral-100">
             <div>
-              <p className="font-medium text-navy-900">User logged in</p>
-              <p className="text-sm text-gray-600">john@example.com</p>
+              <p className="font-medium text-trust-deep">User logged in</p>
+              <p className="text-sm text-neutral-600">john@example.com</p>
             </div>
-            <span className="text-sm text-gray-500">2 minutes ago</span>
+            <span className="text-sm text-neutral-500">2 minutes ago</span>
           </div>
-          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+          <div className="flex justify-between items-center py-2 border-b border-neutral-100">
             <div>
-              <p className="font-medium text-navy-900">Consent granted</p>
-              <p className="text-sm text-gray-600">jane@example.com</p>
+              <p className="font-medium text-trust-deep">Consent granted</p>
+              <p className="text-sm text-neutral-600">jane@example.com</p>
             </div>
-            <span className="text-sm text-gray-500">15 minutes ago</span>
+            <span className="text-sm text-neutral-500">15 minutes ago</span>
           </div>
-          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+          <div className="flex justify-between items-center py-2 border-b border-neutral-100">
             <div>
-              <p className="font-medium text-navy-900">Session expired</p>
-              <p className="text-sm text-gray-600">bob@example.com</p>
+              <p className="font-medium text-trust-deep">Session expired</p>
+              <p className="text-sm text-neutral-600">bob@example.com</p>
             </div>
-            <span className="text-sm text-gray-500">1 hour ago</span>
+            <span className="text-sm text-neutral-500">1 hour ago</span>
           </div>
         </Stack>
       </div>
@@ -192,17 +192,17 @@ const SampleContent = () => (
 
 const SampleFooter = () => (
   <div className="flex items-center justify-between px-6 py-4">
-    <p className="text-sm text-gray-600">
+    <p className="text-sm text-neutral-600">
       © 2025 Agentic Identity Broker. All rights reserved.
     </p>
     <div className="flex items-center gap-4">
-      <a href="#" className="text-sm text-gray-600 hover:text-trust">
+      <a href="#" className="text-sm text-neutral-600 hover:text-trust">
         Privacy Policy
       </a>
-      <a href="#" className="text-sm text-gray-600 hover:text-trust">
+      <a href="#" className="text-sm text-neutral-600 hover:text-trust">
         Terms of Service
       </a>
-      <a href="#" className="text-sm text-gray-600 hover:text-trust">
+      <a href="#" className="text-sm text-neutral-600 hover:text-trust">
         Documentation
       </a>
     </div>
@@ -242,7 +242,7 @@ export const SidebarRight: Story = {
     sidebar: (
       <div className="p-4">
         <Stack gap="md">
-          <h3 className="text-sm font-semibold text-navy-900">Filters</h3>
+          <h3 className="text-sm font-semibold text-trust-deep">Filters</h3>
           <div className="space-y-2">
             <label className="flex items-center gap-2">
               <input type="checkbox" className="rounded" />
@@ -280,12 +280,12 @@ export const SidebarSmall: Story = {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
             </svg>
           </button>
-          <button className="p-2 rounded-md hover:bg-gray-200 w-full flex items-center justify-center">
+          <button className="p-2 rounded-md hover:bg-neutral-200 w-full flex items-center justify-center">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
           </button>
-          <button className="p-2 rounded-md hover:bg-gray-200 w-full flex items-center justify-center">
+          <button className="p-2 rounded-md hover:bg-neutral-200 w-full flex items-center justify-center">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -317,7 +317,7 @@ export const SidebarLarge: Story = {
       <nav className="p-6">
         <Stack gap="lg">
           <div>
-            <h2 className="text-lg font-bold text-navy-900 mb-4">Navigation</h2>
+            <h2 className="text-lg font-bold text-trust-deep mb-4">Navigation</h2>
             <Stack gap="sm">
               <a
                 href="#"
@@ -330,7 +330,7 @@ export const SidebarLarge: Story = {
               </a>
               <a
                 href="#"
-                className="px-4 py-3 rounded-md text-sm font-medium text-navy-700 hover:bg-gray-200 transition-colors flex items-center gap-3"
+                className="px-4 py-3 rounded-md text-sm font-medium text-trust hover:bg-neutral-200 transition-colors flex items-center gap-3"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -339,7 +339,7 @@ export const SidebarLarge: Story = {
               </a>
               <a
                 href="#"
-                className="px-4 py-3 rounded-md text-sm font-medium text-navy-700 hover:bg-gray-200 transition-colors flex items-center gap-3"
+                className="px-4 py-3 rounded-md text-sm font-medium text-trust hover:bg-neutral-200 transition-colors flex items-center gap-3"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -348,15 +348,15 @@ export const SidebarLarge: Story = {
               </a>
             </Stack>
           </div>
-          <div className="pt-4 border-t border-gray-200">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Quick Stats</h3>
+          <div className="pt-4 border-t border-neutral-200">
+            <h3 className="text-xs font-semibold text-neutral-500 uppercase mb-2">Quick Stats</h3>
             <div className="space-y-2">
               <div className="text-sm">
-                <span className="text-gray-600">Sessions:</span>{' '}
+                <span className="text-neutral-600">Sessions:</span>{' '}
                 <span className="font-semibold">127</span>
               </div>
               <div className="text-sm">
-                <span className="text-gray-600">Apps:</span>{' '}
+                <span className="text-neutral-600">Apps:</span>{' '}
                 <span className="font-semibold">12</span>
               </div>
             </div>
@@ -389,13 +389,13 @@ export const StickyHeader: Story = {
       <Container padding="lg" size="xl">
         <Stack gap="lg">
           <div>
-            <h2 className="text-3xl font-bold text-navy-900 mb-2">Long Content Page</h2>
-            <p className="text-gray-600">Scroll down to see the sticky header in action.</p>
+            <h2 className="text-3xl font-bold text-trust-deep mb-2">Long Content Page</h2>
+            <p className="text-neutral-600">Scroll down to see the sticky header in action.</p>
           </div>
           {Array.from({ length: 20 }).map((_, i) => (
-            <div key={i} className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-              <h3 className="text-lg font-semibold text-navy-900 mb-2">Section {i + 1}</h3>
-              <p className="text-gray-600">
+            <div key={i} className="p-6 bg-white border border-neutral-200 rounded-lg shadow-sm">
+              <h3 className="text-lg font-semibold text-trust-deep mb-2">Section {i + 1}</h3>
+              <p className="text-neutral-600">
                 This is sample content to demonstrate scrolling behavior. The header will remain
                 fixed at the top of the viewport as you scroll down the page.
               </p>
@@ -418,14 +418,14 @@ export const StickyFooter: Story = {
       <Container padding="lg" size="xl">
         <Stack gap="lg">
           <div>
-            <h2 className="text-3xl font-bold text-navy-900 mb-2">Short Content</h2>
-            <p className="text-gray-600">
+            <h2 className="text-3xl font-bold text-trust-deep mb-2">Short Content</h2>
+            <p className="text-neutral-600">
               With minimal content, the footer stays at the bottom of the viewport.
             </p>
           </div>
-          <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-            <h3 className="text-lg font-semibold text-navy-900 mb-2">Content Section</h3>
-            <p className="text-gray-600">The footer is sticky at the bottom.</p>
+          <div className="p-6 bg-white border border-neutral-200 rounded-lg shadow-sm">
+            <h3 className="text-lg font-semibold text-trust-deep mb-2">Content Section</h3>
+            <p className="text-neutral-600">The footer is sticky at the bottom.</p>
           </div>
         </Stack>
       </Container>
@@ -469,7 +469,7 @@ export const ConsentPage: Story = {
       <div className="px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-trust-deep rounded-md" />
-          <span className="text-lg font-bold text-navy-900">Identity Broker</span>
+          <span className="text-lg font-bold text-trust-deep">Identity Broker</span>
         </div>
         <Button size="sm" variant="ghost">
           Cancel
@@ -480,27 +480,27 @@ export const ConsentPage: Story = {
       <div className="p-6">
         <Stack gap="lg">
           <div>
-            <h3 className="text-sm font-semibold text-navy-900 mb-2">Application Details</h3>
+            <h3 className="text-sm font-semibold text-trust-deep mb-2">Application Details</h3>
             <div className="space-y-2 text-sm">
               <div>
-                <span className="text-gray-600">Name:</span>{' '}
+                <span className="text-neutral-600">Name:</span>{' '}
                 <span className="font-medium">Analytics Dashboard</span>
               </div>
               <div>
-                <span className="text-gray-600">Developer:</span>{' '}
+                <span className="text-neutral-600">Developer:</span>{' '}
                 <span className="font-medium">Acme Corp</span>
               </div>
               <div>
-                <span className="text-gray-600">Website:</span>{' '}
+                <span className="text-neutral-600">Website:</span>{' '}
                 <a href="#" className="text-trust hover:underline">
                   analytics.acme.com
                 </a>
               </div>
             </div>
           </div>
-          <div className="pt-4 border-t border-gray-200">
-            <h3 className="text-sm font-semibold text-navy-900 mb-2">Privacy Policy</h3>
-            <p className="text-sm text-gray-600">
+          <div className="pt-4 border-t border-neutral-200">
+            <h3 className="text-sm font-semibold text-trust-deep mb-2">Privacy Policy</h3>
+            <p className="text-sm text-neutral-600">
               By granting access, you agree to share the requested information with this application.
             </p>
             <a href="#" className="text-sm text-trust hover:underline mt-2 inline-block">
@@ -514,7 +514,7 @@ export const ConsentPage: Story = {
     sidebarPosition: 'right',
     footer: (
       <div className="px-6 py-4 flex items-center justify-between">
-        <p className="text-xs text-gray-500">Session expires in 10 minutes</p>
+        <p className="text-xs text-neutral-500">Session expires in 10 minutes</p>
         <a href="#" className="text-xs text-trust hover:underline">
           Need help?
         </a>
@@ -529,42 +529,42 @@ export const ConsentPage: Story = {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-navy-900 mb-2">Grant Access</h1>
-            <p className="text-gray-600">
+            <h1 className="text-2xl font-bold text-trust-deep mb-2">Grant Access</h1>
+            <p className="text-neutral-600">
               Analytics Dashboard wants to access your account
             </p>
           </div>
 
-          <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg">
-            <h2 className="text-lg font-semibold text-navy-900 mb-4">
+          <div className="p-6 bg-neutral-50 border border-neutral-200 rounded-lg">
+            <h2 className="text-lg font-semibold text-trust-deep mb-4">
               This application will be able to:
             </h2>
             <Stack gap="sm">
               <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-success-primary flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <div>
-                  <p className="font-medium text-navy-900">Read your profile information</p>
-                  <p className="text-sm text-gray-600">Name, email, and profile picture</p>
+                  <p className="font-medium text-trust-deep">Read your profile information</p>
+                  <p className="text-sm text-neutral-600">Name, email, and profile picture</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-success-primary flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <div>
-                  <p className="font-medium text-navy-900">Access your activity data</p>
-                  <p className="text-sm text-gray-600">View your usage patterns and preferences</p>
+                  <p className="font-medium text-trust-deep">Access your activity data</p>
+                  <p className="text-sm text-neutral-600">View your usage patterns and preferences</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-success-primary flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <div>
-                  <p className="font-medium text-navy-900">Send you notifications</p>
-                  <p className="text-sm text-gray-600">Important updates and alerts</p>
+                  <p className="font-medium text-trust-deep">Send you notifications</p>
+                  <p className="text-sm text-neutral-600">Important updates and alerts</p>
                 </div>
               </div>
             </Stack>

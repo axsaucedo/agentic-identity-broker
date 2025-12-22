@@ -24,7 +24,7 @@ import { cn } from '@design-system/utils';
 
 const popoverPanelVariants = cva(
   // Base styles - applied to all popovers
-  'bg-white rounded-lg shadow-xl border border-gray-200 focus:outline-none',
+  'bg-white rounded-lg shadow-xl border border-neutral-200 focus:outline-none',
   {
     variants: {
       width: {
@@ -54,7 +54,7 @@ const positionVariants = cva('absolute z-50', {
   },
 });
 
-const arrowVariants = cva('absolute w-3 h-3 bg-white border-gray-200 rotate-45', {
+const arrowVariants = cva('absolute w-3 h-3 bg-white border-neutral-200 rotate-45', {
   variants: {
     position: {
       top: 'bottom-[-6px] left-1/2 -translate-x-1/2 border-b border-r',
@@ -183,9 +183,9 @@ export const Popover = React.forwardRef<HTMLDivElement, PopoverProps>(
 
               {/* Header */}
               {header && (
-                <div className="px-5 py-4 border-b border-gray-200">
+                <div className="px-5 py-4 border-b border-neutral-200">
                   {typeof header === 'string' ? (
-                    <h3 className="text-base font-semibold text-gray-900">
+                    <h3 className="text-base font-semibold text-neutral-900">
                       {header}
                     </h3>
                   ) : (
@@ -197,7 +197,7 @@ export const Popover = React.forwardRef<HTMLDivElement, PopoverProps>(
               {/* Content */}
               <div
                 className={cn(
-                  'px-5 py-4 text-sm text-gray-700',
+                  'px-5 py-4 text-sm text-neutral-700',
                   !header && 'pt-5',
                   !footer && 'pb-5'
                 )}
@@ -207,7 +207,7 @@ export const Popover = React.forwardRef<HTMLDivElement, PopoverProps>(
 
               {/* Footer */}
               {footer && (
-                <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+                <div className="px-5 py-3 border-t border-neutral-200 bg-neutral-50 rounded-b-lg">
                   {footer}
                 </div>
               )}

@@ -74,8 +74,8 @@ export const WithDescription: Story = {
 
 export const Group: Story = {
   render: () => (
-    <fieldset className="space-y-3 p-4 bg-white border border-gray-200 rounded-lg w-96">
-      <legend className="text-sm font-semibold text-gray-900 mb-2">
+    <fieldset className="space-y-3 p-4 bg-white border border-neutral-200 rounded-lg w-96">
+      <legend className="text-sm font-semibold text-neutral-900 mb-2">
         Grant Duration
       </legend>
       <Radio
@@ -143,7 +143,7 @@ export const Playground: Story = {
 export const Accessibility: Story = {
   render: () => (
     <fieldset className="space-y-3 w-96">
-      <legend className="text-sm font-semibold text-gray-900 mb-3">
+      <legend className="text-sm font-semibold text-neutral-900 mb-3">
         Select an access level
       </legend>
       <Radio

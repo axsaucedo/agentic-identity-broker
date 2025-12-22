@@ -48,7 +48,7 @@ const breadcrumbItemVariants = cva(
         lg: 'gap-2',
       },
       isCurrent: {
-        true: 'font-medium text-navy-900',
+        true: 'font-medium text-trust-deep',
         false: '',
       },
     },
@@ -60,12 +60,12 @@ const breadcrumbItemVariants = cva(
 );
 
 const breadcrumbLinkVariants = cva(
-  'hover:underline focus:outline-none focus:ring-2 focus:ring-navy-700 focus:ring-offset-1 rounded-sm transition-colors duration-200',
+  'hover:underline focus:outline-none focus:ring-2 focus:ring-trust focus:ring-offset-1 rounded-sm transition-colors duration-200',
   {
     variants: {
       disabled: {
         true: 'opacity-50 cursor-not-allowed pointer-events-none',
-        false: 'text-navy-600 hover:text-navy-900',
+        false: 'text-trust-hover hover:text-trust-deep',
       },
     },
     defaultVariants: {
@@ -75,7 +75,7 @@ const breadcrumbLinkVariants = cva(
 );
 
 const breadcrumbSeparatorVariants = cva(
-  'text-gray-400 select-none',
+  'text-neutral-400 select-none',
   {
     variants: {
       size: {

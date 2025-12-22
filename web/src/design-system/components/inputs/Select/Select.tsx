@@ -40,7 +40,7 @@ const selectButtonVariants = cva(
         lg: 'text-lg py-3.5 px-4.5',
       },
       variant: {
-        default: 'border-gray-300 hover:border-gray-400',
+        default: 'border-neutral-300 hover:border-neutral-400',
         error: 'border-error-primary bg-error-light/20',
         success: 'border-success-primary bg-success-light/20',
       },
@@ -58,7 +58,7 @@ const selectButtonVariants = cva(
 );
 
 const selectOptionsVariants = cva(
-  'absolute top-full left-0 right-0 z-50 w-full bg-white border-1.5 border-t-0 border-gray-300 rounded-b-lg shadow-lg focus:outline-none max-h-60 overflow-y-auto',
+  'absolute top-full left-0 right-0 z-50 w-full bg-white border-1.5 border-t-0 border-neutral-300 rounded-b-lg shadow-lg focus:outline-none max-h-60 overflow-y-auto',
   {
     variants: {
       size: {
@@ -79,7 +79,7 @@ const selectOptionVariants = cva(
     variants: {
       selected: {
         true: 'bg-trust-light text-trust-deep font-medium',
-        false: 'text-gray-900 hover:bg-gray-50',
+        false: 'text-neutral-900 hover:bg-neutral-50',
       },
       disabled: {
         true: 'opacity-50 cursor-not-allowed',
@@ -246,7 +246,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             htmlFor={id}
             className={cn(
               'text-sm font-medium',
-              disabled ? 'text-gray-500' : 'text-gray-900',
+              disabled ? 'text-neutral-500' : 'text-neutral-900',
               required && "after:content-['*'] after:ml-1 after:text-error-primary"
             )}
           >
@@ -301,13 +301,13 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
               >
                 {/* Search input */}
                 {searchable && (
-                  <div className="sticky top-0 bg-white border-b border-gray-200 p-2">
+                  <div className="sticky top-0 bg-white border-b border-neutral-200 p-2">
                     <input
                       type="text"
                       placeholder="Search..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-trust-deep"
+                      className="w-full px-2 py-1 text-sm border border-neutral-300 rounded focus:outline-none focus:border-trust-deep"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
@@ -352,7 +352,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
                     );
                   })
                 ) : (
-                  <div className="px-3 py-2 text-sm text-gray-500">
+                  <div className="px-3 py-2 text-sm text-neutral-500">
                     No options found
                   </div>
                 )}
@@ -383,7 +383,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             </p>
           )}
           {helperText && !errorMessage && !successMessage && (
-            <p className="text-xs text-gray-600">{helperText}</p>
+            <p className="text-xs text-neutral-600">{helperText}</p>
           )}
         </div>
       </div>

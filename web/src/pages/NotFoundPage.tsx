@@ -63,13 +63,13 @@ export function NotFoundPage({
   const message = messages[resourceType];
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-8">
+    <div className="min-h-screen flex items-center justify-center bg-neutral-50 px-4 py-8">
       <PageTransition>
         <div className="max-w-2xl w-full text-center">
           {/* Error icon */}
-          <div className="inline-flex items-center justify-center w-24 h-24 bg-gray-200 rounded-full mb-6">
+          <div className="inline-flex items-center justify-center w-24 h-24 bg-neutral-200 rounded-full mb-6">
             <svg
-              className="w-12 h-12 text-gray-400"
+              className="w-12 h-12 text-neutral-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -84,21 +84,21 @@ export function NotFoundPage({
           </div>
 
           {/* Error message */}
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">
+          <h1 className="text-4xl font-bold text-neutral-900 mb-3">
             {message.title}
           </h1>
-          <p className="text-xl text-gray-600 mb-8">{message.description}</p>
+          <p className="text-xl text-neutral-600 mb-8">{message.description}</p>
 
           {/* Suggestions */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8 text-left">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">
+          <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-6 mb-8 text-left">
+            <h2 className="text-sm font-semibold text-neutral-900 mb-3">
               Possible reasons:
             </h2>
             <ul className="space-y-2">
               {message.suggestions.map((suggestion, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm text-gray-600">
+                <li key={index} className="flex items-start gap-2 text-sm text-neutral-600">
                   <svg
-                    className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5"
+                    className="w-5 h-5 text-neutral-400 flex-shrink-0 mt-0.5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -127,7 +127,7 @@ export function NotFoundPage({
           </div>
 
           {/* Help text */}
-          <p className="mt-8 text-sm text-gray-500">
+          <p className="mt-8 text-sm text-neutral-500">
             If you believe this is an error, please contact support.
           </p>
         </div>

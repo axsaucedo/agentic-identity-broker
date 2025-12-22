@@ -70,23 +70,23 @@ export const Sizes: Story = {
     <div className="flex items-end gap-4">
       <div className="flex flex-col items-center gap-2">
         <Avatar size="xs" initials="XS" />
-        <span className="text-xs text-gray-600">Extra Small</span>
+        <span className="text-xs text-neutral-600">Extra Small</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar size="sm" initials="SM" />
-        <span className="text-xs text-gray-600">Small</span>
+        <span className="text-xs text-neutral-600">Small</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar size="md" initials="MD" />
-        <span className="text-xs text-gray-600">Medium</span>
+        <span className="text-xs text-neutral-600">Medium</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar size="lg" initials="LG" />
-        <span className="text-xs text-gray-600">Large</span>
+        <span className="text-xs text-neutral-600">Large</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar size="xl" initials="XL" />
-        <span className="text-xs text-gray-600">Extra Large</span>
+        <span className="text-xs text-neutral-600">Extra Large</span>
       </div>
     </div>
   ),
@@ -100,15 +100,15 @@ export const Shapes: Story = {
     <div className="flex items-center gap-4">
       <div className="flex flex-col items-center gap-2">
         <Avatar shape="circle" initials="JD" />
-        <span className="text-xs text-gray-600">Circle</span>
+        <span className="text-xs text-neutral-600">Circle</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar shape="rounded" initials="JD" />
-        <span className="text-xs text-gray-600">Rounded</span>
+        <span className="text-xs text-neutral-600">Rounded</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar shape="square" initials="JD" />
-        <span className="text-xs text-gray-600">Square</span>
+        <span className="text-xs text-neutral-600">Square</span>
       </div>
     </div>
   ),
@@ -136,19 +136,19 @@ export const WithStatus: Story = {
     <div className="flex items-center gap-6">
       <div className="flex flex-col items-center gap-2">
         <Avatar initials="JD" status="online" />
-        <span className="text-xs text-gray-600">Online</span>
+        <span className="text-xs text-neutral-600">Online</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar initials="AS" status="away" />
-        <span className="text-xs text-gray-600">Away</span>
+        <span className="text-xs text-neutral-600">Away</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar initials="BJ" status="busy" />
-        <span className="text-xs text-gray-600">Busy</span>
+        <span className="text-xs text-neutral-600">Busy</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar initials="MK" status="offline" />
-        <span className="text-xs text-gray-600">Offline</span>
+        <span className="text-xs text-neutral-600">Offline</span>
       </div>
     </div>
   ),
@@ -188,11 +188,11 @@ export const ImageFallback: Story = {
     <div className="flex items-center gap-4">
       <div className="flex flex-col items-center gap-2">
         <Avatar src="/broken-image.jpg" initials="JD" alt="John Doe" />
-        <span className="text-xs text-gray-600">Fallback to initials</span>
+        <span className="text-xs text-neutral-600">Fallback to initials</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Avatar src="/broken-image.jpg" alt="Alice Smith" />
-        <span className="text-xs text-gray-600">Fallback to icon</span>
+        <span className="text-xs text-neutral-600">Fallback to icon</span>
       </div>
     </div>
   ),
@@ -237,7 +237,7 @@ export const AvatarGroup: Story = {
     <div className="flex flex-col gap-6">
       {/* Stacked avatars */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">Stacked Group</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">Stacked Group</h3>
         <div className="flex -space-x-2">
           <Avatar
             src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
@@ -260,7 +260,7 @@ export const AvatarGroup: Story = {
 
       {/* Spaced avatars */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">Spaced Group</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">Spaced Group</h3>
         <div className="flex gap-2">
           <Avatar initials="JD" status="online" size="sm" />
           <Avatar initials="AS" status="away" size="sm" />
@@ -280,8 +280,8 @@ export const UseCases: Story = {
     <div className="flex flex-col gap-6 p-6">
       {/* User profile card */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">Profile Card</h3>
-        <div className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-lg">
+        <h3 className="text-sm font-semibold text-neutral-700">Profile Card</h3>
+        <div className="flex items-center gap-3 p-4 bg-white border border-neutral-200 rounded-lg">
           <Avatar
             src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
             alt="John Doe"
@@ -289,40 +289,40 @@ export const UseCases: Story = {
             size="lg"
           />
           <div>
-            <h4 className="text-sm font-medium text-gray-900">John Doe</h4>
-            <p className="text-xs text-gray-500">john.doe@example.com</p>
+            <h4 className="text-sm font-medium text-neutral-900">John Doe</h4>
+            <p className="text-xs text-neutral-500">john.doe@example.com</p>
           </div>
         </div>
       </div>
 
       {/* Agent card */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">AI Agent</h3>
-        <div className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-lg">
+        <h3 className="text-sm font-semibold text-neutral-700">AI Agent</h3>
+        <div className="flex items-center gap-3 p-4 bg-white border border-neutral-200 rounded-lg">
           <Avatar initials="AI" shape="rounded" status="online" size="lg" />
           <div>
-            <h4 className="text-sm font-medium text-gray-900">Email Assistant</h4>
-            <p className="text-xs text-gray-500">Active · 3 permissions granted</p>
+            <h4 className="text-sm font-medium text-neutral-900">Email Assistant</h4>
+            <p className="text-xs text-neutral-500">Active · 3 permissions granted</p>
           </div>
         </div>
       </div>
 
       {/* Comment thread */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">Comment Thread</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">Comment Thread</h3>
         <div className="space-y-3">
           <div className="flex gap-3">
             <Avatar initials="JD" size="sm" />
             <div className="flex-1">
-              <p className="text-xs font-medium text-gray-900">John Doe</p>
-              <p className="text-xs text-gray-600">This looks great! When can we ship?</p>
+              <p className="text-xs font-medium text-neutral-900">John Doe</p>
+              <p className="text-xs text-neutral-600">This looks great! When can we ship?</p>
             </div>
           </div>
           <div className="flex gap-3">
             <Avatar initials="AS" size="sm" />
             <div className="flex-1">
-              <p className="text-xs font-medium text-gray-900">Alice Smith</p>
-              <p className="text-xs text-gray-600">Ready to go live tomorrow.</p>
+              <p className="text-xs font-medium text-neutral-900">Alice Smith</p>
+              <p className="text-xs text-neutral-600">Ready to go live tomorrow.</p>
             </div>
           </div>
         </div>
@@ -350,7 +350,7 @@ export const Accessibility: Story = {
   render: () => (
     <div className="flex flex-col gap-6">
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">Avatars with proper alt text</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">Avatars with proper alt text</h3>
         <div className="flex gap-4">
           <Avatar
             src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
@@ -362,7 +362,7 @@ export const Accessibility: Story = {
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">
+        <h3 className="text-sm font-semibold text-neutral-700">
           Status indicators with aria-label
         </h3>
         <div className="flex gap-4">

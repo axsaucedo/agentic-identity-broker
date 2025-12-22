@@ -119,8 +119,8 @@ export const RealWorldUseCases: Story = {
     const [analytics, setAnalytics] = useState(true);
 
     return (
-      <div className="space-y-6 p-6 bg-white border border-gray-200 rounded-lg w-96">
-        <h3 className="text-sm font-semibold text-gray-900">Settings</h3>
+      <div className="space-y-6 p-6 bg-white border border-neutral-200 rounded-lg w-96">
+        <h3 className="text-sm font-semibold text-neutral-900">Settings</h3>
 
         <Switch
           checked={notifications}
@@ -163,7 +163,7 @@ export const Interactive: Story = {
           description="Click to see me change"
           size="lg"
         />
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-neutral-600">
           Current state: <span className="font-semibold">{checked ? 'ON' : 'OFF'}</span>
         </div>
       </div>
@@ -178,8 +178,8 @@ export const Accessibility: Story = {
     const [grant3, setGrant3] = useState(true);
 
     return (
-      <fieldset className="space-y-4 p-4 bg-white border border-gray-200 rounded-lg w-96">
-        <legend className="text-sm font-semibold text-gray-900 mb-2">
+      <fieldset className="space-y-4 p-4 bg-white border border-neutral-200 rounded-lg w-96">
+        <legend className="text-sm font-semibold text-neutral-900 mb-2">
           Grant Permissions
         </legend>
 

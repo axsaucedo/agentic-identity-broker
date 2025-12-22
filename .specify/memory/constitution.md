@@ -1,28 +1,37 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.3.0 → 1.3.1
-Rationale: PATCH version bump - expanded precondition guidance to explicitly require Domain Model
-  and Configuration Design as blocking prerequisites alongside API and Database Design. Clarifies
-  that features must design all four areas before implementation begins.
+Version Change: 1.3.1 → 1.4.0
+Rationale: MINOR version bump - added new Principle XI (Design System Compliance & Consistency)
+  requiring all frontend components to use the design system and contribute universal patterns back.
+  Establishes design system as binding requirement for frontend development with clear documentation
+  entrypoints and accessibility standards.
 
 Modified Principles:
-- None (principles themselves unchanged; compliance expectations expanded)
+- None (existing principles I-X unchanged)
+
+Added Principles:
+- **NEW: Principle XI - Design System Compliance & Consistency**: All frontend components must use
+  the design system (web/src/design-system/). Documentation entrypoint at INDEX.md. Universal
+  components must be contributed back. Enforces Refined Trust Architecture aesthetic, WCAG 2.1 AA
+  accessibility, semantic tokens, and Tailwind CSS v4 @theme directive.
 
 Added Sections:
-- New design precondition requirement in Compliance Checklist: domain model and configuration
-  design must be completed before implementation
+- Compliance Checklist (PRECONDITIONS): Frontend component design and universal component planning
+- Compliance Checklist (Implementation Phase): Design system usage verification, accessibility checks
+- Constraint escalation: New section for Principle XI (Design System Compliance) deviations
 
 Removed Sections: None
 
 Templates Status:
-- ✅ plan-template.md: Added checks for domain model and configuration design preconditions
-- ✅ spec-template.md: Added sections for domain model and configuration requirements
-- ✅ tasks-template.md: Restructured Phase 2 to include domain & config design as blocking prerequisites
-- ✅ ARCHITECTURE.md: Already supports domain model documentation
-- ✅ docs/configuration.md: Already supports configuration documentation
+- ✅ spec-template.md: Added Frontend/Design System Requirements section with classification guidance
+- 🔲 plan-template.md: No updates needed (design system review implicit in frontend planning)
+- 🔲 tasks-template.md: No updates needed (design system usage implicit in implementation tasks)
+- ✅ Design system docs: Comprehensive documentation at web/src/design-system/docs/INDEX.md
+  (DECISION_TREES.md, COMPONENT_PAIRING_GUIDE.md, COMMON_MISTAKES.md provide 92-95% autonomous
+  decision-making for AI agents)
 
-Follow-up TODOs: None - all preconditions now explicit in templates
+Follow-up TODOs: None - design system documentation production-ready
 
 Rationale for Principle IV Enhancement (API Documentation & OpenAPI Transparency):
   APIs are contracts with consumers. Explicit OpenAPI documentation in designated locations (/api/enduser/,
@@ -279,6 +288,42 @@ change) rather than simple fixes establishes accountability for the API contract
 failures in dependent systems. Systems built on APIs assume behavior is intentional; changing API behavior
 without confirmation breaks that trust.
 
+### XI. Design System Compliance & Consistency
+
+All frontend components MUST use the design system; universal patterns MUST be contributed back to
+ensure consistency, accessibility, and brand identity.
+
+**Rules**:
+- All frontend components MUST be built using the design system located at `web/src/design-system/`
+- Documentation entrypoint is [web/src/design-system/docs/INDEX.md](../web/src/design-system/docs/INDEX.md)
+- Before building new components, implementers MUST:
+  - Review [DECISION_TREES.md](../web/src/design-system/docs/DECISION_TREES.md) for variant selection guidance
+  - Reference [COMPONENT_PAIRING_GUIDE.md](../web/src/design-system/docs/COMPONENT_PAIRING_GUIDE.md) for composition patterns
+  - Study [COMMON_MISTAKES.md](../web/src/design-system/docs/COMMON_MISTAKES.md) to avoid anti-patterns
+  - Use semantic color tokens (`trust-deep`, `success-primary`, `neutral-*`) NOT extended palettes (`navy-*`, `emerald-*`, `gray-*`)
+  - Follow [DESIGN_PRINCIPLES.md](../web/src/design-system/docs/DESIGN_PRINCIPLES.md) for Refined Trust Architecture aesthetic
+- New application-specific components MUST use design system primitives (Button, Card, Badge, etc.) not custom implementations
+- If a component is universally applicable (not app-specific), it MUST be added to the design system in `web/src/design-system/components/`
+- All design system components MUST follow:
+  - Refined Trust Architecture aesthetic (navy brand colors #0A2540, warm neutrals, Crimson Pro serif headings)
+  - WCAG 2.1 AA accessibility standards (4.5:1 text contrast minimum, 3:1 UI component contrast minimum)
+  - Semantic HTML with proper ARIA attributes for screen reader support
+  - Tailwind CSS v4 with @theme directive for design tokens
+  - Class Variance Authority (CVA) for component variants
+- Component-specific styling MUST NOT bypass design tokens or introduce custom CSS that breaks visual consistency
+- Storybook stories MUST be included for all new design system components with visual regression testing
+- Color usage MUST follow semantic tokens defined in [TOKEN_GUIDE.md](../web/src/design-system/docs/TOKEN_GUIDE.md)
+- Typography MUST use font families: Crimson Pro (headings), Manrope (body), JetBrains Mono (code/technical values)
+
+**Rationale**: Design system compliance ensures visual consistency across the application, maintains brand
+identity (Refined Trust Architecture), reduces development time through component reuse, and guarantees
+accessibility standards (WCAG 2.1 AA). The design system documentation provides comprehensive guidance
+enabling 92-95% autonomous decision-making for AI agents building components (verified via independent
+ui-designer assessment). Requiring universal components to be contributed back prevents fragmentation
+and ensures patterns are shared across the application. Semantic tokens prevent color inconsistencies and
+make theming possible. This principle establishes frontend quality standards and prevents ad-hoc styling
+that undermines user experience and accessibility.
+
 ## Development Requirements
 
 ### Compliance Checklist
@@ -291,6 +336,8 @@ without confirmation breaks that trust.
 - [ ] Configuration examples committed to [examples/config/](examples/config/) for reference
 - [ ] APIs designed and documented in OpenAPI format (confirm with user/stakeholder per Principle X)
 - [ ] Database schema designed (migration files and SQL documented, or confirm no DB changes)
+- [ ] Frontend components designed: review [web/src/design-system/docs/INDEX.md](../web/src/design-system/docs/INDEX.md) and ensure design system can be used
+- [ ] Universal components identified: plan to add them to design system in `web/src/design-system/components/` (if applicable)
 
 **Implementation Phase**:
 
@@ -310,6 +357,10 @@ without confirmation breaks that trust.
 - [ ] All database schema changes in `/migrations/` with go-migrate naming conventions
 - [ ] Migrations tested: verified apply cleanly, rollback works, can repeat without data loss
 - [ ] All PostgreSQL-backed repositories tested in integration tests
+- [ ] Frontend components use design system primitives and semantic tokens (if applicable)
+- [ ] Universal components added to design system with Storybook stories (if applicable)
+- [ ] No custom CSS bypassing design tokens or introducing inconsistent styling
+- [ ] WCAG 2.1 AA accessibility verified: 4.5:1 text contrast, 3:1 UI component contrast (if applicable)
 
 ### When Constraints Cannot Be Met
 
@@ -364,6 +415,14 @@ If Principle X (API-First Development) requires deviation:
 3. Escalate to project maintainers for guidance
 4. Do NOT implement APIs without design confirmation
 
+If Principle XI (Design System Compliance & Consistency) cannot be satisfied:
+
+1. STOP implementation immediately
+2. Document why design system components cannot be used or why universal patterns cannot be contributed
+3. Propose alternative approach with technical justification
+4. Escalate to project maintainers for exception approval
+5. Do NOT implement frontend components that bypass design system without explicit approval
+
 ## Governance
 
 ### Amendment Procedure
@@ -388,6 +447,8 @@ If Principle X (API-First Development) requires deviation:
 - Reviewers MUST verify persistence implementations follow quickstart.md patterns (Principle IX)
 - Reviewers MUST verify database migrations use go-migrate naming and are tested (Principle IX)
 - Reviewers MUST verify API changes have user confirmation (Principle X)
+- Reviewers MUST verify frontend components use design system and universal patterns are contributed (Principle XI)
+- Reviewers MUST verify WCAG 2.1 AA accessibility compliance for frontend components (Principle XI)
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
 
-**Version**: 1.3.1 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-19
+**Version**: 1.4.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-22

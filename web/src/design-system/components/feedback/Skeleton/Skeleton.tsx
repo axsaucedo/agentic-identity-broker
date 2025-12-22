@@ -19,7 +19,7 @@ import { cn } from '@design-system/utils';
 
 const skeletonVariants = cva(
   // Base styles - applied to all variants
-  'bg-gray-200 overflow-hidden',
+  'bg-neutral-200 overflow-hidden',
   {
     variants: {
       variant: {

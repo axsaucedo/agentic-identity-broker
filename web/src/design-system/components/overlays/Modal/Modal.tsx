@@ -183,7 +183,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
                   {(title || icon) && (
                     <div
                       className={cn(
-                        'px-6 py-5 border-b border-gray-200',
+                        'px-6 py-5 border-b border-neutral-200',
                         scrollable && 'flex-shrink-0'
                       )}
                     >
@@ -197,7 +197,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
                           {title && (
                             <Dialog.Title
                               as="h3"
-                              className="text-lg font-semibold text-gray-900 leading-6"
+                              className="text-lg font-semibold text-neutral-900 leading-6"
                             >
                               {title}
                             </Dialog.Title>
@@ -207,7 +207,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
                           type="button"
                           onClick={onClose}
                           aria-label="Close modal"
-                          className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-trust-deep focus:ring-offset-2"
+                          className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 text-neutral-400 hover:text-neutral-500 hover:bg-neutral-100 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-trust-deep focus:ring-offset-2"
                         >
                           <CloseIcon />
                         </button>
@@ -232,7 +232,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
                   {footer && (
                     <div
                       className={cn(
-                        'px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl',
+                        'px-6 py-4 border-t border-neutral-200 bg-neutral-50 rounded-b-2xl',
                         scrollable && 'flex-shrink-0'
                       )}
                     >

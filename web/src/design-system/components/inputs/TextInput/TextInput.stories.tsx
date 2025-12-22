@@ -193,9 +193,9 @@ export const WithCharCount: Story = {
  */
 export const ValidationScenarios: Story = {
   render: () => (
-    <div className="w-96 space-y-6 p-6 bg-white rounded-lg border border-gray-200">
+    <div className="w-96 space-y-6 p-6 bg-white rounded-lg border border-neutral-200">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">Sign Up Form</h3>
+        <h3 className="text-sm font-semibold text-neutral-900 mb-4">Sign Up Form</h3>
       </div>
 
       <TextInput
@@ -235,7 +235,7 @@ export const UseCases: Story = {
     <div className="w-96 space-y-8">
       {/* Login field */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-700 mb-3">Login</h4>
+        <h4 className="text-xs font-semibold text-neutral-700 mb-3">Login</h4>
         <TextInput
           label="Email or Username"
           placeholder="Enter your credentials"
@@ -254,7 +254,7 @@ export const UseCases: Story = {
 
       {/* Search field */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-700 mb-3">Search</h4>
+        <h4 className="text-xs font-semibold text-neutral-700 mb-3">Search</h4>
         <TextInput
           placeholder="Search agents, scopes..."
           iconBefore={
@@ -272,7 +272,7 @@ export const UseCases: Story = {
 
       {/* Required field */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-700 mb-3">Required Input</h4>
+        <h4 className="text-xs font-semibold text-neutral-700 mb-3">Required Input</h4>
         <TextInput
           label="Grant Duration"
           type="number"

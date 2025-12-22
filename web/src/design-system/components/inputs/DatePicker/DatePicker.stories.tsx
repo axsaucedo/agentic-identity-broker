@@ -156,8 +156,8 @@ export const RealWorldUseCases: Story = {
     const minDate = startOfToday();
 
     return (
-      <div className="w-96 space-y-6 p-6 bg-white border border-gray-200 rounded-lg">
-        <h3 className="text-sm font-semibold text-gray-900">Grant Configuration</h3>
+      <div className="w-96 space-y-6 p-6 bg-white border border-neutral-200 rounded-lg">
+        <h3 className="text-sm font-semibold text-neutral-900">Grant Configuration</h3>
 
         <DatePicker
           label="Grant expiration date"
@@ -168,7 +168,7 @@ export const RealWorldUseCases: Story = {
           helperText="When should this permission grant expire?"
         />
 
-        <div className="text-xs text-gray-600">
+        <div className="text-xs text-neutral-600">
           {expiryDate ? (
             <p>Grant expires on: <span className="font-medium">{expiryDate.toLocaleDateString()}</span></p>
           ) : (

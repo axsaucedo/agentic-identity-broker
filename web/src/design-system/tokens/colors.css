@@ -2,40 +2,80 @@
  * Design System Color Tokens
  * TailwindCSS v4 @theme directive for semantic color tokens
  *
+ * Source of Truth: DESIGN_PRINCIPLES.md
+ * - All hex values aligned with Refined Trust Architecture aesthetic
+ * - Warm neutrals replace standard Tailwind grays
+ * - Semantic tokens enforce meaning-driven color usage
+ *
  * Usage in components:
- * - bg-trust-deep, text-trust-deep
- * - bg-cta, text-cta
- * - bg-success-primary, text-success-primary
+ * - bg-trust-deep, text-trust, border-trust-hover
+ * - bg-cta, text-cta-hover
+ * - bg-success-primary, text-success-dark
+ * - bg-neutral-50, text-neutral-700, border-neutral-300
  */
 
 @theme {
-  /* Primary - Trust & Authority */
-  --color-trust-deep: #0d1829;
-  --color-trust-hover: #172136;
-  --color-trust: #1E4D6B;
-  --color-trust-light: #E8F1F5;
+  /* PRIMARY - Trust & Authority (Navy) */
+  --color-trust-deep: #0A2540;      /* Darkest navy - headings, primary brand */
+  --color-trust: #1E4D6B;            /* Medium navy - primary actions, links */
+  --color-trust-hover: #2b68a5;      /* Lighter navy - hover states */
+  --color-trust-light: #E8F1F5;      /* Lightest navy - backgrounds, tints */
 
-  /* Call-to-Action - Amber tones for important actions */
-  --color-cta: #D97706;
-  --color-cta-hover: #B45309;
+  /* ACTION - CTA (Unified with Warning - Amber) */
+  --color-cta: #D97706;              /* Primary CTA and warnings */
+  --color-cta-hover: #B45309;        /* CTA hover state */
+  --color-cta-light: #fef3c7;        /* CTA light background */
 
-  /* Success - Green tones for positive actions */
-  --color-success-primary: #059669;
-  --color-success-light: #D1FAE5;
-  --color-success-dark: #047857;
+  /* SUCCESS - Emerald tones for positive actions */
+  --color-success-primary: #059669;  /* Success state, granted permissions */
+  --color-success-hover: #047857;    /* Success hover state */
+  --color-success-light: #d1fae5;    /* Success light background */
+  --color-success-dark: #065f46;     /* Success dark text */
 
-  /* Error - Red tones for destructive actions */
-  --color-error-primary: #DC2626;
-  --color-error-light: #FEE2E2;
-  --color-error-dark: #991B1B;
+  /* ERROR - Red tones for destructive actions */
+  --color-error-primary: #DC2626;    /* Error state, destructive actions */
+  --color-error-hover: #b91c1c;      /* Error hover state */
+  --color-error-light: #fee2e2;      /* Error light background */
+  --color-error-dark: #991b1b;       /* Error dark text */
 
-  /* Warning - Amber/Orange tones for caution */
-  --color-warning-primary: #F59E0B;
-  --color-warning-light: #FEF3C7;
-  --color-warning-dark: #D97706;
+  /* WARNING - Unified with CTA (Amber) */
+  --color-warning-primary: #D97706;  /* Warning state (same as CTA) */
+  --color-warning-hover: #B45309;    /* Warning hover state */
+  --color-warning-light: #fef3c7;    /* Warning light background */
+  --color-warning-dark: #92400e;     /* Warning dark text */
 
-  /* Info - Blue tones for informational content */
-  --color-info-primary: #3B82F6;
-  --color-info-light: #DBEAFE;
-  --color-info-dark: #1E40AF;
+  /* INFO - Blue tones for informational content */
+  --color-info-primary: #3B82F6;     /* Info state */
+  --color-info-hover: #2563eb;       /* Info hover state */
+  --color-info-light: #dbeafe;       /* Info light background */
+  --color-info-dark: #1e40af;        /* Info dark text */
+
+  /* WARM NEUTRALS - Sophisticated cream/sand/taupe scale (replaces gray) */
+  --color-neutral-50: #faf9f7;       /* Cream - page backgrounds */
+  --color-neutral-100: #f5f1ed;      /* Sand - section backgrounds */
+  --color-neutral-200: #e8e3de;      /* Taupe - card borders */
+  --color-neutral-300: #ddd8d1;      /* Light taupe - input borders */
+  --color-neutral-400: #c4bdb3;      /* Medium taupe - placeholders */
+  --color-neutral-500: #9a9591;      /* Medium-dark - secondary icons */
+  --color-neutral-600: #6b6561;      /* Dark taupe - secondary text */
+  --color-neutral-700: #4a4137;      /* Darker taupe - body text */
+  --color-neutral-800: #2a251f;      /* Very dark - emphasized text */
+  --color-neutral-900: #1a1511;      /* Darkest - headings (or use trust-deep) */
+
+  /* SEMANTIC ALIASES - Contextual color names */
+  --color-text-primary: #0A2540;     /* Primary text (trust-deep) */
+  --color-text-secondary: #6b6561;   /* Secondary text (neutral-600) */
+  --color-text-tertiary: #9a9591;    /* Tertiary text (neutral-500) */
+  --color-text-disabled: #c4bdb3;    /* Disabled text (neutral-400) */
+  --color-text-inverse: #ffffff;     /* Inverse text (white) */
+
+  --color-bg-primary: #faf9f7;       /* Primary background (neutral-50) */
+  --color-bg-secondary: #f5f1ed;     /* Secondary background (neutral-100) */
+  --color-bg-tertiary: #e8e3de;      /* Tertiary background (neutral-200) */
+  --color-bg-elevated: #ffffff;      /* Elevated cards (pure white) */
+  --color-bg-overlay: rgba(13, 24, 41, 0.5);  /* Modal overlay (navy @ 50%) */
+
+  --color-border-primary: #ddd8d1;   /* Primary borders (neutral-300) */
+  --color-border-secondary: #e8e3de; /* Secondary borders (neutral-200) */
+  --color-border-focus: #1E4D6B;     /* Focus ring (trust) */
 }

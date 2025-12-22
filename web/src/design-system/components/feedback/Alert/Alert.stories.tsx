@@ -171,8 +171,8 @@ export const WithActions: Story = {
         )}
 
         {!alerts.action && !alerts.dismiss && !alerts.both && (
-          <div className="text-center p-8 border border-dashed border-gray-300 rounded-lg">
-            <p className="text-gray-600 mb-4">All alerts dismissed</p>
+          <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
+            <p className="text-neutral-600 mb-4">All alerts dismissed</p>
             <button
               onClick={() =>
                 setAlerts({ action: true, dismiss: true, both: true })
@@ -294,8 +294,8 @@ export const Dismissible: Story = {
         )}
 
         {anyDismissed && (
-          <div className="text-center p-6 border border-dashed border-gray-300 rounded-lg">
-            <p className="text-gray-600 mb-4">
+          <div className="text-center p-6 border border-dashed border-neutral-300 rounded-lg">
+            <p className="text-neutral-600 mb-4">
               Some alerts have been dismissed
             </p>
             <button
@@ -332,7 +332,7 @@ export const Banner: Story = {
       </Alert>
 
       <div className="p-4">
-        <p className="text-gray-700 mb-4">
+        <p className="text-neutral-700 mb-4">
           Banner alerts are typically used at the top of a page or section to
           display important system-wide messages.
         </p>
@@ -349,7 +349,7 @@ export const Banner: Story = {
       </Alert>
 
       <div className="p-4">
-        <p className="text-gray-700">
+        <p className="text-neutral-700">
           They span the full width of their container and have no rounded corners
           on the sides.
         </p>
@@ -382,8 +382,8 @@ export const Playground: Story = {
 
     if (!isVisible) {
       return (
-        <div className="text-center p-8 border border-dashed border-gray-300 rounded-lg">
-          <p className="text-gray-600 mb-4">Alert dismissed</p>
+        <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
+          <p className="text-neutral-600 mb-4">Alert dismissed</p>
           <button
             onClick={() => setIsVisible(true)}
             className="px-4 py-2 bg-trust-deep text-white rounded-md hover:bg-trust-hover transition-colors"
@@ -430,7 +430,7 @@ export const RealWorldExamples: Story = {
     return (
       <div className="space-y-6 max-w-3xl">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <h3 className="text-lg font-semibold text-neutral-900 mb-4">
             Consent Management Scenarios
           </h3>
 
@@ -491,7 +491,7 @@ export const RealWorldExamples: Story = {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-gray-200">
+        <div className="pt-4 border-t border-neutral-200">
           <button
             onClick={() =>
               setConsents({ pending: true, granted: false, expired: true })
@@ -605,11 +605,11 @@ export const CustomIcons: Story = {
 export const Accessibility: Story = {
   render: () => (
     <div className="space-y-6 max-w-3xl">
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-        <h4 className="text-sm font-semibold text-gray-900 mb-2">
+      <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+        <h4 className="text-sm font-semibold text-neutral-900 mb-2">
           Accessibility Features
         </h4>
-        <ul className="text-sm text-gray-700 space-y-1">
+        <ul className="text-sm text-neutral-700 space-y-1">
           <li>
             • Error alerts use <code>role="alert"</code> and{' '}
             <code>aria-live="assertive"</code>

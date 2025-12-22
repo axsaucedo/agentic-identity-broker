@@ -53,7 +53,7 @@ const iconContainerVariants = cva('flex items-center justify-center rounded-full
   },
 });
 
-const titleVariants = cva('font-semibold text-gray-900', {
+const titleVariants = cva('font-semibold text-neutral-900', {
   variants: {
     size: {
       compact: 'text-base',
@@ -66,7 +66,7 @@ const titleVariants = cva('font-semibold text-gray-900', {
   },
 });
 
-const descriptionVariants = cva('text-gray-600 leading-relaxed', {
+const descriptionVariants = cva('text-neutral-600 leading-relaxed', {
   variants: {
     size: {
       compact: 'text-sm',
@@ -117,7 +117,7 @@ export interface EmptyStateProps
 // Default icon for empty states (folder icon)
 const DefaultIcon = () => (
   <svg
-    className="w-full h-full text-gray-400"
+    className="w-full h-full text-neutral-400"
     fill="none"
     viewBox="0 0 24 24"
     stroke="currentColor"

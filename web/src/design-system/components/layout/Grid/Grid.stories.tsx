@@ -54,8 +54,8 @@ const GridItem = ({
   tall?: boolean;
 }) => {
   const variantClasses = {
-    default: 'bg-navy-100 text-navy-900 border-navy-200',
-    highlight: 'bg-emerald-100 text-emerald-900 border-emerald-200',
+    default: 'bg-trust-light text-trust-deep border-neutral-200',
+    highlight: 'bg-success-light text-success-dark border-success-light',
     accent: 'bg-sand text-secondary-900 border-slate',
   };
 
@@ -77,8 +77,8 @@ const DemoCard = ({
   description: string;
 }) => {
   return (
-    <div className="bg-white rounded-lg shadow-card p-6 border-2 border-navy-100 hover:shadow-card-hover transition-shadow">
-      <h3 className="text-lg font-display font-semibold text-navy-900 mb-2">
+    <div className="bg-white rounded-lg shadow-card p-6 border-2 border-trust-light hover:shadow-card-hover transition-shadow">
+      <h3 className="text-lg font-display font-semibold text-trust-deep mb-2">
         {title}
       </h3>
       <p className="text-sm text-secondary-600">{description}</p>
@@ -260,7 +260,7 @@ export const Responsive: Story = {
   render: () => (
     <div className="space-y-8 bg-cream p-6 rounded-xl">
       <div className="bg-white rounded-lg p-6 shadow-md-premium">
-        <h2 className="text-xl font-display font-semibold text-navy-900 mb-4">
+        <h2 className="text-xl font-display font-semibold text-trust-deep mb-4">
           Responsive Grid Behavior
         </h2>
         <p className="text-secondary-600 mb-4">
@@ -289,7 +289,7 @@ export const Responsive: Story = {
       </div>
 
       <div className="bg-white rounded-lg p-6 shadow-md-premium">
-        <h3 className="text-lg font-display font-semibold text-navy-900 mb-3">
+        <h3 className="text-lg font-display font-semibold text-trust-deep mb-3">
           Mobile-First Card Grid
         </h3>
         <p className="text-secondary-600 mb-4">
@@ -325,7 +325,7 @@ export const AutoFit: Story = {
   render: () => (
     <div className="space-y-8 bg-cream p-6 rounded-xl">
       <div className="bg-white rounded-lg p-6 shadow-md-premium">
-        <h2 className="text-xl font-display font-semibold text-navy-900 mb-4">
+        <h2 className="text-xl font-display font-semibold text-trust-deep mb-4">
           Auto-Fit Grid
         </h2>
         <p className="text-secondary-600 mb-4">
@@ -349,7 +349,7 @@ export const AutoFit: Story = {
       </div>
 
       <div className="bg-white rounded-lg p-6 shadow-md-premium">
-        <h3 className="text-lg font-display font-semibold text-navy-900 mb-3">
+        <h3 className="text-lg font-display font-semibold text-trust-deep mb-3">
           Auto-Fill Grid (Larger Minimum)
         </h3>
         <p className="text-secondary-600 mb-4">
@@ -379,7 +379,7 @@ export const CardGrid: Story = {
   render: () => (
     <div className="space-y-8 bg-cream p-6 rounded-xl">
       <div>
-        <h2 className="text-2xl font-display font-bold text-navy-900 mb-2">
+        <h2 className="text-2xl font-display font-bold text-trust-deep mb-2">
           Features Overview
         </h2>
         <p className="text-secondary-600 mb-6">
@@ -419,7 +419,7 @@ export const CardGrid: Story = {
       </div>
 
       <div>
-        <h2 className="text-2xl font-display font-bold text-navy-900 mb-2">
+        <h2 className="text-2xl font-display font-bold text-trust-deep mb-2">
           Dense Layout (4 Columns)
         </h2>
         <p className="text-secondary-600 mb-6">
@@ -486,7 +486,7 @@ export const Accessibility: Story = {
   render: () => (
     <div className="bg-cream p-8">
       <div className="bg-white rounded-lg shadow-md-premium p-6">
-        <h2 className="text-xl font-display font-semibold text-navy-900 mb-3">
+        <h2 className="text-xl font-display font-semibold text-trust-deep mb-3">
           Accessibility Features
         </h2>
         <p className="text-secondary-600 mb-6">
@@ -495,11 +495,11 @@ export const Accessibility: Story = {
 
         <Grid columns={1} gap="md" className="sm:grid-cols-2">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Semantic HTML</h3>
+              <h3 className="font-semibold text-trust-deep">Semantic HTML</h3>
               <p className="text-sm text-secondary-600">
                 Uses standard div elements with CSS Grid, no ARIA required
               </p>
@@ -507,11 +507,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Logical Reading Order</h3>
+              <h3 className="font-semibold text-trust-deep">Logical Reading Order</h3>
               <p className="text-sm text-secondary-600">
                 Content flows naturally left-to-right, top-to-bottom for screen readers
               </p>
@@ -519,11 +519,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Touch-Friendly Spacing</h3>
+              <h3 className="font-semibold text-trust-deep">Touch-Friendly Spacing</h3>
               <p className="text-sm text-secondary-600">
                 Gap options ensure adequate spacing for touch targets (minimum 44x44px)
               </p>
@@ -531,11 +531,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Fully Responsive</h3>
+              <h3 className="font-semibold text-trust-deep">Fully Responsive</h3>
               <p className="text-sm text-secondary-600">
                 Adapts gracefully across all viewport sizes and zoom levels
               </p>
@@ -543,11 +543,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">Keyboard Navigation</h3>
+              <h3 className="font-semibold text-trust-deep">Keyboard Navigation</h3>
               <p className="text-sm text-secondary-600">
                 Interactive grid children fully support keyboard navigation
               </p>
@@ -555,11 +555,11 @@ export const Accessibility: Story = {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-success-light text-success-hover flex items-center justify-center text-sm font-semibold">
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-navy-900">No Motion Dependencies</h3>
+              <h3 className="font-semibold text-trust-deep">No Motion Dependencies</h3>
               <p className="text-sm text-secondary-600">
                 Pure layout component with no animations (respects prefers-reduced-motion)
               </p>

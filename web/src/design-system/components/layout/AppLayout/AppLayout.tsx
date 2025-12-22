@@ -32,7 +32,7 @@ const appLayoutVariants = cva(
 
 const headerVariants = cva(
   // Base header styles
-  'w-full bg-white border-b border-gray-200 z-20',
+  'w-full bg-white border-b border-neutral-200 z-20',
   {
     variants: {
       sticky: {
@@ -57,7 +57,7 @@ const mainContainerVariants = cva(
 
 const sidebarVariants = cva(
   // Base sidebar styles
-  'bg-gray-50 border-gray-200 flex-shrink-0 transition-all duration-300 ease-in-out overflow-y-auto z-10',
+  'bg-neutral-50 border-neutral-200 flex-shrink-0 transition-all duration-300 ease-in-out overflow-y-auto z-10',
   {
     variants: {
       position: {
@@ -111,7 +111,7 @@ const contentVariants = cva(
 
 const footerVariants = cva(
   // Base footer styles
-  'w-full bg-white border-t border-gray-200 z-20',
+  'w-full bg-white border-t border-neutral-200 z-20',
   {
     variants: {
       sticky: {
