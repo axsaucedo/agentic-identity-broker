@@ -13,6 +13,7 @@
 - Q: How does system handle third-party authorization endpoint returning an error instead of authorization code? → A: Parse OAuth2 error response (error, error_description); redirect to sessions page with user-friendly error message displayed; allow immediate retry
 - Q: How does system handle network failures during token exchange? → A: Retry token exchange up to 3 times with exponential backoff (1s, 2s, 4s); if all retries fail, display error message allowing user to retry OAuth2 flow
 - Q: What happens when access token expires but refresh token is still valid? → A: Show session as expired only if refresh token is expired. Expired access tokens will be refreshed in a future iteration transparently to the user
+- Q: What happens if a third-party service is deleted while user sessions exist? → A: Block service deletion with error message listing active session count; admin must manually terminate all user sessions before deleting service
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -100,7 +101,7 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 - **Third-party authorization errors**: When third-party returns OAuth2 error (e.g., access_denied, invalid_scope, server_error), system parses error and error_description parameters from callback URL, redirects user to sessions page with user-friendly error message, and allows immediate retry via Login button.
 - **Network failures during token exchange**: System retries token exchange request up to 3 times with exponential backoff (1s, 2s, 4s delays). If all retries fail, displays error message to user allowing them to retry the entire OAuth2 flow from the beginning.
 - **Expired access token with valid refresh token**: Session remains active and is not marked as expired. Future iteration will implement automatic transparent token refresh for agents. Only when refresh token itself expires should session be marked as expired in UI.
-- What happens if a third-party service is deleted while user sessions exist?
+- **Third-party service deletion with active sessions**: System blocks service deletion and returns error message showing count of active user sessions. Admin must manually terminate all user sessions before service can be deleted (enforced by ON DELETE RESTRICT foreign key constraint).
 - How does system handle malformed or missing callback parameters from third-party?
 - What happens when redirect_uri validation fails (domain mismatch)?
 - How does system handle PKCE validation failures at callback?
@@ -188,7 +189,7 @@ third_party_oauth2:
 - **DB-002**: user_sessions table schema MUST include: id (UUID primary key), principal (string, indexed), service_id (string, foreign key to third_party_services), encrypted_access_token (bytea), encrypted_refresh_token (bytea, nullable), token_type (string), expires_at (timestamp, nullable), initiated_at (timestamp), scope (string array), encryption_context (jsonb)
 - **DB-003**: Add unique constraint on (principal, service_id) - one session per user per service. This constraint prevents race conditions when multiple OAuth2 flows are initiated simultaneously; first callback to complete successfully wins, subsequent callbacks will detect existing session via constraint violation.
 - **DB-004**: Add index on principal for fast session lookups by user
-- **DB-005**: Add foreign key constraint from service_id to third_party_services.id with ON DELETE RESTRICT (prevent deleting services with active sessions)
+- **DB-005**: Add foreign key constraint from service_id to third_party_services.id with ON DELETE RESTRICT (prevent deleting services with active sessions). Admin interface must catch constraint violation and display error message with active session count, requiring admin to terminate all user sessions before service deletion.
 - **DB-006**: Migration MUST be tested for both up and down operations without data loss
 - **DB-007**: Repository implementation MUST follow `specs/004-persistence-layer/quickstart.md` patterns
 
