@@ -1,0 +1,242 @@
+# Feature Specification: Third-Party OAuth2 Session Management
+
+**Feature Branch**: `008-thirdparty-oauth2-sessions`  
+**Created**: 2025-12-22  
+**Status**: Draft  
+**Input**: User description: "Users need to be able to login to third-party services and the identity broker will manage the users' sessions and store their respective OAuth2 tokens."
+
+## User Scenarios & Testing *(mandatory)*
+
+### User Story 1 - View Available Third-Party Services (Priority: P1)
+
+A user needs to see which third-party services are registered with the identity broker and understand their current session status for each service (whether they're logged in, when the session was initiated, and how many agents depend on it).
+
+**Why this priority**: This is the foundational capability that provides users visibility into available services and their authentication status. Without this view, users cannot discover what services exist or manage their sessions.
+
+**Independent Test**: User navigates to the "Third-party Sessions" page and sees a list of all registered third-party OAuth2 services with status indicators showing whether a session exists, when it was initiated, how many agents use it, and that tokens are stored encrypted.
+
+**Acceptance Scenarios**:
+
+1. **Given** user is authenticated and third-party services are configured, **When** user navigates to the third-party sessions page, **Then** system displays a list of all configured third-party OAuth2 services with their display names and descriptions
+2. **Given** user has not established a session with a service, **When** viewing the service card, **Then** system shows a "Login" button and no session status indicators
+3. **Given** user has established a session with a service, **When** viewing the service card, **Then** system displays session initiation timestamp, number of agents using this session, and an encryption status indicator
+4. **Given** user views an established session, **When** reviewing the service card, **Then** system shows a "Terminate Session" button instead of a "Login" button
+5. **Given** multiple agents depend on a session, **When** user views the session card, **Then** system displays the count of dependent agents
+
+---
+
+### User Story 2 - Establish OAuth2 Session via Authorization Code Flow (Priority: P2)
+
+A user needs to authenticate with a third-party service by initiating an OAuth2 authorization code flow with PKCE. The system securely manages the OAuth2 ceremony, redirects the user to the third-party's authorization endpoint, and handles the callback to obtain access and refresh tokens.
+
+**Why this priority**: This enables users to actually create sessions with third-party services. It depends on P1 (users must see available services) and delivers the core authentication capability.
+
+**Independent Test**: User clicks "Login" button on a service card, gets redirected to third-party authorization page, approves access, returns to the broker, and sees their session established with tokens stored securely.
+
+**Acceptance Scenarios**:
+
+1. **Given** user clicks "Login" on a third-party service, **When** system initiates OAuth2 flow, **Then** system generates PKCE code verifier and challenge, creates signed state token (JWE), and redirects user to the third-party's authorization endpoint with appropriate parameters
+2. **Given** system initiates OAuth2 flow, **When** building authorization URL, **Then** system includes client_id (from service configuration), redirect_uri (callback endpoint on broker), response_type=code, code_challenge (PKCE), code_challenge_method=S256, scope (configured scopes), and state (JWE token)
+3. **Given** user approves access at third-party authorization page, **When** third-party redirects back to broker callback endpoint, **Then** system validates the state token, extracts PKCE verifier, and exchanges authorization code for access and refresh tokens
+4. **Given** callback receives authorization code, **When** system exchanges code for tokens, **Then** system validates that current principal matches principal in state token, validates PKCE verifier, and validates service ID matches
+5. **Given** tokens are successfully obtained, **When** system stores them, **Then** system encrypts tokens using EncryptionPort, associates them with the user's principal and service ID, records session initiation timestamp, and stores them in the token vault
+6. **Given** OAuth2 flow completes successfully, **When** user returns to the sessions page, **Then** system displays the newly established session with status indicators
+7. **Given** state token validation fails at callback, **When** system detects mismatch, **Then** system rejects the callback with error and does not store any tokens
+
+---
+
+### User Story 3 - Terminate Third-Party Session with Warnings (Priority: P3)
+
+A user needs to revoke their session with a third-party service, which removes stored tokens and breaks the connection. Before terminating, the system warns the user about which agents will lose access to this service.
+
+**Why this priority**: This provides users control over their sessions and security. It depends on P2 (sessions must exist to be terminated) and adds safety through warnings about affected agents.
+
+**Independent Test**: User clicks "Terminate Session" button, sees warning dialog listing affected agents, confirms termination, and sees session removed with tokens deleted from storage.
+
+**Acceptance Scenarios**:
+
+1. **Given** user has an established session, **When** user clicks "Terminate Session" button, **Then** system displays a warning dialog listing all agents that currently use this session
+2. **Given** warning dialog shows affected agents, **When** user confirms termination, **Then** system deletes stored tokens (access token, refresh token) from token vault and removes session record
+3. **Given** session is terminated, **When** user returns to sessions page, **Then** service card shows "Login" button again with no session status indicators
+4. **Given** agents previously used a terminated session, **When** those agents attempt to use the session, **Then** agents detect missing session and must request user to re-authenticate
+5. **Given** user cancels termination in warning dialog, **When** dialog is dismissed, **Then** session remains active and no changes are made
+
+---
+
+### User Story 4 - Secure State Token Management (Priority: P2)
+
+The system needs to securely manage OAuth2 state parameters during the authorization flow by creating and validating JWE tokens that bind the flow to the current user and protect against CSRF attacks.
+
+**Why this priority**: This is a critical security mechanism that runs alongside P2 (session establishment). It's not independently testable from a user perspective but is essential for secure OAuth2 flow implementation.
+
+**Independent Test**: System creates JWE state tokens containing principal, PKCE verifier, service ID, and redirect_uri; validates all parameters on callback; and rejects mismatched or tampered tokens.
+
+**Acceptance Scenarios**:
+
+1. **Given** system initiates OAuth2 flow, **When** creating state token, **Then** system generates JWE with claims: principal (current user), pkce_verifier (PKCE code verifier), service_id (third-party service identifier), redirect_uri (original redirect_uri parameter from authorize endpoint)
+2. **Given** state token is created, **When** signing JWE, **Then** system uses authenticated encryption to prevent tampering and ensure confidentiality
+3. **Given** callback receives state token, **When** validating token, **Then** system verifies JWE signature, decrypts claims, validates principal matches current authenticated user, validates service_id matches the callback endpoint parameter, and extracts PKCE verifier
+4. **Given** state token validation detects principal mismatch, **When** system processes callback, **Then** system rejects callback with 403 Forbidden and logs security event
+5. **Given** state token validation detects service_id mismatch, **When** system processes callback, **Then** system rejects callback with 400 Bad Request
+6. **Given** state token is expired or tampered, **When** system attempts to decrypt, **Then** decryption fails and system rejects callback with 400 Bad Request
+
+---
+
+### Edge Cases
+
+- What happens when user initiates multiple OAuth2 flows for the same service simultaneously (race condition)?
+- How does system handle third-party authorization endpoint returning an error instead of authorization code?
+- What happens when access token expires but refresh token is still valid?
+- How does system handle network failures during token exchange?
+- What happens if a third-party service is deleted while user sessions exist?
+- How does system handle malformed or missing callback parameters from third-party?
+- What happens when redirect_uri validation fails (domain mismatch)?
+- How does system handle PKCE validation failures at callback?
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: System MUST provide a user interface listing all configured third-party OAuth2 services
+- **FR-002**: System MUST display session status for each service including: session existence, initiation timestamp, dependent agent count, and encryption status
+- **FR-003**: System MUST provide a "Login" button for services without established sessions
+- **FR-004**: System MUST provide a "Terminate Session" button for services with established sessions
+- **FR-005**: System MUST expose endpoint `/api/third-party/:id/oauth2/authorize` accepting `redirect_uri` query parameter to initiate OAuth2 authorization code flow with PKCE
+- **FR-006**: System MUST validate that `redirect_uri` parameter in authorize endpoint matches the host of the incoming request (same-origin validation)
+- **FR-007**: System MUST generate PKCE code verifier (high-entropy random string) and code challenge (SHA256 hash of verifier, base64url encoded) for each OAuth2 flow
+- **FR-008**: System MUST create JWE state token containing: principal (current user), pkce_verifier, service_id, and redirect_uri
+- **FR-009**: System MUST redirect user to third-party authorization endpoint with parameters: client_id, redirect_uri (callback endpoint), response_type=code, code_challenge, code_challenge_method=S256, scope, and state (JWE token)
+- **FR-010**: System MUST expose endpoint `/api/third-party/:id/oauth2/callback` to receive OAuth2 callbacks from third-party services
+- **FR-011**: System MUST validate state token at callback endpoint by: verifying JWE signature, decrypting claims, validating principal matches current authenticated user, and validating service_id matches callback endpoint parameter
+- **FR-012**: System MUST extract PKCE verifier from state token and use it to exchange authorization code for tokens
+- **FR-013**: System MUST exchange authorization code for access token and refresh token using third-party's token endpoint
+- **FR-014**: System MUST store obtained tokens encrypted in the token vault associated with user's principal and service ID
+- **FR-015**: System MUST record session initiation timestamp when tokens are stored
+- **FR-016**: System MUST count and display number of agents depending on each user session
+- **FR-017**: System MUST display warning dialog before session termination showing affected agents
+- **FR-018**: System MUST delete stored tokens (access and refresh) when user terminates a session
+- **FR-019**: Both authorize and callback endpoints MUST require authenticated principal (user must be logged in)
+- **FR-020**: System MUST handle OAuth2 error responses from third-party services gracefully
+
+### Domain Model
+
+**Entities**:
+
+- **UserSession**: Represents an authenticated session between a user (principal) and a third-party OAuth2 service. Contains encrypted access token, refresh token, service ID, principal identifier, initiation timestamp, and token expiration metadata.
+
+- **OAuth2StateToken**: JWE token containing the OAuth2 flow state parameters. Short-lived, contains principal, PKCE verifier, service_id, and redirect_uri. Used only during OAuth2 authorization flow to bind callback to the initiating request.
+
+**Value Objects**:
+
+- **PKCEVerifier**: High-entropy random string (43+ characters) used for PKCE code verification
+- **PKCEChallenge**: SHA256 hash of verifier, base64url encoded
+- **EncryptedToken**: Encrypted representation of OAuth2 access or refresh token using EncryptionPort
+
+**Domain Events**:
+
+- **SessionEstablished**: Fired when user successfully completes OAuth2 flow and tokens are stored
+- **SessionTerminated**: Fired when user explicitly terminates a session and tokens are deleted
+
+*All domain terms should be added to ARCHITECTURE.md Glossary section*
+
+### Configuration Requirements
+
+**Configuration Parameters**:
+
+- **third_party_oauth2.jwe_signing_key**: Symmetric key for signing and encrypting JWE state tokens (type: string, required, environment variable: IDENTITY_BROKER_JWE_SIGNING_KEY)
+- **third_party_oauth2.state_token_ttl**: Time-to-live for state tokens in seconds (type: int, default: 600, example: 600)
+- **third_party_oauth2.pkce_verifier_length**: Length of PKCE verifier in bytes (type: int, default: 32, range: 32-128)
+
+**Example YAML Configuration**:
+```yaml
+# Third-party OAuth2 session configuration
+third_party_oauth2:
+  jwe_signing_key: ${IDENTITY_BROKER_JWE_SIGNING_KEY}
+  state_token_ttl: 600  # 10 minutes
+  pkce_verifier_length: 32  # 32 bytes = 256 bits
+```
+
+**Configuration Location**: Will be added to `examples/config/third-party-oauth2.yaml` and referenced in `examples/config/README.md`
+
+### API Requirements
+
+- **API-001**: All OAuth2 session endpoints MUST be documented in `/api/enduser/openapi.yaml`
+- **API-002**: API documentation MUST include endpoint paths, HTTP methods, parameters, request/response bodies, error codes, examples, and authentication requirements
+- **API-003**: Authorize endpoint: `GET /api/third-party/:id/oauth2/authorize?redirect_uri={uri}` - initiates OAuth2 flow, returns 302 redirect to third-party authorization endpoint
+- **API-004**: Callback endpoint: `GET /api/third-party/:id/oauth2/callback?code={code}&state={state}` - processes OAuth2 callback, returns redirect to sessions page with success/error status
+- **API-005**: Sessions list endpoint: `GET /api/third-party/sessions` - returns list of all services with user's session status for each
+- **API-006**: Session termination endpoint: `DELETE /api/third-party/:id/session` - terminates user session and deletes stored tokens
+- **API-007**: All endpoints MUST require authenticated principal (X-Remote-User header)
+- **API-008**: APIs MUST follow Zalando RESTful API and Event Guidelines
+- **API-009**: Error responses MUST follow standard format: `{"error": "code", "message": "description"}`
+
+### Database Requirements
+
+- **DB-001**: Create migration `004_create_user_sessions.up.sql` and `004_create_user_sessions.down.sql` for user_sessions table
+- **DB-002**: user_sessions table schema MUST include: id (UUID primary key), principal (string, indexed), service_id (string, foreign key to third_party_services), encrypted_access_token (bytea), encrypted_refresh_token (bytea, nullable), token_type (string), expires_at (timestamp, nullable), initiated_at (timestamp), scope (string array), encryption_context (jsonb)
+- **DB-003**: Add unique constraint on (principal, service_id) - one session per user per service
+- **DB-004**: Add index on principal for fast session lookups by user
+- **DB-005**: Add foreign key constraint from service_id to third_party_services.id with ON DELETE RESTRICT (prevent deleting services with active sessions)
+- **DB-006**: Migration MUST be tested for both up and down operations without data loss
+- **DB-007**: Repository implementation MUST follow `specs/004-persistence-layer/quickstart.md` patterns
+
+### Security Requirements
+
+- **SR-001**: State tokens MUST use authenticated encryption (JWE) to prevent tampering
+- **SR-002**: PKCE MUST be used for all OAuth2 authorization code flows (code_challenge_method=S256)
+- **SR-003**: redirect_uri MUST be validated to match the host of the incoming request (prevent open redirect)
+- **SR-004**: State token validation MUST verify principal matches current authenticated user (prevent CSRF)
+- **SR-005**: OAuth2 tokens (access and refresh) MUST be encrypted before storage using EncryptionPort
+- **SR-006**: System MUST fail closed if state token validation fails (reject callback)
+- **SR-007**: System MUST fail closed if PKCE validation fails (reject token exchange)
+- **SR-008**: JWE signing key MUST be loaded from environment variable, not committed to config files
+- **SR-009**: System MUST emit structured audit logs for: session establishment, session termination, failed state validation, failed PKCE validation
+- **SR-010**: Token encryption MUST use encryption context including: principal, service_id, and session_id
+- **SR-011**: State tokens MUST have short TTL (default: 10 minutes) to limit exposure window
+
+### Key Entities
+
+- **UserSession**: Represents authenticated OAuth2 session between a user and third-party service, storing encrypted tokens and session metadata
+- **OAuth2StateToken**: Short-lived JWE token binding OAuth2 flow to user and request context
+- **ThirdPartyService**: Configuration for external OAuth2 provider (already exists from spec 006)
+- **Principal**: User identifier extracted from authentication headers (already exists from spec 005)
+
+*Domain concepts should be added to ARCHITECTURE.md Glossary (per Constitution Principle V)*
+
+## Success Criteria *(mandatory)*
+
+### Measurable Outcomes
+
+- **SC-001**: Users can successfully complete OAuth2 authorization flow and establish sessions with third-party services in under 60 seconds
+- **SC-002**: 100% of OAuth2 tokens are stored encrypted in the token vault (verified through code review and security scanning)
+- **SC-003**: State token validation rejects 100% of tampered or mismatched tokens (verified through security testing)
+- **SC-004**: Users can view their third-party session status and see accurate counts of dependent agents within 2 seconds of page load
+- **SC-005**: Users can terminate sessions and see confirmation within 2 seconds, with tokens removed from storage immediately
+- **SC-006**: PKCE validation prevents authorization code interception attacks with 100% effectiveness (verified through security testing)
+- **SC-007**: Redirect URI validation blocks open redirect vulnerabilities in 100% of test cases
+- **SC-008**: System handles concurrent OAuth2 flows for the same user without race conditions (tested with 10+ simultaneous flows)
+
+## Assumptions *(optional - include if making assumptions)*
+
+- Third-party OAuth2 services are already configured by administrators with client credentials and endpoints (from spec 006)
+- Users are authenticated via reverse proxy and have valid principals in session (from spec 005)
+- EncryptionPort implementation is available for encrypting/decrypting tokens
+- Token vault storage implementation follows PostgreSQL patterns from spec 004
+- Frontend framework (React) can display service cards and handle navigation to third-party authorization endpoints
+- Third-party OAuth2 services support authorization code flow with PKCE (RFC 7636)
+- Third-party services accept redirect_uri pointing to the broker's callback endpoint
+- Agent-to-session dependency tracking will be implemented separately (counts displayed but relationship management is future work)
+- Token refresh logic (using refresh tokens to obtain new access tokens) is deferred to future enhancement
+
+## Out of Scope *(optional - explicitly state what's NOT included)*
+
+- Automatic token refresh using refresh tokens (future enhancement)
+- Token revocation at third-party services when session is terminated
+- Multi-tab synchronization of session status (users must refresh to see updates)
+- Session timeout or automatic expiration based on inactivity
+- OAuth2 device flow or implicit flow (only authorization code flow with PKCE)
+- Agent interface for consuming stored tokens (future enhancement)
+- Migration of existing tokens if encryption key changes
+- Admin UI for viewing or revoking user sessions
+- Session analytics or usage statistics
+- Support for OAuth2 clients that don't support PKCE
