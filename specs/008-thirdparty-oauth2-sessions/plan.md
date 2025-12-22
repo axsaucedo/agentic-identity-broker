@@ -23,7 +23,7 @@ Users need to authenticate with third-party OAuth2 services through the identity
 **Testing**: Go standard library `testing`, testify for assertions, testcontainers for PostgreSQL integration tests  
 **Target Platform**: Linux server (Docker/Kubernetes deployment)  
 **Project Type**: Web backend (Go) + SPA frontend (React/TypeScript)  
-**Performance Goals**: OAuth2 flow completion <60s, session lookup <2s, token storage immediate  
+**Performance Goals**: See spec.md Success Criteria (SC-001 through SC-007)  
 **Constraints**: <200ms p95 for session status API, encrypted tokens at rest, JWE state tokens with 10-minute TTL  
 **Scale/Scope**: Multi-user system, one session per user per service, audit logging for security events
 

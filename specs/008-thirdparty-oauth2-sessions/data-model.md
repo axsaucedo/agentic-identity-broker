@@ -41,6 +41,16 @@ Relationships:
 - ThirdpartyOAuth2Service 1:N UserSession (one service can have sessions with multiple users)
 - UserSession has UNIQUE(principal, service_id) constraint
 - UserGrant references UserSession via delegated_oauth2_tokens[].thirdparty_oauth2_service_id
+
+**Agent Count Derivation**:
+The dependent_agent_count displayed in the UI is calculated by querying the user_grants table.
+For a given UserSession with (principal, service_id), the count is derived from:
+```sql
+SELECT COUNT(*) FROM user_grants 
+WHERE principal = ? 
+AND delegated_oauth2_tokens @> '[{"thirdparty_oauth2_service_id": ?}]'::jsonb
+```
+This counts all agents that have delegated_oauth2_tokens referencing the specific thirdparty_oauth2_service_id.
 ```
 
 ---

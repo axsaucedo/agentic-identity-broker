@@ -114,18 +114,18 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 - **FR-002**: System MUST display session status for each service including: session existence, initiation timestamp, dependent agent count, encryption status, and expiration status (only marked expired when refresh token expires, not when access token expires)
 - **FR-003**: System MUST provide a "Login" button for services without established sessions
 - **FR-004**: System MUST provide a "Terminate Session" button for services with established sessions
-- **FR-005**: System MUST expose endpoint `/api/third-party/:id/oauth2/authorize` accepting `redirect_uri` query parameter to initiate OAuth2 authorization code flow with PKCE
+- **FR-005**: System MUST expose endpoint `/api/third-party/{serviceId}/oauth2/authorize` accepting `redirect_uri` query parameter to initiate OAuth2 authorization code flow with PKCE
 - **FR-006**: System MUST validate that `redirect_uri` parameter in authorize endpoint matches the host of the incoming request (same-origin validation)
-- **FR-007**: System MUST generate PKCE code verifier (high-entropy random string) and code challenge (SHA256 hash of verifier, base64url encoded) for each OAuth2 flow
+- **FR-007**: System MUST generate PKCE code verifier (32-128 bytes per RFC 7636, using crypto/rand.Reader for entropy) and code challenge (SHA256 hash of verifier, base64url encoded) for each OAuth2 flow
 - **FR-008**: System MUST create JWE state token containing: principal (current user), pkce_verifier, service_id, and redirect_uri
 - **FR-009**: System MUST redirect user to third-party authorization endpoint with parameters: client_id, redirect_uri (callback endpoint), response_type=code, code_challenge, code_challenge_method=S256, scope, and state (JWE token)
-- **FR-010**: System MUST expose endpoint `/api/third-party/:id/oauth2/callback` to receive OAuth2 callbacks from third-party services
+- **FR-010**: System MUST expose endpoint `/api/third-party/{serviceId}/oauth2/callback` to receive OAuth2 callbacks from third-party services
 - **FR-011**: System MUST validate state token at callback endpoint by: verifying JWE signature, decrypting claims, validating principal matches current authenticated user, and validating service_id matches callback endpoint parameter
 - **FR-012**: System MUST extract PKCE verifier from state token and use it to exchange authorization code for tokens
 - **FR-013**: System MUST exchange authorization code for access token and refresh token using third-party's token endpoint
 - **FR-014**: System MUST store obtained tokens encrypted in the token vault associated with user's principal and service ID
 - **FR-015**: System MUST record session initiation timestamp when tokens are stored
-- **FR-016**: System MUST count and display number of agents depending on each user session using existing user grants
+- **FR-016**: System MUST count and display number of agents depending on each user session by querying user_grants.delegated_oauth2_tokens JSONB field matching thirdparty_oauth2_service_id
 - **FR-017**: System MUST display warning dialog before session termination showing affected agents
 - **FR-018**: System MUST delete stored tokens (access and refresh) when user terminates a session
 - **FR-019**: Both authorize and callback endpoints MUST require authenticated principal (user must be logged in)
@@ -175,10 +175,10 @@ third_party_oauth2:
 
 - **API-001**: All OAuth2 session endpoints MUST be documented in `/api/enduser/openapi.yaml`
 - **API-002**: API documentation MUST include endpoint paths, HTTP methods, parameters, request/response bodies, error codes, examples, and authentication requirements
-- **API-003**: Authorize endpoint: `GET /api/third-party/:id/oauth2/authorize?redirect_uri={uri}` - initiates OAuth2 flow, returns 302 redirect to third-party authorization endpoint
-- **API-004**: Callback endpoint: `GET /api/third-party/:id/oauth2/callback?code={code}&state={state}` - processes OAuth2 callback, returns redirect to sessions page with success/error status
+- **API-003**: Authorize endpoint: `GET /api/third-party/{serviceId}/oauth2/authorize?redirect_uri={uri}` - initiates OAuth2 flow, returns 302 redirect to third-party authorization endpoint
+- **API-004**: Callback endpoint: `GET /api/third-party/{serviceId}/oauth2/callback?code={code}&state={state}` - processes OAuth2 callback, returns redirect to sessions page with success/error status
 - **API-005**: Sessions list endpoint: `GET /api/third-party/sessions` - returns list of all services with user's session status for each
-- **API-006**: Session termination endpoint: `DELETE /api/third-party/:id/session` - terminates user session and deletes stored tokens
+- **API-006**: Session termination endpoint: `DELETE /api/third-party/{serviceId}/session` - terminates user session and deletes stored tokens
 - **API-007**: All endpoints MUST require authenticated principal (X-Remote-User header)
 - **API-008**: APIs MUST follow Zalando RESTful API and Event Guidelines
 - **API-009**: Error responses MUST follow standard format: `{"error": "code", "message": "description"}`
@@ -186,7 +186,7 @@ third_party_oauth2:
 ### Database Requirements
 
 - **DB-001**: Create migration `004_create_user_sessions.up.sql` and `004_create_user_sessions.down.sql` for user_sessions table
-- **DB-002**: user_sessions table schema MUST include: id (UUID primary key), principal (string, indexed), service_id (string, foreign key to third_party_services), encrypted_access_token (bytea), encrypted_refresh_token (bytea, nullable), token_type (string), expires_at (timestamp, nullable), initiated_at (timestamp), scope (string array), encryption_context (jsonb)
+- **DB-002**: user_sessions table schema MUST include: id (UUID primary key), principal (string, indexed), service_id (string, foreign key to third_party_services), encrypted_access_token (bytea), encrypted_refresh_token (bytea, nullable), token_type (string), access_token_expires_at (timestamp, nullable), refresh_token_expires_at (timestamp, nullable), initiated_at (timestamp), scope (string array), encryption_context (jsonb)
 - **DB-003**: Add unique constraint on (principal, service_id) - one session per user per service. This constraint prevents race conditions when multiple OAuth2 flows are initiated simultaneously; first callback to complete successfully wins, subsequent callbacks will detect existing session via constraint violation.
 - **DB-004**: Add index on principal for fast session lookups by user
 - **DB-005**: Add foreign key constraint from service_id to third_party_services.id with ON DELETE RESTRICT (prevent deleting services with active sessions). Admin interface must catch constraint violation and display error message with active session count, requiring admin to terminate all user sessions before service deletion.
@@ -205,7 +205,7 @@ third_party_oauth2:
 - **SR-008**: JWE signing key MUST be loaded from environment variable, not committed to config files
 - **SR-009**: System MUST emit structured audit logs for: session establishment, session termination, failed state validation, failed PKCE validation
 - **SR-010**: Token encryption MUST use encryption context including: principal, service_id, and session_id
-- **SR-011**: State tokens MUST have short TTL (default: 10 minutes) to limit exposure window
+- **SR-011**: State tokens MUST have short TTL (recommended default: 10 minutes, MUST NOT exceed 15 minutes) to limit exposure window
 
 ### Key Entities
 
