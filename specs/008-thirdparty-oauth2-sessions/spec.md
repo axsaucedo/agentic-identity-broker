@@ -19,7 +19,7 @@ A user needs to see which third-party services are registered with the identity 
 
 1. **Given** user is authenticated and third-party services are configured, **When** user navigates to the third-party sessions page, **Then** system displays a list of all configured third-party OAuth2 services with their display names and descriptions
 2. **Given** user has not established a session with a service, **When** viewing the service card, **Then** system shows a "Login" button and no session status indicators
-3. **Given** user has established a session with a service, **When** viewing the service card, **Then** system displays session initiation timestamp, number of agents using this session, and an encryption status indicator
+3. **Given** user has established a session with a service, **When** viewing the service card, **Then** system displays session initiation timestamp, number of agents using this session, expiry date of the refresh token and an encryption status indicator
 4. **Given** user views an established session, **When** reviewing the service card, **Then** system shows a "Terminate Session" button instead of a "Login" button
 5. **Given** multiple agents depend on a session, **When** user views the session card, **Then** system displays the count of dependent agents
 
@@ -112,7 +112,7 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 - **FR-013**: System MUST exchange authorization code for access token and refresh token using third-party's token endpoint
 - **FR-014**: System MUST store obtained tokens encrypted in the token vault associated with user's principal and service ID
 - **FR-015**: System MUST record session initiation timestamp when tokens are stored
-- **FR-016**: System MUST count and display number of agents depending on each user session
+- **FR-016**: System MUST count and display number of agents depending on each user session using existing user grants
 - **FR-017**: System MUST display warning dialog before session termination showing affected agents
 - **FR-018**: System MUST delete stored tokens (access and refresh) when user terminates a session
 - **FR-019**: Both authorize and callback endpoints MUST require authenticated principal (user must be logged in)
@@ -128,8 +128,7 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 
 **Value Objects**:
 
-- **PKCEVerifier**: High-entropy random string (43+ characters) used for PKCE code verification
-- **PKCEChallenge**: SHA256 hash of verifier, base64url encoded
+- **PKCE**: Use existing types from the Golang oauth library
 - **EncryptedToken**: Encrypted representation of OAuth2 access or refresh token using EncryptionPort
 
 **Domain Events**:
@@ -214,7 +213,6 @@ third_party_oauth2:
 - **SC-005**: Users can terminate sessions and see confirmation within 2 seconds, with tokens removed from storage immediately
 - **SC-006**: PKCE validation prevents authorization code interception attacks with 100% effectiveness (verified through security testing)
 - **SC-007**: Redirect URI validation blocks open redirect vulnerabilities in 100% of test cases
-- **SC-008**: System handles concurrent OAuth2 flows for the same user without race conditions (tested with 10+ simultaneous flows)
 
 ## Assumptions *(optional - include if making assumptions)*
 
