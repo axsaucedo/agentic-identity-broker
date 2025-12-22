@@ -1,0 +1,544 @@
+openapi: 3.0.3
+info:
+  title: Third-Party OAuth2 Session Management API
+  description: |
+    End-user APIs for managing OAuth2 sessions with third-party services.
+    
+    Users can:
+    - View available third-party services and their session status
+    - Initiate OAuth2 authorization flows with PKCE
+    - Terminate existing sessions
+    
+    All endpoints require authenticated principal (X-Remote-User header from reverse proxy).
+    
+    Follows Zalando RESTful API and Event Guidelines.
+  version: 1.0.0
+  contact:
+    name: Identity Broker Team
+
+servers:
+  - url: http://localhost:8000
+    description: End-user server (development)
+
+tags:
+  - name: Third-Party Sessions
+    description: OAuth2 session management with third-party services
+
+paths:
+  /api/third-party/sessions:
+    get:
+      operationId: listThirdPartySessions
+      summary: List third-party services with session status
+      description: |
+        Returns a list of all configured third-party OAuth2 services along with
+        the current user's session status for each service.
+        
+        For services where the user has an active session, includes:
+        - Session initiation timestamp
+        - Token expiration status
+        - Number of agents depending on this session
+        - Encryption status indicator
+      tags:
+        - Third-Party Sessions
+      security:
+        - preAuth: []
+      responses:
+        '200':
+          description: List of services with session status
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ThirdPartyServiceWithSession'
+              example:
+                data:
+                  - service:
+                      id: "550e8400-e29b-41d4-a716-446655440000"
+                      display_name: "GitHub"
+                      description: "GitHub OAuth2 integration"
+                      scopes:
+                        - scope_value: "repo"
+                          description: "Full control of private repositories"
+                        - scope_value: "user:email"
+                          description: "Access user email addresses"
+                    session:
+                      session_id: "660e8400-e29b-41d4-a716-446655440001"
+                      initiated_at: "2025-12-20T10:30:00Z"
+                      access_token_expires_at: "2025-12-20T11:30:00Z"
+                      refresh_token_expires_at: "2026-01-20T10:30:00Z"
+                      is_expired: false
+                      has_refresh_token: true
+                      scope:
+                        - "repo"
+                        - "user:email"
+                      dependent_agent_count: 3
+                      tokens_encrypted: true
+                  - service:
+                      id: "550e8400-e29b-41d4-a716-446655440002"
+                      display_name: "Google Workspace"
+                      description: "Google OAuth2 integration"
+                      scopes:
+                        - scope_value: "calendar.readonly"
+                          description: "Read calendar events"
+                    session: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/third-party/{serviceId}/oauth2/authorize:
+    get:
+      operationId: initiateOAuth2Flow
+      summary: Initiate OAuth2 authorization flow
+      description: |
+        Initiates an OAuth2 authorization code flow with PKCE for the specified
+        third-party service. Redirects the user to the third-party's authorization
+        endpoint.
+        
+        The flow:
+        1. Generates PKCE code verifier and challenge
+        2. Creates JWE state token containing principal, PKCE verifier, service ID, redirect_uri
+        3. Redirects user to third-party authorization endpoint
+        
+        The redirect_uri parameter must match the host of the incoming request
+        (same-origin validation).
+      tags:
+        - Third-Party Sessions
+      security:
+        - preAuth: []
+      parameters:
+        - name: serviceId
+          in: path
+          required: true
+          description: UUID of the third-party OAuth2 service
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        - name: redirect_uri
+          in: query
+          required: true
+          description: |
+            URI to redirect user after OAuth2 flow completes.
+            Must match the host of the incoming request (same-origin validation).
+          schema:
+            type: string
+            format: uri
+          example: "https://broker.example.com/consent/sessions"
+      responses:
+        '302':
+          description: Redirect to third-party authorization endpoint
+          headers:
+            Location:
+              description: Third-party authorization URL with OAuth2 parameters
+              schema:
+                type: string
+                format: uri
+        '400':
+          description: Invalid request (missing redirect_uri or origin mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "invalid_redirect_uri"
+                message: "redirect_uri must match the host of the request"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "not_found"
+                message: "Third-party service not found"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/third-party/{serviceId}/oauth2/callback:
+    get:
+      operationId: handleOAuth2Callback
+      summary: Handle OAuth2 callback from third-party
+      description: |
+        Processes the OAuth2 callback after user authorization at the third-party.
+        
+        Validates:
+        - State token decrypts successfully (JWE)
+        - State token is not expired
+        - Principal in token matches current authenticated principal (CSRF protection)
+        - Service ID in token matches path parameter
+        
+        On success:
+        - Exchanges authorization code for access/refresh tokens (with PKCE)
+        - Encrypts tokens using EncryptionPort
+        - Stores session in database
+        - Redirects user to original redirect_uri with success status
+        
+        On error:
+        - Redirects user to sessions page with error message
+      tags:
+        - Third-Party Sessions
+      security:
+        - preAuth: []
+      parameters:
+        - name: serviceId
+          in: path
+          required: true
+          description: UUID of the third-party OAuth2 service
+          schema:
+            type: string
+            format: uuid
+        - name: code
+          in: query
+          required: true
+          description: OAuth2 authorization code from third-party
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          description: JWE state token (must match token from authorize request)
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          description: OAuth2 error code from third-party (if authorization failed)
+          schema:
+            type: string
+          example: "access_denied"
+        - name: error_description
+          in: query
+          required: false
+          description: OAuth2 error description from third-party
+          schema:
+            type: string
+          example: "The user denied the request"
+      responses:
+        '302':
+          description: Redirect to sessions page with success or error status
+          headers:
+            Location:
+              description: |
+                On success: Original redirect_uri with success=true query param
+                On error: Redirect_uri with error and message query params
+              schema:
+                type: string
+                format: uri
+        '400':
+          description: Invalid state token or callback parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidState:
+                  summary: State token validation failed
+                  value:
+                    error: "invalid_state"
+                    message: "State token validation failed"
+                serviceIdMismatch:
+                  summary: Service ID mismatch
+                  value:
+                    error: "service_id_mismatch"
+                    message: "Service ID in callback does not match state token"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Principal mismatch (CSRF protection triggered)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "principal_mismatch"
+                message: "Authenticated user does not match flow initiator"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/third-party/{serviceId}/session:
+    delete:
+      operationId: terminateSession
+      summary: Terminate third-party session
+      description: |
+        Terminates the user's session with a third-party service by deleting
+        stored tokens. Returns information about affected agents for the
+        confirmation dialog shown before this request.
+        
+        Note: This does not revoke tokens at the third-party service.
+        Agents that were using this session will detect the missing session
+        and request re-authentication.
+      tags:
+        - Third-Party Sessions
+      security:
+        - preAuth: []
+      parameters:
+        - name: serviceId
+          in: path
+          required: true
+          description: UUID of the third-party OAuth2 service
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session terminated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - terminated
+                      - affected_agents
+                    properties:
+                      terminated:
+                        type: boolean
+                        description: Whether a session was terminated
+                      affected_agents:
+                        type: integer
+                        description: Number of agents that lost access
+              example:
+                data:
+                  terminated: true
+                  affected_agents: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Session not found for this service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "not_found"
+                message: "No session exists for this service"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/third-party/{serviceId}/session/affected-agents:
+    get:
+      operationId: getAffectedAgents
+      summary: Get agents affected by session termination
+      description: |
+        Returns a list of agents that would lose access if the user terminates
+        their session with this third-party service. Used to populate the
+        termination warning dialog.
+      tags:
+        - Third-Party Sessions
+      security:
+        - preAuth: []
+      parameters:
+        - name: serviceId
+          in: path
+          required: true
+          description: UUID of the third-party OAuth2 service
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of affected agents
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - affected_agents
+                    properties:
+                      affected_agents:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AffectedAgent'
+              example:
+                data:
+                  affected_agents:
+                    - agent_id: "770e8400-e29b-41d4-a716-446655440000"
+                      display_name: "Code Assistant"
+                    - agent_id: "770e8400-e29b-41d4-a716-446655440001"
+                      display_name: "PR Reviewer"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Session not found for this service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    preAuth:
+      type: apiKey
+      in: header
+      name: X-Remote-User
+      description: |
+        Pre-authentication via reverse proxy. The X-Remote-User header contains
+        the authenticated principal (user identifier) set by the upstream proxy.
+
+  schemas:
+    ThirdPartyServiceWithSession:
+      type: object
+      required:
+        - service
+      properties:
+        service:
+          $ref: '#/components/schemas/ThirdPartyService'
+        session:
+          $ref: '#/components/schemas/SessionStatus'
+          nullable: true
+          description: Session status if user has an active session, null otherwise
+
+    ThirdPartyService:
+      type: object
+      required:
+        - id
+        - display_name
+        - scopes
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique service identifier
+        display_name:
+          type: string
+          description: Human-readable service name
+          maxLength: 255
+        description:
+          type: string
+          description: Service description
+        scopes:
+          type: array
+          description: Available OAuth2 scopes
+          items:
+            $ref: '#/components/schemas/OAuthScope'
+
+    OAuthScope:
+      type: object
+      required:
+        - scope_value
+        - description
+      properties:
+        scope_value:
+          type: string
+          description: OAuth2 scope identifier
+        description:
+          type: string
+          description: Human-readable scope description
+
+    SessionStatus:
+      type: object
+      required:
+        - session_id
+        - initiated_at
+        - is_expired
+        - has_refresh_token
+        - scope
+        - dependent_agent_count
+        - tokens_encrypted
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Session identifier
+        initiated_at:
+          type: string
+          format: date-time
+          description: When the OAuth2 flow was completed
+        access_token_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the access token expires (null if unknown)
+        refresh_token_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the refresh token expires (null if never or unknown)
+        is_expired:
+          type: boolean
+          description: |
+            True if the refresh token has expired. Session is only marked expired
+            when refresh token expires, not access token (access tokens can be refreshed).
+        has_refresh_token:
+          type: boolean
+          description: Whether a refresh token is stored for this session
+        scope:
+          type: array
+          items:
+            type: string
+          description: OAuth2 scopes granted in this session
+        dependent_agent_count:
+          type: integer
+          minimum: 0
+          description: Number of agents that have grants referencing this service
+        tokens_encrypted:
+          type: boolean
+          description: Indicates tokens are stored encrypted (always true)
+
+    AffectedAgent:
+      type: object
+      required:
+        - agent_id
+        - display_name
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+          description: Agent identifier
+        display_name:
+          type: string
+          description: Human-readable agent name
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable error message
+
+  responses:
+    Unauthorized:
+      description: Authentication required (missing or invalid X-Remote-User header)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "unauthorized"
+            message: "Authentication required"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "internal_error"
+            message: "An unexpected error occurred"
