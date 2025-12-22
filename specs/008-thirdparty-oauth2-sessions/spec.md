@@ -5,6 +5,16 @@
 **Status**: Draft  
 **Input**: User description: "Users need to be able to login to third-party services and the identity broker will manage the users' sessions and store their respective OAuth2 tokens."
 
+## Clarifications
+
+### Session 2025-12-22
+
+- Q: What happens when user initiates multiple OAuth2 flows for the same service simultaneously (race condition)? → A: Use database unique constraint (principal, service_id); first successful callback wins, subsequent callbacks see existing session and skip token storage
+- Q: How does system handle third-party authorization endpoint returning an error instead of authorization code? → A: Parse OAuth2 error response (error, error_description); redirect to sessions page with user-friendly error message displayed; allow immediate retry
+- Q: How does system handle network failures during token exchange? → A: Retry token exchange up to 3 times with exponential backoff (1s, 2s, 4s); if all retries fail, display error message allowing user to retry OAuth2 flow
+- Q: What happens when access token expires but refresh token is still valid? → A: Show session as expired only if refresh token is expired. Expired access tokens will be refreshed in a future iteration transparently to the user
+- Q: What happens if a third-party service is deleted while user sessions exist? → A: Block service deletion with error message listing active session count; admin must manually terminate all user sessions before deleting service
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - View Available Third-Party Services (Priority: P1)
@@ -22,6 +32,7 @@ A user needs to see which third-party services are registered with the identity 
 3. **Given** user has established a session with a service, **When** viewing the service card, **Then** system displays session initiation timestamp, number of agents using this session, expiry date of the refresh token and an encryption status indicator
 4. **Given** user views an established session, **When** reviewing the service card, **Then** system shows a "Terminate Session" button instead of a "Login" button
 5. **Given** multiple agents depend on a session, **When** user views the session card, **Then** system displays the count of dependent agents
+6. **Given** user has an established session where refresh token has expired, **When** viewing the service card, **Then** system displays session with "Expired" status indicator and user must terminate and re-authenticate to establish new session
 
 ---
 
@@ -42,6 +53,8 @@ A user needs to authenticate with a third-party service by initiating an OAuth2 
 5. **Given** tokens are successfully obtained, **When** system stores them, **Then** system encrypts tokens using EncryptionPort, associates them with the user's principal and service ID, records session initiation timestamp, and stores them in the token vault
 6. **Given** OAuth2 flow completes successfully, **When** user returns to the sessions page, **Then** system displays the newly established session with status indicators
 7. **Given** state token validation fails at callback, **When** system detects mismatch, **Then** system rejects the callback with error and does not store any tokens
+8. **Given** third-party returns OAuth2 error in callback (e.g., access_denied, invalid_scope), **When** system processes callback, **Then** system parses error and error_description parameters, redirects user to sessions page with user-friendly error message, and Login button remains available for retry
+9. **Given** token exchange request fails due to network error, **When** system attempts token exchange, **Then** system retries up to 3 times with exponential backoff (1s, 2s, 4s), and if all retries fail, displays error message allowing user to restart OAuth2 flow
 
 ---
 
@@ -84,11 +97,11 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 
 ### Edge Cases
 
-- What happens when user initiates multiple OAuth2 flows for the same service simultaneously (race condition)?
-- How does system handle third-party authorization endpoint returning an error instead of authorization code?
-- What happens when access token expires but refresh token is still valid?
-- How does system handle network failures during token exchange?
-- What happens if a third-party service is deleted while user sessions exist?
+- **Multiple simultaneous OAuth2 flows for same service**: Database unique constraint on (principal, service_id) ensures first successful callback wins. Subsequent callbacks detect existing session and skip token storage, preventing race conditions and token corruption.
+- **Third-party authorization errors**: When third-party returns OAuth2 error (e.g., access_denied, invalid_scope, server_error), system parses error and error_description parameters from callback URL, redirects user to sessions page with user-friendly error message, and allows immediate retry via Login button.
+- **Network failures during token exchange**: System retries token exchange request up to 3 times with exponential backoff (1s, 2s, 4s delays). If all retries fail, displays error message to user allowing them to retry the entire OAuth2 flow from the beginning.
+- **Expired access token with valid refresh token**: Session remains active and is not marked as expired. Future iteration will implement automatic transparent token refresh for agents. Only when refresh token itself expires should session be marked as expired in UI.
+- **Third-party service deletion with active sessions**: System blocks service deletion and returns error message showing count of active user sessions. Admin must manually terminate all user sessions before service can be deleted (enforced by ON DELETE RESTRICT foreign key constraint).
 - How does system handle malformed or missing callback parameters from third-party?
 - What happens when redirect_uri validation fails (domain mismatch)?
 - How does system handle PKCE validation failures at callback?
@@ -98,7 +111,7 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 ### Functional Requirements
 
 - **FR-001**: System MUST provide a user interface listing all configured third-party OAuth2 services
-- **FR-002**: System MUST display session status for each service including: session existence, initiation timestamp, dependent agent count, and encryption status
+- **FR-002**: System MUST display session status for each service including: session existence, initiation timestamp, dependent agent count, encryption status, and expiration status (only marked expired when refresh token expires, not when access token expires)
 - **FR-003**: System MUST provide a "Login" button for services without established sessions
 - **FR-004**: System MUST provide a "Terminate Session" button for services with established sessions
 - **FR-005**: System MUST expose endpoint `/api/third-party/:id/oauth2/authorize` accepting `redirect_uri` query parameter to initiate OAuth2 authorization code flow with PKCE
@@ -116,7 +129,8 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 - **FR-017**: System MUST display warning dialog before session termination showing affected agents
 - **FR-018**: System MUST delete stored tokens (access and refresh) when user terminates a session
 - **FR-019**: Both authorize and callback endpoints MUST require authenticated principal (user must be logged in)
-- **FR-020**: System MUST handle OAuth2 error responses from third-party services gracefully
+- **FR-020**: System MUST handle OAuth2 error responses from third-party services gracefully by parsing error and error_description parameters from callback URL, displaying user-friendly error messages on sessions page, and allowing immediate retry
+- **FR-021**: System MUST retry failed token exchange requests up to 3 times with exponential backoff delays (1 second, 2 seconds, 4 seconds) before displaying error message to user
 
 ### Domain Model
 
@@ -173,9 +187,9 @@ third_party_oauth2:
 
 - **DB-001**: Create migration `004_create_user_sessions.up.sql` and `004_create_user_sessions.down.sql` for user_sessions table
 - **DB-002**: user_sessions table schema MUST include: id (UUID primary key), principal (string, indexed), service_id (string, foreign key to third_party_services), encrypted_access_token (bytea), encrypted_refresh_token (bytea, nullable), token_type (string), expires_at (timestamp, nullable), initiated_at (timestamp), scope (string array), encryption_context (jsonb)
-- **DB-003**: Add unique constraint on (principal, service_id) - one session per user per service
+- **DB-003**: Add unique constraint on (principal, service_id) - one session per user per service. This constraint prevents race conditions when multiple OAuth2 flows are initiated simultaneously; first callback to complete successfully wins, subsequent callbacks will detect existing session via constraint violation.
 - **DB-004**: Add index on principal for fast session lookups by user
-- **DB-005**: Add foreign key constraint from service_id to third_party_services.id with ON DELETE RESTRICT (prevent deleting services with active sessions)
+- **DB-005**: Add foreign key constraint from service_id to third_party_services.id with ON DELETE RESTRICT (prevent deleting services with active sessions). Admin interface must catch constraint violation and display error message with active session count, requiring admin to terminate all user sessions before service deletion.
 - **DB-006**: Migration MUST be tested for both up and down operations without data loss
 - **DB-007**: Repository implementation MUST follow `specs/004-persistence-layer/quickstart.md` patterns
 
@@ -228,7 +242,7 @@ third_party_oauth2:
 
 ## Out of Scope *(optional - explicitly state what's NOT included)*
 
-- Automatic token refresh using refresh tokens (future enhancement)
+- Automatic token refresh using refresh tokens when access tokens expire (future enhancement - will be implemented transparently to users)
 - Token revocation at third-party services when session is terminated
 - Multi-tab synchronization of session status (users must refresh to see updates)
 - Session timeout or automatic expiration based on inactivity
