@@ -10,6 +10,7 @@
 ### Session 2025-12-22
 
 - Q: What happens when user initiates multiple OAuth2 flows for the same service simultaneously (race condition)? → A: Use database unique constraint (principal, service_id); first successful callback wins, subsequent callbacks see existing session and skip token storage
+- Q: How does system handle third-party authorization endpoint returning an error instead of authorization code? → A: Parse OAuth2 error response (error, error_description); redirect to sessions page with user-friendly error message displayed; allow immediate retry
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -48,6 +49,7 @@ A user needs to authenticate with a third-party service by initiating an OAuth2 
 5. **Given** tokens are successfully obtained, **When** system stores them, **Then** system encrypts tokens using EncryptionPort, associates them with the user's principal and service ID, records session initiation timestamp, and stores them in the token vault
 6. **Given** OAuth2 flow completes successfully, **When** user returns to the sessions page, **Then** system displays the newly established session with status indicators
 7. **Given** state token validation fails at callback, **When** system detects mismatch, **Then** system rejects the callback with error and does not store any tokens
+8. **Given** third-party returns OAuth2 error in callback (e.g., access_denied, invalid_scope), **When** system processes callback, **Then** system parses error and error_description parameters, redirects user to sessions page with user-friendly error message, and Login button remains available for retry
 
 ---
 
@@ -91,7 +93,7 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 ### Edge Cases
 
 - **Multiple simultaneous OAuth2 flows for same service**: Database unique constraint on (principal, service_id) ensures first successful callback wins. Subsequent callbacks detect existing session and skip token storage, preventing race conditions and token corruption.
-- How does system handle third-party authorization endpoint returning an error instead of authorization code?
+- **Third-party authorization errors**: When third-party returns OAuth2 error (e.g., access_denied, invalid_scope, server_error), system parses error and error_description parameters from callback URL, redirects user to sessions page with user-friendly error message, and allows immediate retry via Login button.
 - What happens when access token expires but refresh token is still valid?
 - How does system handle network failures during token exchange?
 - What happens if a third-party service is deleted while user sessions exist?
@@ -122,7 +124,7 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 - **FR-017**: System MUST display warning dialog before session termination showing affected agents
 - **FR-018**: System MUST delete stored tokens (access and refresh) when user terminates a session
 - **FR-019**: Both authorize and callback endpoints MUST require authenticated principal (user must be logged in)
-- **FR-020**: System MUST handle OAuth2 error responses from third-party services gracefully
+- **FR-020**: System MUST handle OAuth2 error responses from third-party services gracefully by parsing error and error_description parameters from callback URL, displaying user-friendly error messages on sessions page, and allowing immediate retry
 
 ### Domain Model
 
