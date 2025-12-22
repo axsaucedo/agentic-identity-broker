@@ -5,6 +5,12 @@
 **Status**: Draft  
 **Input**: User description: "Users need to be able to login to third-party services and the identity broker will manage the users' sessions and store their respective OAuth2 tokens."
 
+## Clarifications
+
+### Session 2025-12-22
+
+- Q: What happens when user initiates multiple OAuth2 flows for the same service simultaneously (race condition)? → A: Use database unique constraint (principal, service_id); first successful callback wins, subsequent callbacks see existing session and skip token storage
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - View Available Third-Party Services (Priority: P1)
@@ -84,7 +90,7 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 
 ### Edge Cases
 
-- What happens when user initiates multiple OAuth2 flows for the same service simultaneously (race condition)?
+- **Multiple simultaneous OAuth2 flows for same service**: Database unique constraint on (principal, service_id) ensures first successful callback wins. Subsequent callbacks detect existing session and skip token storage, preventing race conditions and token corruption.
 - How does system handle third-party authorization endpoint returning an error instead of authorization code?
 - What happens when access token expires but refresh token is still valid?
 - How does system handle network failures during token exchange?
@@ -173,7 +179,7 @@ third_party_oauth2:
 
 - **DB-001**: Create migration `004_create_user_sessions.up.sql` and `004_create_user_sessions.down.sql` for user_sessions table
 - **DB-002**: user_sessions table schema MUST include: id (UUID primary key), principal (string, indexed), service_id (string, foreign key to third_party_services), encrypted_access_token (bytea), encrypted_refresh_token (bytea, nullable), token_type (string), expires_at (timestamp, nullable), initiated_at (timestamp), scope (string array), encryption_context (jsonb)
-- **DB-003**: Add unique constraint on (principal, service_id) - one session per user per service
+- **DB-003**: Add unique constraint on (principal, service_id) - one session per user per service. This constraint prevents race conditions when multiple OAuth2 flows are initiated simultaneously; first callback to complete successfully wins, subsequent callbacks will detect existing session via constraint violation.
 - **DB-004**: Add index on principal for fast session lookups by user
 - **DB-005**: Add foreign key constraint from service_id to third_party_services.id with ON DELETE RESTRICT (prevent deleting services with active sessions)
 - **DB-006**: Migration MUST be tested for both up and down operations without data loss
