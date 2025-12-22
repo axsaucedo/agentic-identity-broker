@@ -60,10 +60,10 @@ const BuggyApp = ({ shouldThrow }: { shouldThrow: boolean }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
       <div className="bg-white rounded-xl shadow-lg p-8 max-w-lg w-full">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">
+        <h2 className="text-2xl font-bold text-neutral-900 mb-4">
           Application Running Normally
         </h2>
-        <p className="text-gray-700 mb-6">
+        <p className="text-neutral-700 mb-6">
           This represents your full application. Click the button below to simulate a
           critical error that will be caught by the GlobalErrorBoundary.
         </p>
@@ -198,12 +198,12 @@ export const WithErrorReporting: Story = {
       <div className="relative">
         {/* Error log display */}
         {errorLogs.length > 0 && !shouldThrow && (
-          <div className="fixed top-4 right-4 z-50 bg-gray-900 text-green-400 rounded-lg p-4 max-w-md font-mono text-xs shadow-2xl">
+          <div className="fixed top-4 right-4 z-50 bg-neutral-900 text-green-400 rounded-lg p-4 max-w-md font-mono text-xs shadow-2xl">
             <div className="flex justify-between items-center mb-2">
               <span className="font-semibold">Error Reporting Log:</span>
               <button
                 onClick={() => setErrorLogs([])}
-                className="text-gray-400 hover:text-white underline"
+                className="text-neutral-400 hover:text-white underline"
               >
                 Clear
               </button>
@@ -259,7 +259,7 @@ export const WithRecovery: Story = {
             >
               Trigger Error (Attempt #{attempt})
             </Button>
-            <span className="text-xs text-gray-600 bg-white px-3 py-1 rounded-full shadow">
+            <span className="text-xs text-neutral-600 bg-white px-3 py-1 rounded-full shadow">
               Try the recovery buttons to reload or navigate
             </span>
           </div>
@@ -369,8 +369,8 @@ export const ErrorCategories: Story = {
       <div className="relative">
         {errorType === 'none' && (
           <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
-            <div className="bg-white rounded-xl shadow-2xl p-6 border-2 border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 text-center">
+            <div className="bg-white rounded-xl shadow-2xl p-6 border-2 border-neutral-200">
+              <h3 className="text-lg font-semibold text-neutral-900 mb-4 text-center">
                 Simulate Different Error Types
               </h3>
               <div className="flex flex-col gap-2">
@@ -504,7 +504,7 @@ export const CompleteExample: Story = {
     return (
       <div className="relative">
         {errorLogs.length > 0 && !shouldThrow && (
-          <div className="fixed top-4 right-4 z-50 bg-gray-900 text-green-400 rounded-lg p-4 max-w-sm font-mono text-xs shadow-2xl">
+          <div className="fixed top-4 right-4 z-50 bg-neutral-900 text-green-400 rounded-lg p-4 max-w-sm font-mono text-xs shadow-2xl">
             <div className="font-semibold mb-2">Error Logs:</div>
             {errorLogs.slice(-3).map((log, index) => (
               <div key={index} className="truncate">
@@ -555,11 +555,11 @@ export const Playground: Story = {
       <div className="relative">
         {!shouldThrow && (
           <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
-            <div className="bg-white rounded-xl shadow-2xl p-6 border-2 border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 text-center">
+            <div className="bg-white rounded-xl shadow-2xl p-6 border-2 border-neutral-200">
+              <h3 className="text-lg font-semibold text-neutral-900 mb-4 text-center">
                 Playground Controls
               </h3>
-              <p className="text-sm text-gray-600 mb-4 text-center">
+              <p className="text-sm text-neutral-600 mb-4 text-center">
                 Adjust controls in the panel below, then trigger the error
               </p>
               <Button
@@ -606,11 +606,11 @@ export const RealWorldScenarios: Story = {
       <div className="relative">
         {scenario === 'none' && (
           <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
-            <div className="bg-white rounded-xl shadow-2xl p-6 border-2 border-gray-200 max-w-md">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            <div className="bg-white rounded-xl shadow-2xl p-6 border-2 border-neutral-200 max-w-md">
+              <h3 className="text-lg font-semibold text-neutral-900 mb-4">
                 Real-World Error Scenarios
               </h3>
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-neutral-600 mb-4">
                 Simulate common errors in consent management applications
               </p>
               <div className="space-y-2">

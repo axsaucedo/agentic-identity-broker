@@ -41,7 +41,7 @@ const spinnerVariants = cva('animate-spin', {
       info: 'text-info-primary',
 
       // Neutral: Gray
-      neutral: 'text-gray-500',
+      neutral: 'text-neutral-500',
 
       // White: For dark backgrounds
       white: 'text-white',

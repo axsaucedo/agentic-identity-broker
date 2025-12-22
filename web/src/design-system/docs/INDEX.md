@@ -223,21 +223,65 @@ Real-world composition patterns for building with design system components.
 
 ---
 
-#### [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)
-**Location**: `/web/src/design-system/docs/MIGRATION_GUIDE.md`
-**Coverage**: 565+ lines
+#### [DECISION_TREES.md](./DECISION_TREES.md)
+**Location**: `/web/src/design-system/docs/DECISION_TREES.md`
+**Coverage**: 850+ lines
 
-Step-by-step guide for migrating existing components to the design system.
+Flowchart-based decision guidance for eliminating ambiguity when building components.
 
-**Coverage**:
-- Phase breakdown (6-week migration strategy)
-- Component migration checklist
-- Token migration patterns
-- Testing strategies (unit, accessibility, visual)
-- Rollback strategy
-- Documentation updates
-- Common issues and solutions
-- Success metrics
+**Decision Trees Covered**:
+- Button Variant Selection (primary vs secondary vs outline vs ghost vs danger)
+- Text Color Hierarchy (trust-deep vs trust vs neutral-700)
+- Animation Duration Selection (150ms → 200ms → 300ms → 500ms)
+- Spacing & Padding Selection (context-specific rules)
+- Shadow Selection (sm → md → lg → xl hierarchy)
+- Border Radius Selection (4px → 6px → 12px → 16px)
+- Modal Size Selection (sm → md → lg → xl → full)
+- Status Color Selection (success vs warning vs error vs info)
+- Icon Sizing (context-based sizing rules)
+
+**Use Case**: When you need to decide which variant to use or how to style a component, follow the decision flowcharts to make confident, consistent choices.
+
+---
+
+#### [COMPONENT_PAIRING_GUIDE.md](./COMPONENT_PAIRING_GUIDE.md)
+**Location**: `/web/src/design-system/docs/COMPONENT_PAIRING_GUIDE.md`
+**Coverage**: 650+ lines
+
+Real-world examples of how components work together with exact spacing and hierarchy.
+
+**Pairing Patterns Covered**:
+- Button + Card combinations (primary actions, multiple actions, empty states)
+- Typography hierarchy in cards (h1 → h2 → h3 → body → metadata)
+- Form error states (icon + message patterns)
+- Button groups (segmented controls, action groups)
+- Empty states with CTAs (complete pattern with spacing breakdown)
+- Status indicators with context (badges + timestamps)
+- Modal content patterns (confirmation and form modals)
+- Spacing cheat sheet (Tailwind classes → pixel values)
+- Icon sizing cheat sheet (context-based sizes)
+- Typography hierarchy cheat sheet (font sizes and weights)
+
+**Use Case**: When composing multiple components together, reference these patterns for exact spacing, color, and hierarchy specifications.
+
+---
+
+#### [COMMON_MISTAKES.md](./COMMON_MISTAKES.md)
+**Location**: `/web/src/design-system/docs/COMMON_MISTAKES.md`
+**Coverage**: 650+ lines
+
+Learn from frequent pitfalls in the design system. Each mistake includes the reason it's wrong and the correct solution.
+
+**Mistake Categories** (23 total):
+- **Color Usage** (5 mistakes): text-primary confusion, using gray-*, using navy-*, extended palettes, inconsistent usage
+- **Layout & Spacing** (3 mistakes): inconsistent padding props, tight card spacing, no gaps between elements
+- **Animation** (3 mistakes): animating width/height, wrong duration, not respecting prefers-reduced-motion
+- **Component Usage** (4 mistakes): multiple primary buttons, danger + primary together, wrong modal size, no shadow on cards
+- **Typography** (3 mistakes): using system fonts, inconsistent weights, missing letter spacing
+- **Accessibility** (3 mistakes): color-only status, missing focus states, insufficient contrast
+- **Performance** (2 mistakes): inline styles for theming, not using semantic HTML
+
+**Use Case**: Before implementing a component, review common mistakes to avoid anti-patterns. Use the quick reference table for fast lookups.
 
 ---
 
@@ -254,73 +298,11 @@ All documentation is located in:
 ├── MOTION_GUIDE.md                   ✅ Animation timings and easing
 ├── ACCESSIBILITY_GUIDE.md            ✅ WCAG 2.1 AA compliance
 ├── COMPOSITION_PATTERNS.md           ✅ Real-world usage patterns
+├── DECISION_TREES.md                 ✅ Flowchart-based decision guidance
+├── COMPONENT_PAIRING_GUIDE.md        ✅ Component composition with spacing
+├── COMMON_MISTAKES.md                ✅ Anti-patterns and correct solutions
 └── MIGRATION_GUIDE.md                ✅ Migration strategy
 ```
-
----
-
-## ✅ Validation Summary
-
-### What Was Corrected
-
-| Issue | Was Missing | Now Documented | File |
-|-------|---|---|---|
-| **Visual Design Direction** | Generic principles only | Refined Trust Architecture aesthetic concept, design principles, distinctive visual details, component archetypes | DESIGN_PRINCIPLES.md |
-| **Exact Font Names** | Generic "font-sans", "font-mono" | Crimson Pro, Manrope, JetBrains Mono with specifications | TOKEN_GUIDE.md, DESIGN_PRINCIPLES.md |
-| **Color Hex Values** | Semantic names only | Complete palette with hex values for all colors | COLOR_GUIDE.md, DESIGN_PRINCIPLES.md |
-| **Shadow Specifications** | Generic scale | Precise pixel values for cards, modals, buttons | DESIGN_PRINCIPLES.md, COMPONENT_ARCHETYPES.md |
-| **Motion/Animation** | Duration only, no easing | Exact timings, easing curves, usage guidelines | MOTION_GUIDE.md, DESIGN_PRINCIPLES.md |
-| **Component Archetypes** | Not documented | Detailed specifications for primary button, card, form input, modal | COMPONENT_ARCHETYPES.md |
-| **Gradient Background** | Not documented | Specific warm neutral gradient formula | DESIGN_PRINCIPLES.md |
-| **Micro-Textures** | Not documented | 2% opacity noise overlay specification | DESIGN_PRINCIPLES.md |
-| **Border Radius Strategy** | Generic scale | Component-specific radius: 4px (badges), 6px (buttons/inputs), 12px (cards), 16px (modals) | DESIGN_PRINCIPLES.md, COMPONENT_ARCHETYPES.md |
-
----
-
-## 🎯 Plan Adherence
-
-### Coverage by Plan Section
-
-#### Plan Section 1.1 - Design Concept ✅
-- **Status**: FULLY DOCUMENTED
-- **Location**: DESIGN_PRINCIPLES.md, lines 7-15
-- **Coverage**: "Refined Trust Architecture" aesthetic, tone, typeface pairing
-
-#### Plan Section 1.2 - Design Principles ✅
-- **Status**: FULLY DOCUMENTED
-- **Location**: DESIGN_PRINCIPLES.md, lines 17-62
-- **Coverage**: 5 visual principles with exact specifications
-- **Specifications Included**:
-  - Typography: Crimson Pro (700), Manrope, letter-spacing values
-  - Colors: Navy (#0A2540, #1E4D6B), Emerald (#059669), Amber (#D97706)
-  - Elevation: Shadow specifications with pixel values
-  - Motion: 150ms-500ms timing with easing
-  - Whitespace: 24px, 32px, 64px spacing
-
-#### Plan Section 1.3 - Distinctive Visual Details ✅
-- **Status**: FULLY DOCUMENTED
-- **Location**: DESIGN_PRINCIPLES.md, lines 64-107
-- **Coverage**: Gradients, micro-textures, shadow strategy, border radius strategy
-- **Specifications Included**:
-  - Gradient: `linear-gradient(135deg, #faf9f7 0%, #f5f1ed 50%, rgba(232, 227, 222, 0.3) 100%)`
-  - Micro-texture: 2% opacity noise overlay
-  - Shadows: `0 2px 8px rgba(0,0,0,0.04)` + inset highlight
-  - Border radius: 4px (badges), 6px (buttons/inputs), 12px (cards), 16px (modals)
-
-#### Plan Section 1.4 - Component Aesthetic Archetypes ✅
-- **Status**: FULLY DOCUMENTED
-- **Location**: DESIGN_PRINCIPLES.md lines 109-162 + COMPONENT_ARCHETYPES.md (full file)
-- **Coverage**: 4 detailed component specifications
-  - Primary Button: navy, 44px, gradient, shadow progression, transform
-  - Card: white, double shadow, 12px radius, hover elevation
-  - Form Input: 44px, 1.5px border, navy focus ring
-  - Modal: navy overlay, blur, 16px radius, staggered animation
-
-#### Plan Section 6 - Design Token System ✅
-- **Status**: FULLY DOCUMENTED
-- **Location**: TOKEN_GUIDE.md, COLOR_GUIDE.md
-- **Coverage**: Complete color tokens, typography tokens, spacing, shadows, animations
-- **Semantic Tokens**: trust-deep (#0A2540), trust (#1E4D6B), success (#059669), cta (#D97706)
 
 ---
 
@@ -339,21 +321,28 @@ All documentation is located in:
 4. Check [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md) when refactoring existing components
 
 ### For AI Agents
-1. Use [COMPONENT_ARCHETYPES.md](./COMPONENT_ARCHETYPES.md) as reference for new component styling
-2. Reference [TOKEN_GUIDE.md](./TOKEN_GUIDE.md) for token names and values
-3. Check [COMPOSITION_PATTERNS.md](./COMPOSITION_PATTERNS.md) for how to combine components
-4. Verify [ACCESSIBILITY_GUIDE.md](./ACCESSIBILITY_GUIDE.md) before finalizing components
+1. Start with [DECISION_TREES.md](./DECISION_TREES.md) for all variant and styling decisions
+2. Reference [COMPONENT_PAIRING_GUIDE.md](./COMPONENT_PAIRING_GUIDE.md) for exact spacing and composition patterns
+3. Review [COMMON_MISTAKES.md](./COMMON_MISTAKES.md) to avoid anti-patterns
+4. Use [COMPONENT_ARCHETYPES.md](./COMPONENT_ARCHETYPES.md) for detailed component specifications
+5. Check [TOKEN_GUIDE.md](./TOKEN_GUIDE.md) for token names and values
+6. Verify [ACCESSIBILITY_GUIDE.md](./ACCESSIBILITY_GUIDE.md) before finalizing components
 
 ---
 
 ## 🔍 Quick Reference
 
-### Color Palette
-- **Primary (Trust)**: #0A2540 (deep), #1E4D6B (medium), #E8F1F5 (light)
-- **Success**: #059669
-- **Warning**: #D97706
-- **Error**: #DC2626
-- **Neutrals**: #faf9f7 (cream), #f5f1ed (sand), #e8e3de (taupe)
+### Color Palette (Semantic Tokens)
+- **Primary (Trust)**: trust-deep (#0A2540), trust (#1E4D6B), trust-light (#E8F1F5)
+- **Success**: success-primary (#059669), success-hover (#047857), success-light (#d1fae5)
+- **Warning/CTA**: warning-primary / cta (#D97706) - unified
+- **Error**: error-primary (#DC2626), error-hover (#b91c1c), error-light (#fee2e2)
+- **Warm Neutrals**: neutral-50 (#faf9f7), neutral-100 (#f5f1ed), neutral-200 (#e8e3de), neutral-300 (#ddd8d1), neutral-600 (#6b6561), neutral-700 (#4a4137)
+
+### Using Colors
+- **Semantic tokens**: Use `bg-trust`, `text-success-primary`, `border-neutral-300`
+- **NO extended palettes**: `navy-700`, `emerald-600`, `gray-*` are removed
+- **Warm neutrals**: Replace all `gray-*` with `neutral-*`
 
 ### Typography
 - **Headings**: Crimson Pro, weight 700/600, -0.02em letter-spacing
@@ -380,18 +369,3 @@ All documentation is located in:
 - **Buttons/Inputs**: 6px
 - **Cards**: 12px
 - **Modals**: 16px
-
----
-
-## ✨ Summary
-
-The Refined Trust Architecture design system is now **fully documented** with:
-
-- ✅ **9 comprehensive guides** covering all aspects of the design system
-- ✅ **4,800+ lines** of detailed specifications
-- ✅ **100% plan adherence** - all original specifications documented
-- ✅ **39+ components** with Storybook stories
-- ✅ **WCAG 2.1 AA** accessibility compliance
-- ✅ **Production-ready** for implementation
-
-This documentation enables both humans and AI agents to understand and extend the design system with confidence.

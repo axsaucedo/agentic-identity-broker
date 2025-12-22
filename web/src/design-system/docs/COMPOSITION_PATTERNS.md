@@ -12,8 +12,8 @@ import { Stack } from '@design-system/components/layout/Stack';
 
 <Container size="md" className="text-center py-16">
   <Stack gap="md" align="center">
-    <h1 className="text-4xl font-bold">Welcome</h1>
-    <p className="text-lg text-gray-600">Your message here</p>
+    <h1 className="text-4xl font-bold text-trust-deep">Welcome</h1>
+    <p className="text-lg text-secondary">Your message here</p>
     <Button variant="primary" size="lg">Get Started</Button>
   </Stack>
 </Container>
@@ -41,8 +41,8 @@ import { Stack } from '@design-system/components/layout/Stack';
   {items.map((item) => (
     <Card key={item.id} hover="lift">
       <Avatar src={item.image} />
-      <h3 className="mt-4 font-semibold">{item.title}</h3>
-      <p className="text-sm text-gray-600">{item.description}</p>
+      <h3 className="mt-4 font-semibold text-trust-deep">{item.title}</h3>
+      <p className="text-sm text-secondary">{item.description}</p>
     </Card>
   ))}
 </Grid>
@@ -199,8 +199,8 @@ const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
       <Stack gap="md">
         <Avatar size="lg" name={item.name} />
         <Stack gap="xs">
-          <h3 className="text-lg font-semibold">{item.name}</h3>
-          <p className="text-sm text-gray-600">{item.description}</p>
+          <h3 className="text-lg font-semibold text-trust-deep">{item.name}</h3>
+          <p className="text-sm text-secondary">{item.description}</p>
         </Stack>
         <Stack direction="row" gap="sm" className="mt-auto">
           <Badge>{item.category}</Badge>
@@ -221,8 +221,8 @@ const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
       <Card padding="md" hover="lift">
         <Stack direction="row" gap="md" align="center" justify="space-between">
           <Stack gap="xs" flex="1">
-            <h3 className="font-semibold">{item.name}</h3>
-            <p className="text-sm text-gray-600">{item.description}</p>
+            <h3 className="font-semibold text-trust-deep">{item.name}</h3>
+            <p className="text-sm text-secondary">{item.description}</p>
           </Stack>
           <Stack direction="row" gap="sm" align="center">
             <GrantStatusBadge status={item.status} />
@@ -397,8 +397,8 @@ const [selectedScopes, setSelectedScopes] = useState([]);
   <Stack gap="md">
     <Stack direction="row" gap="md" align="start" justify="space-between">
       <div>
-        <h3 className="text-lg font-semibold">{grant.name}</h3>
-        <p className="text-sm text-gray-600">{grant.description}</p>
+        <h3 className="text-lg font-semibold text-trust-deep">{grant.name}</h3>
+        <p className="text-sm text-secondary">{grant.description}</p>
       </div>
       <GrantStatusBadge status={grant.status} />
     </Stack>
@@ -506,11 +506,11 @@ const [showInfo, setShowInfo] = useState(false);
   position="top"
 >
   <Stack gap="md" padding="md" maxWidth="300px">
-    <h4 className="font-semibold">About This Permission</h4>
-    <p className="text-sm text-gray-600">
+    <h4 className="font-semibold text-trust-deep">About This Permission</h4>
+    <p className="text-sm text-secondary">
       This permission allows the application to access your email address and send emails on your behalf.
     </p>
-    <p className="text-xs text-gray-500">
+    <p className="text-xs text-tertiary">
       Last used: Yesterday at 2:30 PM
     </p>
   </Stack>
@@ -594,12 +594,12 @@ const totalSteps = 4;
 
 ```tsx
 <Stack gap="md">
-  <h3 className="font-semibold">Processing Items</h3>
+  <h3 className="font-semibold text-trust-deep">Processing Items</h3>
   {items.map((item) => (
     <Stack key={item.id} gap="xs">
       <div className="flex justify-between text-sm">
         <span>{item.name}</span>
-        <span className="text-gray-600">{item.progress}%</span>
+        <span className="text-secondary">{item.progress}%</span>
       </div>
       <Progress value={item.progress} variant="success" />
     </Stack>

@@ -36,8 +36,8 @@ const tabListVariants = cva(
   {
     variants: {
       variant: {
-        underline: 'border-b border-gray-200',
-        pill: 'bg-gray-100 rounded-lg p-1',
+        underline: 'border-b border-neutral-200',
+        pill: 'bg-neutral-100 rounded-lg p-1',
         button: 'gap-2',
       },
       orientation: {
@@ -49,7 +49,7 @@ const tabListVariants = cva(
       {
         variant: 'underline',
         orientation: 'vertical',
-        className: 'border-b-0 border-r border-gray-200',
+        className: 'border-b-0 border-r border-neutral-200',
       },
     ],
     defaultVariants: {
@@ -60,13 +60,13 @@ const tabListVariants = cva(
 );
 
 const tabButtonVariants = cva(
-  'relative inline-flex items-center justify-center gap-2 font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-navy-600 disabled:opacity-50 disabled:cursor-not-allowed',
+  'relative inline-flex items-center justify-center gap-2 font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-trust-hover disabled:opacity-50 disabled:cursor-not-allowed',
   {
     variants: {
       variant: {
-        underline: 'border-b-2 border-transparent hover:text-navy-700 hover:border-gray-300',
+        underline: 'border-b-2 border-transparent hover:text-trust hover:border-neutral-300',
         pill: 'rounded-md hover:bg-white/60',
-        button: 'border border-gray-300 rounded-md hover:border-gray-400 hover:bg-gray-50',
+        button: 'border border-neutral-300 rounded-md hover:border-neutral-400 hover:bg-neutral-50',
       },
       size: {
         sm: 'px-3 py-1.5 text-sm',
@@ -87,34 +87,34 @@ const tabButtonVariants = cva(
       {
         variant: 'underline',
         selected: true,
-        className: 'text-navy-800 border-navy-600 font-semibold',
+        className: 'text-trust-deep border-trust-hover font-semibold',
       },
       {
         variant: 'underline',
         selected: false,
-        className: 'text-gray-600',
+        className: 'text-neutral-600',
       },
       // Pill variant selected states
       {
         variant: 'pill',
         selected: true,
-        className: 'bg-white text-navy-800 shadow-sm font-semibold',
+        className: 'bg-white text-trust-deep shadow-sm font-semibold',
       },
       {
         variant: 'pill',
         selected: false,
-        className: 'text-gray-700',
+        className: 'text-neutral-700',
       },
       // Button variant selected states
       {
         variant: 'button',
         selected: true,
-        className: 'bg-navy-600 text-white border-navy-600 shadow-sm font-semibold hover:bg-navy-700',
+        className: 'bg-trust-hover text-white border-trust-hover shadow-sm font-semibold hover:bg-trust',
       },
       {
         variant: 'button',
         selected: false,
-        className: 'bg-white text-gray-700',
+        className: 'bg-white text-neutral-700',
       },
       // Vertical orientation adjustments for underline
       {
@@ -133,7 +133,7 @@ const tabButtonVariants = cva(
 );
 
 const tabPanelVariants = cva(
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-navy-600 rounded-md',
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-trust-hover rounded-md',
   {
     variants: {
       size: {

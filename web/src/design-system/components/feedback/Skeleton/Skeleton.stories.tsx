@@ -61,7 +61,7 @@ export const Text: Story = {
   render: () => (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Article Loading
         </h3>
         <div className="space-y-3">
@@ -78,7 +78,7 @@ export const Text: Story = {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Comment Loading
         </h3>
         <div className="space-y-2">
@@ -101,7 +101,7 @@ export const Avatar: Story = {
   render: () => (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Avatar Sizes</h3>
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">Avatar Sizes</h3>
         <div className="flex items-center gap-4">
           <Skeleton variant="circle" width="32px" height="32px" />
           <Skeleton variant="circle" width="40px" height="40px" />
@@ -112,7 +112,7 @@ export const Avatar: Story = {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           User Profile Loading
         </h3>
         <div className="flex items-center gap-3">
@@ -141,7 +141,7 @@ export const Card: Story = {
       {Array.from({ length: 3 }).map((_, index) => (
         <div
           key={index}
-          className="bg-white rounded-lg border border-gray-200 overflow-hidden"
+          className="bg-white rounded-lg border border-neutral-200 overflow-hidden"
         >
           {/* Card Image */}
           <Skeleton variant="rectangle" width="100%" height="200px" animate />
@@ -179,9 +179,9 @@ export const Card: Story = {
 export const Table: Story = {
   render: () => (
     <div className="max-w-4xl">
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
         {/* Table Header */}
-        <div className="border-b border-gray-200 bg-gray-50 p-4">
+        <div className="border-b border-neutral-200 bg-neutral-50 p-4">
           <div className="grid grid-cols-4 gap-4">
             <Skeleton width="60%" height="14px" />
             <Skeleton width="70%" height="14px" />
@@ -191,7 +191,7 @@ export const Table: Story = {
         </div>
 
         {/* Table Rows */}
-        <div className="divide-y divide-gray-200">
+        <div className="divide-y divide-neutral-200">
           {Array.from({ length: 5 }).map((_, index) => (
             <div key={index} className="p-4">
               <div className="grid grid-cols-4 gap-4 items-center">
@@ -221,10 +221,10 @@ export const List: Story = {
   render: () => (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Simple List
         </h3>
-        <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
+        <div className="bg-white rounded-lg border border-neutral-200 divide-y divide-neutral-200">
           {Array.from({ length: 5 }).map((_, index) => (
             <div key={index} className="p-4">
               <Skeleton width="70%" />
@@ -234,10 +234,10 @@ export const List: Story = {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Detailed List
         </h3>
-        <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
+        <div className="bg-white rounded-lg border border-neutral-200 divide-y divide-neutral-200">
           {Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="p-4 flex items-start gap-3">
               <Skeleton variant="circle" width="40px" height="40px" />
@@ -265,14 +265,14 @@ export const Shapes: Story = {
   render: () => (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Line (default)
         </h3>
         <Skeleton variant="line" />
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Circle</h3>
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">Circle</h3>
         <div className="flex gap-4">
           <Skeleton variant="circle" width="60px" height="60px" />
           <Skeleton variant="circle" width="80px" height="80px" />
@@ -281,19 +281,19 @@ export const Shapes: Story = {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Rectangle</h3>
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">Rectangle</h3>
         <Skeleton variant="rectangle" width="100%" height="120px" />
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Rounded Rectangle
         </h3>
         <Skeleton variant="rounded" width="100%" height="120px" />
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Custom Sizes
         </h3>
         <div className="space-y-3">
@@ -317,7 +317,7 @@ export const Animation: Story = {
   render: () => (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           With Pulse Animation (default)
         </h3>
         <div className="space-y-2">
@@ -328,7 +328,7 @@ export const Animation: Story = {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Without Animation
         </h3>
         <div className="space-y-2">
@@ -339,17 +339,17 @@ export const Animation: Story = {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
           Mixed Animation States
         </h3>
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-4">
-            <h4 className="text-xs font-medium text-gray-700">Animated</h4>
+            <h4 className="text-xs font-medium text-neutral-700">Animated</h4>
             <Skeleton variant="circle" width="64px" height="64px" animate />
             <Skeleton variant="rounded" width="100%" height="100px" animate />
           </div>
           <div className="space-y-4">
-            <h4 className="text-xs font-medium text-gray-700">Static</h4>
+            <h4 className="text-xs font-medium text-neutral-700">Static</h4>
             <Skeleton
               variant="circle"
               width="64px"
@@ -393,10 +393,10 @@ export const ConsentManagementExamples: Story = {
   render: () => (
     <div className="space-y-8 max-w-4xl">
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <h3 className="text-lg font-semibold text-neutral-900 mb-4">
           Consent Request Loading
         </h3>
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-white rounded-lg border border-neutral-200 p-6">
           <div className="flex items-start gap-4 mb-6">
             <Skeleton variant="circle" width="56px" height="56px" />
             <div className="flex-1 space-y-3">
@@ -429,17 +429,17 @@ export const ConsentManagementExamples: Story = {
       </div>
 
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <h3 className="text-lg font-semibold text-neutral-900 mb-4">
           Consent History Loading
         </h3>
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="p-4 border-b border-gray-200">
+        <div className="bg-white rounded-lg border border-neutral-200">
+          <div className="p-4 border-b border-neutral-200">
             <div className="flex items-center justify-between">
               <Skeleton width="200px" height="20px" />
               <Skeleton variant="rounded" width="100px" height="32px" />
             </div>
           </div>
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-neutral-200">
             {Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="p-4 flex items-center gap-4">
                 <Skeleton variant="circle" width="40px" height="40px" />
@@ -455,14 +455,14 @@ export const ConsentManagementExamples: Story = {
       </div>
 
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        <h3 className="text-lg font-semibold text-neutral-900 mb-4">
           Dashboard Loading
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, index) => (
             <div
               key={index}
-              className="bg-white rounded-lg border border-gray-200 p-6"
+              className="bg-white rounded-lg border border-neutral-200 p-6"
             >
               <Skeleton width="40%" height="14px" className="mb-4" />
               <Skeleton width="60%" height="32px" className="mb-2" />
@@ -484,7 +484,7 @@ export const ConsentManagementExamples: Story = {
 export const FormLoading: Story = {
   render: () => (
     <div className="max-w-2xl">
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="bg-white rounded-lg border border-neutral-200 p-6">
         <Skeleton width="40%" height="28px" className="mb-6" />
 
         <div className="space-y-6">
@@ -543,11 +543,11 @@ export const FormLoading: Story = {
 export const Accessibility: Story = {
   render: () => (
     <div className="space-y-6 max-w-3xl">
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-        <h4 className="text-sm font-semibold text-gray-900 mb-2">
+      <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+        <h4 className="text-sm font-semibold text-neutral-900 mb-2">
           Accessibility Features
         </h4>
-        <ul className="text-sm text-gray-700 space-y-1">
+        <ul className="text-sm text-neutral-700 space-y-1">
           <li>
             • Uses <code>role="status"</code> for screen reader announcements
           </li>
@@ -567,11 +567,11 @@ export const Accessibility: Story = {
         </ul>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="bg-white rounded-lg border border-neutral-200 p-6">
         <div className="space-y-4">
           <Skeleton count={3} />
         </div>
-        <p className="text-xs text-gray-500 mt-4">
+        <p className="text-xs text-neutral-500 mt-4">
           Screen readers will announce "Loading" when this skeleton appears
         </p>
       </div>

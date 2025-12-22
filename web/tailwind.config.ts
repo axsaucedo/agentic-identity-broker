@@ -8,65 +8,77 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Premium warm neutral base - invokes trust and sophistication
-        cream: '#faf9f7',
-        sand: '#f5f1ed',
-        taupe: '#e8e3de',
-        slate: '#d4cfc8',
+        // SEMANTIC TOKENS - Primary brand colors
+        'trust-deep': 'var(--color-trust-deep)',
+        'trust': 'var(--color-trust)',
+        'trust-hover': 'var(--color-trust-hover)',
+        'trust-light': 'var(--color-trust-light)',
 
-        // Authoritative primary - confident but not aggressive
-        navy: {
-          50: '#f7f9fc',
-          100: '#edf2f8',
-          200: '#d5dff0',
-          300: '#a8bee2',
-          400: '#7a9dd0',
-          500: '#4d7cbc',
-          600: '#2d5a9f',
-          700: '#1f3f6d',
-          800: '#15294a',
-          900: '#0d1829',
+        // SEMANTIC TOKENS - Action colors
+        'cta': 'var(--color-cta)',
+        'cta-hover': 'var(--color-cta-hover)',
+        'cta-light': 'var(--color-cta-light)',
+
+        // SEMANTIC TOKENS - Success
+        'success-primary': 'var(--color-success-primary)',
+        'success-hover': 'var(--color-success-hover)',
+        'success-light': 'var(--color-success-light)',
+        'success-dark': 'var(--color-success-dark)',
+
+        // SEMANTIC TOKENS - Error
+        'error-primary': 'var(--color-error-primary)',
+        'error-hover': 'var(--color-error-hover)',
+        'error-light': 'var(--color-error-light)',
+        'error-dark': 'var(--color-error-dark)',
+
+        // SEMANTIC TOKENS - Warning (unified with CTA)
+        'warning-primary': 'var(--color-warning-primary)',
+        'warning-hover': 'var(--color-warning-hover)',
+        'warning-light': 'var(--color-warning-light)',
+        'warning-dark': 'var(--color-warning-dark)',
+
+        // SEMANTIC TOKENS - Info
+        'info-primary': 'var(--color-info-primary)',
+        'info-hover': 'var(--color-info-hover)',
+        'info-light': 'var(--color-info-light)',
+        'info-dark': 'var(--color-info-dark)',
+
+        // WARM NEUTRALS - Complete scale (replaces gray)
+        neutral: {
+          50: 'var(--color-neutral-50)',
+          100: 'var(--color-neutral-100)',
+          200: 'var(--color-neutral-200)',
+          300: 'var(--color-neutral-300)',
+          400: 'var(--color-neutral-400)',
+          500: 'var(--color-neutral-500)',
+          600: 'var(--color-neutral-600)',
+          700: 'var(--color-neutral-700)',
+          800: 'var(--color-neutral-800)',
+          900: 'var(--color-neutral-900)',
         },
 
-        // Accent colors - for granted permissions and important actions
-        emerald: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#134e4a',
-        },
+        // SEMANTIC ALIASES - Contextual colors
+        'text-primary': 'var(--color-text-primary)',
+        'text-secondary': 'var(--color-text-secondary)',
+        'text-tertiary': 'var(--color-text-tertiary)',
+        'text-disabled': 'var(--color-text-disabled)',
+        'text-inverse': 'var(--color-text-inverse)',
 
-        amber: {
-          50: '#fffbeb',
-          100: '#fef3c7',
-          200: '#fde68a',
-          300: '#fcd34d',
-          400: '#fbbf24',
-          500: '#f59e0b',
-          600: '#d97706',
-          700: '#b45309',
-          800: '#92400e',
-          900: '#78350f',
-        },
+        'bg-primary': 'var(--color-bg-primary)',
+        'bg-secondary': 'var(--color-bg-secondary)',
+        'bg-tertiary': 'var(--color-bg-tertiary)',
+        'bg-elevated': 'var(--color-bg-elevated)',
+        'bg-overlay': 'var(--color-bg-overlay)',
 
-        secondary: {
-          50: '#f8f7f5',
-          100: '#f1edea',
-          200: '#ddd4d0',
-          300: '#c9bbb5',
-          400: '#8b7b73',
-          500: '#6b5b53',
-          600: '#5a4b43',
-          700: '#4a3b33',
-          800: '#3a2b23',
-          900: '#2a1b13',
-        },
+        'border-primary': 'var(--color-border-primary)',
+        'border-secondary': 'var(--color-border-secondary)',
+        'border-focus': 'var(--color-border-focus)',
+
+        // LEGACY COMPATIBILITY - Individual warm neutral aliases
+        // (deprecated - use neutral-* scale instead)
+        cream: '#faf9f7',  // → neutral-50
+        sand: '#f5f1ed',   // → neutral-100
+        taupe: '#e8e3de',  // → neutral-200
 
       },
       fontFamily: {

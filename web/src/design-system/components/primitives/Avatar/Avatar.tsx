@@ -19,7 +19,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const avatarVariants = cva(
-  'inline-flex items-center justify-center overflow-hidden bg-gray-100 text-gray-700 font-medium relative',
+  'inline-flex items-center justify-center overflow-hidden bg-neutral-100 text-neutral-700 font-medium relative',
   {
     variants: {
       size: {
@@ -55,7 +55,7 @@ const statusIndicatorVariants = cva(
       },
       status: {
         online: 'bg-success-primary',
-        offline: 'bg-gray-400',
+        offline: 'bg-neutral-400',
         away: 'bg-warning-primary',
         busy: 'bg-error-primary',
       },
@@ -156,13 +156,13 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
 
         {/* Fallback Icon */}
         {showFallbackIcon && (
-          <span className="w-1/2 h-1/2 text-gray-400">{fallbackIcon}</span>
+          <span className="w-1/2 h-1/2 text-neutral-400">{fallbackIcon}</span>
         )}
 
         {/* Default fallback icon (person) */}
         {!showImage && !showInitials && !showFallbackIcon && (
           <svg
-            className="w-1/2 h-1/2 text-gray-400"
+            className="w-1/2 h-1/2 text-neutral-400"
             fill="currentColor"
             viewBox="0 0 20 20"
             aria-hidden="true"

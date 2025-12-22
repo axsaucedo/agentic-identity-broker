@@ -67,21 +67,21 @@ const permissionTabs: TabItem[] = [
 export const Default: Story = {
   render: () => (
     <Tabs tabs={basicTabs} defaultTab="overview" className="w-full max-w-2xl">
-      <div className="p-4 bg-gray-50 rounded border border-gray-200">
-        <h3 className="font-semibold text-gray-900 mb-2">Overview</h3>
-        <p className="text-gray-700">
+      <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+        <h3 className="font-semibold text-neutral-900 mb-2">Overview</h3>
+        <p className="text-neutral-700">
           This is the overview panel with general information and summary data.
         </p>
       </div>
-      <div className="p-4 bg-gray-50 rounded border border-gray-200">
-        <h3 className="font-semibold text-gray-900 mb-2">Details</h3>
-        <p className="text-gray-700">
+      <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+        <h3 className="font-semibold text-neutral-900 mb-2">Details</h3>
+        <p className="text-neutral-700">
           Detailed information and specific data points are displayed here.
         </p>
       </div>
-      <div className="p-4 bg-gray-50 rounded border border-gray-200">
-        <h3 className="font-semibold text-gray-900 mb-2">Settings</h3>
-        <p className="text-gray-700">
+      <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+        <h3 className="font-semibold text-neutral-900 mb-2">Settings</h3>
+        <p className="text-neutral-700">
           Configuration options and preferences can be adjusted here.
         </p>
       </div>
@@ -94,37 +94,37 @@ export const Variants: Story = {
     <div className="space-y-12 w-full max-w-2xl">
       {/* Underline variant */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Underline (Default)
         </h3>
         <Tabs tabs={basicTabs} defaultTab="overview" variant="underline">
-          <div className="p-4 bg-gray-50 rounded">Overview content</div>
-          <div className="p-4 bg-gray-50 rounded">Details content</div>
-          <div className="p-4 bg-gray-50 rounded">Settings content</div>
+          <div className="p-4 bg-neutral-50 rounded">Overview content</div>
+          <div className="p-4 bg-neutral-50 rounded">Details content</div>
+          <div className="p-4 bg-neutral-50 rounded">Settings content</div>
         </Tabs>
       </div>
 
       {/* Pill variant */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Pill
         </h3>
         <Tabs tabs={basicTabs} defaultTab="overview" variant="pill">
-          <div className="p-4 bg-gray-50 rounded">Overview content</div>
-          <div className="p-4 bg-gray-50 rounded">Details content</div>
-          <div className="p-4 bg-gray-50 rounded">Settings content</div>
+          <div className="p-4 bg-neutral-50 rounded">Overview content</div>
+          <div className="p-4 bg-neutral-50 rounded">Details content</div>
+          <div className="p-4 bg-neutral-50 rounded">Settings content</div>
         </Tabs>
       </div>
 
       {/* Button variant */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Button
         </h3>
         <Tabs tabs={basicTabs} defaultTab="overview" variant="button">
-          <div className="p-4 bg-gray-50 rounded">Overview content</div>
-          <div className="p-4 bg-gray-50 rounded">Details content</div>
-          <div className="p-4 bg-gray-50 rounded">Settings content</div>
+          <div className="p-4 bg-neutral-50 rounded">Overview content</div>
+          <div className="p-4 bg-neutral-50 rounded">Details content</div>
+          <div className="p-4 bg-neutral-50 rounded">Settings content</div>
         </Tabs>
       </div>
     </div>
@@ -142,17 +142,17 @@ export const DisabledTabs: Story = {
 
     return (
       <Tabs tabs={tabsWithDisabled} defaultTab="active" className="w-full max-w-2xl">
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded">
-          <p className="text-emerald-800">Active tab content is accessible</p>
+        <div className="p-4 bg-success-light border border-success-light rounded">
+          <p className="text-success-dark">Active tab content is accessible</p>
         </div>
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded">
-          <p className="text-gray-500">This tab is disabled</p>
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded">
+          <p className="text-neutral-500">This tab is disabled</p>
         </div>
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded">
-          <p className="text-emerald-800">Another active tab</p>
+        <div className="p-4 bg-success-light border border-success-light rounded">
+          <p className="text-success-dark">Another active tab</p>
         </div>
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded">
-          <p className="text-gray-500">This tab is locked</p>
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded">
+          <p className="text-neutral-500">This tab is locked</p>
         </div>
       </Tabs>
     );
@@ -164,7 +164,7 @@ export const Vertical: Story = {
     <div className="space-y-12 w-full max-w-3xl">
       {/* Vertical underline */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Vertical Underline
         </h3>
         <Tabs
@@ -173,24 +173,24 @@ export const Vertical: Story = {
           variant="underline"
           orientation="vertical"
         >
-          <div className="p-4 bg-gray-50 rounded border border-gray-200">
-            <h4 className="font-semibold text-gray-900 mb-2">Overview</h4>
-            <p className="text-gray-700">Vertical layout with underline variant.</p>
+          <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+            <h4 className="font-semibold text-neutral-900 mb-2">Overview</h4>
+            <p className="text-neutral-700">Vertical layout with underline variant.</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded border border-gray-200">
-            <h4 className="font-semibold text-gray-900 mb-2">Details</h4>
-            <p className="text-gray-700">Detailed view in vertical orientation.</p>
+          <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+            <h4 className="font-semibold text-neutral-900 mb-2">Details</h4>
+            <p className="text-neutral-700">Detailed view in vertical orientation.</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded border border-gray-200">
-            <h4 className="font-semibold text-gray-900 mb-2">Settings</h4>
-            <p className="text-gray-700">Settings panel in vertical layout.</p>
+          <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+            <h4 className="font-semibold text-neutral-900 mb-2">Settings</h4>
+            <p className="text-neutral-700">Settings panel in vertical layout.</p>
           </div>
         </Tabs>
       </div>
 
       {/* Vertical button */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Vertical Button
         </h3>
         <Tabs
@@ -199,10 +199,10 @@ export const Vertical: Story = {
           variant="button"
           orientation="vertical"
         >
-          <div className="p-4 bg-gray-50 rounded">Home dashboard content</div>
-          <div className="p-4 bg-gray-50 rounded">Profile information</div>
-          <div className="p-4 bg-gray-50 rounded">Analytics and reports</div>
-          <div className="p-4 bg-gray-50 rounded">Settings and preferences</div>
+          <div className="p-4 bg-neutral-50 rounded">Home dashboard content</div>
+          <div className="p-4 bg-neutral-50 rounded">Profile information</div>
+          <div className="p-4 bg-neutral-50 rounded">Analytics and reports</div>
+          <div className="p-4 bg-neutral-50 rounded">Settings and preferences</div>
         </Tabs>
       </div>
     </div>
@@ -214,37 +214,37 @@ export const Sizes: Story = {
     <div className="space-y-12 w-full max-w-2xl">
       {/* Small */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Small
         </h3>
         <Tabs tabs={basicTabs} defaultTab="overview" size="sm">
-          <div className="p-3 bg-gray-50 rounded text-sm">Small tab content</div>
-          <div className="p-3 bg-gray-50 rounded text-sm">Small tab content</div>
-          <div className="p-3 bg-gray-50 rounded text-sm">Small tab content</div>
+          <div className="p-3 bg-neutral-50 rounded text-sm">Small tab content</div>
+          <div className="p-3 bg-neutral-50 rounded text-sm">Small tab content</div>
+          <div className="p-3 bg-neutral-50 rounded text-sm">Small tab content</div>
         </Tabs>
       </div>
 
       {/* Medium (default) */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Medium (Default)
         </h3>
         <Tabs tabs={basicTabs} defaultTab="overview" size="md">
-          <div className="p-4 bg-gray-50 rounded">Medium tab content</div>
-          <div className="p-4 bg-gray-50 rounded">Medium tab content</div>
-          <div className="p-4 bg-gray-50 rounded">Medium tab content</div>
+          <div className="p-4 bg-neutral-50 rounded">Medium tab content</div>
+          <div className="p-4 bg-neutral-50 rounded">Medium tab content</div>
+          <div className="p-4 bg-neutral-50 rounded">Medium tab content</div>
         </Tabs>
       </div>
 
       {/* Large */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Large
         </h3>
         <Tabs tabs={basicTabs} defaultTab="overview" size="lg">
-          <div className="p-6 bg-gray-50 rounded text-lg">Large tab content</div>
-          <div className="p-6 bg-gray-50 rounded text-lg">Large tab content</div>
-          <div className="p-6 bg-gray-50 rounded text-lg">Large tab content</div>
+          <div className="p-6 bg-neutral-50 rounded text-lg">Large tab content</div>
+          <div className="p-6 bg-neutral-50 rounded text-lg">Large tab content</div>
+          <div className="p-6 bg-neutral-50 rounded text-lg">Large tab content</div>
         </Tabs>
       </div>
     </div>
@@ -256,39 +256,39 @@ export const WithIcons: Story = {
     <div className="space-y-12 w-full max-w-2xl">
       {/* Underline with icons */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Underline with Icons
         </h3>
         <Tabs tabs={iconTabs} defaultTab="home" variant="underline">
-          <div className="p-4 bg-gray-50 rounded">
-            <h4 className="font-semibold text-gray-900 mb-2">Home Dashboard</h4>
-            <p className="text-gray-700">Welcome to your dashboard.</p>
+          <div className="p-4 bg-neutral-50 rounded">
+            <h4 className="font-semibold text-neutral-900 mb-2">Home Dashboard</h4>
+            <p className="text-neutral-700">Welcome to your dashboard.</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded">
-            <h4 className="font-semibold text-gray-900 mb-2">User Profile</h4>
-            <p className="text-gray-700">Manage your profile information.</p>
+          <div className="p-4 bg-neutral-50 rounded">
+            <h4 className="font-semibold text-neutral-900 mb-2">User Profile</h4>
+            <p className="text-neutral-700">Manage your profile information.</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded">
-            <h4 className="font-semibold text-gray-900 mb-2">Analytics</h4>
-            <p className="text-gray-700">View your analytics and insights.</p>
+          <div className="p-4 bg-neutral-50 rounded">
+            <h4 className="font-semibold text-neutral-900 mb-2">Analytics</h4>
+            <p className="text-neutral-700">View your analytics and insights.</p>
           </div>
-          <div className="p-4 bg-gray-50 rounded">
-            <h4 className="font-semibold text-gray-900 mb-2">Settings</h4>
-            <p className="text-gray-700">Configure your preferences.</p>
+          <div className="p-4 bg-neutral-50 rounded">
+            <h4 className="font-semibold text-neutral-900 mb-2">Settings</h4>
+            <p className="text-neutral-700">Configure your preferences.</p>
           </div>
         </Tabs>
       </div>
 
       {/* Pill with icons */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-4">
           Pill with Icons
         </h3>
         <Tabs tabs={iconTabs} defaultTab="home" variant="pill">
-          <div className="p-4 bg-gray-50 rounded">Home content with icons</div>
-          <div className="p-4 bg-gray-50 rounded">Profile content with icons</div>
-          <div className="p-4 bg-gray-50 rounded">Analytics content with icons</div>
-          <div className="p-4 bg-gray-50 rounded">Settings content with icons</div>
+          <div className="p-4 bg-neutral-50 rounded">Home content with icons</div>
+          <div className="p-4 bg-neutral-50 rounded">Profile content with icons</div>
+          <div className="p-4 bg-neutral-50 rounded">Analytics content with icons</div>
+          <div className="p-4 bg-neutral-50 rounded">Settings content with icons</div>
         </Tabs>
       </div>
     </div>
@@ -301,12 +301,12 @@ export const Controlled: Story = {
 
     return (
       <div className="w-full max-w-2xl space-y-4">
-        <div className="p-4 bg-navy-50 border border-navy-200 rounded-lg">
-          <p className="text-sm text-navy-800 mb-2">
+        <div className="p-4 bg-trust-light border border-neutral-200 rounded-lg">
+          <p className="text-sm text-trust-deep mb-2">
             <strong>Controlled mode:</strong> The parent component manages the active tab state.
           </p>
-          <p className="text-sm text-navy-700">
-            Current active tab: <code className="px-2 py-0.5 bg-navy-100 rounded">{activeTab}</code>
+          <p className="text-sm text-trust">
+            Current active tab: <code className="px-2 py-0.5 bg-trust-light rounded">{activeTab}</code>
           </p>
         </div>
 
@@ -316,9 +316,9 @@ export const Controlled: Story = {
           onTabChange={setActiveTab}
           variant="pill"
         >
-          <div className="p-6 bg-emerald-50 border border-emerald-200 rounded">
-            <h4 className="font-semibold text-emerald-900 mb-3">Granted Permissions</h4>
-            <ul className="space-y-2 text-emerald-800">
+          <div className="p-6 bg-success-light border border-success-light rounded">
+            <h4 className="font-semibold text-success-dark mb-3">Granted Permissions</h4>
+            <ul className="space-y-2 text-success-dark">
               <li>• Read access to documents</li>
               <li>• Edit personal profile</li>
               <li>• View analytics dashboard</li>
@@ -343,19 +343,19 @@ export const Controlled: Story = {
         <div className="flex gap-2 pt-4">
           <button
             onClick={() => setActiveTab('granted')}
-            className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm border border-neutral-300 rounded hover:bg-neutral-50 transition-colors"
           >
             Go to Granted
           </button>
           <button
             onClick={() => setActiveTab('pending')}
-            className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm border border-neutral-300 rounded hover:bg-neutral-50 transition-colors"
           >
             Go to Pending
           </button>
           <button
             onClick={() => setActiveTab('revoked')}
-            className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm border border-neutral-300 rounded hover:bg-neutral-50 transition-colors"
           >
             Go to Revoked
           </button>
@@ -376,12 +376,12 @@ export const ConsentManagementExample: Story = {
     ];
 
     return (
-      <div className="w-full max-w-3xl p-6 bg-white border border-gray-200 rounded-lg shadow-md-premium">
+      <div className="w-full max-w-3xl p-6 bg-white border border-neutral-200 rounded-lg shadow-md-premium">
         <div className="mb-6">
-          <h2 className="text-2xl font-display font-semibold text-navy-900 mb-2">
+          <h2 className="text-2xl font-display font-semibold text-trust-deep mb-2">
             Consent Management
           </h2>
-          <p className="text-gray-600">
+          <p className="text-neutral-600">
             Manage your data sharing permissions and consent preferences
           </p>
         </div>
@@ -395,32 +395,32 @@ export const ConsentManagementExample: Story = {
         >
           {/* Current Consents */}
           <div className="space-y-4">
-            <div className="p-4 border border-gray-200 rounded-lg">
+            <div className="p-4 border border-neutral-200 rounded-lg">
               <div className="flex items-start justify-between mb-2">
-                <h4 className="font-semibold text-gray-900">Healthcare Provider Access</h4>
-                <span className="px-2 py-1 text-xs font-medium bg-emerald-100 text-emerald-800 rounded">
+                <h4 className="font-semibold text-neutral-900">Healthcare Provider Access</h4>
+                <span className="px-2 py-1 text-xs font-medium bg-success-light text-success-dark rounded">
                   Active
                 </span>
               </div>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm text-neutral-600 mb-3">
                 Allows Dr. Smith to access your medical records
               </p>
-              <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center justify-between text-xs text-neutral-500">
                 <span>Granted: Jan 15, 2024</span>
                 <span>Expires: Jan 15, 2025</span>
               </div>
             </div>
-            <div className="p-4 border border-gray-200 rounded-lg">
+            <div className="p-4 border border-neutral-200 rounded-lg">
               <div className="flex items-start justify-between mb-2">
-                <h4 className="font-semibold text-gray-900">Research Study Participation</h4>
-                <span className="px-2 py-1 text-xs font-medium bg-emerald-100 text-emerald-800 rounded">
+                <h4 className="font-semibold text-neutral-900">Research Study Participation</h4>
+                <span className="px-2 py-1 text-xs font-medium bg-success-light text-success-dark rounded">
                   Active
                 </span>
               </div>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm text-neutral-600 mb-3">
                 Anonymous data sharing for clinical research
               </p>
-              <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center justify-between text-xs text-neutral-500">
                 <span>Granted: Dec 1, 2023</span>
                 <span>Expires: Dec 1, 2024</span>
               </div>
@@ -429,54 +429,54 @@ export const ConsentManagementExample: Story = {
 
           {/* History */}
           <div className="space-y-3">
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded">
+            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-gray-900">Lab Results Access</span>
-                <span className="text-xs text-gray-500">Revoked</span>
+                <span className="text-sm font-medium text-neutral-900">Lab Results Access</span>
+                <span className="text-xs text-neutral-500">Revoked</span>
               </div>
-              <p className="text-xs text-gray-600">Revoked on Jan 10, 2024</p>
+              <p className="text-xs text-neutral-600">Revoked on Jan 10, 2024</p>
             </div>
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded">
+            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-gray-900">Pharmacy Access</span>
-                <span className="text-xs text-gray-500">Expired</span>
+                <span className="text-sm font-medium text-neutral-900">Pharmacy Access</span>
+                <span className="text-xs text-neutral-500">Expired</span>
               </div>
-              <p className="text-xs text-gray-600">Expired on Dec 31, 2023</p>
+              <p className="text-xs text-neutral-600">Expired on Dec 31, 2023</p>
             </div>
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded">
+            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-gray-900">Insurance Verification</span>
-                <span className="text-xs text-gray-500">Completed</span>
+                <span className="text-sm font-medium text-neutral-900">Insurance Verification</span>
+                <span className="text-xs text-neutral-500">Completed</span>
               </div>
-              <p className="text-xs text-gray-600">Completed on Nov 15, 2023</p>
+              <p className="text-xs text-neutral-600">Completed on Nov 15, 2023</p>
             </div>
           </div>
 
           {/* Preferences */}
           <div className="space-y-4">
-            <div className="p-4 border border-gray-200 rounded-lg">
-              <h4 className="font-semibold text-gray-900 mb-3">Default Consent Duration</h4>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-navy-600">
+            <div className="p-4 border border-neutral-200 rounded-lg">
+              <h4 className="font-semibold text-neutral-900 mb-3">Default Consent Duration</h4>
+              <select className="w-full px-3 py-2 border border-neutral-300 rounded focus:outline-none focus:ring-2 focus:ring-trust-hover">
                 <option>30 days</option>
                 <option>90 days</option>
                 <option selected>1 year</option>
                 <option>Until revoked</option>
               </select>
             </div>
-            <div className="p-4 border border-gray-200 rounded-lg">
-              <h4 className="font-semibold text-gray-900 mb-3">Notification Preferences</h4>
+            <div className="p-4 border border-neutral-200 rounded-lg">
+              <h4 className="font-semibold text-neutral-900 mb-3">Notification Preferences</h4>
               <div className="space-y-2">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked className="rounded" />
-                  <span className="text-sm text-gray-700">Email me when consent is requested</span>
+                  <span className="text-sm text-neutral-700">Email me when consent is requested</span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked className="rounded" />
-                  <span className="text-sm text-gray-700">Notify before consent expires</span>
+                  <span className="text-sm text-neutral-700">Notify before consent expires</span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" className="rounded" />
-                  <span className="text-sm text-gray-700">Weekly consent summary</span>
+                  <span className="text-sm text-neutral-700">Weekly consent summary</span>
                 </label>
               </div>
             </div>
@@ -498,17 +498,17 @@ export const Playground: Story = {
         onTabChange={setActiveTab}
         className="w-full max-w-2xl"
       >
-        <div className="p-4 bg-gray-50 rounded border border-gray-200">
-          <h3 className="font-semibold text-gray-900 mb-2">Overview Panel</h3>
-          <p className="text-gray-700">This is the overview content panel.</p>
+        <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+          <h3 className="font-semibold text-neutral-900 mb-2">Overview Panel</h3>
+          <p className="text-neutral-700">This is the overview content panel.</p>
         </div>
-        <div className="p-4 bg-gray-50 rounded border border-gray-200">
-          <h3 className="font-semibold text-gray-900 mb-2">Details Panel</h3>
-          <p className="text-gray-700">This is the details content panel.</p>
+        <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+          <h3 className="font-semibold text-neutral-900 mb-2">Details Panel</h3>
+          <p className="text-neutral-700">This is the details content panel.</p>
         </div>
-        <div className="p-4 bg-gray-50 rounded border border-gray-200">
-          <h3 className="font-semibold text-gray-900 mb-2">Settings Panel</h3>
-          <p className="text-gray-700">This is the settings content panel.</p>
+        <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
+          <h3 className="font-semibold text-neutral-900 mb-2">Settings Panel</h3>
+          <p className="text-neutral-700">This is the settings content panel.</p>
         </div>
       </Tabs>
     );

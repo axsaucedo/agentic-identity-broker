@@ -88,7 +88,7 @@ export function GrantValidityControl({
   return (
     <Stack gap="md" className={className}>
       {/* Current date info */}
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-neutral-600">
         Today: <span className="font-medium">{format(today, 'MMMM d, yyyy')}</span>
       </p>
 
@@ -117,7 +117,7 @@ export function GrantValidityControl({
 
           {/* Suggested dates */}
           <Stack gap="xs">
-            <p className="text-xs text-gray-600">Quick suggestions:</p>
+            <p className="text-xs text-neutral-600">Quick suggestions:</p>
             <Stack direction="row" gap="sm" wrap>
               {suggestedDates.map((suggestion) => (
                 <Button
@@ -126,10 +126,10 @@ export function GrantValidityControl({
                   variant="ghost"
                   size="sm"
                   onClick={() => handleSuggestedDateClick(suggestion.date)}
-                  className="bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  className="bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
                 >
                   {suggestion.label}
-                  <span className="ml-1.5 text-gray-500">
+                  <span className="ml-1.5 text-neutral-500">
                     ({format(suggestion.date, 'MMM d, yyyy')})
                   </span>
                 </Button>
@@ -141,7 +141,7 @@ export function GrantValidityControl({
 
       {/* No expiration message */}
       {!hasExpiration && (
-        <p className="pl-7 text-sm text-gray-600">
+        <p className="pl-7 text-sm text-neutral-600">
           This grant will remain active indefinitely until manually revoked.
         </p>
       )}

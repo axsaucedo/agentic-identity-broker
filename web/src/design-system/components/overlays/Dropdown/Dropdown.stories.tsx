@@ -543,11 +543,11 @@ export const UserAccountMenu: Story = {
         <Dropdown
           items={userAccountMenuItems}
           trigger={
-            <button className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors">
-              <div className="w-8 h-8 bg-navy-600 text-white rounded-full flex items-center justify-center text-sm font-semibold">
+            <button className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-neutral-100 transition-colors">
+              <div className="w-8 h-8 bg-trust-hover text-white rounded-full flex items-center justify-center text-sm font-semibold">
                 JD
               </div>
-              <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>

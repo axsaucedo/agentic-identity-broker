@@ -28,8 +28,8 @@ const switchContainerVariants = cva(
         lg: 'h-7 w-14 focus:ring-offset-2',
       },
       variant: {
-        primary: 'focus:ring-trust-deep data-[checked=true]:bg-trust-deep data-[checked=false]:bg-gray-300',
-        success: 'focus:ring-success-primary data-[checked=true]:bg-success-primary data-[checked=false]:bg-gray-300',
+        primary: 'focus:ring-trust-deep data-[checked=true]:bg-trust-deep data-[checked=false]:bg-neutral-300',
+        success: 'focus:ring-success-primary data-[checked=true]:bg-success-primary data-[checked=false]:bg-neutral-300',
       },
     },
     defaultVariants: {
@@ -146,7 +146,7 @@ export const Switch = React.forwardRef<HTMLDivElement, SwitchProps>(
                 <HeadlessSwitch.Label
                   className={cn(
                     'text-sm font-medium',
-                    disabled ? 'text-gray-500 cursor-not-allowed' : 'text-gray-900 cursor-pointer'
+                    disabled ? 'text-neutral-500 cursor-not-allowed' : 'text-neutral-900 cursor-pointer'
                   )}
                 >
                   {label}
@@ -154,7 +154,7 @@ export const Switch = React.forwardRef<HTMLDivElement, SwitchProps>(
               )}
 
               {description && (
-                <p className="text-xs text-gray-600">{description}</p>
+                <p className="text-xs text-neutral-600">{description}</p>
               )}
             </div>
           )}

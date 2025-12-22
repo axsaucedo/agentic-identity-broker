@@ -41,7 +41,7 @@ const ContentCard = ({
   <div
     className={`rounded-lg p-8 bg-${color}-50 border border-${color}-200 shadow-card`}
   >
-    <h3 className="font-display text-2xl font-semibold text-navy-800 mb-3">
+    <h3 className="font-display text-2xl font-semibold text-trust-deep mb-3">
       {title}
     </h3>
     <p className="text-secondary-700 leading-relaxed">{description}</p>
@@ -71,8 +71,8 @@ const TransitionDemo = ({
           onClick={() => setView('view1')}
           className={`px-4 py-2 rounded-md font-medium transition-colors ${
             view === 'view1'
-              ? 'bg-navy-600 text-white'
-              : 'bg-sand text-navy-700 hover:bg-taupe'
+              ? 'bg-trust-hover text-white'
+              : 'bg-sand text-trust hover:bg-taupe'
           }`}
         >
           View 1
@@ -81,8 +81,8 @@ const TransitionDemo = ({
           onClick={() => setView('view2')}
           className={`px-4 py-2 rounded-md font-medium transition-colors ${
             view === 'view2'
-              ? 'bg-navy-600 text-white'
-              : 'bg-sand text-navy-700 hover:bg-taupe'
+              ? 'bg-trust-hover text-white'
+              : 'bg-sand text-trust hover:bg-taupe'
           }`}
         >
           View 2
@@ -259,8 +259,8 @@ export const EasingVariants: Story = {
               }}
               className={`px-4 py-2 rounded-md font-medium transition-colors ${
                 easing === e.value
-                  ? 'bg-navy-600 text-white'
-                  : 'bg-sand text-navy-700 hover:bg-taupe'
+                  ? 'bg-trust-hover text-white'
+                  : 'bg-sand text-trust hover:bg-taupe'
               }`}
             >
               {e.name}
@@ -292,10 +292,10 @@ export const ConsentFlowExample: Story = {
       <div className="bg-white rounded-lg p-8 shadow-lg-premium border border-slate">
         <div className="space-y-6">
           <div>
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-navy-100 text-navy-700 font-display font-semibold text-xl mb-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-trust-light text-trust font-display font-semibold text-xl mb-4">
               1
             </div>
-            <h2 className="font-display text-3xl font-semibold text-navy-800">
+            <h2 className="font-display text-3xl font-semibold text-trust-deep">
               Welcome to Identity Broker
             </h2>
             <p className="text-secondary-600 mt-2">
@@ -317,7 +317,7 @@ export const ConsentFlowExample: Story = {
           <div className="flex gap-3 pt-4">
             <button
               onClick={() => setStep(2)}
-              className="px-6 py-3 bg-navy-600 text-white rounded-md font-medium hover:bg-navy-700 transition-colors"
+              className="px-6 py-3 bg-trust-hover text-white rounded-md font-medium hover:bg-trust transition-colors"
             >
               Continue
             </button>
@@ -330,10 +330,10 @@ export const ConsentFlowExample: Story = {
       <div className="bg-white rounded-lg p-8 shadow-lg-premium border border-slate">
         <div className="space-y-6">
           <div>
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-navy-100 text-navy-700 font-display font-semibold text-xl mb-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-trust-light text-trust font-display font-semibold text-xl mb-4">
               2
             </div>
-            <h2 className="font-display text-3xl font-semibold text-navy-800">
+            <h2 className="font-display text-3xl font-semibold text-trust-deep">
               Review Permissions
             </h2>
             <p className="text-secondary-600 mt-2">
@@ -342,9 +342,9 @@ export const ConsentFlowExample: Story = {
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-success-light border border-success-light">
               <svg
-                className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0"
+                className="w-5 h-5 text-success-primary mt-0.5 flex-shrink-0"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
@@ -355,18 +355,18 @@ export const ConsentFlowExample: Story = {
                 />
               </svg>
               <div>
-                <h4 className="font-semibold text-emerald-900">
+                <h4 className="font-semibold text-success-dark">
                   Read your profile
                 </h4>
-                <p className="text-sm text-emerald-700">
+                <p className="text-sm text-success-hover">
                   Access your basic profile information
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-success-light border border-success-light">
               <svg
-                className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0"
+                className="w-5 h-5 text-success-primary mt-0.5 flex-shrink-0"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
@@ -377,10 +377,10 @@ export const ConsentFlowExample: Story = {
                 />
               </svg>
               <div>
-                <h4 className="font-semibold text-emerald-900">
+                <h4 className="font-semibold text-success-dark">
                   Manage your sessions
                 </h4>
-                <p className="text-sm text-emerald-700">
+                <p className="text-sm text-success-hover">
                   Create and manage authentication sessions
                 </p>
               </div>
@@ -390,13 +390,13 @@ export const ConsentFlowExample: Story = {
           <div className="flex gap-3 pt-4">
             <button
               onClick={() => setStep(1)}
-              className="px-6 py-3 bg-sand text-navy-700 rounded-md font-medium hover:bg-taupe transition-colors"
+              className="px-6 py-3 bg-sand text-trust rounded-md font-medium hover:bg-taupe transition-colors"
             >
               Back
             </button>
             <button
               onClick={() => setStep(3)}
-              className="px-6 py-3 bg-navy-600 text-white rounded-md font-medium hover:bg-navy-700 transition-colors"
+              className="px-6 py-3 bg-trust-hover text-white rounded-md font-medium hover:bg-trust transition-colors"
             >
               Continue
             </button>
@@ -409,10 +409,10 @@ export const ConsentFlowExample: Story = {
       <div className="bg-white rounded-lg p-8 shadow-lg-premium border border-slate">
         <div className="space-y-6">
           <div>
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 font-display font-semibold text-xl mb-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-success-light text-success-hover font-display font-semibold text-xl mb-4">
               3
             </div>
-            <h2 className="font-display text-3xl font-semibold text-navy-800">
+            <h2 className="font-display text-3xl font-semibold text-trust-deep">
               Grant Consent
             </h2>
             <p className="text-secondary-600 mt-2">
@@ -434,7 +434,7 @@ export const ConsentFlowExample: Story = {
               <input
                 type="checkbox"
                 id="terms"
-                className="mt-1 w-4 h-4 text-navy-600 rounded border-secondary-300 focus:ring-navy-500"
+                className="mt-1 w-4 h-4 text-trust-hover rounded border-secondary-300 focus:ring-trust"
               />
               <label htmlFor="terms" className="text-sm text-secondary-700">
                 I have read and understood the requested permissions and agree to
@@ -446,13 +446,13 @@ export const ConsentFlowExample: Story = {
           <div className="flex gap-3 pt-4">
             <button
               onClick={() => setStep(2)}
-              className="px-6 py-3 bg-sand text-navy-700 rounded-md font-medium hover:bg-taupe transition-colors"
+              className="px-6 py-3 bg-sand text-trust rounded-md font-medium hover:bg-taupe transition-colors"
             >
               Back
             </button>
             <button
               onClick={() => setStep(1)}
-              className="px-6 py-3 bg-emerald-600 text-white rounded-md font-medium hover:bg-emerald-700 transition-colors"
+              className="px-6 py-3 bg-success-primary text-white rounded-md font-medium hover:bg-success-hover transition-colors"
             >
               Grant Consent
             </button>
@@ -475,7 +475,7 @@ export const ConsentFlowExample: Story = {
               key={s}
               onClick={() => setStep(s)}
               className={`w-3 h-3 rounded-full transition-colors ${
-                step === s ? 'bg-navy-600' : 'bg-slate'
+                step === s ? 'bg-trust-hover' : 'bg-slate'
               }`}
               aria-label={`Go to step ${s}`}
             />

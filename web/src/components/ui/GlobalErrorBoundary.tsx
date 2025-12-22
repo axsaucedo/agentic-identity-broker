@@ -103,8 +103,8 @@ export class GlobalErrorBoundary extends Component<Props, State> {
 
       // Default comprehensive fallback UI
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 px-4 py-8">
-          <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100 px-4 py-8">
+          <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden border border-neutral-200">
             {/* Header Section with Icon */}
             <div className="bg-gradient-to-r from-red-500 to-red-600 px-8 py-10 text-center">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full mb-4 shadow-lg">
@@ -133,15 +133,15 @@ export class GlobalErrorBoundary extends Component<Props, State> {
 
             {/* Content Section */}
             <div className="px-8 py-8">
-              <p className="text-gray-700 text-lg mb-6 leading-relaxed">
+              <p className="text-neutral-700 text-lg mb-6 leading-relaxed">
                 We're sorry for the inconvenience. An unexpected error occurred while
                 rendering this page. Our team has been notified and we'll look into it.
               </p>
 
               {/* Error Details (Development Only) */}
               {isDevelopment && this.state.error && (
-                <details className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <summary className="cursor-pointer text-sm font-semibold text-gray-700 hover:text-gray-900 mb-3 flex items-center gap-2">
+                <details className="mb-6 p-4 bg-neutral-50 rounded-lg border border-neutral-200">
+                  <summary className="cursor-pointer text-sm font-semibold text-neutral-700 hover:text-neutral-900 mb-3 flex items-center gap-2">
                     <svg
                       className="w-5 h-5"
                       fill="none"
@@ -159,7 +159,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                   </summary>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">
+                      <p className="text-xs font-semibold text-neutral-600 mb-1">
                         Error Message:
                       </p>
                       <pre className="text-xs font-mono text-red-700 whitespace-pre-wrap break-words bg-red-50 p-3 rounded border border-red-200">
@@ -168,10 +168,10 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                     </div>
                     {this.state.errorInfo && this.state.errorInfo.componentStack && (
                       <div>
-                        <p className="text-xs font-semibold text-gray-600 mb-1">
+                        <p className="text-xs font-semibold text-neutral-600 mb-1">
                           Component Stack:
                         </p>
-                        <pre className="text-xs font-mono text-gray-700 whitespace-pre-wrap break-words bg-gray-100 p-3 rounded border border-gray-300 max-h-64 overflow-y-auto">
+                        <pre className="text-xs font-mono text-neutral-700 whitespace-pre-wrap break-words bg-neutral-100 p-3 rounded border border-neutral-300 max-h-64 overflow-y-auto">
                           {this.state.errorInfo.componentStack}
                         </pre>
                       </div>
@@ -235,7 +235,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                 </button>
                 <button
                   onClick={this.handleGoHome}
-                  className="flex-1 flex items-center justify-center gap-2 bg-gray-200 text-gray-800 px-6 py-3 rounded-lg hover:bg-gray-300 transition-colors font-semibold shadow-sm hover:shadow-md"
+                  className="flex-1 flex items-center justify-center gap-2 bg-neutral-200 text-neutral-800 px-6 py-3 rounded-lg hover:bg-neutral-300 transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <svg
                     className="w-5 h-5"
@@ -255,8 +255,8 @@ export class GlobalErrorBoundary extends Component<Props, State> {
               </div>
 
               {/* Additional Help Text */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <p className="text-sm text-gray-500 text-center">
+              <div className="mt-6 pt-6 border-t border-neutral-200">
+                <p className="text-sm text-neutral-500 text-center">
                   If this problem persists, please contact our support team
                 </p>
               </div>

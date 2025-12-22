@@ -30,7 +30,7 @@ export function Skeleton({ width, height, className = '' }: SkeletonProps) {
 
   return (
     <div
-      className={`bg-gray-200 rounded animate-pulse ${className}`}
+      className={`bg-neutral-200 rounded animate-pulse ${className}`}
       style={style}
       aria-hidden="true"
     />

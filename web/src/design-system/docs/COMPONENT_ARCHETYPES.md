@@ -12,7 +12,7 @@ The most important visual element in the interface. Every interaction begins wit
 
 | Property | Value | Notes |
 |----------|-------|-------|
-| **Background** | Deep navy (#0d1829) | With subtle gradient overlay for depth |
+| **Background** | Trust Deep (#0A2540) | With subtle gradient overlay for depth |
 | **Text Color** | Pure white (#ffffff) | Maximum contrast and clarity |
 | **Font** | Manrope Medium (500) | Humanist sans-serif, weight 500 |
 | **Height** | 44px | Touch-friendly minimum for mobile |
@@ -28,7 +28,7 @@ The most important visual element in the interface. Every interaction begins wit
 #### Default State
 ```css
 button {
-  background: #0d1829;
+  background: #0A2540; /* trust-deep */
   color: #ffffff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-radius: 6px;
@@ -93,11 +93,11 @@ button.is-loading .spinner {
 
 | Variant | Background | Text | Border | Shadow |
 |---------|-----------|------|--------|--------|
-| **Primary** | #0d1829 (navy) | white | none | md → lg on hover |
-| **Secondary** | #f5f1ed (sand) | #0d1829 | 1px solid #e8e3de | sm → md on hover |
-| **Outline** | transparent | #0d1829 | 2px solid #0d1829 | none |
-| **Ghost** | transparent | #0d1829 | none | none |
-| **Danger** | #dc2626 (red) | white | none | md → lg on hover |
+| **Primary** | #0A2540 (trust-deep) | white | none | md → lg on hover |
+| **Secondary** | #f5f1ed (neutral-100) | #0A2540 | 1px solid #e8e3de | sm → md on hover |
+| **Outline** | transparent | #0A2540 | 2px solid #ddd8d1 | none |
+| **Ghost** | transparent | #0A2540 | none | none |
+| **Danger** | #DC2626 (error-primary) | white | none | md → lg on hover |
 
 ---
 
@@ -163,7 +163,7 @@ The workhorse of the UI. Cards organize content hierarchically and create visual
 ```tsx
 <Card>
   <CardHeader padding="lg">
-    <h2 className="text-2xl font-bold text-navy-900">Card Title</h2>
+    <h2 className="text-2xl font-bold text-trust-deep">Card Title</h2>
   </CardHeader>
   <CardBody padding="lg">
     <p className="text-neutral-700">Card content here</p>
@@ -210,17 +210,17 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 .input {
   height: 44px;
   padding: 12px 16px;
-  border: 1.5px solid #ddd8d1;
+  border: 1.5px solid #ddd8d1; /* neutral-300 */
   border-radius: 6px;
   background: #ffffff;
   font-family: 'Manrope', sans-serif;
   font-size: 1rem;
-  color: #0d1829;
+  color: #0A2540; /* trust-deep */
   transition: border 150ms, box-shadow 150ms;
 }
 
 .input::placeholder {
-  color: #c4bdb3;
+  color: #c4bdb3; /* neutral-400 */
 }
 ```
 
@@ -263,17 +263,17 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 
 ```tsx
 <div className="mb-4">
-  <label htmlFor="email" className="block text-sm font-medium text-navy-900 mb-2">
+  <label htmlFor="email" className="block text-sm font-medium text-trust-deep mb-2">
     Email Address
-    <span className="text-red-600">*</span>
+    <span className="text-error-primary">*</span>
   </label>
   <input
     id="email"
     type="email"
-    className="w-full px-4 py-3 border border-neutral-300 rounded-md focus:border-navy-700 focus:ring-2 focus:ring-navy-700"
+    className="w-full px-4 py-3 border border-neutral-300 rounded-md focus:border-trust focus:ring-2 focus:ring-trust"
     placeholder="you@example.com"
   />
-  <p className="text-sm text-neutral-600 mt-1">We'll never share your email</p>
+  <p className="text-sm text-secondary mt-1">We'll never share your email</p>
 </div>
 ```
 
@@ -282,8 +282,8 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 ```tsx
 {errorMessage && (
   <div className="mt-2 flex items-center gap-2">
-    <AlertCircleIcon className="w-4 h-4 text-red-600" />
-    <p className="text-sm text-red-600">{errorMessage}</p>
+    <AlertCircleIcon className="w-4 h-4 text-error-primary" />
+    <p className="text-sm text-error-primary">{errorMessage}</p>
   </div>
 )}
 ```
@@ -380,7 +380,7 @@ Command attention without aggression. Modals are critical for permission dialogs
 <Modal isOpen={isOpen} onClose={onClose}>
   {/* Header - Optional */}
   <div className="mb-6 pb-6 border-b border-neutral-200">
-    <h2 className="text-2xl font-bold text-navy-900">Modal Title</h2>
+    <h2 className="text-2xl font-bold text-trust-deep">Modal Title</h2>
   </div>
 
   {/* Body */}
@@ -433,10 +433,10 @@ Command attention without aggression. Modals are critical for permission dialogs
 
 ### Consistency Rules
 
-- All primary buttons must use the specified navy background and shadow strategy
+- All primary buttons must use the trust-deep background (#0A2540) and shadow strategy
 - All cards must maintain the double shadow (external + internal highlight)
 - All form inputs must be exactly 44px height for touch accessibility
-- All modals must use the navy overlay with 8px blur
+- All modals must use the trust-deep overlay (rgba(13, 24, 41, 0.5)) with 8px blur
 
 ### Customization
 
@@ -457,7 +457,7 @@ These four component archetypes define the visual identity of the Refined Trust 
 
 | Component | Key Visual Feature | Emotional Signal |
 |-----------|---|---|
-| **Primary Button** | Deep navy + lifting animation | Authority with approachability |
-| **Card** | Double shadow + white on warm | Elevated content, premium quality |
-| **Form Input** | 44px + navy focus ring | Safety and touch-friendly |
-| **Modal** | Navy overlay + slide animation | Important moment, clear focus |
+| **Primary Button** | Trust-deep (#0A2540) + lifting animation | Authority with approachability |
+| **Card** | Double shadow + white on warm neutrals | Elevated content, premium quality |
+| **Form Input** | 44px + trust focus ring | Safety and touch-friendly |
+| **Modal** | Trust-deep overlay + slide animation | Important moment, clear focus |

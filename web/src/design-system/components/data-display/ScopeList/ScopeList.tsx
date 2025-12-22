@@ -48,7 +48,7 @@ const scopeItemVariants = cva(
         default: 'p-3 gap-3',
       },
       selectable: {
-        true: 'cursor-pointer hover:bg-gray-50',
+        true: 'cursor-pointer hover:bg-neutral-50',
         false: 'bg-white',
       },
     },
@@ -60,7 +60,7 @@ const scopeItemVariants = cva(
 );
 
 const categoryHeaderVariants = cva(
-  'flex items-center justify-between p-3 rounded-lg cursor-pointer hover:bg-gray-50 border border-gray-200',
+  'flex items-center justify-between p-3 rounded-lg cursor-pointer hover:bg-neutral-50 border border-neutral-200',
   {
     variants: {
       size: {
@@ -68,7 +68,7 @@ const categoryHeaderVariants = cva(
         default: 'p-3',
       },
       expanded: {
-        true: 'bg-gray-50',
+        true: 'bg-neutral-50',
         false: 'bg-white',
       },
     },
@@ -321,7 +321,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
         <div ref={ref} className={cn(scopeListVariants({ size }), className)} {...props}>
           <Stack gap="md">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="p-4 border border-gray-200 rounded-lg">
+              <div key={i} className="p-4 border border-neutral-200 rounded-lg">
                 <Stack gap="sm">
                   <Skeleton width="120px" height="20px" />
                   <Skeleton count={2} gap="0.5rem" />
@@ -340,7 +340,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
           ref={ref}
           className={cn(
             scopeListVariants({ size }),
-            'flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-gray-300 rounded-lg',
+            'flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-neutral-300 rounded-lg',
             className
           )}
           {...props}
@@ -348,7 +348,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
           {empty || (
             <>
               <svg
-                className="w-12 h-12 text-gray-400 mb-4"
+                className="w-12 h-12 text-neutral-400 mb-4"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -360,8 +360,8 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                   d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
                 />
               </svg>
-              <h3 className="text-lg font-medium text-gray-900 mb-1">No scopes available</h3>
-              <p className="text-sm text-gray-600">There are no permissions to display.</p>
+              <h3 className="text-lg font-medium text-neutral-900 mb-1">No scopes available</h3>
+              <p className="text-sm text-neutral-600">There are no permissions to display.</p>
             </>
           )}
         </div>
@@ -375,14 +375,14 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
           {searchable && (
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <SearchIcon className="text-gray-400" />
+                <SearchIcon className="text-neutral-400" />
               </div>
               <input
                 type="text"
                 placeholder="Search scopes..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-trust focus:border-trust sm:text-sm"
+                className="block w-full pl-10 pr-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-trust focus:border-trust sm:text-sm"
                 aria-label="Search scopes"
               />
             </div>
@@ -390,9 +390,9 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
 
           {/* Grouped scopes */}
           {groupedScopes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 text-center border border-gray-200 rounded-lg">
-              <SearchIcon className="text-gray-400 w-8 h-8 mb-2" />
-              <p className="text-sm text-gray-600">No scopes match your search.</p>
+            <div className="flex flex-col items-center justify-center p-8 text-center border border-neutral-200 rounded-lg">
+              <SearchIcon className="text-neutral-400 w-8 h-8 mb-2" />
+              <p className="text-sm text-neutral-600">No scopes match your search.</p>
             </div>
           ) : (
             <Stack gap="sm">
@@ -400,7 +400,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                 const isExpanded = expandedCategories.has(category) || !expandable;
 
                 return (
-                  <div key={category} className="border border-gray-200 rounded-lg">
+                  <div key={category} className="border border-neutral-200 rounded-lg">
                     {/* Category header */}
                     {expandable ? (
                       <button
@@ -414,21 +414,21 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                         aria-controls={`category-${category}`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-600">{getCategoryIcon(category)}</span>
-                          <span className="font-semibold text-gray-900">{category}</span>
+                          <span className="text-neutral-600">{getCategoryIcon(category)}</span>
+                          <span className="font-semibold text-neutral-900">{category}</span>
                           <Badge variant="neutral" size="sm">
                             {categoryScopes.length}
                           </Badge>
                         </div>
                         <ChevronDownIcon
-                          className={cn('text-gray-600', isExpanded && 'rotate-180')}
+                          className={cn('text-neutral-600', isExpanded && 'rotate-180')}
                         />
                       </button>
                     ) : (
                       <div className={cn(categoryHeaderVariants({ size }), 'cursor-default')}>
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-600">{getCategoryIcon(category)}</span>
-                          <span className="font-semibold text-gray-900">{category}</span>
+                          <span className="text-neutral-600">{getCategoryIcon(category)}</span>
+                          <span className="font-semibold text-neutral-900">{category}</span>
                           <Badge variant="neutral" size="sm">
                             {categoryScopes.length}
                           </Badge>
@@ -438,7 +438,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
 
                     {/* Category scopes */}
                     {isExpanded && (
-                      <div id={`category-${category}`} className="border-t border-gray-200">
+                      <div id={`category-${category}`} className="border-t border-neutral-200">
                         <Stack gap="xs" className="p-2">
                           {categoryScopes.map((scope) => {
                             const isSelected = selectedIds.has(scope.id);
@@ -472,7 +472,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                                 )}
 
                                 {/* Scope icon */}
-                                <div className="flex-shrink-0 pt-0.5 text-gray-600">
+                                <div className="flex-shrink-0 pt-0.5 text-neutral-600">
                                   {scope.icon || getCategoryIcon(scope.category)}
                                 </div>
 
@@ -482,7 +482,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                                     <div className="flex-1 min-w-0">
                                       <p
                                         className={cn(
-                                          'font-mono font-medium text-gray-900',
+                                          'font-mono font-medium text-neutral-900',
                                           size === 'compact' ? 'text-xs' : 'text-sm'
                                         )}
                                       >
@@ -490,7 +490,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                                       </p>
                                       <p
                                         className={cn(
-                                          'text-gray-600 mt-0.5',
+                                          'text-neutral-600 mt-0.5',
                                           size === 'compact' ? 'text-xs' : 'text-sm'
                                         )}
                                       >

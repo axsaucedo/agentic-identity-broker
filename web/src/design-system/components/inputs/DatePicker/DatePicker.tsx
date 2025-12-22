@@ -29,9 +29,9 @@ const dateInputVariants = cva(
         lg: 'px-4 py-3.5 text-lg h-13',
       },
       variant: {
-        default: 'border-gray-300 text-gray-900 placeholder-gray-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
-        error: 'border-error-primary bg-error-light/20 text-gray-900 placeholder-gray-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
-        success: 'border-success-primary bg-success-light/20 text-gray-900 placeholder-gray-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
+        default: 'border-neutral-300 text-neutral-900 placeholder-neutral-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
+        error: 'border-error-primary bg-error-light/20 text-neutral-900 placeholder-neutral-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
+        success: 'border-success-primary bg-success-light/20 text-neutral-900 placeholder-neutral-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
       },
     },
     defaultVariants: {
@@ -162,7 +162,7 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
         {label && (
           <label
             htmlFor={generatedId}
-            className="block text-sm font-medium text-gray-900 mb-2"
+            className="block text-sm font-medium text-neutral-900 mb-2"
           >
             {label}
             {required && <span className="ml-1 text-error-primary">*</span>}
@@ -180,7 +180,7 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
           disabled={disabled}
           className={cn(
             dateInputVariants({ size, variant }),
-            disabled && 'bg-gray-50 cursor-not-allowed opacity-60',
+            disabled && 'bg-neutral-50 cursor-not-allowed opacity-60',
             className
           )}
           aria-invalid={!!errorMessage}
@@ -216,7 +216,7 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
           {helperText && !errorMessage && !successMessage && (
             <p
               id={`${generatedId}-description`}
-              className="text-xs text-gray-600"
+              className="text-xs text-neutral-600"
             >
               {helperText}
             </p>

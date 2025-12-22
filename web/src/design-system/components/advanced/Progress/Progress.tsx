@@ -26,7 +26,7 @@ const progressContainerVariants = cva(
   {
     variants: {
       type: {
-        linear: 'w-full overflow-hidden rounded-full bg-gray-200',
+        linear: 'w-full overflow-hidden rounded-full bg-neutral-200',
         circular: 'inline-flex items-center justify-center',
       },
       size: {
@@ -53,8 +53,8 @@ const progressBarVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-navy-600',
-        success: 'bg-emerald-600',
+        default: 'bg-trust-hover',
+        success: 'bg-success-primary',
         warning: 'bg-amber-500',
         error: 'bg-red-600',
       },
@@ -72,12 +72,12 @@ const progressBarVariants = cva(
       {
         variant: 'default',
         striped: true,
-        class: 'from-navy-600 via-navy-700 to-navy-600',
+        class: 'from-trust-hover via-trust to-trust-hover',
       },
       {
         variant: 'success',
         striped: true,
-        class: 'from-emerald-600 via-emerald-700 to-emerald-600',
+        class: 'from-success-primary via-success-hover to-success-primary',
       },
       {
         variant: 'warning',
@@ -105,8 +105,8 @@ const circularSizeMap = {
 };
 
 const circularVariantColorMap = {
-  default: 'stroke-navy-600',
-  success: 'stroke-emerald-600',
+  default: 'stroke-trust-hover',
+  success: 'stroke-success-primary',
   warning: 'stroke-amber-500',
   error: 'stroke-red-600',
 };
@@ -220,12 +220,12 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
           {(label || showValue) && (
             <div className="flex items-center justify-between mb-2">
               {label && (
-                <span className="text-sm font-medium text-gray-700">
+                <span className="text-sm font-medium text-neutral-700">
                   {label}
                 </span>
               )}
               {showValue && (
-                <span className="text-sm font-medium text-gray-600">
+                <span className="text-sm font-medium text-neutral-600">
                   {getValueText()}
                 </span>
               )}
@@ -276,7 +276,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       <div ref={ref} className={cn('inline-flex flex-col items-center gap-2', className)} {...props}>
         {/* Label above circle */}
         {label && (
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-neutral-700">
             {label}
           </span>
         )}
@@ -306,7 +306,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
               fill="none"
               stroke="currentColor"
               strokeWidth={strokeWidth}
-              className="text-gray-200"
+              className="text-neutral-200"
             />
 
             {/* Progress arc */}
@@ -334,7 +334,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
           {showValue && !isIndeterminate && (
             <div className="absolute inset-0 flex items-center justify-center">
               <span className={cn(
-                'font-semibold text-gray-900',
+                'font-semibold text-neutral-900',
                 size === 'sm' && 'text-xs',
                 size === 'md' && 'text-sm',
                 size === 'lg' && 'text-base',

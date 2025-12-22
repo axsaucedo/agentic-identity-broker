@@ -42,7 +42,7 @@ const meta = {
     },
     backgroundColor: {
       control: 'select',
-      options: ['white', 'gray-50', 'blue-50'],
+      options: ['white', 'neutral-50', 'blue-50'],
       description: 'Background color',
     },
     clickable: {
@@ -66,8 +66,8 @@ export const Default: Story = {
   args: {
     children: (
       <Stack gap="sm">
-        <h3 className="text-lg font-semibold text-gray-900">Simple Card</h3>
-        <p className="text-gray-700">
+        <h3 className="text-lg font-semibold text-neutral-900">Simple Card</h3>
+        <p className="text-neutral-700">
           This is a simple card with default styling. It uses medium padding,
           subtle border, and white background.
         </p>
@@ -83,12 +83,12 @@ export const WithHeader: Story = {
   args: {
     header: (
       <Stack gap="xs">
-        <h2 className="text-xl font-bold text-gray-900">Card Header</h2>
-        <p className="text-sm text-gray-600">Optional subtitle or metadata</p>
+        <h2 className="text-xl font-bold text-neutral-900">Card Header</h2>
+        <p className="text-sm text-neutral-600">Optional subtitle or metadata</p>
       </Stack>
     ),
     children: (
-      <p className="text-gray-700">
+      <p className="text-neutral-700">
         This card has a header section that is visually separated from the main
         content area. Perfect for titled sections or labeled containers.
       </p>
@@ -103,8 +103,8 @@ export const WithFooter: Story = {
   args: {
     children: (
       <Stack gap="sm">
-        <h3 className="text-lg font-semibold text-gray-900">Card with Footer</h3>
-        <p className="text-gray-700">
+        <h3 className="text-lg font-semibold text-neutral-900">Card with Footer</h3>
+        <p className="text-neutral-700">
           This card demonstrates the footer area, commonly used for actions or
           additional metadata.
         </p>
@@ -130,7 +130,7 @@ export const WithHeaderAndFooter: Story = {
   args: {
     header: (
       <Stack direction="row" justify="space-between" align="center">
-        <h2 className="text-xl font-bold text-gray-900">Complete Card</h2>
+        <h2 className="text-xl font-bold text-neutral-900">Complete Card</h2>
         <Badge variant="info" size="sm">
           New
         </Badge>
@@ -138,12 +138,12 @@ export const WithHeaderAndFooter: Story = {
     ),
     children: (
       <Stack gap="sm">
-        <p className="text-gray-700">
+        <p className="text-neutral-700">
           This card demonstrates the complete structure with both header and
           footer sections. Use this pattern for complex card layouts that need
           clear separation of title, content, and actions.
         </p>
-        <ul className="list-disc list-inside text-gray-600 text-sm space-y-1">
+        <ul className="list-disc list-inside text-neutral-600 text-sm space-y-1">
           <li>Header for title and metadata</li>
           <li>Body for main content</li>
           <li>Footer for actions or supplementary info</li>
@@ -152,7 +152,7 @@ export const WithHeaderAndFooter: Story = {
     ),
     footer: (
       <Stack direction="row" justify="space-between" align="center">
-        <span className="text-sm text-gray-600">Last updated: 2 hours ago</span>
+        <span className="text-sm text-neutral-600">Last updated: 2 hours ago</span>
         <Stack direction="row" gap="sm">
           <Button variant="outline" size="sm">
             Edit
@@ -182,22 +182,22 @@ export const PaddingVariants: Story = {
 
       <Card padding="compact">
         <Stack gap="xs">
-          <p className="font-semibold text-gray-900">Padding: compact (16px)</p>
-          <p className="text-sm text-gray-600">Compact cards for tight layouts</p>
+          <p className="font-semibold text-neutral-900">Padding: compact (16px)</p>
+          <p className="text-sm text-neutral-600">Compact cards for tight layouts</p>
         </Stack>
       </Card>
 
       <Card padding="default">
         <Stack gap="xs">
-          <p className="font-semibold text-gray-900">Padding: default (24px)</p>
-          <p className="text-sm text-gray-600">Standard spacing - default</p>
+          <p className="font-semibold text-neutral-900">Padding: default (24px)</p>
+          <p className="text-sm text-neutral-600">Standard spacing - default</p>
         </Stack>
       </Card>
 
       <Card padding="spacious">
         <Stack gap="xs">
-          <p className="font-semibold text-gray-900">Padding: spacious (32px)</p>
-          <p className="text-sm text-gray-600">Generous spacing for emphasis</p>
+          <p className="font-semibold text-neutral-900">Padding: spacious (32px)</p>
+          <p className="text-sm text-neutral-600">Generous spacing for emphasis</p>
         </Stack>
       </Card>
     </Stack>
@@ -213,8 +213,8 @@ export const BorderVariants: Story = {
     <Stack gap="lg">
       <Card border="subtle">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-gray-900">Subtle Border</h3>
-          <p className="text-gray-700">
+          <h3 className="text-lg font-semibold text-neutral-900">Subtle Border</h3>
+          <p className="text-neutral-700">
             Uses a ring-based border (ring-1) for a softer, more refined
             appearance. This is the default style.
           </p>
@@ -223,8 +223,8 @@ export const BorderVariants: Story = {
 
       <Card border="bordered">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-gray-900">Bordered</h3>
-          <p className="text-gray-700">
+          <h3 className="text-lg font-semibold text-neutral-900">Bordered</h3>
+          <p className="text-neutral-700">
             Uses a solid border for stronger definition and visual separation.
             Good for high-contrast layouts.
           </p>
@@ -243,8 +243,8 @@ export const HoverLift: Story = {
     <Stack gap="lg">
       <Card hover="none">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-gray-900">No Hover Effect</h3>
-          <p className="text-gray-700">
+          <h3 className="text-lg font-semibold text-neutral-900">No Hover Effect</h3>
+          <p className="text-neutral-700">
             Static card with no hover interaction. Use for non-interactive
             content displays.
           </p>
@@ -253,8 +253,8 @@ export const HoverLift: Story = {
 
       <Card hover="lift">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-gray-900">Hover Lift Effect</h3>
-          <p className="text-gray-700">
+          <h3 className="text-lg font-semibold text-neutral-900">Hover Lift Effect</h3>
+          <p className="text-neutral-700">
             Hover over this card to see the lift effect. The card subtly
             elevates with increased shadow. Perfect for interactive cards.
           </p>
@@ -274,12 +274,12 @@ export const Clickable: Story = {
     onClick: () => alert('Card clicked!'),
     children: (
       <Stack gap="sm">
-        <h3 className="text-lg font-semibold text-gray-900">Clickable Card</h3>
-        <p className="text-gray-700">
+        <h3 className="text-lg font-semibold text-neutral-900">Clickable Card</h3>
+        <p className="text-neutral-700">
           This entire card is clickable. Notice the cursor changes to pointer
           on hover. Click anywhere to trigger the action.
         </p>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-neutral-600">
           Supports keyboard navigation with Enter/Space keys.
         </p>
       </Stack>
@@ -296,18 +296,18 @@ export const BackgroundVariants: Story = {
     <Stack gap="lg">
       <Card backgroundColor="white">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-gray-900">White Background</h3>
-          <p className="text-gray-700">
+          <h3 className="text-lg font-semibold text-neutral-900">White Background</h3>
+          <p className="text-neutral-700">
             Pure white background - the default. Best for most use cases and
             provides maximum contrast.
           </p>
         </Stack>
       </Card>
 
-      <Card backgroundColor="gray-50">
+      <Card backgroundColor="neutral-50">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-gray-900">Gray-50 Background</h3>
-          <p className="text-gray-700">
+          <h3 className="text-lg font-semibold text-neutral-900">Gray-50 Background</h3>
+          <p className="text-neutral-700">
             Subtle gray background for secondary or less prominent cards.
             Creates visual hierarchy through background color.
           </p>
@@ -316,8 +316,8 @@ export const BackgroundVariants: Story = {
 
       <Card backgroundColor="blue-50">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-gray-900">Blue-50 Background</h3>
-          <p className="text-gray-700">
+          <h3 className="text-lg font-semibold text-neutral-900">Blue-50 Background</h3>
+          <p className="text-neutral-700">
             Light blue background for highlighted or informational content.
             Draws attention without being too bold.
           </p>
@@ -335,7 +335,7 @@ export const WithDividers: Story = {
   render: () => (
     <Stack gap="lg">
       <Card
-        header={<h2 className="text-xl font-bold text-gray-900">With Dividers</h2>}
+        header={<h2 className="text-xl font-bold text-neutral-900">With Dividers</h2>}
         footer={
           <Stack direction="row" gap="sm" justify="end">
             <Button variant="outline" size="sm">
@@ -348,14 +348,14 @@ export const WithDividers: Story = {
         }
         divider
       >
-        <p className="text-gray-700">
+        <p className="text-neutral-700">
           This card uses dividers to create clear visual separation between
           header, body, and footer sections. Great for structured content.
         </p>
       </Card>
 
       <Card
-        header={<h2 className="text-xl font-bold text-gray-900">Without Dividers</h2>}
+        header={<h2 className="text-xl font-bold text-neutral-900">Without Dividers</h2>}
         footer={
           <Stack direction="row" gap="sm" justify="end">
             <Button variant="outline" size="sm">
@@ -368,7 +368,7 @@ export const WithDividers: Story = {
         }
         divider={false}
       >
-        <p className="text-gray-700">
+        <p className="text-neutral-700">
           This card omits dividers for a more seamless appearance. The sections
           flow together with spacing alone providing separation.
         </p>
@@ -382,7 +382,7 @@ export const WithDividers: Story = {
  */
 export const WithIcon: Story = {
   args: {
-    header: <h2 className="text-xl font-bold text-gray-900">Settings</h2>,
+    header: <h2 className="text-xl font-bold text-neutral-900">Settings</h2>,
     headerIcon: (
       <svg
         className="w-6 h-6"
@@ -407,16 +407,16 @@ export const WithIcon: Story = {
     divider: true,
     children: (
       <Stack gap="sm">
-        <p className="text-gray-700">
+        <p className="text-neutral-700">
           Cards can include an icon in the header section. The icon is
           automatically positioned before the header content with proper spacing.
         </p>
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
             <input type="checkbox" className="rounded" />
             Enable notifications
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
             <input type="checkbox" className="rounded" />
             Auto-save changes
           </label>
@@ -435,15 +435,15 @@ export const SizingVariants: Story = {
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <Card padding="compact">
         <Stack gap="xs">
-          <h4 className="text-sm font-semibold text-gray-900">Compact</h4>
-          <p className="text-xs text-gray-600">Small card with minimal content</p>
+          <h4 className="text-sm font-semibold text-neutral-900">Compact</h4>
+          <p className="text-xs text-neutral-600">Small card with minimal content</p>
         </Stack>
       </Card>
 
       <Card padding="default">
         <Stack gap="sm">
-          <h3 className="text-base font-semibold text-gray-900">Standard</h3>
-          <p className="text-sm text-gray-600">
+          <h3 className="text-base font-semibold text-neutral-900">Standard</h3>
+          <p className="text-sm text-neutral-600">
             Regular card with moderate amount of content and spacing
           </p>
         </Stack>
@@ -451,8 +451,8 @@ export const SizingVariants: Story = {
 
       <Card padding="spacious">
         <Stack gap="md">
-          <h2 className="text-lg font-semibold text-gray-900">Expanded</h2>
-          <p className="text-base text-gray-600">
+          <h2 className="text-lg font-semibold text-neutral-900">Expanded</h2>
+          <p className="text-base text-neutral-600">
             Large card with generous spacing and more detailed content. Ideal
             for feature highlights or important information.
           </p>
@@ -477,10 +477,10 @@ export const GridLayout: Story = {
           onClick={() => alert(`Card ${num} clicked`)}
         >
           <Stack gap="sm">
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-lg font-semibold text-neutral-900">
               Card {num}
             </h3>
-            <p className="text-gray-700">
+            <p className="text-neutral-700">
               This is card number {num} in a responsive grid layout. Cards adapt
               to 1, 2, or 3 columns based on screen size.
             </p>
@@ -514,10 +514,10 @@ export const ConsentApplicationCard: Story = {
               size="lg"
             />
             <Stack gap="xs">
-              <h2 className="text-xl font-bold text-gray-900">
+              <h2 className="text-xl font-bold text-neutral-900">
                 Analytics Platform
               </h2>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-neutral-600">
                 analytics.example.com
               </p>
             </Stack>
@@ -525,7 +525,7 @@ export const ConsentApplicationCard: Story = {
         }
         footer={
           <Stack gap="md">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-neutral-600">
               <svg
                 className="w-4 h-4"
                 fill="none"
@@ -558,13 +558,13 @@ export const ConsentApplicationCard: Story = {
       >
         <Stack gap="md">
           <div>
-            <h3 className="text-base font-semibold text-gray-900 mb-2">
+            <h3 className="text-base font-semibold text-neutral-900 mb-2">
               Requested Permissions
             </h3>
             <Stack gap="sm">
               <div className="flex items-start gap-3">
                 <svg
-                  className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0"
+                  className="w-5 h-5 text-success-primary mt-0.5 flex-shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -577,10 +577,10 @@ export const ConsentApplicationCard: Story = {
                   />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-neutral-900">
                     Read your profile information
                   </p>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-neutral-600">
                     Access your name, email, and profile picture
                   </p>
                 </div>
@@ -588,7 +588,7 @@ export const ConsentApplicationCard: Story = {
 
               <div className="flex items-start gap-3">
                 <svg
-                  className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0"
+                  className="w-5 h-5 text-success-primary mt-0.5 flex-shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -601,10 +601,10 @@ export const ConsentApplicationCard: Story = {
                   />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-neutral-900">
                     Access your organization data
                   </p>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-neutral-600">
                     View organization membership and roles
                   </p>
                 </div>
@@ -612,7 +612,7 @@ export const ConsentApplicationCard: Story = {
 
               <div className="flex items-start gap-3">
                 <svg
-                  className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0"
+                  className="w-5 h-5 text-success-primary mt-0.5 flex-shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -625,10 +625,10 @@ export const ConsentApplicationCard: Story = {
                   />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-neutral-900">
                     Read analytics reports
                   </p>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-neutral-600">
                     Access usage statistics and reports
                   </p>
                 </div>
@@ -637,7 +637,7 @@ export const ConsentApplicationCard: Story = {
           </div>
 
           <div className="bg-blue-50 -mx-6 px-6 py-3 rounded">
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-neutral-700">
               <span className="font-semibold">Privacy notice:</span> We will never
               share your data with third parties without your explicit consent.
             </p>
@@ -663,8 +663,8 @@ export const UserProfileCard: Story = {
               size="xl"
             />
             <Stack gap="xs">
-              <h2 className="text-xl font-bold text-gray-900">John Doe</h2>
-              <p className="text-sm text-gray-600">Senior Developer</p>
+              <h2 className="text-xl font-bold text-neutral-900">John Doe</h2>
+              <p className="text-sm text-neutral-600">Senior Developer</p>
               <div className="flex gap-2">
                 <Badge variant="success" size="sm">
                   Active
@@ -676,21 +676,21 @@ export const UserProfileCard: Story = {
             </Stack>
           </Stack>
 
-          <div className="border-t border-gray-200 pt-4">
+          <div className="border-t border-neutral-200 pt-4">
             <Stack gap="sm">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Email</span>
-                <span className="text-gray-900 font-medium">
+                <span className="text-neutral-600">Email</span>
+                <span className="text-neutral-900 font-medium">
                   john.doe@example.com
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Department</span>
-                <span className="text-gray-900 font-medium">Engineering</span>
+                <span className="text-neutral-600">Department</span>
+                <span className="text-neutral-900 font-medium">Engineering</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Location</span>
-                <span className="text-gray-900 font-medium">San Francisco, CA</span>
+                <span className="text-neutral-600">Location</span>
+                <span className="text-neutral-900 font-medium">San Francisco, CA</span>
               </div>
             </Stack>
           </div>

@@ -11,7 +11,7 @@ import { EmptyState } from './EmptyState';
 // Icon components for stories
 const SearchIcon = () => (
   <svg
-    className="w-full h-full text-gray-400"
+    className="w-full h-full text-neutral-400"
     fill="none"
     viewBox="0 0 24 24"
     stroke="currentColor"
@@ -28,7 +28,7 @@ const SearchIcon = () => (
 
 const LockIcon = () => (
   <svg
-    className="w-full h-full text-gray-400"
+    className="w-full h-full text-neutral-400"
     fill="none"
     viewBox="0 0 24 24"
     stroke="currentColor"
@@ -45,7 +45,7 @@ const LockIcon = () => (
 
 const DocumentIcon = () => (
   <svg
-    className="w-full h-full text-gray-400"
+    className="w-full h-full text-neutral-400"
     fill="none"
     viewBox="0 0 24 24"
     stroke="currentColor"
@@ -62,7 +62,7 @@ const DocumentIcon = () => (
 
 const InboxIcon = () => (
   <svg
-    className="w-full h-full text-gray-400"
+    className="w-full h-full text-neutral-400"
     fill="none"
     viewBox="0 0 24 24"
     stroke="currentColor"
@@ -79,7 +79,7 @@ const InboxIcon = () => (
 
 const StarIcon = () => (
   <svg
-    className="w-full h-full text-gray-400"
+    className="w-full h-full text-neutral-400"
     fill="none"
     viewBox="0 0 24 24"
     stroke="currentColor"
@@ -96,7 +96,7 @@ const StarIcon = () => (
 
 const ClipboardIcon = () => (
   <svg
-    className="w-full h-full text-gray-400"
+    className="w-full h-full text-neutral-400"
     fill="none"
     viewBox="0 0 24 24"
     stroke="currentColor"
@@ -262,7 +262,7 @@ export const NoPermissions: Story = {
  */
 export const Compact: Story = {
   render: () => (
-    <div className="max-w-xs border border-gray-200 rounded-lg p-4">
+    <div className="max-w-xs border border-neutral-200 rounded-lg p-4">
       <EmptyState
         size="compact"
         icon={<InboxIcon />}
@@ -354,8 +354,8 @@ export const ConsentScenarios: Story = {
   render: () => (
     <div className="space-y-12 max-w-4xl mx-auto">
       {/* No active consents */}
-      <div className="border border-gray-200 rounded-lg p-8">
-        <h4 className="text-sm font-semibold text-gray-700 mb-6">
+      <div className="border border-neutral-200 rounded-lg p-8">
+        <h4 className="text-sm font-semibold text-neutral-700 mb-6">
           Active Consents Tab
         </h4>
         <EmptyState
@@ -370,8 +370,8 @@ export const ConsentScenarios: Story = {
       </div>
 
       {/* No pending requests */}
-      <div className="border border-gray-200 rounded-lg p-8">
-        <h4 className="text-sm font-semibold text-gray-700 mb-6">
+      <div className="border border-neutral-200 rounded-lg p-8">
+        <h4 className="text-sm font-semibold text-neutral-700 mb-6">
           Pending Requests Tab
         </h4>
         <EmptyState
@@ -382,8 +382,8 @@ export const ConsentScenarios: Story = {
       </div>
 
       {/* No revoked consents */}
-      <div className="border border-gray-200 rounded-lg p-8">
-        <h4 className="text-sm font-semibold text-gray-700 mb-6">
+      <div className="border border-neutral-200 rounded-lg p-8">
+        <h4 className="text-sm font-semibold text-neutral-700 mb-6">
           Revoked History Tab
         </h4>
         <EmptyState
@@ -398,9 +398,9 @@ export const ConsentScenarios: Story = {
       </div>
 
       {/* Search with no results */}
-      <div className="border border-gray-200 rounded-lg p-8">
+      <div className="border border-neutral-200 rounded-lg p-8">
         <div className="mb-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">
+          <h4 className="text-sm font-semibold text-neutral-700 mb-2">
             Search Results
           </h4>
           <input
@@ -408,7 +408,7 @@ export const ConsentScenarios: Story = {
             placeholder="Search applications..."
             value="xyzabc123"
             readOnly
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+            className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm"
           />
         </div>
         <EmptyState
@@ -436,8 +436,8 @@ export const ConsentScenarios: Story = {
 export const SizeComparison: Story = {
   render: () => (
     <div className="space-y-8">
-      <div className="border border-gray-200 rounded-lg p-4">
-        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-4">
+      <div className="border border-neutral-200 rounded-lg p-4">
+        <h4 className="text-xs font-semibold text-neutral-500 uppercase mb-4">
           Compact Size
         </h4>
         <EmptyState
@@ -452,8 +452,8 @@ export const SizeComparison: Story = {
         />
       </div>
 
-      <div className="border border-gray-200 rounded-lg p-6">
-        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-6">
+      <div className="border border-neutral-200 rounded-lg p-6">
+        <h4 className="text-xs font-semibold text-neutral-500 uppercase mb-6">
           Default Size
         </h4>
         <EmptyState
@@ -472,8 +472,8 @@ export const SizeComparison: Story = {
         />
       </div>
 
-      <div className="border border-gray-200 rounded-lg p-8">
-        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-8">
+      <div className="border border-neutral-200 rounded-lg p-8">
+        <h4 className="text-xs font-semibold text-neutral-500 uppercase mb-8">
           Expanded Size
         </h4>
         <EmptyState
@@ -505,11 +505,11 @@ export const SizeComparison: Story = {
 export const Accessibility: Story = {
   render: () => (
     <div className="space-y-6 max-w-3xl">
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-        <h4 className="text-sm font-semibold text-gray-900 mb-2">
+      <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+        <h4 className="text-sm font-semibold text-neutral-900 mb-2">
           Accessibility Features
         </h4>
-        <ul className="text-sm text-gray-700 space-y-1">
+        <ul className="text-sm text-neutral-700 space-y-1">
           <li>• Uses <code>role="status"</code> and <code>aria-live="polite"</code></li>
           <li>• Icons are decorative with <code>aria-hidden="true"</code></li>
           <li>• All interactive elements are keyboard accessible</li>

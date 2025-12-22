@@ -59,19 +59,19 @@ export const Sizes: Story = {
     <div className="flex items-center gap-8">
       <div className="flex flex-col items-center gap-2">
         <Spinner size="xs" />
-        <span className="text-xs text-gray-600">Extra Small</span>
+        <span className="text-xs text-neutral-600">Extra Small</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Spinner size="sm" />
-        <span className="text-xs text-gray-600">Small</span>
+        <span className="text-xs text-neutral-600">Small</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Spinner size="md" />
-        <span className="text-xs text-gray-600">Medium</span>
+        <span className="text-xs text-neutral-600">Medium</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Spinner size="lg" />
-        <span className="text-xs text-gray-600">Large</span>
+        <span className="text-xs text-neutral-600">Large</span>
       </div>
     </div>
   ),
@@ -85,27 +85,27 @@ export const Variants: Story = {
     <div className="flex flex-wrap items-center gap-8">
       <div className="flex flex-col items-center gap-2">
         <Spinner variant="primary" />
-        <span className="text-xs text-gray-600">Primary</span>
+        <span className="text-xs text-neutral-600">Primary</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Spinner variant="success" />
-        <span className="text-xs text-gray-600">Success</span>
+        <span className="text-xs text-neutral-600">Success</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Spinner variant="error" />
-        <span className="text-xs text-gray-600">Error</span>
+        <span className="text-xs text-neutral-600">Error</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Spinner variant="warning" />
-        <span className="text-xs text-gray-600">Warning</span>
+        <span className="text-xs text-neutral-600">Warning</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Spinner variant="info" />
-        <span className="text-xs text-gray-600">Info</span>
+        <span className="text-xs text-neutral-600">Info</span>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Spinner variant="neutral" />
-        <span className="text-xs text-gray-600">Neutral</span>
+        <span className="text-xs text-neutral-600">Neutral</span>
       </div>
     </div>
   ),
@@ -141,15 +141,15 @@ export const WithText: Story = {
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
         <Spinner size="sm" />
-        <span className="text-sm text-gray-700">Loading data...</span>
+        <span className="text-sm text-neutral-700">Loading data...</span>
       </div>
       <div className="flex items-center gap-3">
         <Spinner size="md" variant="success" />
-        <span className="text-base text-gray-700">Processing request...</span>
+        <span className="text-base text-neutral-700">Processing request...</span>
       </div>
       <div className="flex items-center gap-3">
         <Spinner size="lg" variant="primary" />
-        <span className="text-lg text-gray-700">Please wait...</span>
+        <span className="text-lg text-neutral-700">Please wait...</span>
       </div>
     </div>
   ),
@@ -160,10 +160,10 @@ export const WithText: Story = {
  */
 export const CenteredLoading: Story = {
   render: () => (
-    <div className="flex items-center justify-center w-96 h-64 bg-gray-50 rounded-lg border border-gray-200">
+    <div className="flex items-center justify-center w-96 h-64 bg-neutral-50 rounded-lg border border-neutral-200">
       <div className="flex flex-col items-center gap-4">
         <Spinner size="lg" />
-        <p className="text-sm text-gray-600">Loading your data...</p>
+        <p className="text-sm text-neutral-600">Loading your data...</p>
       </div>
     </div>
   ),
@@ -177,7 +177,7 @@ export const InlineUseCases: Story = {
     <div className="flex flex-col gap-6 p-6">
       {/* In a button */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">Button Loading State</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">Button Loading State</h3>
         <button
           className="inline-flex items-center gap-2 px-4 py-2 bg-trust-deep text-white rounded-md"
           disabled
@@ -189,31 +189,31 @@ export const InlineUseCases: Story = {
 
       {/* In a card header */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">Card Loading State</h3>
-        <div className="p-4 bg-white border border-gray-200 rounded-lg">
+        <h3 className="text-sm font-semibold text-neutral-700">Card Loading State</h3>
+        <div className="p-4 bg-white border border-neutral-200 rounded-lg">
           <div className="flex items-center gap-2 mb-3">
             <Spinner size="xs" />
-            <h4 className="text-sm font-medium text-gray-900">Fetching updates...</h4>
+            <h4 className="text-sm font-medium text-neutral-900">Fetching updates...</h4>
           </div>
           <div className="space-y-2">
-            <div className="h-4 bg-gray-100 rounded animate-pulse" />
-            <div className="h-4 bg-gray-100 rounded animate-pulse w-5/6" />
-            <div className="h-4 bg-gray-100 rounded animate-pulse w-4/6" />
+            <div className="h-4 bg-neutral-100 rounded animate-pulse" />
+            <div className="h-4 bg-neutral-100 rounded animate-pulse w-5/6" />
+            <div className="h-4 bg-neutral-100 rounded animate-pulse w-4/6" />
           </div>
         </div>
       </div>
 
       {/* In a list item */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">List Item Loading</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">List Item Loading</h3>
         <div className="space-y-2">
-          <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg">
+          <div className="flex items-center gap-3 p-3 bg-white border border-neutral-200 rounded-lg">
             <Spinner size="xs" variant="info" />
-            <span className="text-sm text-gray-700">Syncing permissions...</span>
+            <span className="text-sm text-neutral-700">Syncing permissions...</span>
           </div>
-          <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg">
+          <div className="flex items-center gap-3 p-3 bg-white border border-neutral-200 rounded-lg">
             <Spinner size="xs" variant="success" />
-            <span className="text-sm text-gray-700">Updating grants...</span>
+            <span className="text-sm text-neutral-700">Updating grants...</span>
           </div>
         </div>
       </div>
@@ -265,7 +265,7 @@ export const Accessibility: Story = {
   render: () => (
     <div className="flex flex-col gap-6">
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">
+        <h3 className="text-sm font-semibold text-neutral-700">
           Spinners with descriptive labels
         </h3>
         <div className="flex flex-wrap gap-4">
@@ -276,14 +276,14 @@ export const Accessibility: Story = {
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-700">
+        <h3 className="text-sm font-semibold text-neutral-700">
           Live region announcement (for dynamic loading)
         </h3>
-        <div className="p-4 bg-gray-50 rounded-lg">
+        <div className="p-4 bg-neutral-50 rounded-lg">
           <div className="flex items-center gap-3">
             <Spinner size="sm" />
             <div aria-live="polite" aria-atomic="true">
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-neutral-700">
                 Loading... Please wait while we fetch your data.
               </p>
             </div>

@@ -58,7 +58,7 @@ const itemVariants = cva(
       },
       destructive: {
         true: 'text-red-600 hover:bg-red-50 hover:text-red-700',
-        false: 'text-gray-900 hover:bg-navy-50 hover:text-navy-900',
+        false: 'text-neutral-900 hover:bg-trust-light hover:text-trust-deep',
       },
     },
     defaultVariants: {
@@ -256,7 +256,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                     <React.Fragment key={groupIndex}>
                       {/* Section header */}
                       {group.section && (
-                        <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <div className="px-4 py-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
                           {group.section}
                         </div>
                       )}
@@ -277,14 +277,14 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                                   disabled: item.disabled,
                                   destructive: item.destructive,
                                 }),
-                                active && !item.disabled && 'bg-navy-50',
+                                active && !item.disabled && 'bg-trust-light',
                                 'w-full'
                               )}
                               disabled={item.disabled}
                             >
                               {/* Icon or checkmark */}
                               {item.selected ? (
-                                <span className="flex-shrink-0 w-4 h-4 text-navy-700">
+                                <span className="flex-shrink-0 w-4 h-4 text-trust">
                                   <CheckIcon />
                                 </span>
                               ) : item.icon ? (
@@ -302,7 +302,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                                 </div>
                                 {item.description && (
                                   <div className={cn(
-                                    'mt-0.5 text-xs text-gray-500 truncate',
+                                    'mt-0.5 text-xs text-neutral-500 truncate',
                                     item.destructive && 'text-red-500'
                                   )}>
                                     {item.description}
@@ -316,7 +316,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
 
                       {/* Divider between groups */}
                       {groupIndex < groupedItems.length - 1 && (
-                        <div className="my-1 border-t border-gray-200" />
+                        <div className="my-1 border-t border-neutral-200" />
                       )}
                     </React.Fragment>
                   ))}

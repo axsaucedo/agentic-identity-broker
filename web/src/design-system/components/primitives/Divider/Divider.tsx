@@ -46,22 +46,22 @@ const dividerLineVariants = cva('', {
       dashed: '',
     },
     variant: {
-      default: 'bg-gray-300',
-      subtle: 'bg-gray-200',
-      muted: 'bg-gray-100',
+      default: 'bg-neutral-300',
+      subtle: 'bg-neutral-200',
+      muted: 'bg-neutral-100',
     },
   },
   compoundVariants: [
     {
       style: 'dashed',
       orientation: 'horizontal',
-      className: 'border-t border-dashed border-gray-300',
-      // Keep bg-gray-300 for solid fallback
+      className: 'border-t border-dashed border-neutral-300',
+      // Keep bg-neutral-300 for solid fallback
     },
     {
       style: 'dashed',
       orientation: 'vertical',
-      className: 'border-l border-dashed border-gray-300',
+      className: 'border-l border-dashed border-neutral-300',
     },
   ],
   defaultVariants: {
@@ -186,7 +186,7 @@ export const Divider = React.forwardRef<HTMLDivElement, DividerProps>(
         <span
           className={cn(
             spacing,
-            'text-sm text-gray-600 font-medium whitespace-nowrap'
+            'text-sm text-neutral-600 font-medium whitespace-nowrap'
           )}
         >
           {label}

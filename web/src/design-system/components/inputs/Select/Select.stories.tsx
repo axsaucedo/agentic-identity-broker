@@ -247,7 +247,7 @@ export const CustomRendering: Story = {
           <div className="flex items-center justify-between w-full">
             <div className="flex flex-col">
               <span className="font-medium">{option.label}</span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-neutral-500">
                 {String(option.value).toUpperCase()}
               </span>
             </div>
@@ -381,9 +381,9 @@ export const RealWorldUseCases: Story = {
     ];
 
     return (
-      <div className="space-y-8 w-96 p-4 bg-white border border-gray-200 rounded-lg">
+      <div className="space-y-8 w-96 p-4 bg-white border border-neutral-200 rounded-lg">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <h3 className="text-lg font-semibold text-neutral-900 mb-4">
             Grant Temporary Access
           </h3>
 
@@ -459,8 +459,8 @@ export const Accessibility: Story = {
     ];
 
     return (
-      <fieldset className="border border-gray-200 rounded-lg p-6 w-96">
-        <legend className="text-lg font-semibold text-gray-900 mb-4">
+      <fieldset className="border border-neutral-200 rounded-lg p-6 w-96">
+        <legend className="text-lg font-semibold text-neutral-900 mb-4">
           User Role Assignment
         </legend>
 
@@ -475,9 +475,9 @@ export const Accessibility: Story = {
           required
         />
 
-        <div className="mt-6 p-3 bg-gray-50 rounded border border-gray-200">
-          <p className="text-sm font-medium text-gray-900">Accessibility notes:</p>
-          <ul className="text-xs text-gray-700 space-y-1 mt-2">
+        <div className="mt-6 p-3 bg-neutral-50 rounded border border-neutral-200">
+          <p className="text-sm font-medium text-neutral-900">Accessibility notes:</p>
+          <ul className="text-xs text-neutral-700 space-y-1 mt-2">
             <li>• Use Tab to navigate to the select</li>
             <li>• Press Space or Enter to open options</li>
             <li>• Use arrow keys to navigate options</li>

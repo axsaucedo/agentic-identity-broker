@@ -68,8 +68,8 @@ export const Default: Story = {
 
     return (
       <div className="space-y-4 max-w-2xl">
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-700 mb-3">
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+          <p className="text-sm text-neutral-700 mb-3">
             Click the button below to trigger an error and see how the ErrorBoundary
             catches it.
           </p>
@@ -102,8 +102,8 @@ export const WithCustomMessage: Story = {
 
     return (
       <div className="space-y-4 max-w-2xl">
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-700 mb-3">
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+          <p className="text-sm text-neutral-700 mb-3">
             This error boundary has a custom name that appears in the error message.
           </p>
           <Button
@@ -141,8 +141,8 @@ export const WithActions: Story = {
 
     return (
       <div className="space-y-4 max-w-2xl">
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-700 mb-3">
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+          <p className="text-sm text-neutral-700 mb-3">
             The error boundary provides "Try Again" and "Reload Page" buttons to
             recover from errors.
           </p>
@@ -181,8 +181,8 @@ export const Nested: Story = {
 
     return (
       <div className="space-y-4 max-w-3xl">
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-700 mb-3">
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+          <p className="text-sm text-neutral-700 mb-3">
             Nested error boundaries allow you to isolate errors to specific parts of
             your component tree. The inner boundary catches inner errors, while the
             outer boundary only catches if the inner one fails.
@@ -336,8 +336,8 @@ export const WithFallbackUI: Story = {
 
     return (
       <div className="space-y-4 max-w-2xl">
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-700 mb-3">
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+          <p className="text-sm text-neutral-700 mb-3">
             You can provide a custom fallback UI as a function that receives the
             error and retry callback.
           </p>
@@ -376,8 +376,8 @@ export const Playground: Story = {
 
     return (
       <div className="space-y-4 max-w-2xl">
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-700 mb-3">
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+          <p className="text-sm text-neutral-700 mb-3">
             Use the controls below to customize the error boundary behavior. Click
             the button to trigger an error and see it in action.
           </p>
@@ -423,14 +423,14 @@ export const RealWorldExamples: Story = {
     return (
       <div className="space-y-6 max-w-3xl">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <h3 className="text-lg font-semibold text-neutral-900 mb-4">
             Consent Management Error Scenarios
           </h3>
 
           <div className="space-y-4">
             {/* Consent Form Error */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-800 mb-2">
+              <h4 className="text-sm font-semibold text-neutral-800 mb-2">
                 1. Consent Form Validation Error
               </h4>
               <div className="mb-2">
@@ -449,7 +449,7 @@ export const RealWorldExamples: Story = {
                   console.log('Logging consent form error:', error);
                 }}
               >
-                <div className="p-4 bg-white border border-gray-200 rounded-lg">
+                <div className="p-4 bg-white border border-neutral-200 rounded-lg">
                   <BuggyComponent shouldThrow={consentFormError} />
                 </div>
               </ErrorBoundary>
@@ -457,7 +457,7 @@ export const RealWorldExamples: Story = {
 
             {/* API Integration Error */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-800 mb-2">
+              <h4 className="text-sm font-semibold text-neutral-800 mb-2">
                 2. API Integration Error
               </h4>
               <div className="mb-2">
@@ -487,7 +487,7 @@ export const RealWorldExamples: Story = {
                   </div>
                 )}
               >
-                <div className="p-4 bg-white border border-gray-200 rounded-lg">
+                <div className="p-4 bg-white border border-neutral-200 rounded-lg">
                   <BuggyComponent shouldThrow={apiError} />
                 </div>
               </ErrorBoundary>
@@ -495,23 +495,23 @@ export const RealWorldExamples: Story = {
 
             {/* Graceful Degradation */}
             <div>
-              <h4 className="text-sm font-semibold text-gray-800 mb-2">
+              <h4 className="text-sm font-semibold text-neutral-800 mb-2">
                 3. Feature Widget with Graceful Degradation
               </h4>
               <div className="grid grid-cols-2 gap-4">
                 <ErrorBoundary
                   boundaryName="Analytics Widget"
                   fallback={
-                    <div className="p-4 bg-gray-100 border border-gray-300 rounded-lg text-center">
-                      <p className="text-sm text-gray-600">
+                    <div className="p-4 bg-neutral-100 border border-neutral-300 rounded-lg text-center">
+                      <p className="text-sm text-neutral-600">
                         Analytics temporarily unavailable
                       </p>
                     </div>
                   }
                 >
-                  <div className="p-4 bg-white border border-gray-200 rounded-lg">
+                  <div className="p-4 bg-white border border-neutral-200 rounded-lg">
                     <h5 className="font-semibold text-sm mb-2">Analytics</h5>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-neutral-600">
                       Widget working correctly
                     </p>
                   </div>
@@ -520,16 +520,16 @@ export const RealWorldExamples: Story = {
                 <ErrorBoundary
                   boundaryName="Reports Widget"
                   fallback={
-                    <div className="p-4 bg-gray-100 border border-gray-300 rounded-lg text-center">
-                      <p className="text-sm text-gray-600">
+                    <div className="p-4 bg-neutral-100 border border-neutral-300 rounded-lg text-center">
+                      <p className="text-sm text-neutral-600">
                         Reports temporarily unavailable
                       </p>
                     </div>
                   }
                 >
-                  <div className="p-4 bg-white border border-gray-200 rounded-lg">
+                  <div className="p-4 bg-white border border-neutral-200 rounded-lg">
                     <h5 className="font-semibold text-sm mb-2">Reports</h5>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-neutral-600">
                       Widget working correctly
                     </p>
                   </div>
@@ -539,7 +539,7 @@ export const RealWorldExamples: Story = {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-gray-200">
+        <div className="pt-4 border-t border-neutral-200">
           <button
             onClick={() => {
               setConsentFormError(false);
@@ -576,11 +576,11 @@ export const WithErrorLogging: Story = {
 
     return (
       <div className="space-y-4 max-w-3xl">
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <h4 className="text-sm font-semibold text-gray-900 mb-2">
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+          <h4 className="text-sm font-semibold text-neutral-900 mb-2">
             Error Logging Integration
           </h4>
-          <p className="text-sm text-gray-700 mb-3">
+          <p className="text-sm text-neutral-700 mb-3">
             The onError callback allows you to integrate with error tracking services
             like Sentry, LogRocket, or custom logging solutions.
           </p>
@@ -594,12 +594,12 @@ export const WithErrorLogging: Story = {
         </div>
 
         {logs.length > 0 && (
-          <div className="p-4 bg-gray-900 text-green-400 rounded-lg font-mono text-xs">
+          <div className="p-4 bg-neutral-900 text-green-400 rounded-lg font-mono text-xs">
             <div className="flex justify-between items-center mb-2">
               <span className="font-semibold">Error Log:</span>
               <button
                 onClick={() => setLogs([])}
-                className="text-gray-400 hover:text-white text-xs underline"
+                className="text-neutral-400 hover:text-white text-xs underline"
               >
                 Clear
               </button>
@@ -631,11 +631,11 @@ export const ResetOnPropsChange: Story = {
 
     return (
       <div className="space-y-4 max-w-2xl">
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <h4 className="text-sm font-semibold text-gray-900 mb-2">
+        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+          <h4 className="text-sm font-semibold text-neutral-900 mb-2">
             Auto-Reset on Route/Prop Changes
           </h4>
-          <p className="text-sm text-gray-700 mb-3">
+          <p className="text-sm text-neutral-700 mb-3">
             When resetOnPropsChange is enabled, the error boundary automatically
             resets when props change (useful for route transitions).
           </p>
@@ -658,7 +658,7 @@ export const ResetOnPropsChange: Story = {
         </div>
 
         <ErrorBoundary resetOnPropsChange showDetails={false}>
-          <div className="p-4 bg-white border border-gray-200 rounded-lg">
+          <div className="p-4 bg-white border border-neutral-200 rounded-lg">
             <h4 className="text-sm font-semibold mb-2">User Profile: {userId}</h4>
             <BuggyComponent shouldThrow={shouldThrow} />
           </div>
@@ -677,11 +677,11 @@ export const Accessibility: Story = {
   },
   render: () => (
     <div className="space-y-6 max-w-3xl">
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-        <h4 className="text-sm font-semibold text-gray-900 mb-2">
+      <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
+        <h4 className="text-sm font-semibold text-neutral-900 mb-2">
           Accessibility Features
         </h4>
-        <ul className="text-sm text-gray-700 space-y-1 list-disc list-inside">
+        <ul className="text-sm text-neutral-700 space-y-1 list-disc list-inside">
           <li>
             Uses <code>role="alert"</code> for immediate screen reader announcement
           </li>

@@ -45,9 +45,9 @@ const pageButtonVariants = cva(
         lg: 'min-w-[3rem] h-12 px-4 text-lg',
       },
       variant: {
-        default: 'bg-white text-navy-900 border border-gray-300 hover:bg-gray-50 hover:border-gray-400',
+        default: 'bg-white text-trust-deep border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400',
         active: 'bg-trust-deep text-white border-transparent shadow-md',
-        ghost: 'bg-transparent text-navy-900 hover:bg-gray-100',
+        ghost: 'bg-transparent text-trust-deep hover:bg-neutral-100',
       },
     },
     defaultVariants: {
@@ -250,7 +250,7 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
                 <span
                   key={`ellipsis-${index}`}
                   className={cn(
-                    'inline-flex items-center justify-center text-gray-500',
+                    'inline-flex items-center justify-center text-neutral-500',
                     resolvedSize === 'sm' && 'w-8 text-sm',
                     resolvedSize === 'md' && 'w-10 text-base',
                     resolvedSize === 'lg' && 'w-12 text-lg'
@@ -317,7 +317,7 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
         {showInfo && totalPages > 0 && (
           <p
             className={cn(
-              'text-gray-600',
+              'text-neutral-600',
               resolvedSize === 'sm' && 'text-xs',
               resolvedSize === 'md' && 'text-sm',
               resolvedSize === 'lg' && 'text-base'

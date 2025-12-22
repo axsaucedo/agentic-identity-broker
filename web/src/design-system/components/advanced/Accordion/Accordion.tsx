@@ -25,7 +25,7 @@ import { cn } from '@design-system/utils';
 
 const accordionVariants = cva(
   // Base accordion container styles
-  'divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden',
+  'divide-y divide-neutral-200 border border-neutral-200 rounded-lg overflow-hidden',
   {
     variants: {
       size: {
@@ -50,10 +50,10 @@ const accordionItemVariants = cva(
       },
       disabled: {
         true: 'cursor-not-allowed opacity-50',
-        false: 'hover:bg-gray-50 cursor-pointer',
+        false: 'hover:bg-neutral-50 cursor-pointer',
       },
       open: {
-        true: 'bg-gray-50',
+        true: 'bg-neutral-50',
         false: 'bg-white',
       },
     },
@@ -67,7 +67,7 @@ const accordionItemVariants = cva(
 
 const accordionContentVariants = cva(
   // Base content area styles
-  'border-t border-gray-200 bg-white',
+  'border-t border-neutral-200 bg-white',
   {
     variants: {
       size: {
@@ -261,7 +261,7 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
         <div
           ref={ref}
           className={cn(
-            'border border-gray-200 rounded-lg p-8 text-center text-gray-500',
+            'border border-neutral-200 rounded-lg p-8 text-center text-neutral-500',
             className
           )}
         >
@@ -306,11 +306,11 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-gray-900">
+                          <div className="font-semibold text-neutral-900">
                             {item.title}
                           </div>
                           {item.description && (
-                            <div className="mt-1 text-sm text-gray-600">
+                            <div className="mt-1 text-sm text-neutral-600">
                               {item.description}
                             </div>
                           )}
@@ -321,7 +321,7 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
                       </div>
                       <ChevronDownIcon
                         className={cn(
-                          'flex-shrink-0 text-gray-400',
+                          'flex-shrink-0 text-neutral-400',
                           isItemOpen && 'rotate-180'
                         )}
                       />

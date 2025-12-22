@@ -39,10 +39,10 @@ export function ConsentOverviewPage() {
         <div className="space-y-6">
         {/* Page header */}
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900">
+          <h2 className="text-2xl font-semibold text-neutral-900">
             My Agent Delegations
           </h2>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-neutral-600">
             Manage which agents have access to your third-party services.
           </p>
         </div>
@@ -52,7 +52,7 @@ export function ConsentOverviewPage() {
           {/* Loading State */}
           {loading && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+              <h3 className="text-lg font-medium text-neutral-900 mb-4">
                 Loading delegations...
               </h3>
               <DelegationListSkeleton />
@@ -70,7 +70,7 @@ export function ConsentOverviewPage() {
           {/* Success State */}
           {!loading && !error && (
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+              <h3 className="text-lg font-medium text-neutral-900 mb-4">
                 Your Delegations
               </h3>
 
@@ -79,7 +79,7 @@ export function ConsentOverviewPage() {
                 <EmptyState
                   icon={
                     <svg
-                      className="mx-auto h-12 w-12 text-gray-400"
+                      className="mx-auto h-12 w-12 text-neutral-400"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"

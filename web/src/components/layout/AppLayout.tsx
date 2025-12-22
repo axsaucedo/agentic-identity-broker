@@ -23,12 +23,12 @@ function Header() {
   const { userInfo } = useConsent();
 
   return (
-    <div className="bg-white border-b border-gray-200">
+    <div className="bg-white border-b border-neutral-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20 gap-8">
           {/* Logo and branding */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="w-9 h-9 bg-gradient-to-br from-navy-600 to-navy-700 rounded-lg flex items-center justify-center shadow-md">
+            <div className="w-9 h-9 bg-gradient-to-br from-trust-hover to-trust rounded-lg flex items-center justify-center shadow-md">
               <svg
                 className="w-5 h-5 text-white"
                 fill="none"
@@ -44,7 +44,7 @@ function Header() {
               </svg>
             </div>
             <div>
-              <h1 className="text-base font-bold text-navy-900 leading-tight">
+              <h1 className="text-base font-bold text-trust-deep leading-tight">
                 Consent Management
               </h1>
               <p className="text-xs text-slate-600 font-medium">
@@ -57,7 +57,7 @@ function Header() {
           <nav className="flex items-center gap-6 ml-auto">
             <a
               href="/consent"
-              className="text-sm font-medium text-slate-700 hover:text-navy-700 transition-colors duration-200"
+              className="text-sm font-medium text-slate-700 hover:text-trust transition-colors duration-200"
             >
               My Agents
             </a>
@@ -73,7 +73,7 @@ function Header() {
                   shape="circle"
                 />
                 <div className="flex flex-col min-w-0">
-                  <p className="text-sm font-medium text-navy-900 truncate">
+                  <p className="text-sm font-medium text-trust-deep truncate">
                     {userInfo.displayName}
                   </p>
                   <p className="text-xs text-slate-600 truncate">

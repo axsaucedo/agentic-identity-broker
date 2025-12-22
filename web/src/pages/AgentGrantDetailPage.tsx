@@ -287,7 +287,7 @@ export function AgentGrantDetailPage() {
                   className="w-20 h-20 rounded-lg object-cover"
                 />
               ) : (
-                <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-success-primary to-success-primary rounded-lg flex items-center justify-center">
                   <span className="text-white text-2xl font-semibold">
                     {agent.displayName.charAt(0).toUpperCase()}
                   </span>
@@ -299,7 +299,7 @@ export function AgentGrantDetailPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold text-navy-900">{agent.displayName}</h1>
+                  <h1 className="text-2xl font-bold text-trust-deep">{agent.displayName}</h1>
                   <p className="mt-2 text-slate-600">{agent.description}</p>
                 </div>
 
@@ -318,7 +318,7 @@ export function AgentGrantDetailPage() {
                     href={agent.governanceUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm font-medium text-navy-600 hover:text-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-500 focus:ring-offset-2 rounded"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-trust-hover hover:text-trust focus:outline-none focus:ring-2 focus:ring-trust focus:ring-offset-2 rounded"
                   >
                     <svg
                       className="w-4 h-4"
@@ -341,7 +341,7 @@ export function AgentGrantDetailPage() {
                     href={agent.userDocumentationUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm font-medium text-navy-600 hover:text-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-500 focus:ring-offset-2 rounded"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-trust-hover hover:text-trust focus:outline-none focus:ring-2 focus:ring-trust focus:ring-offset-2 rounded"
                   >
                     <svg
                       className="w-4 h-4"
@@ -364,7 +364,7 @@ export function AgentGrantDetailPage() {
                     href={agent.agentInterfaceUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm font-medium text-navy-600 hover:text-navy-700 focus:outline-none focus:ring-2 focus:ring-navy-500 focus:ring-offset-2 rounded"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-trust-hover hover:text-trust focus:outline-none focus:ring-2 focus:ring-trust focus:ring-offset-2 rounded"
                   >
                     <svg
                       className="w-4 h-4"
@@ -429,7 +429,7 @@ export function AgentGrantDetailPage() {
         {/* Grant validity control (only in edit mode) */}
         {isEditMode && (
           <div className="card p-6">
-            <h3 className="text-lg font-semibold text-navy-900 mb-4">Grant Validity</h3>
+            <h3 className="text-lg font-semibold text-trust-deep mb-4">Grant Validity</h3>
             <GrantValidityControl value={validityState} onChange={handleValidityChange} />
           </div>
         )}
@@ -437,7 +437,7 @@ export function AgentGrantDetailPage() {
         {/* Services section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-navy-900">
+            <h2 className="text-xl font-semibold text-trust-deep">
               Services
               <span className="ml-2 text-sm font-normal text-slate-500">
                 ({services.length})
@@ -460,7 +460,7 @@ export function AgentGrantDetailPage() {
                   d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
                 />
               </svg>
-              <h3 className="mt-4 text-lg font-medium text-navy-900">
+              <h3 className="mt-4 text-lg font-medium text-trust-deep">
                 No services available
               </h3>
               <p className="mt-2 text-slate-600">

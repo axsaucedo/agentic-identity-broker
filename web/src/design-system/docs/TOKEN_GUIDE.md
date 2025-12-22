@@ -12,45 +12,142 @@ Design tokens in this system are managed through:
 
 ## Color System
 
-The color palette is based on semantic meanings, brand identity, and accessibility requirements.
+The color palette uses **semantic tokens** based on meaning, brand identity, and accessibility requirements. All colors meet WCAG 2.1 AA standards.
 
-### Semantic Colors
+### Why Semantic Tokens?
+
+Semantic tokens provide meaning-driven color naming that improves code readability and maintainability.
+
+**✅ DO: Use semantic tokens**
+```tsx
+<button className="bg-trust text-white hover:bg-trust-hover">
+  Primary Action
+</button>
+<div className="bg-neutral-50 text-neutral-700 border-neutral-200">
+  Content
+</div>
+```
+
+**❌ DON'T: Use extended palettes (removed)**
+```tsx
+<button className="bg-navy-700">...</button>    {/* No longer available */}
+<div className="bg-gray-100">...</div>          {/* Use neutral-100 */}
+```
+
+### Semantic Color Tokens
 
 ```typescript
-// Primary Brand Color
-navy-50 through navy-950    // Blue spectrum (brand primary)
-navy-700: #0084d1           // Primary action color
+// PRIMARY - Trust & Authority (Navy)
+trust-deep:  #0A2540     // Darkest - headings, primary brand
+trust:       #1E4D6B     // Medium - primary actions, links
+trust-hover: #2b68a5     // Lighter - hover states
+trust-light: #E8F1F5     // Lightest - backgrounds, tints
 
-// Success (Positive/Approved)
-emerald-50 through emerald-950
-emerald-700: #059669        // Success/approved indicator
+// ACTION - CTA (Unified with Warning)
+cta:       #D97706       // Call-to-action and warnings
+cta-hover: #B45309       // CTA hover state
+cta-light: #fef3c7       // CTA light background
 
-// Warning (Caution/Pending)
-amber-50 through amber-950
-amber-700: #b45309          // Warning/pending indicator
+// SUCCESS - Emerald tones for positive actions
+success-primary: #059669 // Success state, granted permissions
+success-hover:   #047857 // Success hover state
+success-light:   #d1fae5 // Success light background
+success-dark:    #065f46 // Success dark text
 
-// Error (Destructive/Denied)
-red-50 through red-950
-red-700: #dc2626            // Error/denied indicator
+// ERROR - Red tones for destructive actions
+error-primary: #DC2626   // Error state, destructive actions
+error-hover:   #b91c1c   // Error hover state
+error-light:   #fee2e2   // Error light background
+error-dark:    #991b1b   // Error dark text
 
-// Neutral (Backgrounds/Text)
-gray-50 through gray-950
-gray-600: #4b5563           // Body text
-gray-700: #1f2937           // Heading text
+// WARNING - Unified with CTA (Amber)
+warning-primary: #D97706 // Warning state (same as CTA)
+warning-hover:   #B45309 // Warning hover state
+warning-light:   #fef3c7 // Warning light background
+warning-dark:    #92400e // Warning dark text
+
+// INFO - Blue tones for informational content
+info-primary: #3B82F6   // Info state
+info-hover:   #2563eb   // Info hover state
+info-light:   #dbeafe   // Info light background
+info-dark:    #1e40af   // Info dark text
+
+// WARM NEUTRALS - Sophisticated cream/sand/taupe (replaces gray)
+neutral-50:  #faf9f7    // Cream - page backgrounds
+neutral-100: #f5f1ed    // Sand - section backgrounds
+neutral-200: #e8e3de    // Taupe - card borders
+neutral-300: #ddd8d1    // Light taupe - input borders
+neutral-400: #c4bdb3    // Medium taupe - placeholders
+neutral-500: #9a9591    // Medium-dark - secondary icons
+neutral-600: #6b6561    // Dark taupe - secondary text
+neutral-700: #4a4137    // Darker taupe - body text
+neutral-800: #2a251f    // Very dark - emphasized text
+neutral-900: #1a1511    // Darkest - headings (or use trust-deep)
+
+// SEMANTIC ALIASES - Contextual color names
+text-primary:   #0A2540  // Primary text (trust-deep)
+text-secondary: #6b6561  // Secondary text (neutral-600)
+text-tertiary:  #9a9591  // Tertiary text (neutral-500)
+text-disabled:  #c4bdb3  // Disabled text (neutral-400)
+
+bg-primary:   #faf9f7    // Primary background (neutral-50)
+bg-secondary: #f5f1ed    // Secondary background (neutral-100)
+bg-elevated:  #ffffff    // Elevated cards (pure white)
+
+border-primary:   #ddd8d1 // Primary borders (neutral-300)
+border-secondary: #e8e3de // Secondary borders (neutral-200)
+border-focus:     #1E4D6B // Focus ring (trust)
 ```
 
 ### Color Usage
 
 | Use Case | Token | Example |
 |----------|-------|---------|
-| Primary buttons | navy-700 | `<Button variant="primary">` |
-| Success status | emerald-700 | `<GrantStatusBadge status="approved">` |
-| Warning/Pending | amber-700 | `<Badge variant="warning">` |
-| Error/Denied | red-700 | `<Alert variant="error">` |
-| Link hover | navy-600 | Navigation links |
-| Disabled state | gray-400 | Inactive form inputs |
-| Borders | gray-200 | Card outlines |
-| Backgrounds | gray-50 | Page backgrounds |
+| Primary buttons | bg-trust-deep | `<Button variant="primary">` |
+| Success status | bg-success-primary | `<Badge variant="success">Granted</Badge>` |
+| Warning/Pending | bg-warning-primary or bg-cta | `<Badge variant="warning">Pending</Badge>` |
+| Error/Denied | bg-error-primary | `<Alert variant="error">` |
+| Link hover | hover:text-trust-hover | Navigation links |
+| Disabled state | text-disabled or bg-neutral-50 | Inactive form inputs |
+| Borders | border-primary or border-neutral-300 | Card outlines |
+| Backgrounds | bg-primary or bg-neutral-50 | Page backgrounds |
+| Section backgrounds | bg-secondary or bg-neutral-100 | Section containers |
+| Body text | text-neutral-700 | Paragraph text |
+| Headings (h1-h2) | text-trust-deep | Major headings for authority |
+| Headings (h3-h6) | text-trust | Minor headings, subsections |
+
+### ⚠️ Important: Semantic Token Naming Clarification
+
+**Always use explicit color tokens for headings, not semantic aliases:**
+
+```tsx
+// ❌ DON'T - Ambiguous semantic alias
+<h1 className="text-primary">Dashboard</h1>
+
+// ✅ DO - Explicit brand color
+<h1 className="text-trust-deep">Dashboard</h1>
+<h3 className="text-trust">Subsection</h3>
+```
+
+**Why `text-primary` is confusing for headings:**
+- `text-primary` points to `trust-deep` (#0A2540) technically, but semantically it's unclear
+- "Primary" could mean "primary text" (body text) OR "primary brand color" (headings)
+- This creates ambiguity that makes code harder to maintain
+
+**Semantic Token Rules:**
+- `text-trust-deep` → h1, h2 (major sections, authority)
+- `text-trust` → h3-h6 (minor sections, subsections)
+- `text-secondary` → Supporting text, metadata (neutral-600)
+- `text-tertiary` → Labels, timestamps (neutral-500)
+- `text-neutral-700` → Body paragraphs (explicit and clear)
+
+**When to use semantic aliases:**
+- ✅ `text-secondary` for supporting text (consistent, clear intent)
+- ✅ `text-tertiary` for metadata (consistent, clear intent)
+- ✅ `bg-primary` / `bg-secondary` for backgrounds (layouts, not brand)
+- ❌ `text-primary` for headings (too ambiguous - use `text-trust-deep` instead)
+
+See [COMMON_MISTAKES.md](./COMMON_MISTAKES.md) (Mistake #1) and [DECISION_TREES.md](./DECISION_TREES.md) (Text Color Hierarchy) for detailed guidance.
 
 ### Color Accessibility
 
@@ -60,10 +157,11 @@ All semantic colors meet WCAG AA contrast requirements:
 - Use ColorSnack or WebAIM for verification
 
 **When choosing colors:**
-1. Prefer semantic colors (navy, emerald, amber, red)
-2. Check contrast with intended background
-3. Consider colorblind accessibility (don't rely on color alone)
-4. Test with accessibility tools
+1. Prefer semantic tokens (trust, success, warning, error)
+2. Use warm neutrals (neutral-*) instead of standard grays
+3. Check contrast with intended background (WCAG AA minimum 4.5:1 for text)
+4. Consider colorblind accessibility (don't rely on color alone)
+5. Test with accessibility tools (WebAIM, ColorSnack)
 
 ## Spacing System
 
@@ -184,12 +282,12 @@ Typography is managed through semantic HTML and Tailwind's text utilities.
 
 ```tsx
 // Semantic HTML + Tailwind
-<h1 className="text-4xl font-bold">Main Title</h1>
-<h2 className="text-2xl font-bold">Section</h2>
-<h3 className="text-xl font-semibold">Subsection</h3>
-<p className="text-base font-normal">Body text</p>
-<p className="text-sm text-gray-600">Secondary text</p>
-<span className="text-xs text-gray-500">Overline</span>
+<h1 className="text-4xl font-bold text-trust-deep">Main Title</h1>
+<h2 className="text-2xl font-bold text-trust-deep">Section</h2>
+<h3 className="text-xl font-semibold text-trust">Subsection</h3>
+<p className="text-base font-normal text-neutral-700">Body text</p>
+<p className="text-sm text-secondary">Secondary text (neutral-600)</p>
+<span className="text-xs text-tertiary">Overline (neutral-500)</span>
 
 // Component sizing
 <Button size="sm" />    // Smaller text inside
@@ -285,9 +383,9 @@ Popover  → z-20
 
 ```tsx
 // Most common approach
-<div className="bg-gray-50 text-gray-700 p-4 rounded-lg shadow">
-  <h2 className="text-2xl font-bold text-gray-900">Title</h2>
-  <p className="mt-2 text-sm text-gray-600">Description</p>
+<div className="bg-primary text-neutral-700 p-4 rounded-lg shadow">
+  <h2 className="text-2xl font-bold text-trust-deep">Title</h2>
+  <p className="mt-2 text-sm text-secondary">Description</p>
 </div>
 ```
 
@@ -296,8 +394,8 @@ Popover  → z-20
 ```tsx
 // If needing dynamic theming
 <div style={{
-  backgroundColor: 'var(--color-gray-50)',
-  color: 'var(--color-gray-700)',
+  backgroundColor: 'var(--color-bg-primary)',
+  color: 'var(--color-text-primary)',
   padding: 'var(--spacing-4)',
   borderRadius: 'var(--radius-lg)',
 }}>
@@ -309,7 +407,7 @@ Popover  → z-20
 
 ```tsx
 // Most semantic approach
-<Card padding="lg" hover="lift" backgroundColor="gray-50">
+<Card padding="lg" hover="lift" backgroundColor="neutral-50">
   <heading>Title</heading>
   <p>Description</p>
 </Card>
@@ -330,8 +428,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        'brand-primary': '#0084d1',
-        'brand-secondary': '#6366f1',
+        'brand-primary': '#0A2540',  // Override trust-deep
+        'brand-accent': '#D97706',    // Override cta
       }
     }
   }
@@ -341,13 +439,14 @@ export default {
 2. **CSS variable overrides**:
 ```css
 :root {
-  --color-primary: #0084d1;
-  --color-secondary: #6366f1;
+  --color-trust-deep: #0A2540;
+  --color-cta: #D97706;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-primary: #1e90ff;
+    --color-bg-primary: #0d1829;      /* Dark navy */
+    --color-text-primary: #faf9f7;    /* Cream text */
   }
 }
 ```
@@ -356,7 +455,7 @@ export default {
 
 ```typescript
 // Dark mode support (automatic via Tailwind)
-<div className="dark:bg-gray-900 dark:text-white">
+<div className="dark:bg-neutral-900 dark:text-white">
   {children}
 </div>
 
@@ -370,11 +469,12 @@ export default {
 
 ## Accessibility with Design Tokens
 
-1. **Always verify color contrast** when using custom colors
-2. **Use semantic colors** (navy, emerald, amber, red) which are pre-verified
-3. **Avoid color-only encoding** - use icons, text, or patterns too
-4. **Test with ColorSnack** or WebAIM Contrast Checker
-5. **Respect prefers-reduced-motion** in animations
+1. **Always verify color contrast** when using custom colors (WCAG AA: 4.5:1 for text, 3:1 for UI components)
+2. **Use semantic tokens** (trust, success, warning, error) which are pre-verified for WCAG 2.1 AA
+3. **Use warm neutrals** (neutral-*) for text hierarchy - pre-verified contrast ratios
+4. **Avoid color-only encoding** - use icons, text, or patterns for status communication
+5. **Test with ColorSnack** or WebAIM Contrast Checker for custom combinations
+6. **Respect prefers-reduced-motion** in animations and transitions
 
 ## Token Maintenance
 

@@ -35,8 +35,8 @@ const badgeVariants = cva(
         // Info: Blue - informational status (solid background per COLOR_GUIDE.md)
         info: 'bg-info-primary text-white border-info-primary',
 
-        // Neutral: Gray - default/neutral status
-        neutral: 'bg-gray-300 text-gray-600 border-gray-300',
+        // Neutral: Warm neutral - default/neutral status
+        neutral: 'bg-neutral-300 text-neutral-600 border-neutral-300',
 
         // Primary: Trust colors - brand-related badges (solid background per COLOR_GUIDE.md)
         primary: 'bg-trust text-white border-trust',
