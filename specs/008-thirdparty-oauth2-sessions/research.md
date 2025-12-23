@@ -1,116 +1,129 @@
 # Research: Third-Party OAuth2 Session Management
 
-**Feature**: 008-thirdparty-oauth2-sessions  
-**Date**: 2025-12-22  
-**Purpose**: Resolve technical unknowns and document library best practices
+**Feature Branch**: `008-thirdparty-oauth2-sessions`  
+**Date**: 2025-12-23  
+**Purpose**: Resolve technical unknowns and establish best practices for implementation
 
 ## Table of Contents
 
-1. [OAuth2 Library (golang.org/x/oauth2)](#oauth2-library)
-2. [JWE/JWS Library (lestrrat-go/jwx)](#jwejws-library)
-3. [Domain Service Design](#domain-service-design)
-4. [State Token Security Patterns](#state-token-security-patterns)
-5. [Token Storage Patterns](#token-storage-patterns)
-6. [Retry and Error Handling](#retry-and-error-handling)
+1. [OAuth2 Authorization Code Flow with PKCE](#oauth2-authorization-code-flow-with-pkce)
+2. [JWE State Token Implementation](#jwe-state-token-implementation)
+3. [Domain Service Design Pattern](#domain-service-design-pattern)
+4. [Token Encryption Strategy](#token-encryption-strategy)
+5. [Database Schema Design](#database-schema-design)
+6. [Error Handling Patterns](#error-handling-patterns)
+7. [Retry Logic for Token Exchange](#retry-logic-for-token-exchange)
 
 ---
 
-## OAuth2 Library
+## OAuth2 Authorization Code Flow with PKCE
 
-### Decision: Use `golang.org/x/oauth2` for OAuth2 Authorization Code Flow with PKCE
+### Decision
+Use Go's standard `golang.org/x/oauth2` library for OAuth2 flows, with manual PKCE generation.
 
-**Rationale**: 
-- Official Go OAuth2 library maintained by the Go team
-- Native support for PKCE (RFC 7636) since v0.13.0
-- Used by 46,000+ projects, battle-tested
-- Clean API for authorization code flow: `AuthCodeURL()`, `Exchange()`
-- Built-in token refresh support via `TokenSource`
+### Rationale
+- **Battle-tested library**: `golang.org/x/oauth2` is the de facto standard for OAuth2 in Go
+- **Clean abstraction**: Provides `oauth2.Config` for managing client credentials and endpoints
+- **Token exchange built-in**: `Exchange()` method handles authorization code → token exchange
+- **Context support**: All operations accept `context.Context` for timeout/cancellation
+- **PKCE extension**: Library supports PKCE via `oauth2.SetAuthURLParam()` for code_challenge
 
-**Alternatives Considered**:
-- `github.com/ory/fosite` - Full OAuth2 server implementation, too heavy for client-side flows
-- Custom implementation - Forbidden by Constitution Principle III (Library-First Security)
-
-### Key APIs
+### Implementation Approach
 
 ```go
-import "golang.org/x/oauth2"
-
-// Generate PKCE verifier (32-byte high-entropy random string)
-verifier := oauth2.GenerateVerifier()
-
-// Create OAuth2 config
-config := &oauth2.Config{
-    ClientID:     service.ClientID,
-    ClientSecret: service.ClientSecret,
-    Endpoint: oauth2.Endpoint{
-        AuthURL:  service.Endpoints.AuthorizeEndpoint,
-        TokenURL: service.Endpoints.TokenEndpoint,
-    },
-    RedirectURL: callbackURL,
-    Scopes:      scopes,
-}
-
-// Generate authorization URL with PKCE challenge
-authURL := config.AuthCodeURL(
-    stateToken,                           // JWE state token
-    oauth2.S256ChallengeOption(verifier), // PKCE challenge
-    oauth2.AccessTypeOffline,             // Request refresh token
+import (
+    "golang.org/x/oauth2"
+    "crypto/sha256"
+    "encoding/base64"
+    "crypto/rand"
 )
 
-// Exchange authorization code for tokens (with PKCE verifier)
+// OAuth2Config creates oauth2.Config from ThirdpartyOAuth2Service
+func (s *OAuth2SessionService) createOAuth2Config(service *storage.ThirdpartyOAuth2Service) *oauth2.Config {
+    return &oauth2.Config{
+        ClientID:     service.ClientID,
+        ClientSecret: service.ClientSecret,
+        Endpoint: oauth2.Endpoint{
+            AuthURL:  service.Endpoints.AuthorizeEndpoint,
+            TokenURL: service.Endpoints.TokenEndpoint,
+        },
+        Scopes:      extractScopeStrings(service.Scopes),
+        RedirectURL: s.callbackURL,
+    }
+}
+
+// PKCE code verifier generation (RFC 7636)
+func generatePKCE(length int) (verifier, challenge string, err error) {
+    // verifier: 32-128 bytes of cryptographically random data, base64url encoded
+    bytes := make([]byte, length)
+    if _, err := rand.Read(bytes); err != nil {
+        return "", "", err
+    }
+    verifier = base64.RawURLEncoding.EncodeToString(bytes)
+    
+    // challenge: SHA256 hash of verifier, base64url encoded
+    hash := sha256.Sum256([]byte(verifier))
+    challenge = base64.RawURLEncoding.EncodeToString(hash[:])
+    
+    return verifier, challenge, nil
+}
+```
+
+### Authorization URL Construction
+
+```go
+// Add PKCE parameters to authorization URL
+authURL := config.AuthCodeURL(
+    stateToken,
+    oauth2.SetAuthURLParam("code_challenge", challenge),
+    oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+)
+```
+
+### Token Exchange with PKCE
+
+```go
+// Exchange authorization code for tokens with PKCE verifier
 token, err := config.Exchange(
     ctx,
-    authorizationCode,
-    oauth2.VerifierOption(verifier), // PKCE verifier validation
+    code,
+    oauth2.SetAuthURLParam("code_verifier", pkceVerifier),
 )
 ```
 
-### PKCE Flow Integration
-
-1. **Authorize Endpoint**:
-   - Generate PKCE verifier using `oauth2.GenerateVerifier()`
-   - Compute S256 challenge using `oauth2.S256ChallengeOption()`
-   - Include verifier in JWE state token (encrypted)
-   - Redirect to third-party with challenge
-
-2. **Callback Endpoint**:
-   - Decrypt JWE state token
-   - Extract PKCE verifier from token
-   - Call `config.Exchange()` with `oauth2.VerifierOption(verifier)`
-   - Library handles PKCE validation at token endpoint
-
-### Error Handling
-
-```go
-// RetrieveError contains OAuth2 error details from token endpoint
-var retrieveErr *oauth2.RetrieveError
-if errors.As(err, &retrieveErr) {
-    // retrieveErr.ErrorCode = "invalid_grant", "access_denied", etc.
-    // retrieveErr.ErrorDescription = human-readable message
-    log.Error("OAuth2 error", 
-        "code", retrieveErr.ErrorCode,
-        "description", retrieveErr.ErrorDescription)
-}
-```
+### Alternatives Considered
+1. **Custom HTTP client**: Rejected - reinvents wheel, error-prone
+2. **go-oidc library**: Rejected - focuses on OIDC, adds unnecessary complexity for pure OAuth2
+3. **Manual token exchange**: Rejected - `golang.org/x/oauth2` handles this correctly
 
 ---
 
-## JWE/JWS Library
+## JWE State Token Implementation
 
-### Decision: Use `github.com/lestrrat-go/jwx/v3` for JWE State Tokens
+### Decision
+Use `github.com/lestrrat-go/jwx/v3` for JWE (JSON Web Encryption) state tokens.
 
-**Rationale**:
-- Complete JWE/JWS/JWK/JWT implementation (RFC 7515, 7516, 7517, 7518)
-- 2,300+ stars, mature project (10 years)
-- Supports authenticated encryption (A256GCM)
-- Clean API with symmetric key encryption
-- Used by 5,000+ projects
+### Rationale
+- **Complete JWx suite**: Implements JWA, JWE, JWK, JWS, JWT (RFC 7516, 7517, 7518, 7519)
+- **Authenticated encryption**: JWE provides both confidentiality and integrity
+- **Symmetric key support**: Can use a single key for encrypt/decrypt (simpler than asymmetric)
+- **Well-maintained**: Active development, 2.3k stars, used by 5.2k projects
+- **Clean API**: `jwe.Encrypt()` / `jwe.Decrypt()` with clear option patterns
 
-**Alternatives Considered**:
-- `gopkg.in/square/go-jose.v2` - Valid alternative, but less active maintenance
-- Custom JWE implementation - Forbidden by Constitution Principle III
+### State Token Claims Structure
 
-### Key APIs
+```go
+type OAuth2StateTokenClaims struct {
+    Principal   string    `json:"principal"`      // Current authenticated user
+    PKCEVerifier string   `json:"pkce_verifier"` // PKCE code verifier for token exchange
+    ServiceID   string    `json:"service_id"`     // Third-party service identifier
+    RedirectURI string    `json:"redirect_uri"`   // Original redirect after flow completes
+    IssuedAt    time.Time `json:"iat"`            // Token creation timestamp
+    ExpiresAt   time.Time `json:"exp"`            // Token expiration (TTL: 10 min default)
+}
+```
+
+### JWE Implementation
 
 ```go
 import (
@@ -119,328 +132,352 @@ import (
     "github.com/lestrrat-go/jwx/v3/jwk"
 )
 
-// Create symmetric key from configuration
-key, err := jwk.FromRaw([]byte(signingKey))
-
-// State token claims
-type StateTokenClaims struct {
-    Principal   string    `json:"principal"`
-    PKCEVerifier string   `json:"pkce_verifier"`
-    ServiceID   string    `json:"service_id"`
-    RedirectURI string    `json:"redirect_uri"`
-    IssuedAt    time.Time `json:"iat"`
-    ExpiresAt   time.Time `json:"exp"`
+// CreateStateToken creates a JWE-encrypted state token
+func (s *OAuth2SessionService) CreateStateToken(claims *OAuth2StateTokenClaims) (string, error) {
+    // Serialize claims to JSON
+    payload, err := json.Marshal(claims)
+    if err != nil {
+        return "", fmt.Errorf("failed to serialize claims: %w", err)
+    }
+    
+    // Encrypt with symmetric key using A256GCM (authenticated encryption)
+    encrypted, err := jwe.Encrypt(
+        payload,
+        jwe.WithKey(jwa.A256GCMKW(), s.jweKey),
+        jwe.WithContentEncryption(jwa.A256GCM()),
+    )
+    if err != nil {
+        return "", fmt.Errorf("failed to encrypt state token: %w", err)
+    }
+    
+    return string(encrypted), nil
 }
 
-// Encrypt (create JWE)
-payload, _ := json.Marshal(claims)
-encrypted, err := jwe.Encrypt(
-    payload,
-    jwe.WithKey(jwa.A256KW(), key),           // Key wrapping algorithm
-    jwe.WithContentEncryption(jwa.A256GCM()), // Authenticated encryption
-)
-
-// Decrypt (validate JWE)
-decrypted, err := jwe.Decrypt(
-    encrypted,
-    jwe.WithKey(jwa.A256KW(), key),
-)
+// ValidateStateToken decrypts and validates a state token
+func (s *OAuth2SessionService) ValidateStateToken(token string, currentPrincipal string) (*OAuth2StateTokenClaims, error) {
+    // Decrypt token
+    decrypted, err := jwe.Decrypt(
+        []byte(token),
+        jwe.WithKey(jwa.A256GCMKW(), s.jweKey),
+    )
+    if err != nil {
+        return nil, fmt.Errorf("failed to decrypt state token: %w", err)
+    }
+    
+    // Deserialize claims
+    var claims OAuth2StateTokenClaims
+    if err := json.Unmarshal(decrypted, &claims); err != nil {
+        return nil, fmt.Errorf("failed to parse claims: %w", err)
+    }
+    
+    // Validate expiration
+    if time.Now().After(claims.ExpiresAt) {
+        return nil, ErrStateTokenExpired
+    }
+    
+    // Validate principal matches current user (CSRF protection)
+    if claims.Principal != currentPrincipal {
+        return nil, ErrPrincipalMismatch
+    }
+    
+    return &claims, nil
+}
 ```
 
-### Algorithm Choice
+### Key Management
 
-| Algorithm | Purpose | Spec |
-|-----------|---------|------|
-| `A256KW` | Key wrapping (AES-256 Key Wrap) | RFC 7518 §4.4 |
-| `A256GCM` | Content encryption (AES-256-GCM authenticated encryption) | RFC 7518 §5.3 |
+```go
+// Load JWE key from configuration (environment variable)
+func loadJWEKey(keyString string) (jwk.Key, error) {
+    // Key must be 32 bytes for A256GCMKW (256-bit AES key wrapping)
+    keyBytes, err := base64.StdEncoding.DecodeString(keyString)
+    if err != nil {
+        return nil, fmt.Errorf("invalid base64 key: %w", err)
+    }
+    if len(keyBytes) != 32 {
+        return nil, fmt.Errorf("key must be 32 bytes for A256GCMKW, got %d", len(keyBytes))
+    }
+    
+    key, err := jwk.Import(keyBytes)
+    if err != nil {
+        return nil, fmt.Errorf("failed to import key: %w", err)
+    }
+    
+    return key, nil
+}
+```
 
-**Security Properties**:
-- Confidentiality: Claims are encrypted, cannot be read by user/attacker
-- Integrity: GCM provides authentication, tampering detected
-- Key binding: Symmetric key in config, not exposed to clients
+### Alternatives Considered
+1. **JWT (signed only)**: Rejected - state token contains sensitive PKCE verifier, needs encryption
+2. **Custom encryption**: Rejected - violates Constitution Principle III (Library-First Security)
+3. **jose-go**: Rejected - less active development than lestrrat-go/jwx
 
 ---
 
-## Domain Service Design
+## Domain Service Design Pattern
 
-### Decision: New `OAuth2SessionService` Domain Service
+### Decision
+Create `OAuth2SessionService` as a domain service in `internal/domain/oauth2session/`.
 
-**Rationale**:
-- Orchestrating OAuth2 flows is domain logic, not adapter logic
-- Needs to coordinate multiple ports: storage, encryption, HTTP client
-- Separates OAuth2 session concerns from existing consent service
-- User's directive: "Orchestrating the OAuth2 flows is part of the domain"
+### Rationale
+- **Complex orchestration**: OAuth2 flow spans multiple entities (service config, user session, state tokens)
+- **Domain logic ownership**: PKCE generation, state validation, token storage are domain concerns
+- **Hexagonal alignment**: Service depends on ports (repositories, encryption), not adapters
+- **Testability**: Pure domain logic can be unit tested without HTTP/database dependencies
 
-**Location**: `internal/domain/oauth2session/`
-
-### Service Interface
+### Service Structure
 
 ```go
-package oauth2session
-
-// Service orchestrates OAuth2 authorization flows for third-party services.
-// It uses the standard golang.org/x/oauth2 library for flow execution
-// and lestrrat-go/jwx for JWE state token handling.
-type Service struct {
-    sessionRepo     ports.UserSessionRepository
-    serviceRepo     ports.ThirdpartyOAuth2ServiceRepository
-    encryption      ports.EncryptionPort
-    stateToken      StateTokenService
-    httpClient      *http.Client
-    config          OAuth2SessionConfig
+// OAuth2SessionService orchestrates OAuth2 authorization flows and session management.
+// This is a domain service per DDD patterns - handles complex operations spanning multiple entities.
+type OAuth2SessionService struct {
+    serviceRepo   ports.ThirdpartyOAuth2ServiceRepository
+    sessionRepo   ports.UserSessionRepository
+    encryption    ports.EncryptionPort
+    jweKey        jwk.Key
+    config        OAuth2SessionConfig
+    logger        *slog.Logger
 }
 
-// OAuth2SessionConfig holds configuration for the OAuth2 session service.
+// OAuth2SessionConfig holds configuration for OAuth2 session management
 type OAuth2SessionConfig struct {
-    JWESigningKey      []byte        // Symmetric key for JWE
-    StateTokenTTL      time.Duration // Default: 10 minutes
-    PKCEVerifierLength int           // Default: 32 bytes
-    RetryConfig        RetryConfig   // Exponential backoff config
+    CallbackBaseURL    string        // Base URL for OAuth2 callbacks
+    StateTokenTTL      time.Duration // TTL for state tokens (default: 10 min)
+    PKCEVerifierLength int           // PKCE verifier length in bytes (default: 32)
+    MaxRetries         int           // Max retries for token exchange (default: 3)
 }
 
-type RetryConfig struct {
-    MaxAttempts int           // Default: 3
-    BaseDelay   time.Duration // Default: 1 second
-    MaxDelay    time.Duration // Default: 4 seconds
+// NewOAuth2SessionService creates a new OAuth2 session service
+func NewOAuth2SessionService(
+    serviceRepo ports.ThirdpartyOAuth2ServiceRepository,
+    sessionRepo ports.UserSessionRepository,
+    encryption ports.EncryptionPort,
+    jweKey jwk.Key,
+    config OAuth2SessionConfig,
+    logger *slog.Logger,
+) *OAuth2SessionService {
+    return &OAuth2SessionService{
+        serviceRepo:   serviceRepo,
+        sessionRepo:   sessionRepo,
+        encryption:    encryption,
+        jweKey:        jweKey,
+        config:        config,
+        logger:        logger,
+    }
 }
 ```
 
 ### Service Methods
 
-```go
-// InitiateOAuth2Flow starts an OAuth2 authorization code flow with PKCE.
-// Returns the authorization URL to redirect the user to.
-// 
-// Validates:
-// - Principal is authenticated
-// - Service exists and is configured
-// - Redirect URI matches request origin (same-origin validation)
-//
-// Creates JWE state token containing principal, PKCE verifier, service ID, redirect URI.
-func (s *Service) InitiateOAuth2Flow(ctx context.Context, params InitiateFlowParams) (string, error)
+| Method | Purpose | Returns |
+|--------|---------|---------|
+| `InitiateOAuth2Flow` | Create PKCE + state token, return auth URL | Authorization URL string |
+| `HandleCallback` | Validate state, exchange code, store tokens | UserSession |
+| `ListUserSessions` | Get all sessions for a principal | []UserSessionSummary |
+| `TerminateSession` | Delete session and tokens for a principal+service | void |
+| `GetAffectedAgents` | Count agents depending on a session | int |
 
-// CompleteOAuth2Flow processes the OAuth2 callback after user authorization.
-// Validates state token, exchanges code for tokens, stores encrypted tokens.
-//
-// Validates:
-// - State token decrypts successfully
-// - Principal in token matches current principal (CSRF protection)
-// - Service ID in token matches callback parameter
-// - PKCE verifier is valid
-//
-// On success, creates UserSession with encrypted tokens.
-// On race condition (existing session), returns existing session.
-func (s *Service) CompleteOAuth2Flow(ctx context.Context, params CompleteFlowParams) (*UserSession, error)
+### Why Domain Service (not Entity Method)
 
-// ListUserSessions returns all sessions for a principal with status info.
-// Includes service display name, agent count, expiration status.
-func (s *Service) ListUserSessions(ctx context.Context, principal string) ([]UserSessionSummary, error)
+The OAuth2 flow orchestration doesn't belong to any single entity:
+- `ThirdpartyOAuth2Service` - contains OAuth2 config but doesn't own the flow
+- `UserSession` - result of the flow but doesn't orchestrate it
+- State tokens are ephemeral value objects, not aggregates
 
-// TerminateSession deletes a user's session with a third-party service.
-// Returns affected agent count for confirmation dialog.
-func (s *Service) TerminateSession(ctx context.Context, principal, serviceID string) error
-
-// GetAffectedAgents returns agents that depend on a session (for termination warning).
-func (s *Service) GetAffectedAgents(ctx context.Context, principal, serviceID string) ([]AffectedAgent, error)
-```
-
-### Dependency on OAuth2 and JWX Libraries in Domain
-
-Per user directive: *"It is ok to use the jwx and oauth2 libraries in the domain."*
-
-The domain service directly uses:
-- `golang.org/x/oauth2` - For `oauth2.Config`, `GenerateVerifier()`, `Exchange()`
-- `github.com/lestrrat-go/jwx/v3` - For `jwe.Encrypt()`, `jwe.Decrypt()`
-
-This is acceptable because:
-1. These are stable, well-defined interfaces (RFC-based)
-2. No adapter abstraction would add value (would just proxy the same calls)
-3. OAuth2 flow orchestration IS domain logic
-4. Both libraries are vetted security implementations (Constitution Principle III)
-
-### HTTP Client Abstraction
-
-The HTTP client used for token exchange IS abstracted via dependency injection:
-
-```go
-// In domain service constructor
-func NewService(opts ...Option) *Service {
-    s := &Service{
-        httpClient: http.DefaultClient, // Default
-    }
-    for _, opt := range opts {
-        opt(s)
-    }
-    return s
-}
-
-// Option for custom HTTP client (testing, timeouts, tracing)
-func WithHTTPClient(client *http.Client) Option {
-    return func(s *Service) {
-        s.httpClient = client
-    }
-}
-
-// Usage in token exchange
-func (s *Service) exchangeCode(ctx context.Context, config *oauth2.Config, code, verifier string) (*oauth2.Token, error) {
-    ctx = context.WithValue(ctx, oauth2.HTTPClient, s.httpClient)
-    return config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
-}
-```
+A domain service is the correct DDD pattern for operations that:
+1. Are stateless (input → output transformation)
+2. Span multiple entities
+3. Don't naturally belong to any single aggregate
 
 ---
 
-## State Token Security Patterns
+## Token Encryption Strategy
 
-### JWE Structure
+### Decision
+Use existing `EncryptionPort` with encryption context binding tokens to user and session.
 
-```
-JWE Compact Serialization:
-BASE64URL(Header).BASE64URL(Encrypted Key).BASE64URL(IV).BASE64URL(Ciphertext).BASE64URL(Auth Tag)
-```
+### Rationale
+- **Existing infrastructure**: EncryptionPort already implemented (likely AES-256-GCM)
+- **Context binding**: Encryption context provides additional authenticated data (AAD)
+- **Separation of concerns**: Token encryption is different from JWE state tokens
+- **Audit trail**: Encryption context provides metadata for key rotation/audit
 
-### Claims Structure
-
-```go
-type OAuth2StateTokenClaims struct {
-    // Principal of the user who initiated the flow
-    Principal string `json:"sub"`
-    
-    // PKCE code verifier (high-entropy random string)
-    PKCEVerifier string `json:"pkce_verifier"`
-    
-    // Service ID for the third-party OAuth2 service
-    ServiceID string `json:"service_id"`
-    
-    // Original redirect URI from authorize request
-    RedirectURI string `json:"redirect_uri"`
-    
-    // Token issue time
-    IssuedAt int64 `json:"iat"`
-    
-    // Token expiration time (iat + TTL)
-    ExpiresAt int64 `json:"exp"`
-}
-```
-
-### Validation Rules (Fail-Closed)
-
-| Check | Failure Response | Security Rationale |
-|-------|------------------|-------------------|
-| JWE decryption fails | 400 Bad Request | Tampered or corrupted token |
-| Token expired | 400 Bad Request | Replay attack prevention |
-| Principal mismatch | 403 Forbidden | CSRF attack prevention |
-| Service ID mismatch | 400 Bad Request | Flow binding violation |
-
-### Key Management
-
-- Key loaded from environment variable: `IDENTITY_BROKER_JWE_SIGNING_KEY`
-- Minimum length: 32 bytes (256 bits for A256KW)
-- Never logged or exposed in configuration dumps
-- Key rotation: Requires new tokens, old tokens fail decryption (acceptable for short TTL)
-- If no key configured, generate one in memory and log a warning that this only works during development
-
----
-
-## Token Storage Patterns
-
-### Encryption Context
-
-Following existing `EncryptionPort` pattern:
+### Encryption Context Design
 
 ```go
-encryptionContext := map[string]string{
-    "principal":  session.Principal,
-    "service_id": session.ServiceID,
+// Token encryption context binds ciphertext to user/session metadata
+func createEncryptionContext(principal, serviceID, sessionID string) map[string]string {
+    return map[string]string{
+        "principal":  principal,
+        "service_id": serviceID,
+        "session_id": sessionID,
+        "purpose":    "oauth2_token",
+    }
 }
 
-encryptedAccessToken, err := s.encryption.Encrypt(
+// Encrypt access token before storage
+encryptedAccessToken, err := encryption.Encrypt(
     ctx,
     []byte(token.AccessToken),
-    encryptionContext,
+    createEncryptionContext(principal, serviceID, sessionID),
 )
 ```
 
-The encryption context binds the ciphertext to the session:
-- Decryption fails if context doesn't match
-- Prevents token reuse across sessions
-- Audit trail for encrypted data
+### Token Storage Fields
 
-### UserSession Entity
-
-```go
-type UserSession struct {
-    ID                     string    `db:"id"`
-    Principal              string    `db:"principal"`
-    ServiceID              string    `db:"service_id"`
-    EncryptedAccessToken   []byte    `db:"encrypted_access_token"`
-    EncryptedRefreshToken  []byte    `db:"encrypted_refresh_token"` // Nullable
-    TokenType              string    `db:"token_type"`
-    AccessTokenExpiresAt   *time.Time `db:"access_token_expires_at"` // Nullable
-    RefreshTokenExpiresAt  *time.Time `db:"refresh_token_expires_at"` // Nullable
-    Scope                  []string  `db:"scope"`
-    InitiatedAt            time.Time `db:"initiated_at"`
-    CreatedAt              time.Time `db:"created_at"`
-    UpdatedAt              time.Time `db:"updated_at"`
-}
-```
-
-### Database Constraint for Race Conditions
-
-```sql
-CONSTRAINT uq_principal_service UNIQUE(principal, service_id)
-```
-
-On conflict (race condition):
-1. First callback wins, inserts session
-2. Subsequent callbacks get constraint violation
-3. Query for existing session, return success
+| Field | Type | Purpose |
+|-------|------|---------|
+| `encrypted_access_token` | bytea | AES-GCM encrypted access token |
+| `encrypted_refresh_token` | bytea (nullable) | AES-GCM encrypted refresh token |
+| `token_type` | string | Token type (usually "Bearer") |
+| `access_token_expires_at` | timestamp (nullable) | Access token expiration |
+| `refresh_token_expires_at` | timestamp (nullable) | Refresh token expiration |
+| `encryption_context` | jsonb | AAD context for decryption validation |
 
 ---
 
-## Retry and Error Handling
+## Database Schema Design
 
-### Token Exchange Retry Strategy
+### Decision
+Create `user_sessions` table with unique constraint on (principal, service_id).
 
-Per FR-021: Retry up to 3 times with exponential backoff (1s, 2s, 4s).
+### Schema
+
+```sql
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    principal VARCHAR(200) NOT NULL,
+    service_id UUID NOT NULL REFERENCES thirdparty_oauth2_services(id) ON DELETE RESTRICT,
+    encrypted_access_token BYTEA NOT NULL,
+    encrypted_refresh_token BYTEA,
+    token_type VARCHAR(50) NOT NULL DEFAULT 'Bearer',
+    access_token_expires_at TIMESTAMPTZ,
+    refresh_token_expires_at TIMESTAMPTZ,
+    scope TEXT[] NOT NULL DEFAULT '{}',
+    encryption_context JSONB NOT NULL DEFAULT '{}',
+    initiated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    CONSTRAINT user_sessions_principal_service_unique UNIQUE (principal, service_id)
+);
+
+CREATE INDEX idx_user_sessions_principal ON user_sessions(principal);
+CREATE INDEX idx_user_sessions_service_id ON user_sessions(service_id);
+```
+
+### Rationale for Unique Constraint
+- **One session per user per service**: Prevents token duplication and race conditions
+- **Upsert semantics**: If user re-authenticates, new tokens replace old tokens
+- **Race condition handling**: First callback wins; subsequent callbacks see constraint violation
+
+### ON DELETE RESTRICT Rationale
+- **Prevents orphaned sessions**: Cannot delete service with active sessions
+- **Admin workflow**: Admin must terminate all sessions before deleting service
+- **Error handling**: Repository catches constraint violation, returns user-friendly error
+
+---
+
+## Error Handling Patterns
+
+### Decision
+Define domain-specific errors for OAuth2 session operations.
+
+### Error Types
 
 ```go
-type RetryConfig struct {
-    MaxAttempts int           // 3
-    BaseDelay   time.Duration // 1 * time.Second
-    MaxDelay    time.Duration // 4 * time.Second
+package oauth2session
+
+import "errors"
+
+var (
+    // State token errors
+    ErrStateTokenExpired     = errors.New("state token has expired")
+    ErrStateTokenInvalid     = errors.New("state token is invalid or tampered")
+    ErrPrincipalMismatch     = errors.New("principal does not match state token")
+    ErrServiceIDMismatch     = errors.New("service ID does not match state token")
+    
+    // OAuth2 flow errors
+    ErrOAuth2AuthError       = errors.New("authorization server returned error")
+    ErrTokenExchangeFailed   = errors.New("failed to exchange authorization code for tokens")
+    ErrServiceNotFound       = errors.New("third-party service not found")
+    
+    // Session errors
+    ErrSessionNotFound       = errors.New("session not found")
+    ErrSessionAlreadyExists  = errors.New("session already exists for this service")
+    
+    // Validation errors
+    ErrInvalidRedirectURI    = errors.New("redirect URI is not allowed")
+    ErrMissingAuthCode       = errors.New("authorization code is missing")
+)
+
+// OAuth2Error wraps OAuth2 error responses from authorization servers
+type OAuth2Error struct {
+    Code        string // OAuth2 error code (e.g., "access_denied")
+    Description string // Human-readable description
+    URI         string // Optional URI with more info
 }
 
-func (s *Service) exchangeWithRetry(ctx context.Context, config *oauth2.Config, code, verifier string) (*oauth2.Token, error) {
-    var lastErr error
+func (e *OAuth2Error) Error() string {
+    if e.Description != "" {
+        return fmt.Sprintf("%s: %s", e.Code, e.Description)
+    }
+    return e.Code
+}
+```
+
+### HTTP Error Mapping
+
+| Domain Error | HTTP Status | Response |
+|--------------|-------------|----------|
+| ErrStateTokenExpired | 400 Bad Request | Retry flow |
+| ErrStateTokenInvalid | 400 Bad Request | Security event logged |
+| ErrPrincipalMismatch | 403 Forbidden | Security event logged |
+| ErrOAuth2AuthError | Redirect | Error params passed to UI |
+| ErrServiceNotFound | 404 Not Found | Standard error response |
+| ErrSessionNotFound | 404 Not Found | Standard error response |
+
+---
+
+## Retry Logic for Token Exchange
+
+### Decision
+Implement exponential backoff retry for token exchange (1s, 2s, 4s delays).
+
+### Rationale
+- **Network resilience**: Token exchange may fail due to transient network issues
+- **Third-party reliability**: OAuth2 providers may have temporary outages
+- **User experience**: Automatic retry prevents unnecessary manual retries
+
+### Implementation
+
+```go
+// retryWithBackoff attempts an operation with exponential backoff
+func (s *OAuth2SessionService) retryWithBackoff(
+    ctx context.Context,
+    operation func() (*oauth2.Token, error),
+) (*oauth2.Token, error) {
+    delays := []time.Duration{
+        1 * time.Second,
+        2 * time.Second,
+        4 * time.Second,
+    }
     
-    for attempt := 1; attempt <= s.config.RetryConfig.MaxAttempts; attempt++ {
-        token, err := s.exchangeCode(ctx, config, code, verifier)
+    var lastErr error
+    for attempt, delay := range delays {
+        token, err := operation()
         if err == nil {
             return token, nil
         }
         
         lastErr = err
-        
-        // Don't retry OAuth2 errors (these are definitive failures)
-        var retrieveErr *oauth2.RetrieveError
-        if errors.As(err, &retrieveErr) {
-            return nil, s.translateOAuth2Error(retrieveErr)
-        }
-        
-        // Calculate delay with exponential backoff
-        delay := s.config.RetryConfig.BaseDelay * time.Duration(1<<(attempt-1))
-        if delay > s.config.RetryConfig.MaxDelay {
-            delay = s.config.RetryConfig.MaxDelay
-        }
-        
-        log.Warn("Token exchange failed, retrying",
-            "attempt", attempt,
-            "max_attempts", s.config.RetryConfig.MaxAttempts,
-            "delay", delay,
+        s.logger.Warn("token exchange attempt failed",
+            "attempt", attempt+1,
+            "max_attempts", len(delays),
             "error", err,
-        )
+            "next_retry_in", delay)
         
+        // Check if context cancelled before sleeping
         select {
         case <-ctx.Done():
             return nil, ctx.Err()
@@ -449,39 +486,44 @@ func (s *Service) exchangeWithRetry(ctx context.Context, config *oauth2.Config, 
         }
     }
     
-    return nil, fmt.Errorf("token exchange failed after %d attempts: %w", 
-        s.config.RetryConfig.MaxAttempts, lastErr)
+    // All retries exhausted
+    return nil, fmt.Errorf("token exchange failed after %d attempts: %w", len(delays), lastErr)
 }
 ```
 
-### Error Translation
+### Final Attempt (no delay after)
 
 ```go
-func (s *Service) translateOAuth2Error(err *oauth2.RetrieveError) error {
-    switch err.ErrorCode {
-    case "access_denied":
-        return ErrUserDeniedAccess
-    case "invalid_grant":
-        return ErrInvalidGrant
-    case "invalid_scope":
-        return ErrInvalidScope
-    default:
-        return fmt.Errorf("oauth2 error: %s - %s", err.ErrorCode, err.ErrorDescription)
-    }
+// After 3 delays, make one final attempt
+token, err := operation()
+if err == nil {
+    return token, nil
 }
+return nil, fmt.Errorf("token exchange failed after %d attempts: %w", len(delays)+1, lastErr)
 ```
 
 ---
 
-## Summary of Decisions
+## Summary of Technology Choices
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| OAuth2 library | `golang.org/x/oauth2` | Official Go library, PKCE support, battle-tested |
-| JWE library | `github.com/lestrrat-go/jwx/v3` | Complete JOSE implementation, authenticated encryption |
-| JWE algorithm | A256KW + A256GCM | 256-bit key wrapping + authenticated encryption |
-| Domain service location | `internal/domain/oauth2session/` | Separates OAuth2 session logic from consent |
-| Library usage in domain | Allowed | Per user directive, both are vetted RFC implementations |
-| HTTP client | Injected dependency | Testability, timeout control, tracing |
-| State token TTL | 10 minutes (configurable) | Short exposure window, sufficient for flow completion |
-| Retry strategy | 3 attempts, exponential backoff | Network resilience without overwhelming provider |
+| Component | Technology | Version | Purpose |
+|-----------|------------|---------|---------|
+| OAuth2 Client | golang.org/x/oauth2 | latest | Authorization code flow with PKCE |
+| JWE Encryption | github.com/lestrrat-go/jwx/v3 | v3.x | State token encryption/decryption |
+| Token Encryption | Existing EncryptionPort | - | Access/refresh token encryption |
+| Database | PostgreSQL + sqlx | 15+ | Session persistence |
+| HTTP Router | Chi | v5.x | HTTP handlers |
+| Configuration | Viper | 1.19+ | JWE key, TTL settings |
+
+---
+
+## Open Questions Resolved
+
+| Question | Resolution |
+|----------|------------|
+| How to handle PKCE? | Manual generation using crypto/rand + SHA256 |
+| Which JWE algorithm? | A256GCMKW (key wrap) + A256GCM (content encryption) |
+| Where does OAuth2 orchestration live? | Domain service (OAuth2SessionService) |
+| How to handle race conditions? | Database unique constraint (principal, service_id) |
+| Retry strategy for token exchange? | 3 retries with exponential backoff (1s, 2s, 4s) |
+| How to bind tokens to user? | Encryption context with principal, service_id, session_id |

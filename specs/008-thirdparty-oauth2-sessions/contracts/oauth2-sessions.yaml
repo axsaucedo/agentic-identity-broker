@@ -265,6 +265,77 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   /api/third-party/{serviceId}/session:
+    get:
+      operationId: getSessionDetails
+      summary: Get session details with dependent agents
+      description: |
+        Returns detailed information about the user's session with a third-party
+        service, including the list of agents that depend on this session.
+        Used to populate the session card and termination warning dialog.
+      tags:
+        - Third-Party Sessions
+      security:
+        - preAuth: []
+      parameters:
+        - name: serviceId
+          in: path
+          required: true
+          description: UUID of the third-party OAuth2 service
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - session
+                      - dependent_agents
+                    properties:
+                      session:
+                        $ref: '#/components/schemas/SessionStatus'
+                      dependent_agents:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AffectedAgent'
+              example:
+                data:
+                  session:
+                    session_id: "660e8400-e29b-41d4-a716-446655440001"
+                    initiated_at: "2025-12-20T10:30:00Z"
+                    access_token_expires_at: "2025-12-20T11:30:00Z"
+                    refresh_token_expires_at: "2026-01-20T10:30:00Z"
+                    is_expired: false
+                    has_refresh_token: true
+                    scope: ["repo", "user:email"]
+                    dependent_agent_count: 2
+                    tokens_encrypted: true
+                  dependent_agents:
+                    - agent_id: "770e8400-e29b-41d4-a716-446655440000"
+                      display_name: "Code Assistant"
+                    - agent_id: "770e8400-e29b-41d4-a716-446655440001"
+                      display_name: "PR Reviewer"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Session not found for this service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "not_found"
+                message: "No session exists for this service"
+        '500':
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: terminateSession
       summary: Terminate third-party session

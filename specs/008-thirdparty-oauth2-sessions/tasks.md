@@ -1,15 +1,16 @@
 # Tasks: Third-Party OAuth2 Session Management
 
-**Feature**: 008-thirdparty-oauth2-sessions  
-**Input**: Design documents from [/specs/008-thirdparty-oauth2-sessions/](.)  
-**Prerequisites**: [plan.md](plan.md), [spec.md](spec.md), [data-model.md](data-model.md), [contracts/oauth2-sessions.yaml](contracts/oauth2-sessions.yaml), [quickstart.md](quickstart.md)
+**Input**: Design documents from `/specs/008-thirdparty-oauth2-sessions/`  
+**Prerequisites**: plan.md ✓, spec.md ✓, research.md ✓, data-model.md ✓, contracts/ ✓
 
-## Format: `- [ ] [ID] [P?] [Story?] Description`
+**Tests**: Per Constitution Principle VIII (Test-Driven Development & Automated Testing), automated tests are MANDATORY for all features. Test tasks are included in each user story below and MUST be written before or alongside implementation.
 
-- **Checkbox**: `- [ ]` (markdown checkbox, REQUIRED)
-- **[ID]**: Task ID (T001, T002, T003...)
+**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+
+## Format: `[ID] [P?] [Story?] Description`
+
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: User story label (US1, US2, US3, US4) for user story phase tasks only
+- **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
 
 ---
@@ -18,322 +19,384 @@
 
 **Purpose**: Project initialization and dependency setup
 
-- [ ] T001 Add Go dependencies: `golang.org/x/oauth2` and `github.com/lestrrat-go/jwx/v3` to go.mod
-- [ ] T002 [P] Create directory structure: internal/domain/oauth2session/, internal/adapters/http/oauth2_sessions/
-- [ ] T003 [P] Create frontend directory structure: web/src/pages/sessions/, web/src/components/sessions/, web/src/hooks/sessions/
+- [ ] T001 Add golang.org/x/oauth2 dependency to go.mod
+- [ ] T002 [P] Add github.com/lestrrat-go/jwx/v3 dependency to go.mod
+- [ ] T003 [P] Create directory structure: internal/domain/oauth2session/, internal/adapters/http/oauth2_sessions/
 
 ---
 
-## Phase 2: Foundational (Blocking Prerequisites)
+## 🔒 Phase 2: Design Preconditions (Blocking Prerequisites)
 
-**Purpose**: Shared infrastructure that all user stories depend on
+**Purpose**: Domain model, configuration, API, and database design MUST all be complete before implementation
 
-### Domain Foundation
+**⚠️ CRITICAL**: No code implementation can begin until this entire phase is complete
 
-- [ ] T004 Create UserSession entity in internal/domain/storage/user_session.go with validation methods
-- [ ] T005 [P] Create OAuth2StateTokenClaims value object in internal/domain/oauth2session/state_token.go
-- [ ] T006 [P] Create domain errors in internal/domain/oauth2session/errors.go (ErrUnauthenticated, ErrInvalidStateToken, etc.)
+### Phase 2a: Domain Model & Glossary [MANDATORY]
 
-### Repository Interface
+**Constitution Reference**: Principles II (Architecture Documentation), V (Domain-Driven Design & Glossary Management)
 
-- [ ] T007 Add UserSessionRepository interface to internal/ports/storage.go with Create/Get/FindByPrincipalAndService/Delete/ListByPrincipal/CountByService methods
+- [ ] T004 Document domain model entities (UserSession, OAuth2StateTokenClaims) in data-model.md ✓ (already complete)
+- [ ] T005 [P] Add new domain terms to ARCHITECTURE.md Glossary: UserSession, OAuth2StateToken, OAuth2SessionService, Token Vault, Session Termination
+- [ ] T006 [P] Document invariants: one session per (principal, service_id), tokens always encrypted, PKCE mandatory
 
-### Database Migration
+**Checkpoint**: Domain model complete and documented
 
-- [ ] T008 Create migration 004_create_user_sessions.up.sql with user_sessions table schema
-- [ ] T009 [P] Create migration 004_create_user_sessions.down.sql for rollback
+### Phase 2b: Configuration Design [MANDATORY]
 
-### Configuration
+**Constitution Reference**: Principle VII (Configuration-Driven Design)
 
-- [ ] T010 Add ThirdPartyOAuth2Config struct to internal/config/schema.go (jwe_signing_key, state_token_ttl, pkce_verifier_length)
-- [ ] T011 [P] Create example configuration file examples/config/third-party-oauth2.yaml
+- [ ] T007 Create example YAML in examples/config/third-party-oauth2.yaml with jwe_signing_key, state_token_ttl, pkce_verifier_length
+- [ ] T008 [P] Update examples/config/README.md to reference third-party-oauth2.yaml
+- [ ] T009 [P] Add ThirdPartyOAuth2Config struct to internal/config/schema.go
 
-### State Token Service (Foundational Security Component)
+**Checkpoint**: Configuration requirements designed with YAML examples
 
-- [ ] T012 Implement StateTokenService in internal/domain/oauth2session/state_token.go with Create and Validate methods using jwx library
-- [ ] T013 [P] Write unit tests for StateTokenService in internal/domain/oauth2session/state_token_test.go (test expiration, tampering, validation)
+### Phase 2c: API Design [MANDATORY]
 
-### Repository Adapters
+**Constitution Reference**: Principles IV (API Documentation & OpenAPI Transparency), X (API-First Development)
 
-- [ ] T014 Implement in-memory UserSessionRepository in internal/adapters/storage/memory/user_session.go
-- [ ] T015 [P] Implement PostgreSQL UserSessionRepository in internal/adapters/storage/postgres/user_session.go with ON CONFLICT handling
+- [ ] T010 Verify contracts/oauth2-sessions.yaml covers all endpoints from spec.md requirements ✓ (already complete)
+- [ ] T011 [P] Merge contracts/oauth2-sessions.yaml into /api/enduser/openapi.yaml
+- [ ] T012 [P] Get user/stakeholder confirmation for end-user API design (document in PR)
 
----
+**Checkpoint**: APIs designed and confirmed by user/stakeholder
 
-## Phase 3: User Story 1 - View Available Third-Party Services (P1)
+### Phase 2d: Database Design [MANDATORY]
 
-**Goal**: Users can see which third-party services are registered and understand their current session status
+**Constitution Reference**: Principle IX (Persistence Pattern Consistency & Database Migration Management)
 
-**Independent Test**: User navigates to third-party sessions page and sees list of services with status indicators
+- [ ] T013 Create migration migrations/004_create_user_sessions.up.sql with schema from data-model.md
+- [ ] T014 [P] Create migration migrations/004_create_user_sessions.down.sql
+- [ ] T015 [P] Document unique constraint (principal, service_id) and foreign key to thirdparty_oauth2_services
 
-### Backend (US1)
+**Checkpoint**: Database schema designed, migrations documented
 
-- [ ] T016 [US1] Implement ListSessions method in OAuth2SessionService in internal/domain/oauth2session/service.go
-- [ ] T017 [US1] Implement HTTP handler for GET /api/third-party/sessions in internal/adapters/http/oauth2_session_handlers.go
-- [ ] T018 [US1] Register /api/third-party/sessions route in HTTP router setup
+### Phase 2e: Frontend/Design System Review [MANDATORY]
 
-### Frontend (US1)
+**Constitution Reference**: Principle XI (Design System Compliance & Consistency)
 
-- [ ] T019 [P] [US1] Create useThirdPartySessions hook in web/src/hooks/sessions/useThirdPartySessions.ts with React Query
-- [ ] T020 [P] [US1] Create SessionStatusBadge component in web/src/components/sessions/SessionStatusBadge.tsx
-- [ ] T021 [US1] Create ServiceSessionCard component in web/src/components/sessions/ServiceSessionCard.tsx displaying service info and session status
-- [ ] T022 [US1] Create ThirdPartySessionsPage in web/src/pages/ThirdPartySessionsPage.tsx with grid of service cards
-- [ ] T023 [US1] Add route for /consent/sessions to frontend router
+- [ ] T016 Review web/src/design-system/docs/INDEX.md for session card component patterns
+- [ ] T017 [P] Identify design system components to use: Card, Button, Dialog, Badge for status indicators
+- [ ] T018 [P] Document semantic token usage: success-primary (active), warning-primary (expiring), error-primary (expired)
 
-### Integration (US1)
-
-- [ ] T024 [US1] Write integration test for GET /api/third-party/sessions endpoint in tests/integration/oauth2_session_test.go
-- [ ] T025 [US1] Test session list endpoint with no sessions, with active session, and with expired session
+**Checkpoint**: Design system usage planned
 
 ---
 
-## Phase 4: User Story 4 - Secure State Token Management (P2)
+## Phase 2.5: Foundational Infrastructure
 
-**Goal**: System securely manages OAuth2 state parameters during authorization flow
+**Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
-**Independent Test**: System creates JWE state tokens, validates all parameters on callback, rejects mismatched/tampered tokens
+**⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-**Note**: This is infrastructure for US2 but isolated here for focused testing
+- [ ] T019 Create UserSession entity in internal/domain/storage/user_session.go with Validate(), IsExpired(), HasValidAccessToken() methods
+- [ ] T020 [P] Create EncryptionContext type in internal/domain/storage/user_session.go with Value()/Scan() for JSONB
+- [ ] T021 [P] Create UserSessionRepository interface in internal/ports/storage.go (Create, Get, FindByPrincipalAndService, ListByPrincipal, Delete, DeleteByPrincipalAndService, CountByService)
+- [ ] T021a [P] Extend UserGrantRepository interface with CountAgentsByServiceID(ctx, serviceID) method to query delegated_oauth2_tokens JSONB for agent count per FR-016
+- [ ] T022 Create OAuth2StateTokenClaims value object in internal/domain/oauth2session/state_token.go with Validate(), IsExpired()
+- [ ] T023 [P] Create PKCE generation function GeneratePKCE() in internal/domain/oauth2session/pkce.go per RFC 7636
+- [ ] T024 [P] Create domain errors in internal/domain/oauth2session/errors.go (ErrStateTokenExpired, ErrPrincipalMismatch, ErrServiceNotFound, etc.)
+- [ ] T025 Create OAuth2SessionService struct in internal/domain/oauth2session/service.go with Config, dependencies (repos, encryption, jweKey, logger)
+- [ ] T026 [P] Create in-memory UserSessionRepository adapter in internal/adapters/storage/memory/user_session.go
+- [ ] T027 Create PostgreSQL UserSessionRepository adapter in internal/adapters/storage/postgres/user_session.go with upsert semantics
 
-### Domain Service Setup
-
-- [ ] T026 [US4] Create OAuth2SessionService struct in internal/domain/oauth2session/service.go with dependencies (sessionRepo, serviceRepo, encryption, stateToken)
-- [ ] T027 [US4] Implement Config struct for OAuth2SessionService (CallbackURLTemplate, StateTokenTTL, RetryMaxAttempts, RetryBaseDelay)
-- [ ] T028 [US4] Implement NewService constructor in internal/domain/oauth2session/service.go with config defaults
-- [ ] T028a [US4] Wire UserGrantRepository and ThirdpartyOAuth2ServiceRepository dependencies into NewService constructor in internal/domain/oauth2session/service.go
-
-### State Token Security
-
-- [ ] T029 [US4] Implement validateRedirectURI helper function for same-origin validation
-- [ ] T030 [P] [US4] Implement PKCE helper functions (extractScopeValues, validatePrincipal, validateServiceID)
-- [ ] T031 [US4] Write unit tests for state token security in internal/domain/oauth2session/service_test.go (principal mismatch, service ID mismatch, expired token)
+**Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
 ---
 
-## Phase 5: User Story 2 - Establish OAuth2 Session via Authorization Code Flow (P2)
+## Phase 3: User Story 1 - View Available Third-Party Sessions (Priority: P1) 🎯 MVP
 
-**Goal**: Users can authenticate with third-party services via OAuth2 authorization code flow with PKCE
+**Goal**: Users can see which third-party services have active sessions with status indicators showing initiation time, dependent agent count, encryption status, and expiration status.
 
-**Independent Test**: User clicks Login, redirects to third-party, approves, returns with session established and tokens encrypted
+**Independent Test**: User navigates to "Third-party Sessions" page and sees list of services with established sessions showing status information.
 
-### Backend - Initiate Flow (US2)
+### Tests for User Story 1 [MANDATORY - Principle VIII] ⚠️
 
-- [ ] T032 [US2] Implement InitiateOAuth2Flow method in OAuth2SessionService in internal/domain/oauth2session/service.go
-- [ ] T033 [US2] Generate PKCE verifier using oauth2.GenerateVerifier() in InitiateOAuth2Flow
-- [ ] T034 [US2] Create JWE state token with claims (principal, pkce_verifier, service_id, redirect_uri) in InitiateOAuth2Flow
-- [ ] T035 [US2] Build authorization URL with oauth2.Config and S256ChallengeOption in InitiateOAuth2Flow
-- [ ] T036 [US2] Implement HTTP handler for GET /api/third-party/:serviceId/oauth2/authorize in internal/adapters/http/oauth2_session_handlers.go
-- [ ] T037 [US2] Register /api/third-party/:serviceId/oauth2/authorize route in HTTP router
+- [ ] T028 [P] [US1] Unit tests for UserSession.IsExpired(), HasValidAccessToken(), Validate() in tests/unit/oauth2session/user_session_test.go
+- [ ] T029 [P] [US1] Unit tests for UserSessionSummary projection in tests/unit/oauth2session/user_session_summary_test.go
+- [ ] T030 [P] [US1] Integration tests for UserSessionRepository.ListByPrincipal() in tests/integration/user_sessions_test.go
+- [ ] T031 [P] [US1] Integration tests for GET /api/third-party/sessions endpoint in tests/integration/oauth2_sessions_api_test.go
 
-### Backend - Complete Flow (US2)
+### Implementation for User Story 1
 
-- [ ] T038 [US2] Implement CompleteOAuth2Flow method in OAuth2SessionService in internal/domain/oauth2session/service.go
-- [ ] T039 [US2] Validate state token and check principal/service ID match in CompleteOAuth2Flow
-- [ ] T040 [US2] Implement exchangeWithRetry helper for token exchange with exponential backoff in internal/domain/oauth2session/service.go
-- [ ] T041 [US2] Exchange authorization code with PKCE verifier using config.Exchange with oauth2.VerifierOption in exchangeWithRetry
-- [ ] T042 [US2] Implement createSession helper to encrypt tokens using EncryptionPort and store UserSession
-- [ ] T043 [US2] Implement HTTP handler for GET /api/third-party/:serviceId/oauth2/callback in internal/adapters/http/oauth2_session_handlers.go
-- [ ] T044 [US2] Register /api/third-party/:serviceId/oauth2/callback route in HTTP router
+- [ ] T032 [US1] Create UserSessionSummary read model in internal/domain/storage/user_session.go with NewUserSessionSummary()
+- [ ] T033 [US1] Implement OAuth2SessionService.ListUserSessions() in internal/domain/oauth2session/service.go
+- [ ] T034 [US1] Implement dependent agent count query using UserGrantRepository (query delegated_oauth2_tokens JSONB)
+- [ ] T035 [P] [US1] Create HTTP handler Handler struct in internal/adapters/http/oauth2_sessions/handler.go
+- [ ] T036 [US1] Implement ListSessions handler GET /api/third-party/sessions in internal/adapters/http/oauth2_sessions/handler.go
+- [ ] T037 [P] [US1] Register routes with Chi router in internal/adapters/http/oauth2_sessions/handler.go RegisterRoutes()
+- [ ] T038 [P] [US1] Create frontend API client sessionsApi in web/src/services/api/sessions.ts
+- [ ] T039 [P] [US1] Create useSessions hook in web/src/hooks/useSessions.ts
+- [ ] T040 [US1] Create SessionCard component in web/src/components/sessions/SessionCard.tsx
+- [ ] T041 [US1] Create ThirdPartySessionsPage in web/src/pages/ThirdPartySessionsPage.tsx
+- [ ] T042 [US1] Add structured logging for session list operations
 
-### Error Handling (US2)
-
-- [ ] T045 [P] [US2] Handle OAuth2 errors from third-party (access_denied, invalid_scope) in CompleteOAuth2Flow
-- [ ] T046 [P] [US2] Handle network failures with retry logic (3 attempts, exponential backoff 1s/2s/4s) in exchangeWithRetry
-- [ ] T047 [P] [US2] Implement extractRedirectURI helper to extract redirect_uri from state token for post-callback redirect
-
-### Frontend (US2)
-
-- [ ] T048 [P] [US2] Implement handleLogin function in ServiceSessionCard.tsx to redirect to /api/third-party/:serviceId/oauth2/authorize
-- [ ] T049 [P] [US2] Add callback success/error handling in ThirdPartySessionsPage.tsx (parse query params, show toast notifications)
-
-### Audit Logging (US2)
-
-- [ ] T050 [P] [US2] Implement logSecurityEvent helper for state token validation failures
-- [ ] T051 [P] [US2] Implement logAuditEvent helper for session establishment events
-
-### Integration (US2)
-
-- [ ] T052 [US2] Write integration test for full OAuth2 flow in tests/integration/oauth2_session_test.go (initiate → mock third-party → callback → verify session)
-- [ ] T053 [US2] Test race condition handling (multiple simultaneous flows for same service) with UNIQUE constraint
-- [ ] T054 [US2] Test OAuth2 error handling (access_denied, server_error)
-- [ ] T055 [US2] Test network retry logic with mock failing token endpoint
+**Checkpoint**: User Story 1 fully functional - users can view their sessions
 
 ---
 
-## Phase 6: User Story 3 - Terminate Third-Party Session with Warnings (P3)
+## Phase 4: User Story 2 - Establish OAuth2 Session via Authorization Code Flow (Priority: P2)
 
-**Goal**: Users can revoke sessions with warnings about affected agents
+**Goal**: Users can authenticate with third-party services through OAuth2 authorization code flow with PKCE, storing encrypted tokens.
 
-**Independent Test**: User clicks Terminate, sees warning with affected agents, confirms, session deleted with tokens removed
+**Independent Test**: Navigating to /api/third-party/{serviceId}/oauth2/authorize redirects to third-party, callback stores encrypted tokens, user sees established session.
 
-### Backend (US3)
+### Tests for User Story 2 [MANDATORY - Principle VIII] ⚠️
 
-- [ ] T056 [US3] Implement GetAffectedAgents method in OAuth2SessionService to query UserGrantRepository
-- [ ] T057 [US3] Implement TerminateSession method in OAuth2SessionService in internal/domain/oauth2session/service.go
-- [ ] T058 [US3] Implement HTTP handler for GET /api/third-party/:serviceId/session/affected-agents in internal/adapters/http/oauth2_session_handlers.go
-- [ ] T059 [US3] Implement HTTP handler for DELETE /api/third-party/:serviceId/session in internal/adapters/http/oauth2_session_handlers.go
-- [ ] T060 [US3] Register /api/third-party/:serviceId/session/affected-agents and DELETE routes in HTTP router
+- [ ] T043 [P] [US2] Unit tests for GeneratePKCE() in tests/unit/oauth2session/pkce_test.go (verifier length, challenge computation)
+- [ ] T044 [P] [US2] Unit tests for CreateStateToken(), ValidateStateToken() in tests/unit/oauth2session/state_token_test.go
+- [ ] T045 [P] [US2] Unit tests for OAuth2SessionService.InitiateOAuth2Flow() in tests/unit/oauth2session/service_test.go
+- [ ] T046 [P] [US2] Unit tests for OAuth2SessionService.HandleCallback() in tests/unit/oauth2session/service_test.go
+- [ ] T047 [P] [US2] Integration tests for authorize endpoint in tests/integration/oauth2_sessions_api_test.go
+- [ ] T048 [P] [US2] Integration tests for callback endpoint in tests/integration/oauth2_sessions_api_test.go
 
-### Frontend (US3)
+### Implementation for User Story 2
 
-- [ ] T061 [P] [US3] Create useTerminateSession hook in web/src/hooks/sessions/useTerminateSession.ts with mutation
-- [ ] T062 [P] [US3] Create useAffectedAgents hook in web/src/hooks/sessions/useAffectedAgents.ts to fetch affected agents
-- [ ] T063 [US3] Create TerminateDialog component in web/src/components/sessions/TerminateDialog.tsx with warning and agent list
-- [ ] T064 [US3] Wire TerminateDialog into ServiceSessionCard.tsx on "Terminate Session" button click
+- [ ] T049 [US2] Implement JWE key loading from config in internal/domain/oauth2session/service.go (loadJWEKey)
+- [ ] T050 [US2] Implement CreateStateToken() JWE encryption in internal/domain/oauth2session/service.go using jwx/v3
+- [ ] T051 [US2] Implement ValidateStateToken() JWE decryption with principal/expiration validation in internal/domain/oauth2session/service.go
+- [ ] T052 [US2] Implement buildOAuth2Config() helper in internal/domain/oauth2session/service.go
+- [ ] T053 [US2] Implement OAuth2SessionService.InitiateOAuth2Flow() in internal/domain/oauth2session/service.go
+- [ ] T054 [US2] Implement redirect URI same-origin validation in handler
+- [ ] T055 [US2] Implement exchangeCodeWithRetry() with exponential backoff (1s, 2s, 4s) in internal/domain/oauth2session/service.go
+- [ ] T056 [US2] Implement token encryption using EncryptionPort in createSession() helper
+- [ ] T057 [US2] Implement OAuth2SessionService.HandleCallback() in internal/domain/oauth2session/service.go
+- [ ] T058 [P] [US2] Implement InitiateFlow handler GET /api/third-party/{serviceId}/oauth2/authorize in internal/adapters/http/oauth2_sessions/handler.go
+- [ ] T059 [US2] Implement HandleCallback handler GET /api/third-party/{serviceId}/oauth2/callback in internal/adapters/http/oauth2_sessions/handler.go
+- [ ] T060 [US2] Handle OAuth2 error responses (access_denied, invalid_scope) in callback with user-friendly redirect
+- [ ] T061 [P] [US2] Add frontend success/error handling after OAuth2 callback redirect in ThirdPartySessionsPage.tsx
+- [ ] T062 [US2] Add structured audit logging: session establishment, failed state validation, failed PKCE validation
+- [ ] T062a [P] [US2] Unit test verifying audit log emitted on failed PKCE validation (SR-009 compliance)
 
-### Audit Logging (US3)
-
-- [ ] T065 [P] [US3] Implement logAuditEvent for session termination in OAuth2SessionService
-
-### Integration (US3)
-
-- [ ] T066 [US3] Write integration test for session termination in tests/integration/oauth2_session_test.go
-- [ ] T067 [US3] Test affected agents endpoint returns correct agent count
-- [ ] T068 [US3] Test deletion removes tokens and session record from database
-
----
-
-## Phase 7: Polish & Cross-Cutting Concerns
-
-**Purpose**: Documentation, API integration, configuration examples, glossary updates
-
-### API Documentation
-
-- [ ] T069 Merge contracts/oauth2-sessions.yaml into /api/enduser/openapi.yaml
-- [ ] T070 [P] Add OAuth2 session management examples to docs/api/
-
-### Glossary & Architecture
-
-- [ ] T071 Add new domain terms to ARCHITECTURE.md Glossary: UserSession, OAuth2StateToken, OAuth2SessionService, PKCE Flow, JWE State Binding
-- [ ] T072 [P] Update ARCHITECTURE.md with OAuth2SessionService domain service description
-
-### Configuration Documentation
-
-- [ ] T073 Update docs/configuration.md with third_party_oauth2 configuration section
-- [ ] T074 [P] Document JWE signing key setup in docs/security/best-practices.md
-
-### End-to-End Testing
-
-- [ ] T075 Write end-to-end test for complete user journey (view sessions → login → see active session → terminate) in tests/integration/e2e_oauth2_test.go
-
-### Deployment Validation
-
-- [ ] T076 Run database migrations against test PostgreSQL instance and verify: (1) migrations apply cleanly, (2) rollback works without data loss, (3) can apply/rollback repeatedly
-- [ ] T077 [P] Verify JWE signing key configuration from environment variable
-- [ ] T078 [P] Test API endpoints with actual OAuth2 provider (e.g., GitHub OAuth App in dev environment)
+**Checkpoint**: User Story 2 fully functional - users can establish sessions via OAuth2 flow
 
 ---
 
-## Dependencies Between User Stories
+## Phase 5: User Story 3 - Terminate Third-Party Session with Warnings (Priority: P3)
 
-```mermaid
-graph TD
-    Setup[Phase 1: Setup]
-    Found[Phase 2: Foundational]
-    US1[Phase 3: US1 - View Sessions]
-    US4[Phase 4: US4 - State Token Security]
-    US2[Phase 5: US2 - Establish Session]
-    US3[Phase 6: US3 - Terminate Session]
-    Polish[Phase 7: Polish]
-    
-    Setup --> Found
-    Found --> US1
-    Found --> US4
-    US1 --> US2
-    US4 --> US2
-    US2 --> US3
-    US3 --> Polish
+**Goal**: Users can revoke sessions with warning about affected agents before deletion.
+
+**Independent Test**: User clicks "Terminate Session", sees warning dialog listing affected agents, confirms, session and tokens deleted.
+
+### Tests for User Story 3 [MANDATORY - Principle VIII] ⚠️
+
+- [ ] T063 [P] [US3] Unit tests for OAuth2SessionService.TerminateSession() in tests/unit/oauth2session/service_test.go
+- [ ] T064 [P] [US3] Unit tests for GetSessionDetails() (dependent agents) in tests/unit/oauth2session/service_test.go
+- [ ] T065 [P] [US3] Integration tests for DELETE /api/third-party/{serviceId}/session in tests/integration/oauth2_sessions_api_test.go
+- [ ] T066 [P] [US3] Integration tests for GET /api/third-party/{serviceId}/session in tests/integration/oauth2_sessions_api_test.go
+
+### Implementation for User Story 3
+
+- [ ] T067 [US3] Implement OAuth2SessionService.GetSessionDetails() with dependent agent list in internal/domain/oauth2session/service.go
+- [ ] T068 [US3] Implement OAuth2SessionService.TerminateSession() with token deletion in internal/domain/oauth2session/service.go
+- [ ] T069 [US3] Implement GetSessionDetails handler GET /api/third-party/{serviceId}/session in internal/adapters/http/oauth2_sessions/handler.go
+- [ ] T070 [US3] Implement TerminateSession handler DELETE /api/third-party/{serviceId}/session in internal/adapters/http/oauth2_sessions/handler.go
+- [ ] T071 [P] [US3] Create TerminationDialog component in web/src/components/sessions/TerminationDialog.tsx
+- [ ] T072 [US3] Integrate TerminationDialog with SessionCard in ThirdPartySessionsPage
+- [ ] T073 [P] [US3] Add terminateSession() method to sessionsApi in web/src/services/api/sessions.ts
+- [ ] T074 [US3] Add structured audit logging: session termination
+
+**Checkpoint**: User Story 3 fully functional - users can terminate sessions with warnings
+
+---
+
+## Phase 6: User Story 4 - Secure State Token Management (Priority: P2)
+
+**Goal**: JWE state tokens securely bind OAuth2 flows to users with CSRF protection and tamper detection.
+
+**Independent Test**: State tokens contain all required claims, validation rejects expired/tampered/mismatched tokens.
+
+*Note: This story is implemented alongside US2 (InitiateOAuth2Flow and HandleCallback). These tasks focus on security-specific testing and validation.*
+
+### Tests for User Story 4 [MANDATORY - Principle VIII] ⚠️
+
+- [ ] T075 [P] [US4] Security tests for state token expiration rejection in tests/unit/oauth2session/state_token_security_test.go
+- [ ] T076 [P] [US4] Security tests for principal mismatch rejection (CSRF) in tests/unit/oauth2session/state_token_security_test.go
+- [ ] T077 [P] [US4] Security tests for service_id mismatch rejection in tests/unit/oauth2session/state_token_security_test.go
+- [ ] T078 [P] [US4] Security tests for tampered token rejection in tests/unit/oauth2session/state_token_security_test.go
+
+### Implementation for User Story 4
+
+- [ ] T079 [US4] Verify JWE uses authenticated encryption A256GCMKW + A256GCM (code review task)
+- [ ] T080 [US4] Verify state token TTL <= 15 minutes is enforced in config validation
+- [ ] T081 [US4] Verify principal mismatch returns 403 Forbidden with security log
+- [ ] T082 [US4] Verify service_id mismatch returns 400 Bad Request
+
+**Checkpoint**: User Story 4 complete - state tokens are secure
+
+---
+
+## 🔒 Phase 7: Constitution Compliance & Polish [MANDATORY COMPLIANCE SECTION]
+
+**Purpose**: Verify constitution requirements and final polish
+
+### 🔒 Constitution Compliance Verification [MANDATORY]
+
+#### Design Phase Verification [MANDATORY]
+
+- [ ] T083 Verify domain model documented in ARCHITECTURE.md Glossary (Principle V)
+- [ ] T084 Verify examples/config/third-party-oauth2.yaml exists (Principle VII)
+- [ ] T085 [P] Verify examples/config/README.md references third-party-oauth2.yaml (Principle VII)
+- [ ] T086 Verify /api/enduser/openapi.yaml includes all session endpoints (Principles IV, X)
+- [ ] T087 Verify user/stakeholder confirmed API designs (document reference in PR) (Principle X)
+- [ ] T088 Verify migrations 004_create_user_sessions exist and tested (Principle IX)
+
+#### Implementation Phase Verification [MANDATORY]
+
+**API & Documentation** (Principles IV, X):
+- [ ] T089 [P] Verify API implementation matches OpenAPI specification exactly
+- [ ] T090 Update docs/api/ with end-user OAuth2 session documentation and examples
+
+**Architecture & Documentation** (Principle II):
+- [ ] T091 Update ARCHITECTURE.md with OAuth2 session domain service and flow diagram
+- [ ] T092 [P] Verify ARCHITECTURE.md Glossary has all new domain terms
+
+**Database & Persistence** (Principle IX):
+- [ ] T093 [P] Verify migrations follow sequential numbering (004)
+- [ ] T094 [P] Verify migration integration tests (apply, rollback, data integrity)
+- [ ] T095 [P] Verify PostgreSQL UserSessionRepository tested in integration tests
+- [ ] T096 Verify persistence follows quickstart.md patterns (StorageError wrapping)
+
+**Security** (Principles I, III):
+- [ ] T097 Verify PKCE is mandatory (no bypass)
+- [ ] T098 [P] Verify JWE encryption for state tokens (no custom crypto)
+- [ ] T099 [P] Verify token encryption at rest using EncryptionPort (no custom crypto)
+- [ ] T100 [P] Verify structured audit logging for security-critical operations
+
+**Architecture Patterns** (Principle VI):
+- [ ] T101 Verify OAuth2SessionService uses ports (ThirdpartyOAuth2ServiceRepository, UserSessionRepository, EncryptionPort)
+
+**Testing** (Principle VIII):
+- [ ] T102 Verify unit tests for domain logic
+- [ ] T103 [P] Verify integration tests for HTTP handlers
+- [ ] T104 [P] Verify integration tests for PostgreSQL repository
+
+**Frontend** (Principle XI):
+- [ ] T105 Verify SessionCard uses design system Card component
+- [ ] T106 [P] Verify TerminationDialog uses design system Dialog component
+- [ ] T107 [P] Verify semantic tokens for status colors (success/warning/error)
+- [ ] T108 [P] Verify WCAG 2.1 AA accessibility (contrast ratios)
+
+### Additional Polish
+
+- [ ] T109 Code cleanup and refactoring
+- [ ] T110 [P] Run go vet and go lint
+- [ ] T111 [P] Run frontend eslint and prettier
+- [ ] T112 Run quickstart.md validation steps
+
+---
+
+## Dependencies & Execution Order
+
+### Phase Dependencies
+
+- **Setup (Phase 1)**: No dependencies - can start immediately
+- **Design Preconditions (Phase 2)**: Depends on Setup completion - BLOCKS all implementation
+  - Phase 2a, 2b, 2c, 2d, 2e can proceed in parallel
+- **Foundational Infrastructure (Phase 2.5)**: Depends on ALL of Phase 2 completion - BLOCKS all user stories
+- **User Stories (Phase 3-6)**: All depend on Phase 2 + Phase 2.5 completion
+  - US1 (P1), US2 (P2), US4 (P2) can proceed in parallel
+  - US3 (P3) can also proceed in parallel but is lower priority
+- **Polish (Phase 7)**: Depends on all user stories being complete
+
+### User Story Dependencies
+
+- **User Story 1 (P1)**: Can start after Phase 2.5 - MVP, no dependencies on other stories
+- **User Story 2 (P2)**: Can start after Phase 2.5 - Core OAuth2 flow
+- **User Story 4 (P2)**: Implements security for US2 - Run tests after US2 implementation
+- **User Story 3 (P3)**: Can start after Phase 2.5 - Depends on session existing (US2 for full testing)
+
+### Within Each User Story
+
+- Tests MUST be written and FAIL before implementation
+- Domain logic before HTTP handlers
+- Backend before frontend
+- Story complete before moving to next priority
+
+### Parallel Opportunities
+
+**Phase 1 (all parallel)**:
+- T001, T002, T003 can run simultaneously
+
+**Phase 2 (parallel within sub-phases)**:
+- T005, T006 (2a) in parallel
+- T007, T008, T009 (2b) in parallel
+- T011, T012 (2c) in parallel
+- T013, T014, T015 (2d) in parallel
+- T016, T017, T018 (2e) in parallel
+
+**Phase 2.5 (partial parallel)**:
+- T020, T021, T023, T024, T026 can run in parallel
+- T019, T022, T025, T027 are blocking
+
+**User Story Tests (parallel within story)**:
+- All [P] marked test tasks within a story can run in parallel
+
+**Different Stories (parallel if team capacity)**:
+- US1, US2, US3, US4 can be worked on by different developers after Phase 2.5
+
+---
+
+## Parallel Example: User Story 2 Tests
+
+```bash
+# Launch all US2 tests together:
+Task T043: "Unit tests for GeneratePKCE()"
+Task T044: "Unit tests for CreateStateToken(), ValidateStateToken()"
+Task T045: "Unit tests for InitiateOAuth2Flow()"
+Task T046: "Unit tests for HandleCallback()"
+Task T047: "Integration tests for authorize endpoint"
+Task T048: "Integration tests for callback endpoint"
 ```
-
-**Completion Order**:
-1. **Setup** → **Foundational** (MUST complete first - blocking for all user stories)
-2. **US1** + **US4** (can run in parallel, both needed before US2)
-3. **US2** (depends on US1 for UI, US4 for security)
-4. **US3** (depends on US2 - must have sessions to terminate)
-5. **Polish** (after all user stories complete)
-
----
-
-## Parallel Execution Opportunities
-
-### Within Foundational Phase
-
-Can be implemented in parallel:
-- T004 (UserSession entity) + T005 (OAuth2StateTokenClaims) + T006 (errors)
-- T008 (migration up) + T009 (migration down)
-- T010 (config schema) + T011 (config examples)
-- T014 (in-memory adapter) + T015 (PostgreSQL adapter)
-
-### Within US1
-
-Can be implemented in parallel after T016-T018 (backend) complete:
-- T019 (useThirdPartySessions hook)
-- T020 (SessionStatusBadge)
-- T021-T023 (Service card and page - depends on T019-T020)
-
-### Within US2
-
-Can be implemented in parallel:
-- T045 (OAuth2 error handling) + T046 (network retry) + T047 (redirect URI extraction)
-- T048 (frontend login) + T049 (callback handling)
-- T050 (security logging) + T051 (audit logging)
-
-### Within US3
-
-Can be implemented in parallel after T056-T060 (backend) complete:
-- T061 (useTerminateSession)
-- T062 (useAffectedAgents)
-- T063-T064 (dialog - depends on T061-T062)
 
 ---
 
 ## Implementation Strategy
 
-### MVP Scope (Minimum Viable Product)
+### MVP First (User Story 1 Only)
 
-**MVP = User Story 1 ONLY**:
-- Users can view available third-party services
-- Users can see which services they have sessions with
-- Basic session status indicators (initiated_at, expired status)
-
-**Rationale**: US1 provides immediate value (visibility) and can be demonstrated without completing the entire OAuth2 flow. It allows stakeholders to validate the UI/UX before investing in the complex OAuth2 flow implementation.
+1. Complete Phase 1: Setup (T001-T003)
+2. Complete Phase 2: Design Preconditions (T004-T018)
+3. Complete Phase 2.5: Foundational Infrastructure (T019-T027)
+4. Complete Phase 3: User Story 1 (T028-T042)
+5. **STOP and VALIDATE**: Test User Story 1 independently
+6. Deploy/demo session viewing capability
 
 ### Incremental Delivery
 
-1. **Sprint 1**: Setup + Foundational + US1 (MVP) - ~40 tasks
-   - Delivers: Session list view, foundational infrastructure
-   - Value: Users can see available services and understand current state
+1. Setup → Design → Foundation ready
+2. Add User Story 1 → MVP: Session viewing ✓
+3. Add User Story 2 + 4 → OAuth2 flow with security ✓
+4. Add User Story 3 → Session termination ✓
+5. Each story adds value without breaking previous stories
 
-2. **Sprint 2**: US4 + US2 - ~30 tasks
-   - Delivers: Full OAuth2 flow with PKCE, token storage
-   - Value: Users can establish sessions with third-party services
+### Parallel Team Strategy
 
-3. **Sprint 3**: US3 + Polish - ~20 tasks
-   - Delivers: Session termination, complete documentation
-   - Value: Users can manage session lifecycle, complete feature
+With multiple developers:
 
-### Testing Strategy
+**Developer 1 (Backend)**:
+- Phase 2.5: Domain entities and repositories
+- US1: Service and handler implementation
+- US2: OAuth2 flow implementation
 
-- **Unit tests**: Created alongside implementation (T013, T031, etc.)
-- **Integration tests**: Written after each user story phase completes (T024-T025, T052-T055, T066-T068)
-- **E2E tests**: Written in Polish phase after all user stories complete (T075)
+**Developer 2 (Frontend)**:
+- Phase 2e: Design system review
+- US1: React components after backend ready
+- US3: TerminationDialog after US1 complete
+
+**Developer 3 (Security/Testing)**:
+- All test tasks across user stories
+- US4: Security verification
+- Phase 7: Compliance verification
 
 ---
 
-## Task Count Summary
+## Notes
 
-- **Phase 1 (Setup)**: 3 tasks
-- **Phase 2 (Foundational)**: 12 tasks
-- **Phase 3 (US1 - View Sessions)**: 10 tasks
-- **Phase 4 (US4 - State Token Security)**: 6 tasks
-- **Phase 5 (US2 - Establish Session)**: 24 tasks
-- **Phase 6 (US3 - Terminate Session)**: 13 tasks
-- **Phase 7 (Polish)**: 10 tasks
-
-**Total**: 79 tasks
-
-**Parallelizable tasks**: 28 tasks marked with [P]
-
-**Estimated effort**:
-- MVP (US1): ~25 tasks = 1-2 weeks
-- Full feature: ~79 tasks = 3-4 weeks
+- [P] tasks = different files, no dependencies
+- [Story] label maps task to specific user story for traceability
+- Each user story should be independently completable and testable
+- Verify tests fail before implementing
+- Commit after each task or logical group
+- Stop at any checkpoint to validate story independently
+- Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence

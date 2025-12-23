@@ -1,65 +1,76 @@
 # Data Model: Third-Party OAuth2 Session Management
 
-**Feature**: 008-thirdparty-oauth2-sessions  
-**Date**: 2025-12-22  
-**Purpose**: Document domain entities, relationships, and validation rules
+**Feature Branch**: `008-thirdparty-oauth2-sessions`  
+**Date**: 2025-12-23  
+**Purpose**: Document domain entities, aggregates, value objects, and relationships
 
 ## Table of Contents
 
-1. [Entity Relationship Diagram](#entity-relationship-diagram)
+1. [Domain Overview](#domain-overview)
 2. [Entities](#entities)
 3. [Value Objects](#value-objects)
-4. [Domain Events](#domain-events)
-5. [Database Schema](#database-schema)
-6. [Glossary Updates](#glossary-updates)
+4. [Domain Service](#domain-service)
+5. [Domain Events](#domain-events)
+6. [Repository Interfaces](#repository-interfaces)
+7. [State Transitions](#state-transitions)
+8. [Database Schema](#database-schema)
 
 ---
 
-## Entity Relationship Diagram
+## Domain Overview
+
+The OAuth2 Session domain enables users to authenticate with third-party OAuth2 services through the identity broker. The broker orchestrates the OAuth2 Authorization Code flow with PKCE, securely stores encrypted tokens, and provides session lifecycle management.
+
+### Aggregate Boundaries
 
 ```
-┌─────────────────────┐     1:N     ┌─────────────────────┐
-│    Principal        │◄────────────│    UserSession      │
-│    (User ID)        │             │    (OAuth2 tokens)  │
-└─────────────────────┘             └──────────┬──────────┘
-                                               │
-                                               │ N:1
-                                               ▼
-                                    ┌─────────────────────┐
-                                    │ ThirdpartyOAuth2    │
-                                    │ Service             │
-                                    │ (already exists)    │
-                                    └─────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    UserSession (Aggregate Root)             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ • Owns encrypted tokens                              │   │
+│  │ • Manages session lifecycle                          │   │
+│  │ • Tracks expiration status                           │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                           │                                  │
+│                           ▼                                  │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │         EncryptedToken (Value Object)                │   │
+│  │ • Ciphertext + encryption context                    │   │
+│  │ • Immutable after creation                           │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 
-┌─────────────────────┐             ┌─────────────────────┐
-│  OAuth2StateToken   │─────────────│    UserSession      │
-│  (JWE, ephemeral)   │  creates    │    (after callback) │
-└─────────────────────┘             └─────────────────────┘
-
-Relationships:
-- Principal 1:N UserSession (one user can have sessions with multiple services)
-- ThirdpartyOAuth2Service 1:N UserSession (one service can have sessions with multiple users)
-- UserSession has UNIQUE(principal, service_id) constraint
-- UserGrant references UserSession via delegated_oauth2_tokens[].thirdparty_oauth2_service_id
-
-**Agent Count Derivation**:
-The dependent_agent_count displayed in the UI is calculated by querying the user_grants table.
-For a given UserSession with (principal, service_id), the count is derived from:
-```sql
-SELECT COUNT(*) FROM user_grants 
-WHERE principal = ? 
-AND delegated_oauth2_tokens @> '[{"thirdparty_oauth2_service_id": ?}]'::jsonb
+┌─────────────────────────────────────────────────────────────┐
+│              OAuth2StateToken (Value Object)                │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ • JWE-encrypted ephemeral flow state                 │   │
+│  │ • Short-lived (10 min TTL)                           │   │
+│  │ • Binds callback to initiating request               │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
-This counts all agents that have delegated_oauth2_tokens referencing the specific thirdparty_oauth2_service_id.
+
+### Entity Relationships
+
+```
+ThirdpartyOAuth2Service (existing)        UserGrant (existing)
+        │                                        │
+        │ 1:N                                    │ references
+        ▼                                        ▼
+    UserSession ◄───────────────────────────────┘
+        │
+        │ contains
+        ▼
+  EncryptedToken (access + refresh)
 ```
 
 ---
 
 ## Entities
 
-### UserSession
+### UserSession (Aggregate Root)
 
-Represents an authenticated OAuth2 session between a user and a third-party service. Contains encrypted access and refresh tokens.
+Represents an authenticated OAuth2 session between a user (principal) and a third-party service. Owns the encrypted tokens and manages session lifecycle.
 
 **Location**: `internal/domain/storage/user_session.go`
 
@@ -67,56 +78,69 @@ Represents an authenticated OAuth2 session between a user and a third-party serv
 package storage
 
 import (
+    "database/sql/driver"
+    "encoding/json"
     "errors"
-    "fmt"
     "time"
 )
 
-// UserSession represents an authenticated OAuth2 session between a user (principal)
-// and a third-party OAuth2 service. Tokens are stored encrypted.
+// UserSession represents an authenticated OAuth2 session between a user and a third-party service.
+// This is an aggregate root - it owns the encrypted tokens and manages session lifecycle.
+// One session per (principal, service_id) pair, enforced by database unique constraint.
 type UserSession struct {
-    // ID is the unique identifier for this session (UUID)
-    ID string `json:"id" db:"id"`
-    
-    // Principal is the authenticated user identifier (from session/header)
-    Principal string `json:"principal" db:"principal"`
-    
-    // ServiceID references the ThirdpartyOAuth2Service
-    ServiceID string `json:"service_id" db:"service_id"`
-    
-    // EncryptedAccessToken is the AES-256-GCM encrypted OAuth2 access token
-    EncryptedAccessToken []byte `json:"-" db:"encrypted_access_token"`
-    
-    // EncryptedRefreshToken is the AES-256-GCM encrypted OAuth2 refresh token (nullable)
-    EncryptedRefreshToken []byte `json:"-" db:"encrypted_refresh_token"`
-    
-    // TokenType is the OAuth2 token type (typically "Bearer")
-    TokenType string `json:"token_type" db:"token_type"`
-    
-    // AccessTokenExpiresAt is when the access token expires (nullable if unknown)
-    AccessTokenExpiresAt *time.Time `json:"access_token_expires_at,omitempty" db:"access_token_expires_at"`
-    
-    // RefreshTokenExpiresAt is when the refresh token expires (nullable if unknown)
-    // Session is marked "expired" in UI only when this is set and in the past
-    RefreshTokenExpiresAt *time.Time `json:"refresh_token_expires_at,omitempty" db:"refresh_token_expires_at"`
-    
-    // Scope is the list of OAuth2 scopes granted for this session
-    Scope []string `json:"scope" db:"scope"`
-    
-    // InitiatedAt is when the OAuth2 flow was completed and tokens were stored
-    InitiatedAt time.Time `json:"initiated_at" db:"initiated_at"`
-    
-    // EncryptionContext stores metadata used for token encryption AAD
-    EncryptionContext map[string]string `json:"-" db:"encryption_context"`
-    
-    // CreatedAt is the database row creation timestamp
-    CreatedAt time.Time `json:"created_at" db:"created_at"`
-    
-    // UpdatedAt is the database row update timestamp
-    UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+    ID                     string             `json:"id" db:"id"`
+    Principal              string             `json:"principal" db:"principal"`
+    ServiceID              string             `json:"service_id" db:"service_id"`
+    EncryptedAccessToken   []byte             `json:"-" db:"encrypted_access_token"`
+    EncryptedRefreshToken  []byte             `json:"-" db:"encrypted_refresh_token"`
+    TokenType              string             `json:"token_type" db:"token_type"`
+    AccessTokenExpiresAt   *time.Time         `json:"access_token_expires_at,omitempty" db:"access_token_expires_at"`
+    RefreshTokenExpiresAt  *time.Time         `json:"refresh_token_expires_at,omitempty" db:"refresh_token_expires_at"`
+    Scope                  []string           `json:"scope" db:"scope"`
+    EncryptionContext      EncryptionContext  `json:"encryption_context" db:"encryption_context"`
+    InitiatedAt            time.Time          `json:"initiated_at" db:"initiated_at"`
+    CreatedAt              time.Time          `json:"created_at" db:"created_at"`
+    UpdatedAt              time.Time          `json:"updated_at" db:"updated_at"`
 }
 
-// Validate performs validation on the UserSession entity.
+// EncryptionContext holds metadata for token encryption/decryption.
+// This is stored in JSONB and included as AAD (Additional Authenticated Data).
+type EncryptionContext struct {
+    Principal  string `json:"principal"`
+    ServiceID  string `json:"service_id"`
+    SessionID  string `json:"session_id"`
+    Purpose    string `json:"purpose"` // Always "oauth2_token"
+}
+
+// Value implements driver.Valuer for EncryptionContext (JSONB serialization).
+func (ec EncryptionContext) Value() (driver.Value, error) {
+    return json.Marshal(ec)
+}
+
+// Scan implements sql.Scanner for EncryptionContext (JSONB deserialization).
+func (ec *EncryptionContext) Scan(value interface{}) error {
+    if value == nil {
+        return nil
+    }
+    bytes, ok := value.([]byte)
+    if !ok {
+        return errors.New("invalid type for EncryptionContext")
+    }
+    return json.Unmarshal(bytes, ec)
+}
+```
+
+**Invariants**:
+- `Principal` must be non-empty, max 200 characters
+- `ServiceID` must reference existing ThirdpartyOAuth2Service
+- `EncryptedAccessToken` must be non-empty (access token required)
+- `TokenType` defaults to "Bearer"
+- `InitiatedAt` set on creation, immutable
+
+**Business Methods**:
+
+```go
+// Validate performs domain validation on UserSession.
 func (s *UserSession) Validate() error {
     if s.ID == "" {
         return errors.New("session ID cannot be empty")
@@ -125,33 +149,13 @@ func (s *UserSession) Validate() error {
         return errors.New("principal is required")
     }
     if len(s.Principal) > 200 {
-        return fmt.Errorf("principal exceeds 200 characters (got %d)", len(s.Principal))
+        return errors.New("principal exceeds 200 characters")
     }
     if s.ServiceID == "" {
         return errors.New("service_id is required")
     }
     if len(s.EncryptedAccessToken) == 0 {
-        return errors.New("encrypted_access_token is required")
-    }
-    if s.TokenType == "" {
-        return errors.New("token_type is required")
-    }
-    if s.InitiatedAt.IsZero() {
-        return errors.New("initiated_at is required")
-    }
-    return nil
-}
-
-// ValidateForCreate validates a session before creation.
-func (s *UserSession) ValidateForCreate() error {
-    if s.Principal == "" {
-        return errors.New("principal is required")
-    }
-    if s.ServiceID == "" {
-        return errors.New("service_id is required")
-    }
-    if len(s.EncryptedAccessToken) == 0 {
-        return errors.New("encrypted_access_token is required")
+        return errors.New("encrypted access token is required")
     }
     if s.TokenType == "" {
         return errors.New("token_type is required")
@@ -159,41 +163,74 @@ func (s *UserSession) ValidateForCreate() error {
     return nil
 }
 
-// IsExpired returns true if the refresh token has expired.
-// A session is only considered expired when the refresh token expires,
-// not when the access token expires (access tokens can be refreshed).
+// IsExpired returns true if the session's refresh token has expired.
+// Access token expiration does not mark session as expired (future auto-refresh).
+// Session without refresh token expiration is considered non-expiring.
 func (s *UserSession) IsExpired() bool {
     if s.RefreshTokenExpiresAt == nil {
-        return false // No expiration = never expires
+        return false // No expiration set
     }
-    return s.RefreshTokenExpiresAt.Before(time.Now())
+    return time.Now().After(*s.RefreshTokenExpiresAt)
 }
 
-// HasRefreshToken returns true if a refresh token is stored.
-func (s *UserSession) HasRefreshToken() bool {
-    return len(s.EncryptedRefreshToken) > 0
+// HasValidAccessToken returns true if access token has not expired.
+func (s *UserSession) HasValidAccessToken() bool {
+    if s.AccessTokenExpiresAt == nil {
+        return true // No expiration set
+    }
+    return time.Now().Before(*s.AccessTokenExpiresAt)
+}
+
+// CanRefresh returns true if session has a refresh token that hasn't expired.
+func (s *UserSession) CanRefresh() bool {
+    if len(s.EncryptedRefreshToken) == 0 {
+        return false // No refresh token
+    }
+    if s.RefreshTokenExpiresAt == nil {
+        return true // No expiration set
+    }
+    return time.Now().Before(*s.RefreshTokenExpiresAt)
 }
 ```
 
-### UserSessionSummary
+---
 
-View model for session list endpoint (includes service display name and agent count).
+### UserSessionSummary (Read Model)
+
+A projection of UserSession for API responses, including dependent agent count.
 
 ```go
-// UserSessionSummary is a read-only view of a session with related data.
-// Used for listing sessions with service info and dependent agent count.
+// UserSessionSummary is a read model for displaying session information.
+// Includes computed fields like dependent agent count.
 type UserSessionSummary struct {
-    SessionID            string     `json:"session_id"`
-    ServiceID            string     `json:"service_id"`
-    ServiceDisplayName   string     `json:"service_display_name"`
-    TokenType            string     `json:"token_type"`
-    Scope                []string   `json:"scope"`
-    InitiatedAt          time.Time  `json:"initiated_at"`
-    AccessTokenExpiresAt *time.Time `json:"access_token_expires_at,omitempty"`
-    RefreshTokenExpiresAt *time.Time `json:"refresh_token_expires_at,omitempty"`
-    IsExpired            bool       `json:"is_expired"`
-    HasRefreshToken      bool       `json:"has_refresh_token"`
-    DependentAgentCount  int        `json:"dependent_agent_count"`
+    ID                    string              `json:"id"`
+    ServiceID             string              `json:"service_id"`
+    ServiceDisplayName    string              `json:"service_display_name"`
+    TokenType             string              `json:"token_type"`
+    Scope                 []string            `json:"scope"`
+    InitiatedAt           time.Time           `json:"initiated_at"`
+    IsExpired             bool                `json:"is_expired"`
+    AccessTokenExpired    bool                `json:"access_token_expired"`
+    RefreshTokenExpiresAt *time.Time          `json:"refresh_token_expires_at,omitempty"`
+    DependentAgentCount   int                 `json:"dependent_agent_count"`
+    IsEncrypted           bool                `json:"is_encrypted"` // Always true
+}
+
+// NewUserSessionSummary creates a summary from a UserSession.
+func NewUserSessionSummary(session *UserSession, serviceDisplayName string, agentCount int) *UserSessionSummary {
+    return &UserSessionSummary{
+        ID:                    session.ID,
+        ServiceID:             session.ServiceID,
+        ServiceDisplayName:    serviceDisplayName,
+        TokenType:             session.TokenType,
+        Scope:                 session.Scope,
+        InitiatedAt:           session.InitiatedAt,
+        IsExpired:             session.IsExpired(),
+        AccessTokenExpired:    !session.HasValidAccessToken(),
+        RefreshTokenExpiresAt: session.RefreshTokenExpiresAt,
+        DependentAgentCount:   agentCount,
+        IsEncrypted:           true,
+    }
 }
 ```
 
@@ -201,111 +238,414 @@ type UserSessionSummary struct {
 
 ## Value Objects
 
-### OAuth2StateTokenClaims
+### OAuth2StateToken
 
-Claims embedded in JWE state token during OAuth2 flow. Not persisted.
+Ephemeral JWE-encrypted token that binds an OAuth2 callback to the initiating request. Contains PKCE verifier and user identity.
 
 **Location**: `internal/domain/oauth2session/state_token.go`
 
 ```go
+package oauth2session
+
+import (
+    "encoding/json"
+    "time"
+)
+
 // OAuth2StateTokenClaims contains the claims embedded in a JWE state token.
-// These claims bind the OAuth2 callback to the initiating request and user.
+// These claims bind the OAuth2 callback to the initiating request.
 type OAuth2StateTokenClaims struct {
-    // Principal is the user who initiated the OAuth2 flow
-    Principal string `json:"sub"`
+    // Principal is the authenticated user who initiated the OAuth2 flow.
+    // Must match the principal at callback time (CSRF protection).
+    Principal string `json:"principal"`
     
-    // PKCEVerifier is the code verifier for PKCE validation
+    // PKCEVerifier is the PKCE code verifier for token exchange.
+    // Base64url-encoded, 32-128 bytes per RFC 7636.
     PKCEVerifier string `json:"pkce_verifier"`
     
-    // ServiceID is the third-party service being authenticated
+    // ServiceID is the third-party service being authorized.
+    // Must match the serviceId path parameter at callback.
     ServiceID string `json:"service_id"`
     
-    // RedirectURI is the original redirect_uri from authorize request
+    // RedirectURI is where to redirect after flow completes.
+    // Must be same-origin with the authorize request.
     RedirectURI string `json:"redirect_uri"`
     
-    // IssuedAt is when the token was created (Unix timestamp)
-    IssuedAt int64 `json:"iat"`
+    // IssuedAt is when the token was created.
+    IssuedAt time.Time `json:"iat"`
     
-    // ExpiresAt is when the token expires (Unix timestamp)
-    ExpiresAt int64 `json:"exp"`
+    // ExpiresAt is when the token expires (TTL: 10 min default).
+    ExpiresAt time.Time `json:"exp"`
 }
 
-// Validate validates the claims after decryption.
+// Validate checks that all required claims are present.
 func (c *OAuth2StateTokenClaims) Validate() error {
     if c.Principal == "" {
-        return errors.New("principal claim is required")
+        return errors.New("principal is required")
     }
     if c.PKCEVerifier == "" {
-        return errors.New("pkce_verifier claim is required")
+        return errors.New("pkce_verifier is required")
     }
     if c.ServiceID == "" {
-        return errors.New("service_id claim is required")
+        return errors.New("service_id is required")
     }
     if c.RedirectURI == "" {
-        return errors.New("redirect_uri claim is required")
+        return errors.New("redirect_uri is required")
     }
-    if c.ExpiresAt == 0 {
-        return errors.New("exp claim is required")
+    if c.IssuedAt.IsZero() {
+        return errors.New("iat is required")
+    }
+    if c.ExpiresAt.IsZero() {
+        return errors.New("exp is required")
     }
     return nil
 }
 
 // IsExpired returns true if the token has expired.
 func (c *OAuth2StateTokenClaims) IsExpired() bool {
-    return time.Now().Unix() > c.ExpiresAt
+    return time.Now().After(c.ExpiresAt)
 }
 ```
 
-### AffectedAgent
+**Characteristics**:
+- **Immutable**: Created once, never modified
+- **Short-lived**: TTL of 10 minutes (configurable, max 15 minutes)
+- **Encrypted**: JWE with A256GCMKW + A256GCM
+- **Self-validating**: Contains expiration and all data needed for validation
 
-Information about an agent that will lose access when a session is terminated.
+---
+
+### PKCE
+
+Uses types from `golang.org/x/oauth2` but provides helper functions.
 
 ```go
-// AffectedAgent represents an agent that depends on a user's session.
-// Used in termination warning dialog.
-type AffectedAgent struct {
-    AgentID     string `json:"agent_id"`
-    DisplayName string `json:"display_name"`
+package oauth2session
+
+import (
+    "crypto/rand"
+    "crypto/sha256"
+    "encoding/base64"
+)
+
+// GeneratePKCE creates a PKCE code verifier and challenge per RFC 7636.
+// verifierLength should be 32-128 bytes (recommended: 32 = 256 bits).
+func GeneratePKCE(verifierLength int) (verifier, challenge string, err error) {
+    if verifierLength < 32 || verifierLength > 128 {
+        return "", "", errors.New("verifier length must be 32-128 bytes")
+    }
+    
+    // Generate cryptographically random bytes
+    randomBytes := make([]byte, verifierLength)
+    if _, err := rand.Read(randomBytes); err != nil {
+        return "", "", fmt.Errorf("failed to generate random bytes: %w", err)
+    }
+    
+    // Base64url encode without padding
+    verifier = base64.RawURLEncoding.EncodeToString(randomBytes)
+    
+    // SHA256 hash of verifier, base64url encoded
+    hash := sha256.Sum256([]byte(verifier))
+    challenge = base64.RawURLEncoding.EncodeToString(hash[:])
+    
+    return verifier, challenge, nil
 }
+```
+
+---
+
+## Domain Service
+
+### OAuth2SessionService
+
+Orchestrates OAuth2 authorization flows and session management. This is a domain service per DDD patterns - handles complex operations spanning multiple entities.
+
+**Location**: `internal/domain/oauth2session/service.go`
+
+```go
+package oauth2session
+
+import (
+    "context"
+    "log/slog"
+    "time"
+    
+    "github.com/lestrrat-go/jwx/v3/jwk"
+    "golang.org/x/oauth2"
+    
+    "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+    "github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+)
+
+// OAuth2SessionService orchestrates OAuth2 authorization flows and session management.
+type OAuth2SessionService struct {
+    serviceRepo   ports.ThirdpartyOAuth2ServiceRepository
+    sessionRepo   ports.UserSessionRepository
+    grantRepo     ports.UserGrantRepository  // For counting dependent agents
+    encryption    ports.EncryptionPort
+    jweKey        jwk.Key
+    config        Config
+    logger        *slog.Logger
+}
+
+// Config holds configuration for the OAuth2 session service.
+type Config struct {
+    CallbackBaseURL    string        // e.g., "https://broker.example.com"
+    StateTokenTTL      time.Duration // Default: 10 minutes
+    PKCEVerifierLength int           // Default: 32 bytes
+    MaxRetries         int           // Default: 3
+    RetryBaseDelay     time.Duration // Default: 1 second
+}
+
+// DefaultConfig returns configuration with sensible defaults.
+func DefaultConfig() Config {
+    return Config{
+        StateTokenTTL:      10 * time.Minute,
+        PKCEVerifierLength: 32,
+        MaxRetries:         3,
+        RetryBaseDelay:     time.Second,
+    }
+}
+```
+
+**Service Methods**:
+
+```go
+// InitiateFlowResult contains the data needed to redirect user to authorization.
+type InitiateFlowResult struct {
+    AuthorizationURL string // Full URL to redirect user to
+}
+
+// InitiateOAuth2Flow starts the OAuth2 authorization code flow.
+// Creates PKCE verifier/challenge, generates JWE state token, returns auth URL.
+func (s *OAuth2SessionService) InitiateOAuth2Flow(
+    ctx context.Context,
+    principal string,
+    serviceID string,
+    redirectURI string,
+) (*InitiateFlowResult, error)
+
+// HandleCallbackRequest contains parameters from the OAuth2 callback.
+type HandleCallbackRequest struct {
+    ServiceID   string // From URL path
+    Code        string // Authorization code from query
+    State       string // JWE state token from query
+    Error       string // OAuth2 error code (optional)
+    ErrorDesc   string // OAuth2 error description (optional)
+}
+
+// HandleCallback processes the OAuth2 callback, exchanges code for tokens, stores session.
+func (s *OAuth2SessionService) HandleCallback(
+    ctx context.Context,
+    principal string,
+    req *HandleCallbackRequest,
+) (*storage.UserSession, error)
+
+// ListUserSessions returns all sessions for a principal with summary info.
+func (s *OAuth2SessionService) ListUserSessions(
+    ctx context.Context,
+    principal string,
+) ([]*UserSessionSummary, error)
+
+// TerminateSession deletes a session and its encrypted tokens.
+func (s *OAuth2SessionService) TerminateSession(
+    ctx context.Context,
+    principal string,
+    serviceID string,
+) error
+
+// GetSessionWithAgents returns session details including list of dependent agents.
+type SessionWithAgents struct {
+    Session        *storage.UserSession
+    DependentAgents []string // Agent IDs that use this session
+}
+
+func (s *OAuth2SessionService) GetSessionWithAgents(
+    ctx context.Context,
+    principal string,
+    serviceID string,
+) (*SessionWithAgents, error)
 ```
 
 ---
 
 ## Domain Events
 
-Events emitted by the OAuth2SessionService for audit logging and future event-driven features.
+Domain events capture significant state changes for audit logging and potential future event-driven features.
 
 ```go
-// SessionEstablishedEvent is emitted when a user successfully completes
-// an OAuth2 flow and tokens are stored.
+package oauth2session
+
+import "time"
+
+// SessionEstablishedEvent is raised when a user successfully completes OAuth2 flow.
 type SessionEstablishedEvent struct {
     SessionID   string    `json:"session_id"`
     Principal   string    `json:"principal"`
     ServiceID   string    `json:"service_id"`
     Scope       []string  `json:"scope"`
-    InitiatedAt time.Time `json:"initiated_at"`
-    Timestamp   time.Time `json:"timestamp"`
+    EstablishedAt time.Time `json:"established_at"`
 }
 
-// SessionTerminatedEvent is emitted when a user explicitly terminates
-// a session and tokens are deleted.
+// SessionTerminatedEvent is raised when a user explicitly terminates a session.
 type SessionTerminatedEvent struct {
-    SessionID           string    `json:"session_id"`
-    Principal           string    `json:"principal"`
-    ServiceID           string    `json:"service_id"`
-    AffectedAgentCount  int       `json:"affected_agent_count"`
-    Timestamp           time.Time `json:"timestamp"`
+    SessionID     string    `json:"session_id"`
+    Principal     string    `json:"principal"`
+    ServiceID     string    `json:"service_id"`
+    TerminatedAt  time.Time `json:"terminated_at"`
+    AffectedAgents []string `json:"affected_agents"`
 }
 
-// StateTokenValidationFailedEvent is emitted when state token validation
-// fails at callback. Security audit event.
-type StateTokenValidationFailedEvent struct {
-    Reason      string    `json:"reason"` // "expired", "principal_mismatch", "service_id_mismatch", "decryption_failed"
-    ServiceID   string    `json:"service_id"`
-    Principal   string    `json:"principal,omitempty"` // Current principal if available
-    RequestedBy string    `json:"requested_by,omitempty"` // Principal in token if available
-    Timestamp   time.Time `json:"timestamp"`
+// StateValidationFailedEvent is raised for security audit when state validation fails.
+type StateValidationFailedEvent struct {
+    Principal       string    `json:"principal"`
+    ServiceID       string    `json:"service_id"`
+    FailureReason   string    `json:"failure_reason"`
+    RemoteAddr      string    `json:"remote_addr"`
+    OccurredAt      time.Time `json:"occurred_at"`
 }
+```
+
+---
+
+## Repository Interfaces
+
+### UserSessionRepository
+
+**Location**: `internal/ports/storage.go` (extend existing file)
+
+```go
+// UserSessionRepository defines storage operations for user OAuth2 sessions.
+// One session per (principal, service_id) pair.
+type UserSessionRepository interface {
+    // Create creates a new user session.
+    // Uses upsert semantics: if session exists for (principal, service_id), replaces tokens.
+    // Returns error if:
+    // - Service ID doesn't exist (StorageError with Kind=NotFound via FK constraint)
+    // - Storage connection fails (StorageError with Kind=Connection)
+    // - Operation timeout (StorageError with Kind=Timeout)
+    Create(ctx context.Context, session *storage.UserSession) error
+    
+    // Get retrieves a session by ID.
+    // Returns StorageError with Kind=NotFound if session not found.
+    Get(ctx context.Context, id string) (*storage.UserSession, error)
+    
+    // FindByPrincipalAndService retrieves the session for a principal and service.
+    // Returns nil if no session exists (not an error).
+    FindByPrincipalAndService(ctx context.Context, principal, serviceID string) (*storage.UserSession, error)
+    
+    // ListByPrincipal retrieves all sessions for a principal.
+    // Returns empty slice if no sessions exist (not an error).
+    ListByPrincipal(ctx context.Context, principal string) ([]*storage.UserSession, error)
+    
+    // Delete deletes a session by ID.
+    // Returns error if storage operation fails.
+    // Idempotent: safe to delete non-existent session.
+    Delete(ctx context.Context, id string) error
+    
+    // DeleteByPrincipalAndService deletes the session for a principal and service.
+    // Returns error if storage operation fails.
+    // Idempotent: safe to delete non-existent session.
+    DeleteByPrincipalAndService(ctx context.Context, principal, serviceID string) error
+    
+    // CountByService counts sessions referencing a service.
+    // Used to enforce deletion protection (cannot delete service with active sessions).
+    CountByService(ctx context.Context, serviceID string) (int, error)
+}
+```
+
+---
+
+## State Transitions
+
+### Session Lifecycle
+
+```
+┌─────────────┐                              ┌─────────────┐
+│   No        │  InitiateOAuth2Flow()        │   Flow      │
+│   Session   │ ───────────────────────────► │   Started   │
+└─────────────┘                              └──────┬──────┘
+                                                    │
+                                         User approves at OAuth2 provider
+                                                    │
+                                                    ▼
+                                             ┌──────────────┐
+                         HandleCallback()   │   Active     │
+                         ◄──────────────────│   Session    │
+                                             └──────┬──────┘
+                                                    │
+                    ┌───────────────────────────────┼───────────────────────────────┐
+                    │                               │                               │
+                    ▼                               ▼                               ▼
+            ┌──────────────┐              ┌──────────────┐              ┌──────────────┐
+            │   Expired    │              │  Terminated  │              │   Active     │
+            │   Session    │              │   Session    │              │   Session    │
+            │ (refresh     │              │   (deleted)  │              │ (re-auth)    │
+            │  token exp)  │              └──────────────┘              └──────────────┘
+            └──────┬───────┘                                                    │
+                   │                                                            │
+                   ▼                                                            │
+         User must terminate                                                    │
+         and re-authenticate                                                    │
+                   │                                                            │
+                   └────────────────────────────────────────────────────────────┘
+```
+
+### OAuth2 Flow State Machine
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                        OAuth2 Authorization Flow                           │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│  [Start] ─► Generate PKCE ─► Create State Token ─► Build Auth URL         │
+│                                                           │                │
+│                                                           ▼                │
+│                                              Redirect to OAuth2 Provider   │
+│                                                           │                │
+│                                                           ▼                │
+│                                              User approves/denies          │
+│                                              at provider                   │
+│                                                           │                │
+│                              ┌────────────────────────────┴───────┐        │
+│                              │                                    │        │
+│                              ▼                                    ▼        │
+│                     [Callback: code]                    [Callback: error]  │
+│                              │                                    │        │
+│                              ▼                                    ▼        │
+│                     Validate State Token               Parse OAuth2 Error  │
+│                     (decrypt, check principal,                    │        │
+│                      check service_id, check exp)                 │        │
+│                              │                                    │        │
+│                    ┌─────────┴─────────┐                         │        │
+│                    │                   │                         │        │
+│                    ▼                   ▼                         ▼        │
+│              [Valid]             [Invalid]              [Redirect to UI   │
+│                    │                   │                with error params] │
+│                    │                   │                                   │
+│                    ▼                   ▼                                   │
+│         Exchange Code        Log Security Event                            │
+│         for Tokens          Reject with 400/403                           │
+│         (with PKCE)                                                        │
+│              │                                                             │
+│              ▼                                                             │
+│    ┌─────────┴─────────┐                                                   │
+│    │                   │                                                   │
+│    ▼                   ▼                                                   │
+│ [Success]        [Failure]                                                 │
+│    │                   │                                                   │
+│    ▼                   ▼                                                   │
+│ Encrypt tokens    Retry up to 3x                                          │
+│ Store session     with backoff                                            │
+│ Redirect to UI    (1s, 2s, 4s)                                            │
+│ with success           │                                                   │
+│                        ▼                                                   │
+│              [All retries failed]                                          │
+│                        │                                                   │
+│                        ▼                                                   │
+│              Redirect to UI with error                                     │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -315,121 +655,91 @@ type StateTokenValidationFailedEvent struct {
 ### Migration: 004_create_user_sessions.up.sql
 
 ```sql
--- Migration: Create user_sessions table
+-- Migration: 004_create_user_sessions.up.sql
+-- Purpose: Create user_sessions table for storing OAuth2 session data
 -- Feature: 008-thirdparty-oauth2-sessions
--- Description: Stores encrypted OAuth2 tokens for user sessions with third-party services
 
-CREATE TABLE IF NOT EXISTS user_sessions (
-    id UUID PRIMARY KEY,
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     principal VARCHAR(200) NOT NULL,
-    service_id UUID NOT NULL REFERENCES thirdparty_oauth2_services(id) ON DELETE RESTRICT,
+    service_id UUID NOT NULL,
     encrypted_access_token BYTEA NOT NULL,
-    encrypted_refresh_token BYTEA,  -- Nullable, some services don't provide refresh tokens
+    encrypted_refresh_token BYTEA,
     token_type VARCHAR(50) NOT NULL DEFAULT 'Bearer',
-    access_token_expires_at TIMESTAMP,  -- Nullable if expiration unknown
-    refresh_token_expires_at TIMESTAMP,  -- Nullable if refresh token not provided or never expires
-    scope TEXT[] NOT NULL DEFAULT '{}',  -- Array of OAuth2 scopes
-    initiated_at TIMESTAMP NOT NULL,
-    encryption_context JSONB NOT NULL DEFAULT '{}',  -- AAD metadata for encryption
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-
-    -- One session per user per service (first callback wins on race condition)
-    CONSTRAINT uq_principal_service UNIQUE(principal, service_id)
+    access_token_expires_at TIMESTAMPTZ,
+    refresh_token_expires_at TIMESTAMPTZ,
+    scope TEXT[] NOT NULL DEFAULT '{}',
+    encryption_context JSONB NOT NULL DEFAULT '{}',
+    initiated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    -- Foreign key to thirdparty_oauth2_services (ON DELETE RESTRICT)
+    -- Cannot delete service with active sessions
+    CONSTRAINT fk_user_sessions_service 
+        FOREIGN KEY (service_id) 
+        REFERENCES thirdparty_oauth2_services(id) 
+        ON DELETE RESTRICT,
+    
+    -- Unique constraint: one session per user per service
+    -- Prevents race conditions; first callback wins
+    CONSTRAINT user_sessions_principal_service_unique 
+        UNIQUE (principal, service_id)
 );
 
--- Indexes for common queries
-CREATE INDEX IF NOT EXISTS idx_sessions_principal ON user_sessions(principal);
-CREATE INDEX IF NOT EXISTS idx_sessions_service ON user_sessions(service_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_principal_service ON user_sessions(principal, service_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_initiated ON user_sessions(initiated_at);
+-- Index for fast lookups by principal (list user's sessions)
+CREATE INDEX idx_user_sessions_principal ON user_sessions(principal);
 
--- Comments
-COMMENT ON TABLE user_sessions IS 'Stores encrypted OAuth2 tokens for user sessions with third-party services';
-COMMENT ON COLUMN user_sessions.id IS 'Unique session identifier (UUID)';
-COMMENT ON COLUMN user_sessions.principal IS 'User identifier (from authentication)';
-COMMENT ON COLUMN user_sessions.service_id IS 'Third-party service (foreign key with RESTRICT delete)';
-COMMENT ON COLUMN user_sessions.encrypted_access_token IS 'AES-256-GCM encrypted access token';
-COMMENT ON COLUMN user_sessions.encrypted_refresh_token IS 'AES-256-GCM encrypted refresh token (nullable)';
-COMMENT ON COLUMN user_sessions.token_type IS 'OAuth2 token type (typically Bearer)';
-COMMENT ON COLUMN user_sessions.access_token_expires_at IS 'When access token expires (nullable)';
-COMMENT ON COLUMN user_sessions.refresh_token_expires_at IS 'When refresh token expires - session marked expired only when this passes';
-COMMENT ON COLUMN user_sessions.scope IS 'Array of OAuth2 scopes granted';
-COMMENT ON COLUMN user_sessions.initiated_at IS 'When OAuth2 flow completed and tokens stored';
-COMMENT ON COLUMN user_sessions.encryption_context IS 'Encryption AAD metadata (principal, service_id, session_id)';
-COMMENT ON CONSTRAINT uq_principal_service ON user_sessions IS 'Ensures one session per user per service';
+-- Index for counting sessions by service (deletion protection)
+CREATE INDEX idx_user_sessions_service_id ON user_sessions(service_id);
+
+-- Trigger to update updated_at on row modification
+CREATE OR REPLACE FUNCTION update_user_sessions_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_user_sessions_updated_at
+    BEFORE UPDATE ON user_sessions
+    FOR EACH ROW
+    EXECUTE FUNCTION update_user_sessions_updated_at();
+
+COMMENT ON TABLE user_sessions IS 'Stores OAuth2 sessions between users and third-party services';
+COMMENT ON COLUMN user_sessions.principal IS 'Authenticated user identifier (email, username, etc.)';
+COMMENT ON COLUMN user_sessions.service_id IS 'Reference to thirdparty_oauth2_services';
+COMMENT ON COLUMN user_sessions.encrypted_access_token IS 'AES-GCM encrypted OAuth2 access token';
+COMMENT ON COLUMN user_sessions.encrypted_refresh_token IS 'AES-GCM encrypted OAuth2 refresh token (nullable)';
+COMMENT ON COLUMN user_sessions.encryption_context IS 'AAD context for token encryption/decryption';
+COMMENT ON COLUMN user_sessions.initiated_at IS 'When the OAuth2 session was first established';
 ```
 
 ### Migration: 004_create_user_sessions.down.sql
 
 ```sql
--- Migration: Drop user_sessions table
+-- Migration: 004_create_user_sessions.down.sql
+-- Purpose: Rollback user_sessions table creation
 -- Feature: 008-thirdparty-oauth2-sessions
 
+DROP TRIGGER IF EXISTS trigger_user_sessions_updated_at ON user_sessions;
+DROP FUNCTION IF EXISTS update_user_sessions_updated_at();
 DROP TABLE IF EXISTS user_sessions;
 ```
 
 ---
 
-## Glossary Updates
+## Glossary Additions
 
-Add to ARCHITECTURE.md Glossary section:
+The following terms should be added to `ARCHITECTURE.md` Glossary section:
 
-### Third-Party OAuth2 Session Domain
-
-**UserSession**: Represents an authenticated OAuth2 session between a user (principal) and a third-party service. Contains encrypted access and refresh tokens, scope information, and expiration metadata. A user can have at most one session per service (UNIQUE constraint on principal + service_id).
-
-**OAuth2StateToken**: A short-lived JWE (JSON Web Encryption) token used to bind an OAuth2 authorization flow to the initiating user and request. Contains principal, PKCE verifier, service ID, and redirect URI. Valid for 10 minutes by default. Used for CSRF protection and flow binding.
-
-**OAuth2SessionService**: Domain service that orchestrates OAuth2 authorization code flows with third-party services. Coordinates PKCE generation, state token creation, callback validation, token exchange, and encrypted token storage. Located in `internal/domain/oauth2session/`.
-
-**PKCE (Proof Key for Code Exchange)**: RFC 7636 security mechanism that protects OAuth2 authorization code flows against interception attacks. Uses a code verifier (high-entropy random string) and code challenge (SHA256 hash of verifier). The verifier is stored in the JWE state token.
-
-**JWE State Binding**: Security pattern using JWE to bind OAuth2 callback to the original request. The state token is encrypted, preventing tampering, and contains claims that must match the callback context (principal, service ID). Provides CSRF protection.
-
-**Session Expiration**: A user session is considered "expired" only when the refresh token expires (not the access token). Expired access tokens can be transparently refreshed in future iterations. The UI shows "Expired" status when refresh_token_expires_at < NOW().
-
-**Dependent Agent Count**: The number of agents that have active grants referencing a user's session with a third-party service. Displayed in the termination warning dialog. Calculated by querying user_grants where delegated_oauth2_tokens contains the service_id.
-
----
-
-## Repository Interface
-
-Add to `internal/ports/storage.go`:
-
-```go
-// UserSessionRepository defines storage operations for user OAuth2 sessions.
-// One session per user per service (UNIQUE constraint on principal + service_id).
-type UserSessionRepository interface {
-    // Create creates a new user session.
-    // On conflict (existing session for same principal + service), returns existing session.
-    // Returns error if:
-    // - Service ID doesn't exist (StorageError with Kind=NotFound)
-    // - Storage connection fails (StorageError with Kind=Connection)
-    Create(ctx context.Context, session *storage.UserSession) (*storage.UserSession, error)
-    
-    // Get retrieves a user session by ID.
-    // Returns StorageError with Kind=NotFound if session not found.
-    Get(ctx context.Context, id string) (*storage.UserSession, error)
-    
-    // FindByPrincipalAndService retrieves session for a principal and service.
-    // Returns nil, nil if no session exists (not an error).
-    FindByPrincipalAndService(ctx context.Context, principal, serviceID string) (*storage.UserSession, error)
-    
-    // Delete deletes a user session by ID.
-    // Idempotent: safe to delete non-existent sessions.
-    Delete(ctx context.Context, id string) error
-    
-    // DeleteByPrincipalAndService deletes session for a principal and service.
-    // Idempotent: safe to call if no session exists.
-    DeleteByPrincipalAndService(ctx context.Context, principal, serviceID string) error
-    
-    // ListByPrincipal retrieves all sessions for a principal.
-    // Returns empty slice if no sessions exist (not an error).
-    ListByPrincipal(ctx context.Context, principal string) ([]*storage.UserSession, error)
-    
-    // CountByService returns number of sessions for a service.
-    // Used to block service deletion when sessions exist.
-    CountByService(ctx context.Context, serviceID string) (int, error)
-}
-```
+| Term | Definition |
+|------|------------|
+| **UserSession** | An authenticated OAuth2 session between a user (principal) and a third-party service. Contains encrypted access/refresh tokens, scope, and expiration metadata. One session per (principal, service_id) pair. |
+| **OAuth2StateToken** | A JWE-encrypted ephemeral token that binds an OAuth2 callback to the initiating request. Contains principal, PKCE verifier, service_id, and redirect_uri. Short-lived (10 min TTL) to limit exposure. |
+| **PKCE** | Proof Key for Code Exchange (RFC 7636). Security extension for OAuth2 that prevents authorization code interception attacks. Uses code_verifier (random secret) and code_challenge (SHA256 hash of verifier). |
+| **Token Vault** | Secure storage for encrypted OAuth2 tokens. Tokens are encrypted using AES-GCM with encryption context binding them to principal, service, and session. |
+| **Session Termination** | User-initiated action to delete their OAuth2 session with a third-party service. Removes encrypted tokens from storage and displays warning about affected agents. |
+| **OAuth2SessionService** | Domain service that orchestrates OAuth2 authorization flows. Handles PKCE generation, state token management, token exchange, and session lifecycle. |
+| **Encryption Context** | Additional authenticated data (AAD) included in token encryption. Binds ciphertext to principal, service_id, and session_id. Used for auditing and prevents cross-context token usage. |

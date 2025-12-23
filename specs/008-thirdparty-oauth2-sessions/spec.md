@@ -17,22 +17,21 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - View Available Third-Party Services (Priority: P1)
+### User Story 1 - View Available Third-Party Sessions (Priority: P1)
 
-A user needs to see which third-party services are registered with the identity broker and understand their current session status for each service (whether they're logged in, when the session was initiated, and how many agents depend on it).
+A user needs to see which third-party services have active sessions with the identity broker and understand their current session status for each service (whether they're logged in, when the session was initiated, and how many agents depend on it).
 
-**Why this priority**: This is the foundational capability that provides users visibility into available services and their authentication status. Without this view, users cannot discover what services exist or manage their sessions.
+**Why this priority**: This is the foundational capability that provides users visibility into available services and their authentication status. Without this view, users cannot discover which third-party services have been delegated to agents.
 
-**Independent Test**: User navigates to the "Third-party Sessions" page and sees a list of all registered third-party OAuth2 services with status indicators showing whether a session exists, when it was initiated, how many agents use it, and that tokens are stored encrypted.
+**Independent Test**: User navigates to the "Third-party Sessions" page and sees a list of all registered third-party OAuth2 services that have sessions with status indicators showing when the session was initiated, how many agents use it, and that tokens are stored encrypted and if the session has expired.
 
 **Acceptance Scenarios**:
 
-1. **Given** user is authenticated and third-party services are configured, **When** user navigates to the third-party sessions page, **Then** system displays a list of all configured third-party OAuth2 services with their display names and descriptions
-2. **Given** user has not established a session with a service, **When** viewing the service card, **Then** system shows a "Login" button and no session status indicators
-3. **Given** user has established a session with a service, **When** viewing the service card, **Then** system displays session initiation timestamp, number of agents using this session, expiry date of the refresh token and an encryption status indicator
-4. **Given** user views an established session, **When** reviewing the service card, **Then** system shows a "Terminate Session" button instead of a "Login" button
+1. **Given** user is authenticated and third-party services are configured, **When** user navigates to the third-party sessions page, **Then** system displays a list of all configured third-party OAuth2 services with their display names and descriptions if they have an active session
+2. **Given** user has established a session with a service, **When** viewing the service card, **Then** system displays session initiation timestamp, number of agents using this session, expiry date of the refresh token and an encryption status indicator
+4. **Given** user views an established session, **When** reviewing the service card, **Then** system shows a "Terminate Session" button
 5. **Given** multiple agents depend on a session, **When** user views the session card, **Then** system displays the count of dependent agents
-6. **Given** user has an established session where refresh token has expired, **When** viewing the service card, **Then** system displays session with "Expired" status indicator and user must terminate and re-authenticate to establish new session
+6. **Given** user has an established session where refresh token has expired, **When** viewing the service card, **Then** system displays session with "Expired" status indicator and user must terminate and re-authenticate to establish new session. To re-authenticate show a login button instead of the Terminate button.
 
 ---
 
@@ -42,11 +41,11 @@ A user needs to authenticate with a third-party service by initiating an OAuth2 
 
 **Why this priority**: This enables users to actually create sessions with third-party services. It depends on P1 (users must see available services) and delivers the core authentication capability.
 
-**Independent Test**: User clicks "Login" button on a service card, gets redirected to third-party authorization page, approves access, returns to the broker, and sees their session established with tokens stored securely.
+**Independent Test**: Navigating to `/api/third-party/{serviceId}/oauth2/authorize?redirect_uri=<the url of the session page>` gets redirected to third-party authorization page, approves access, returns to the broker, and sees their session established with tokens stored securely.
 
 **Acceptance Scenarios**:
 
-1. **Given** user clicks "Login" on a third-party service, **When** system initiates OAuth2 flow, **Then** system generates PKCE code verifier and challenge, creates signed state token (JWE), and redirects user to the third-party's authorization endpoint with appropriate parameters
+1. **Given** user navigates to the `/api/third-party/{serviceId}/oauth2/authorize?redirect_uri=<the url of the session page>` endpoint, **When** system initiates OAuth2 flow, **Then** system generates PKCE code verifier and challenge, creates signed state token (JWE), and redirects user to the third-party's authorization endpoint with appropriate parameters
 2. **Given** system initiates OAuth2 flow, **When** building authorization URL, **Then** system includes client_id (from service configuration), redirect_uri (callback endpoint on broker), response_type=code, code_challenge (PKCE), code_challenge_method=S256, scope (configured scopes), and state (JWE token)
 3. **Given** user approves access at third-party authorization page, **When** third-party redirects back to broker callback endpoint, **Then** system validates the state token, extracts PKCE verifier, and exchanges authorization code for access and refresh tokens
 4. **Given** callback receives authorization code, **When** system exchanges code for tokens, **Then** system validates that current principal matches principal in state token, validates PKCE verifier, and validates service ID matches
@@ -102,17 +101,17 @@ The system needs to securely manage OAuth2 state parameters during the authoriza
 - **Network failures during token exchange**: System retries token exchange request up to 3 times with exponential backoff (1s, 2s, 4s delays). If all retries fail, displays error message to user allowing them to retry the entire OAuth2 flow from the beginning.
 - **Expired access token with valid refresh token**: Session remains active and is not marked as expired. Future iteration will implement automatic transparent token refresh for agents. Only when refresh token itself expires should session be marked as expired in UI.
 - **Third-party service deletion with active sessions**: System blocks service deletion and returns error message showing count of active user sessions. Admin must manually terminate all user sessions before service can be deleted (enforced by ON DELETE RESTRICT foreign key constraint).
-- How does system handle malformed or missing callback parameters from third-party?
-- What happens when redirect_uri validation fails (domain mismatch)?
-- How does system handle PKCE validation failures at callback?
+- **Malformed or missing callback parameters**: When third-party returns malformed callback (missing code or state), system redirects to sessions page with error message "Invalid callback parameters" and allows retry via Login button. Missing code treated same as access_denied error.
+- **Redirect URI domain mismatch**: When redirect_uri parameter in authorize request does not match the Host header of the incoming request, system returns 400 Bad Request with error "invalid_redirect_uri" and message "redirect_uri must match the host of the request". Flow does not proceed.
+- **PKCE validation failures**: When PKCE code_verifier from state token fails validation at third-party token endpoint (invalid_grant error), system logs security event, redirects to sessions page with error "Authorization failed - please try again", and allows retry via Login button.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: System MUST provide a user interface listing all configured third-party OAuth2 services
+- **FR-001**: System MUST provide a user interface listing all configured third-party OAuth2 services with active sessions
 - **FR-002**: System MUST display session status for each service including: session existence, initiation timestamp, dependent agent count, encryption status, and expiration status (only marked expired when refresh token expires, not when access token expires)
-- **FR-003**: System MUST provide a "Login" button for services without established sessions
+- **FR-003**: System MUST provide a "Login" button for services with expired sessions (replaces Terminate button - user must re-authenticate; cannot terminate expired session)
 - **FR-004**: System MUST provide a "Terminate Session" button for services with established sessions
 - **FR-005**: System MUST expose endpoint `/api/third-party/{serviceId}/oauth2/authorize` accepting `redirect_uri` query parameter to initiate OAuth2 authorization code flow with PKCE
 - **FR-006**: System MUST validate that `redirect_uri` parameter in authorize endpoint matches the host of the incoming request (same-origin validation)
@@ -186,7 +185,7 @@ third_party_oauth2:
 ### Database Requirements
 
 - **DB-001**: Create migration `004_create_user_sessions.up.sql` and `004_create_user_sessions.down.sql` for user_sessions table
-- **DB-002**: user_sessions table schema MUST include: id (UUID primary key), principal (string, indexed), service_id (string, foreign key to third_party_services), encrypted_access_token (bytea), encrypted_refresh_token (bytea, nullable), token_type (string), access_token_expires_at (timestamp, nullable), refresh_token_expires_at (timestamp, nullable), initiated_at (timestamp), scope (string array), encryption_context (jsonb)
+- **DB-002**: user_sessions table schema MUST include: id (UUID primary key), principal (string, indexed), service_id (UUID, foreign key to thirdparty_oauth2_services), encrypted_access_token (bytea), encrypted_refresh_token (bytea, nullable), token_type (string), access_token_expires_at (timestamp, nullable), refresh_token_expires_at (timestamp, nullable), initiated_at (timestamp), scope (string array), encryption_context (jsonb)
 - **DB-003**: Add unique constraint on (principal, service_id) - one session per user per service. This constraint prevents race conditions when multiple OAuth2 flows are initiated simultaneously; first callback to complete successfully wins, subsequent callbacks will detect existing session via constraint violation.
 - **DB-004**: Add index on principal for fast session lookups by user
 - **DB-005**: Add foreign key constraint from service_id to third_party_services.id with ON DELETE RESTRICT (prevent deleting services with active sessions). Admin interface must catch constraint violation and display error message with active session count, requiring admin to terminate all user sessions before service deletion.
