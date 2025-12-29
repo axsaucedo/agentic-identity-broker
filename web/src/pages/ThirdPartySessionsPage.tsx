@@ -22,6 +22,7 @@ import { EmptyState } from '@design-system/components/feedback/EmptyState';
 import { Skeleton } from '@design-system/components/feedback/Skeleton';
 import { Alert } from '@design-system/components/feedback/Alert';
 import { Button } from '@design-system/components/primitives/Button';
+import { PageTransition } from '@components/ui/PageTransition';
 import { useSessions } from '@hooks/useSessions';
 import { SessionCard } from '@components/sessions/SessionCard';
 import { sessionsApi } from '@services/api/sessions';
@@ -88,26 +89,31 @@ export const ThirdPartySessionsPage: React.FC = () => {
   if (loading) {
     return (
       <AppLayout>
-        <div className="min-h-screen bg-neutral-50 py-8 px-4">
-          <div className="max-w-7xl mx-auto">
-          <Stack gap="lg">
+        <PageTransition>
+          <div className="space-y-6">
+            {/* Page header */}
             <div>
-              <h1 className="text-3xl font-bold text-neutral-900 mb-2">
+              <h2 className="text-2xl font-semibold text-neutral-900">
                 Third-Party Sessions
-              </h1>
-              <p className="text-base text-neutral-600">
+              </h2>
+              <p className="mt-2 text-neutral-600">
                 Manage your OAuth2 sessions with third-party services.
               </p>
             </div>
 
-            <Grid columns={1} gap="md" className="sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} variant="rounded" height="320px" />
-              ))}
-            </Grid>
-          </Stack>
+            {/* Loading skeleton cards */}
+            <div>
+              <h3 className="text-lg font-medium text-neutral-900 mb-4">
+                Your Sessions
+              </h3>
+              <Grid columns={1} gap="md" className="sm:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} variant="rounded" height="320px" />
+                ))}
+              </Grid>
+            </div>
           </div>
-        </div>
+        </PageTransition>
       </AppLayout>
     );
   }
@@ -116,27 +122,27 @@ export const ThirdPartySessionsPage: React.FC = () => {
   if (error) {
     return (
       <AppLayout>
-        <div className="min-h-screen bg-neutral-50 py-8 px-4">
-          <div className="max-w-7xl mx-auto">
-          <Stack gap="lg">
+        <PageTransition>
+          <div className="space-y-6">
+            {/* Page header */}
             <div>
-              <h1 className="text-3xl font-bold text-neutral-900 mb-2">
+              <h2 className="text-2xl font-semibold text-neutral-900">
                 Third-Party Sessions
-              </h1>
-              <p className="text-base text-neutral-600">
+              </h2>
+              <p className="mt-2 text-neutral-600">
                 Manage your OAuth2 sessions with third-party services.
               </p>
             </div>
 
+            {/* Error alert */}
             <Alert variant="error" title="Failed to Load Sessions">
               <p className="mb-4">{error}</p>
               <Button variant="outline" size="sm" onClick={refetch}>
                 Retry
               </Button>
             </Alert>
-          </Stack>
           </div>
-        </div>
+        </PageTransition>
       </AppLayout>
     );
   }
@@ -145,29 +151,34 @@ export const ThirdPartySessionsPage: React.FC = () => {
   if (sessions.length === 0) {
     return (
       <AppLayout>
-        <div className="min-h-screen bg-neutral-50 py-8 px-4">
-          <div className="max-w-7xl mx-auto">
-          <Stack gap="lg">
+        <PageTransition>
+          <div className="space-y-6">
+            {/* Page header */}
             <div>
-              <h1 className="text-3xl font-bold text-neutral-900 mb-2">
+              <h2 className="text-2xl font-semibold text-neutral-900">
                 Third-Party Sessions
-              </h1>
-              <p className="text-base text-neutral-600">
+              </h2>
+              <p className="mt-2 text-neutral-600">
                 Manage your OAuth2 sessions with third-party services.
               </p>
             </div>
 
-            <EmptyState
-              title="No Sessions Found"
-              description="You haven't authenticated with any third-party services yet. Sessions will appear here once you grant permissions to agents."
-            >
-              <Button variant="primary" onClick={refetch}>
-                Refresh
-              </Button>
-            </EmptyState>
-          </Stack>
+            {/* Subsection with empty state */}
+            <div>
+              <h3 className="text-lg font-medium text-neutral-900 mb-4">
+                Your Sessions
+              </h3>
+              <EmptyState
+                title="No Sessions Found"
+                description="You haven't authenticated with any third-party services yet. Sessions will appear here once you grant permissions to agents."
+              >
+                <Button variant="primary" onClick={refetch}>
+                  Refresh
+                </Button>
+              </EmptyState>
+            </div>
           </div>
-        </div>
+        </PageTransition>
       </AppLayout>
     );
   }
@@ -178,33 +189,36 @@ export const ThirdPartySessionsPage: React.FC = () => {
   // Main content with session cards
   return (
     <AppLayout>
-      <div className="min-h-screen bg-neutral-50 py-8 px-4">
-        <div className="max-w-7xl mx-auto">
-        <Stack gap="lg">
+      <PageTransition>
+        <div className="space-y-6">
           {/* Page header */}
           <div>
-            <h1 className="text-3xl font-bold text-neutral-900 mb-2">
+            <h2 className="text-2xl font-semibold text-neutral-900">
               Third-Party Sessions
-            </h1>
-            <p className="text-base text-neutral-600 leading-relaxed">
-              Manage your OAuth2 sessions with third-party services. View active sessions,
-              dependent agents, and terminate sessions when needed.
+            </h2>
+            <p className="mt-2 text-neutral-600">
+              Manage your OAuth2 sessions with third-party services.
             </p>
           </div>
 
-          {/* Session cards grid */}
-          <Grid columns={1} gap="md" className="sm:grid-cols-2 lg:grid-cols-3">
-            {sessions.map((session) => (
-              <SessionCard
-                key={session.id}
-                session={session}
-                onTerminate={handleTerminate}
-                loading={terminatingLoading && selectedSessionId === session.service_id}
-              />
-            ))}
-          </Grid>
-        </Stack>
-      </div>
+          {/* Subsection with session cards */}
+          <div>
+            <h3 className="text-lg font-medium text-neutral-900 mb-4">
+              Your Sessions
+            </h3>
+            <Grid columns={1} gap="md" className="sm:grid-cols-2 lg:grid-cols-3">
+              {sessions.map((session) => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  onTerminate={handleTerminate}
+                  loading={terminatingLoading && selectedSessionId === session.service_id}
+                />
+              ))}
+            </Grid>
+          </div>
+        </div>
+      </PageTransition>
 
       {/* Termination confirmation dialog */}
       {selectedSessionId && selectedSession && (
@@ -274,7 +288,6 @@ export const ThirdPartySessionsPage: React.FC = () => {
           </div>
         </div>
       )}
-        </div>
     </AppLayout>
   );
 };
