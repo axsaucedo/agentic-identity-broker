@@ -15,11 +15,12 @@ import (
 // Adapters implement both StorageLifecycle and repository interfaces (UserRepository, etc.)
 // This struct is returned by NewAdapter factory function.
 type Adapter struct {
-	lifecycle   ports.StorageLifecycle
-	users       ports.UserRepository
-	agents      ports.AgentRepository
-	services    ports.ThirdpartyOAuth2ServiceRepository
-	userGrants  ports.UserGrantRepository
+	lifecycle     ports.StorageLifecycle
+	users         ports.UserRepository
+	agents        ports.AgentRepository
+	services      ports.ThirdpartyOAuth2ServiceRepository
+	userGrants    ports.UserGrantRepository
+	userSessions  ports.UserSessionRepository
 }
 
 // NewAdapter creates a storage adapter based on configuration.
@@ -48,11 +49,12 @@ func NewAdapter(config *ports.StorageConfig) (*Adapter, error) {
 func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	memAdapter := memory.NewAdapter()
 	return &Adapter{
-		lifecycle:   memAdapter,
-		users:       memAdapter,
-		agents:      memory.NewAgentRepository(),
-		services:    memory.NewThirdpartyServiceRepository(),
-		userGrants:  memory.NewUserGrantRepository(),
+		lifecycle:    memAdapter,
+		users:        memAdapter,
+		agents:       memory.NewAgentRepository(),
+		services:     memory.NewThirdpartyServiceRepository(),
+		userGrants:   memory.NewUserGrantRepository(),
+		userSessions: memory.NewInMemoryUserSessionRepository(),
 	}, nil
 }
 
@@ -62,12 +64,14 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PostgreSQL adapter: %w", err)
 	}
+
 	return &Adapter{
-		lifecycle:   pgAdapter,
-		users:       pgAdapter,
-		agents:      postgres.NewAgentRepository(pgAdapter),
-		services:    postgres.NewThirdpartyServiceRepository(pgAdapter, nil), // TODO: Initialize proper EncryptionPort
-		userGrants:  postgres.NewUserGrantRepository(pgAdapter),
+		lifecycle:    pgAdapter,
+		users:        pgAdapter,
+		agents:       postgres.NewAgentRepository(pgAdapter),
+		services:     postgres.NewThirdpartyServiceRepository(pgAdapter, nil), // TODO: Initialize proper EncryptionPort
+		userGrants:   postgres.NewUserGrantRepository(pgAdapter),
+		userSessions: postgres.NewUserSessionRepository(pgAdapter),
 	}, nil
 }
 
@@ -99,4 +103,10 @@ func (a *Adapter) Services() ports.ThirdpartyOAuth2ServiceRepository {
 // Used for user grant CRUD operations.
 func (a *Adapter) UserGrants() ports.UserGrantRepository {
 	return a.userGrants
+}
+
+// UserSessions returns the UserSessionRepository interface implementation.
+// Used for user session CRUD operations.
+func (a *Adapter) UserSessions() ports.UserSessionRepository {
+	return a.userSessions
 }

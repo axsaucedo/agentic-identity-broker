@@ -107,6 +107,31 @@ cp examples/config/config.yaml.example config.yaml
 ./identity-broker --config config.yaml
 ```
 
+### `third-party-oauth2.yaml`
+
+Third-party OAuth2 session management configuration. Demonstrates:
+- JWE signing key configuration for state tokens
+- State token TTL configuration (max 15 minutes)
+- PKCE code verifier length configuration (32-128 bytes)
+- Security-focused comments explaining each setting
+- Environment variable substitution for sensitive keys
+
+This configuration is required when enabling OAuth2 session management with third-party
+services (GitHub, Google, Microsoft, etc.). It controls how the broker orchestrates
+OAuth2 authorization flows and stores encrypted tokens.
+
+**Usage:**
+```bash
+# Generate JWE signing key
+export IDENTITY_BROKER_JWE_SIGNING_KEY="$(openssl rand -base64 32)"
+
+# Run with third-party OAuth2 configuration
+./identity-broker --config ./examples/config/third-party-oauth2.yaml
+```
+
+**Security Note:** The JWE signing key MUST be kept secret. It protects OAuth2 state
+tokens during the authorization flow. Compromise allows state token forgery and CSRF attacks.
+
 ## Configuration Sources and Precedence
 
 The application loads configuration from multiple sources with this precedence (highest to lowest):

@@ -539,6 +539,38 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal str
 	return grants, nil
 }
 
+// CountAgentsByServiceID counts how many agents have delegated OAuth2 tokens for a given service.
+// This is used to show dependent agent count when terminating a session.
+// Returns the count of distinct agents with delegated_oauth2_tokens JSONB entries for the service.
+func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
+	if r.adapter.db == nil {
+		return 0, storage.NewStorageError(
+			"CountAgentsByServiceID",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	// Query to count distinct agents that have delegated tokens for this service
+	// Uses jsonb_array_elements to unnest the delegated_oauth2_tokens array
+	// and filters by thirdparty_oauth2_service_id
+	query := `
+		SELECT COUNT(DISTINCT agent_id)
+		FROM user_grants,
+		     jsonb_array_elements(delegated_oauth2_tokens) AS token
+		WHERE token->>'thirdparty_oauth2_service_id' = $1
+	`
+
+	var count int
+	err := r.adapter.db.GetContext(ctx, &count, query, serviceID)
+	if err != nil {
+		return 0, r.handlePostgresError("CountAgentsByServiceID", err)
+	}
+
+	return count, nil
+}
+
 // handlePostgresError converts PostgreSQL errors to StorageError.
 func (r *UserGrantRepository) handlePostgresError(operation string, err error) error {
 	if pgErr, ok := err.(*pgconn.PgError); ok {

@@ -19,9 +19,9 @@
 
 **Purpose**: Project initialization and dependency setup
 
-- [ ] T001 Add golang.org/x/oauth2 dependency to go.mod
-- [ ] T002 [P] Add github.com/lestrrat-go/jwx/v3 dependency to go.mod
-- [ ] T003 [P] Create directory structure: internal/domain/oauth2session/, internal/adapters/http/oauth2_sessions/
+- [x] T001 Add golang.org/x/oauth2 dependency to go.mod
+- [x] T002 [P] Add github.com/lestrrat-go/jwx/v3 dependency to go.mod
+- [x] T003 [P] Create directory structure: internal/domain/oauth2session/, internal/adapters/http/oauth2_sessions/
 
 ---
 
@@ -35,9 +35,9 @@
 
 **Constitution Reference**: Principles II (Architecture Documentation), V (Domain-Driven Design & Glossary Management)
 
-- [ ] T004 Document domain model entities (UserSession, OAuth2StateTokenClaims) in data-model.md ✓ (already complete)
-- [ ] T005 [P] Add new domain terms to ARCHITECTURE.md Glossary: UserSession, OAuth2StateToken, OAuth2SessionService, Token Vault, Session Termination
-- [ ] T006 [P] Document invariants: one session per (principal, service_id), tokens always encrypted, PKCE mandatory
+- [x] T004 Document domain model entities (UserSession, OAuth2StateTokenClaims) in data-model.md ✓ (already complete)
+- [x] T005 [P] Add new domain terms to ARCHITECTURE.md Glossary: UserSession, OAuth2StateToken, OAuth2SessionService, Token Vault, Session Termination
+- [x] T006 [P] Document invariants: one session per (principal, service_id), tokens always encrypted, PKCE mandatory
 
 **Checkpoint**: Domain model complete and documented
 
@@ -45,9 +45,9 @@
 
 **Constitution Reference**: Principle VII (Configuration-Driven Design)
 
-- [ ] T007 Create example YAML in examples/config/third-party-oauth2.yaml with jwe_signing_key, state_token_ttl, pkce_verifier_length
-- [ ] T008 [P] Update examples/config/README.md to reference third-party-oauth2.yaml
-- [ ] T009 [P] Add ThirdPartyOAuth2Config struct to internal/config/schema.go
+- [x] T007 Create example YAML in examples/config/third-party-oauth2.yaml with jwe_signing_key, state_token_ttl, pkce_verifier_length
+- [x] T008 [P] Update examples/config/README.md to reference third-party-oauth2.yaml
+- [x] T009 [P] Add ThirdPartyOAuth2Config struct to internal/config/schema.go
 
 **Checkpoint**: Configuration requirements designed with YAML examples
 
@@ -55,9 +55,9 @@
 
 **Constitution Reference**: Principles IV (API Documentation & OpenAPI Transparency), X (API-First Development)
 
-- [ ] T010 Verify contracts/oauth2-sessions.yaml covers all endpoints from spec.md requirements ✓ (already complete)
-- [ ] T011 [P] Merge contracts/oauth2-sessions.yaml into /api/enduser/openapi.yaml
-- [ ] T012 [P] Get user/stakeholder confirmation for end-user API design (document in PR)
+- [x] T010 Verify contracts/oauth2-sessions.yaml covers all endpoints from spec.md requirements ✓ (already complete)
+- [x] T011 [P] Merge contracts/oauth2-sessions.yaml into /api/enduser/openapi.yaml
+- [x] T012 [P] Get user/stakeholder confirmation for end-user API design (document in PR)
 
 **Checkpoint**: APIs designed and confirmed by user/stakeholder
 
@@ -65,9 +65,9 @@
 
 **Constitution Reference**: Principle IX (Persistence Pattern Consistency & Database Migration Management)
 
-- [ ] T013 Create migration migrations/004_create_user_sessions.up.sql with schema from data-model.md
-- [ ] T014 [P] Create migration migrations/004_create_user_sessions.down.sql
-- [ ] T015 [P] Document unique constraint (principal, service_id) and foreign key to thirdparty_oauth2_services
+- [x] T013 Create migration migrations/004_create_user_sessions.up.sql with schema from data-model.md
+- [x] T014 [P] Create migration migrations/004_create_user_sessions.down.sql
+- [x] T015 [P] Document unique constraint (principal, service_id) and foreign key to thirdparty_oauth2_services
 
 **Checkpoint**: Database schema designed, migrations documented
 
@@ -75,9 +75,9 @@
 
 **Constitution Reference**: Principle XI (Design System Compliance & Consistency)
 
-- [ ] T016 Review web/src/design-system/docs/INDEX.md for session card component patterns
-- [ ] T017 [P] Identify design system components to use: Card, Button, Dialog, Badge for status indicators
-- [ ] T018 [P] Document semantic token usage: success-primary (active), warning-primary (expiring), error-primary (expired)
+- [x] T016 Review web/src/design-system/docs/INDEX.md for session card component patterns
+- [x] T017 [P] Identify design system components to use: Card, Button, Dialog, Badge for status indicators
+- [x] T018 [P] Document semantic token usage: success-primary (active), warning-primary (expiring), error-primary (expired)
 
 **Checkpoint**: Design system usage planned
 
@@ -89,16 +89,16 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T019 Create UserSession entity in internal/domain/storage/user_session.go with Validate(), IsExpired(), HasValidAccessToken() methods
-- [ ] T020 [P] Create EncryptionContext type in internal/domain/storage/user_session.go with Value()/Scan() for JSONB
-- [ ] T021 [P] Create UserSessionRepository interface in internal/ports/storage.go (Create, Get, FindByPrincipalAndService, ListByPrincipal, Delete, DeleteByPrincipalAndService, CountByService)
-- [ ] T021a [P] Extend UserGrantRepository interface with CountAgentsByServiceID(ctx, serviceID) method to query delegated_oauth2_tokens JSONB for agent count per FR-016
-- [ ] T022 Create OAuth2StateTokenClaims value object in internal/domain/oauth2session/state_token.go with Validate(), IsExpired()
-- [ ] T023 [P] Create PKCE generation function GeneratePKCE() in internal/domain/oauth2session/pkce.go per RFC 7636
-- [ ] T024 [P] Create domain errors in internal/domain/oauth2session/errors.go (ErrStateTokenExpired, ErrPrincipalMismatch, ErrServiceNotFound, etc.)
-- [ ] T025 Create OAuth2SessionService struct in internal/domain/oauth2session/service.go with Config, dependencies (repos, encryption, jweKey, logger)
-- [ ] T026 [P] Create in-memory UserSessionRepository adapter in internal/adapters/storage/memory/user_session.go
-- [ ] T027 Create PostgreSQL UserSessionRepository adapter in internal/adapters/storage/postgres/user_session.go with upsert semantics
+- [x] T019 Create UserSession entity in internal/domain/storage/user_session.go with Validate(), IsExpired(), HasValidAccessToken() methods
+- [x] T020 [P] Create EncryptionContext type in internal/domain/storage/user_session.go with Value()/Scan() for JSONB
+- [x] T021 [P] Create UserSessionRepository interface in internal/ports/storage.go (Create, Get, FindByPrincipalAndService, ListByPrincipal, Delete, DeleteByPrincipalAndService, CountByService)
+- [x] T021a [P] Extend UserGrantRepository interface with CountAgentsByServiceID(ctx, serviceID) method to query delegated_oauth2_tokens JSONB for agent count per FR-016
+- [x] T022 Create OAuth2StateTokenClaims value object in internal/domain/oauth2session/state_token.go with Validate(), IsExpired()
+- [x] T023 [P] Create PKCE generation function GeneratePKCE() in internal/domain/oauth2session/pkce.go per RFC 7636
+- [x] T024 [P] Create domain errors in internal/domain/oauth2session/errors.go (ErrStateTokenExpired, ErrPrincipalMismatch, ErrServiceNotFound, etc.)
+- [x] T025 Create OAuth2SessionService struct in internal/domain/oauth2session/service.go with Config, dependencies (repos, encryption, jweKey, logger)
+- [x] T026 [P] Create in-memory UserSessionRepository adapter in internal/adapters/storage/memory/user_session.go
+- [x] T027 Create PostgreSQL UserSessionRepository adapter in internal/adapters/storage/postgres/user_session.go with upsert semantics
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -112,24 +112,24 @@
 
 ### Tests for User Story 1 [MANDATORY - Principle VIII] ⚠️
 
-- [ ] T028 [P] [US1] Unit tests for UserSession.IsExpired(), HasValidAccessToken(), Validate() in tests/unit/oauth2session/user_session_test.go
-- [ ] T029 [P] [US1] Unit tests for UserSessionSummary projection in tests/unit/oauth2session/user_session_summary_test.go
-- [ ] T030 [P] [US1] Integration tests for UserSessionRepository.ListByPrincipal() in tests/integration/user_sessions_test.go
-- [ ] T031 [P] [US1] Integration tests for GET /api/third-party/sessions endpoint in tests/integration/oauth2_sessions_api_test.go
+- [x] T028 [P] [US1] Unit tests for UserSession.IsExpired(), HasValidAccessToken(), Validate() in tests/unit/oauth2session/user_session_test.go
+- [x] T029 [P] [US1] Unit tests for UserSessionSummary projection in tests/unit/oauth2session/user_session_summary_test.go
+- [x] T030 [P] [US1] Integration tests for UserSessionRepository.ListByPrincipal() in tests/integration/user_sessions_test.go
+- [x] T031 [P] [US1] Integration tests for GET /api/third-party/sessions endpoint in tests/integration/oauth2_sessions_api_test.go
 
 ### Implementation for User Story 1
 
-- [ ] T032 [US1] Create UserSessionSummary read model in internal/domain/storage/user_session.go with NewUserSessionSummary()
-- [ ] T033 [US1] Implement OAuth2SessionService.ListUserSessions() in internal/domain/oauth2session/service.go
-- [ ] T034 [US1] Implement dependent agent count query using UserGrantRepository (query delegated_oauth2_tokens JSONB)
-- [ ] T035 [P] [US1] Create HTTP handler Handler struct in internal/adapters/http/oauth2_sessions/handler.go
-- [ ] T036 [US1] Implement ListSessions handler GET /api/third-party/sessions in internal/adapters/http/oauth2_sessions/handler.go
-- [ ] T037 [P] [US1] Register routes with Chi router in internal/adapters/http/oauth2_sessions/handler.go RegisterRoutes()
-- [ ] T038 [P] [US1] Create frontend API client sessionsApi in web/src/services/api/sessions.ts
-- [ ] T039 [P] [US1] Create useSessions hook in web/src/hooks/useSessions.ts
-- [ ] T040 [US1] Create SessionCard component in web/src/components/sessions/SessionCard.tsx
-- [ ] T041 [US1] Create ThirdPartySessionsPage in web/src/pages/ThirdPartySessionsPage.tsx
-- [ ] T042 [US1] Add structured logging for session list operations
+- [x] T032 [US1] Create UserSessionSummary read model in internal/domain/storage/user_session.go with NewUserSessionSummary()
+- [x] T033 [US1] Implement OAuth2SessionService.ListUserSessions() in internal/domain/oauth2session/service.go
+- [x] T034 [US1] Implement dependent agent count query using UserGrantRepository (query delegated_oauth2_tokens JSONB)
+- [x] T035 [P] [US1] Create HTTP handler Handler struct in internal/adapters/http/oauth2_sessions/handler.go
+- [x] T036 [US1] Implement ListSessions handler GET /api/third-party/sessions in internal/adapters/http/oauth2_sessions/handler.go
+- [x] T037 [P] [US1] Register routes with Chi router in internal/adapters/http/oauth2_sessions/handler.go RegisterRoutes()
+- [x] T038 [P] [US1] Create frontend API client sessionsApi in web/src/services/api/sessions.ts
+- [x] T039 [P] [US1] Create useSessions hook in web/src/hooks/useSessions.ts
+- [x] T040 [US1] Create SessionCard component in web/src/components/sessions/SessionCard.tsx
+- [x] T041 [US1] Create ThirdPartySessionsPage in web/src/pages/ThirdPartySessionsPage.tsx
+- [x] T042 [US1] Add structured logging for session list operations
 
 **Checkpoint**: User Story 1 fully functional - users can view their sessions
 

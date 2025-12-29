@@ -1,0 +1,35 @@
+package oauth2session
+
+import "errors"
+
+var (
+	// ErrStateTokenExpired is returned when a state token has expired.
+	ErrStateTokenExpired = errors.New("state token expired")
+
+	// ErrPrincipalMismatch is returned when the principal in the state token doesn't match the request.
+	ErrPrincipalMismatch = errors.New("principal mismatch (CSRF protection)")
+
+	// ErrServiceNotFound is returned when the service ID doesn't exist.
+	ErrServiceNotFound = errors.New("service not found")
+
+	// ErrSessionNotFound is returned when a session doesn't exist.
+	ErrSessionNotFound = errors.New("session not found")
+
+	// ErrInvalidPKCE is returned when PKCE validation fails.
+	ErrInvalidPKCE = errors.New("invalid PKCE")
+
+	// ErrInvalidStateToken is returned when state token is invalid or tampered.
+	ErrInvalidStateToken = errors.New("invalid state token")
+
+	// ErrServiceIDMismatch is returned when service_id in token doesn't match callback.
+	ErrServiceIDMismatch = errors.New("service_id mismatch")
+
+	// ErrTokenExchange is returned when code-for-token exchange fails.
+	ErrTokenExchange = errors.New("token exchange failed")
+
+	// ErrEncryptionFailed is returned when token encryption fails.
+	ErrEncryptionFailed = errors.New("token encryption failed")
+
+	// ErrInvalidConfiguration is returned when OAuth2 service configuration is invalid.
+	ErrInvalidConfiguration = errors.New("invalid OAuth2 service configuration")
+)

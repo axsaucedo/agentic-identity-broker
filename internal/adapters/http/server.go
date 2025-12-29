@@ -14,6 +14,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
+	oauth2sessions "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,7 @@ type Server struct {
 	agentRepo      ports.AgentRepository                   // Agent repository (optional)
 	serviceRepo    ports.ThirdpartyOAuth2ServiceRepository // OAuth2 service repository (optional)
 	grantRepo      ports.UserGrantRepository               // User grant repository (optional)
+	sessionRepo    ports.UserSessionRepository             // User session repository (optional)
 	spaConfig      *SPAConfig                              // SPA configuration (optional)
 }
 
@@ -76,6 +78,12 @@ func (s *Server) SetServiceRepository(repo ports.ThirdpartyOAuth2ServiceReposito
 // This should be called before Listen() to ensure handlers have access to the repository.
 func (s *Server) SetGrantRepository(repo ports.UserGrantRepository) {
 	s.grantRepo = repo
+}
+
+// SetSessionRepository sets the user session repository for this server.
+// This should be called before Listen() to ensure handlers have access to the repository.
+func (s *Server) SetSessionRepository(repo ports.UserSessionRepository) {
+	s.sessionRepo = repo
 }
 
 // SetSPAConfig sets the SPA configuration for this server.
@@ -227,35 +235,48 @@ func (s *Server) setupAdminRoutes() {
 	})
 }
 
-// setupEnduserRoutes registers enduser API routes (consent management) and SPA.
+// setupEnduserRoutes registers enduser API routes (consent management, OAuth2 sessions) and SPA.
 func (s *Server) setupEnduserRoutes() {
 	// Register API routes with CORS middleware
 	s.router.Route("/api", func(r chi.Router) {
 		// Apply CORS middleware to all API routes
 		r.Use(middleware.CORSMiddleware())
 
-		// Register user info endpoint (GET /api/me)
-		// This endpoint requires authentication but no repositories
-		userInfoHandler := consent.NewUserInfoHandler(s.logger)
-		r.Get("/me", RequirePrincipalMiddleware(s.config.Authentication, s.logger)(
-			http.HandlerFunc(userInfoHandler.GetUserInfo),
-		).ServeHTTP)
+		// Create subrouter for authenticated routes
+		// Middleware must be applied before any routes are registered on a chi router
+		r.Route("/", func(authRouter chi.Router) {
+			// Apply authentication middleware FIRST, before registering any routes
+			authRouter.Use(RequirePrincipalMiddleware(s.config.Authentication, s.logger))
 
-		// Only register consent routes if all required repositories are available
-		if s.agentRepo != nil && s.serviceRepo != nil && s.grantRepo != nil {
-			// Create consent service
-			consentService := consentservice.NewService(s.agentRepo, s.serviceRepo, s.grantRepo)
+			// Register user info endpoint (GET /api/me)
+			userInfoHandler := consent.NewUserInfoHandler(s.logger)
+			authRouter.Get("/me", http.HandlerFunc(userInfoHandler.GetUserInfo).ServeHTTP)
 
-			// Register consent management routes
-			r.Route("/consent", func(consentRouter chi.Router) {
-				s.registerConsentRoutes(consentRouter, consentService)
-			})
-		} else {
-			s.logger.Warn("Consent routes not registered - missing required repositories",
-				"has_agent_repo", s.agentRepo != nil,
-				"has_service_repo", s.serviceRepo != nil,
-				"has_grant_repo", s.grantRepo != nil)
-		}
+			// Register OAuth2 sessions routes if sessionRepo and grantRepo are available
+			if s.sessionRepo != nil && s.grantRepo != nil {
+				s.registerOAuth2SessionsRoutes(authRouter)
+			} else {
+				s.logger.Warn("OAuth2 sessions routes not registered - missing required repositories",
+					"has_session_repo", s.sessionRepo != nil,
+					"has_grant_repo", s.grantRepo != nil)
+			}
+
+			// Only register consent routes if all required repositories are available
+			if s.agentRepo != nil && s.serviceRepo != nil && s.grantRepo != nil {
+				// Create consent service
+				consentService := consentservice.NewService(s.agentRepo, s.serviceRepo, s.grantRepo)
+
+				// Register consent management routes
+				authRouter.Route("/consent", func(consentRouter chi.Router) {
+					s.registerConsentRoutes(consentRouter, consentService)
+				})
+			} else {
+				s.logger.Warn("Consent routes not registered - missing required repositories",
+					"has_agent_repo", s.agentRepo != nil,
+					"has_service_repo", s.serviceRepo != nil,
+					"has_grant_repo", s.grantRepo != nil)
+			}
+		})
 	})
 
 	// Register SPA handler if configured
@@ -310,12 +331,27 @@ func (s *Server) registerServicesRoutes(r chi.Router) {
 	})
 }
 
+// registerOAuth2SessionsRoutes registers OAuth2 sessions routes.
+// Note: Authentication middleware must be applied at the parent router level before calling this.
+func (s *Server) registerOAuth2SessionsRoutes(r chi.Router) {
+	s.logger.Debug("Registering OAuth2 sessions routes")
+
+	if s.sessionRepo == nil || s.grantRepo == nil {
+		s.logger.Warn("OAuth2 sessions routes require both session and grant repositories")
+		return
+	}
+
+	// Create handler with repositories
+	sessionsHandler := oauth2sessions.NewHandler(s.sessionRepo, s.grantRepo, nil)
+
+	// Register routes
+	sessionsHandler.RegisterRoutes(r)
+}
+
 // registerConsentRoutes registers consent management routes.
+// Note: Authentication middleware must be applied at the parent router level before calling this.
 func (s *Server) registerConsentRoutes(r chi.Router, consentService *consentservice.Service) {
 	s.logger.Debug("Registering consent routes")
-
-	// Apply authentication middleware to all consent routes
-	r.Use(RequirePrincipalMiddleware(s.config.Authentication, s.logger))
 
 	// Create handlers
 	agentsHandler := consent.NewAgentsHandler(consentService, s.logger)

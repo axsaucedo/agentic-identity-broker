@@ -226,6 +226,22 @@ func (m *mockGrantRepo) ListByPrincipal(ctx context.Context, principal string) (
 	return result, nil
 }
 
+func (m *mockGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	uniqueAgents := make(map[string]bool)
+	for _, grant := range m.grants {
+		for _, token := range grant.DelegatedOAuth2Tokens {
+			if token.ThirdpartyOAuth2ServiceID == serviceID {
+				uniqueAgents[grant.AgentID] = true
+				break
+			}
+		}
+	}
+	return len(uniqueAgents), nil
+}
+
 // Test cases
 
 func TestService_GetAgentConsentInfo(t *testing.T) {

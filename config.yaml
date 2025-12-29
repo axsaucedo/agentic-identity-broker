@@ -4,7 +4,7 @@
 # Logging configuration
 log:
   level: debug
-  format: ${IDENTITY_BROKER_LOG_FORMAT}
+  format: json
 
 # Server configuration - dual-port HTTP servers
 server:

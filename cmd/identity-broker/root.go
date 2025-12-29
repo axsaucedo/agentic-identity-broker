@@ -84,6 +84,9 @@ func run(cmd *cobra.Command, args []string) error {
 		enduserServer.SetGrantRepository(storage.UserGrants())
 		adminServer.SetGrantRepository(storage.UserGrants())
 	}
+	if storage.UserSessions() != nil {
+		enduserServer.SetSessionRepository(storage.UserSessions())
+	}
 
 	// Create server manager
 	mgr := server.NewManager(enduserServer, adminServer, cfg.Server.Shutdown.Timeout, logger)
