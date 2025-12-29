@@ -50,6 +50,21 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Return empty sessions for now if service not initialized
+	// TODO: Initialize OAuth2SessionService properly when encryption keys are available
+	if h.service == nil {
+		h.logger.Debug("OAuth2 session service not initialized", "principal", principal)
+		resp := map[string]interface{}{
+			"data": map[string]interface{}{
+				"sessions": []interface{}{},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
 	// Fetch sessions
 	summaries, err := h.service.ListUserSessions(ctx, principal)
 	if err != nil {
@@ -78,6 +93,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 // RegisterRoutes registers all OAuth2 session routes with the router.
+// Routes are relative to /api (e.g., "/third-party/sessions" becomes "/api/third-party/sessions")
 func (h *Handler) RegisterRoutes(router chi.Router) {
-	router.Get("/api/third-party/sessions", h.ListSessions)
+	router.Get("/third-party/sessions", h.ListSessions)
 }
