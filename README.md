@@ -1,76 +1,85 @@
 # Agentic Identity Broker
 
-A secure identity management, authentication, and authorization service for AI agents and autonomous systems. Built with Go using hexagonal architecture principles for maintainability and extensibility.
+An identity management and OAuth2 delegation service purpose-built for AI agents and autonomous systems. Provides secure identity verification, OAuth2 scope delegation, and consent management for agentic platforms that need to safely authorize AI agents to act on behalf of users across multiple third-party services.
 
-## Features
+Architected with **hexagonal architecture**, **domain-driven design**, and **constitution-driven development** for maintainability, extensibility, and governance.
 
-- Flexible multi-source configuration (defaults, .env files, YAML, CLI flags)
-- Security-first design with sensitive value redaction and command injection prevention
-- Hexagonal architecture with clear separation of concerns
-- Environment-specific configuration support
-- Comprehensive validation and audit logging
+## Key Features
+
+- **Secure Identity Management**: Agent registration, principal authentication, and session management
+- **OAuth2 Delegation & Consent**: Manage OAuth2 scopes and user consent for third-party service integrations
+- **Flexible Configuration**: Multi-source configuration (defaults, .env files, YAML, CLI flags) with environment-specific support
+- **Security-First Design**: Sensitive value redaction, command injection prevention, cryptographic validation, and fail-closed architecture
+- **Dual-Port Architecture**: Separate end-user (8000) and administrative (14000) ports with distinct API contracts
+- **Persistence Layer**: PostgreSQL + in-memory storage with database migrations and schema versioning
+- **React Consent Frontend**: Modern SPA for managing OAuth2 delegations with design system compliance
+- **Comprehensive Audit Logging**: Structured JSON logging for compliance and security monitoring
+- **Hexagonal Architecture**: Clear separation of domain logic, ports (interfaces), and adapters (implementations)
 
 ## Prerequisites
 
-- Go 1.23.0 or higher
-- [just](https://github.com/casey/just) command runner (optional but recommended)
-- [Air](https://github.com/air-verse/air) for hot-reload development (optional)
-- [golangci-lint](https://golangci-lint.run/) for code quality checks (optional)
+- **Go 1.24.0** or higher (required)
+- **PostgreSQL 12+** (for persistence; in-memory storage available for development)
+- **Node.js 18+** (for React frontend development, optional)
+- **[just](https://github.com/casey/just)** command runner (recommended)
+- **[Air](https://github.com/air-verse/air)** for hot-reload development (optional, recommended)
+- **[golangci-lint](https://golangci-lint.run/)** for code quality checks (optional)
 
 ## Quick Start
 
-### Installation
+### 1. Clone & Setup
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/agentic-identity-broker/agentic-identity-broker.git
 cd agentic-identity-broker
-```
 
-2. Install dependencies:
-```bash
+# Install Go dependencies
 just deps
-```
 
-3. Install development tools (optional):
-```bash
+# Install optional dev tools (Air, golangci-lint)
 just install-tools
 ```
 
-### Building
+### 2. Development Server (Recommended)
 
-Build the application:
+Start with hot-reload development:
+
 ```bash
-just build
-```
-
-The binary will be created at `./bin/identity-broker`.
-
-For a production-optimized build with smaller binary size:
-```bash
-just build-release
-```
-
-### Running
-
-Run the application:
-```bash
-just run
-```
-
-Or run directly:
-```bash
-./bin/identity-broker
-```
-
-### Development
-
-Start the development server with hot-reload:
-```bash
+# Terminal 1: Start backend with auto-rebuild
 just dev
+
+# Terminal 2 (optional): Start React frontend with HMR
+just web-dev
 ```
 
-This uses [Air](https://github.com/air-verse/air) to automatically rebuild and restart the application when source files change.
+- Backend: http://localhost:8000
+- Frontend: http://localhost:3000 (with API proxy to backend)
+- Admin API: http://localhost:14000
+
+### 3. Production Build
+
+```bash
+# Build optimized binary (30% smaller)
+just build-release
+
+# Or build both backend and frontend
+just build-all
+```
+
+The binary at `./bin/identity-broker` is ready for deployment.
+
+### 4. Run Tests & Quality Checks
+
+```bash
+# Run all tests with race detection
+just test
+
+# Generate coverage report
+just test-coverage
+
+# Run all quality checks (format, vet, lint, test)
+just check
+```
 
 ## Configuration
 
@@ -165,30 +174,99 @@ Run all quality checks:
 just check
 ```
 
+## Project Governance
+
+This project uses **constitution-driven development** with binding governance principles enforced across all contributions:
+
+- **API-First Development**: All APIs documented in OpenAPI before implementation
+- **Security-First**: Security controls enabled by default, never optional, always fail-closed
+- **Architecture Decision Records**: Decisions recorded as ADRs; accepted ADRs are binding
+- **Domain-Driven Design**: Clear ubiquitous language and glossary maintenance
+- **Design System Compliance**: Frontend components use the design system (React, Tailwind CSS)
+- **Database Migrations**: All schema changes use go-migrate naming conventions
+- **Constitution v1.4.0**: Full governance rules in [.specify/memory/constitution.md](.specify/memory/constitution.md)
+
+See [Contributing](#contributing) for governance-compliant contribution guidelines.
+
 ## Architecture
 
-The project follows hexagonal architecture (ports and adapters pattern) with clear separation between:
+The project follows **hexagonal architecture** (ports and adapters pattern) with clear separation between:
 
-- **Domain Logic**: Core business logic independent of external concerns
-- **Ports**: Interfaces defining boundaries between layers
-- **Adapters**: Implementations of ports using specific technologies
+- **Domain Logic** (`internal/domain/`): Core business logic independent of external concerns
+- **Ports** (`internal/ports/`): Interfaces defining boundaries and contracts between layers
+- **Adapters** (`internal/adapters/`): Infrastructure implementations (HTTP handlers, database queries, storage)
+- **Configuration**: Security-first multi-source configuration management
+- **Session Management**: Principal extraction middleware for authentication
 
-For detailed architecture documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
+### Key Architectural Components
+
+1. **Flexible Configuration System**: Supports .env, YAML, CLI flags, and environment variable substitution with security validation
+2. **Dual-Port Server**: End-user API (port 8000) and administrative API (port 14000)
+3. **Persistence Layer**: PostgreSQL with migrations + in-memory storage fallback
+4. **Domain Model**: Agent, OAuth2 service, grant, and consent management
+5. **React Consent Frontend**: Managed via design system with accessibility compliance
+
+For detailed documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Project Structure
 
 ```
 .
-├── cmd/                    # Application entry points
-│   └── identity-broker/    # Main application
-├── internal/               # Private application code
-│   ├── config/            # Configuration adapter
-│   ├── domain/            # Domain models and logic
-│   └── ports/             # Port interfaces
-├── examples/              # Configuration examples
-├── docs/                  # User documentation
-├── assets/docusaurus/     # Documentation site
-└── tests/                 # Integration tests
+├── cmd/                          # Application entry points
+│   └── identity-broker/          # Main application binary
+├── internal/                     # Private application code (hexagonal architecture)
+│   ├── adapters/                # Infrastructure adapters
+│   │   ├── http/                # HTTP handlers for end-user & admin APIs
+│   │   ├── config/              # Configuration loading & validation
+│   │   └── storage/             # Storage implementations (PostgreSQL, in-memory)
+│   ├── domain/                  # Domain models and business logic
+│   │   ├── agent/               # Agent management domain
+│   │   ├── consent/             # Consent management domain
+│   │   ├── config/              # Configuration domain (LogLevel, etc)
+│   │   ├── oauth2/              # OAuth2 service integration domain
+│   │   ├── principal/           # User authentication domain
+│   │   ├── server/              # Server configuration domain
+│   │   └── storage/             # Storage domain models
+│   └── ports/                   # Port interfaces (hexagonal boundaries)
+│       ├── config.go            # Configuration port
+│       ├── storage.go           # Storage port
+│       └── [more ports]
+├── web/                         # React consent frontend (SPA)
+│   ├── src/
+│   │   ├── components/          # React components
+│   │   │   ├── consent/         # Consent-specific components
+│   │   │   ├── layout/          # Layout components
+│   │   │   ├── ui/              # Reusable UI components
+│   │   │   └── design-system/   # Design system components & tokens
+│   │   ├── pages/               # Application pages
+│   │   ├── hooks/               # Custom React hooks
+│   │   ├── services/            # API client and services
+│   │   ├── types/               # TypeScript type definitions
+│   │   └── utils/               # Utility functions
+│   ├── dist/consent/            # Built frontend assets (served by Go)
+│   └── package.json             # Dependencies and scripts
+├── migrations/                  # Database schema migrations (go-migrate)
+├── test/                        # Integration tests
+├── specs/                       # Feature specifications (numbered directories)
+│   ├── 001-end-user-docs/      # Documentation feature
+│   ├── 002-flexible-configuration/
+│   ├── 003-dual-port-server/
+│   ├── 004-persistence-layer/
+│   ├── 005-session-management/
+│   ├── 006-domain-model-apis/
+│   └── 007-consent-frontend/
+├── .specify/                    # Project constitution & templates
+│   ├── memory/
+│   │   └── constitution.md      # Binding governance principles (v1.4.0)
+│   ├── templates/               # Feature specification templates
+│   └── scripts/                 # Automation scripts
+├── docs/                        # User documentation
+│   ├── api/                     # REST API documentation & examples
+│   └── [guides, tutorials]
+├── examples/                    # Configuration examples
+├── ARCHITECTURE.md              # Detailed architecture documentation
+├── README.md                    # This file
+└── justfile                     # Task automation
 ```
 
 ## Security
@@ -203,17 +281,101 @@ The application implements security-first design principles:
 
 For security concerns, please see our security policy.
 
+## Development Workflow
+
+This project enforces governance-compliant development using the justfile and specification system:
+
+### All Development Commands
+
+Run `just --list` to see all available commands:
+
+**Building & Running**:
+- `just build` - Build binary to ./bin/identity-broker
+- `just build-release` - Production-optimized build (30% smaller)
+- `just run` - Build and run the application
+- `just dev` - Start hot-reload development server (Air)
+- `just clean` - Remove build artifacts
+
+**Testing & Quality**:
+- `just test` - Run all tests with race detection
+- `just test-coverage` - Generate HTML coverage report (coverage/coverage.html)
+- `just test-coverage-summary` - Display coverage summary
+- `just check` - Run all checks: fmt, vet, lint, test (run before committing)
+
+**Code Quality**:
+- `just fmt` - Format code with gofmt
+- `just vet` - Run go vet static analysis
+- `just lint` - Run golangci-lint
+
+**Frontend**:
+- `just web-install` - Install npm dependencies
+- `just web-dev` - Start Vite dev server with HMR (port 3000)
+- `just web-build` - Build production bundle to web/dist/consent/
+- `just build-all` - Build both backend and frontend
+
+**Documentation**:
+- `just docs-serve` - Start Docusaurus documentation server locally
+- `just docs-build` - Build documentation site
+- `just docs-deploy` - Deploy to GitHub Pages
+
+**Dependencies**:
+- `just deps` - Run go mod tidy and verify
+- `just install-tools` - Install Air and golangci-lint
+
+### Pre-Commit Checklist
+
+Before committing any code, always run:
+
+```bash
+just check
+```
+
+This ensures:
+1. Code is properly formatted (`gofmt`)
+2. No obvious bugs are detected (`go vet`)
+3. Code quality standards are met (`golangci-lint`)
+4. All tests pass with race detection enabled
+
+### Feature Development with Specifications
+
+For new features, follow the specification-driven workflow:
+
+1. Create a feature spec in `specs/NNN-feature-name/spec.md`
+2. Document the design in `specs/NNN-feature-name/plan.md`
+3. Define tasks in `specs/NNN-feature-name/tasks.md`
+4. All API changes must have OpenAPI specifications before implementation
+5. Ensure architecture decisions are reflected in [ARCHITECTURE.md](ARCHITECTURE.md)
+6. Run full quality checks before PR submission
+
+See `.specify/templates/` for specification templates.
+
 ## Contributing
 
-We welcome contributions! Please follow these guidelines:
+We welcome contributions! Please follow these governance-compliant guidelines:
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run quality checks (`just check`)
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+1. **Review Constitution**: Read [.specify/memory/constitution.md](.specify/memory/constitution.md) for binding principles
+2. **Fork the repository**
+3. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
+4. **Make your changes**:
+   - For APIs: Document in OpenAPI first, get user confirmation for design changes
+   - For backend: Follow hexagonal architecture patterns
+   - For frontend: Use design system components from `web/src/design-system/`
+5. **Run quality checks** (`just check`) - all checks must pass
+6. **Update architecture docs** if your changes affect system design ([ARCHITECTURE.md](ARCHITECTURE.md))
+7. **Commit your changes** with clear, descriptive messages
+8. **Push to your branch** (`git push origin feature/amazing-feature`)
+9. **Open a Pull Request** with a clear description of changes and rationale
+
+### Contribution Rules
+
+- **Security-First**: Never disable security controls. If security is an issue, escalate rather than bypass.
+- **API-First**: Document APIs in OpenAPI format before implementation
+- **Tests Required**: New features must include tests. Run `just test` to verify.
+- **No Architecture Deviations**: Follow established ADRs (Architecture Decision Records). Deviations require new ADRs.
+- **Database Changes**: Use go-migrate naming conventions for all migrations
+- **Design System**: All frontend components must use the design system (web/src/design-system/)
+
+For security concerns, please refer to the project's security policy.
 
 ## Consent Frontend Development
 
@@ -466,6 +628,20 @@ Run the documentation server locally:
 ```bash
 just docs-serve
 ```
+
+## Resources
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Detailed system architecture and design decisions
+- **[Constitution v1.4.0](.specify/memory/constitution.md)** - Binding governance principles
+- **[User Documentation](docs/)** - End-user guides, tutorials, and API documentation
+- **[API Documentation](docs/api/)** - REST API reference with examples
+- **[Feature Specifications](specs/)** - Numbered feature specs with design artifacts
+
+## Support & Feedback
+
+- **Issues**: Report bugs or request features at [GitHub Issues](https://github.com/agentic-identity-broker/agentic-identity-broker/issues)
+- **Documentation**: Browse [documentation site](docs/) or [run locally](README.md#development-workflow)
+- **Development**: Follow [Contributing Guidelines](#contributing)
 
 ## License
 

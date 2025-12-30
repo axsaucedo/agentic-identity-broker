@@ -1,0 +1,148 @@
+# Dependabot Configuration for Agentic Identity Broker
+# Documentation: https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  # Go Module Dependencies (Backend)
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    labels:
+      - "dependabot"
+      - "go"
+      - "backend"
+      - "minor"
+    # Group dependencies by functional area for better review control
+    groups:
+      core-infrastructure:
+        patterns:
+          - "github.com/go-chi/*"
+          - "github.com/jackc/*"
+          - "github.com/jmoiron/sqlx"
+          - "github.com/spf13/*"
+      security-critical:
+        patterns:
+          - "golang.org/x/crypto"
+          - "golang.org/x/sys"
+      testing-and-containers:
+        patterns:
+          - "github.com/stretchr/testify"
+          - "github.com/testcontainers/*"
+      utilities:
+        patterns:
+          - "github.com/google/uuid"
+          - "github.com/joho/godotenv"
+          - "golang.org/x/sync"
+    allow:
+      - dependency-type: "all"
+    open-pull-requests-limit: 5
+    pull-request-branch-name:
+      separator: "/"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    reviewers:
+      - "jan-brennenstuhl_zse"
+      - "magnus-jungsbluth_zse"
+
+  # npm Dependencies (Frontend React Application)
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    labels:
+      - "dependabot"
+      - "npm"
+      - "frontend"
+      - "minor"
+    # Group npm dependencies by functional area
+    groups:
+      react-core:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-router*"
+      build-tools:
+        patterns:
+          - "vite"
+          - "typescript"
+          - "@vitejs/*"
+      testing:
+        patterns:
+          - "vitest"
+          - "@testing-library/*"
+          - "jsdom"
+      storybook:
+        patterns:
+          - "storybook"
+          - "@storybook/*"
+      styling:
+        patterns:
+          - "tailwind*"
+          - "postcss"
+          - "@tailwindcss/*"
+      utilities:
+        patterns:
+          - "axios"
+          - "class-variance-authority"
+          - "clsx"
+          - "date-fns"
+          - "framer-motion"
+          - "tailwind-merge"
+    allow:
+      - dependency-type: "all"
+    open-pull-requests-limit: 5
+    pull-request-branch-name:
+      separator: "/"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    reviewers:
+      - "jan-brennenstuhl_zse"
+      - "magnus-jungsbluth_zse"
+
+  # npm Dependencies (Docusaurus Documentation Site)
+  - package-ecosystem: "npm"
+    directory: "/assets/docusaurus"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    labels:
+      - "dependabot"
+      - "npm"
+      - "documentation"
+      - "minor"
+    # Group docusaurus and documentation dependencies
+    groups:
+      docusaurus-core:
+        patterns:
+          - "@docusaurus/*"
+          - "docusaurus*"
+      react-documentation:
+        patterns:
+          - "react"
+          - "react-dom"
+      documentation-tools:
+        patterns:
+          - "markdownlint*"
+          - "prism*"
+          - "@mdx-js/*"
+    allow:
+      - dependency-type: "all"
+    open-pull-requests-limit: 5
+    pull-request-branch-name:
+      separator: "/"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    reviewers:
+      - "jan-brennenstuhl_zse"
+      - "magnus-jungsbluth_zse"
