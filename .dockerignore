@@ -1,0 +1,72 @@
+# Git
+.git
+.gitignore
+.github
+.gitattributes
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Node.js / NPM
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build artifacts
+build/
+dist/
+coverage/
+*.test.js
+*.spec.js
+
+# Testing directories
+tests/
+test/
+__tests__/
+.test/
+.jest/
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.iml
+
+# Specification and planning
+.specify/
+specs/
+adrs/
+docs/
+
+# Other non-essential files
+README.md
+CHANGELOG.md
+LICENSE
+*.md
+
+# Docker files (already used)
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Kubernetes
+k8s/
+helm/
+
+# Logs
+*.log
+logs/

@@ -137,9 +137,48 @@ web-build:
     @echo "Building web frontend..."
     cd web && npm run build
 
-# Build both Go backend and web frontend
-build-all: build web-build
-    @echo "✓ Build complete: Go backend and web frontend"
+# Build both Go backend and web frontend in release quality
+# Produces artifacts for Docker build: ./bin/identity-broker and ./web/dist/
+build-all: build-release web-build
+    @echo "✓ Build complete: Go backend (release) and web frontend"
+
+# =============================================================================
+# Docker Targets
+# =============================================================================
+
+# Build Docker image from pre-built artifacts
+# Requires: ./bin/identity-broker and ./web/dist/ to exist
+docker-build:
+    @echo "Building Docker image..."
+    @if ! command -v docker > /dev/null; then \
+        echo "Error: Docker is not installed. Please install Docker or Docker Desktop."; \
+        exit 1; \
+    fi
+    @if [ ! -f ./bin/identity-broker ]; then \
+        echo "Error: Backend binary not found at ./bin/identity-broker"; \
+        echo "Run 'just build-all' to build artifacts first."; \
+        exit 1; \
+    fi
+    @if [ ! -d ./web/dist ]; then \
+        echo "Error: Frontend assets not found at ./web/dist/"; \
+        echo "Run 'just build-all' to build artifacts first."; \
+        exit 1; \
+    fi
+    docker build -t identity-broker:latest .
+    @echo "✓ Docker image built: identity-broker:latest"
+    docker images | grep identity-broker
+
+# Run Docker image locally
+# Exposes backend on port 8000 (customizable with DOCKER_PORT environment variable)
+docker-run:
+    @echo "Starting Docker container..."
+    @if ! command -v docker > /dev/null; then \
+        echo "Error: Docker is not installed. Please install Docker or Docker Desktop."; \
+        exit 1; \
+    fi
+    @PORT=$${DOCKER_PORT:-8000}; \
+    echo "Starting identity-broker on http://localhost:$$PORT"; \
+    docker run -p $$PORT:8000 identity-broker:latest
 
 # =============================================================================
 # Documentation Targets
