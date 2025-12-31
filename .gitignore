@@ -8,6 +8,9 @@
 *.so
 *.dylib
 bin/*
+dist/
+build/
+bin/
 
 # Test binary, built with `go test -c`
 *.test
@@ -43,8 +46,6 @@ pnpm-debug.log*
 assets/docusaurus/build/
 assets/docusaurus/.docusaurus/
 assets/docusaurus/.cache-loader/
-dist/
-build/
 
 # IDE
 .idea/
@@ -56,3 +57,4 @@ build/
 Thumbs.db
 
 .playwright-mcp
+
