@@ -1,3 +1,7 @@
+# Variable definitions
+IMAGE := "identity-broker"
+VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
+
 # Default recipe (shown when running `just` with no args)
 default:
     @just --list
@@ -17,6 +21,41 @@ build-release:
     @echo "Building identity-broker (release mode)..."
     @mkdir -p bin
     go build -ldflags="-s -w" -o bin/identity-broker ./cmd/identity-broker
+
+# Build static Linux binary for amd64
+build-linux-static:
+    @echo "Building static Linux binary for amd64..."
+    @mkdir -p build/linux/static
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-extldflags=-static -s -w" -o build/linux/static/identity-broker ./cmd/identity-broker
+    @echo "✓ Built: build/linux/static/identity-broker"
+
+# Build Linux binary for arm64
+build-linux-arm64:
+    @echo "Building Linux binary for arm64..."
+    @mkdir -p build/linux/arm64
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/linux/arm64/identity-broker ./cmd/identity-broker
+    @echo "✓ Built: build/linux/arm64/identity-broker"
+
+# Build Linux binary for amd64
+build-linux-amd64:
+    @echo "Building Linux binary for amd64..."
+    @mkdir -p build/linux/amd64
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/linux/amd64/identity-broker ./cmd/identity-broker
+    @echo "✓ Built: build/linux/amd64/identity-broker"
+
+# Build macOS binary for arm64 (Apple Silicon)
+build-darwin-arm64:
+    @echo "Building macOS binary for arm64..."
+    @mkdir -p build/darwin/arm64
+    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/darwin/arm64/identity-broker ./cmd/identity-broker
+    @echo "✓ Built: build/darwin/arm64/identity-broker"
+
+# Build Windows binary for amd64
+build-windows-amd64:
+    @echo "Building Windows binary for amd64..."
+    @mkdir -p build/windows/amd64
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/windows/amd64/identity-broker.exe ./cmd/identity-broker
+    @echo "✓ Built: build/windows/amd64/identity-broker.exe"
 
 # Run all Go tests with verbose output
 test:
@@ -179,6 +218,19 @@ docker-run:
     @PORT=$${DOCKER_PORT:-8000}; \
     echo "Starting identity-broker on http://localhost:$$PORT"; \
     docker run -p $$PORT:8000 identity-broker:latest
+
+# Create and push multi-architecture Docker images to registry
+# Builds for linux/amd64 and linux/arm64 using docker buildx
+# Requires: /etc/cdp-buildkitd.toml configuration for buildx
+push-multiarch:
+    @echo "Building and pushing multi-architecture Docker images: $(IMAGE):$(VERSION) (amd64, arm64)..."
+    @if ! command -v docker > /dev/null; then \
+        echo "Error: Docker is not installed."; \
+        exit 1; \
+    fi
+    docker buildx create --config /etc/cdp-buildkitd.toml --driver-opt network=host --bootstrap --use
+    docker buildx build --rm -t "$(IMAGE):$(VERSION)" --platform linux/amd64,linux/arm64 --push .
+    @echo "✓ Multi-architecture images pushed: $(IMAGE):$(VERSION)"
 
 # =============================================================================
 # Documentation Targets
