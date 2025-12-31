@@ -10,17 +10,11 @@ default:
 # Go Development Targets
 # =============================================================================
 
-# Build the Go binary to ./bin/identity-broker
+# Build the Go binary to ./build/identity-broker (optimized)
 build:
     @echo "Building identity-broker..."
-    @mkdir -p bin
-    go build -o bin/identity-broker ./cmd/identity-broker
-
-# Build with optimizations for production (smaller binary, no debug info)
-build-release:
-    @echo "Building identity-broker (release mode)..."
-    @mkdir -p bin
-    go build -ldflags="-s -w" -o bin/identity-broker ./cmd/identity-broker
+    @mkdir -p build
+    go build -ldflags="-s -w" -o build/identity-broker ./cmd/identity-broker
 
 # Build static Linux binary for amd64
 build-linux-static:
@@ -177,8 +171,8 @@ web-build:
     cd web && npm run build
 
 # Build both Go backend and web frontend in release quality
-# Produces artifacts for Docker build: ./bin/identity-broker and ./web/dist/
-build-all: build-release web-build
+# Produces artifacts for Docker build: ./build/identity-broker and ./web/dist/
+build-all: build web-build
     @echo "✓ Build complete: Go backend (release) and web frontend"
 
 # =============================================================================
