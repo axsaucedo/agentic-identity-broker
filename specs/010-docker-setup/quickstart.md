@@ -24,7 +24,7 @@ just build-all
 ```
 
 Produces:
-- `./build/identity-broker` - Optimized Go backend binary
+- `./bin/identity-broker` - Optimized Go backend binary
 - `./web/dist/` - Compiled React frontend
 
 ### 2. Build Docker Image
@@ -49,9 +49,9 @@ Access the application at `http://localhost:8000/`
 
 ## Image Details
 
-- **Base**: `alpine:latest`
+- **Base**: `alpine-3:latest`
 - **User**: Non-root (uid=1000, gid=1000)
-- **Port**: 8000 (backend service)
+- **Port**: 8000 (backend service), 14000 (admin)
 
 ## Configuration
 

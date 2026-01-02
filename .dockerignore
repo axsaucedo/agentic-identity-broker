@@ -20,19 +20,22 @@ pnpm-lock.yaml
 
 # Build artifacts
 build/
-dist/
-!build/linux/
+bin/
+!bin/linux/
+dist/*
+!web/dist/
 !web/dist/consent/
 coverage/
 *.test.js
 *.spec.js
+tmp/
 
-# Testing directories
-tests/
+# Testing and development
 test/
 __tests__/
-.test/
-.jest/
+*.test.go
+*.integration.test.go
+.air.toml
 
 # IDE and editor
 .vscode/
@@ -48,7 +51,6 @@ Thumbs.db
 .specify/
 specs/
 adrs/
-docs/
 
 # Other non-essential files
 README.md
