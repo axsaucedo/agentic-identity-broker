@@ -5,7 +5,7 @@ FROM alpine:latest
 # Build arguments for multi-architecture support via docker buildx
 # When using: docker buildx build --platform linux/amd64,linux/arm64 ...
 # TARGETARCH is automatically set to: amd64, arm64, etc.
-ARG TARGETARCH=amd64
+ARG TARGETARCH
 
 # Image metadata labels
 LABEL org.opencontainers.image.title="Agentic Identity Broker"
@@ -25,7 +25,7 @@ WORKDIR /app
 # Supports multi-architecture builds via docker buildx
 # TARGETARCH automatically set to: amd64, arm64, etc.
 # Binary should be built with: just build-linux-amd64 or just build-linux-arm64
-COPY --chown=1000:1000 ./build/linux/${TARGETARCH}/identity-broker /app/identity-broker
+COPY --chown=1000:1000 ./bin/linux/${TARGETARCH}/identity-broker /app/identity-broker
 
 # Copy pre-built frontend assets from ./web/dist/
 # Assumes frontend is already built and available at ./web/dist/consent/

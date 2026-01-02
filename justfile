@@ -17,46 +17,39 @@ default:
 # Go Development Targets
 # =============================================================================
 
-# Build the Go binary to ./build/identity-broker (optimized)
+# Build the Go binary to ./bin/identity-broker
 build:
     @echo "Building identity-broker..."
-    @mkdir -p build
-    go build -ldflags="-s -w" -o build/identity-broker ./cmd/identity-broker
-
-# Build static Linux binary for amd64
-build-linux-static:
-    @echo "Building static Linux binary for amd64..."
-    @mkdir -p build/linux/static
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-extldflags=-static -s -w" -o build/linux/static/identity-broker ./cmd/identity-broker
-    @echo "✓ Built: build/linux/static/identity-broker"
+    @mkdir -p bin
+    go build -ldflags="-s -w" -o bin/identity-broker ./cmd/identity-broker
 
 # Build Linux binary for arm64
 build-linux-arm64:
     @echo "Building Linux binary for arm64..."
-    @mkdir -p build/linux/arm64
-    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/linux/arm64/identity-broker ./cmd/identity-broker
-    @echo "✓ Built: build/linux/arm64/identity-broker"
+    @mkdir -p bin/linux/arm64
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/arm64/identity-broker ./cmd/identity-broker
+    @echo "✓ Built: bin/linux/arm64/identity-broker"
 
 # Build Linux binary for amd64
 build-linux-amd64:
     @echo "Building Linux binary for amd64..."
-    @mkdir -p build/linux/amd64
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/linux/amd64/identity-broker ./cmd/identity-broker
-    @echo "✓ Built: build/linux/amd64/identity-broker"
+    @mkdir -p bin/linux/amd64
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/amd64/identity-broker ./cmd/identity-broker
+    @echo "✓ Built: bin/linux/amd64/identity-broker"
 
 # Build macOS binary for arm64 (Apple Silicon)
 build-darwin-arm64:
     @echo "Building macOS binary for arm64..."
-    @mkdir -p build/darwin/arm64
-    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/darwin/arm64/identity-broker ./cmd/identity-broker
-    @echo "✓ Built: build/darwin/arm64/identity-broker"
+    @mkdir -p bin/darwin/arm64
+    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/darwin/arm64/identity-broker ./cmd/identity-broker
+    @echo "✓ Built: bin/darwin/arm64/identity-broker"
 
 # Build Windows binary for amd64
 build-windows-amd64:
     @echo "Building Windows binary for amd64..."
-    @mkdir -p build/windows/amd64
-    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/windows/amd64/identity-broker.exe ./cmd/identity-broker
-    @echo "✓ Built: build/windows/amd64/identity-broker.exe"
+    @mkdir -p bin/windows/amd64
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/windows/amd64/identity-broker.exe ./cmd/identity-broker
+    @echo "✓ Built: bin/windows/amd64/identity-broker.exe"
 
 # Run all Go tests with verbose output
 test:
@@ -179,25 +172,25 @@ web-build:
     cd web && npm run build
 
 # Build both Go backend and web frontend in release quality
-# Produces artifacts for Docker build: ./build/identity-broker and ./web/dist/
+# Produces artifacts: ./bin/identity-broker and ./web/dist/
 build-all: build web-build
-    @echo "✓ Build complete: Go backend (release) and web frontend"
+    @echo "✓ Build complete: Go backend and web frontend"
 
 # =============================================================================
 # Docker Targets
 # =============================================================================
 
 # Build Docker image from pre-built artifacts
-# Requires: ./build/identity-broker and ./web/dist/ to exist
+# Requires: architecture-specific binaries in ./bin/linux/ and ./web/dist/
 docker-build:
     @echo "Building Docker image..."
     @if ! command -v docker > /dev/null; then \
         echo "Error: Docker is not installed. Please install Docker or Docker Desktop."; \
         exit 1; \
     fi
-    @if [ ! -f ./build/identity-broker ]; then \
-        echo "Error: Backend binary not found at ./build/identity-broker"; \
-        echo "Run 'just build-all' to build artifacts first."; \
+    @if [ ! -f ./bin/linux/amd64/identity-broker ] && [ ! -f ./bin/linux/arm64/identity-broker ]; then \
+        echo "Error: Backend binaries not found in ./bin/linux/"; \
+        echo "Run 'just build-linux-amd64' or 'just build-linux-arm64' first."; \
         exit 1; \
     fi
     @if [ ! -d ./web/dist ]; then \
