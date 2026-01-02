@@ -235,6 +235,13 @@ type UserGrantRepository interface {
 	// This is used to show dependent agent count when terminating a session.
 	// Returns the count of distinct agents with delegated_oauth2_tokens JSONB entries for the service.
 	CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error)
+
+	// ListByServiceID retrieves all agent IDs that have delegated OAuth2 tokens for a given service.
+	// This is used to show the actual dependent agents when terminating a session.
+	// Returns the list of distinct agent IDs with delegated_oauth2_tokens JSONB entries for the service.
+	// Returns empty slice if no agents have delegated tokens for the service.
+	// Returns StorageError for connection/timeout issues.
+	ListByServiceID(ctx context.Context, serviceID string) ([]string, error)
 }
 
 // UserSessionRepository defines storage operations for user OAuth2 sessions.

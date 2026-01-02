@@ -454,3 +454,7 @@ func (m *mockGrantRepo) ListByPrincipal(ctx context.Context, principal string) (
 func (m *mockGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
 	return 0, nil
 }
+
+func (m *mockGrantRepo) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
+	return []string{}, nil
+}

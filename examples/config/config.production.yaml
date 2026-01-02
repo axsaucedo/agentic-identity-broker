@@ -19,6 +19,11 @@ server:
     # Bind to all interfaces (dual-stack IPv6/IPv4)
     # In containerized environments, this allows traffic from load balancers
     bind: "::"
+    # Public URL for OAuth2 callback redirects
+    # MUST be set to the external URL that users access the broker at
+    # REQUIRED for OAuth2 sessions feature
+    # Example: https://broker.example.com (with HTTPS in production!)
+    public_url: ${IDENTITY_BROKER_SERVER_ENDUSER_PUBLIC_URL:http://localhost:8000}
     # Authentication configuration for end-user server
     authentication:
       # Pre-authentication mode: Trust principals from reverse proxy headers
@@ -39,6 +44,8 @@ server:
     #   - Use separate network namespace in Kubernetes
     # For this example, we bind to all interfaces but firewall rules should restrict access
     bind: "::"
+    # Public URL (optional for admin server, but can be set for completeness)
+    public_url: ${IDENTITY_BROKER_SERVER_ADMIN_PUBLIC_URL:http://localhost:14000}
     # Authentication configuration for admin server
     authentication:
       # Pre-authentication mode: Trust principals from reverse proxy headers

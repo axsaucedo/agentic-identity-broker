@@ -51,7 +51,7 @@ func TestUserSessionSummary_WithExpiredSession(t *testing.T) {
 
 func TestUserSessionSummary_WithExpiredAccessToken(t *testing.T) {
 	now := time.Now()
-	accessExp := now.Add(-1 * time.Hour) // Expired access token
+	accessExp := now.Add(-1 * time.Hour)  // Expired access token
 	refreshExp := now.Add(24 * time.Hour) // Valid refresh token
 
 	session := &storage.UserSession{

@@ -57,12 +57,23 @@ export interface ListSessionsResponse {
 }
 
 /**
+ * Agent information with ID and display name.
+ * Represents an agent that uses a session.
+ */
+export interface AgentInfo {
+  /** Unique agent identifier */
+  id: string;
+  /** Human-readable agent display name */
+  display_name: string;
+}
+
+/**
  * Detailed session information including dependent agents.
  * Returned by GET /api/third-party/:service-id/session
  */
 export interface SessionDetail extends SessionSummary {
-  /** List of agent IDs that depend on this session */
-  dependent_agents: string[];
+  /** List of agents that depend on this session */
+  dependent_agents: AgentInfo[];
 }
 
 /**

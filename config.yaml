@@ -12,6 +12,8 @@ server:
   enduser:
     port: 8000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+    # use port 3000 which points to the Vite dev server for local development
+    public_url: http://localhost:3000 
     # Authentication - preauth mode (trust principals from reverse proxy headers)
     authentication:
       preauth:
@@ -21,6 +23,7 @@ server:
   admin:
     port: 14000
     bind: "::" # Dual-stack (IPv6 with IPv4 fallback)
+    public_url: http://localhost:14000 # Optional, may not be needed for admin server
     # Authentication - preauth mode (trust principals from reverse proxy headers)
     authentication:
       preauth:
@@ -29,3 +32,9 @@ server:
   # Graceful shutdown configuration
   shutdown:
     timeout: 30s # Maximum time to wait for in-flight requests to complete
+
+third_party_oauth2:
+  # JWE signing key for state tokens (REQUIRED)
+  # Must be 32 bytes, base64 encoded
+  # Load from environment variable (never commit actual keys!)
+  jwe_signing_key: ${IDENTITY_BROKER_JWE_SIGNING_KEY}

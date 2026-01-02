@@ -53,7 +53,7 @@ func (h *UserInfoHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	userInfo := consent.UserInfo{
 		Principal:   principalValue,
 		DisplayName: principalValue, // Use principal as display name for now
-		PictureURL:  nil,             // No picture URL available yet
+		PictureURL:  nil,            // No picture URL available yet
 	}
 
 	h.logger.Info("user info retrieved",

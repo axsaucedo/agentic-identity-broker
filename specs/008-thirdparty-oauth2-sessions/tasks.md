@@ -93,6 +93,7 @@
 - [x] T020 [P] Create EncryptionContext type in internal/domain/storage/user_session.go with Value()/Scan() for JSONB
 - [x] T021 [P] Create UserSessionRepository interface in internal/ports/storage.go (Create, Get, FindByPrincipalAndService, ListByPrincipal, Delete, DeleteByPrincipalAndService, CountByService)
 - [x] T021a [P] Extend UserGrantRepository interface with CountAgentsByServiceID(ctx, serviceID) method to query delegated_oauth2_tokens JSONB for agent count per FR-016
+- [x] T021b [P] Add ListByServiceID(ctx, serviceID) method to UserGrantRepository interface to retrieve actual agent IDs instead of placeholders
 - [x] T022 Create OAuth2StateTokenClaims value object in internal/domain/oauth2session/state_token.go with Validate(), IsExpired()
 - [x] T023 [P] Create PKCE generation function GeneratePKCE() in internal/domain/oauth2session/pkce.go per RFC 7636
 - [x] T024 [P] Create domain errors in internal/domain/oauth2session/errors.go (ErrStateTokenExpired, ErrPrincipalMismatch, ErrServiceNotFound, etc.)
@@ -143,30 +144,30 @@
 
 ### Tests for User Story 2 [MANDATORY - Principle VIII] ⚠️
 
-- [ ] T043 [P] [US2] Unit tests for GeneratePKCE() in tests/unit/oauth2session/pkce_test.go (verifier length, challenge computation)
-- [ ] T044 [P] [US2] Unit tests for CreateStateToken(), ValidateStateToken() in tests/unit/oauth2session/state_token_test.go
-- [ ] T045 [P] [US2] Unit tests for OAuth2SessionService.InitiateOAuth2Flow() in tests/unit/oauth2session/service_test.go
-- [ ] T046 [P] [US2] Unit tests for OAuth2SessionService.HandleCallback() in tests/unit/oauth2session/service_test.go
-- [ ] T047 [P] [US2] Integration tests for authorize endpoint in tests/integration/oauth2_sessions_api_test.go
-- [ ] T048 [P] [US2] Integration tests for callback endpoint in tests/integration/oauth2_sessions_api_test.go
+- [x] T043 [P] [US2] Unit tests for GeneratePKCE() in tests/unit/oauth2session/pkce_test.go (verifier length, challenge computation)
+- [x] T044 [P] [US2] Unit tests for CreateStateToken(), ValidateStateToken() in tests/unit/oauth2session/state_token_test.go
+- [x] T045 [P] [US2] Unit tests for OAuth2SessionService.InitiateOAuth2Flow() in tests/unit/oauth2session/service_test.go
+- [x] T046 [P] [US2] Unit tests for OAuth2SessionService.HandleCallback() in tests/unit/oauth2session/service_test.go
+- [x] T047 [P] [US2] Integration tests for authorize endpoint in tests/integration/oauth2_sessions_api_test.go
+- [x] T048 [P] [US2] Integration tests for callback endpoint in tests/integration/oauth2_sessions_api_test.go
 
 ### Implementation for User Story 2
 
-- [ ] T049 [US2] Implement JWE key loading from config in internal/domain/oauth2session/service.go (loadJWEKey)
-- [ ] T050 [US2] Implement CreateStateToken() JWE encryption in internal/domain/oauth2session/service.go using jwx/v3
-- [ ] T051 [US2] Implement ValidateStateToken() JWE decryption with principal/expiration validation in internal/domain/oauth2session/service.go
-- [ ] T052 [US2] Implement buildOAuth2Config() helper in internal/domain/oauth2session/service.go
-- [ ] T053 [US2] Implement OAuth2SessionService.InitiateOAuth2Flow() in internal/domain/oauth2session/service.go
-- [ ] T054 [US2] Implement redirect URI same-origin validation in handler
-- [ ] T055 [US2] Implement exchangeCodeWithRetry() with exponential backoff (1s, 2s, 4s) in internal/domain/oauth2session/service.go
-- [ ] T056 [US2] Implement token encryption using EncryptionPort in createSession() helper
-- [ ] T057 [US2] Implement OAuth2SessionService.HandleCallback() in internal/domain/oauth2session/service.go
-- [ ] T058 [P] [US2] Implement InitiateFlow handler GET /api/third-party/{serviceId}/oauth2/authorize in internal/adapters/http/oauth2_sessions/handler.go
-- [ ] T059 [US2] Implement HandleCallback handler GET /api/third-party/{serviceId}/oauth2/callback in internal/adapters/http/oauth2_sessions/handler.go
-- [ ] T060 [US2] Handle OAuth2 error responses (access_denied, invalid_scope) in callback with user-friendly redirect
-- [ ] T061 [P] [US2] Add frontend success/error handling after OAuth2 callback redirect in ThirdPartySessionsPage.tsx
-- [ ] T062 [US2] Add structured audit logging: session establishment, failed state validation, failed PKCE validation
-- [ ] T062a [P] [US2] Unit test verifying audit log emitted on failed PKCE validation (SR-009 compliance)
+- [x] T049 [US2] Implement JWE key loading from config in internal/domain/oauth2session/service.go (loadJWEKey)
+- [x] T050 [US2] Implement CreateStateToken() JWE encryption in internal/domain/oauth2session/service.go using jwx/v3
+- [x] T051 [US2] Implement ValidateStateToken() JWE decryption with principal/expiration validation in internal/domain/oauth2session/service.go
+- [x] T052 [US2] Implement buildOAuth2Config() helper in internal/domain/oauth2session/service.go
+- [x] T053 [US2] Implement OAuth2SessionService.InitiateOAuth2Flow() in internal/domain/oauth2session/service.go
+- [x] T054 [US2] Implement redirect URI same-origin validation in handler
+- [x] T055 [US2] Implement exchangeCodeWithRetry() with exponential backoff (1s, 2s, 4s) in internal/domain/oauth2session/service.go
+- [x] T056 [US2] Implement token encryption using EncryptionPort in createSession() helper
+- [x] T057 [US2] Implement OAuth2SessionService.HandleCallback() in internal/domain/oauth2session/service.go
+- [x] T058 [P] [US2] Implement InitiateFlow handler GET /api/third-party/{serviceId}/oauth2/authorize in internal/adapters/http/oauth2_sessions/handler.go
+- [x] T059 [US2] Implement HandleCallback handler GET /api/third-party/{serviceId}/oauth2/callback in internal/adapters/http/oauth2_sessions/handler.go
+- [x] T060 [US2] Handle OAuth2 error responses (access_denied, invalid_scope) in callback with user-friendly redirect
+- [x] T061 [P] [US2] Add frontend success/error handling after OAuth2 callback redirect in ThirdPartySessionsPage.tsx
+- [x] T062 [US2] Add structured audit logging: session establishment, failed state validation, failed PKCE validation
+- [x] T062a [P] [US2] Unit test verifying audit log emitted on failed PKCE validation (SR-009 compliance)
 
 **Checkpoint**: User Story 2 fully functional - users can establish sessions via OAuth2 flow
 
@@ -180,21 +181,21 @@
 
 ### Tests for User Story 3 [MANDATORY - Principle VIII] ⚠️
 
-- [ ] T063 [P] [US3] Unit tests for OAuth2SessionService.TerminateSession() in tests/unit/oauth2session/service_test.go
-- [ ] T064 [P] [US3] Unit tests for GetSessionDetails() (dependent agents) in tests/unit/oauth2session/service_test.go
-- [ ] T065 [P] [US3] Integration tests for DELETE /api/third-party/{serviceId}/session in tests/integration/oauth2_sessions_api_test.go
-- [ ] T066 [P] [US3] Integration tests for GET /api/third-party/{serviceId}/session in tests/integration/oauth2_sessions_api_test.go
+- [x] T063 [P] [US3] Unit tests for OAuth2SessionService.TerminateSession() in tests/unit/oauth2session/service_test.go
+- [x] T064 [P] [US3] Unit tests for GetSessionDetails() (dependent agents) in tests/unit/oauth2session/service_test.go
+- [x] T065 [P] [US3] Integration tests for DELETE /api/third-party/{serviceId}/session in tests/integration/oauth2_sessions_api_test.go
+- [x] T066 [P] [US3] Integration tests for GET /api/third-party/{serviceId}/session in tests/integration/oauth2_sessions_api_test.go
 
 ### Implementation for User Story 3
 
-- [ ] T067 [US3] Implement OAuth2SessionService.GetSessionDetails() with dependent agent list in internal/domain/oauth2session/service.go
-- [ ] T068 [US3] Implement OAuth2SessionService.TerminateSession() with token deletion in internal/domain/oauth2session/service.go
-- [ ] T069 [US3] Implement GetSessionDetails handler GET /api/third-party/{serviceId}/session in internal/adapters/http/oauth2_sessions/handler.go
-- [ ] T070 [US3] Implement TerminateSession handler DELETE /api/third-party/{serviceId}/session in internal/adapters/http/oauth2_sessions/handler.go
-- [ ] T071 [P] [US3] Create TerminationDialog component in web/src/components/sessions/TerminationDialog.tsx
-- [ ] T072 [US3] Integrate TerminationDialog with SessionCard in ThirdPartySessionsPage
-- [ ] T073 [P] [US3] Add terminateSession() method to sessionsApi in web/src/services/api/sessions.ts
-- [ ] T074 [US3] Add structured audit logging: session termination
+- [x] T067 [US3] Implement OAuth2SessionService.GetSessionDetails() with dependent agent list in internal/domain/oauth2session/service.go
+- [x] T068 [US3] Implement OAuth2SessionService.TerminateSession() with token deletion in internal/domain/oauth2session/service.go
+- [x] T069 [US3] Implement GetSessionDetails handler GET /api/third-party/{serviceId}/session in internal/adapters/http/oauth2_sessions/handler.go
+- [x] T070 [US3] Implement TerminateSession handler DELETE /api/third-party/{serviceId}/session in internal/adapters/http/oauth2_sessions/handler.go
+- [x] T071 [P] [US3] Create TerminationDialog component in web/src/components/sessions/TerminationDialog.tsx
+- [x] T072 [US3] Integrate TerminationDialog with SessionCard in ThirdPartySessionsPage
+- [x] T073 [P] [US3] Add terminateSession() method to sessionsApi in web/src/services/api/sessions.ts
+- [x] T074 [US3] Add structured audit logging: session termination
 
 **Checkpoint**: User Story 3 fully functional - users can terminate sessions with warnings
 
@@ -210,19 +211,19 @@
 
 ### Tests for User Story 4 [MANDATORY - Principle VIII] ⚠️
 
-- [ ] T075 [P] [US4] Security tests for state token expiration rejection in tests/unit/oauth2session/state_token_security_test.go
-- [ ] T076 [P] [US4] Security tests for principal mismatch rejection (CSRF) in tests/unit/oauth2session/state_token_security_test.go
-- [ ] T077 [P] [US4] Security tests for service_id mismatch rejection in tests/unit/oauth2session/state_token_security_test.go
-- [ ] T078 [P] [US4] Security tests for tampered token rejection in tests/unit/oauth2session/state_token_security_test.go
+- [x] T075 [P] [US4] Security tests for state token expiration rejection in tests/unit/oauth2session/state_token_security_test.go ✓
+- [x] T076 [P] [US4] Security tests for principal mismatch rejection (CSRF) in tests/unit/oauth2session/state_token_security_test.go ✓
+- [x] T077 [P] [US4] Security tests for service_id mismatch rejection in tests/unit/oauth2session/state_token_security_test.go ✓
+- [x] T078 [P] [US4] Security tests for tampered token rejection in tests/unit/oauth2session/state_token_security_test.go ✓
 
 ### Implementation for User Story 4
 
-- [ ] T079 [US4] Verify JWE uses authenticated encryption A256GCMKW + A256GCM (code review task)
-- [ ] T080 [US4] Verify state token TTL <= 15 minutes is enforced in config validation
-- [ ] T081 [US4] Verify principal mismatch returns 403 Forbidden with security log
-- [ ] T082 [US4] Verify service_id mismatch returns 400 Bad Request
+- [x] T079 [US4] Verify JWE uses authenticated encryption A256GCMKW + A256GCM (code review task) ✓
+- [x] T080 [US4] Verify state token TTL <= 15 minutes is enforced in config validation ✓
+- [x] T081 [US4] Verify principal mismatch returns 403 Forbidden with security log ✓
+- [x] T082 [US4] Verify service_id mismatch returns 400 Bad Request ✓
 
-**Checkpoint**: User Story 4 complete - state tokens are secure
+**Checkpoint**: User Story 4 complete - state tokens are secure ✓
 
 ---
 
@@ -234,55 +235,55 @@
 
 #### Design Phase Verification [MANDATORY]
 
-- [ ] T083 Verify domain model documented in ARCHITECTURE.md Glossary (Principle V)
-- [ ] T084 Verify examples/config/third-party-oauth2.yaml exists (Principle VII)
-- [ ] T085 [P] Verify examples/config/README.md references third-party-oauth2.yaml (Principle VII)
-- [ ] T086 Verify /api/enduser/openapi.yaml includes all session endpoints (Principles IV, X)
-- [ ] T087 Verify user/stakeholder confirmed API designs (document reference in PR) (Principle X)
-- [ ] T088 Verify migrations 004_create_user_sessions exist and tested (Principle IX)
+- [x] T083 Verify domain model documented in ARCHITECTURE.md Glossary (Principle V) ✓
+- [x] T084 Verify examples/config/third-party-oauth2.yaml exists (Principle VII) ✓
+- [x] T085 [P] Verify examples/config/README.md references third-party-oauth2.yaml (Principle VII) ✓
+- [x] T086 Verify /api/enduser/openapi.yaml includes all session endpoints (Principles IV, X) ✓
+- [x] T087 Verify user/stakeholder confirmed API designs (document reference in PR) (Principle X) ✓
+- [x] T088 Verify migrations 004_create_user_sessions exist and tested (Principle IX) ✓
 
 #### Implementation Phase Verification [MANDATORY]
 
 **API & Documentation** (Principles IV, X):
-- [ ] T089 [P] Verify API implementation matches OpenAPI specification exactly
-- [ ] T090 Update docs/api/ with end-user OAuth2 session documentation and examples
+- [x] T089 [P] Verify API implementation matches OpenAPI specification exactly ✓
+- [x] T090 Update docs/api/ with end-user OAuth2 session documentation and examples ✓
 
 **Architecture & Documentation** (Principle II):
-- [ ] T091 Update ARCHITECTURE.md with OAuth2 session domain service and flow diagram
-- [ ] T092 [P] Verify ARCHITECTURE.md Glossary has all new domain terms
+- [x] T091 Update ARCHITECTURE.md with OAuth2 session domain service and flow diagram ✓
+- [x] T092 [P] Verify ARCHITECTURE.md Glossary has all new domain terms ✓
 
 **Database & Persistence** (Principle IX):
-- [ ] T093 [P] Verify migrations follow sequential numbering (004)
-- [ ] T094 [P] Verify migration integration tests (apply, rollback, data integrity)
-- [ ] T095 [P] Verify PostgreSQL UserSessionRepository tested in integration tests
-- [ ] T096 Verify persistence follows quickstart.md patterns (StorageError wrapping)
+- [x] T093 [P] Verify migrations follow sequential numbering (004) ✓
+- [x] T094 [P] Verify migration integration tests (apply, rollback, data integrity) ✓
+- [x] T095 [P] Verify PostgreSQL UserSessionRepository tested in integration tests ✓
+- [x] T096 Verify persistence follows quickstart.md patterns (StorageError wrapping) ✓
 
 **Security** (Principles I, III):
-- [ ] T097 Verify PKCE is mandatory (no bypass)
-- [ ] T098 [P] Verify JWE encryption for state tokens (no custom crypto)
-- [ ] T099 [P] Verify token encryption at rest using EncryptionPort (no custom crypto)
-- [ ] T100 [P] Verify structured audit logging for security-critical operations
+- [x] T097 Verify PKCE is mandatory (no bypass) ✓
+- [x] T098 [P] Verify JWE encryption for state tokens (no custom crypto) ✓
+- [x] T099 [P] Verify token encryption at rest using EncryptionPort (no custom crypto) ✓
+- [x] T100 [P] Verify structured audit logging for security-critical operations ✓
 
 **Architecture Patterns** (Principle VI):
-- [ ] T101 Verify OAuth2SessionService uses ports (ThirdpartyOAuth2ServiceRepository, UserSessionRepository, EncryptionPort)
+- [x] T101 Verify OAuth2SessionService uses ports (ThirdpartyOAuth2ServiceRepository, UserSessionRepository, EncryptionPort) ✓
 
 **Testing** (Principle VIII):
-- [ ] T102 Verify unit tests for domain logic
-- [ ] T103 [P] Verify integration tests for HTTP handlers
-- [ ] T104 [P] Verify integration tests for PostgreSQL repository
+- [x] T102 Verify unit tests for domain logic ✓
+- [x] T103 [P] Verify integration tests for HTTP handlers ✓
+- [x] T104 [P] Verify integration tests for PostgreSQL repository ✓
 
 **Frontend** (Principle XI):
-- [ ] T105 Verify SessionCard uses design system Card component
-- [ ] T106 [P] Verify TerminationDialog uses design system Dialog component
-- [ ] T107 [P] Verify semantic tokens for status colors (success/warning/error)
-- [ ] T108 [P] Verify WCAG 2.1 AA accessibility (contrast ratios)
+- [x] T105 Verify SessionCard uses design system Card component ✓
+- [x] T106 [P] Verify TerminationDialog uses design system Dialog component ✓
+- [x] T107 [P] Verify semantic tokens for status colors (success/warning/error) ✓
+- [x] T108 [P] Verify WCAG 2.1 AA accessibility (contrast ratios) ✓
 
 ### Additional Polish
 
-- [ ] T109 Code cleanup and refactoring
-- [ ] T110 [P] Run go vet and go lint
-- [ ] T111 [P] Run frontend eslint and prettier
-- [ ] T112 Run quickstart.md validation steps
+- [x] T109 Code cleanup and refactoring ✓
+- [x] T110 [P] Run go vet and go lint ✓
+- [x] T111 [P] Run frontend eslint and prettier ✓
+- [x] T112 Run quickstart.md validation steps ✓
 
 ---
 

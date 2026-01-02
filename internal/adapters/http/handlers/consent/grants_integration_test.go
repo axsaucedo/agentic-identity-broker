@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -109,8 +110,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 		jsonBody, _ := json.Marshal(reqBody)
 		req := httptest.NewRequest("POST", "/api/consent/agent/agent-test-123/grants", bytes.NewBuffer(jsonBody))
-		//nolint:staticcheck // Using string key for test simplicity
-		ctx := context.WithValue(req.Context(), "principal", "alice@example.com")
+		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("agent-id", "agent-test-123")
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
@@ -121,9 +121,12 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		// Verify response
 		assert.Equal(t, http.StatusCreated, rr.Code)
 
-		var response GrantResponse
-		err := json.NewDecoder(rr.Body).Decode(&response)
+		var envelope map[string]GrantResponse
+		err := json.NewDecoder(rr.Body).Decode(&envelope)
 		require.NoError(t, err)
+
+		response, ok := envelope["data"]
+		require.True(t, ok, "expected 'data' field in response")
 
 		assert.NotEmpty(t, response.ID)
 		assert.Equal(t, "alice@example.com", response.Principal)
@@ -154,7 +157,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		jsonBody, _ := json.Marshal(reqBody)
 		req := httptest.NewRequest("POST", "/api/consent/agent/agent-test-123/grants", bytes.NewBuffer(jsonBody))
 		//nolint:staticcheck // Using string key for test simplicity
-		ctx := context.WithValue(req.Context(), "principal", "alice@example.com")
+		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("agent-id", "agent-test-123")
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
@@ -165,9 +168,12 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		// Verify response
 		assert.Equal(t, http.StatusCreated, rr.Code)
 
-		var response GrantResponse
-		err := json.NewDecoder(rr.Body).Decode(&response)
+		var envelope map[string]GrantResponse
+		err := json.NewDecoder(rr.Body).Decode(&envelope)
 		require.NoError(t, err)
+
+		response, ok := envelope["data"]
+		require.True(t, ok, "expected 'data' field in response")
 
 		// Grant was updated, not created (same principal+agent)
 		assert.Equal(t, "alice@example.com", response.Principal)
@@ -179,7 +185,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	t.Run("get_grants", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/consent/agent/agent-test-123/grants", nil)
 		//nolint:staticcheck // Using string key for test simplicity
-		ctx := context.WithValue(req.Context(), "principal", "alice@example.com")
+		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("agent-id", "agent-test-123")
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
@@ -190,9 +196,12 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		// Verify response
 		assert.Equal(t, http.StatusOK, rr.Code)
 
-		var response []GrantResponse
-		err := json.NewDecoder(rr.Body).Decode(&response)
+		var envelope map[string][]GrantResponse
+		err := json.NewDecoder(rr.Body).Decode(&envelope)
 		require.NoError(t, err)
+
+		response, ok := envelope["data"]
+		require.True(t, ok, "expected 'data' field in response")
 
 		assert.Len(t, response, 1) // Only one grant (upserted)
 		assert.Equal(t, "alice@example.com", response[0].Principal)
@@ -209,7 +218,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		jsonBody, _ := json.Marshal(reqBody)
 		req := httptest.NewRequest("POST", "/api/consent/agent/agent-test-123/grants", bytes.NewBuffer(jsonBody))
 		//nolint:staticcheck // Using string key for test simplicity
-		ctx := context.WithValue(req.Context(), "principal", "alice@example.com")
+		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("agent-id", "agent-test-123")
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
@@ -225,7 +234,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	t.Run("verify_revoked", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/consent/agent/agent-test-123/grants", nil)
 		//nolint:staticcheck // Using string key for test simplicity
-		ctx := context.WithValue(req.Context(), "principal", "alice@example.com")
+		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("agent-id", "agent-test-123")
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
@@ -236,9 +245,12 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		// Verify response
 		assert.Equal(t, http.StatusOK, rr.Code)
 
-		var response []GrantResponse
-		err := json.NewDecoder(rr.Body).Decode(&response)
+		var envelope map[string][]GrantResponse
+		err := json.NewDecoder(rr.Body).Decode(&envelope)
 		require.NoError(t, err)
+
+		response, ok := envelope["data"]
+		require.True(t, ok, "expected 'data' field in response")
 
 		assert.Empty(t, response) // No grants after revocation
 	})
@@ -359,7 +371,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 			jsonBody, _ := json.Marshal(tt.reqBody)
 			req := httptest.NewRequest("POST", "/api/consent/agent/"+tt.agentID+"/grants", bytes.NewBuffer(jsonBody))
 			//nolint:staticcheck // Using string key for test simplicity
-			ctx := context.WithValue(req.Context(), "principal", "test@example.com")
+			ctx := principal.WithPrincipal(req.Context(), "test@example.com")
 			rctx := chi.NewRouteContext()
 			rctx.URLParams.Add("agent-id", tt.agentID)
 			req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))

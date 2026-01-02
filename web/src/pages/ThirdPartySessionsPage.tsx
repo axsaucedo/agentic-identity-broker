@@ -14,9 +14,9 @@
  * - WCAG 2.1 AA compliant
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@components/layout/AppLayout';
-import { Stack } from '@design-system/components/layout/Stack';
 import { Grid } from '@design-system/components/layout/Grid';
 import { EmptyState } from '@design-system/components/feedback/EmptyState';
 import { Skeleton } from '@design-system/components/feedback/Skeleton';
@@ -25,7 +25,16 @@ import { Button } from '@design-system/components/primitives/Button';
 import { PageTransition } from '@components/ui/PageTransition';
 import { useSessions } from '@hooks/useSessions';
 import { SessionCard } from '@components/sessions/SessionCard';
+import { TerminationDialog } from '@components/sessions/TerminationDialog';
 import { sessionsApi } from '@services/api/sessions';
+
+/**
+ * Alert state for OAuth2 callback success/error messages
+ */
+interface AlertState {
+  type: 'success' | 'error';
+  message: string;
+}
 
 /**
  * ThirdPartySessionsPage displays all OAuth2 sessions for the current user.
@@ -35,6 +44,7 @@ import { sessionsApi } from '@services/api/sessions';
  * - See which agents depend on each session
  * - Terminate sessions (with confirmation warning)
  * - Re-authenticate if a session has expired
+ * - View OAuth2 callback success/error messages
  *
  * @example
  * ```tsx
@@ -42,14 +52,91 @@ import { sessionsApi } from '@services/api/sessions';
  * ```
  */
 export const ThirdPartySessionsPage: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { sessions, loading, error, refetch } = useSessions();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedSessionDetails, setSelectedSessionDetails] = useState<any>(null);
   const [terminatingLoading, setTerminatingLoading] = useState(false);
   const [terminationError, setTerminationError] = useState<string | null>(null);
+  const [alert, setAlert] = useState<AlertState | null>(null);
 
-  const handleTerminate = (serviceId: string) => {
-    setSelectedSessionId(serviceId);
-    setTerminationError(null);
+  /**
+   * Map OAuth2 error codes to user-friendly messages.
+   * Handles standard OAuth2 error codes and custom error codes from the backend.
+   */
+  const mapErrorToMessage = (errorCode: string, description?: string | null): string => {
+    const errorMap: Record<string, string> = {
+      access_denied: 'You denied access to the service. No tokens were stored.',
+      invalid_scope: 'The requested permissions are not available. Please contact support.',
+      expired_token: 'Your session expired. Please try again.',
+      callback_failed: description || 'Authorization failed. Please try again.',
+      invalid_callback: 'Invalid response from service. Please try again.',
+      invalid_state: 'Invalid request state. Please try again.',
+      invalid_redirect_uri: 'Invalid redirect configuration. Please contact support.',
+    };
+
+    return errorMap[errorCode] || 'Authorization failed. Please try again.';
+  };
+
+  /**
+   * Handle OAuth2 callback query parameters on component mount.
+   * Parses success/error states and displays appropriate alerts.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const success = params.get('success');
+    const errorCode = params.get('error');
+    const errorDesc = params.get('error_description');
+
+    if (success === 'true') {
+      // Success state: Display success alert
+      const message = 'Successfully connected to service. You can now delegate access to agents.';
+      setAlert({ type: 'success', message });
+
+      // Refresh session list to show new session
+      refetch();
+
+      // Auto-dismiss after 5 seconds and clear URL
+      const timer = setTimeout(() => {
+        setAlert(null);
+        navigate('/consent/sessions', { replace: true });
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    } else if (errorCode) {
+      // Error state: Display error alert
+      const message = mapErrorToMessage(errorCode, errorDesc);
+      setAlert({ type: 'error', message });
+
+      // Clear URL immediately (don't auto-dismiss error alerts)
+      navigate('/consent/sessions', { replace: true });
+    }
+  }, [location.search, navigate, refetch]);
+
+  /**
+   * Handle alert dismissal.
+   * Clears the alert state when user clicks dismiss button.
+   */
+  const handleAlertDismiss = () => {
+    setAlert(null);
+  };
+
+  const handleTerminate = async (serviceId: string) => {
+    try {
+      setTerminatingLoading(true);
+      setTerminationError(null);
+
+      // Fetch session details (including dependent agents)
+      const details = await sessionsApi.getSessionDetails(serviceId);
+      setSelectedSessionId(serviceId);
+      setSelectedSessionDetails(details);
+    } catch (err) {
+      console.error('Failed to fetch session details', err);
+      setTerminationError('Failed to load session details. Please try again.');
+    } finally {
+      setTerminatingLoading(false);
+    }
   };
 
   const handleTerminationConfirm = async () => {
@@ -59,12 +146,19 @@ export const ThirdPartySessionsPage: React.FC = () => {
       setTerminatingLoading(true);
       setTerminationError(null);
 
-      // Call API to terminate session
+      // Call API to terminate session (DELETE endpoint)
       await sessionsApi.terminateSession(selectedSessionId);
 
       // Close dialog and refetch sessions
       setSelectedSessionId(null);
+      setSelectedSessionDetails(null);
       await refetch();
+
+      // Show success message
+      setAlert({
+        type: 'success',
+        message: 'Session terminated successfully.',
+      });
     } catch (err) {
       console.error('Failed to terminate session', err);
 
@@ -82,6 +176,7 @@ export const ThirdPartySessionsPage: React.FC = () => {
 
   const handleTerminationCancel = () => {
     setSelectedSessionId(null);
+    setSelectedSessionDetails(null);
     setTerminationError(null);
   };
 
@@ -91,6 +186,18 @@ export const ThirdPartySessionsPage: React.FC = () => {
       <AppLayout>
         <PageTransition>
           <div className="space-y-6">
+            {/* OAuth2 callback success/error alert */}
+            {alert && (
+              <Alert
+                variant={alert.type}
+                title={alert.type === 'success' ? 'Success' : 'Error'}
+                dismissible
+                onDismiss={handleAlertDismiss}
+              >
+                <p>{alert.message}</p>
+              </Alert>
+            )}
+
             {/* Page header */}
             <div>
               <h2 className="text-2xl font-semibold text-neutral-900">
@@ -124,6 +231,18 @@ export const ThirdPartySessionsPage: React.FC = () => {
       <AppLayout>
         <PageTransition>
           <div className="space-y-6">
+            {/* OAuth2 callback success/error alert */}
+            {alert && (
+              <Alert
+                variant={alert.type}
+                title={alert.type === 'success' ? 'Success' : 'Error'}
+                dismissible
+                onDismiss={handleAlertDismiss}
+              >
+                <p>{alert.message}</p>
+              </Alert>
+            )}
+
             {/* Page header */}
             <div>
               <h2 className="text-2xl font-semibold text-neutral-900">
@@ -153,6 +272,18 @@ export const ThirdPartySessionsPage: React.FC = () => {
       <AppLayout>
         <PageTransition>
           <div className="space-y-6">
+            {/* OAuth2 callback success/error alert */}
+            {alert && (
+              <Alert
+                variant={alert.type}
+                title={alert.type === 'success' ? 'Success' : 'Error'}
+                dismissible
+                onDismiss={handleAlertDismiss}
+              >
+                <p>{alert.message}</p>
+              </Alert>
+            )}
+
             {/* Page header */}
             <div>
               <h2 className="text-2xl font-semibold text-neutral-900">
@@ -183,14 +314,23 @@ export const ThirdPartySessionsPage: React.FC = () => {
     );
   }
 
-  // Find the selected session for the confirmation dialog
-  const selectedSession = sessions.find((s) => s.service_id === selectedSessionId);
-
   // Main content with session cards
   return (
     <AppLayout>
       <PageTransition>
         <div className="space-y-6">
+          {/* OAuth2 callback success/error alert */}
+          {alert && (
+            <Alert
+              variant={alert.type}
+              title={alert.type === 'success' ? 'Success' : 'Error'}
+              dismissible
+              onDismiss={handleAlertDismiss}
+            >
+              <p>{alert.message}</p>
+            </Alert>
+          )}
+
           {/* Page header */}
           <div>
             <h2 className="text-2xl font-semibold text-neutral-900">
@@ -221,72 +361,16 @@ export const ThirdPartySessionsPage: React.FC = () => {
       </PageTransition>
 
       {/* Termination confirmation dialog */}
-      {selectedSessionId && selectedSession && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dialog-title"
-          onClick={handleTerminationCancel}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Stack gap="md">
-              {/* Dialog header */}
-              <div>
-                <h2 id="dialog-title" className="text-xl font-semibold text-neutral-900">
-                  Terminate Session?
-                </h2>
-                <p className="mt-2 text-sm text-neutral-600">
-                  Are you sure you want to terminate your session with{' '}
-                  <strong>{selectedSession.service_display_name}</strong>?
-                </p>
-              </div>
-
-              {/* Warning about dependent agents */}
-              {selectedSession.dependent_agent_count > 0 && (
-                <Alert variant="warning" title="Warning">
-                  <p className="text-sm">
-                    This session is currently used by{' '}
-                    <strong>{selectedSession.dependent_agent_count}</strong> agent
-                    {selectedSession.dependent_agent_count !== 1 ? 's' : ''}. Terminating
-                    this session will revoke their access.
-                  </p>
-                </Alert>
-              )}
-
-              {/* Termination error */}
-              {terminationError && (
-                <Alert variant="error" title="Termination Failed">
-                  <p className="text-sm">{terminationError}</p>
-                </Alert>
-              )}
-
-              {/* Dialog actions */}
-              <Stack direction="row" gap="md" justify="end">
-                <Button
-                  variant="outline"
-                  size="md"
-                  onClick={handleTerminationCancel}
-                  disabled={terminatingLoading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  size="md"
-                  onClick={handleTerminationConfirm}
-                  isLoading={terminatingLoading}
-                  disabled={terminatingLoading}
-                >
-                  Terminate Session
-                </Button>
-              </Stack>
-            </Stack>
-          </div>
-        </div>
+      {selectedSessionId && selectedSessionDetails && (
+        <TerminationDialog
+          isOpen={!!selectedSessionId}
+          onClose={handleTerminationCancel}
+          onConfirm={handleTerminationConfirm}
+          serviceName={selectedSessionDetails.service_display_name}
+          dependentAgents={selectedSessionDetails.dependent_agents || []}
+          loading={terminatingLoading}
+          error={terminationError}
+        />
       )}
     </AppLayout>
   );

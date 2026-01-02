@@ -282,6 +282,36 @@ func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 	return len(uniqueAgents), nil
 }
 
+// ListByServiceID retrieves all agent IDs that have delegated OAuth2 tokens for a given service.
+// This is used to show the actual dependent agents when terminating a session.
+// Returns the list of distinct agent IDs with delegated_oauth2_tokens entries for the service.
+// Returns empty slice if no agents have delegated tokens for the service.
+func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Use a set to track unique agent IDs that have delegated tokens for this service
+	uniqueAgents := make(map[string]bool)
+
+	for _, grant := range r.grants {
+		// Check if this grant has delegated tokens for the service
+		for _, token := range grant.DelegatedOAuth2Tokens {
+			if token.ThirdpartyOAuth2ServiceID == serviceID {
+				uniqueAgents[grant.AgentID] = true
+				break // Only add each agent once
+			}
+		}
+	}
+
+	// Convert map to sorted slice for consistent results
+	agentIDs := make([]string, 0, len(uniqueAgents))
+	for agentID := range uniqueAgents {
+		agentIDs = append(agentIDs, agentID)
+	}
+
+	return agentIDs, nil
+}
+
 // removeGrantFromAgentIndex removes a grant ID from the agent's grant list.
 func (r *UserGrantRepository) removeGrantFromAgentIndex(agentID string, grantID string) {
 	grantIDs, exists := r.grantIDsByAgent[agentID]

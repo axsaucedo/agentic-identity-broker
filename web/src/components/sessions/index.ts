@@ -6,3 +6,4 @@
 
 export { SessionCard } from './SessionCard';
 export type { default as SessionCardProps } from './SessionCard';
+export { TerminationDialog } from './TerminationDialog';

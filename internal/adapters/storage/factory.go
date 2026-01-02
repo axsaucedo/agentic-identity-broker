@@ -15,12 +15,12 @@ import (
 // Adapters implement both StorageLifecycle and repository interfaces (UserRepository, etc.)
 // This struct is returned by NewAdapter factory function.
 type Adapter struct {
-	lifecycle     ports.StorageLifecycle
-	users         ports.UserRepository
-	agents        ports.AgentRepository
-	services      ports.ThirdpartyOAuth2ServiceRepository
-	userGrants    ports.UserGrantRepository
-	userSessions  ports.UserSessionRepository
+	lifecycle    ports.StorageLifecycle
+	users        ports.UserRepository
+	agents       ports.AgentRepository
+	services     ports.ThirdpartyOAuth2ServiceRepository
+	userGrants   ports.UserGrantRepository
+	userSessions ports.UserSessionRepository
 }
 
 // NewAdapter creates a storage adapter based on configuration.

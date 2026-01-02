@@ -86,21 +86,37 @@ export const SessionCard: React.FC<SessionCardProps> = ({
 
   return (
     <Card padding="default" border="subtle" hover="lift">
-      {/* Header: Service name and status */}
-      <div className="mb-4">
-        <Stack direction="row" gap="md" align="center" justify="space-between">
-          <div className="flex-1">
-            <h3 className="m-0 text-lg font-semibold text-neutral-900">
-              {session.service_display_name}
-            </h3>
-            <p className="mt-1 mb-0 text-xs text-neutral-600">
-              {session.token_type}
-            </p>
-          </div>
-          <Badge variant={variant} showDot>
-            {status}
-          </Badge>
-        </Stack>
+      {/* Header: Service name and Terminate button */}
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <h3 className="m-0 text-lg font-semibold text-neutral-900">
+            {session.service_display_name}
+          </h3>
+        </div>
+        {!session.is_expired && (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => onTerminate(session.service_id)}
+            isLoading={loading}
+            disabled={loading}
+            className="flex-shrink-0"
+          >
+            Terminate
+          </Button>
+        )}
+      </div>
+
+      {/* Status */}
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <Badge variant={variant} showDot>
+          {status}
+        </Badge>
+        {session.is_expired && (
+          <p className="m-0 text-xs font-medium text-error-primary">
+            Re-authenticate required
+          </p>
+        )}
       </div>
 
       {/* Body: Session metadata */}
@@ -173,53 +189,6 @@ export const SessionCard: React.FC<SessionCardProps> = ({
           </div>
         )}
       </Stack>
-
-      {/* Footer: Actions */}
-      <div className="mt-4 pt-4 border-t border-neutral-200">
-        <Stack direction="row" gap="md" justify="end">
-          {session.is_expired ? (
-            <p className="m-0 text-sm text-error-primary">
-              Session expired. Please re-authenticate.
-            </p>
-          ) : (
-            <>
-              {onViewDetails && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onViewDetails(session.service_id)}
-                  disabled={loading}
-                  iconAfter={
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-4 h-4"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M5.22 14.78a.75.75 0 001.06 0l7.22-7.22v5.69a.75.75 0 001.5 0v-7.5a.75.75 0 00-.75-.75h-7.5a.75.75 0 000 1.5h5.69l-7.22 7.22a.75.75 0 000 1.06z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  }
-                >
-                  View Details
-                </Button>
-              )}
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => onTerminate(session.service_id)}
-                isLoading={loading}
-                disabled={loading}
-              >
-                Terminate
-              </Button>
-            </>
-          )}
-        </Stack>
-      </div>
     </Card>
   );
 };

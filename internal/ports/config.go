@@ -33,9 +33,10 @@ type ConfigPort interface {
 
 // Config represents the complete application configuration schema.
 type Config struct {
-	Log     LogConfig     `mapstructure:"log" validate:"required"`
-	Server  ServerConfig  `mapstructure:"server" validate:"required"`
-	Storage StorageConfig `mapstructure:"storage" validate:"required"`
+	Log              LogConfig              `mapstructure:"log" validate:"required"`
+	Server           ServerConfig           `mapstructure:"server" validate:"required"`
+	Storage          StorageConfig          `mapstructure:"storage" validate:"required"`
+	ThirdPartyOAuth2 ThirdPartyOAuth2Config `mapstructure:"third_party_oauth2"`
 }
 
 // ServerConfig contains configuration for both HTTP servers.
@@ -49,6 +50,7 @@ type ServerConfig struct {
 type ServerInstanceConfig struct {
 	Port           int                  `mapstructure:"port" validate:"required,min=1,max=65535"`
 	Bind           string               `mapstructure:"bind" validate:"required"`
+	PublicURL      string               `mapstructure:"public_url" validate:"required_if=Port 8000,http_url"`
 	Authentication AuthenticationConfig `mapstructure:"authentication"`
 }
 
@@ -79,8 +81,9 @@ type ShutdownConfig struct {
 func DefaultServerConfig() ServerConfig {
 	return ServerConfig{
 		EndUser: ServerInstanceConfig{
-			Port: 8000,
-			Bind: "::", // Dual-stack (IPv6 with IPv4 fallback)
+			Port:      8000,
+			Bind:      "::",                    // Dual-stack (IPv6 with IPv4 fallback)
+			PublicURL: "http://localhost:8000", // Default for local development
 			Authentication: AuthenticationConfig{
 				Preauth: PreauthConfig{
 					PrincipalHeaderName: "X-Remote-User",
@@ -88,8 +91,9 @@ func DefaultServerConfig() ServerConfig {
 			},
 		},
 		Admin: ServerInstanceConfig{
-			Port: 14000,
-			Bind: "::",
+			Port:      14000,
+			Bind:      "::",
+			PublicURL: "http://localhost:14000", // Default for local development
 			Authentication: AuthenticationConfig{
 				Preauth: PreauthConfig{
 					PrincipalHeaderName: "X-Remote-User",
@@ -164,4 +168,28 @@ type PostgresConfig struct {
 type StorageTimeouts struct {
 	Read  time.Duration `mapstructure:"read" validate:"required"`
 	Write time.Duration `mapstructure:"write" validate:"required"`
+}
+
+// ThirdPartyOAuth2Config contains configuration for OAuth2 session management with third-party services.
+// This configuration is optional - if not provided, OAuth2 sessions routes will not be registered.
+// When provided, enables users to authenticate with external OAuth2 providers
+// (GitHub, Google, Microsoft, etc.) through the identity broker.
+type ThirdPartyOAuth2Config struct {
+	// JWESigningKey is the base64-encoded key for signing JWE state tokens (32+ bytes).
+	// This key MUST be kept secret. It protects OAuth2 state tokens during authorization flows.
+	// Optional - if empty, OAuth2 routes will not be registered (server logs warning).
+	// Generate with: openssl rand -base64 32
+	// Store in environment variable: IDENTITY_BROKER_JWE_SIGNING_KEY
+	JWESigningKey string `mapstructure:"jwe_signing_key"`
+
+	// StateTokenTTL is the time-to-live for OAuth2 state tokens.
+	// Maximum allowed: 15 minutes per security requirements (SR-008).
+	// Shorter TTL reduces exposure window for state token leakage.
+	// Default: 10 minutes
+	StateTokenTTL time.Duration `mapstructure:"state_token_ttl"`
+
+	// PKCEVerifierLength is the length of PKCE code verifier in bytes.
+	// Must be 32-128 bytes per RFC 7636.
+	// Default: 32 bytes (256 bits of entropy)
+	PKCEVerifierLength int `mapstructure:"pkce_verifier_length"`
 }

@@ -15,6 +15,9 @@ var (
 	// ErrSessionNotFound is returned when a session doesn't exist.
 	ErrSessionNotFound = errors.New("session not found")
 
+	// ErrUnauthorized is returned when access to a resource is denied (principal mismatch on resource ownership).
+	ErrUnauthorized = errors.New("unauthorized access to resource")
+
 	// ErrInvalidPKCE is returned when PKCE validation fails.
 	ErrInvalidPKCE = errors.New("invalid PKCE")
 

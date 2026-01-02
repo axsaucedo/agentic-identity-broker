@@ -3,6 +3,7 @@ package http
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net"
@@ -10,12 +11,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	oauth2sessions "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
@@ -23,18 +28,19 @@ import (
 // Server implements the ServerPort interface using the chi router framework.
 // It manages the lifecycle of a single HTTP server instance.
 type Server struct {
-	name           string                                  // Server identifier ("enduser" or "admin")
-	config         ports.ServerInstanceConfig              // Server configuration (port, bind address)
-	router         *chi.Mux                                // Chi router for request routing
-	httpServer     *http.Server                            // Underlying HTTP server
-	healthState    int32                                   // Atomic health state (using ports.HealthState as int32)
-	startTime      time.Time                               // Time when server started serving requests
-	logger         *slog.Logger                            // Structured logger
-	agentRepo      ports.AgentRepository                   // Agent repository (optional)
-	serviceRepo    ports.ThirdpartyOAuth2ServiceRepository // OAuth2 service repository (optional)
-	grantRepo      ports.UserGrantRepository               // User grant repository (optional)
-	sessionRepo    ports.UserSessionRepository             // User session repository (optional)
-	spaConfig      *SPAConfig                              // SPA configuration (optional)
+	name                   string                                  // Server identifier ("enduser" or "admin")
+	config                 ports.ServerInstanceConfig              // Server configuration (port, bind address)
+	router                 *chi.Mux                                // Chi router for request routing
+	httpServer             *http.Server                            // Underlying HTTP server
+	healthState            int32                                   // Atomic health state (using ports.HealthState as int32)
+	startTime              time.Time                               // Time when server started serving requests
+	logger                 *slog.Logger                            // Structured logger
+	agentRepo              ports.AgentRepository                   // Agent repository (optional)
+	serviceRepo            ports.ThirdpartyOAuth2ServiceRepository // OAuth2 service repository (optional)
+	grantRepo              ports.UserGrantRepository               // User grant repository (optional)
+	sessionRepo            ports.UserSessionRepository             // User session repository (optional)
+	spaConfig              *SPAConfig                              // SPA configuration (optional)
+	thirdPartyOAuth2Config ports.ThirdPartyOAuth2Config            // OAuth2 configuration from application config
 }
 
 // SPAConfig contains SPA serving configuration.
@@ -90,6 +96,13 @@ func (s *Server) SetSessionRepository(repo ports.UserSessionRepository) {
 // This should be called before Listen() to enable SPA serving.
 func (s *Server) SetSPAConfig(config *SPAConfig) {
 	s.spaConfig = config
+}
+
+// SetThirdPartyOAuth2Config sets the OAuth2 configuration from the application config.
+// This should be called before Listen() to enable OAuth2 session routes with proper configuration.
+// Constitution Principle VII (Configuration-Driven Design) compliance.
+func (s *Server) SetThirdPartyOAuth2Config(cfg ports.ThirdPartyOAuth2Config) {
+	s.thirdPartyOAuth2Config = cfg
 }
 
 // Listen binds to the configured address and port and returns a listener.
@@ -323,10 +336,10 @@ func (s *Server) registerServicesRoutes(r chi.Router) {
 
 	// Register services routes
 	r.Route("/services", func(r chi.Router) {
-		r.Post("/", servicesHandler.CreateService)             // POST /api/services
-		r.Get("/", servicesHandler.ListServices)               // GET /api/services
-		r.Get("/{service-id}", servicesHandler.GetService)     // GET /api/services/:service-id
-		r.Put("/{service-id}", servicesHandler.UpdateService)  // PUT /api/services/:service-id
+		r.Post("/", servicesHandler.CreateService)               // POST /api/services
+		r.Get("/", servicesHandler.ListServices)                 // GET /api/services
+		r.Get("/{service-id}", servicesHandler.GetService)       // GET /api/services/:service-id
+		r.Put("/{service-id}", servicesHandler.UpdateService)    // PUT /api/services/:service-id
 		r.Delete("/{service-id}", servicesHandler.DeleteService) // DELETE /api/services/:service-id
 	})
 }
@@ -341,8 +354,54 @@ func (s *Server) registerOAuth2SessionsRoutes(r chi.Router) {
 		return
 	}
 
-	// Create handler with repositories
-	sessionsHandler := oauth2sessions.NewHandler(s.sessionRepo, s.grantRepo, nil)
+	if s.serviceRepo == nil {
+		s.logger.Warn("OAuth2 sessions routes require service repository")
+		return
+	}
+
+	// Get JWE signing key from application configuration
+	if s.thirdPartyOAuth2Config.JWESigningKey == "" {
+		s.logger.Warn("JWE signing key not configured - OAuth2 sessions routes not registered")
+		return
+	}
+
+	var jweKey jwk.Key
+	// Decode base64 JWE signing key
+	keyBytes, err := base64.StdEncoding.DecodeString(s.thirdPartyOAuth2Config.JWESigningKey)
+	if err != nil {
+		s.logger.Error("failed to decode JWE signing key", "error", err)
+		return
+	}
+
+	// Import key as JWK
+	jweKey, err = jwk.Import(keyBytes)
+	if err != nil {
+		s.logger.Error("failed to import JWE signing key", "error", err)
+		return
+	}
+
+	// Create OAuth2SessionService with repositories and JWE key
+	// Use PublicURL from server configuration for OAuth2 callbacks (Constitution Principle VII compliance)
+	// In production, this would be configured via environment variable (IDENTITY_BROKER_SERVER_ENDUSER_PUBLIC_URL)
+	callbackBaseURL := s.config.PublicURL
+
+	// Build service configuration from application config (Constitution Principle VII compliance)
+	// This ensures the service uses configured values instead of hardcoded defaults
+	cfg := oauth2session.NewConfigFromPorts(s.thirdPartyOAuth2Config, callbackBaseURL)
+
+	sessionService := oauth2session.NewOAuth2SessionService(
+		s.serviceRepo,
+		s.sessionRepo,
+		s.grantRepo,
+		s.agentRepo,
+		noop.NewNoOpEncryption(), // Use no-op encryption for development (tokens stored in plaintext)
+		jweKey,
+		cfg,
+		s.logger,
+	)
+
+	// Create handler with service
+	sessionsHandler := oauth2sessions.NewHandler(sessionService)
 
 	// Register routes
 	sessionsHandler.RegisterRoutes(r)

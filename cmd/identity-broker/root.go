@@ -88,6 +88,11 @@ func run(cmd *cobra.Command, args []string) error {
 		enduserServer.SetSessionRepository(storage.UserSessions())
 	}
 
+	// Set OAuth2 configuration for enduser server (only enduser server needs this)
+	// Constitution Principle VII (Configuration-Driven Design) compliance
+	// The configuration includes JWESigningKey, StateTokenTTL, and PKCEVerifierLength
+	enduserServer.SetThirdPartyOAuth2Config(cfg.ThirdPartyOAuth2)
+
 	// Create server manager
 	mgr := server.NewManager(enduserServer, adminServer, cfg.Server.Shutdown.Timeout, logger)
 
