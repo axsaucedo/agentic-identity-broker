@@ -1,6 +1,6 @@
 # Variable definitions
 # Base image name used across Docker-related recipes.
-IMAGE := "identity-broker"
+IMAGE := "agentic-identity-broker"
 
 # VERSION is derived from git for reproducible, identifiable release tags
 # (used e.g. by multi-arch push/publish tasks). Local docker-build targets
@@ -8,6 +8,8 @@ IMAGE := "identity-broker"
 # workflow and to avoid stale version tags during rapid iteration, so they
 # do not use this VERSION value.
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
+
+BINARY := "identity-broker"
 
 # Default recipe (shown when running `just` with no args)
 default:
@@ -17,39 +19,40 @@ default:
 # Go Development Targets
 # =============================================================================
 
-# Build the Go binary to ./bin/identity-broker
+# Build the Go binary for the host OS/ARCH
 build:
-    @echo "Building identity-broker..."
+    @echo "Building {{BINARY}}..."
     @mkdir -p bin
-    go build -ldflags="-s -w" -o bin/identity-broker ./cmd/identity-broker
+    go build -ldflags="-s -w" -o bin/{{BINARY}} ./cmd/{{BINARY}}
+    @echo "✓ Built: bin/{{BINARY}}"
 
 # Build Linux binary for arm64
 build-linux-arm64:
     @echo "Building Linux binary for arm64..."
     @mkdir -p bin/linux/arm64
-    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/arm64/identity-broker ./cmd/identity-broker
-    @echo "✓ Built: bin/linux/arm64/identity-broker"
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/arm64/{{BINARY}} ./cmd/{{BINARY}}
+    @echo "✓ Built: bin/linux/arm64/{{BINARY}}"
 
 # Build Linux binary for amd64
 build-linux-amd64:
     @echo "Building Linux binary for amd64..."
     @mkdir -p bin/linux/amd64
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/amd64/identity-broker ./cmd/identity-broker
-    @echo "✓ Built: bin/linux/amd64/identity-broker"
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/amd64/{{BINARY}} ./cmd/{{BINARY}}
+    @echo "✓ Built: bin/linux/amd64/{{BINARY}}"
 
 # Build macOS binary for arm64 (Apple Silicon)
 build-darwin-arm64:
     @echo "Building macOS binary for arm64..."
     @mkdir -p bin/darwin/arm64
-    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/darwin/arm64/identity-broker ./cmd/identity-broker
-    @echo "✓ Built: bin/darwin/arm64/identity-broker"
+    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/darwin/arm64/{{BINARY}} ./cmd/{{BINARY}}
+    @echo "✓ Built: bin/darwin/arm64/{{BINARY}}"
 
 # Build Windows binary for amd64
 build-windows-amd64:
     @echo "Building Windows binary for amd64..."
     @mkdir -p bin/windows/amd64
-    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/windows/amd64/identity-broker.exe ./cmd/identity-broker
-    @echo "✓ Built: bin/windows/amd64/identity-broker.exe"
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/windows/amd64/{{BINARY}}.exe ./cmd/{{BINARY}}
+    @echo "✓ Built: bin/windows/amd64/{{BINARY}}.exe"
 
 # Run all Go tests with verbose output
 test:
@@ -73,8 +76,8 @@ test-coverage-summary:
 
 # Build and run the application
 run: build
-    @echo "Running identity-broker..."
-    ./bin/identity-broker
+    @echo "Running {{BINARY}}..."
+    ./bin/{{BINARY}}
 
 # Run with Air for hot-reload development (requires air to be installed)
 dev:
@@ -172,7 +175,7 @@ web-build:
     cd web && npm run build
 
 # Build both Go backend and web frontend in release quality
-# Produces artifacts: ./bin/identity-broker and ./web/dist/
+# Produces artifacts: ./bin/{{BINARY}} and ./web/dist/
 build-all: build web-build
     @echo "✓ Build complete: Go backend and web frontend"
 
@@ -180,59 +183,21 @@ build-all: build web-build
 # Docker Targets
 # =============================================================================
 
-# Build Docker image from pre-built artifacts
-# Requires: architecture-specific binaries in ./bin/linux/ and ./web/dist/
-docker-build:
-    @echo "Building Docker image..."
-    @if ! command -v docker > /dev/null; then \
-        echo "Error: Docker is not installed. Please install Docker or Docker Desktop."; \
-        exit 1; \
-    fi
-    @if [ ! -f ./bin/linux/amd64/identity-broker ] && [ ! -f ./bin/linux/arm64/identity-broker ]; then \
-        echo "Error: Backend binaries not found in ./bin/linux/"; \
-        echo "Run 'just build-linux-amd64' or 'just build-linux-arm64' first."; \
-        exit 1; \
-    fi
-    @if [ ! -d ./web/dist ]; then \
-        echo "Error: Frontend assets not found at ./web/dist/"; \
-        echo "Run 'just build-all' to build artifacts first."; \
-        exit 1; \
-    fi
-    docker build -t identity-broker:latest .
-    @echo "✓ Docker image built: identity-broker:latest"
-    docker images | grep identity-broker
-
-# Run Docker image locally
-# Exposes backend on port 8000 (customizable with DOCKER_PORT environment variable)
-docker-run:
-    @echo "Starting Docker container..."
-    @if ! command -v docker > /dev/null; then \
-        echo "Error: Docker is not installed. Please install Docker or Docker Desktop."; \
-        exit 1; \
-    fi
-    @PORT=$${DOCKER_PORT:-8000}; \
-    echo "Starting identity-broker on http://localhost:$$PORT"; \
-    docker run -p $$PORT:8000 identity-broker:latest
-
 # Create and push multi-architecture Docker images to registry
 # Builds for linux/amd64 and linux/arm64 using docker buildx
 # Optional: set BUILDKIT_CONFIG to a buildx config file path (defaults to /etc/cdp-buildkitd.toml if present) 
-push-multiarch:
+docker-push: build-linux-amd64 build-linux-arm64 web-build
     @echo "Building and pushing multi-architecture Docker images: $(IMAGE):$(VERSION) (amd64, arm64)..."
-    @if ! command -v docker > /dev/null; then \
-        echo "Error: Docker is not installed."; \
-        exit 1; \
-    fi
-    @BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \  
-    if [ -f "$$BUILDKIT_CONFIG" ]; then \  
-        CONFIG_FLAG="--config $$BUILDKIT_CONFIG"; \  
-        echo "Using buildx config: $$BUILDKIT_CONFIG"; \  
-    else \  
-        CONFIG_FLAG=""; \  
-        echo "Warning: buildx config '$$BUILDKIT_CONFIG' not found; creating builder with default configuration."; \  
-    fi; \ 
+    @BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
+    if [ -f "$$BUILDKIT_CONFIG" ]; then \
+        CONFIG_FLAG="--config $$BUILDKIT_CONFIG"; \
+        echo "Using buildx config: $$BUILDKIT_CONFIG"; \
+    else \
+        CONFIG_FLAG=""; \
+        echo "Warning: buildx config '$$BUILDKIT_CONFIG' not found; creating builder with default configuration."; \
+    fi; \
     docker buildx create --config /etc/cdp-buildkitd.toml --driver-opt network=host --bootstrap --use
-    docker buildx build --rm -t "$(IMAGE):$(VERSION)" --platform linux/amd64,linux/arm64 --push .
+    docker buildx build --rm -t "$(IMAGE)" --platform linux/amd64,linux/arm64 --push .
     @echo "✓ Multi-architecture images pushed: $(IMAGE):$(VERSION)"
 
 # =============================================================================
