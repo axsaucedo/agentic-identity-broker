@@ -90,6 +90,7 @@ dev:
 clean:
     @echo "Cleaning build artifacts..."
     rm -rf bin
+    rm -rf build
     rm -rf coverage
     rm -rf web/node_modules web/dist
     @echo "Clean complete"
@@ -180,15 +181,15 @@ build-all: build web-build
 # =============================================================================
 
 # Build Docker image from pre-built artifacts
-# Requires: ./bin/identity-broker and ./web/dist/ to exist
+# Requires: ./build/identity-broker and ./web/dist/ to exist
 docker-build:
     @echo "Building Docker image..."
     @if ! command -v docker > /dev/null; then \
         echo "Error: Docker is not installed. Please install Docker or Docker Desktop."; \
         exit 1; \
     fi
-    @if [ ! -f ./bin/identity-broker ]; then \
-        echo "Error: Backend binary not found at ./bin/identity-broker"; \
+    @if [ ! -f ./build/identity-broker ]; then \
+        echo "Error: Backend binary not found at ./build/identity-broker"; \
         echo "Run 'just build-all' to build artifacts first."; \
         exit 1; \
     fi
@@ -215,13 +216,21 @@ docker-run:
 
 # Create and push multi-architecture Docker images to registry
 # Builds for linux/amd64 and linux/arm64 using docker buildx
-# Requires: /etc/cdp-buildkitd.toml configuration for buildx
+# Optional: set BUILDKIT_CONFIG to a buildx config file path (defaults to /etc/cdp-buildkitd.toml if present) 
 push-multiarch:
     @echo "Building and pushing multi-architecture Docker images: $(IMAGE):$(VERSION) (amd64, arm64)..."
     @if ! command -v docker > /dev/null; then \
         echo "Error: Docker is not installed."; \
         exit 1; \
     fi
+    @BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \  
+    if [ -f "$$BUILDKIT_CONFIG" ]; then \  
+        CONFIG_FLAG="--config $$BUILDKIT_CONFIG"; \  
+        echo "Using buildx config: $$BUILDKIT_CONFIG"; \  
+    else \  
+        CONFIG_FLAG=""; \  
+        echo "Warning: buildx config '$$BUILDKIT_CONFIG' not found; creating builder with default configuration."; \  
+    fi; \ 
     docker buildx create --config /etc/cdp-buildkitd.toml --driver-opt network=host --bootstrap --use
     docker buildx build --rm -t "$(IMAGE):$(VERSION)" --platform linux/amd64,linux/arm64 --push .
     @echo "✓ Multi-architecture images pushed: $(IMAGE):$(VERSION)"
