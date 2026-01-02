@@ -4,6 +4,7 @@
  * Configures routes for the consent management application:
  * - / -> Consent overview (list of agent delegations)
  * - /agent/:agentId -> Agent grant detail page
+ * - /oauth2/sessions -> Third-party OAuth2 sessions management
  * - * -> 404 error page
  *
  * Performance Optimizations:
@@ -22,6 +23,7 @@ import { ToastProvider } from '@components/ui/Toast';
 // This creates separate bundles for each route, reducing initial load time
 const ConsentOverviewPage = lazy(() => import('./pages/ConsentOverviewPage'));
 const AgentGrantDetailPage = lazy(() => import('./pages/AgentGrantDetailPage'));
+const ThirdPartySessionsPage = lazy(() => import('./pages/ThirdPartySessionsPage'));
 const ErrorPage = lazy(() => import('./pages/ErrorPage'));
 
 /**
@@ -47,6 +49,7 @@ function App() {
             <Routes>
               <Route path="/" element={<ConsentOverviewPage />} />
               <Route path="/agent/:agentId" element={<AgentGrantDetailPage />} />
+              <Route path="/oauth2/sessions" element={<ThirdPartySessionsPage />} />
               <Route path="*" element={<ErrorPage />} />
             </Routes>
           </Suspense>

@@ -101,7 +101,7 @@ func TestGetAgentDetail_Success(t *testing.T) {
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", agentID)
+	rctx.URLParams.Add("agent-id", agentID)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	// Create response recorder
@@ -156,7 +156,7 @@ func TestGetAgentDetail_AgentNotFound(t *testing.T) {
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/nonexistent", nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", "nonexistent")
+	rctx.URLParams.Add("agent-id", "nonexistent")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	// Create response recorder
@@ -225,7 +225,7 @@ func TestGetAgentDetail_ServiceError(t *testing.T) {
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-123", nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", "agent-123")
+	rctx.URLParams.Add("agent-id", "agent-123")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	// Create response recorder
@@ -273,7 +273,7 @@ func TestGetAgentDetail_EmptyServicesList(t *testing.T) {
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", agentID)
+	rctx.URLParams.Add("agent-id", agentID)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	// Create response recorder

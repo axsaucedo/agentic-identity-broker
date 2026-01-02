@@ -56,3 +56,5 @@ build/
 Thumbs.db
 
 .playwright-mcp
+bin/identity-broker
+identity-broker

@@ -1,37 +1,38 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.3.1 → 1.4.0
-Rationale: MINOR version bump - added new Principle XI (Design System Compliance & Consistency)
-  requiring all frontend components to use the design system and contribute universal patterns back.
-  Establishes design system as binding requirement for frontend development with clear documentation
-  entrypoints and accessibility standards.
+Version Change: 1.5.0 → 1.5.1
+Rationale: PATCH version bump - corrected contradiction in tasks-template.md where tests were marked
+  as "OPTIONAL" despite Constitution Principle VIII (Test-Driven Development & Automated Testing)
+  requiring tests as MANDATORY for all features. This is a clarification/bug fix, not a new requirement.
 
 Modified Principles:
-- None (existing principles I-X unchanged)
+- None (Principle VIII unchanged - existing requirement clarified in template)
 
 Added Principles:
-- **NEW: Principle XI - Design System Compliance & Consistency**: All frontend components must use
-  the design system (web/src/design-system/). Documentation entrypoint at INDEX.md. Universal
-  components must be contributed back. Enforces Refined Trust Architecture aesthetic, WCAG 2.1 AA
-  accessibility, semantic tokens, and Tailwind CSS v4 @theme directive.
+- None
 
 Added Sections:
-- Compliance Checklist (PRECONDITIONS): Frontend component design and universal component planning
-- Compliance Checklist (Implementation Phase): Design system usage verification, accessibility checks
-- Constraint escalation: New section for Principle XI (Design System Compliance) deviations
+- None
 
-Removed Sections: None
+Removed Sections:
+- None
 
 Templates Status:
-- ✅ spec-template.md: Added Frontend/Design System Requirements section with classification guidance
-- 🔲 plan-template.md: No updates needed (design system review implicit in frontend planning)
-- 🔲 tasks-template.md: No updates needed (design system usage implicit in implementation tasks)
-- ✅ Design system docs: Comprehensive documentation at web/src/design-system/docs/INDEX.md
-  (DECISION_TREES.md, COMPONENT_PAIRING_GUIDE.md, COMMON_MISTAKES.md provide 92-95% autonomous
-  decision-making for AI agents)
+- ✅ tasks-template.md: Corrected testing requirements to align with Principle VIII
+  - Line 11: Changed "Tests are OPTIONAL" to "Tests are MANDATORY per Principle VIII"
+  - User Story test sections: Changed from "[OPTIONAL - only if tests requested]" to "[MANDATORY - Principle VIII]"
+  - Added explicit constitution reference to test section headers
+  - Enhanced test task examples: separated unit, integration, and contract tests
+  - Renumbered task IDs to accommodate additional test tasks (3 per user story instead of 2)
+- 🔲 spec-template.md: No updates needed
+- 🔲 plan-template.md: No updates needed
 
-Follow-up TODOs: None - design system documentation production-ready
+Follow-up TODOs: None - changes complete
+
+Previous Version History:
+- 1.4.0 → 1.5.0: Added Governance > Task List Requirements section
+- 1.3.1 → 1.4.0: Added Principle XI (Design System Compliance & Consistency)
 
 Rationale for Principle IV Enhancement (API Documentation & OpenAPI Transparency):
   APIs are contracts with consumers. Explicit OpenAPI documentation in designated locations (/api/enduser/,
@@ -451,4 +452,32 @@ If Principle XI (Design System Compliance & Consistency) cannot be satisfied:
 - Reviewers MUST verify WCAG 2.1 AA accessibility compliance for frontend components (Principle XI)
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
 
-**Version**: 1.4.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-22
+### Task List Requirements
+
+Every feature's `tasks.md` file MUST include these mandatory sections from [tasks-template.md](.specify/templates/tasks-template.md):
+
+**MANDATORY SECTIONS** (cannot be omitted):
+1. **Phase 2: Design Preconditions** - Constitution PRECONDITIONS implementation
+   - Phase 2a: Domain Model & Glossary (Principles II, V)
+   - Phase 2b: Configuration Design (Principle VII)
+   - Phase 2c: API Design (Principles IV, X)
+   - Phase 2d: Database Design (Principle IX)
+   - Phase 2e: Frontend/Design System Review (Principle XI, if applicable)
+
+2. **Phase N: Constitution Compliance Verification** - Constitution Implementation Phase checklist
+   - Design Phase Verification tasks
+   - Implementation Phase Verification tasks grouped by principle
+   - All verification tasks with explicit principle references
+
+**CUSTOMIZABLE SECTIONS** (adapt to feature):
+- Phase 1: Setup (project-specific initialization)
+- Phase 2.5: Foundational Infrastructure (feature-specific foundation)
+- Phase 3+: User Stories (based on spec.md user stories)
+- Additional Polish (optional improvements)
+
+**Enforcement**:
+- AI agents generating tasks.md MUST retain Phase 2 and Phase N sections verbatim (adapting only task descriptions to the specific feature)
+- The tasks-template.md uses 🔒 emoji and [MANDATORY] markers to clearly distinguish mandatory from customizable sections
+- Omitting mandatory sections violates this constitution and blocks feature completion
+
+**Version**: 1.5.1 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-23

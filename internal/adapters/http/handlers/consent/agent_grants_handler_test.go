@@ -105,7 +105,7 @@ func TestGetAgentGrants_Success(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", agentID)
+	rctx.URLParams.Add("agent-id", agentID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -170,7 +170,7 @@ func TestGetAgentGrants_EmptyGrants(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", agentID)
+	rctx.URLParams.Add("agent-id", agentID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -204,7 +204,7 @@ func TestGetAgentGrants_MissingPrincipal(t *testing.T) {
 	// Create request without principal in context
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-123/grants", nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", "agent-123")
+	rctx.URLParams.Add("agent-id", "agent-123")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	// Create response recorder
@@ -279,7 +279,7 @@ func TestGetAgentGrants_AgentNotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", agentID)
+	rctx.URLParams.Add("agent-id", agentID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -321,7 +321,7 @@ func TestGetAgentGrants_ServiceError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", agentID)
+	rctx.URLParams.Add("agent-id", agentID)
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 

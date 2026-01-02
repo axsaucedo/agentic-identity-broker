@@ -7,12 +7,14 @@
  */
 
 import React, { ReactNode } from 'react';
+import { useLocation, Link } from 'react-router-dom';
 import { useConsent } from '@hooks/useConsent';
 import { Avatar } from '@design-system/components/primitives/Avatar';
 import { AppLayout as DesignSystemAppLayout } from '@design-system/components/layout/AppLayout/AppLayout';
 
 interface AppLayoutProps {
   children: ReactNode;
+  header?: React.ComponentType<any> | null;
 }
 
 /**
@@ -21,6 +23,16 @@ interface AppLayoutProps {
  */
 function Header() {
   const { userInfo } = useConsent();
+  const location = useLocation();
+
+  const navLinks = [
+    { label: 'Agent Delegations', href: '/' },
+    { label: 'Third-Party Sessions', href: '/oauth2/sessions' },
+  ];
+
+  const isActiveLink = (href: string) => {
+    return location.pathname === href || (location.pathname === '/' && href === '/');
+  };
 
   return (
     <div className="bg-white border-b border-neutral-200">
@@ -55,12 +67,23 @@ function Header() {
 
           {/* Navigation */}
           <nav className="flex items-center gap-6 ml-auto">
-            <a
-              href="/consent"
-              className="text-sm font-medium text-slate-700 hover:text-trust transition-colors duration-200"
-            >
-              My Agents
-            </a>
+            {/* Main navigation links */}
+            <div className="hidden md:flex items-center gap-1">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
+                    isActiveLink(link.href)
+                      ? 'bg-trust-light text-trust-deep'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                  aria-current={isActiveLink(link.href) ? 'page' : undefined}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
 
             {/* User info with avatar */}
             {userInfo && (
@@ -93,11 +116,13 @@ function Header() {
  * Main layout wrapper that extends the design system AppLayout with custom styling.
  * Provides consistent structure with premium gradient background and spacing.
  */
-export function AppLayout({ children }: AppLayoutProps) {
+export function AppLayout({ children, header }: AppLayoutProps) {
+  const HeaderComponent = header || Header;
+
   return (
     <div className="bg-gradient-to-br from-cream via-sand to-taupe/20">
       <DesignSystemAppLayout
-        header={<Header />}
+        header={<HeaderComponent />}
         stickyHeader={true}
         className="bg-transparent"
       >

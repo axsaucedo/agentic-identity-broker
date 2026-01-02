@@ -106,9 +106,11 @@ func (l *Loader) setDefaults() {
 	serverDefaults := ports.DefaultServerConfig()
 	l.v.SetDefault("server.enduser.port", serverDefaults.EndUser.Port)
 	l.v.SetDefault("server.enduser.bind", serverDefaults.EndUser.Bind)
+	l.v.SetDefault("server.enduser.public_url", serverDefaults.EndUser.PublicURL)
 	l.v.SetDefault("server.enduser.authentication.preauth.principal_header_name", serverDefaults.EndUser.Authentication.Preauth.PrincipalHeaderName)
 	l.v.SetDefault("server.admin.port", serverDefaults.Admin.Port)
 	l.v.SetDefault("server.admin.bind", serverDefaults.Admin.Bind)
+	l.v.SetDefault("server.admin.public_url", serverDefaults.Admin.PublicURL)
 	l.v.SetDefault("server.admin.authentication.preauth.principal_header_name", serverDefaults.Admin.Authentication.Preauth.PrincipalHeaderName)
 	l.v.SetDefault("server.shutdown.timeout", serverDefaults.Shutdown.Timeout)
 
@@ -124,13 +126,22 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("log.format", "IDENTITY_BROKER_LOG_FORMAT")
 	_ = l.v.BindEnv("server.enduser.port", "IDENTITY_BROKER_SERVER_ENDUSER_PORT")
 	_ = l.v.BindEnv("server.enduser.bind", "IDENTITY_BROKER_SERVER_ENDUSER_BIND")
+	_ = l.v.BindEnv("server.enduser.public_url", "IDENTITY_BROKER_SERVER_ENDUSER_PUBLIC_URL")
 	_ = l.v.BindEnv("server.enduser.authentication.preauth.principal_header_name", "IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME")
 	_ = l.v.BindEnv("server.admin.port", "IDENTITY_BROKER_SERVER_ADMIN_PORT")
 	_ = l.v.BindEnv("server.admin.bind", "IDENTITY_BROKER_SERVER_ADMIN_BIND")
+	_ = l.v.BindEnv("server.admin.public_url", "IDENTITY_BROKER_SERVER_ADMIN_PUBLIC_URL")
 	_ = l.v.BindEnv("server.admin.authentication.preauth.principal_header_name", "IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME")
 	_ = l.v.BindEnv("server.shutdown.timeout", "IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT")
 	_ = l.v.BindEnv("storage.backend", "IDENTITY_BROKER_STORAGE_BACKEND")
 	_ = l.v.BindEnv("storage.postgres.connection_url", "IDENTITY_BROKER_STORAGE_POSTGRES_URL")
+	_ = l.v.BindEnv("third_party_oauth2.jwe_signing_key", "IDENTITY_BROKER_JWE_SIGNING_KEY")
+	_ = l.v.BindEnv("third_party_oauth2.state_token_ttl", "IDENTITY_BROKER_STATE_TOKEN_TTL")
+	_ = l.v.BindEnv("third_party_oauth2.pkce_verifier_length", "IDENTITY_BROKER_PKCE_VERIFIER_LENGTH")
+
+	// Set OAuth2 configuration defaults
+	l.v.SetDefault("third_party_oauth2.state_token_ttl", "10m")
+	l.v.SetDefault("third_party_oauth2.pkce_verifier_length", 32)
 
 	// Record defaults source
 	l.sources = append(l.sources, ports.ConfigSource{
@@ -140,12 +151,13 @@ func (l *Loader) setDefaults() {
 		LoadedAt:   time.Now(),
 		Keys: []string{
 			"log.level", "log.format",
-			"server.enduser.port", "server.enduser.bind",
+			"server.enduser.port", "server.enduser.bind", "server.enduser.public_url",
 			"server.enduser.authentication.preauth.principal_header_name",
-			"server.admin.port", "server.admin.bind",
+			"server.admin.port", "server.admin.bind", "server.admin.public_url",
 			"server.admin.authentication.preauth.principal_header_name",
 			"server.shutdown.timeout",
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
+			"third_party_oauth2.state_token_ttl", "third_party_oauth2.pkce_verifier_length",
 		},
 	})
 }
@@ -211,9 +223,13 @@ func (l *Loader) loadEnvFile(filename string) error {
 		}
 	}
 
-	// Set environment variables in Viper
+	// Set environment variables in both Viper and OS environment
+	// OS environment is needed for os.Expand() when expanding ${VAR} references
 	keys := make([]string, 0, len(envMap))
 	for key, value := range envMap {
+		// Set in OS environment (needed for os.Expand() in expandEnvVars phase)
+		os.Setenv(key, value)
+
 		// Strip IDENTITY_BROKER_ prefix and convert to Viper format
 		viperKey := key
 		if strings.HasPrefix(strings.ToUpper(key), "IDENTITY_BROKER_") {

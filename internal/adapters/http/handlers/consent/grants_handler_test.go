@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
 )
 
 // Helper to create request with principal context
-func newRequestWithPrincipal(method, path, principal string, body interface{}) *http.Request {
+func newRequestWithPrincipal(method, path, principalValue string, body interface{}) *http.Request {
 	var reqBody *bytes.Buffer
 	if body != nil {
 		jsonBody, _ := json.Marshal(body)
@@ -26,8 +27,7 @@ func newRequestWithPrincipal(method, path, principal string, body interface{}) *
 	}
 
 	req := httptest.NewRequest(method, path, reqBody)
-	//nolint:staticcheck // Using string key for test simplicity
-	ctx := context.WithValue(req.Context(), "principal", principal)
+	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	return req.WithContext(ctx)
 }
 
@@ -173,13 +173,11 @@ func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 
 	jsonBody, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/api/consent/agent/agent-123/grants", bytes.NewBuffer(jsonBody))
-	//nolint:staticcheck // Using string key for test simplicity
-	ctx := context.WithValue(req.Context(), "principal", "user@example.com")
-	req = req.WithContext(ctx)
+	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "agent-123")
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
 
 	rr := httptest.NewRecorder()
 
@@ -425,9 +423,14 @@ func TestCreateGrant_Success(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusCreated, rr.Code)
 	}
 
-	var response GrantResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+	var envelope map[string]GrantResponse
+	if err := json.NewDecoder(rr.Body).Decode(&envelope); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	response, ok := envelope["data"]
+	if !ok {
+		t.Fatal("expected 'data' field in response")
 	}
 
 	if response.ID != "grant-new-123" {
@@ -494,9 +497,14 @@ func TestGetGrants_Success(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
 	}
 
-	var response []GrantResponse
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+	var envelope map[string][]GrantResponse
+	if err := json.NewDecoder(rr.Body).Decode(&envelope); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	response, ok := envelope["data"]
+	if !ok {
+		t.Fatal("expected 'data' field in response")
 	}
 
 	if len(response) != 2 {
