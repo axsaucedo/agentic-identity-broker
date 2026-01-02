@@ -9,8 +9,8 @@
 - In-memory (maps with sync.RWMutex), PostgreSQL 12+ (004-persistence-layer)
 - Go 1.24.0 (already configured in go.mod) + chi/v5 v5.2.3 (HTTP router), viper v1.21.0 (configuration), slog (structured logging) (005-session-management)
 - N/A (per-request context only, no persistence) (005-session-management)
-- Go 1.24.0 (backend), Node.js 18+ (frontend build) | Multi-stage Dockerfile (010-docker-setup)
-- N/A (stateless artifact, external config via environment) (010-docker-setup)
+- Go 1.24.0 (backend), Node.js 18+ (frontend build), single-stage Dockerfile with pre-built frontend artifacts (010-docker-setup)
+- N/A (container image is stateless; configuration provided via environment variables) (010-docker-setup)
 
 ## Recent Changes
 - 002-flexible-configuration: Added Go 1.21+
