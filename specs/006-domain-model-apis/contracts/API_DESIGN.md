@@ -837,12 +837,12 @@ When breaking changes are required:
 
 **Option 2: Header Versioning**:
 ```
-Accept: application/vnd.identity-broker.v2+json
+Accept: application/vnd.agentic-identity-broker.v2+json
 ```
 
 **Option 3: Content-Type Versioning**:
 ```
-Content-Type: application/vnd.identity-broker.agent.v2+json
+Content-Type: application/vnd.agentic-identity-broker.agent.v2+json
 ```
 
 **Recommendation**: Start with URL versioning for simplicity

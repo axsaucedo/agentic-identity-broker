@@ -326,7 +326,7 @@ proxy_set_header X-Remote-User $remote_user;
 
 [backends.backend1]
     [backends.backend1.servers.server1]
-        url = "http://identity-broker:8000"
+        url = "http://agentic-identity-broker:8000"
 ```
 
 **HAProxy:**

@@ -1,7 +1,7 @@
 # Agentic Identity Broker - Staging Configuration
 # Use this configuration for staging/pre-production environments
 # Environment variables should be set separately for sensitive values
-# To run: IDENTITY_BROKER_LOG_LEVEL=info IDENTITY_BROKER_LOG_FORMAT=json identity-broker --config ./examples/config/config.staging.yaml
+# To run: IDENTITY_BROKER_LOG_LEVEL=info IDENTITY_BROKER_LOG_FORMAT=json agentic-identity-broker --config ./examples/config/config.staging.yaml
 
 log:
   # Staging uses info level for normal operation

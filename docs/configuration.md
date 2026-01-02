@@ -82,7 +82,7 @@ log:
 Highest precedence - overrides all other sources.
 
 ```bash
-identity-broker --log-level debug --log-format json
+agentic-identity-broker --log-level debug --log-format json
 ```
 
 ## Precedence Rules
@@ -109,21 +109,21 @@ Use the `GO_ENV` environment variable to control which .env files are loaded:
 ### Development (default)
 ```bash
 # GO_ENV defaults to "development" if not set
-identity-broker
+agentic-identity-broker
 
 # Loads: .env → .env.local → .env.development → .env.development.local
 ```
 
 ### Production
 ```bash
-GO_ENV=production identity-broker
+GO_ENV=production agentic-identity-broker
 
 # Loads: .env → .env.local → .env.production → .env.production.local
 ```
 
 ### Staging
 ```bash
-GO_ENV=staging identity-broker
+GO_ENV=staging agentic-identity-broker
 
 # Loads: .env → .env.local → .env.staging → .env.staging.local
 ```
@@ -178,29 +178,29 @@ The following patterns are **rejected** for security:
 ### Available Flags
 
 ```bash
-identity-broker [flags]
+agentic-identity-broker [flags]
 
 Flags:
   -c, --config string       config file path (overrides IDENTITY_BROKER_CONFIG_PATH)
       --log-level string    log level: debug, info, warn, error
       --log-format string   log format: text, json
-  -h, --help               help for identity-broker
+  -h, --help               help for agentic-identity-broker
 ```
 
 ### Examples
 
 ```bash
 # Override log level
-identity-broker --log-level debug
+agentic-identity-broker --log-level debug
 
 # Use custom config file
-identity-broker --config /etc/identity-broker/config.yaml
+agentic-identity-broker --config /etc/agentic-identity-broker/config.yaml
 
 # Multiple flags
-identity-broker --log-level debug --log-format json
+agentic-identity-broker --log-level debug --log-format json
 
 # Short form for config
-identity-broker -c config.production.yaml --log-level warn
+agentic-identity-broker -c config.production.yaml --log-level warn
 ```
 
 ## Configuration Reference
@@ -262,13 +262,13 @@ The broker implements graceful shutdown to ensure requests complete cleanly:
 **Example:**
 ```bash
 # Start broker
-identity-broker &
+agentic-identity-broker &
 
 # Graceful shutdown (waits for requests)
-kill -TERM $(pgrep identity-broker)
+kill -TERM $(pgrep agentic-identity-broker)
 
 # Force shutdown (immediate)
-kill -KILL $(pgrep identity-broker)
+kill -KILL $(pgrep agentic-identity-broker)
 ```
 
 #### Authentication Configuration
@@ -420,7 +420,7 @@ log:
 **Troubleshooting:**
 ```bash
 # Temporarily override to debug level
-identity-broker --log-level debug
+agentic-identity-broker --log-level debug
 ```
 
 For complete configuration examples and detailed explanations, continue to the [Available Settings](#available-settings) section.
@@ -588,7 +588,7 @@ VAR2=${VAR1}
 To see which configuration values are being used and from which sources:
 
 ```bash
-identity-broker
+agentic-identity-broker
 
 # Output shows:
 # === Configuration Summary ===

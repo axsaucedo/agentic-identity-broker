@@ -48,7 +48,7 @@ Docker image uses pre-built binary and frontend assets as inputs.
 - **Spec compliance**: FR-004 requires supporting pre-built binaries; FR-005 requires compiled frontend assets
 
 ### Implementation
-- Backend: Pre-built Go binary from `./bin/identity-broker` (release-quality, built via `just build-all`)
+- Backend: Pre-built Go binary from `./bin/agentic-identity-broker` (release-quality, built via `just build-all`)
 - Frontend: Pre-built static assets from `./web/dist/` (optimized, built via `just build-all`)
 - Both copied into Alpine runtime image by `docker build`
 

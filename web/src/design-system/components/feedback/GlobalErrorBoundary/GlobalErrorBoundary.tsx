@@ -188,13 +188,13 @@ function categorizeError(error: Error): 'network' | 'permission' | 'generic' {
  * @example
  * ```tsx
  * // Basic usage - wrap entire app
- * <GlobalErrorBoundary appName="Identity Broker">
+ * <GlobalErrorBoundary appName="Agentic Identity Broker">
  *   <App />
  * </GlobalErrorBoundary>
  *
  * // With support information
  * <GlobalErrorBoundary
- *   appName="Identity Broker"
+ *   appName="Agentic Identity Broker"
  *   supportEmail="support@example.com"
  *   supportPhone="1-800-SUPPORT"
  *   onError={(error, errorInfo) => logToSentry(error, errorInfo)}

@@ -32,7 +32,7 @@ WORKDIR /app
 # Supports multi-architecture builds via docker buildx
 # TARGETARCH automatically set to: amd64, arm64, etc.
 # Binary should be built with: just build-linux-amd64 or just build-linux-arm64
-COPY --chown=1000:1000 ./bin/linux/${TARGETARCH}/identity-broker /app/agentic-identity-broker
+COPY --chown=1000:1000 ./bin/linux/${TARGETARCH}/agentic-identity-broker /app/agentic-identity-broker
 
 # Copy pre-built frontend assets from ./web/dist/
 # Assumes frontend is already built and available at ./web/dist/consent/

@@ -20,7 +20,7 @@
 Use the justfile targets for all development tasks. Run `just --list` to see all available commands.
 
 **Core Commands:**
-- `just build` - Build the Go binary to ./bin/identity-broker
+- `just build` - Build the Go binary to ./bin/agentic-identity-broker
 - `just build-release` - Build optimized binary for production (30% smaller, no debug info)
 - `just run` - Build and run the application
 - `just dev` - Start hot-reload development server with Air (auto-rebuilds on file changes)

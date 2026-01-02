@@ -306,7 +306,7 @@ storage:
 storage:
   backend: postgres
   postgres:
-    connection_url: "postgresql://identity_broker:${DB_PASSWORD}@db.example.com:5432/identity_broker?sslmode=verify-full&application_name=identity-broker"
+    connection_url: "postgresql://agentic_identity_broker:${DB_PASSWORD}@db.example.com:5432/agentic_identity_broker?sslmode=verify-full&application_name=agentic-identity-broker"
   timeouts:
     read: 5s
     write: 10s

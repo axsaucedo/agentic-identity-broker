@@ -66,7 +66,7 @@ just build-release
 just build-all
 ```
 
-The binary at `./bin/identity-broker` is ready for deployment.
+The binary at `./bin/agentic-identity-broker` is ready for deployment.
 
 ### 4. Run Tests & Quality Checks
 
@@ -112,7 +112,7 @@ See [examples/](examples/) directory for more configuration examples.
 All development tasks are managed using [just](https://github.com/casey/just). Run `just --list` to see all available commands:
 
 ### Building & Running
-- `just build` - Build the binary to ./bin/identity-broker
+- `just build` - Build the binary to ./bin/agentic-identity-broker
 - `just build-release` - Build optimized binary for production (30% smaller)
 - `just run` - Build and run the application
 - `just dev` - Start hot-reload development server
@@ -212,9 +212,9 @@ For detailed documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```
 .
-├── cmd/                          # Application entry points
-│   └── identity-broker/          # Main application binary
-├── internal/                     # Private application code (hexagonal architecture)
+├── cmd/                         # Application entry points
+│   └── agentic-identity-broker/ # Main application binary
+├── internal/                    # Private application code (hexagonal architecture)
 │   ├── adapters/                # Infrastructure adapters
 │   │   ├── http/                # HTTP handlers for end-user & admin APIs
 │   │   ├── config/              # Configuration loading & validation
@@ -290,7 +290,7 @@ This project enforces governance-compliant development using the justfile and sp
 Run `just --list` to see all available commands:
 
 **Building & Running**:
-- `just build` - Build binary to ./bin/identity-broker
+- `just build` - Build binary to ./bin/agentic-identity-broker
 - `just build-release` - Production-optimized build (30% smaller)
 - `just run` - Build and run the application
 - `just dev` - Start hot-reload development server (Air)
@@ -587,7 +587,7 @@ Output: `web/dist/consent/` directory with optimized static files.
 **Deploy with Go Backend:**
 1. Build frontend: `cd web && npm run build`
 2. Build Go binary: `just build-release`
-3. Deploy `bin/identity-broker` with embedded `web/dist/consent/`
+3. Deploy `bin/agentic-identity-broker` with embedded `web/dist/consent/`
 
 The Go backend automatically serves the SPA from the embedded directory.
 

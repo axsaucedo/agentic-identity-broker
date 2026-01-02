@@ -231,7 +231,7 @@ func (l *Loader) GetSources() []ConfigSource {
 
 ### Step 4: Setup CLI with Cobra
 
-Create `cmd/identity-broker/root.go`:
+Create `cmd/agentic-identity-broker/root.go`:
 
 ```go
 package main
@@ -242,7 +242,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-    Use:   "identity-broker",
+    Use:   "agentic-identity-broker",
     Short: "Agentic Identity Broker",
     RunE:  run,
 }
@@ -278,7 +278,7 @@ func run(cmd *cobra.Command, args []string) error {
 }
 ```
 
-Create `cmd/identity-broker/main.go`:
+Create `cmd/agentic-identity-broker/main.go`:
 
 ```go
 package main
@@ -426,16 +426,16 @@ log:
 
 ```bash
 # With defaults only
-./identity-broker
+./agentic-identity-broker
 
 # With YAML config
-./identity-broker --config /path/to/config.yaml
+./agentic-identity-broker --config /path/to/config.yaml
 
 # Override log level via CLI flag
-./identity-broker --log-level debug
+./agentic-identity-broker --log-level debug
 
 # With environment-specific .env file
-GO_ENV=production ./identity-broker
+GO_ENV=production ./agentic-identity-broker
 ```
 
 ## Expected Output
@@ -457,7 +457,7 @@ Audit Log (JSON):
 
 **Solution**: Provide log level via .env file, YAML, or CLI flag:
 ```bash
-./identity-broker --log-level info
+./agentic-identity-broker --log-level info
 ```
 
 ### Error: "Environment variable 'IDENTITY_BROKER_API_KEY' not set"
@@ -465,7 +465,7 @@ Audit Log (JSON):
 **Solution**: Set the environment variable before running:
 ```bash
 export IDENTITY_BROKER_API_KEY=your-key
-./identity-broker
+./agentic-identity-broker
 ```
 
 ### Error: "Permission denied reading 'config.yaml'"

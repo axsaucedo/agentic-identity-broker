@@ -69,7 +69,7 @@ export IDENTITY_BROKER_LOG_LEVEL=debug
 
 ```bash
 # Override at runtime
-./bin/identity-broker \
+./bin/agentic-identity-broker \
   --server.enduser.port 9000 \
   --server.admin.port 9001 \
   --log.level debug
@@ -94,13 +94,13 @@ just run
 just build
 
 # Run with default config
-./bin/identity-broker
+./bin/agentic-identity-broker
 
 # Run with custom config
-./bin/identity-broker --config ./examples/config/config.development.yaml
+./bin/agentic-identity-broker --config ./examples/config/config.development.yaml
 
 # Run with CLI overrides
-./bin/identity-broker \
+./bin/agentic-identity-broker \
   --server.enduser.port 8080 \
   --server.admin.port 14001 \
   --log.level debug
@@ -167,10 +167,10 @@ curl http://[::1]:14000/health
 
 ```bash
 # Terminal 1: Start server
-./bin/identity-broker
+./bin/agentic-identity-broker
 
 # Terminal 2: Send SIGTERM
-kill -TERM $(pgrep identity-broker)
+kill -TERM $(pgrep agentic-identity-broker)
 
 # Check logs:
 # [INFO] Received shutdown signal
@@ -189,7 +189,7 @@ kill -TERM $(pgrep identity-broker)
 nc -l 14000
 
 # Terminal 2: Try to start server (should fail)
-./bin/identity-broker
+./bin/agentic-identity-broker
 
 # Expected logs:
 # [ERROR] Failed to start admin server: bind: address already in use
@@ -219,7 +219,7 @@ export IDENTITY_BROKER_SERVER_ADMIN_PORT=5000
 
 **CLI Flags**:
 ```bash
-./bin/identity-broker \
+./bin/agentic-identity-broker \
   --server.enduser.port 3000 \
   --server.admin.port 5000
 ```
@@ -288,7 +288,7 @@ log:
 
 2. Kill the process or change the port:
    ```bash
-   ./bin/identity-broker --server.enduser.port 8001 --server.admin.port 14001
+   ./bin/agentic-identity-broker --server.enduser.port 8001 --server.admin.port 14001
    ```
 
 ### Permission Denied (Privileged Ports)
@@ -305,7 +305,7 @@ log:
 
 2. Or run with elevated privileges (not recommended):
    ```bash
-   sudo ./bin/identity-broker
+   sudo ./bin/agentic-identity-broker
    ```
 
 ### IPv6 Not Available
@@ -340,7 +340,7 @@ curl -i http://localhost:8000/health
 2. Check configuration precedence (CLI > env > YAML > defaults)
 3. Enable debug logging to see which values are loaded:
    ```bash
-   ./bin/identity-broker --log.level debug
+   ./bin/agentic-identity-broker --log.level debug
    ```
 
 ## Development Workflow
@@ -417,20 +417,20 @@ git commit -m "feat: implement dual-port HTTP server"
 just build
 
 # Run
-./bin/identity-broker
+./bin/agentic-identity-broker
 
 # Test health
 curl http://localhost:8000/health    # End-user
 curl http://localhost:14000/health   # Admin
 
 # Stop (graceful)
-kill -TERM $(pgrep identity-broker)
+kill -TERM $(pgrep agentic-identity-broker)
 
 # Check logs
-tail -f logs/identity-broker.log
+tail -f logs/agentic-identity-broker.log
 
 # Override port
-./bin/identity-broker --server.enduser.port 9000
+./bin/agentic-identity-broker --server.enduser.port 9000
 ```
 
 ## Configuration Precedence

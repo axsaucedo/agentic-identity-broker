@@ -1,6 +1,6 @@
 # Agentic Identity Broker - Consent Frontend Configuration
 # Example configuration for enabling the consent management SPA
-# To run: identity-broker --config ./examples/config/consent-frontend.yaml
+# To run: agentic-identity-broker --config ./examples/config/consent-frontend.yaml
 
 log:
   # Use info level for production

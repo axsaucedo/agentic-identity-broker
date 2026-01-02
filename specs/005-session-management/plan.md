@@ -119,7 +119,7 @@ internal/
     └── schema.go                  # UPDATE: Add authentication.preauth.principal_header_name field
 
 cmd/
-└── identity-broker/
+└── agentic-identity-broker/
     └── main.go                    # UPDATE: Configure principal middleware
 
 tests/

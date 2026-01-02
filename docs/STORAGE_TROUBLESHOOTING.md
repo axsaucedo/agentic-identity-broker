@@ -29,7 +29,7 @@ This guide helps diagnose and resolve common storage layer issues.
 
 3. **Enable debug logging**:
    ```bash
-   identity-broker --log-level=debug --config config.yaml
+   agentic-identity-broker --log-level=debug --config config.yaml
    ```
 
 ### "Database Connection Failed"
@@ -65,7 +65,7 @@ telnet localhost 5432
 **Solution**: Run database migrations
 ```bash
 # Create database and schema
-identity-broker migrate up
+agentic-identity-broker migrate up
 
 # Verify schema was created
 psql $IDENTITY_BROKER_STORAGE_POSTGRES_URL -c "
@@ -122,7 +122,7 @@ storage:
 1. **Restart application periodically**
    ```bash
    # Use deployment's rolling restart
-   kubectl rollout restart deployment/identity-broker
+   kubectl rollout restart deployment/agentic-identity-broker
    ```
 
 2. **Switch to PostgreSQL for production**
@@ -168,7 +168,7 @@ The default pool configuration is:
 
 To reduce load, either:
 
-1. **Decrease number of identity-broker instances**
+1. **Decrease number of agentic-identity-broker instances**
 2. **Use connection pooler** (PgBouncer, pgpool)
    ```yaml
    storage:
@@ -205,7 +205,7 @@ watch -n 1 "psql $IDENTITY_BROKER_STORAGE_POSTGRES_URL -c
 
 **Verify redaction is working**:
 ```bash
-identity-broker --log-level=debug --config config.prod.yaml 2>&1 | grep -i password
+agentic-identity-broker --log-level=debug --config config.prod.yaml 2>&1 | grep -i password
 # Should output nothing - password should be redacted as "[REDACTED]"
 ```
 
@@ -327,16 +327,16 @@ Enable detailed logging:
 export IDENTITY_BROKER_LOG_LEVEL=debug
 export IDENTITY_BROKER_LOG_FORMAT=json
 
-identity-broker --config config.yaml
+agentic-identity-broker --config config.yaml
 ```
 
 JSON logs can be parsed and analyzed:
 ```bash
 # Filter for storage errors
-identity-broker | jq 'select(.component=="storage")'
+agentic-identity-broker | jq 'select(.component=="storage")'
 
 # Count errors by type
-identity-broker | jq -r '.error_kind' | sort | uniq -c
+agentic-identity-broker | jq -r '.error_kind' | sort | uniq -c
 ```
 
 ## Testing Connectivity
@@ -358,10 +358,10 @@ storage:
     write: 10s
 EOF
 
-identity-broker --config test.yaml &
+agentic-identity-broker --config test.yaml &
 sleep 2
 curl -f http://localhost:8000/health || echo "Health check failed"
-pkill -f identity-broker
+pkill -f agentic-identity-broker
 
 # Check PostgreSQL backend
 if [ ! -z "$IDENTITY_BROKER_STORAGE_POSTGRES_URL" ]; then
@@ -376,10 +376,10 @@ storage:
     write: 10s
 EOF
 
-  identity-broker --config test.yaml &
+  agentic-identity-broker --config test.yaml &
   sleep 3
   curl -f http://localhost:8000/health || echo "PostgreSQL health check failed"
-  pkill -f identity-broker
+  pkill -f agentic-identity-broker
 fi
 
 echo "Storage connectivity tests complete"
@@ -391,7 +391,7 @@ If you cannot resolve the issue:
 
 1. **Check logs with timestamps**
    ```bash
-   identity-broker --log-level=debug 2>&1 | tee app.log
+   agentic-identity-broker --log-level=debug 2>&1 | tee app.log
    ```
 
 2. **Capture error context**

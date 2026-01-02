@@ -1,7 +1,7 @@
 # Agentic Identity Broker - IPv4-Only Configuration
 # Use this configuration for IPv4-only environments
 # Useful for systems without IPv6 support or when IPv6 must be explicitly disabled
-# To run: identity-broker --config ./examples/config/config.ipv4-only.yaml
+# To run: agentic-identity-broker --config ./examples/config/config.ipv4-only.yaml
 
 log:
   # Info level for normal operation

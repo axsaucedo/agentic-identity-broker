@@ -179,7 +179,7 @@ func (e *ConfigError) Unwrap() error {
 
 ### 4. Fix Viper Instance Scoping
 
-**File**: `cmd/identity-broker/root.go`
+**File**: `cmd/agentic-identity-broker/root.go`
 
 **Change**:
 ```go

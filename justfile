@@ -1,7 +1,7 @@
 # Variable definitions
-IMAGE := "agentic-identity-broker"
+NAME := "agentic-identity-broker"
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
-BINARY := "identity-broker"
+
 
 # Default recipe (shown when running `just` with no args)
 default:
@@ -13,38 +13,38 @@ default:
 
 # Build the Go binary for the host OS/ARCH
 build:
-    @echo "Building {{BINARY}}..."
+    @echo "Building {{NAME}}..."
     @mkdir -p bin
-    go build -ldflags="-s -w" -o bin/{{BINARY}} ./cmd/{{BINARY}}
-    @echo "✓ Built: bin/{{BINARY}}"
+    go build -ldflags="-s -w" -o bin/{{NAME}} ./cmd/{{NAME}}
+    @echo "✓ Built: bin/{{NAME}}"
 
 # Build Linux binary for arm64
 build-linux-arm64:
     @echo "Building Linux binary for arm64..."
     @mkdir -p bin/linux/arm64
-    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/arm64/{{BINARY}} ./cmd/{{BINARY}}
-    @echo "✓ Built: bin/linux/arm64/{{BINARY}}"
+    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/arm64/{{NAME}} ./cmd/{{NAME}}
+    @echo "✓ Built: bin/linux/arm64/{{NAME}}"
 
 # Build Linux binary for amd64
 build-linux-amd64:
     @echo "Building Linux binary for amd64..."
     @mkdir -p bin/linux/amd64
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/amd64/{{BINARY}} ./cmd/{{BINARY}}
-    @echo "✓ Built: bin/linux/amd64/{{BINARY}}"
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/amd64/{{NAME}} ./cmd/{{NAME}}
+    @echo "✓ Built: bin/linux/amd64/{{NAME}}"
 
 # Build macOS binary for arm64 (Apple Silicon)
 build-darwin-arm64:
     @echo "Building macOS binary for arm64..."
     @mkdir -p bin/darwin/arm64
-    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/darwin/arm64/{{BINARY}} ./cmd/{{BINARY}}
-    @echo "✓ Built: bin/darwin/arm64/{{BINARY}}"
+    GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/darwin/arm64/{{NAME}} ./cmd/{{NAME}}
+    @echo "✓ Built: bin/darwin/arm64/{{NAME}}"
 
 # Build Windows binary for amd64
 build-windows-amd64:
     @echo "Building Windows binary for amd64..."
     @mkdir -p bin/windows/amd64
-    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/windows/amd64/{{BINARY}}.exe ./cmd/{{BINARY}}
-    @echo "✓ Built: bin/windows/amd64/{{BINARY}}.exe"
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/windows/amd64/{{NAME}}.exe ./cmd/{{NAME}}
+    @echo "✓ Built: bin/windows/amd64/{{NAME}}.exe"
 
 # Run all Go tests with verbose output
 test:
@@ -68,8 +68,8 @@ test-coverage-summary:
 
 # Build and run the application
 run: build
-    @echo "Running {{BINARY}}..."
-    ./bin/{{BINARY}}
+    @echo "Running {{NAME}}..."
+    ./bin/{{NAME}}
 
 # Run with Air for hot-reload development (requires air to be installed)
 dev:
@@ -167,7 +167,7 @@ web-build:
     cd web && npm run build
 
 # Build both Go backend and web frontend in release quality
-# Produces artifacts: ./bin/{{BINARY}} and ./web/dist/
+# Produces artifacts: ./bin/{{NAME}} and ./web/dist/
 build-all: build web-build
     @echo "✓ Build complete: Go backend and web frontend"
 
@@ -179,7 +179,7 @@ build-all: build web-build
 # Builds for linux/amd64 and linux/arm64 using docker buildx
 # Optional: set BUILDKIT_CONFIG to a buildx config file path (defaults to /etc/cdp-buildkitd.toml if present) 
 docker-push: build-linux-amd64 build-linux-arm64 web-build
-    @echo "Building and pushing multi-architecture Docker images: {{IMAGE}}:{{VERSION}} (amd64, arm64)..."
+    @echo "Building and pushing multi-architecture Docker images: {{NAME}}:{{VERSION}} (amd64, arm64)..."
     @BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
     if [ -f "$$BUILDKIT_CONFIG" ]; then \
         echo "Using buildx config: $$BUILDKIT_CONFIG"; \
@@ -188,8 +188,8 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
         echo "Note: buildx config not found at $$BUILDKIT_CONFIG"; \
         docker buildx create --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
     fi; \
-    docker buildx build --rm -t "{{IMAGE}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .
-    @echo "✓ Multi-architecture images pushed: {{IMAGE}}:{{VERSION}}"
+    docker buildx build --rm -t "{{NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .
+    @echo "✓ Multi-architecture images pushed: {{NAME}}:{{VERSION}}"
 
 # =============================================================================
 # Documentation Targets

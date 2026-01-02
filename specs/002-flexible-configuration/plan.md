@@ -76,7 +76,7 @@ internal/
     └── config.go              # Configuration port interface definition
 
 cmd/
-└── identity-broker/
+└── agentic-identity-broker/
     ├── main.go                # Application entry point
     └── root.go                # Cobra root command with flag definitions
 
@@ -177,7 +177,7 @@ func (e *ConfigError) Unwrap() error {
 
 ### 4. Fix Viper Instance Scoping
 
-**Location**: `cmd/identity-broker/root.go`, `internal/config/loader.go`
+**Location**: `cmd/agentic-identity-broker/root.go`, `internal/config/loader.go`
 
 **Required Changes**:
 - Remove global Viper usage in `root.go` init()

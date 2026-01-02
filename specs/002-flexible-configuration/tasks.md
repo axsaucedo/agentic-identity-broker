@@ -25,7 +25,7 @@
 **Purpose**: Project initialization and basic structure
 
 - [X] T001 Initialize Go module dependencies in go.mod (viper v1.18+, cobra v1.8+, godotenv v1.5+)
-- [X] T002 [P] Create directory structure: internal/config/, internal/domain/config/, internal/ports/, cmd/identity-broker/, tests/fixtures/config/, tests/integration/config/, tests/unit/config/
+- [X] T002 [P] Create directory structure: internal/config/, internal/domain/config/, internal/ports/, cmd/agentic-identity-broker/, tests/fixtures/config/, tests/integration/config/, tests/unit/config/
 - [X] T003 [P] Create configuration file examples in examples/config/: config.yaml.example, .env.example, .env.production.example
 - [X] T004 [P] Create test fixture directories: tests/fixtures/config/valid/, tests/fixtures/config/invalid/, tests/fixtures/config/security/
 
@@ -63,8 +63,8 @@
 - [X] T013 [US1] Implement GetConfig(ctx) method skeleton in internal/config/loader.go (Call setDefaults, loadEnvFiles, return config - YAML/CLI/validation to be added in later stories)
 - [X] T014 [US1] Implement GetSources() method in internal/config/loader.go (Return ConfigSource slice with metadata about loaded .env files)
 - [X] T015 [P] [US1] Implement Redact() function in internal/config/redactor.go (Replace values for keys prefixed with IDENTITY_BROKER_ per SR-001)
-- [X] T016 [P] [US1] Create displayStartupSummary() function in cmd/identity-broker/root.go (Show all config keys, redacted values, sources)
-- [X] T017 [US1] Integrate configuration loading in cmd/identity-broker/root.go run() function (Create Loader, call GetConfig, display summary, handle errors)
+- [X] T016 [P] [US1] Create displayStartupSummary() function in cmd/agentic-identity-broker/root.go (Show all config keys, redacted values, sources)
+- [X] T017 [US1] Integrate configuration loading in cmd/agentic-identity-broker/root.go run() function (Create Loader, call GetConfig, display summary, handle errors)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - .env files load with correct precedence, startup summary displays, sensitive values redacted
 
@@ -97,12 +97,12 @@
 
 ### Implementation for User Story 3
 
-- [X] T024 [P] [US3] Define persistent flags in cmd/identity-broker/root.go init() function (Add --config, --log-level, --log-format flags)
+- [X] T024 [P] [US3] Define persistent flags in cmd/agentic-identity-broker/root.go init() function (Add --config, --log-level, --log-format flags)
 - [X] T025 [US3] Implement BindFlags() method in internal/config/loader.go (Bind Cobra flags to instance-scoped Viper, not global state per review fix #4)
 - [X] T026 [US3] Update GetConfig(ctx) method in internal/config/loader.go (Call BindFlags() after expandEnvVars() to ensure highest precedence)
 - [X] T027 [US3] Update GetSources() to track CLI flag usage in internal/config/loader.go (Record which keys came from CLI flags with precedence 3)
-- [X] T028 [US3] Update displayStartupSummary() in cmd/identity-broker/root.go (Show [source: CLI] for flag-provided values)
-- [X] T029 [US3] Handle duplicate flag values in cmd/identity-broker/root.go (Verify Cobra's default "last wins" behavior works correctly per FR-003)
+- [X] T028 [US3] Update displayStartupSummary() in cmd/agentic-identity-broker/root.go (Show [source: CLI] for flag-provided values)
+- [X] T029 [US3] Handle duplicate flag values in cmd/agentic-identity-broker/root.go (Verify Cobra's default "last wins" behavior works correctly per FR-003)
 
 **Checkpoint**: All three configuration sources work with correct precedence - CLI flags override YAML which overrides .env which overrides defaults
 
@@ -121,9 +121,9 @@
 - [X] T032 [US4] Add validation call to GetConfig(ctx) in internal/config/loader.go (Validate config struct after Unmarshal, before returning, using custom validators)
 - [X] T033 [P] [US4] Implement YAML parsing error handling in internal/config/loader.go (Catch YAML syntax errors, format with file path and line number per FR-014)
 - [X] T034 [P] [US4] Implement file permission error handling in internal/config/loader.go (Catch EACCES errors, fail securely with clear message per SR-003)
-- [X] T035 [US4] Add graceful termination on configuration errors in cmd/identity-broker/main.go (Handle ConfigError, display message, exit with non-zero code per FR-012)
-- [X] T036 [P] [US4] Implement emitAuditLog() function in cmd/identity-broker/root.go (Output structured JSON to stdout with sources, keys, redacted_keys, timestamp per SR-004)
-- [X] T037 [US4] Integrate audit logging in cmd/identity-broker/root.go run() function (Call emitAuditLog() after successful configuration load, before startup summary)
+- [X] T035 [US4] Add graceful termination on configuration errors in cmd/agentic-identity-broker/main.go (Handle ConfigError, display message, exit with non-zero code per FR-012)
+- [X] T036 [P] [US4] Implement emitAuditLog() function in cmd/agentic-identity-broker/root.go (Output structured JSON to stdout with sources, keys, redacted_keys, timestamp per SR-004)
+- [X] T037 [US4] Integrate audit logging in cmd/agentic-identity-broker/root.go run() function (Call emitAuditLog() after successful configuration load, before startup summary)
 
 **Checkpoint**: All configuration validation works end-to-end with clear error messages, audit logging, graceful termination on errors
 
@@ -204,7 +204,7 @@
 Task: "Implement setDefaults() function in internal/config/loader.go"
 Task: "Implement loadEnvFiles() function in internal/config/loader.go"
 Task: "Implement Redact() function in internal/config/redactor.go"
-Task: "Create displayStartupSummary() function in cmd/identity-broker/root.go"
+Task: "Create displayStartupSummary() function in cmd/agentic-identity-broker/root.go"
 
 # Then integrate:
 Task: "Create Loader struct with viper instance in internal/config/loader.go"

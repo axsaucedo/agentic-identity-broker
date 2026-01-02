@@ -404,7 +404,7 @@ type DelegatedToken struct {
 ```go
 package dto
 
-import "github.com/your-org/identity-broker/internal/domain"
+import "github.com/your-org/agentic-identity-broker/internal/domain"
 
 type GetUserInfoResponse struct {
     Data domain.UserInfo `json:"data"`

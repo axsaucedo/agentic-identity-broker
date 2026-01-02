@@ -343,8 +343,8 @@ import (
     "time"
 
     "github.com/jmoiron/sqlx"
-    "github.com/your-org/identity-broker/internal/domain"
-    "github.com/your-org/identity-broker/internal/ports"
+    "github.com/your-org/agentic-identity-broker/internal/domain"
+    "github.com/your-org/agentic-identity-broker/internal/ports"
 )
 
 type userGrantRepository struct {
@@ -394,8 +394,8 @@ import (
     "context"
     "fmt"
 
-    "github.com/your-org/identity-broker/internal/domain"
-    "github.com/your-org/identity-broker/internal/ports"
+    "github.com/your-org/agentic-identity-broker/internal/domain"
+    "github.com/your-org/agentic-identity-broker/internal/ports"
 )
 
 type ConsentService struct {
@@ -480,9 +480,9 @@ import (
     "encoding/json"
     "net/http"
 
-    "github.com/your-org/identity-broker/internal/adapters/http/dto"
-    "github.com/your-org/identity-broker/internal/services"
-    "github.com/your-org/identity-broker/pkg/session"
+    "github.com/your-org/agentic-identity-broker/internal/adapters/http/dto"
+    "github.com/your-org/agentic-identity-broker/internal/services"
+    "github.com/your-org/agentic-identity-broker/pkg/session"
 )
 
 type ConsentAgentsHandler struct {
@@ -666,8 +666,8 @@ import (
 
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/mock"
-    "github.com/your-org/identity-broker/internal/domain"
-    "github.com/your-org/identity-broker/internal/services"
+    "github.com/your-org/agentic-identity-broker/internal/domain"
+    "github.com/your-org/agentic-identity-broker/internal/services"
 )
 
 func TestGetAgentDelegations(t *testing.T) {
@@ -712,7 +712,7 @@ import (
 
     "github.com/stretchr/testify/assert"
     "github.com/testcontainers/testcontainers-go"
-    "github.com/your-org/identity-broker/internal/adapters/storage/postgres"
+    "github.com/your-org/agentic-identity-broker/internal/adapters/storage/postgres"
 )
 
 func TestUserGrantRepository_ListByPrincipal(t *testing.T) {

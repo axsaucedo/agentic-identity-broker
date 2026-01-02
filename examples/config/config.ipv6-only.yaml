@@ -1,7 +1,7 @@
 # Agentic Identity Broker - IPv6-Only Configuration
 # Use this configuration for IPv6-only environments
 # Tests dual-stack binding with IPv6 preference
-# To run: identity-broker --config ./examples/config/config.ipv6-only.yaml
+# To run: agentic-identity-broker --config ./examples/config/config.ipv6-only.yaml
 
 log:
   # Info level for normal operation

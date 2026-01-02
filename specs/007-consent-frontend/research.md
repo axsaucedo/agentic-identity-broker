@@ -1114,7 +1114,7 @@ export IDENTITY_BROKER_SPA_SERVE_ENABLED=false
 
 ### 5.4 CLI Flag Support
 
-Add CLI flags to `cmd/identity-broker/root.go`:
+Add CLI flags to `cmd/agentic-identity-broker/root.go`:
 
 ```go
 func init() {
