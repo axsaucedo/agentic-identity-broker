@@ -187,18 +187,17 @@ build-all: build web-build
 # Builds for linux/amd64 and linux/arm64 using docker buildx
 # Optional: set BUILDKIT_CONFIG to a buildx config file path (defaults to /etc/cdp-buildkitd.toml if present) 
 docker-push: build-linux-amd64 build-linux-arm64 web-build
-    @echo "Building and pushing multi-architecture Docker images: $(IMAGE):$(VERSION) (amd64, arm64)..."
+    @echo "Building and pushing multi-architecture Docker images: {{IMAGE}}:{{VERSION}} (amd64, arm64)..."
     @BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
     if [ -f "$$BUILDKIT_CONFIG" ]; then \
-        CONFIG_FLAG="--config $$BUILDKIT_CONFIG"; \
         echo "Using buildx config: $$BUILDKIT_CONFIG"; \
+        docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
     else \
-        CONFIG_FLAG=""; \
-        echo "Warning: buildx config '$$BUILDKIT_CONFIG' not found; creating builder with default configuration."; \
+        echo "Note: buildx config not found at $$BUILDKIT_CONFIG"; \
+        docker buildx create --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
     fi; \
-    docker buildx create --config /etc/cdp-buildkitd.toml --driver-opt network=host --bootstrap --use
-    docker buildx build --rm -t "$(IMAGE)" --platform linux/amd64,linux/arm64 --push .
-    @echo "✓ Multi-architecture images pushed: $(IMAGE):$(VERSION)"
+    docker buildx build --rm -t "{{IMAGE}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .
+    @echo "✓ Multi-architecture images pushed: {{IMAGE}}:{{VERSION}}"
 
 # =============================================================================
 # Documentation Targets
