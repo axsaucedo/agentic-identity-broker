@@ -11,11 +11,12 @@
 This feature creates a production-ready Docker image that packages pre-built Go backend and React frontend artifacts into a single, optimized container. The implementation uses a lightweight Dockerfile that copies existing binaries and assets without rebuilding them.
 
 **Key Design Decisions**:
-- Dockerfile copies pre-built artifacts (from `./bin/` and `./web/dist/`)
-- Alpine base image for minimal footprint (~7-10MB)
-- Non-root user execution for security
-- ARG TARGETARCH for future multi-architecture support
-- Integration with justfile task system (`just build-all` → `just docker-build` → `just docker-run`)
+- Dockerfile copies pre-built artifacts from architecture-specific paths (`./bin/linux/{amd64,arm64}/` and `./web/dist/consent/`)
+- Alpine base image for minimal footprint (18.5MB with all content)
+- Non-root user execution for security (uid=1000)
+- ARG TARGETARCH for multi-architecture support via docker buildx
+- Binary naming: `identity-broker` in source, `agentic-identity-broker` in container
+- Integration with justfile task system (`just build-all` → `just build-linux-{amd64,arm64}` + `just web-build` → `just docker-push`)
 
 **Independent Test Approach**: Each user story is independently testable without other stories' completion.
 
@@ -37,9 +38,9 @@ Create Dockerfile, Docker-related justfile tasks, and build configuration to ena
 ### Tasks
 
 - [x] T001 Create Dockerfile with Alpine base image in project root
-  - [x] Base image: `alpine:latest`
-  - [x] Copy pre-built backend binary from `./bin/identity-broker` to `/app/identity-broker`
-  - [x] Copy pre-built frontend assets from `./web/dist/` to `/app/web/dist/`
+  - [x] Base image: `registry.opensource.zalan.do/library/alpine-3:latest` (with fallback to alpine)
+  - [x] Copy pre-built backend binary from `./bin/linux/${TARGETARCH}/identity-broker` to `/app/agentic-identity-broker`
+  - [x] Copy pre-built frontend assets from `./web/dist/consent/` to `/app/web/dist/consent/`
   - [x] Create non-root user: `appuser` (uid=1000, gid=1000)
   - [x] Set working directory: `WORKDIR /app`
   - [x] Expose port: `EXPOSE 8000`
@@ -49,18 +50,20 @@ Create Dockerfile, Docker-related justfile tasks, and build configuration to ena
 
 - [x] T002 [P] Create `.dockerignore` file in project root to exclude non-essential files
   - [x] Exclude: `.git/`, `.gitignore`, `node_modules/`, `.env*`
-  - [x] Exclude: `tests/`, `coverage/`, `build/` directories
-  - [x] Exclude: `.specify/`, `specs/`, `adrs/`, `docs/` directories
+  - [x] Exclude: `test/`, `coverage/`, `bin/` (but include `bin/linux/`), `tmp/`
+  - [x] Exclude: `.specify/`, `specs/`, `adrs/`, `dist/*` (but include `web/dist/consent/`)
+  - [x] Include negations: `!bin/linux/`, `!web/dist/`, `!web/dist/consent/`
 
 - [x] T003 Update `justfile` with docker build tasks
-  - [x] Add task: `docker-build` - Build Docker image (target: `identity-broker:latest`)
+  - [x] Add task: `docker-push` - Build multi-architecture Docker images and push to registry
   - [x] Add task: `docker-run` - Run Docker image locally (expose port 8000)
-  - [x] Update existing `build-all` task comment to note it produces artifacts for docker-build
-  - [x] Include help text describing each task
+  - [x] Update existing `build-all` task comment to note it produces artifacts for docker-push
+  - [x] Include help text describing each task with `{{BINARY}}` and `{{IMAGE}}:{{VERSION}}` variable usage
 
 - [x] T004 Add build prerequisites validation
   - [x] Verify Docker is installed and running (`docker --version`)
-  - [x] Verify required binaries exist before Docker build (`./bin/identity-broker`, `./web/dist/`)
+  - [x] Verify required binaries exist before Docker build (`./bin/linux/amd64/identity-broker` or `./bin/linux/arm64/identity-broker`)
+  - [x] Verify frontend assets exist (`./web/dist/consent/`)
   - [x] Provide helpful error messages if prerequisites missing
 
 
@@ -162,13 +165,13 @@ Enable developers to build and run containerized application using the unified t
 
 ### Tasks
 
-- [x] T017 [US2] Implement `just docker-build` task
-  - [x] File: `justfile` - **✓ Implemented** (lines 149-170)
-  - [x] Command: build Docker image with error checking - **✓**: Full error checking in place
-  - [x] Verify prerequisites: Docker installed, pre-built artifacts exist - **✓**: Validates ./bin/identity-broker and ./web/dist/consent/
-  - [x] Execute: `docker build -t identity-broker:latest .` - **✓**: Executes docker build command
+- [x] T017 [US2] Implement `just docker-push` task
+  - [x] File: `justfile` - **✓ Implemented** (lines 193-204)
+  - [x] Command: build multi-architecture images with error checking - **✓**: Full error checking in place
+  - [x] Verify prerequisites: Docker installed, architecture binaries exist - **✓**: Validates ./bin/linux/amd64 and ./bin/linux/arm64
+  - [x] Execute: `docker buildx build --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .` - **✓**: Buildx command
   - [x] Error handling: exit with helpful message if Docker not installed or build fails - **✓**: Comprehensive error messages
-  - [x] Success message: confirm image created and ready for deployment - **✓**: Displays image info
+  - [x] Success message: confirm images pushed to registry - **✓**: Displays push confirmation
 
 - [x] T018 [US2] Implement `just docker-run` task
   - [x] File: `justfile` - **✓ Implemented** (lines 172-182)
@@ -185,10 +188,10 @@ Enable developers to build and run containerized application using the unified t
   - [x] Document in README.md or AGENT.md: Docker workflow instructions - **See**: IMAGE_METADATA.md and AGENT.md
 
 - [x] T020 [P] [US2] Verify `just build-all` includes Docker integration
-  - [x] File: `justfile` - **✓ Line 142**: `build-all: build-release web-build`
-  - [x] Update `build-all` task comment to document that it produces artifacts for docker-build - **✓**: Comment updated
+  - [x] File: `justfile` - **✓ Line 183**: `build-all: build web-build`
+  - [x] Update `build-all` task comment to document that it produces artifacts for docker-push - **✓**: Comment updated
   - [x] Verify dependency order: `build-all` → builds backend → builds frontend - **✓**: Correct order
-  - [x] Document: developers can run `just build-all && just docker-build` sequence - **✓**: Documented in AGENT.md
+  - [x] Document: developers can run `just build-linux-amd64 && just build-linux-arm64 && just web-build && just docker-push` - **✓**: Documented in AGENT.md
 
 - [x] T021 [US2] Add error handling and diagnostics
   - [x] Detect missing prerequisites:
