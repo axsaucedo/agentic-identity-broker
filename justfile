@@ -1,14 +1,6 @@
 # Variable definitions
-# Base image name used across Docker-related recipes.
 IMAGE := "agentic-identity-broker"
-
-# VERSION is derived from git for reproducible, identifiable release tags
-# (used e.g. by multi-arch push/publish tasks). Local docker-build targets
-# intentionally tag images as `${IMAGE}:latest` for a simpler developer
-# workflow and to avoid stale version tags during rapid iteration, so they
-# do not use this VERSION value.
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
-
 BINARY := "identity-broker"
 
 # Default recipe (shown when running `just` with no args)
