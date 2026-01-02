@@ -5,7 +5,7 @@ FROM alpine:latest
 # Build arguments for multi-architecture support via docker buildx
 # When using: docker buildx build --platform linux/amd64,linux/arm64 ...
 # TARGETARCH is automatically set to: amd64, arm64, etc.
-ARG TARGETARCH
+ARG TARGETARCH=amd64
 
 # Image metadata labels
 LABEL org.opencontainers.image.title="Agentic Identity Broker"
