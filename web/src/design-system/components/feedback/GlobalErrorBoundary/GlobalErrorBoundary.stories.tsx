@@ -128,7 +128,7 @@ export const Default: Story = {
           </div>
         )}
 
-        <GlobalErrorBoundary appName="Identity Broker">
+        <GlobalErrorBoundary appName="Agentic Identity Broker">
           <BuggyApp shouldThrow={shouldThrow} />
         </GlobalErrorBoundary>
       </div>
@@ -143,7 +143,7 @@ export const WithFullPageError: Story = {
   render: () => {
     return (
       <GlobalErrorBoundary
-        appName="Identity Broker"
+        appName="Agentic Identity Broker"
         showDetails={false}
       >
         <BrokenApp />
@@ -159,7 +159,7 @@ export const WithFooterActions: Story = {
   render: () => {
     return (
       <GlobalErrorBoundary
-        appName="Identity Broker"
+        appName="Agentic Identity Broker"
         supportEmail="agentic-identity-broker@example.com"
         supportPhone="0-000-000-0000"
         supportUrl="https://agentic-identity-broker-docs.example.com/help"
@@ -229,7 +229,7 @@ export const WithErrorReporting: Story = {
         )}
 
         <GlobalErrorBoundary
-          appName="Identity Broker"
+          appName="Agentic Identity Broker"
           onError={handleError}
           showDetails={false}
         >
@@ -266,7 +266,7 @@ export const WithRecovery: Story = {
         )}
 
         <GlobalErrorBoundary
-          appName="Identity Broker"
+          appName="Agentic Identity Broker"
           recoveryStrategies={['reload', 'navigate', 'contact-support']}
           showDetails={false}
           onError={() => setAttempt(attempt + 1)}
@@ -345,7 +345,7 @@ export const GracefulDegradation: Story = {
         )}
 
         <GlobalErrorBoundary
-          appName="Identity Broker"
+          appName="Agentic Identity Broker"
           allowGracefulDegradation
           gracefulFallback={<LimitedApp />}
           recoveryStrategies={['reload', 'navigate', 'contact-support']}
@@ -404,7 +404,7 @@ export const ErrorCategories: Story = {
         )}
 
         <GlobalErrorBoundary
-          appName="Identity Broker"
+          appName="Agentic Identity Broker"
           supportEmail="agentic-identity-broker@example.com"
           showDetails={false}
         >
@@ -432,7 +432,7 @@ export const DevelopmentMode: Story = {
         </div>
 
         <GlobalErrorBoundary
-          appName="Identity Broker"
+          appName="Agentic Identity Broker"
           showDetails={true}
           supportEmail="dev-support@agentic-identity-broker.example.com"
           supportUrl="https://agentic-identity-broker-docs.example.com/troubleshooting"
@@ -458,7 +458,7 @@ export const ProductionMode: Story = {
         </div>
 
         <GlobalErrorBoundary
-          appName="Identity Broker"
+          appName="Agentic Identity Broker"
           showDetails={false}
           supportEmail="support@agentic-identity-broker.example.com"
           supportPhone="0-000-000-0000"
@@ -527,7 +527,7 @@ export const CompleteExample: Story = {
         )}
 
         <GlobalErrorBoundary
-          appName="Identity Broker"
+          appName="Agentic Identity Broker"
           supportEmail="support@agentic-identity-broker.example.com"
           supportPhone="0-000-000-0000"
           supportUrl="https://docs.agentic-identity-broker.example.com/help"
@@ -581,7 +581,7 @@ export const Playground: Story = {
     );
   },
   args: {
-    appName: 'Identity Broker',
+    appName: 'Agentic Identity Broker',
     supportEmail: 'support@agentic-identity-broker.example.com',
     supportPhone: '0-000-000-0000',
     supportUrl: 'https://docs.agentic-identity-broker.example.com/help',
@@ -684,7 +684,7 @@ export const Accessibility: Story = {
       </div>
 
       <GlobalErrorBoundary
-        appName="Identity Broker"
+        appName="Agentic Identity Broker"
         supportEmail="accessibility@agentic-identity-broker.example.com"
         showDetails={true}
       >

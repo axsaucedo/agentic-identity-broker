@@ -353,7 +353,7 @@ storage:
 storage:
   backend: postgres
   postgres:
-    connection_url: "postgresql://user:password@localhost:5432/identity_broker?sslmode=require"
+    connection_url: "postgresql://user:password@localhost:5432/agentic_identity_broker?sslmode=require"
   timeouts:
     read: 5s
     write: 10s
