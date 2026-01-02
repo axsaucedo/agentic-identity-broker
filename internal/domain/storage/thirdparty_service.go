@@ -36,6 +36,28 @@ type OAuth2Endpoints struct {
 	AuthorizeEndpoint string `json:"authorize_endpoint" db:"authorize_endpoint"`
 }
 
+// isAllowedScheme checks if a URL uses an allowed scheme.
+// HTTPS is always allowed. HTTP is only allowed for localhost addresses in development.
+func isAllowedScheme(urlStr string) bool {
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return false
+	}
+
+	// HTTPS is always allowed
+	if parsed.Scheme == "https" {
+		return true
+	}
+
+	// HTTP is allowed only for localhost/127.0.0.1 (development)
+	if parsed.Scheme == "http" {
+		hostname := parsed.Hostname()
+		return hostname == "localhost" || hostname == "127.0.0.1"
+	}
+
+	return false
+}
+
 // Validate performs validation on the ThirdpartyOAuth2Service entity.
 func (s *ThirdpartyOAuth2Service) Validate() error {
 	// Required fields
@@ -58,10 +80,9 @@ func (s *ThirdpartyOAuth2Service) Validate() error {
 		return errors.New("issuer_uri is required")
 	}
 
-	// Validate issuer_uri is HTTPS
-	issuerURL, err := url.Parse(s.IssuerURI)
-	if err != nil || issuerURL.Scheme != "https" {
-		return errors.New("issuer_uri must be a valid HTTPS URL")
+	// Validate issuer_uri is HTTPS (or HTTP for localhost)
+	if !isAllowedScheme(s.IssuerURI) {
+		return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost)")
 	}
 
 	// If discovery disabled, endpoints are required
@@ -74,11 +95,10 @@ func (s *ThirdpartyOAuth2Service) Validate() error {
 		}
 	}
 
-	// Validate metadata_url if provided
+	// Validate metadata_url if provided (HTTPS or HTTP for localhost)
 	if s.Discovery.MetadataURL != nil {
-		metadataURL, err := url.Parse(*s.Discovery.MetadataURL)
-		if err != nil || metadataURL.Scheme != "https" {
-			return errors.New("metadata_url must be a valid HTTPS URL")
+		if !isAllowedScheme(*s.Discovery.MetadataURL) {
+			return errors.New("metadata_url must be a valid HTTPS URL (HTTP allowed only for localhost)")
 		}
 	}
 
@@ -115,9 +135,9 @@ func (s *ThirdpartyOAuth2Service) ValidateForCreate() error {
 		return errors.New("issuer_uri is required")
 	}
 
-	issuerURL, err := url.Parse(s.IssuerURI)
-	if err != nil || issuerURL.Scheme != "https" {
-		return errors.New("issuer_uri must be a valid HTTPS URL")
+	// Validate issuer_uri is HTTPS (or HTTP for localhost)
+	if !isAllowedScheme(s.IssuerURI) {
+		return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost)")
 	}
 
 	if !s.Discovery.EnableDiscovery {
@@ -129,10 +149,10 @@ func (s *ThirdpartyOAuth2Service) ValidateForCreate() error {
 		}
 	}
 
+	// Validate metadata_url if provided (HTTPS or HTTP for localhost)
 	if s.Discovery.MetadataURL != nil {
-		metadataURL, err := url.Parse(*s.Discovery.MetadataURL)
-		if err != nil || metadataURL.Scheme != "https" {
-			return errors.New("metadata_url must be a valid HTTPS URL")
+		if !isAllowedScheme(*s.Discovery.MetadataURL) {
+			return errors.New("metadata_url must be a valid HTTPS URL (HTTP allowed only for localhost)")
 		}
 	}
 

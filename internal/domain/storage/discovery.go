@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"time"
 )
 
@@ -41,13 +40,9 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 		return nil, errors.New("issuer_uri cannot be empty")
 	}
 
-	parsedIssuer, err := url.Parse(issuerURI)
-	if err != nil {
-		return nil, fmt.Errorf("invalid issuer_uri: %w", err)
-	}
-
-	if parsedIssuer.Scheme != "https" {
-		return nil, errors.New("issuer_uri must use HTTPS scheme")
+	// Validate issuer_uri is HTTPS (or HTTP for localhost)
+	if !isAllowedScheme(issuerURI) {
+		return nil, errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost)")
 	}
 
 	// Determine discovery URL
@@ -61,14 +56,9 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 		discoveryURL = fmt.Sprintf("%s/.well-known/oauth-authorization-server", issuerURI)
 	}
 
-	// Validate discovery URL
-	parsedDiscovery, err := url.Parse(discoveryURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid discovery URL: %w", err)
-	}
-
-	if parsedDiscovery.Scheme != "https" {
-		return nil, errors.New("discovery URL must use HTTPS scheme")
+	// Validate discovery URL (HTTPS or HTTP for localhost)
+	if !isAllowedScheme(discoveryURL) {
+		return nil, errors.New("discovery URL must be a valid HTTPS URL (HTTP allowed only for localhost)")
 	}
 
 	// Create request with context
@@ -133,19 +123,15 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 	}, nil
 }
 
-// validateEndpointURL validates that a URL is a valid HTTPS URL.
+// validateEndpointURL validates that a URL is a valid HTTPS URL (or HTTP for localhost).
 func validateEndpointURL(urlStr string) error {
 	if urlStr == "" {
 		return errors.New("URL cannot be empty")
 	}
 
-	parsed, err := url.Parse(urlStr)
-	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
-	}
-
-	if parsed.Scheme != "https" {
-		return errors.New("URL must use HTTPS scheme")
+	// Use isAllowedScheme to allow HTTP for localhost
+	if !isAllowedScheme(urlStr) {
+		return errors.New("URL must be a valid HTTPS URL (HTTP allowed only for localhost)")
 	}
 
 	return nil

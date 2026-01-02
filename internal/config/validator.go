@@ -2,6 +2,8 @@
 package config
 
 import (
+	"net/url"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -29,19 +31,24 @@ func Validate(cfg *ports.Config) error {
 		return err
 	}
 
+	// Validate third-party OAuth2 configuration
+	if err := validateThirdPartyOAuth2Config(&cfg.ThirdPartyOAuth2); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // validateServerConfig validates the server configuration for all instances.
 // Ensures required authentication settings are properly configured.
 func validateServerConfig(sc *ports.ServerConfig) error {
-	// Validate EndUser server authentication
-	if err := validateServerInstanceAuth(&sc.EndUser, "server.enduser"); err != nil {
+	// Validate EndUser server
+	if err := validateServerInstance(&sc.EndUser, "server.enduser"); err != nil {
 		return err
 	}
 
-	// Validate Admin server authentication
-	if err := validateServerInstanceAuth(&sc.Admin, "server.admin"); err != nil {
+	// Validate Admin server
+	if err := validateServerInstance(&sc.Admin, "server.admin"); err != nil {
 		return err
 	}
 
@@ -58,6 +65,58 @@ func validateServerInstanceAuth(sic *ports.ServerInstanceConfig, prefix string) 
 			"non-empty HTTP header name",
 			nil,
 		)
+	}
+
+	return nil
+}
+
+// validateServerInstanceConfig validates a server instance configuration.
+func validateServerInstance(sic *ports.ServerInstanceConfig, prefix string) error {
+	// Validate port
+	if sic.Port < 1 || sic.Port > 65535 {
+		return formatValidationError(
+			prefix+".port",
+			string(rune(sic.Port)),
+			"port number between 1 and 65535",
+			nil,
+		)
+	}
+
+	// Validate bind address
+	if sic.Bind == "" {
+		return formatValidationError(
+			prefix+".bind",
+			"",
+			"non-empty bind address",
+			nil,
+		)
+	}
+
+	// Validate public URL (required for enduser server for OAuth2 callbacks)
+	if prefix == "server.enduser" && sic.PublicURL == "" {
+		return formatValidationError(
+			prefix+".public_url",
+			"",
+			"non-empty public URL (required for OAuth2 callbacks)",
+			nil,
+		)
+	}
+
+	// Validate public URL format if provided
+	if sic.PublicURL != "" {
+		if !isValidURL(sic.PublicURL) {
+			return formatValidationError(
+				prefix+".public_url",
+				sic.PublicURL,
+				"valid HTTP/HTTPS URL",
+				nil,
+			)
+		}
+	}
+
+	// Validate authentication
+	if err := validateServerInstanceAuth(sic, prefix); err != nil {
+		return err
 	}
 
 	return nil
@@ -133,6 +192,56 @@ func validateLogFormat(format ports.LogFormat) error {
 	return domainFormat.Validate()
 }
 
+// validateThirdPartyOAuth2Config validates the third-party OAuth2 configuration.
+// OAuth2 is optional, so we only validate if configuration is provided.
+// If JWESigningKey is empty, OAuth2 routes will not be registered (server logs warning).
+func validateThirdPartyOAuth2Config(cfg *ports.ThirdPartyOAuth2Config) error {
+	// If no OAuth2 configuration is provided, skip validation
+	if cfg.JWESigningKey == "" && cfg.StateTokenTTL == 0 && cfg.PKCEVerifierLength == 0 {
+		return nil
+	}
+
+	// If JWESigningKey is provided, validate it's in proper format
+	if cfg.JWESigningKey != "" {
+		// JWESigningKey should be base64-encoded (min 44 chars for 32 bytes)
+		if len(cfg.JWESigningKey) < 44 {
+			return formatValidationError(
+				"third_party_oauth2.jwe_signing_key",
+				"",
+				"base64-encoded key with minimum 44 characters (32 bytes)",
+				nil,
+			)
+		}
+	}
+
+	// Validate StateTokenTTL if provided (should be positive)
+	if cfg.StateTokenTTL > 0 {
+		// Validate it's within the maximum of 15 minutes per SR-008
+		if cfg.StateTokenTTL > 15*60*1e9 { // 15 minutes in nanoseconds
+			return formatValidationError(
+				"third_party_oauth2.state_token_ttl",
+				cfg.StateTokenTTL.String(),
+				"positive duration (max 15 minutes per SR-008)",
+				nil,
+			)
+		}
+	}
+
+	// Validate PKCEVerifierLength if provided (should be within RFC 7636 limits)
+	if cfg.PKCEVerifierLength > 0 {
+		if cfg.PKCEVerifierLength < 32 || cfg.PKCEVerifierLength > 128 {
+			return formatValidationError(
+				"third_party_oauth2.pkce_verifier_length",
+				string(rune(cfg.PKCEVerifierLength)),
+				"32-128 bytes per RFC 7636",
+				nil,
+			)
+		}
+	}
+
+	return nil
+}
+
 // formatValidationError converts validation errors to ConfigError with context.
 func formatValidationError(field string, value string, expected string, err error) error {
 	return &config.ConfigError{
@@ -142,4 +251,29 @@ func formatValidationError(field string, value string, expected string, err erro
 		Source:   "", // Will be filled in by caller if known
 		Err:      err,
 	}
+}
+
+// isValidURL checks if a string is a valid HTTP or HTTPS URL.
+func isValidURL(urlStr string) bool {
+	if urlStr == "" {
+		return false
+	}
+
+	// Parse URL
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return false
+	}
+
+	// Check scheme is http or https
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+
+	// Check host is present
+	if u.Host == "" {
+		return false
+	}
+
+	return true
 }

@@ -230,4 +230,54 @@ type UserGrantRepository interface {
 	// Returns empty slice if no active grants exist (not an error).
 	// Returns StorageError for connection/timeout issues.
 	ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error)
+
+	// CountAgentsByServiceID counts how many agents have delegated OAuth2 tokens for a given service.
+	// This is used to show dependent agent count when terminating a session.
+	// Returns the count of distinct agents with delegated_oauth2_tokens JSONB entries for the service.
+	CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error)
+
+	// ListByServiceID retrieves all agent IDs that have delegated OAuth2 tokens for a given service.
+	// This is used to show the actual dependent agents when terminating a session.
+	// Returns the list of distinct agent IDs with delegated_oauth2_tokens JSONB entries for the service.
+	// Returns empty slice if no agents have delegated tokens for the service.
+	// Returns StorageError for connection/timeout issues.
+	ListByServiceID(ctx context.Context, serviceID string) ([]string, error)
+}
+
+// UserSessionRepository defines storage operations for user OAuth2 sessions.
+// One session per (principal, service_id) pair.
+type UserSessionRepository interface {
+	// Create creates a new user session.
+	// Uses upsert semantics: if session exists for (principal, service_id), replaces tokens.
+	// Returns error if:
+	// - Service ID doesn't exist (StorageError with Kind=NotFound via FK constraint)
+	// - Storage connection fails (StorageError with Kind=Connection)
+	// - Operation timeout (StorageError with Kind=Timeout)
+	Create(ctx context.Context, session *storage.UserSession) error
+
+	// Get retrieves a session by ID.
+	// Returns StorageError with Kind=NotFound if session not found.
+	Get(ctx context.Context, id string) (*storage.UserSession, error)
+
+	// FindByPrincipalAndService retrieves the session for a principal and service.
+	// Returns nil if no session exists (not an error).
+	FindByPrincipalAndService(ctx context.Context, principal, serviceID string) (*storage.UserSession, error)
+
+	// ListByPrincipal retrieves all sessions for a principal.
+	// Returns empty slice if no sessions exist (not an error).
+	ListByPrincipal(ctx context.Context, principal string) ([]*storage.UserSession, error)
+
+	// Delete deletes a session by ID.
+	// Returns error if storage operation fails.
+	// Idempotent: safe to delete non-existent session.
+	Delete(ctx context.Context, id string) error
+
+	// DeleteByPrincipalAndService deletes the session for a principal and service.
+	// Returns error if storage operation fails.
+	// Idempotent: safe to delete non-existent session.
+	DeleteByPrincipalAndService(ctx context.Context, principal, serviceID string) error
+
+	// CountByService counts sessions referencing a service.
+	// Used to enforce deletion protection (cannot delete service with active sessions).
+	CountByService(ctx context.Context, serviceID string) (int, error)
 }

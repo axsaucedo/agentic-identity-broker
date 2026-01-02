@@ -33,13 +33,13 @@ func NewAgentGrantsHandler(consentService ConsentService, logger *slog.Logger) *
 
 // UserGrantDTO represents a user grant in the response.
 type UserGrantDTO struct {
-	ID                    string                `json:"id"`
-	Principal             string                `json:"principal"`
-	AgentID               string                `json:"agent_id"`
-	ValidUntil            *time.Time            `json:"valid_until,omitempty"`
-	DelegatedOAuth2Tokens []DelegatedTokenDTO   `json:"delegated_oauth2_tokens"`
-	CreatedAt             string                `json:"created_at"`
-	UpdatedAt             string                `json:"updated_at"`
+	ID                    string              `json:"id"`
+	Principal             string              `json:"principal"`
+	AgentID               string              `json:"agent_id"`
+	ValidUntil            *time.Time          `json:"valid_until,omitempty"`
+	DelegatedOAuth2Tokens []DelegatedTokenDTO `json:"delegated_oauth2_tokens"`
+	CreatedAt             string              `json:"created_at"`
+	UpdatedAt             string              `json:"updated_at"`
 }
 
 // DelegatedTokenDTO represents a delegated token in the response.

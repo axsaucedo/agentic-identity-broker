@@ -70,8 +70,9 @@ func TestValidate(t *testing.T) {
 				},
 				Server: ports.ServerConfig{
 					EndUser: ports.ServerInstanceConfig{
-						Port: 8000,
-						Bind: "::",
+						Port:      8000,
+						Bind:      "::",
+						PublicURL: "http://localhost:8000",
 						Authentication: ports.AuthenticationConfig{
 							Preauth: ports.PreauthConfig{
 								PrincipalHeaderName: "X-Remote-User",
@@ -79,8 +80,9 @@ func TestValidate(t *testing.T) {
 						},
 					},
 					Admin: ports.ServerInstanceConfig{
-						Port: 14000,
-						Bind: "::",
+						Port:      14000,
+						Bind:      "::",
+						PublicURL: "http://localhost:14000",
 						Authentication: ports.AuthenticationConfig{
 							Preauth: ports.PreauthConfig{
 								PrincipalHeaderName: "X-Remote-User",
@@ -127,8 +129,9 @@ func TestValidate(t *testing.T) {
 				},
 				Server: ports.ServerConfig{
 					EndUser: ports.ServerInstanceConfig{
-						Port: 8000,
-						Bind: "::",
+						Port:      8000,
+						Bind:      "::",
+						PublicURL: "http://localhost:8000",
 						Authentication: ports.AuthenticationConfig{
 							Preauth: ports.PreauthConfig{
 								PrincipalHeaderName: "",
@@ -136,8 +139,9 @@ func TestValidate(t *testing.T) {
 						},
 					},
 					Admin: ports.ServerInstanceConfig{
-						Port: 14000,
-						Bind: "::",
+						Port:      14000,
+						Bind:      "::",
+						PublicURL: "http://localhost:14000",
 						Authentication: ports.AuthenticationConfig{
 							Preauth: ports.PreauthConfig{
 								PrincipalHeaderName: "X-Remote-User",
@@ -164,8 +168,9 @@ func TestValidate(t *testing.T) {
 				},
 				Server: ports.ServerConfig{
 					EndUser: ports.ServerInstanceConfig{
-						Port: 8000,
-						Bind: "::",
+						Port:      8000,
+						Bind:      "::",
+						PublicURL: "http://localhost:8000",
 						Authentication: ports.AuthenticationConfig{
 							Preauth: ports.PreauthConfig{
 								PrincipalHeaderName: "X-Remote-User",
@@ -173,8 +178,9 @@ func TestValidate(t *testing.T) {
 						},
 					},
 					Admin: ports.ServerInstanceConfig{
-						Port: 14000,
-						Bind: "::",
+						Port:      14000,
+						Bind:      "::",
+						PublicURL: "http://localhost:14000",
 						Authentication: ports.AuthenticationConfig{
 							Preauth: ports.PreauthConfig{
 								PrincipalHeaderName: "",
@@ -201,8 +207,9 @@ func TestValidate(t *testing.T) {
 				},
 				Server: ports.ServerConfig{
 					EndUser: ports.ServerInstanceConfig{
-						Port: 8000,
-						Bind: "::",
+						Port:      8000,
+						Bind:      "::",
+						PublicURL: "http://localhost:8000",
 						Authentication: ports.AuthenticationConfig{
 							Preauth: ports.PreauthConfig{
 								PrincipalHeaderName: "X-Authenticated-User",
@@ -210,8 +217,9 @@ func TestValidate(t *testing.T) {
 						},
 					},
 					Admin: ports.ServerInstanceConfig{
-						Port: 14000,
-						Bind: "::",
+						Port:      14000,
+						Bind:      "::",
+						PublicURL: "http://localhost:14000",
 						Authentication: ports.AuthenticationConfig{
 							Preauth: ports.PreauthConfig{
 								PrincipalHeaderName: "X-Admin-User",
