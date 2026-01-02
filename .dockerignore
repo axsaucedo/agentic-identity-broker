@@ -21,6 +21,8 @@ pnpm-lock.yaml
 # Build artifacts
 build/
 dist/
+!build/linux/
+!web/dist/consent/
 coverage/
 *.test.js
 *.spec.js
