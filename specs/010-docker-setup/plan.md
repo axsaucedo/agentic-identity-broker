@@ -77,7 +77,7 @@ The Docker setup is primarily configuration-driven with deployment artifacts gen
 Dockerfile                          # Multi-stage build definition (NEW)
 justfile                            # Updated with docker build/deploy tasks (MODIFIED)
 
-cmd/identity-broker/                # Existing Go backend entry point
+cmd/agentic-identity-broker/        # Existing Go backend entry point
 web/                                # Existing React frontend
 ├── src/
 │   ├── components/
@@ -86,7 +86,7 @@ web/                                # Existing React frontend
 └── dist/                           # Build output (frontend assets)
 
 bin/
-└── identity-broker                 # Pre-built Go binary (input to docker build)
+└── agentic-identity-broker         # Pre-built Go binary (input to docker build)
 ```
 
 **Structure Decision**:

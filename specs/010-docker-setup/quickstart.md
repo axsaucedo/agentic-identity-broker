@@ -24,7 +24,7 @@ just build-all
 ```
 
 Produces:
-- `./bin/identity-broker` - Optimized Go backend binary
+- `./bin/agentic-identity-broker` - Optimized Go backend binary
 - `./web/dist/` - Compiled React frontend
 
 ### 2. Build Docker Image
@@ -35,7 +35,7 @@ Package artifacts into Docker image:
 just docker-build
 ```
 
-Creates image: `identity-broker:latest`
+Creates image: `agentic-identity-broker:latest`
 
 ### 3. Run Container
 

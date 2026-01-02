@@ -146,8 +146,8 @@ import (
 	"context"
 	"sync"
 
-	"identity-broker/internal/ports"
-	"identity-broker/internal/domain/storage"
+	"agentic-identity-broker/internal/ports"
+	"agentic-identity-broker/internal/domain/storage"
 )
 
 // Adapter implements StoragePort for in-memory storage
@@ -258,8 +258,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"identity-broker/internal/ports"
-	"identity-broker/internal/domain/storage"
+	"agentic-identity-broker/internal/ports"
+	"agentic-identity-broker/internal/domain/storage"
 )
 
 // Adapter implements StoragePort for PostgreSQL
@@ -318,7 +318,7 @@ func (a *Adapter) verifySchema(ctx context.Context) error {
 			"Initialize",
 			storage.ErrorKindValidation,
 			err,
-			"No schema migrations found. Run: ./bin/identity-broker migrate up",
+			"No schema migrations found. Run: ./bin/agentic-identity-broker migrate up",
 		)
 	}
 	if err != nil {
@@ -336,7 +336,7 @@ func (a *Adapter) verifySchema(ctx context.Context) error {
 			storage.ErrorKindValidation,
 			nil,
 			fmt.Sprintf(
-				"Schema version mismatch (expected: v%d, found: v%d). Run: ./bin/identity-broker migrate up",
+				"Schema version mismatch (expected: v%d, found: v%d). Run: ./bin/agentic-identity-broker migrate up",
 				expectedVersion, version,
 			),
 		)
@@ -557,7 +557,7 @@ import (
 	"context"
 	"strings"
 
-	"identity-broker/internal/domain/storage"
+	"agentic-identity-broker/internal/domain/storage"
 )
 
 func (a *Adapter) CreateProduct(ctx context.Context, product *storage.Product) error {
@@ -634,8 +634,8 @@ import (
 	"context"
 	"database/sql"
 
-	"identity-broker/internal/domain/storage"
-	"identity-broker/internal/ports"
+	"agentic-identity-broker/internal/domain/storage"
+	"agentic-identity-broker/internal/ports"
 )
 
 func (a *Adapter) CreateProduct(ctx context.Context, product *storage.Product) error {
@@ -739,9 +739,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"identity-broker/internal/adapters/storage/memory"
-	"identity-broker/internal/domain/storage"
-	"identity-broker/internal/ports"
+	"agentic-identity-broker/internal/adapters/storage/memory"
+	"agentic-identity-broker/internal/domain/storage"
+	"agentic-identity-broker/internal/ports"
 )
 
 func TestProductCRUD(t *testing.T) {

@@ -218,11 +218,11 @@ cd web && npm run build
 # Output: web/dist/consent/index.html, assets/, etc.
 
 # 2. Build backend (embeds frontend)
-go build -o bin/identity-broker ./cmd/identity-broker
+go build -o bin/agentic-identity-broker ./cmd/agentic-identity-broker
 # Binary contains embedded SPA
 
 # 3. Deploy single binary
-./bin/identity-broker
+./bin/agentic-identity-broker
 ```
 
 ## Consequences

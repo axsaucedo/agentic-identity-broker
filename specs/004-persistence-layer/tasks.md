@@ -129,7 +129,7 @@ Implement ephemeral storage for development and testing (zero-configuration opti
 
 ### Integration & Verification
 
-- [ ] T043 [US1] Integrate memory adapter into main application startup in `cmd/identity-broker/main.go`
+- [ ] T043 [US1] Integrate memory adapter into main application startup in `cmd/agentic-identity-broker/main.go`
 - [ ] T044 [US1] Test full lifecycle: initialize → CRUD → health check → close in integration tests
 - [x] T045 [US1] Verify startup time < 1 second (SC-001) with benchmarks
 
@@ -208,7 +208,7 @@ Enable runtime storage backend selection without code changes.
 
 ### Configuration Integration
 
-- [x] T078 [P] [US3] Integrate StorageConfig into main application configuration loading (`cmd/identity-broker/main.go`)
+- [x] T078 [P] [US3] Integrate StorageConfig into main application configuration loading (`cmd/agentic-identity-broker/main.go`)
 - [x] T079 [P] [US3] Implement backend factory selection logic in main startup sequence
 - [x] T080 [US3] Add configuration validation before adapter initialization
 - [x] T081 [US3] Implement clear error messages for configuration validation failures

@@ -1066,7 +1066,7 @@ func redactConnString(connStr string) string {
 
 ### Entry Point Integration
 
-**Main Application** (`cmd/identity-broker/main.go`):
+**Main Application** (`cmd/agentic-identity-broker/main.go`):
 ```go
 // Load configuration
 cfg, err := configLoader.GetConfig(ctx)

@@ -578,7 +578,7 @@ Common parameters:
 
 Example:
 ```
-postgresql://broker:secret@db.example.com:5432/identity_broker?sslmode=verify-full&application_name=identity-broker
+postgresql://agentic-identity-broker:secret@db.example.com:5432/agentic-identity-broker?sslmode=verify-full&application_name=agentic-identity-broker
 ```
 
 ### Error Message Format
@@ -588,7 +588,7 @@ Startup failure example:
 ERROR: Storage initialization failed
 Cause: PostgreSQL schema version mismatch
 Expected: v3, Found: v2
-Action: Run migrations with: ./bin/identity-broker migrate up
+Action: Run migrations with: ./bin/agentic-identity-broker migrate up
 Documentation: https://docs.example.com/storage#migrations
 ```
 

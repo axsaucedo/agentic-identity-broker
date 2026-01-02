@@ -21,7 +21,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "identity-broker",
+	Use:   "agentic-identity-broker",
 	Short: "Agentic Identity Broker - Secure identity management for AI agents",
 	Long: `Agentic Identity Broker provides secure identity management,
 authentication, and authorization for AI agents and autonomous systems.`,

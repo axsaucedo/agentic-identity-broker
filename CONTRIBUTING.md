@@ -6,7 +6,7 @@ Thank you for contributing! This document provides guidelines for maintaining ou
 
 1. **Fork and clone**:
    ```bash
-   git clone https://github.com/your-username/agentic-identity-broker.git
+   git clone https://github.com/zalando-incubator/agentic-identity-broker.git
    cd agentic-identity-broker
    ```
 

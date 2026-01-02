@@ -89,7 +89,7 @@ type StorageLifecycle interface {
 	// Error Messages:
 	//   - MUST be actionable (include remediation steps)
 	//   - MUST NOT expose credentials or sensitive connection details
-	//   - Example: "PostgreSQL schema mismatch (expected: v3, found: v2). Run: ./bin/identity-broker migrate up"
+	//   - Example: "PostgreSQL schema mismatch (expected: v3, found: v2). Run: ./bin/agentic-identity-broker migrate up"
 	//
 	// Specification:
 	//   - FR-006: System MUST initialize storage backend during startup

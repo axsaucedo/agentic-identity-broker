@@ -160,9 +160,9 @@ export const WithFooterActions: Story = {
     return (
       <GlobalErrorBoundary
         appName="Identity Broker"
-        supportEmail="support@identity-broker.com"
-        supportPhone="1-800-555-0123"
-        supportUrl="https://docs.identity-broker.com/help"
+        supportEmail="agentic-identity-broker@example.com"
+        supportPhone="0-000-000-0000"
+        supportUrl="https://agentic-identity-broker-docs.example.com/help"
         showDetails={false}
       >
         <BrokenApp />
@@ -405,7 +405,7 @@ export const ErrorCategories: Story = {
 
         <GlobalErrorBoundary
           appName="Identity Broker"
-          supportEmail="support@identity-broker.com"
+          supportEmail="agentic-identity-broker@example.com"
           showDetails={false}
         >
           {errorType === 'network' && <NetworkErrorApp shouldThrow={true} />}
@@ -434,8 +434,8 @@ export const DevelopmentMode: Story = {
         <GlobalErrorBoundary
           appName="Identity Broker"
           showDetails={true}
-          supportEmail="dev-support@identity-broker.com"
-          supportUrl="https://docs.identity-broker.com/troubleshooting"
+          supportEmail="dev-support@agentic-identity-broker.example.com"
+          supportUrl="https://agentic-identity-broker-docs.example.com/troubleshooting"
         >
           <BrokenApp />
         </GlobalErrorBoundary>
@@ -460,9 +460,9 @@ export const ProductionMode: Story = {
         <GlobalErrorBoundary
           appName="Identity Broker"
           showDetails={false}
-          supportEmail="support@identity-broker.com"
-          supportPhone="1-800-555-0123"
-          supportUrl="https://help.identity-broker.com"
+          supportEmail="support@agentic-identity-broker.example.com"
+          supportPhone="0-000-000-0000"
+          supportUrl="https://help.agentic-identity-broker.example.com"
         >
           <BrokenApp />
         </GlobalErrorBoundary>
@@ -528,9 +528,9 @@ export const CompleteExample: Story = {
 
         <GlobalErrorBoundary
           appName="Identity Broker"
-          supportEmail="support@identity-broker.com"
-          supportPhone="1-800-555-0123"
-          supportUrl="https://docs.identity-broker.com/help"
+          supportEmail="support@agentic-identity-broker.example.com"
+          supportPhone="0-000-000-0000"
+          supportUrl="https://docs.agentic-identity-broker.example.com/help"
           onError={handleError}
           showDetails={false}
           recoveryStrategies={['reload', 'navigate', 'contact-support']}
@@ -582,9 +582,9 @@ export const Playground: Story = {
   },
   args: {
     appName: 'Identity Broker',
-    supportEmail: 'support@identity-broker.com',
-    supportPhone: '1-800-555-0123',
-    supportUrl: 'https://docs.identity-broker.com/help',
+    supportEmail: 'support@agentic-identity-broker.example.com',
+    supportPhone: '0-000-000-0000',
+    supportUrl: 'https://docs.agentic-identity-broker.example.com/help',
     showDetails: false,
     recoveryStrategies: ['reload', 'navigate', 'contact-support'],
     allowGracefulDegradation: false,
@@ -645,9 +645,9 @@ export const RealWorldScenarios: Story = {
 
         <GlobalErrorBoundary
           appName="Consent Manager"
-          supportEmail="support@consent-manager.com"
-          supportPhone="1-800-CONSENT"
-          supportUrl="https://docs.consent-manager.com"
+          supportEmail="support@agentic-identity-broker.example.com"
+          supportPhone="0-000-000-0000"
+          supportUrl="https://docs.agentic-identity-broker.example.com"
           showDetails={false}
           recoveryStrategies={['reload', 'navigate', 'contact-support']}
         >
@@ -685,7 +685,7 @@ export const Accessibility: Story = {
 
       <GlobalErrorBoundary
         appName="Identity Broker"
-        supportEmail="accessibility@identity-broker.com"
+        supportEmail="accessibility@agentic-identity-broker.example.com"
         showDetails={true}
       >
         <BrokenApp />

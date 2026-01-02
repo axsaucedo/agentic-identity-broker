@@ -7,10 +7,10 @@ tmp_dir = "tmp"
 
 [build]
   # Command to build the application
-  cmd = "go build -o ./tmp/identity-broker ./cmd/identity-broker"
+  cmd = "go build -o ./tmp/agentic-identity-broker ./cmd/agentic-identity-broker"
 
   # Binary output name
-  bin = "tmp/identity-broker"
+  bin = "tmp/agentic-identity-broker"
 
   # Customize binary arguments
   args_bin = []
@@ -63,7 +63,7 @@ tmp_dir = "tmp"
   # Delay after each execution (milliseconds)
   rerun_delay = 500
 
-  # Add additional arguments when running binary (bin/full_bin). Will run './tmp/identity-broker hello world'
+  # Add additional arguments when running binary (bin/full_bin). Will run './tmp/agentic-identity-broker hello world'
   # args_bin = ["hello", "world"]
 
 [log]

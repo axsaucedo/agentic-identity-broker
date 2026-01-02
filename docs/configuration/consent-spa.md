@@ -29,15 +29,15 @@ The Go backend serves the React SPA and provides API endpoints. Configuration is
 ```yaml
 # config.yaml
 spa:
-  static_files_path: /opt/identity-broker/web/dist/consent
+  static_files_path: /opt/agentic-identity-broker/web/dist/consent
 ```
 
 ```bash
 # Environment variable
-export SPA_STATIC_FILES_PATH=/opt/identity-broker/web/dist/consent
+export SPA_STATIC_FILES_PATH=/opt/agentic-identity-broker/web/dist/consent
 
 # CLI flag
-./identity-broker --spa-static-files-path=/opt/identity-broker/web/dist/consent
+./agentic-identity-broker --spa-static-files-path=/opt/agentic-identity-broker/web/dist/consent
 ```
 
 ### SPA Serving Enable/Disable
@@ -67,7 +67,7 @@ spa:
 export SPA_SERVE_ENABLED=false
 
 # CLI flag
-./identity-broker --spa-serve-enabled=false
+./agentic-identity-broker --spa-serve-enabled=false
 ```
 
 ### SPA Base Path
@@ -250,7 +250,7 @@ cd web && npm run build
 just build-release
 
 # Deploy binary with embedded SPA
-./bin/identity-broker --config=config.staging.yaml
+./bin/agentic-identity-broker --config=config.staging.yaml
 ```
 
 Access SPA at: https://staging.example.com/consent
@@ -261,7 +261,7 @@ Access SPA at: https://staging.example.com/consent
 ```yaml
 # config.production.yaml
 spa:
-  static_files_path: /opt/identity-broker/web/dist/consent
+  static_files_path: /opt/agentic-identity-broker/web/dist/consent
   serve_enabled: true
   base_path: /consent
 
@@ -286,7 +286,7 @@ npm run build
 
 **Environment Variables:**
 ```bash
-export SPA_STATIC_FILES_PATH=/opt/identity-broker/web/dist/consent
+export SPA_STATIC_FILES_PATH=/opt/agentic-identity-broker/web/dist/consent
 export SPA_SERVE_ENABLED=true
 export ENDUSER_SERVER_PORT=8080
 ```
@@ -300,10 +300,10 @@ cd web && npm run build
 just build-release
 
 # Deploy
-./bin/identity-broker --config=config.production.yaml
+./bin/agentic-identity-broker --config=config.production.yaml
 ```
 
-Access SPA at: https://identity-broker.example.com/consent
+Access SPA at: https://agentic-identity-broker.example.com/consent
 
 ## CORS Configuration
 
@@ -318,7 +318,7 @@ CORS is configured on the backend for API requests.
 ```yaml
 cors:
   allowed_origins:
-    - https://identity-broker.example.com
+    - https://agentic-identity-broker.example.com
     - https://staging.example.com
   allow_credentials: true
   max_age: 3600
@@ -480,16 +480,16 @@ COPY go.* ./
 RUN go mod download
 COPY . ./
 COPY --from=frontend-builder /app/web/dist/consent ./web/dist/consent
-RUN go build -o identity-broker ./cmd/identity-broker
+RUN go build -o agentic-identity-broker ./cmd/agentic-identity-broker
 
 FROM alpine:latest
 WORKDIR /app
-COPY --from=backend-builder /app/identity-broker .
+COPY --from=backend-builder /app/agentic-identity-broker .
 COPY --from=backend-builder /app/web/dist/consent ./web/dist/consent
 COPY config.production.yaml ./config.yaml
 
 EXPOSE 8080
-CMD ["./identity-broker", "--config=config.yaml"]
+CMD ["./agentic-identity-broker", "--config=config.yaml"]
 ```
 
 **config.production.yaml:**
@@ -511,7 +511,7 @@ servers:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: identity-broker-config
+  name: agentic-identity-broker-config
 data:
   config.yaml: |
     spa:
@@ -531,14 +531,14 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: identity-broker
+  name: agentic-identity-broker
 spec:
   replicas: 3
   template:
     spec:
       containers:
-      - name: identity-broker
-        image: identity-broker:latest
+      - name: agentic-identity-broker
+        image: agentic-identity-broker:latest
         ports:
         - containerPort: 8080
         volumeMounts:
@@ -548,7 +548,7 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: identity-broker-config
+          name: agentic-identity-broker-config
 ```
 
 **Ingress (with oauth2-proxy):**
@@ -556,21 +556,21 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: identity-broker
+  name: agentic-identity-broker
   annotations:
     nginx.ingress.kubernetes.io/auth-url: "https://oauth2-proxy.example.com/oauth2/auth"
     nginx.ingress.kubernetes.io/auth-signin: "https://oauth2-proxy.example.com/oauth2/start"
     nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email"
 spec:
   rules:
-  - host: identity-broker.example.com
+  - host: agentic-identity-broker.example.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: identity-broker
+            name: agentic-identity-broker
             port:
               number: 8080
 ```

@@ -2,7 +2,7 @@
 # Use this configuration for production environments
 # IMPORTANT: All sensitive values MUST be provided via environment variables
 # Never commit actual values to version control
-# To run: identity-broker --config ./examples/config/config.production.yaml
+# To run: agentic-identity-broker --config ./examples/config/config.production.yaml
 
 log:
   # Production uses info level (reduce noise while maintaining visibility)

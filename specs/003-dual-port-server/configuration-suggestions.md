@@ -45,7 +45,7 @@ IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT=30s
 Following Go flag conventions:
 
 ```bash
-identity-broker \
+agentic-identity-broker \
   --server.enduser.port 8000 \
   --server.enduser.bind "0.0.0.0" \
   --server.admin.port 14000 \
@@ -124,7 +124,7 @@ Using environment variables to override YAML configuration:
 # Override only the admin port for a specific deployment
 
 export IDENTITY_BROKER_SERVER_ADMIN_PORT=15000
-identity-broker --config /etc/identity-broker/config.yaml
+agentic-identity-broker --config /etc/agentic-identity-broker/config.yaml
 ```
 
 ### CLI Flag Override Example
@@ -133,8 +133,8 @@ Using command-line flags for temporary overrides:
 
 ```bash
 # Start with custom ports for testing
-identity-broker \
-  --config /etc/identity-broker/config.yaml \
+agentic-identity-broker \
+  --config /etc/agentic-identity-broker/config.yaml \
   --server.enduser.port 9000 \
   --server.admin.port 9001
 ```
@@ -204,7 +204,7 @@ export IDENTITY_BROKER_SERVER_ENDUSER_PORT=9000
 
 **CLI**:
 ```bash
-identity-broker --server.enduser.port 10000
+agentic-identity-broker --server.enduser.port 10000
 ```
 
 **Result**: End-user server binds to port **10000** (CLI takes highest precedence)

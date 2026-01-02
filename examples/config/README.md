@@ -8,16 +8,16 @@ The simplest way to run the application:
 
 ```bash
 # Use all defaults (log level: info, format: text)
-./identity-broker
+./agentic-identity-broker
 
 # Specify a configuration file
-./identity-broker --config ./examples/config/config.development.yaml
+./agentic-identity-broker --config ./examples/config/config.development.yaml
 
 # Override settings via CLI flags
-./identity-broker --config config.yaml --log-level debug --log-format json
+./agentic-identity-broker --config config.yaml --log-level debug --log-format json
 
 # Use environment-specific configuration
-GO_ENV=production ./identity-broker --config ./examples/config/config.production.yaml
+GO_ENV=production ./agentic-identity-broker --config ./examples/config/config.production.yaml
 ```
 
 ## Configuration Files
@@ -32,7 +32,7 @@ The most minimal valid configuration. Demonstrates:
 
 **Usage:**
 ```bash
-./identity-broker --config ./examples/config/config.minimal.yaml
+./agentic-identity-broker --config ./examples/config/config.minimal.yaml
 ```
 
 ### `config.development.yaml`
@@ -45,12 +45,12 @@ Development environment configuration. Demonstrates:
 
 **Usage:**
 ```bash
-./identity-broker --config ./examples/config/config.development.yaml
+./agentic-identity-broker --config ./examples/config/config.development.yaml
 ```
 
 Or combine with environment variables:
 ```bash
-GO_ENV=development ./identity-broker --config ./examples/config/config.development.yaml
+GO_ENV=development ./agentic-identity-broker --config ./examples/config/config.development.yaml
 ```
 
 ### `config.staging.yaml`
@@ -66,7 +66,7 @@ Staging/pre-production environment configuration. Demonstrates:
 **Usage:**
 ```bash
 IDENTITY_BROKER_LOG_LEVEL=info IDENTITY_BROKER_LOG_FORMAT=json \
-  ./identity-broker --config ./examples/config/config.staging.yaml
+  ./agentic-identity-broker --config ./examples/config/config.staging.yaml
 ```
 
 ### `config.production.yaml`
@@ -87,10 +87,10 @@ export IDENTITY_BROKER_LOG_LEVEL=info
 export IDENTITY_BROKER_LOG_FORMAT=json
 export IDENTITY_BROKER_DB_CONNECTION="postgresql://prod-user:password@prod-db:5432/identity_broker"
 export IDENTITY_BROKER_JWT_SECRET="your-production-secret-key"
-export IDENTITY_BROKER_TLS_CERT_PATH="/etc/identity-broker/tls/cert.pem"
-export IDENTITY_BROKER_TLS_KEY_PATH="/etc/identity-broker/tls/key.pem"
+export IDENTITY_BROKER_TLS_CERT_PATH="/etc/agentic-identity-broker/tls/cert.pem"
+export IDENTITY_BROKER_TLS_KEY_PATH="/etc/agentic-identity-broker/tls/key.pem"
 
-./identity-broker --config ./examples/config/config.production.yaml
+./agentic-identity-broker --config ./examples/config/config.production.yaml
 ```
 
 ### `config.yaml.example`
@@ -104,7 +104,7 @@ The original template file. Demonstrates:
 ```bash
 # Copy as template and customize
 cp examples/config/config.yaml.example config.yaml
-./identity-broker --config config.yaml
+./agentic-identity-broker --config config.yaml
 ```
 
 ### `third-party-oauth2.yaml`
@@ -126,7 +126,7 @@ OAuth2 authorization flows and stores encrypted tokens.
 export IDENTITY_BROKER_JWE_SIGNING_KEY="$(openssl rand -base64 32)"
 
 # Run with third-party OAuth2 configuration
-./identity-broker --config ./examples/config/third-party-oauth2.yaml
+./agentic-identity-broker --config ./examples/config/third-party-oauth2.yaml
 ```
 
 **Security Note:** The JWE signing key MUST be kept secret. It protects OAuth2 state
@@ -138,12 +138,12 @@ The application loads configuration from multiple sources with this precedence (
 
 1. **CLI Flags** (highest precedence)
    ```bash
-   ./identity-broker --log-level debug --log-format json
+   ./agentic-identity-broker --log-level debug --log-format json
    ```
 
 2. **YAML File** (from --config flag or IDENTITY_BROKER_CONFIG_PATH)
    ```bash
-   ./identity-broker --config ./examples/config/config.production.yaml
+   ./agentic-identity-broker --config ./examples/config/config.production.yaml
    ```
 
 3. **.env Files** (environment-specific loading)
@@ -154,7 +154,7 @@ The application loads configuration from multiple sources with this precedence (
 
    Example with GO_ENV=production:
    ```bash
-   GO_ENV=production ./identity-broker
+   GO_ENV=production ./agentic-identity-broker
    ```
 
 4. **Defaults** (lowest precedence)
@@ -168,7 +168,7 @@ The application loads configuration from multiple sources with this precedence (
 **Via command line:**
 ```bash
 export IDENTITY_BROKER_LOG_LEVEL=debug
-./identity-broker
+./agentic-identity-broker
 ```
 
 **Via .env file:**
@@ -203,13 +203,13 @@ Configuration Summary:
 
 ```bash
 # Option 1: Use defaults only
-./identity-broker
+./agentic-identity-broker
 
 # Option 2: Use development config with debug logging
-./identity-broker --config ./examples/config/config.development.yaml
+./agentic-identity-broker --config ./examples/config/config.development.yaml
 
 # Option 3: Mix config file and CLI flags
-./identity-broker --config ./examples/config/config.development.yaml --log-level debug
+./agentic-identity-broker --config ./examples/config/config.development.yaml --log-level debug
 ```
 
 ### Docker Container
@@ -218,16 +218,16 @@ Configuration Summary:
 FROM golang:1.21 as builder
 WORKDIR /app
 COPY . .
-RUN go build -o identity-broker ./cmd/identity-broker
+RUN go build -o agentic-identity-broker ./cmd/agentic-identity-broker
 
 FROM alpine:latest
-COPY --from=builder /app/identity-broker /usr/local/bin/
-COPY --from=builder /app/examples/config/config.production.yaml /etc/identity-broker/config.yaml
+COPY --from=builder /app/agentic-identity-broker /usr/local/bin/
+COPY --from=builder /app/examples/config/config.production.yaml /etc/agentic-identity-broker/config.yaml
 
 ENV IDENTITY_BROKER_LOG_LEVEL=info
 ENV IDENTITY_BROKER_LOG_FORMAT=json
 
-CMD ["identity-broker", "--config", "/etc/identity-broker/config.yaml"]
+CMD ["agentic-identity-broker", "--config", "/etc/agentic-identity-broker/config.yaml"]
 ```
 
 ### Kubernetes Deployment
@@ -236,7 +236,7 @@ CMD ["identity-broker", "--config", "/etc/identity-broker/config.yaml"]
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: identity-broker-config
+  name: agentic-identity-broker-config
 data:
   config.yaml: |
     log:
@@ -247,7 +247,7 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: identity-broker-secrets
+  name: agentic-identity-broker-secrets
 type: Opaque
 stringData:
   IDENTITY_BROKER_JWT_SECRET: "your-secret-key"
@@ -257,16 +257,16 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: identity-broker
+  name: agentic-identity-broker
 spec:
   template:
     spec:
       containers:
-      - name: identity-broker
-        image: identity-broker:latest
+      - name: agentic-identity-broker
+        image: agentic-identity-broker:latest
         args:
         - --config
-        - /etc/identity-broker/config.yaml
+        - /etc/agentic-identity-broker/config.yaml
         env:
         - name: IDENTITY_BROKER_LOG_LEVEL
           value: "info"
@@ -275,15 +275,15 @@ spec:
         - name: IDENTITY_BROKER_JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: identity-broker-secrets
+              name: agentic-identity-broker-secrets
               key: IDENTITY_BROKER_JWT_SECRET
         volumeMounts:
         - name: config
-          mountPath: /etc/identity-broker
+          mountPath: /etc/agentic-identity-broker
       volumes:
       - name: config
         configMap:
-          name: identity-broker-config
+          name: agentic-identity-broker-config
 ```
 
 ## Environment-Specific .env Files
@@ -351,7 +351,7 @@ Please fix the configuration and try again.
 3. **Use environment variables in production**
    ```bash
    # Always prefer environment variables in containerized environments
-   docker run -e IDENTITY_BROKER_JWT_SECRET=your-secret identity-broker
+   docker run -e IDENTITY_BROKER_JWT_SECRET=your-secret agentic-identity-broker
    ```
 
 4. **Check file permissions** on configuration files
@@ -380,15 +380,15 @@ Please fix the configuration and try again.
 The log level must be set via one of these methods:
 ```bash
 # Via CLI flag
-./identity-broker --log-level info
+./agentic-identity-broker --log-level info
 
 # Via YAML file
 echo "log:\n  level: info" > config.yaml
-./identity-broker --config config.yaml
+./agentic-identity-broker --config config.yaml
 
 # Via .env file
 echo "LOG_LEVEL=info" > .env
-./identity-broker
+./agentic-identity-broker
 ```
 
 ### "Environment variable 'IDENTITY_BROKER_API_KEY' not set"
@@ -396,7 +396,7 @@ echo "LOG_LEVEL=info" > .env
 Set the environment variable before running:
 ```bash
 export IDENTITY_BROKER_API_KEY=your-api-key
-./identity-broker --config config.yaml
+./agentic-identity-broker --config config.yaml
 ```
 
 ### "Permission denied reading 'config.yaml'"
@@ -404,7 +404,7 @@ export IDENTITY_BROKER_API_KEY=your-api-key
 Fix file permissions:
 ```bash
 chmod +r config.yaml
-./identity-broker --config config.yaml
+./agentic-identity-broker --config config.yaml
 ```
 
 ### Wrong configuration loaded

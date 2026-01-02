@@ -69,7 +69,7 @@ Successfully implemented a production-ready flexible configuration system for th
 
 **CLI Interface**:
 ```bash
-identity-broker [flags]
+agentic-identity-broker [flags]
   -c, --config string       config file path
       --log-level string    log level: debug, info, warn, error
       --log-format string   log format: text, json
@@ -126,9 +126,9 @@ identity-broker [flags]
   - Sensitive value redaction with keyword matching
 
 **CLI Entry Point**:
-- `/Users/magnus.jungsbluth/Projects/agentic-identity-broker/cmd/identity-broker/main.go` (14 lines)
+- `/Users/magnus.jungsbluth/Projects/agentic-identity-broker/cmd/agentic-identity-broker/main.go` (14 lines)
   - Application entry point
-- `/Users/magnus.jungsbluth/Projects/agentic-identity-broker/cmd/identity-broker/root.go` (191 lines)
+- `/Users/magnus.jungsbluth/Projects/agentic-identity-broker/cmd/agentic-identity-broker/root.go` (191 lines)
   - Cobra command setup
   - Configuration loading integration
   - Startup summary display

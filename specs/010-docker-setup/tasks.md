@@ -15,7 +15,7 @@ This feature creates a production-ready Docker image that packages pre-built Go 
 - Alpine base image for minimal footprint (18.5MB with all content)
 - Non-root user execution for security (uid=1000)
 - ARG TARGETARCH for multi-architecture support via docker buildx
-- Binary naming: `identity-broker` in source, `agentic-identity-broker` in container
+- Binary naming: `agentic-identity-broker` in source, `agentic-identity-broker` in container
 - Integration with justfile task system (`just build-all` → `just build-linux-{amd64,arm64}` + `just web-build` → `just docker-push`)
 
 **Independent Test Approach**: Each user story is independently testable without other stories' completion.
@@ -39,13 +39,13 @@ Create Dockerfile, Docker-related justfile tasks, and build configuration to ena
 
 - [x] T001 Create Dockerfile with Alpine base image in project root
   - [x] Base image: `registry.opensource.zalan.do/library/alpine-3:latest` (with fallback to alpine)
-  - [x] Copy pre-built backend binary from `./bin/linux/${TARGETARCH}/identity-broker` to `/app/agentic-identity-broker`
+  - [x] Copy pre-built backend binary from `./bin/linux/${TARGETARCH}/agentic-identity-broker` to `/app/agentic-identity-broker`
   - [x] Copy pre-built frontend assets from `./web/dist/consent/` to `/app/web/dist/consent/`
   - [x] Create non-root user: `appuser` (uid=1000, gid=1000)
   - [x] Set working directory: `WORKDIR /app`
   - [x] Expose port: `EXPOSE 8000`
   - [x] Switch to non-root: `USER 1000:1000`
-  - [x] Set entrypoint: `ENTRYPOINT ["/app/identity-broker"]`
+  - [x] Set entrypoint: `ENTRYPOINT ["/app/agentic-identity-broker"]`
   - [x] Include LABEL metadata: title, description, version, maintainer
 
 - [x] T002 [P] Create `.dockerignore` file in project root to exclude non-essential files
@@ -62,7 +62,7 @@ Create Dockerfile, Docker-related justfile tasks, and build configuration to ena
 
 - [x] T004 Add build prerequisites validation
   - [x] Verify Docker is installed and running (`docker --version`)
-  - [x] Verify required binaries exist before Docker build (`./bin/linux/amd64/identity-broker` or `./bin/linux/arm64/identity-broker`)
+  - [x] Verify required binaries exist before Docker build (`./bin/linux/amd64/agentic-identity-broker` or `./bin/linux/arm64/agentic-identity-broker`)
   - [x] Verify frontend assets exist (`./web/dist/consent/`)
   - [x] Provide helpful error messages if prerequisites missing
 
@@ -80,9 +80,9 @@ Enable building a production-ready Docker image containing both backend and fron
 3. Frontend and backend communication works within container
 
 ### Independent Test Criteria
-- Docker image builds with `docker build -t identity-broker:latest .`
+- Docker image builds with `docker build -t agentic-identity-broker:latest .`
 - Image size is optimized (reasonable footprint with alpine base)
-- Container starts with `docker run -p 8000:8000 identity-broker:latest`
+- Container starts with `docker run -p 8000:8000 agentic-identity-broker:latest`
 - Backend HTTP server responds to requests on port 8000 (SC-002)
 - Frontend assets accessible at `http://localhost:8000/` (SC-003)
 - Frontend can communicate with backend API (SC-004)
@@ -92,23 +92,23 @@ Enable building a production-ready Docker image containing both backend and fron
 
 - [x] T008 [US1] Build Docker image and verify complete artifact creation
   - [x] Execute: `just docker-build` - **✓ Success**: Built using podman
-  - [x] Verify image created: `docker images | grep identity-broker:latest` - **✓ Verified**: localhost/identity-broker:latest
-  - [x] Verify image tags: `docker inspect identity-broker:latest | grep -A 5 Labels` - **✓ Verified**: All OCI labels present
+  - [x] Verify image created: `docker images | grep agentic-identity-broker:latest` - **✓ Verified**: localhost/agentic-identity-broker:latest
+  - [x] Verify image tags: `docker inspect agentic-identity-broker:latest | grep -A 5 Labels` - **✓ Verified**: All OCI labels present
   - [x] Verify optimized image size: reasonable footprint with alpine (~40-50MB expected) - **✓ Success**: 18.5 MB (excellent optimization)
 
 - [x] T009 [P] [US1] Verify pre-built binary packaging in image
-  - [x] Run: `docker run --rm identity-broker:latest ls -la /app/identity-broker` - **✓ Verified**
+  - [x] Run: `docker run --rm agentic-identity-broker:latest ls -la /app/agentic-identity-broker` - **✓ Verified**
   - [x] Confirm binary is executable and owned by uid=1000 - **✓ Success**: `-rwxr-xr-x appuser:appuser (8.7MB)`
-  - [x] Verify binary works: `docker run --rm identity-broker:latest /app/identity-broker --version` - **✓**: Binary is ELF Linux arm64, executable
+  - [x] Verify binary works: `docker run --rm agentic-identity-broker:latest /app/agentic-identity-broker --version` - **✓**: Binary is ELF Linux arm64, executable
 
 - [x] T010 [P] [US1] Verify frontend assets packaging in image
-  - [x] Run: `docker run --rm identity-broker:latest ls -la /app/web/dist/index.html` - **✓ Verified**
+  - [x] Run: `docker run --rm agentic-identity-broker:latest ls -la /app/web/dist/index.html` - **✓ Verified**
   - [x] Verify index.html exists - **✓ Success**: Located at `/app/web/dist/consent/index.html`
-  - [x] Run: `docker run --rm identity-broker:latest find /app/web/dist -type f | wc -l` - **✓ Success**: 8 files found
+  - [x] Run: `docker run --rm agentic-identity-broker:latest find /app/web/dist -type f | wc -l` - **✓ Success**: 8 files found
 
 - [x] T011 [US1] Test container initialization and startup
   - [x] Execute: `just docker-run` and wait for startup - **✓ Success**: Container started in ~3 seconds
-  - [x] Verify container is running: `docker ps | grep identity-broker` - **✓ Verified**: Container running with podman
+  - [x] Verify container is running: `docker ps | grep agentic-identity-broker` - **✓ Verified**: Container running with podman
   - [x] Check logs: `docker logs <container-id>` shows no errors - **✓ No errors**: Clean startup logs
   - [x] Verify startup completes within 30 seconds - **✓ Success**: Ready within 3 seconds
 
@@ -135,12 +135,12 @@ Enable building a production-ready Docker image containing both backend and fron
 
 - [x] T016 [US1] Document image properties and usage
   - [x] Create IMAGE_METADATA.md in project root documenting:
-    - [x] Image name: `identity-broker:latest` ✓
+    - [x] Image name: `agentic-identity-broker:latest` ✓
     - [x] Base: `alpine:latest` ✓
     - [x] Exposed ports: 8000 ✓
     - [x] Non-root user: uid=1000 ✓
     - [x] Environment variables supported (APP_PORT, LOG_LEVEL, DATABASE_URL) ✓
-    - [x] Startup command: `/app/identity-broker` ✓
+    - [x] Startup command: `/app/agentic-identity-broker` ✓
 
 ---
 
@@ -177,7 +177,7 @@ Enable developers to build and run containerized application using the unified t
   - [x] File: `justfile` - **✓ Implemented** (lines 172-182)
   - [x] Command: run Docker image locally - **✓**: Fully implemented
   - [x] Options: allow port override (default: 8000) - **✓**: Uses DOCKER_PORT env var
-  - [x] Execute: `docker run -p 8000:8000 identity-broker:latest` - **✓**: Command implemented
+  - [x] Execute: `docker run -p 8000:8000 agentic-identity-broker:latest` - **✓**: Command implemented
   - [x] Display: startup message with access URL (http://localhost:8000) - **✓**: Display implemented
   - [x] Cleanup: provide stop/cleanup instructions - **✓**: Can stop with podman/docker stop
 
@@ -251,7 +251,7 @@ Ensure production readiness and handle edge cases.
 
 - [x] T029 [P] Handle configuration at runtime
   - [x] Verify Viper configuration system respects environment variables - **✓**: Viper configured to read env vars
-  - [x] Test override: `docker run -e APP_PORT=3000 identity-broker:latest` - **See**: IMAGE_METADATA.md examples
+  - [x] Test override: `docker run -e APP_PORT=3000 agentic-identity-broker:latest` - **See**: IMAGE_METADATA.md examples
   - [x] Verify startup logs show applied configuration - **See**: AGENT.md for config precedence
   - [x] Document configuration precedence: env vars > config files > defaults - **✓ Documented**: In IMAGE_METADATA.md
 

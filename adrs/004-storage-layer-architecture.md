@@ -201,10 +201,10 @@ Moving from in-memory to PostgreSQL requires only configuration changes:
 
 ```bash
 # Development
-identity-broker --config config.dev.yaml
+agentic-identity-broker --config config.dev.yaml
 
 # Production
-identity-broker --config config.prod.yaml
+agentic-identity-broker --config config.prod.yaml
 ```
 
 No code changes needed - the same application binary works with both backends.

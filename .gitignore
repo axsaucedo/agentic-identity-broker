@@ -10,9 +10,6 @@
 bin/*
 dist/
 build/
-bin/
-bin/identity-broker
-identity-broker
 
 # Test binary, built with `go test -c`
 *.test

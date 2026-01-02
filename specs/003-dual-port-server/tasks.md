@@ -266,7 +266,7 @@ Phase 2: Core Infrastructure
 
 ### Main Application Update
 
-- [X] T039 [US1] Update `cmd/identity-broker/main.go`:
+- [X] T039 [US1] Update `cmd/agentic-identity-broker/main.go`:
   - Load configuration with context from existing config loader
   - Create two Server instances (enduser and admin) with configuration
   - Create Manager instance with both servers
@@ -303,10 +303,10 @@ Phase 2: Core Infrastructure
 
 **Phase 3 (US1) Completion Check**:
 - [X] `just build` succeeds
-- [X] `./bin/identity-broker` starts both servers on ports 8000 and 14000
+- [X] `./bin/agentic-identity-broker` starts both servers on ports 8000 and 14000
 - [X] `curl http://localhost:8000/health` returns HTTP 200 with `{"status":"healthy","server":"enduser",...}`
 - [X] `curl http://localhost:14000/health` returns HTTP 200 with `{"status":"healthy","server":"admin",...}`
-- [X] `kill -TERM $(pgrep identity-broker)` causes graceful shutdown
+- [X] `kill -TERM $(pgrep agentic-identity-broker)` causes graceful shutdown
 - [X] All US1 integration tests pass
 - [X] `go test -race ./...` passes with no race conditions
 
@@ -323,7 +323,7 @@ Phase 2: Core Infrastructure
 
 ### CLI Flag Support
 
-- [X] T044 [P] [US2] Extend Cobra command in `cmd/identity-broker/root.go`:
+- [X] T044 [P] [US2] Extend Cobra command in `cmd/agentic-identity-broker/root.go`:
   - Add flags: `--server.enduser.port`, `--server.enduser.bind`, `--server.admin.port`, `--server.admin.bind`, `--server.shutdown.timeout`
   - Bind flags to viper in loader.go bindFlags() method
   - Updated config loading to incorporate Cobra flags
@@ -372,9 +372,9 @@ Phase 2: Core Infrastructure
   - Added graceful shutdown documentation
 
 **Phase 4 (US2) Completion Check**:
-- [X] `./bin/identity-broker --config examples/config/config.development.yaml` starts on ports 3000/3001 (tested with different ports due to port conflict)
-- [X] `IDENTITY_BROKER_SERVER_ENDUSER_PORT=9000 ./bin/identity-broker` starts on port 9000 (env vars bind correctly)
-- [X] `./bin/identity-broker --server.enduser.port 9000` starts on port 9000 (CLI flags work, tested with 9100/9101)
+- [X] `./bin/agentic-identity-broker --config examples/config/config.development.yaml` starts on ports 3000/3001 (tested with different ports due to port conflict)
+- [X] `IDENTITY_BROKER_SERVER_ENDUSER_PORT=9000 ./bin/agentic-identity-broker` starts on port 9000 (env vars bind correctly)
+- [X] `./bin/agentic-identity-broker --server.enduser.port 9000` starts on port 9000 (CLI flags work, tested with 9100/9101)
 - [X] CLI flag > Env var > YAML config > defaults precedence verified (comprehensive integration tests pass)
 - [X] All configuration tests pass (TestConfigurationPrecedence and TestConfigurationFromExamples pass)
 - [X] Documentation is complete and accurate
@@ -469,7 +469,7 @@ Phase 2: Core Infrastructure
 
 ### Signal Handling
 
-- [X] T060 [P] [US4] Implement signal handling in `cmd/identity-broker/root.go`:
+- [X] T060 [P] [US4] Implement signal handling in `cmd/agentic-identity-broker/root.go`:
   - Uses signal.NotifyContext() to catch SIGTERM and SIGINT
   - Passes context to manager.Start()
   - When context is cancelled, triggers graceful shutdown via Manager.Shutdown()
@@ -531,7 +531,7 @@ Phase 2: Core Infrastructure
   - Expected logs during shutdown documented
 
 **Phase 6 (US4) Completion Check**:
-- [X] `kill -TERM $(pgrep identity-broker)` causes graceful shutdown (verified in manual tests)
+- [X] `kill -TERM $(pgrep agentic-identity-broker)` causes graceful shutdown (verified in manual tests)
 - [X] In-flight requests complete before shutdown (http.Server.Shutdown handles this)
 - [X] New requests rejected during shutdown (http.Server.Shutdown stops accepting new connections)
 - [X] Shutdown completes cleanly within timeout (tested in TestManagerGracefulShutdown)
@@ -621,8 +621,8 @@ Phase 2: Core Infrastructure
   - `just clean` works
   - `just build` succeeds
   - `just test` passes (all tests with race detection)
-  - `./bin/identity-broker` starts and responds to health checks (verified with ports 9100/9101)
-  - `kill -TERM $(pgrep identity-broker)` performs graceful shutdown (verified)
+  - `./bin/agentic-identity-broker` starts and responds to health checks (verified with ports 9100/9101)
+  - `kill -TERM $(pgrep agentic-identity-broker)` performs graceful shutdown (verified)
 
 - [X] T082 Verify all constitution principles are met:
   - Security-First: fail-closed validation, no optional security, input validation comprehensive

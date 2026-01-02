@@ -90,7 +90,7 @@ internal/
 │       ├── lifecycle.go  # Startup, shutdown coordination
 │       └── manager.go    # Dual-server management, atomic startup
 └── cmd/
-    └── identity-broker/
+    └── agentic-identity-broker/
         └── main.go       # UPDATE - initialize and start dual servers
 
 tests/
