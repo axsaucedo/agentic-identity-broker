@@ -24,7 +24,7 @@ just build-all
 ```
 
 Produces:
-- `./bin/identity-broker` - Optimized Go backend binary
+- `./build/identity-broker` - Optimized Go backend binary
 - `./web/dist/` - Compiled React frontend
 
 ### 2. Build Docker Image
