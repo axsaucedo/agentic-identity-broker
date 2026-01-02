@@ -1,0 +1,52 @@
+# Third-Party OAuth2 Session Configuration
+#
+# This configuration file defines settings for OAuth2 session management
+# with third-party services (GitHub, Google, Microsoft, etc.).
+#
+# Feature: Third-Party OAuth2 Session Management (008-thirdparty-oauth2-sessions)
+
+third_party_oauth2:
+  # JWE signing key for state tokens (base64-encoded, 32+ bytes for A256GCMKW)
+  #
+  # IMPORTANT: This key MUST be kept secret. It protects OAuth2 state tokens
+  # during the authorization flow. Compromise of this key allows state token
+  # forgery and CSRF attacks.
+  #
+  # Generate with: openssl rand -base64 32
+  # Recommended: Store in environment variable IDENTITY_BROKER_JWE_SIGNING_KEY
+  #
+  # Example: "dGhpcyBpcyBhIGR1bW15IGtleSBmb3IgZGVtb25zdHJhdGlvbg=="
+  jwe_signing_key: "${IDENTITY_BROKER_JWE_SIGNING_KEY}"
+
+  # State token time-to-live (max 15 minutes per spec)
+  #
+  # This controls how long users have to complete the OAuth2 authorization flow
+  # after clicking "Connect" on a third-party service. Shorter TTL reduces
+  # exposure window for state token leakage but may frustrate slow users.
+  #
+  # Recommended: 10m (10 minutes)
+  # Maximum: 15m (enforced by configuration validation)
+  # Format: Duration string (e.g., "5m", "10m30s", "15m")
+  state_token_ttl: "10m"
+
+  # PKCE code verifier length in bytes (32-128, recommended 32)
+  #
+  # PKCE (Proof Key for Code Exchange) is a security extension for OAuth2 that
+  # prevents authorization code interception attacks. This setting controls the
+  # length of the random code verifier.
+  #
+  # Recommended: 32 bytes (256 bits of entropy)
+  # Range: 32-128 bytes per RFC 7636
+  # Higher values provide more entropy but no practical security benefit beyond 32.
+  pkce_verifier_length: 32
+
+# Environment-Specific Overrides
+#
+# You can override these settings using environment variables:
+# - IDENTITY_BROKER_JWE_SIGNING_KEY (required, no default)
+# - IDENTITY_BROKER_STATE_TOKEN_TTL (optional, default: 10m)
+# - IDENTITY_BROKER_PKCE_VERIFIER_LENGTH (optional, default: 32)
+#
+# Example:
+#   export IDENTITY_BROKER_JWE_SIGNING_KEY="$(openssl rand -base64 32)"
+#   export IDENTITY_BROKER_STATE_TOKEN_TTL="15m"

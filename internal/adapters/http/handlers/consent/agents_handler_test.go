@@ -337,3 +337,11 @@ func (m *mockGrantRepoForAgents) ListByPrincipal(ctx context.Context, principal 
 
 	return grants, nil
 }
+
+func (m *mockGrantRepoForAgents) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockGrantRepoForAgents) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
+	return []string{}, nil
+}

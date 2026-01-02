@@ -4,3 +4,4 @@
 
 export * from './useConsent';
 export * from './useRetry';
+export * from './useSessions';

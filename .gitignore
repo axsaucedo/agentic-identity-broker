@@ -11,6 +11,8 @@ bin/*
 dist/
 build/
 bin/
+bin/identity-broker
+identity-broker
 
 # Test binary, built with `go test -c`
 *.test
@@ -57,4 +59,3 @@ assets/docusaurus/.cache-loader/
 Thumbs.db
 
 .playwright-mcp
-

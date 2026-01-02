@@ -239,3 +239,51 @@ docs: docs-install docs-build docs-preview
 # Deploy to GitHub Pages
 docs-deploy: docs-build
     cd assets/docusaurus && npm run deploy
+
+# =============================================================================
+# Mock Third-Party OAuth2 Service Targets (Manual Testing)
+# =============================================================================
+
+# Start mock third-party OAuth2 service (port 9000)
+mock-third-party-oauth2-start:
+    @echo "Starting mock third-party OAuth2 service..."
+    cd mocks/third-party-service && go run cmd/mock-oauth2-server/main.go
+
+# Build mock third-party OAuth2 service binary
+mock-third-party-oauth2-build:
+    @echo "Building mock third-party OAuth2 service..."
+    @mkdir -p bin
+    cd mocks/third-party-service && go build -o ../../bin/mock-oauth2-server cmd/mock-oauth2-server/main.go
+    @echo "✓ Binary built: ./bin/mock-oauth2-server"
+
+# Register mock third-party service with broker admin API
+mock-third-party-oauth2-register:
+    @echo "Registering mock third-party OAuth2 service with broker..."
+    @bash mocks/third-party-service/scripts/register-with-broker.sh
+
+# Full setup: build, start (background), register
+mock-third-party-oauth2-setup: mock-third-party-oauth2-build
+    @echo "Setting up mock third-party OAuth2 testing environment..."
+    @echo "1. Starting mock third-party OAuth2 server (background)..."
+    @./bin/mock-oauth2-server &
+    @sleep 2
+    @echo "2. Checking mock server health..."
+    @curl -s -f http://localhost:9000/health || (echo "Mock server failed to start"; exit 1)
+    @echo "   ✓ Mock server healthy"
+    @echo "3. Registering mock service with broker..."
+    @just mock-third-party-oauth2-register
+    @echo ""
+    @echo "========================================="
+    @echo "Mock Third-Party OAuth2 Setup Complete!"
+    @echo "========================================="
+    @echo "Mock OAuth2 Server: http://localhost:9000"
+    @echo "Broker Consent UI: http://localhost:8000/consent/sessions"
+    @echo ""
+    @echo "To stop: pkill -f mock-oauth2-server"
+
+# Stop and clean mock third-party OAuth2 artifacts
+mock-third-party-oauth2-clean:
+    @echo "Stopping mock third-party OAuth2 server..."
+    @pkill -f mock-oauth2-server || true
+    @rm -f bin/mock-oauth2-server
+    @echo "✓ Mock cleanup complete"
