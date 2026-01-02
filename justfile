@@ -180,15 +180,15 @@ build-all: build web-build
 # =============================================================================
 
 # Build Docker image from pre-built artifacts
-# Requires: ./bin/identity-broker and ./web/dist/ to exist
+# Requires: ./build/identity-broker and ./web/dist/ to exist
 docker-build:
     @echo "Building Docker image..."
     @if ! command -v docker > /dev/null; then \
         echo "Error: Docker is not installed. Please install Docker or Docker Desktop."; \
         exit 1; \
     fi
-    @if [ ! -f ./bin/identity-broker ]; then \
-        echo "Error: Backend binary not found at ./bin/identity-broker"; \
+    @if [ ! -f ./build/identity-broker ]; then \
+        echo "Error: Backend binary not found at ./build/identity-broker"; \
         echo "Run 'just build-all' to build artifacts first."; \
         exit 1; \
     fi
