@@ -1,0 +1,419 @@
+openapi: 3.0.3
+info:
+  title: OAuth2 Authorization Server Proxy API
+  description: |
+    Identity Broker OAuth2 Authorization Server endpoints. The broker acts as an OAuth2 proxy:
+    it validates client_id against registered agents, checks user consent, and proxies requests
+    to an upstream RFC 6749 compliant OAuth2 server.
+
+    **Key Behaviors**:
+    - Authorization endpoint redirects user's browser to upstream OAuth2 server after consent check
+    - Token endpoint proxies server-to-server HTTP POST requests to upstream
+    - Metadata endpoint returns broker's OAuth2 configuration for auto-discovery
+
+    **Security**: The broker does not issue, validate, or store tokens. All token operations
+    are handled by the upstream OAuth2 server.
+  version: 1.0.0
+  contact:
+    name: Identity Broker Team
+
+servers:
+  - url: https://identity-broker.example.com
+    description: Identity Broker enduser server
+
+paths:
+  /oauth2/authorize:
+    get:
+      summary: OAuth2 Authorization Endpoint
+      description: |
+        RFC 6749 compliant authorization endpoint. Validates client_id against registered agents,
+        checks if user has granted consent, and redirects to either:
+        - Consent UI if no active grant exists
+        - Upstream OAuth2 authorization endpoint if active grant exists
+
+        **Flow**:
+        1. Extract client_id and validate against Agent registry
+        2. Extract principal from request context (set by RequirePrincipalMiddleware)
+        3. Check if active grant exists for (principal, agent)
+        4. If no grant: HTTP 302 to /consent/agents/:agent-id?redirect_uri=<full original URL>
+        5. If grant exists: HTTP 302 to upstream OAuth2 server (preserving all parameters)
+
+        **Note**: User's browser is redirected; broker is not in the token response path.
+      operationId: oauth2Authorize
+      tags:
+        - OAuth2
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          description: OAuth2 response type (must be "code" for authorization code flow)
+          schema:
+            type: string
+            enum: [code]
+          example: code
+        - name: client_id
+          in: query
+          required: true
+          description: OAuth2 client identifier (must match registered Agent.client_id)
+          schema:
+            type: string
+          example: my-agent-client-id
+        - name: redirect_uri
+          in: query
+          required: true
+          description: Client's callback URL (validated by upstream OAuth2 server)
+          schema:
+            type: string
+            format: uri
+          example: https://my-agent.example.com/callback
+        - name: scope
+          in: query
+          required: false
+          description: Space-delimited list of requested OAuth2 scopes
+          schema:
+            type: string
+          example: read write
+        - name: state
+          in: query
+          required: false
+          description: Opaque value for CSRF protection (recommended per RFC 6749)
+          schema:
+            type: string
+          example: xyz123
+        - name: code_challenge
+          in: query
+          required: false
+          description: PKCE code challenge (RFC 7636)
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          required: false
+          description: PKCE code challenge method
+          schema:
+            type: string
+            enum: [S256, plain]
+      responses:
+        '302':
+          description: |
+            Redirect to either consent UI or upstream OAuth2 authorization endpoint
+          headers:
+            Location:
+              description: Redirect URL
+              schema:
+                type: string
+                format: uri
+              examples:
+                consent_redirect:
+                  value: https://identity-broker.example.com/consent/agents/agent-123?redirect_uri=https%3A%2F%2Fidentity-broker.example.com%2Foauth2%2Fauthorize%3Fclient_id%3Dmy-agent...
+                  summary: Redirect to consent UI (no active grant)
+                upstream_redirect:
+                  value: https://upstream-oauth2.example.com/oauth2/authorize?client_id=my-agent&redirect_uri=https%3A%2F%2Fmy-agent.example.com%2Fcallback&scope=read+write&state=xyz123
+                  summary: Redirect to upstream OAuth2 server (active grant exists)
+                error_redirect:
+                  value: https://my-agent.example.com/callback?error=invalid_client&error_description=Unknown+client_id&state=xyz123
+                  summary: Error redirect to client's redirect_uri
+        '400':
+          description: Invalid request (missing required parameter)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              example:
+                error: invalid_request
+                error_description: Missing required parameter client_id
+        '500':
+          description: Internal server error (upstream unreachable, TLS validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              example:
+                error: server_error
+                error_description: Unable to reach upstream OAuth2 server
+      security:
+        - session: []
+
+  /oauth2/token:
+    post:
+      summary: OAuth2 Token Endpoint
+      description: |
+        RFC 6749 compliant token endpoint. Proxies token exchange requests to upstream OAuth2 server
+        via server-to-server HTTP POST. Supports authorization_code and refresh_token grant types.
+
+        **Flow**:
+        1. Validate Content-Type (must be application/x-www-form-urlencoded or application/json)
+        2. Create HTTP POST request to upstream token endpoint
+        3. Copy all parameters and headers (excluding hop-by-hop headers)
+        4. Execute request with TLS validation
+        5. Stream response (status code + body) back to client without modification
+
+        **Security**: The broker does NOT inspect, log, or store tokens. Tokens are treated as
+        opaque values managed by the upstream OAuth2 server.
+      operationId: oauth2Token
+      tags:
+        - OAuth2
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/AuthorizationCodeTokenRequest'
+                - $ref: '#/components/schemas/RefreshTokenRequest'
+            examples:
+              authorization_code:
+                value:
+                  grant_type: authorization_code
+                  code: AUTH_CODE_HERE
+                  redirect_uri: https://my-agent.example.com/callback
+                  client_id: my-agent-client-id
+                  client_secret: SECRET
+              refresh_token:
+                value:
+                  grant_type: refresh_token
+                  refresh_token: REFRESH_TOKEN_HERE
+                  client_id: my-agent-client-id
+                  client_secret: SECRET
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/AuthorizationCodeTokenRequest'
+                - $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Successful token response (proxied from upstream)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Bad request (proxied from upstream)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              examples:
+                invalid_grant:
+                  value:
+                    error: invalid_grant
+                    error_description: Authorization code is invalid or expired
+                invalid_request:
+                  value:
+                    error: invalid_request
+                    error_description: Missing required parameter grant_type
+        '401':
+          description: Client authentication failed (proxied from upstream)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              example:
+                error: invalid_client
+                error_description: Client authentication failed
+        '415':
+          description: Unsupported Media Type (CSRF protection)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              example:
+                error: invalid_request
+                error_description: Content-Type must be application/x-www-form-urlencoded or application/json
+        '502':
+          description: Bad Gateway (upstream OAuth2 server unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              example:
+                error: temporarily_unavailable
+                error_description: Unable to reach upstream OAuth2 server
+
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: OAuth2 Authorization Server Metadata
+      description: |
+        RFC 8414 compliant metadata discovery endpoint. Returns JSON document describing the
+        identity broker's OAuth2 endpoints and capabilities. Enables OAuth2 clients and libraries
+        to auto-discover configuration.
+
+        **Note**: Metadata reflects the broker's configuration, not the upstream server's capabilities.
+        Clients interact with the broker's endpoints, not directly with the upstream.
+      operationId: oauth2Metadata
+      tags:
+        - OAuth2
+      responses:
+        '200':
+          description: OAuth2 Authorization Server Metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Metadata'
+              example:
+                issuer: https://identity-broker.example.com
+                authorization_endpoint: https://identity-broker.example.com/oauth2/authorize
+                token_endpoint: https://identity-broker.example.com/oauth2/token
+                response_types_supported: [code]
+                grant_types_supported: [authorization_code, refresh_token]
+                token_endpoint_auth_methods_supported: [client_secret_post, client_secret_basic]
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: header
+      name: X-Remote-User
+      description: |
+        User principal header set by upstream authentication proxy (e.g., oauth2-proxy, nginx).
+        The header name is configurable (default: X-Remote-User). The RequirePrincipalMiddleware
+        extracts this header and adds the principal to the request context for use by handlers.
+        Clients do not provide this header directly.
+
+  schemas:
+    AuthorizationCodeTokenRequest:
+      type: object
+      required:
+        - grant_type
+        - code
+        - redirect_uri
+        - client_id
+      properties:
+        grant_type:
+          type: string
+          enum: [authorization_code]
+          description: OAuth2 grant type
+        code:
+          type: string
+          description: Authorization code received from authorization endpoint
+        redirect_uri:
+          type: string
+          format: uri
+          description: Must match redirect_uri used in authorization request
+        client_id:
+          type: string
+          description: OAuth2 client identifier
+        client_secret:
+          type: string
+          description: Client secret for authentication
+          format: password
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - grant_type
+        - refresh_token
+        - client_id
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token]
+        refresh_token:
+          type: string
+          description: Refresh token issued by authorization server
+        client_id:
+          type: string
+          description: OAuth2 client identifier
+        client_secret:
+          type: string
+          description: Client secret for authentication
+          format: password
+        scope:
+          type: string
+          description: Requested scope (optional, must not exceed original grant)
+
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+          description: Bearer access token issued by upstream OAuth2 server
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Token type
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+          example: 3600
+        refresh_token:
+          type: string
+          description: Refresh token for obtaining new access tokens (optional)
+        scope:
+          type: string
+          description: Space-delimited list of granted scopes
+
+    OAuth2Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: OAuth2 error code (RFC 6749)
+          enum:
+            - invalid_request
+            - invalid_client
+            - invalid_grant
+            - unauthorized_client
+            - unsupported_grant_type
+            - invalid_scope
+            - server_error
+            - temporarily_unavailable
+        error_description:
+          type: string
+          description: Human-readable error description
+        error_uri:
+          type: string
+          format: uri
+          description: URL to error documentation (optional)
+
+    OAuth2Metadata:
+      type: object
+      required:
+        - issuer
+        - authorization_endpoint
+        - token_endpoint
+        - response_types_supported
+        - grant_types_supported
+      properties:
+        issuer:
+          type: string
+          format: uri
+          description: Identity broker's public base URL
+          example: https://identity-broker.example.com
+        authorization_endpoint:
+          type: string
+          format: uri
+          description: Full URL to authorization endpoint
+          example: https://identity-broker.example.com/oauth2/authorize
+        token_endpoint:
+          type: string
+          format: uri
+          description: Full URL to token endpoint
+          example: https://identity-broker.example.com/oauth2/token
+        response_types_supported:
+          type: array
+          items:
+            type: string
+          description: Supported OAuth2 response types
+          example: [code]
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+          description: Supported OAuth2 grant types
+          example: [authorization_code, refresh_token]
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+          description: Supported client authentication methods
+          example: [client_secret_post, client_secret_basic]
+
+tags:
+  - name: OAuth2
+    description: OAuth2 Authorization Server endpoints (RFC 6749, RFC 8414)

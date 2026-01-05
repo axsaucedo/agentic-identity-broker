@@ -278,3 +278,110 @@ mock-third-party-oauth2-clean:
     @pkill -f mock-oauth2-server || true
     @rm -f bin/mock-oauth2-server
     @echo "✓ Mock cleanup complete"
+
+# =============================================================================
+# Mock Upstream OAuth2 Server Targets (Manual Testing)
+# =============================================================================
+
+# Start mock upstream OAuth2 server (port 9001) - visually distinctive
+mock-upstream-oauth2-start:
+    @echo "Starting mock upstream OAuth2 server..."
+    cd mocks/upstream-oauth2-server && go run cmd/mock-upstream-oauth2-server/main.go
+
+# Build mock upstream OAuth2 server binary
+mock-upstream-oauth2-build:
+    @echo "Building mock upstream OAuth2 server..."
+    @mkdir -p bin
+    cd mocks/upstream-oauth2-server && go build -o ../../bin/mock-upstream-oauth2-server cmd/mock-upstream-oauth2-server/main.go
+    @echo "✓ Binary built: ./bin/mock-upstream-oauth2-server"
+
+# Run tests for upstream OAuth2 mock server
+mock-upstream-oauth2-test:
+    @echo "Running tests for upstream OAuth2 mock server..."
+    cd mocks/upstream-oauth2-server && go test -v ./internal/handlers/...
+
+# Full setup: build, start (background), health check
+mock-upstream-oauth2-setup: mock-upstream-oauth2-build
+    @echo "Setting up mock upstream OAuth2 testing environment..."
+    @echo "1. Starting mock upstream OAuth2 server (background)..."
+    @./bin/mock-upstream-oauth2-server &
+    @sleep 2
+    @echo "2. Checking mock server health..."
+    @curl -s -f http://localhost:9001/health || (echo "Mock server failed to start"; exit 1)
+    @echo "   ✓ Mock server healthy"
+    @echo ""
+    @echo "========================================="
+    @echo "Mock Upstream OAuth2 Setup Complete!"
+    @echo "========================================="
+    @echo "Mock Upstream OAuth2 Server: http://localhost:9001"
+    @echo "Consent Page: http://localhost:9001/oauth/authorize?client_id=upstream-oauth2-client&response_type=code&redirect_uri=http://localhost/callback&scope=openid&state=test123"
+    @echo ""
+    @echo "Note: You'll see DISTINCTIVE TEAL background (#00d4aa)"
+    @echo "      with 🌐 UPSTREAM OAUTH2 badge"
+    @echo ""
+    @echo "To stop: pkill -f mock-upstream-oauth2-server"
+
+# Stop and clean mock upstream OAuth2 artifacts
+mock-upstream-oauth2-clean:
+    @echo "Stopping mock upstream OAuth2 server..."
+    @pkill -f mock-upstream-oauth2-server || true
+    @rm -f bin/mock-upstream-oauth2-server
+    @echo "✓ Mock cleanup complete"
+
+# =============================================================================
+# Mock Sample OAuth2 Client Agent Targets (End-to-End Testing)
+# =============================================================================
+
+# Start mock sample OAuth2 client agent (port 8001)
+mock-sample-agent-start:
+    @echo "Starting mock sample OAuth2 client agent..."
+    cd mocks/sample-agent && go run cmd/sample-agent/main.go
+
+# Build mock sample OAuth2 client agent binary
+mock-sample-agent-build:
+    @echo "Building mock sample OAuth2 client agent..."
+    @mkdir -p bin
+    cd mocks/sample-agent && go build -o ../../bin/sample-agent cmd/sample-agent/main.go
+    @echo "✓ Binary built: ./bin/sample-agent"
+
+# Run tests for sample agent
+mock-sample-agent-test:
+    @echo "Running tests for sample agent..."
+    cd mocks/sample-agent && go test -v ./...
+
+# Full setup: build, start (background), health check
+mock-sample-agent-setup: mock-sample-agent-build
+    @echo "Setting up mock sample OAuth2 client testing environment..."
+    @echo "1. Starting mock sample OAuth2 client (background)..."
+    @./bin/sample-agent &
+    @sleep 2
+    @echo "2. Checking mock client health..."
+    @curl -s -f http://localhost:8001/health || (echo "Sample client failed to start"; exit 1)
+    @echo "   ✓ Sample client healthy"
+    @echo ""
+    @echo "========================================="
+    @echo "Sample OAuth2 Client Setup Complete!"
+    @echo "========================================="
+    @echo ""
+    @echo "Three-Tier OAuth2 Setup:"
+    @echo "  Tier 1: Sample Agent ................ http://localhost:8001"
+    @echo "  Tier 2: Identity Broker ............ http://localhost:8000"
+    @echo "  Tier 3: Upstream OAuth2 Server .... http://localhost:9001"
+    @echo ""
+    @echo "Testing the complete end-to-end flow:"
+    @echo "  1. Start this: just mock-sample-agent-setup"
+    @echo "  2. Start broker: just dev"
+    @echo "  3. Start upstream: just mock-upstream-oauth2-start"
+    @echo "  4. Browser: http://localhost:8001"
+    @echo "  5. Click Login with OAuth2"
+    @echo "  6. Approve consent (notice TEAL background on port 9001)"
+    @echo "  7. See user information page"
+    @echo ""
+    @echo "To stop: pkill -f 'sample-agent|bin/sample-agent'"
+
+# Stop and clean mock sample agent artifacts
+mock-sample-agent-clean:
+    @echo "Stopping mock sample OAuth2 client agent..."
+    @pkill -f 'sample-agent|bin/sample-agent' || true
+    @rm -f bin/sample-agent
+    @echo "✓ Mock cleanup complete"

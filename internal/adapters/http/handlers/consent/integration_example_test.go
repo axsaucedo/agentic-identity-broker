@@ -74,7 +74,7 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-123", nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", "agent-123")
+	rctx.URLParams.Add("agent-id", "agent-123")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	// Execute request
@@ -144,7 +144,7 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-456/grants", nil)
 	ctx = principal.WithPrincipal(ctx, principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agentId", "agent-456")
+	rctx.URLParams.Add("agent-id", "agent-456")
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -272,7 +272,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		handler := consent.NewAgentDetailHandler(consentSvc, nil)
 		req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-789", nil)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agentId", "agent-789")
+		rctx.URLParams.Add("agent-id", "agent-789")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		rr := httptest.NewRecorder()
@@ -304,7 +304,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-789/grants", nil)
 		ctx := principal.WithPrincipal(context.Background(), principalValue)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agentId", "agent-789")
+		rctx.URLParams.Add("agent-id", "agent-789")
 		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 		req = req.WithContext(ctx)
 

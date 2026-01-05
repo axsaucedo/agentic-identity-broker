@@ -170,3 +170,25 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 
 	return result, nil
 }
+
+// GetByClientID retrieves an agent entity by client_id.
+// Returns StorageError with Kind=NotFound if agent not found.
+func (r *AgentRepository) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Use existing byClientID index
+	agentID, exists := r.byClientID[clientID]
+	if !exists {
+		return nil, storage.NewStorageError(
+			"GetAgentByClientID",
+			storage.ErrorKindNotFound,
+			ports.ErrNotFound,
+			"agent not found",
+		)
+	}
+
+	agent := r.agents[agentID]
+	// Return deep copy to prevent external mutation
+	return agent.Copy(), nil
+}

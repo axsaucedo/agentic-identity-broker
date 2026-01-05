@@ -15,6 +15,7 @@ import (
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
 	storageAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/spf13/cobra"
@@ -92,6 +93,19 @@ func run(cmd *cobra.Command, args []string) error {
 	// Constitution Principle VII (Configuration-Driven Design) compliance
 	// The configuration includes JWESigningKey, StateTokenTTL, and PKCEVerifierLength
 	enduserServer.SetThirdPartyOAuth2Config(cfg.ThirdPartyOAuth2)
+
+	// Set OAuth2 Authorization Server configuration for enduser server
+	// This enables the OAuth2 authorization server proxy endpoints (/oauth2/authorize, /oauth2/token, /.well-known/oauth-authorization-server)
+	// Constitution Principle VII (Configuration-Driven Design) compliance
+	if cfg.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
+		oauth2Config := &oauth2.OAuth2Config{
+			UpstreamAuthorizeEndpoint: cfg.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
+			UpstreamTokenEndpoint:     cfg.OAuth2AuthServer.UpstreamTokenEndpoint,
+			SupportedResponseTypes:    cfg.OAuth2AuthServer.SupportedResponseTypes,
+			SupportedGrantTypes:       cfg.OAuth2AuthServer.SupportedGrantTypes,
+		}
+		enduserServer.SetOAuth2Config(oauth2Config)
+	}
 
 	// Create server manager
 	mgr := server.NewManager(enduserServer, adminServer, cfg.Server.Shutdown.Timeout, logger)

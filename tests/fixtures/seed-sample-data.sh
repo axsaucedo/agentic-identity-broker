@@ -82,6 +82,34 @@ else
 fi
 echo ""
 
+# Create OAuth2 Test Client Agent (uses upstream-oauth2-client from mock server)
+echo "Creating OAuth2 Test Client agent..."
+AGENT_RESPONSE=$(curl -s -X POST "${ADMIN_API}/agents" \
+  -H "Content-Type: application/json" \
+  -w "\n%{http_code}" \
+  -d '{
+    "client_id": "upstream-oauth2-client",
+    "display_name": "OAuth2 Test Client",
+    "description": "Test client for OAuth2 authorization flow with upstream mock server on port 9001",
+    "governance_url": "https://example.com/oauth2-test/governance",
+    "user_documentation_url": "https://example.com/oauth2-test/docs",
+    "agent_interface_url": "http://localhost:3000"
+  }')
+
+HTTP_CODE=$(echo "$AGENT_RESPONSE" | tail -n1)
+RESPONSE_BODY=$(echo "$AGENT_RESPONSE" | sed '$d')
+
+if [ "$HTTP_CODE" = "201" ]; then
+    echo -e "${GREEN}✓ OAuth2 Test Client created${NC}"
+    AGENT_ID=$(echo "$RESPONSE_BODY" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    echo "  Agent ID: $AGENT_ID"
+else
+    echo -e "${RED}✗ Failed to create OAuth2 Test Client${NC}"
+    echo "  HTTP Status: $HTTP_CODE"
+    echo "  Response: $RESPONSE_BODY"
+fi
+echo ""
+
 # Create Weather API Service
 echo "Creating Weather API service..."
 SERVICE_RESPONSE=$(curl -s -X POST "${ADMIN_API}/services" \
@@ -228,14 +256,22 @@ echo "Sample Data Seeding Complete"
 echo "========================================="
 echo ""
 echo "Summary:"
-echo "  Agents created: 2"
+echo "  Agents created: 3"
 echo "    - Weather Assistant"
 echo "    - Task Manager Pro"
+echo "    - OAuth2 Test Client (upstream-oauth2-client)"
 echo ""
 echo "  Services created: 3"
 echo "    - Weather API"
 echo "    - Calendar API"
 echo "    - Email API"
+echo ""
+echo "Testing OAuth2 Authorization Flow:"
+echo "  1. Start upstream OAuth2 mock server:"
+echo "     just mock-upstream-oauth2-start"
+echo "  2. Start identity broker:"
+echo "     just dev"
+echo "  3. Test OAuth2 flow with OAuth2 Test Client (port 9001)"
 echo ""
 echo "You can now test the consent management UI with this sample data."
 echo ""

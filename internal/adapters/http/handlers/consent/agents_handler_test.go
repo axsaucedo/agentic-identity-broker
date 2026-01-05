@@ -246,6 +246,15 @@ func (m *mockAgentRepoForAgents) List(ctx context.Context) ([]*storage.Agent, er
 	return nil, nil
 }
 
+func (m *mockAgentRepoForAgents) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+	for _, agent := range m.agents {
+		if agent.ClientID == clientID {
+			return agent, nil
+		}
+	}
+	return nil, nil
+}
+
 type mockServiceRepoForAgents struct{}
 
 func (m *mockServiceRepoForAgents) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {

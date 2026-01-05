@@ -132,6 +132,36 @@ export IDENTITY_BROKER_JWE_SIGNING_KEY="$(openssl rand -base64 32)"
 **Security Note:** The JWE signing key MUST be kept secret. It protects OAuth2 state
 tokens during the authorization flow. Compromise allows state token forgery and CSRF attacks.
 
+### `oauth2-authorization-server.yaml`
+
+OAuth2 Authorization Server proxy configuration. Demonstrates:
+- Upstream OAuth2 server URLs (authorization, token endpoints)
+- Broker's public base URL for metadata discovery
+- Supported OAuth2 grant types and response types
+- Upstream request timeout configuration
+- TLS certificate validation (enforced by default)
+
+**Usage:**
+```bash
+# Include in your main configuration file
+./identity-broker --config ./examples/config/config.yaml
+
+# Where config.yaml references oauth2-authorization-server section:
+# oauth2_authorization_server:
+#   upstream_issuer_uri: "https://auth.example.com"
+#   upstream_authorize_endpoint: "https://auth.example.com/authorize"
+#   upstream_token_endpoint: "https://auth.example.com/token"
+#   public_base_url: "https://broker.example.com"
+```
+
+**Key Features:**
+- RFC 6749 compliant OAuth2 Authorization Code flow
+- RFC 8414 OAuth2 metadata discovery (/.well-known/oauth-authorization-server)
+- Integration with broker's consent UI (Feature 007)
+- Agent registry validation (Feature 006)
+- TLS certificate validation enforced (no self-signed certificates)
+- Audit logging for authorization requests
+
 ## Configuration Sources and Precedence
 
 The application loads configuration from multiple sources with this precedence (highest to lowest):

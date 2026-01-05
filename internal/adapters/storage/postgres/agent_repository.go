@@ -405,3 +405,66 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 
 	return result, nil
 }
+
+// GetByClientID retrieves an agent entity by client_id from PostgreSQL.
+// Returns StorageError with Kind=NotFound if agent not found.
+func (r *AgentRepository) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+	if r.adapter.db == nil {
+		return nil, storage.NewStorageError(
+			"GetAgentByClientID",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	if clientID == "" {
+		return nil, storage.NewStorageError(
+			"GetAgentByClientID",
+			storage.ErrorKindValidation,
+			nil,
+			"client_id cannot be empty",
+		)
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	agent := &storage.Agent{}
+	query := `
+		SELECT id, client_id, external_id, display_name, description,
+		       governance_url, user_documentation_url, agent_interface_url,
+		       created_at, updated_at
+		FROM agents
+		WHERE client_id = $1
+	`
+
+	err := r.adapter.db.GetContext(queryCtx, agent, query, clientID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, storage.NewStorageError(
+				"GetAgentByClientID",
+				storage.ErrorKindNotFound,
+				ports.ErrNotFound,
+				"agent not found",
+			)
+		}
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			return nil, storage.NewStorageError(
+				"GetAgentByClientID",
+				storage.ErrorKindTimeout,
+				err,
+				"operation exceeded timeout",
+			)
+		}
+		return nil, storage.NewStorageError(
+			"GetAgentByClientID",
+			storage.ErrorKindConnection,
+			err,
+			"failed to get agent by client_id",
+		)
+	}
+
+	// Return deep copy to prevent external mutation
+	return agent.Copy(), nil
+}

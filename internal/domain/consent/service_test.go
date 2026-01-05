@@ -68,6 +68,18 @@ func (m *mockAgentRepo) List(ctx context.Context) ([]*storage.Agent, error) {
 	return result, nil
 }
 
+func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	for _, agent := range m.agents {
+		if agent.ClientID == clientID {
+			return agent.Copy(), nil
+		}
+	}
+	return nil, ports.ErrNotFound
+}
+
 type mockServiceRepo struct {
 	services map[string]*storage.ThirdpartyOAuth2Service
 	err      error

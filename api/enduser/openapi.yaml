@@ -3,9 +3,11 @@ info:
   title: Agentic Identity Broker - End-User API
   description: 'End-user API endpoints for the Agentic Identity Broker running on port 8000.
 
+    This API provides two main capabilities:
 
-    This API provides consent management and third-party OAuth2 session capabilities allowing users to:
+    ## 1. Consent Management
 
+    Allows users to manage delegated access to third-party OAuth2 services:
     - View their user information
 
     - List agents they have granted access to
@@ -15,19 +17,26 @@ info:
     - View and manage grants for specific agents
 
     - Grant, update, or revoke delegated access to third-party services
-
     - View third-party services with OAuth2 session status
 
     - Initiate OAuth2 authorization flows with third-party services (GitHub, Google, etc.)
 
     - Terminate OAuth2 sessions and view affected agents
 
+    ## 2. OAuth2 Authorization Server
+
+    Implements RFC 6749 (OAuth2) and RFC 8414 (OAuth2 Server Metadata) for delegated
+    authorization code flow:
+    - Authorization endpoint for initiating OAuth2 flow
+    - Token endpoint for exchanging authorization codes for access tokens
+    - Server metadata discovery endpoint for OIDC compatibility
+    - Upstream OAuth2 provider proxying with hop-by-hop header filtering
+    - PKCE (RFC 7636) support for public clients
 
     ## Authentication
 
 
-    All API endpoints (except `/health`) require authentication via:
-
+    All API endpoints (except `/health` and `/.well-known/oauth-authorization-server`) require authentication via:
     1. **Pre-authentication**: Reverse proxy (e.g., oauth2-proxy, nginx) validates the user
 
     2. **Principal Header**: Principal extracted from `X-Remote-User` header (configurable)
@@ -44,9 +53,7 @@ info:
 
 
     CORS is enabled for all `/api/*` routes on the end-user server to support browser-based
-
-    single-page applications.
-
+    single-page applications. OAuth2 endpoints are also publicly accessible as required by RFC 6749.
 
     ## Response Format
 
@@ -54,7 +61,7 @@ info:
     - **Success responses**: Most endpoints wrap data in a `{"data": ...}` envelope
 
     - **Error responses**: Follow format `{"error": "code", "message": "description"}`
-
+    - **OAuth2 responses**: Follow RFC 6749 format (no data envelope)
     - **Date/Time format**: ISO 8601 (RFC3339) format, e.g., `2025-12-19T10:30:00Z`
 
 
@@ -71,7 +78,12 @@ info:
 
     - Comprehensive validation messages
 
-    '
+    ## RFC Compliance
+
+    - **RFC 6749**: OAuth 2.0 Authorization Framework
+    - **RFC 7230**: HTTP Semantics (hop-by-hop header filtering)
+    - **RFC 7636**: PKCE (Proof Key for Public Clients)
+    - **RFC 8414**: OAuth 2.0 Authorization Server Metadata
   version: 1.0.0
   contact:
     name: Agentic Identity Broker Team
@@ -92,6 +104,12 @@ tags:
   description: Current user information
 - name: Consent
   description: User consent and delegation management
+- name: OAuth2 Authorization
+  description: OAuth2 authorization endpoint for initiating authorization code flow (RFC 6749)
+- name: OAuth2 Token
+  description: Token endpoint for exchanging authorization codes for access tokens
+- name: OAuth2 Discovery
+  description: Server metadata discovery endpoint for OIDC compatibility (RFC 8414)
 - name: Third-Party Sessions
   description: OAuth2 session management with third-party services
 paths:
@@ -1612,6 +1630,212 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/UserGrant'
+
+    # OAuth2 Schemas
+    OAuth2ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - unauthorized_client
+            - access_denied
+            - unsupported_response_type
+            - invalid_scope
+            - server_error
+            - temporarily_unavailable
+            - invalid_client
+            - invalid_grant
+            - unsupported_grant_type
+          description: |
+            OAuth2 error code as per RFC 6749.
+            Machine-readable code for programmatic error handling.
+          example: invalid_client
+
+        error_description:
+          type: string
+          description: |
+            Optional human-readable error description.
+            Provides additional context about the error.
+          example: Client not found
+
+        error_uri:
+          type: string
+          format: uri
+          description: |
+            Optional URI for additional error information.
+            Should point to documentation for the error code.
+
+    OAuth2TokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+          description: |
+            The access token issued by the authorization server.
+            Used to access protected resources on behalf of the user.
+          example: slAV32hkKG
+
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Token type (always "Bearer" for this implementation)
+          example: Bearer
+
+        expires_in:
+          type: integer
+          format: int32
+          description: |
+            Lifetime of access token in seconds.
+            Example: 3600 seconds = 1 hour
+          example: 3600
+
+        refresh_token:
+          type: string
+          description: |
+            Optional refresh token for obtaining new access tokens.
+            Used when access token expires.
+          example: refreshtoken123
+
+        scope:
+          type: string
+          description: |
+            Granted scopes.
+            Space-separated list of scopes if different from requested.
+          example: "openid profile"
+
+    OAuth2MetadataResponse:
+      type: object
+      required:
+        - issuer
+        - authorization_endpoint
+        - token_endpoint
+        - response_types_supported
+        - grant_types_supported
+      properties:
+        issuer:
+          type: string
+          format: uri
+          description: |
+            The issuer identifier (this authorization server).
+            Must be an HTTPS URI with no query or fragment.
+          example: https://broker.example.com
+
+        authorization_endpoint:
+          type: string
+          format: uri
+          description: URL of the authorization endpoint
+          example: https://broker.example.com/oauth2/authorize
+
+        token_endpoint:
+          type: string
+          format: uri
+          description: URL of the token endpoint
+          example: https://broker.example.com/oauth2/token
+
+        userinfo_endpoint:
+          type: string
+          format: uri
+          description: URL of the userinfo endpoint (if supported)
+
+        jwks_uri:
+          type: string
+          format: uri
+          description: URL of the JWKS endpoint (if supported)
+
+        registration_endpoint:
+          type: string
+          format: uri
+          description: URL of the dynamic client registration endpoint (if supported)
+
+        response_types_supported:
+          type: array
+          items:
+            type: string
+          description: OAuth2 response types supported by this server
+          example: [code]
+
+        response_modes_supported:
+          type: array
+          items:
+            type: string
+          description: Response modes supported
+          example: [query, fragment]
+
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+          description: Grant types supported by this server
+          example: [authorization_code, refresh_token]
+
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+          description: Token endpoint authentication methods supported
+          example: [client_secret_basic, client_secret_post]
+
+        token_endpoint_auth_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+          description: Signing algorithms for client authentication
+
+        service_documentation:
+          type: string
+          format: uri
+          description: URL of service documentation
+
+        ui_locales_supported:
+          type: array
+          items:
+            type: string
+          description: UI locales supported
+
+        op_policy_uri:
+          type: string
+          format: uri
+          description: URL of operator policy
+
+        op_tos_uri:
+          type: string
+          format: uri
+          description: URL of operator terms of service
+
+        revocation_endpoint:
+          type: string
+          format: uri
+          description: Token revocation endpoint URL (if supported)
+
+        introspection_endpoint:
+          type: string
+          format: uri
+          description: Token introspection endpoint URL (if supported)
+
+        code_challenge_methods_supported:
+          type: array
+          items:
+            type: string
+          description: |
+            PKCE code challenge methods supported by this server.
+            RFC 7636 compliance.
+          example: [S256, plain]
+
+        scopes_supported:
+          type: array
+          items:
+            type: string
+          description: Scopes supported by this server
+          example: [openid, profile, email]
+
+    # Error Response Schemas
     ErrorResponse:
       type: object
       required:

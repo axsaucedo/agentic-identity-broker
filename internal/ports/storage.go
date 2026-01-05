@@ -127,6 +127,11 @@ type AgentRepository interface {
 	// Returns empty slice if no agents exist (not an error).
 	// Returns StorageError for connection/timeout issues.
 	List(ctx context.Context) ([]*storage.Agent, error)
+
+	// GetByClientID retrieves an agent entity by client_id.
+	// Returns StorageError with Kind=NotFound if agent not found.
+	// Returns StorageError for connection/timeout issues.
+	GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error)
 }
 
 // ThirdpartyOAuth2ServiceRepository defines storage operations for third-party OAuth2 service configurations.

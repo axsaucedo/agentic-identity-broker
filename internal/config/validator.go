@@ -36,6 +36,11 @@ func Validate(cfg *ports.Config) error {
 		return err
 	}
 
+	// Validate OAuth2 Authorization Server configuration (if provided)
+	if err := validateOAuth2AuthServerConfig(&cfg.OAuth2AuthServer); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -237,6 +242,29 @@ func validateThirdPartyOAuth2Config(cfg *ports.ThirdPartyOAuth2Config) error {
 				nil,
 			)
 		}
+	}
+
+	return nil
+}
+
+// validateOAuth2AuthServerConfig validates the OAuth2 Authorization Server configuration.
+// OAuth2AuthServer is optional, so we only validate if configuration is provided.
+func validateOAuth2AuthServerConfig(cfg *ports.OAuth2AuthServerConfig) error {
+	// If no OAuth2 Authorization Server configuration is provided, skip validation
+	if cfg.UpstreamAuthorizeEndpoint == "" && cfg.UpstreamTokenEndpoint == "" && cfg.UpstreamIssuerURI == "" {
+		return nil
+	}
+
+	// If any OAuth2 config is provided, use the config struct's Validate method
+	if err := cfg.Validate(); err != nil {
+		// Convert validation error to ConfigError format for consistency
+		// The Validate() method returns oauth2ValidationError, we'll wrap it
+		return formatValidationError(
+			"oauth2_authorization_server",
+			"",
+			"valid OAuth2 authorization server configuration",
+			err,
+		)
 	}
 
 	return nil

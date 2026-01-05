@@ -13,6 +13,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
@@ -20,6 +21,7 @@ import (
 	oauth2sessions "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -39,6 +41,7 @@ type Server struct {
 	serviceRepo            ports.ThirdpartyOAuth2ServiceRepository // OAuth2 service repository (optional)
 	grantRepo              ports.UserGrantRepository               // User grant repository (optional)
 	sessionRepo            ports.UserSessionRepository             // User session repository (optional)
+	oauth2Config           *oauth2service.OAuth2Config             // OAuth2 configuration (optional)
 	spaConfig              *SPAConfig                              // SPA configuration (optional)
 	thirdPartyOAuth2Config ports.ThirdPartyOAuth2Config            // OAuth2 configuration from application config
 }
@@ -90,6 +93,12 @@ func (s *Server) SetGrantRepository(repo ports.UserGrantRepository) {
 // This should be called before Listen() to ensure handlers have access to the repository.
 func (s *Server) SetSessionRepository(repo ports.UserSessionRepository) {
 	s.sessionRepo = repo
+}
+
+// SetOAuth2Config sets the OAuth2 configuration for this server.
+// This should be called before Listen() to enable OAuth2 endpoints.
+func (s *Server) SetOAuth2Config(config *oauth2service.OAuth2Config) {
+	s.oauth2Config = config
 }
 
 // SetSPAConfig sets the SPA configuration for this server.
@@ -292,6 +301,9 @@ func (s *Server) setupEnduserRoutes() {
 		})
 	})
 
+	// Register OAuth2 endpoints
+	s.registerOAuth2Routes()
+
 	// Register SPA handler if configured
 	if s.spaConfig != nil && s.spaConfig.ServeEnabled {
 		spaHandler := handlers.NewSPAHandler(s.spaConfig.StaticFilesPath, s.logger)
@@ -436,6 +448,62 @@ func (s *Server) registerConsentRoutes(r chi.Router, consentService *consentserv
 		// POST /api/consent/agent/:agent-id/grants - Creates a new grant for the authenticated user
 		r.Post("/grants", grantsHandler.CreateGrant)
 	})
+}
+
+// registerOAuth2Routes registers OAuth2 endpoints.
+func (s *Server) registerOAuth2Routes() {
+	// Only register OAuth2 routes if configuration is available
+	if s.oauth2Config == nil {
+		s.logger.Debug("OAuth2 routes not registered - missing oauth2 config")
+		return
+	}
+
+	// Only register if all required repositories are available
+	if s.agentRepo == nil || s.serviceRepo == nil || s.grantRepo == nil {
+		s.logger.Warn("OAuth2 routes not registered - missing required repositories",
+			"has_agent_repo", s.agentRepo != nil,
+			"has_service_repo", s.serviceRepo != nil,
+			"has_grant_repo", s.grantRepo != nil)
+		return
+	}
+
+	// Create OAuth2Config with PublicURL from server configuration
+	oauth2Config := &oauth2service.OAuth2Config{
+		UpstreamAuthorizeEndpoint: s.oauth2Config.UpstreamAuthorizeEndpoint,
+		UpstreamTokenEndpoint:     s.oauth2Config.UpstreamTokenEndpoint,
+		PublicURL:                 s.config.PublicURL,
+		SupportedResponseTypes:    s.oauth2Config.SupportedResponseTypes,
+		SupportedGrantTypes:       s.oauth2Config.SupportedGrantTypes,
+	}
+
+	// Create OAuth2 service
+	oauth2Svc := oauth2service.NewService(s.agentRepo, s.grantRepo, oauth2Config)
+
+	// T025: Authorization endpoint with audit middleware and principal requirement
+	// GET /oauth2/authorize
+	authorizeHandler := &enduser.OAuth2AuthorizeHandler{
+		Service: oauth2Svc,
+	}
+	s.router.With(
+		middleware.OAuth2AuditMiddleware(s.logger),
+		RequirePrincipalMiddleware(s.config.Authentication, s.logger),
+	).Get("/oauth2/authorize", authorizeHandler.ServeHTTP)
+
+	// T034: Token endpoint (no authentication required, proxies to upstream)
+	// POST /oauth2/token
+	tokenHandler := &enduser.OAuth2TokenHandler{
+		UpstreamTokenURL: s.oauth2Config.UpstreamTokenEndpoint,
+	}
+	s.router.Post("/oauth2/token", tokenHandler.ServeHTTP)
+
+	// T041: Metadata endpoint (public, RFC 8414 compliant)
+	// GET /.well-known/oauth-authorization-server
+	metadataHandler := &enduser.OAuth2MetadataHandler{
+		Service: oauth2Svc,
+	}
+	s.router.Get("/.well-known/oauth-authorization-server", metadataHandler.ServeHTTP)
+
+	s.logger.Debug("OAuth2 routes registered")
 }
 
 // Router returns the underlying chi router.

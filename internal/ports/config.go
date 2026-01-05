@@ -33,10 +33,11 @@ type ConfigPort interface {
 
 // Config represents the complete application configuration schema.
 type Config struct {
-	Log              LogConfig              `mapstructure:"log" validate:"required"`
-	Server           ServerConfig           `mapstructure:"server" validate:"required"`
-	Storage          StorageConfig          `mapstructure:"storage" validate:"required"`
-	ThirdPartyOAuth2 ThirdPartyOAuth2Config `mapstructure:"third_party_oauth2"`
+	Log              LogConfig                 `mapstructure:"log" validate:"required"`
+	Server           ServerConfig              `mapstructure:"server" validate:"required"`
+	Storage          StorageConfig             `mapstructure:"storage" validate:"required"`
+	ThirdPartyOAuth2 ThirdPartyOAuth2Config    `mapstructure:"third_party_oauth2"`
+	OAuth2AuthServer OAuth2AuthServerConfig    `mapstructure:"oauth2_authorization_server"`
 }
 
 // ServerConfig contains configuration for both HTTP servers.
@@ -192,4 +193,74 @@ type ThirdPartyOAuth2Config struct {
 	// Must be 32-128 bytes per RFC 7636.
 	// Default: 32 bytes (256 bits of entropy)
 	PKCEVerifierLength int `mapstructure:"pkce_verifier_length"`
+}
+
+// OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
+type OAuth2AuthServerConfig struct {
+	UpstreamIssuerURI         string   `mapstructure:"upstream_issuer_uri"`
+	UpstreamAuthorizeEndpoint string   `mapstructure:"upstream_authorize_endpoint"`
+	UpstreamTokenEndpoint     string   `mapstructure:"upstream_token_endpoint"`
+	SupportedResponseTypes    []string `mapstructure:"supported_response_types"`
+	SupportedGrantTypes       []string `mapstructure:"supported_grant_types"`
+	UpstreamTimeoutSeconds    int      `mapstructure:"upstream_timeout_seconds"`
+	Mode                      string   `mapstructure:"mode"`
+}
+
+// Validate validates the OAuth2AuthServerConfig structure.
+// Sets defaults for empty fields and returns an error for missing required fields.
+func (c *OAuth2AuthServerConfig) Validate() error {
+	// Check required fields
+	if c.UpstreamIssuerURI == "" {
+		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")
+	}
+
+	if c.UpstreamAuthorizeEndpoint == "" {
+		return c.newValidationError("oauth2_authorization_server.upstream_authorize_endpoint")
+	}
+
+	if c.UpstreamTokenEndpoint == "" {
+		return c.newValidationError("oauth2_authorization_server.upstream_token_endpoint")
+	}
+
+	// Set defaults for optional fields
+	if len(c.SupportedResponseTypes) == 0 {
+		c.SupportedResponseTypes = []string{"code"}
+	}
+
+	if len(c.SupportedGrantTypes) == 0 {
+		c.SupportedGrantTypes = []string{"authorization_code"}
+	}
+
+	if c.UpstreamTimeoutSeconds == 0 {
+		c.UpstreamTimeoutSeconds = 30
+	}
+
+	if c.Mode == "" {
+		c.Mode = "proxy"
+	}
+
+	return nil
+}
+
+// newValidationError creates a validation error for the given field.
+// This is a helper to create errors compatible with domain/config.ConfigError.
+func (c *OAuth2AuthServerConfig) newValidationError(field string) error {
+	// Return a generic error that has a Field() method for test compatibility
+	// The actual ConfigError type is created in the config adapter layer
+	return &oauth2ValidationError{field: field}
+}
+
+// oauth2ValidationError is a simple internal error type to avoid circular imports
+type oauth2ValidationError struct {
+	field string
+}
+
+// Error implements the error interface
+func (e *oauth2ValidationError) Error() string {
+	return "config validation error"
+}
+
+// Field returns the error field for test compatibility
+func (e *oauth2ValidationError) Field() string {
+	return e.field
 }

@@ -56,3 +56,5 @@ assets/docusaurus/.cache-loader/
 Thumbs.db
 
 .playwright-mcp
+bin/identity-broker
+identity-broker

@@ -54,6 +54,14 @@ func (m *MockAgentRepository) List(ctx context.Context) ([]*storage.Agent, error
 	return args.Get(0).([]*storage.Agent), args.Error(1)
 }
 
+func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+	args := m.Called(ctx, clientID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.Agent), args.Error(1)
+}
+
 func TestAgentsHandler_CreateAgent(t *testing.T) {
 	logger := slog.Default()
 
