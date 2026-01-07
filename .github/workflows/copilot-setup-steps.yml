@@ -8,6 +8,10 @@ name: "Copilot Setup Steps"
 
 on: workflow_dispatch
 
+# Allow network access to hosts needed for tool installation
+env:
+  COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS: "just.systems"
+
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
@@ -25,8 +29,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: web/package-lock.json
 
       # Install just command runner
       - name: Install just
@@ -44,7 +46,7 @@ jobs:
       # Install golangci-lint
       - name: Install golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
+          snap install golangci-lint
 
       # Install web dependencies
       - name: Install web dependencies
