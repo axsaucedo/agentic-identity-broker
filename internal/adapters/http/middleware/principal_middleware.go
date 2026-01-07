@@ -1,5 +1,5 @@
 // Package http provides HTTP server adapters for the identity broker.
-package http
+package middleware
 
 import (
 	"encoding/json"

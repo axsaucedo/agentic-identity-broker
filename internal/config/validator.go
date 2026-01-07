@@ -2,6 +2,8 @@
 package config
 
 import (
+	"encoding/base64"
+	"fmt"
 	"net/url"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
@@ -198,25 +200,42 @@ func validateLogFormat(format ports.LogFormat) error {
 }
 
 // validateThirdPartyOAuth2Config validates the third-party OAuth2 configuration.
-// OAuth2 is optional, so we only validate if configuration is provided.
-// If JWESigningKey is empty, OAuth2 routes will not be registered (server logs warning).
 func validateThirdPartyOAuth2Config(cfg *ports.ThirdPartyOAuth2Config) error {
-	// If no OAuth2 configuration is provided, skip validation
-	if cfg.JWESigningKey == "" && cfg.StateTokenTTL == 0 && cfg.PKCEVerifierLength == 0 {
-		return nil
+
+	// JWESigningKey is mandatory - must be provided
+	if cfg.JWESigningKey == "" {
+		return formatValidationError(
+			"third_party_oauth2.jwe_signing_key",
+			"",
+			"base64-encoded key (32 bytes)",
+			nil,
+		)
 	}
 
-	// If JWESigningKey is provided, validate it's in proper format
-	if cfg.JWESigningKey != "" {
-		// JWESigningKey should be base64-encoded (min 44 chars for 32 bytes)
-		if len(cfg.JWESigningKey) < 44 {
-			return formatValidationError(
-				"third_party_oauth2.jwe_signing_key",
-				"",
-				"base64-encoded key with minimum 44 characters (32 bytes)",
-				nil,
-			)
+	// Validate base64 encoding
+	keyBytes, err := base64.StdEncoding.DecodeString(cfg.JWESigningKey)
+	if err != nil {
+		// Don't log full key value for security
+		truncated := cfg.JWESigningKey
+		if len(truncated) > 10 {
+			truncated = truncated[:10] + "..."
 		}
+		return formatValidationError(
+			"third_party_oauth2.jwe_signing_key",
+			truncated,
+			"valid base64-encoded string",
+			err,
+		)
+	}
+
+	// Validate key length (must be exactly 32 bytes for A256GCMKW)
+	if len(keyBytes) != 32 {
+		return formatValidationError(
+			"third_party_oauth2.jwe_signing_key",
+			fmt.Sprintf("%d bytes", len(keyBytes)),
+			"exactly 32 bytes when decoded",
+			nil,
+		)
 	}
 
 	// Validate StateTokenTTL if provided (should be positive)

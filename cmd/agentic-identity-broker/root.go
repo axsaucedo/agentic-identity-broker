@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"sort"
@@ -13,12 +14,14 @@ import (
 	"time"
 
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
 	storageAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/config"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/go-chi/chi/v5"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 var rootCmd = &cobra.Command{
@@ -67,77 +70,170 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create storage adapter: %w", err)
 	}
 
-	// Create server instances
-	enduserServer := httpAdapter.NewServer("enduser", cfg.Server.EndUser, logger)
-	adminServer := httpAdapter.NewServer("admin", cfg.Server.Admin, logger)
-
-	// Attach repositories to servers for consent management
-	// Both servers need these to handle consent-related requests
-	if storage.Agents() != nil {
-		enduserServer.SetAgentRepository(storage.Agents())
-		adminServer.SetAgentRepository(storage.Agents())
-	}
-	if storage.Services() != nil {
-		enduserServer.SetServiceRepository(storage.Services())
-		adminServer.SetServiceRepository(storage.Services())
-	}
-	if storage.UserGrants() != nil {
-		enduserServer.SetGrantRepository(storage.UserGrants())
-		adminServer.SetGrantRepository(storage.UserGrants())
-	}
-	if storage.UserSessions() != nil {
-		enduserServer.SetSessionRepository(storage.UserSessions())
+	// Build application with all dependencies using builder pattern
+	// Constitution Principle VI: Domain depends on ports, not adapters
+	// Constitution Principle VII: Configuration-Driven Design
+	application, err := app.NewBuilder().
+		WithConfig(cfg).
+		WithStorage(storage).
+		WithLogger(logger).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build application: %w", err)
 	}
 
-	// Set OAuth2 configuration for enduser server (only enduser server needs this)
-	// Constitution Principle VII (Configuration-Driven Design) compliance
-	// The configuration includes JWESigningKey, StateTokenTTL, and PKCEVerifierLength
-	enduserServer.SetThirdPartyOAuth2Config(cfg.ThirdPartyOAuth2)
-
-	// Set OAuth2 Authorization Server configuration for enduser server
-	// This enables the OAuth2 authorization server proxy endpoints (/oauth2/authorize, /oauth2/token, /.well-known/oauth-authorization-server)
-	// Constitution Principle VII (Configuration-Driven Design) compliance
-	if cfg.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
-		oauth2Config := &oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: cfg.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
-			UpstreamTokenEndpoint:     cfg.OAuth2AuthServer.UpstreamTokenEndpoint,
-			SupportedResponseTypes:    cfg.OAuth2AuthServer.SupportedResponseTypes,
-			SupportedGrantTypes:       cfg.OAuth2AuthServer.SupportedGrantTypes,
-		}
-		enduserServer.SetOAuth2Config(oauth2Config)
+	// Create route setup function for admin server
+	adminRouteSetup := func(r chi.Router) {
+		routing.SetupAdminRoutes(r, application.AdminHandlers)
 	}
 
-	// Create server manager
-	mgr := server.NewManager(enduserServer, adminServer, cfg.Server.Shutdown.Timeout, logger)
+	// Create route setup function for enduser server
+	enduserRouteSetup := func(r chi.Router) {
+		routing.SetupEnduserRoutes(r, application.EnduserHandlers, routing.EnduserRouteConfig{
+			Authentication: cfg.Server.EndUser.Authentication,
+			Logger:         logger,
+		})
+	}
+
+	// Create server instances with route setup functions
+	adminServer := httpAdapter.NewServer(
+		httpAdapter.ServerConfig{
+			Port:           cfg.Server.Admin.Port,
+			Bind:           cfg.Server.Admin.Bind,
+			PublicURL:      cfg.Server.Admin.PublicURL,
+			Authentication: cfg.Server.Admin.Authentication,
+		},
+		adminRouteSetup,
+		logger,
+	)
+
+	enduserServer := httpAdapter.NewServer(
+		httpAdapter.ServerConfig{
+			Port:           cfg.Server.EndUser.Port,
+			Bind:           cfg.Server.EndUser.Bind,
+			PublicURL:      cfg.Server.EndUser.PublicURL,
+			Authentication: cfg.Server.EndUser.Authentication,
+		},
+		enduserRouteSetup,
+		logger,
+	)
 
 	// Setup signal handling for graceful shutdown
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Start servers (blocking)
+	// Start servers with atomic startup pattern (both must bind, or neither runs)
+	// ADR 004-dual-server-isolation.md compliance
 	logger.Info("Starting dual-port HTTP servers",
 		"enduser_port", cfg.Server.EndUser.Port,
 		"admin_port", cfg.Server.Admin.Port)
 
-	// Run servers in a goroutine
+	// Use errgroup for concurrent startup with automatic context cancellation
+	g, ctx := errgroup.WithContext(sigCtx)
+
+	// Phase 1: Concurrent Listen (bind to ports)
+	logger.Debug("Phase 1: Concurrent port binding")
+
+	// Use channels to safely communicate listener values from goroutines
+	enduserListenerCh := make(chan net.Listener, 1)
+	adminListenerCh := make(chan net.Listener, 1)
+
+	// Bind end-user server
+	g.Go(func() error {
+		logger.Debug("Binding end-user server")
+		listener, err := enduserServer.Listen()
+		if err != nil {
+			logger.Error("End-user server bind failed", "error", err)
+			return fmt.Errorf("enduser server bind failed: %w", err)
+		}
+		enduserListenerCh <- listener
+		logger.Info("End-user server bound successfully")
+		return nil
+	})
+
+	// Bind admin server
+	g.Go(func() error {
+		logger.Debug("Binding admin server")
+		listener, err := adminServer.Listen()
+		if err != nil {
+			logger.Error("Admin server bind failed", "error", err)
+			return fmt.Errorf("admin server bind failed: %w", err)
+		}
+		adminListenerCh <- listener
+		logger.Info("Admin server bound successfully")
+		return nil
+	})
+
+	// Wait for both binds to complete
+	if err := g.Wait(); err != nil {
+		logger.Error("Atomic startup failed during bind phase", "error", err)
+		return err
+	}
+
+	// Receive listeners from channels (guaranteed to be safe after g.Wait())
+	enduserListener := <-enduserListenerCh
+	adminListener := <-adminListenerCh
+
+	logger.Info("Phase 1 complete: Both servers bound successfully")
+
+	// Phase 2: Concurrent Serve (start accepting connections)
+	logger.Debug("Phase 2: Starting HTTP servers")
+
+	g, ctx = errgroup.WithContext(ctx)
+
+	// Serve end-user server
+	g.Go(func() error {
+		logger.Info("Starting end-user server")
+		if err := enduserServer.Serve(ctx, enduserListener); err != nil {
+			logger.Error("End-user server failed", "error", err)
+			return fmt.Errorf("enduser server failed: %w", err)
+		}
+		return nil
+	})
+
+	// Serve admin server
+	g.Go(func() error {
+		logger.Info("Starting admin server")
+		if err := adminServer.Serve(ctx, adminListener); err != nil {
+			logger.Error("Admin server failed", "error", err)
+			return fmt.Errorf("admin server failed: %w", err)
+		}
+		return nil
+	})
+
+	// Wait for either signal or server error
 	var startErr error
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		startErr = mgr.Start(sigCtx)
+		startErr = g.Wait()
 	}()
 
-	// Wait for either signal or server completion
+	// Wait for signal
 	<-sigCtx.Done()
 
 	// Signal received, initiate graceful shutdown
 	logger.Info("Shutdown signal received, initiating graceful shutdown")
-	if err := mgr.Shutdown(context.Background()); err != nil {
+
+	// Create context with shutdown timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.Shutdown.Timeout)
+	defer shutdownCancel()
+
+	// Shutdown both servers concurrently
+	shutdownGroup := &errgroup.Group{}
+	shutdownGroup.Go(func() error {
+		return enduserServer.Shutdown(shutdownCtx, cfg.Server.Shutdown.Timeout)
+	})
+	shutdownGroup.Go(func() error {
+		return adminServer.Shutdown(shutdownCtx, cfg.Server.Shutdown.Timeout)
+	})
+
+	if err := shutdownGroup.Wait(); err != nil {
 		logger.Error("Shutdown error", "error", err)
 		return fmt.Errorf("shutdown error: %w", err)
 	}
 
-	// Wait for Start() to finish
+	// Wait for servers to finish
 	<-done
 	if startErr != nil && startErr != context.Canceled {
 		logger.Error("Server error", "error", startErr)

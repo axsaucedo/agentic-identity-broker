@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,9 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/spf13/cobra"
 )
+
+// testJWESigningKey is a valid test JWE key (32 bytes base64 encoded)
+var testJWESigningKey = base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 
 // TestConfigurationPrecedence tests that configuration sources are applied in correct precedence order.
 // Order: CLI flags > Environment variables > YAML > Defaults
@@ -119,6 +123,9 @@ server:
 			t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_PORT", "")
 			t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_BIND", "")
 			t.Setenv("IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT", "")
+
+			// Set mandatory JWESigningKey for all tests
+			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
 
 			// Create YAML config file if content is provided
 			var configPath string
@@ -233,6 +240,9 @@ func TestConfigurationFromExamples(t *testing.T) {
 
 			// Set config path in environment
 			t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
+
+			// Set mandatory JWESigningKey
+			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
 
 			// Create loader
 			loader := config.NewLoader()

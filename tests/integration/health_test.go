@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // TestHealthEndpoint tests the health endpoint format and responses
@@ -20,13 +21,18 @@ func TestHealthEndpoint(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	// Create server configuration
-	config := ports.ServerInstanceConfig{
+	config := httpAdapter.ServerConfig{
 		Port: 18004,
 		Bind: "::",
 	}
 
+	// Simple route setup function that just adds health endpoint
+	routeSetup := func(r chi.Router) {
+		// This is already handled by Server.setupRoutes(), so we just need an empty setup
+	}
+
 	// Create and start server
-	srv := httpAdapter.NewServer("test-server", config, logger)
+	srv := httpAdapter.NewServer(config, routeSetup, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -73,9 +79,6 @@ func TestHealthEndpoint(t *testing.T) {
 		if health.Status == "" {
 			t.Error("Status field is missing")
 		}
-		if health.Server == "" {
-			t.Error("Server field is missing")
-		}
 		if health.Timestamp.IsZero() {
 			t.Error("Timestamp field is missing or zero")
 		}
@@ -83,12 +86,9 @@ func TestHealthEndpoint(t *testing.T) {
 			t.Error("UptimeSeconds field is negative")
 		}
 
-		// Verify field values
+		// Verify status value (Server field removed - no longer per-server identification needed)
 		if health.Status != "healthy" {
 			t.Errorf("Expected status 'healthy', got '%s'", health.Status)
-		}
-		if health.Server != "test-server" {
-			t.Errorf("Expected server 'test-server', got '%s'", health.Server)
 		}
 	})
 
@@ -116,25 +116,6 @@ func TestHealthEndpoint(t *testing.T) {
 		}
 		if !validStatus {
 			t.Errorf("Status '%s' is not a valid health status value", health.Status)
-		}
-	})
-
-	// Test server identifier
-	t.Run("ServerIdentifier", func(t *testing.T) {
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", config.Port))
-		if err != nil {
-			t.Fatalf("Failed to reach health endpoint: %v", err)
-		}
-		defer resp.Body.Close()
-
-		var health httpAdapter.HealthResponse
-		if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
-			t.Fatalf("Failed to decode health response: %v", err)
-		}
-
-		// Verify server identifier matches the one we created
-		if health.Server != "test-server" {
-			t.Errorf("Expected server identifier 'test-server', got '%s'", health.Server)
 		}
 	})
 

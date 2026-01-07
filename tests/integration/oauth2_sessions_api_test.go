@@ -15,7 +15,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/assert"
 
-	httphandlers "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
@@ -1543,7 +1543,7 @@ func setupTestRouter(handler *oauth2_sessions.Handler) *chi.Mux {
 			PrincipalHeaderName: "X-Remote-User",
 		},
 	}
-	router.Use(httphandlers.OptionalPrincipalMiddleware(config, slog.Default()))
+	router.Use(middleware.OptionalPrincipalMiddleware(config, slog.Default()))
 	// Mount routes under /api to match production setup
 	router.Route("/api", func(r chi.Router) {
 		handler.RegisterRoutes(r)

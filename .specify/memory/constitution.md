@@ -1,58 +1,48 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.5.0 → 1.5.1
-Rationale: PATCH version bump - corrected contradiction in tasks-template.md where tests were marked
-  as "OPTIONAL" despite Constitution Principle VIII (Test-Driven Development & Automated Testing)
-  requiring tests as MANDATORY for all features. This is a clarification/bug fix, not a new requirement.
+Version Change: 1.5.1 → 1.6.0
+Rationale: MINOR version bump - new principle added for explicit governance of dependency injection patterns.
+  This is additive guidance (Principle XII) that establishes binding rules for service instantiation and
+  HTTP route registration, preventing architectural drift and enabling clear separation of concerns between
+  wiring logic (Builder pattern) and route registration (routing functions).
 
 Modified Principles:
-- None (Principle VIII unchanged - existing requirement clarified in template)
+- None (existing principles unchanged - Principle XII is new and complementary)
 
 Added Principles:
-- None
+- Principle XII: Dependency Injection & Component Wiring (centralizes DI pattern governance)
 
 Added Sections:
-- None
+- Compliance Checklist: Added Principle XII verification items
+- When Constraints Cannot Be Met: Added Principle XII exception handling
 
 Removed Sections:
 - None
 
 Templates Status:
-- ✅ tasks-template.md: Corrected testing requirements to align with Principle VIII
-  - Line 11: Changed "Tests are OPTIONAL" to "Tests are MANDATORY per Principle VIII"
-  - User Story test sections: Changed from "[OPTIONAL - only if tests requested]" to "[MANDATORY - Principle VIII]"
-  - Added explicit constitution reference to test section headers
-  - Enhanced test task examples: separated unit, integration, and contract tests
-  - Renumbered task IDs to accommodate additional test tasks (3 per user story instead of 2)
+- ⚠ tasks-template.md: PENDING - should add Principle XII verification task to Phase N
+  - Location: Phase N: Constitution Compliance Verification
+  - Suggested task: Verify dependency injection follows Builder pattern; routing functions don't instantiate
 - 🔲 spec-template.md: No updates needed
-- 🔲 plan-template.md: No updates needed
+- 🔲 plan-template.md: No updates needed (Constitution Check already covers architecture)
 
-Follow-up TODOs: None - changes complete
+Follow-up TODOs: None - Principle XII is complete and self-contained
 
 Previous Version History:
-- 1.4.0 → 1.5.0: Added Governance > Task List Requirements section
-- 1.3.1 → 1.4.0: Added Principle XI (Design System Compliance & Consistency)
+- 1.5.0 → 1.5.1: Clarified testing requirements in tasks-template.md (PATCH)
+- 1.4.0 → 1.5.0: Added Governance > Task List Requirements section (MINOR)
+- 1.3.1 → 1.4.0: Added Principle XI (Design System Compliance & Consistency) (MINOR)
 
-Rationale for Principle IV Enhancement (API Documentation & OpenAPI Transparency):
-  APIs are contracts with consumers. Explicit OpenAPI documentation in designated locations (/api/enduser/,
-  /api/admin/) ensures clients can discover, understand, and implement integration correctly. Requiring user
-  confirmation for API changes and forbidding changes-without-confirmation prevents silent breaking changes and
-  establishes APIs as commitments. Following Zalando guidelines (RESTful API and Event Guidelines) ensures
-  consistency with industry best practices for API design.
-
-Rationale for Principle X (API-First Development):
-  Designing APIs before implementation ensures that system contracts are stable, well-thought-out, and user-centric.
-  Requiring user/stakeholder confirmation makes API changes explicit and prevents accidental breaking changes.
-  Treating API bugs as design issues (requiring confirmation to change) rather than simple fixes establishes
-  accountability for the API contract and prevents cascading failures in dependent systems.
-
-Rationale for Principle IX Enhancement (Database Migration Management):
-  Database schema is a contract with production data. Using go-migrate naming conventions ensures consistency
-  and predictability across deployments. Requiring integration tests for all migrations validates that schema
-  changes work correctly with real PostgreSQL and that repository implementations follow established patterns.
-  Testing all PostgreSQL-backed repositories in integration tests ensures persistence layers are reliable and
-  follow the patterns established in 004-persistence-layer feature.
+Rationale for Principle XII (Dependency Injection & Component Wiring):
+  Separating construction (Builder pattern) from routing (dedicated routing functions) maintains clean
+  architectural boundaries, enables testability through dependency injection, prevents circular dependencies,
+  and makes the dependency graph explicit and auditable. The Builder pattern centralizes wiring logic, making
+  it easy to understand initialization order and dependencies at a glance. Routing functions remain thin and
+  focused solely on route registration, which prevents accidental coupling to internal implementation details.
+  This pattern follows hexagonal architecture principles (Principle VI): domain logic (Builder) is isolated
+  from infrastructure concerns (routing), and dependencies flow from configuration/infrastructure toward
+  domain logic, not vice versa. Establishing explicit rules prevents architectural drift.
 -->
 
 # Agentic Identity Broker Constitution
@@ -325,6 +315,45 @@ and ensures patterns are shared across the application. Semantic tokens prevent 
 make theming possible. This principle establishes frontend quality standards and prevents ad-hoc styling
 that undermines user experience and accessibility.
 
+### XII. Dependency Injection & Component Wiring
+
+All service instantiation and dependency wiring MUST occur via the Builder pattern in
+[internal/app/builder.go](internal/app/builder.go). HTTP route registration MUST be exclusively
+performed by routing functions in [internal/adapters/http/routing/admin.go](internal/adapters/http/routing/admin.go)
+and [internal/adapters/http/routing/enduser.go](internal/adapters/http/routing/enduser.go); routing files
+MUST NOT instantiate or wire services.
+
+**Rules**:
+- All service instantiation MUST use the Builder pattern (`internal/app/builder.go`)
+- The Builder receives all dependencies (config, storage, logger, encryption, etc.) via `With*()` methods
+- Services MUST be constructed in the `Build()` method respecting dependency ordering and initialization phases
+- HTTP route registration MUST use dedicated routing functions: `SetupAdminRoutes()` and `SetupEnduserRoutes()`
+- Routing functions MUST receive pre-wired handlers/services via parameter, NEVER instantiate them
+- Routing functions MUST be in `internal/adapters/http/routing/` directory with naming convention `Setup*Routes()`
+- Routing functions MUST only register routes and middleware, NOT create instances or perform wiring
+- Services MUST be passed to routing functions as part of handler structs (e.g., `app.AdminHandlers`, `app.EnduserHandlers`)
+- If a handler needs a service, it MUST be injected via the App builder, not created in routing or handlers
+- All adapters (handlers, middleware, services) MUST depend on ports (interfaces), not concrete implementations
+- Configuration passed to routing functions MUST be read-only; routing functions MUST NOT modify application state
+- Routing functions MUST follow the pattern: receive router and pre-wired dependencies, register routes, return nothing
+
+**Rationale**: Separating construction (Builder) from routing (dedicated routing functions) maintains
+clean architectural boundaries, enables testability through dependency injection, prevents circular
+dependencies, and makes the dependency graph explicit and auditable. The Builder pattern centralizes
+wiring logic, making it easy to understand initialization order and dependencies at a glance. Routing
+functions remain thin, focused solely on route registration, which prevents accidental coupling to
+internal implementation details. This pattern follows hexagonal architecture principles (Principle VI):
+domain logic (Builder) is isolated from infrastructure concerns (routing), and dependencies flow from
+configuration/infrastructure toward domain logic, not vice versa. Establishing explicit rules prevents
+architectural drift and ensures consistency across all HTTP route registration.
+
+**Example**: When adding a new OAuth2 handler, the implementer must:
+1. Create the handler in `internal/adapters/http/handlers/**/**`
+2. Add the handler field to `app.EnduserHandlers` or the `app.AdminHandlers` struct
+3. Instantiate the handler in `app.Builder.Build()` method with all necessary dependencies
+4. Pass the pre-wired handler to `SetupEnduserRoutes()` or `SetupAdminRoutes()` as part of the handlers struct
+5. Register routes in `SetupEnduserRoutes()` or `SetupAdminRoutes()` using the passed handler, WITHOUT creating new instances
+
 ## Development Requirements
 
 ### Compliance Checklist
@@ -362,6 +391,10 @@ that undermines user experience and accessibility.
 - [ ] Universal components added to design system with Storybook stories (if applicable)
 - [ ] No custom CSS bypassing design tokens or introducing inconsistent styling
 - [ ] WCAG 2.1 AA accessibility verified: 4.5:1 text contrast, 3:1 UI component contrast (if applicable)
+- [ ] All service instantiation uses Builder pattern in `internal/app/builder.go` (Principle XII)
+- [ ] HTTP routes registered via `SetupAdminRoutes()` and `SetupEnduserRoutes()` functions (Principle XII)
+- [ ] Routing functions receive pre-wired dependencies, do NOT instantiate services (Principle XII)
+- [ ] All handlers and services depend on ports (interfaces), not concrete implementations (Principle XII)
 
 ### When Constraints Cannot Be Met
 
@@ -424,6 +457,14 @@ If Principle XI (Design System Compliance & Consistency) cannot be satisfied:
 4. Escalate to project maintainers for exception approval
 5. Do NOT implement frontend components that bypass design system without explicit approval
 
+If Principle XII (Dependency Injection & Component Wiring) cannot be satisfied:
+
+1. STOP implementation immediately
+2. Document why Builder pattern cannot be used or why routing functions cannot be thin adapters
+3. Propose alternative DI approach with technical justification (e.g., service locator, factory pattern)
+4. Create an ADR documenting the exception and alternative pattern
+5. Do NOT implement service instantiation in routing functions or bypass Builder pattern without an accepted ADR
+
 ## Governance
 
 ### Amendment Procedure
@@ -450,6 +491,7 @@ If Principle XI (Design System Compliance & Consistency) cannot be satisfied:
 - Reviewers MUST verify API changes have user confirmation (Principle X)
 - Reviewers MUST verify frontend components use design system and universal patterns are contributed (Principle XI)
 - Reviewers MUST verify WCAG 2.1 AA accessibility compliance for frontend components (Principle XI)
+- Reviewers MUST verify dependency injection uses Builder pattern and routing functions are thin (Principle XII)
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
 
 ### Task List Requirements
@@ -480,4 +522,4 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
 - The tasks-template.md uses 🔒 emoji and [MANDATORY] markers to clearly distinguish mandatory from customizable sections
 - Omitting mandatory sections violates this constitution and blocks feature completion
 
-**Version**: 1.5.1 | **Ratified**: 2025-12-14 | **Last Amended**: 2025-12-23
+**Version**: 1.6.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-01-05

@@ -3,142 +3,168 @@ package unit
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
+	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// MockServerPort implements ports.ServerPort for testing.
-type MockServerPort struct {
-	name          string
-	listenErr     error
-	serveErr      error
-	serveDuration time.Duration
-	shutdownErr   error
-	healthState   int32 // atomic access
-	listener      net.Listener
-	listenerMu    sync.Mutex // Protects listener access
+// SimpleMockListener is a minimal mock net.Listener for testing.
+// It simulates listening on a socket without actually binding a real port.
+type SimpleMockListener struct {
+	addr      net.Addr
+	isClosed  bool
+	closeChan chan struct{}
+	mu        sync.Mutex
 }
 
-// NewMockServerPort creates a new mock server with configurable behavior.
-func NewMockServerPort(name string) *MockServerPort {
-	return &MockServerPort{
-		name:        name,
-		healthState: int32(ports.HealthStateStarting),
+// NewSimpleMockListener creates a mock listener.
+func NewSimpleMockListener(port int) *SimpleMockListener {
+	return &SimpleMockListener{
+		addr: &net.TCPAddr{
+			IP:   net.ParseIP("127.0.0.1"),
+			Port: port,
+		},
+		closeChan: make(chan struct{}),
 	}
 }
 
-// WithListenError configures the mock to return an error from Listen().
-func (m *MockServerPort) WithListenError(err error) *MockServerPort {
-	m.listenErr = err
-	return m
+// Accept simulates accepting connections (blocks until closed).
+func (l *SimpleMockListener) Accept() (net.Conn, error) {
+	l.mu.Lock()
+	if l.isClosed {
+		l.mu.Unlock()
+		return nil, fmt.Errorf("mock listener closed")
+	}
+	l.mu.Unlock()
+	// In real use, Accept() would block and wait for connections
+	// For testing, we block until the listener is closed
+	<-l.closeChan
+	return nil, fmt.Errorf("listener closed")
 }
 
-// WithServeError configures the mock to return an error from Serve().
-func (m *MockServerPort) WithServeError(err error) *MockServerPort {
-	m.serveErr = err
-	return m
+// Close closes the listener.
+func (l *SimpleMockListener) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.isClosed {
+		l.isClosed = true
+		close(l.closeChan)
+	}
+	return nil
 }
 
-// WithServeDuration configures how long Serve() should block before returning.
-func (m *MockServerPort) WithServeDuration(d time.Duration) *MockServerPort {
-	m.serveDuration = d
-	return m
+// Addr returns the listener's address.
+func (l *SimpleMockListener) Addr() net.Addr {
+	return l.addr
 }
 
-// WithShutdownError configures the mock to return an error from Shutdown().
-func (m *MockServerPort) WithShutdownError(err error) *MockServerPort {
-	m.shutdownErr = err
-	return m
+// TestServerLifecycle provides a test harness for HTTP server startup/shutdown coordination.
+// It simulates dual servers that need to coordinate binding and serving phases.
+type TestServerLifecycle struct {
+	ServerCount   int
+	ListenError   []error // Error per server
+	ServeError    []error // Error per server
+	ServeDuration []time.Duration
+
+	healthState []int32 // Atomic access per server
+	listeners   []net.Listener
+	listenerMu  sync.Mutex
 }
 
-// Name returns the server identifier.
-func (m *MockServerPort) Name() string {
-	return m.name
+// NewTestServerLifecycle creates a test harness for N servers.
+func NewTestServerLifecycle(serverCount int) *TestServerLifecycle {
+	h := &TestServerLifecycle{
+		ServerCount:   serverCount,
+		ListenError:   make([]error, serverCount),
+		ServeError:    make([]error, serverCount),
+		ServeDuration: make([]time.Duration, serverCount),
+		healthState:   make([]int32, serverCount),
+		listeners:     make([]net.Listener, serverCount),
+	}
+	for i := 0; i < serverCount; i++ {
+		h.healthState[i] = int32(ports.HealthStateStarting)
+	}
+	return h
 }
 
-// Listen simulates binding to a port.
-// Returns configured error or a mock listener.
-func (m *MockServerPort) Listen() (net.Listener, error) {
-	if m.listenErr != nil {
-		return nil, m.listenErr
+// SimulateListen simulates the listen phase for server i.
+func (h *TestServerLifecycle) SimulateListen(serverIdx int) (net.Listener, error) {
+	if h.ListenError[serverIdx] != nil {
+		return nil, h.ListenError[serverIdx]
 	}
 
-	// Create a mock listener on a random port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, fmt.Errorf("mock listen failed: %w", err)
-	}
-
-	m.listenerMu.Lock()
-	m.listener = listener
-	m.listenerMu.Unlock()
+	listener := NewSimpleMockListener(8000 + serverIdx)
+	h.listenerMu.Lock()
+	h.listeners[serverIdx] = listener
+	h.listenerMu.Unlock()
 	return listener, nil
 }
 
-// Serve simulates serving HTTP requests.
-// Blocks for configured duration, then returns configured error.
-func (m *MockServerPort) Serve(ctx context.Context, listener net.Listener) error {
-	// Transition to healthy state
-	atomic.StoreInt32(&m.healthState, int32(ports.HealthStateHealthy))
+// SimulateServe simulates the serve phase for server i.
+func (h *TestServerLifecycle) SimulateServe(ctx context.Context, serverIdx int, listener net.Listener) error {
+	// Transition to healthy
+	atomic.StoreInt32(&h.healthState[serverIdx], int32(ports.HealthStateHealthy))
 
-	// If we have a serve error configured, fail after the duration
-	if m.serveErr != nil {
-		if m.serveDuration > 0 {
+	if h.ServeError[serverIdx] != nil {
+		if h.ServeDuration[serverIdx] > 0 {
 			select {
-			case <-time.After(m.serveDuration):
-				// Duration elapsed, return error
-				atomic.StoreInt32(&m.healthState, int32(ports.HealthStateUnhealthy))
-				return m.serveErr
+			case <-time.After(h.ServeDuration[serverIdx]):
+				atomic.StoreInt32(&h.healthState[serverIdx], int32(ports.HealthStateUnhealthy))
+				return h.ServeError[serverIdx]
 			case <-ctx.Done():
-				// Context cancelled before error could happen
 				return ctx.Err()
 			}
 		} else {
-			// No duration set, return error immediately
-			atomic.StoreInt32(&m.healthState, int32(ports.HealthStateUnhealthy))
-			return m.serveErr
+			atomic.StoreInt32(&h.healthState[serverIdx], int32(ports.HealthStateUnhealthy))
+			return h.ServeError[serverIdx]
 		}
 	}
 
-	// No error configured, wait for context cancellation
-	if m.serveDuration > 0 {
+	if h.ServeDuration[serverIdx] > 0 {
 		select {
-		case <-time.After(m.serveDuration):
+		case <-time.After(h.ServeDuration[serverIdx]):
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 
-	// Wait indefinitely for context cancellation
 	<-ctx.Done()
 	return ctx.Err()
 }
 
-// Shutdown simulates graceful shutdown.
-func (m *MockServerPort) Shutdown(parentCtx context.Context, timeout time.Duration) error {
-	// Transition to shutting down state
-	atomic.StoreInt32(&m.healthState, int32(ports.HealthStateShuttingDown))
-
-	// Close the listener if it exists
-	m.listenerMu.Lock()
-	if m.listener != nil {
-		m.listener.Close()
+// SimulateShutdown simulates graceful shutdown for server i.
+func (h *TestServerLifecycle) SimulateShutdown(serverIdx int, timeout time.Duration) error {
+	atomic.StoreInt32(&h.healthState[serverIdx], int32(ports.HealthStateShuttingDown))
+	h.listenerMu.Lock()
+	if h.listeners[serverIdx] != nil {
+		h.listeners[serverIdx].Close()
 	}
-	m.listenerMu.Unlock()
-
-	// Simulate shutdown delay
+	h.listenerMu.Unlock()
 	time.Sleep(10 * time.Millisecond)
-
-	// Return configured error
-	return m.shutdownErr
+	return nil
 }
 
-// HealthStatus returns the current health state.
-func (m *MockServerPort) HealthStatus() ports.HealthState {
-	return ports.HealthState(atomic.LoadInt32(&m.healthState))
+// HealthStatus returns the current health state for server i.
+func (h *TestServerLifecycle) HealthStatus(serverIdx int) ports.HealthState {
+	return ports.HealthState(atomic.LoadInt32(&h.healthState[serverIdx]))
+}
+
+// NewTestServer creates an HTTP server with a simple no-op route setup for testing.
+// This is a convenience function for tests that just need to verify server lifecycle
+// without registering actual routes.
+func NewTestServer(config httpAdapter.ServerConfig, logger *slog.Logger) *httpAdapter.Server {
+	// Simple route setup function that does nothing
+	routeSetup := func(r chi.Router) {
+		// No-op - health endpoint is already registered by Server.setupRoutes()
+	}
+
+	return httpAdapter.NewServer(config, routeSetup, logger)
 }

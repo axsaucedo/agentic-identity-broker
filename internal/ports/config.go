@@ -33,11 +33,11 @@ type ConfigPort interface {
 
 // Config represents the complete application configuration schema.
 type Config struct {
-	Log              LogConfig                 `mapstructure:"log" validate:"required"`
-	Server           ServerConfig              `mapstructure:"server" validate:"required"`
-	Storage          StorageConfig             `mapstructure:"storage" validate:"required"`
-	ThirdPartyOAuth2 ThirdPartyOAuth2Config    `mapstructure:"third_party_oauth2"`
-	OAuth2AuthServer OAuth2AuthServerConfig    `mapstructure:"oauth2_authorization_server"`
+	Log              LogConfig              `mapstructure:"log" validate:"required"`
+	Server           ServerConfig           `mapstructure:"server" validate:"required"`
+	Storage          StorageConfig          `mapstructure:"storage" validate:"required"`
+	ThirdPartyOAuth2 ThirdPartyOAuth2Config `mapstructure:"third_party_oauth2"`
+	OAuth2AuthServer OAuth2AuthServerConfig `mapstructure:"oauth2_authorization_server"`
 }
 
 // ServerConfig contains configuration for both HTTP servers.
@@ -176,9 +176,9 @@ type StorageTimeouts struct {
 // When provided, enables users to authenticate with external OAuth2 providers
 // (GitHub, Google, Microsoft, etc.) through the identity broker.
 type ThirdPartyOAuth2Config struct {
-	// JWESigningKey is the base64-encoded key for signing JWE state tokens (32+ bytes).
+	// JWESigningKey is the base64-encoded key for signing JWE state tokens (REQUIRED, 32 bytes).
 	// This key MUST be kept secret. It protects OAuth2 state tokens during authorization flows.
-	// Optional - if empty, OAuth2 routes will not be registered (server logs warning).
+	// REQUIRED - application will fail to start if not provided.
 	// Generate with: openssl rand -base64 32
 	// Store in environment variable: IDENTITY_BROKER_JWE_SIGNING_KEY
 	JWESigningKey string `mapstructure:"jwe_signing_key"`

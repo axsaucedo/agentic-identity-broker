@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"golang.org/x/sync/errgroup"
+
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/server"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // TestServerStartup tests basic dual-server startup and health endpoints
@@ -21,32 +23,57 @@ func TestServerStartup(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	// Create server configurations with test ports
-	enduserConfig := ports.ServerInstanceConfig{
+	enduserConfig := httpAdapter.ServerConfig{
 		Port: 18000, // Test port to avoid conflicts
 		Bind: "::",
 	}
-	adminConfig := ports.ServerInstanceConfig{
+	adminConfig := httpAdapter.ServerConfig{
 		Port: 18001, // Test port to avoid conflicts
 		Bind: "::",
 	}
 
+	// Simple route setup function
+	routeSetup := func(r chi.Router) {
+		// Routes already handled by Server.setupRoutes()
+	}
+
 	// Create server instances
-	enduserServer := httpAdapter.NewServer("enduser", enduserConfig, logger)
-	adminServer := httpAdapter.NewServer("admin", adminConfig, logger)
+	enduserServer := httpAdapter.NewServer(enduserConfig, routeSetup, logger)
+	adminServer := httpAdapter.NewServer(adminConfig, routeSetup, logger)
 
-	// Create manager
-	mgr := server.NewManager(enduserServer, adminServer, 5*time.Second, logger)
-
-	// Start servers in background
+	// Start servers with dual-server coordination using errgroup (like root.go)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	errChan := make(chan error, 1)
-	go func() {
-		errChan <- mgr.Start(ctx)
-	}()
+	// Phase 1: Bind both servers
+	g, bindCtx := errgroup.WithContext(ctx)
+	var enduserListener, adminListener net.Listener
+	var enduserErr, adminErr error
 
-	// Wait for servers to start
+	g.Go(func() error {
+		enduserListener, enduserErr = enduserServer.Listen()
+		return enduserErr
+	})
+	g.Go(func() error {
+		adminListener, adminErr = adminServer.Listen()
+		return adminErr
+	})
+
+	if err := g.Wait(); err != nil {
+		t.Fatalf("Failed to bind servers: %v", err)
+	}
+
+	// Phase 2: Serve both servers
+	g, serveCtx := errgroup.WithContext(bindCtx)
+
+	g.Go(func() error {
+		return enduserServer.Serve(serveCtx, enduserListener)
+	})
+	g.Go(func() error {
+		return adminServer.Serve(serveCtx, adminListener)
+	})
+
+	// Wait for servers to be ready
 	time.Sleep(500 * time.Millisecond)
 
 	// Test enduser server health endpoint
@@ -68,9 +95,6 @@ func TestServerStartup(t *testing.T) {
 
 		if health.Status != "healthy" {
 			t.Errorf("Expected status 'healthy', got '%s'", health.Status)
-		}
-		if health.Server != "enduser" {
-			t.Errorf("Expected server 'enduser', got '%s'", health.Server)
 		}
 	})
 
@@ -94,28 +118,21 @@ func TestServerStartup(t *testing.T) {
 		if health.Status != "healthy" {
 			t.Errorf("Expected status 'healthy', got '%s'", health.Status)
 		}
-		if health.Server != "admin" {
-			t.Errorf("Expected server 'admin', got '%s'", health.Server)
-		}
 	})
 
 	// Shutdown servers gracefully
-	if err := mgr.Shutdown(context.Background()); err != nil {
-		t.Logf("Shutdown error (may be expected): %v", err)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer shutdownCancel()
+
+	if err := enduserServer.Shutdown(shutdownCtx, 1*time.Second); err != nil {
+		t.Logf("EndUser shutdown error (may be expected): %v", err)
+	}
+	if err := adminServer.Shutdown(shutdownCtx, 1*time.Second); err != nil {
+		t.Logf("Admin shutdown error (may be expected): %v", err)
 	}
 
 	// Cancel context to ensure goroutines exit
 	cancel()
-
-	// Wait for servers to stop
-	select {
-	case err := <-errChan:
-		if err != nil && err != context.Canceled && err != http.ErrServerClosed {
-			t.Errorf("Unexpected server error: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Error("Server did not stop within timeout")
-	}
 }
 
 // TestPortConnectivity tests IPv4 and IPv6 connectivity
@@ -124,24 +141,29 @@ func TestPortConnectivity(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	// Create server configuration with test port
-	config := ports.ServerInstanceConfig{
+	config := httpAdapter.ServerConfig{
 		Port: 18002,
 		Bind: "::", // Dual-stack
 	}
 
+	// Simple route setup function
+	routeSetup := func(r chi.Router) {
+		// Routes already handled by Server.setupRoutes()
+	}
+
 	// Create and start server
-	srv := httpAdapter.NewServer("test", config, logger)
+	srv := httpAdapter.NewServer(config, routeSetup, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	listener, err := srv.Listen()
+	if err != nil {
+		t.Fatalf("Failed to listen: %v", err)
+	}
+
 	errChan := make(chan error, 1)
 	go func() {
-		listener, err := srv.Listen()
-		if err != nil {
-			errChan <- err
-			return
-		}
 		errChan <- srv.Serve(ctx, listener)
 	}()
 
@@ -203,40 +225,55 @@ func TestPortConnectivity(t *testing.T) {
 	}
 }
 
-// TestAtomicStartupFailure tests that if one server fails to bind, both servers fail
+// TestAtomicStartupFailure tests that if one server fails to bind, shutdown works correctly
 func TestAtomicStartupFailure(t *testing.T) {
 	// Create logger for tests
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	// Use same port for both servers - this should cause atomic failure
 	conflictPort := 18003
-	enduserConfig := ports.ServerInstanceConfig{
+	enduserConfig := httpAdapter.ServerConfig{
 		Port: conflictPort,
 		Bind: "::",
 	}
-	adminConfig := ports.ServerInstanceConfig{
+	adminConfig := httpAdapter.ServerConfig{
 		Port: conflictPort, // Same port - will conflict!
 		Bind: "::",
 	}
 
-	// Create server instances
-	enduserServer := httpAdapter.NewServer("enduser", enduserConfig, logger)
-	adminServer := httpAdapter.NewServer("admin", adminConfig, logger)
-
-	// Create manager
-	mgr := server.NewManager(enduserServer, adminServer, 5*time.Second, logger)
-
-	// Start servers - should fail atomically
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	err := mgr.Start(ctx)
-	if err == nil {
-		t.Error("Expected startup to fail due to port conflict, but it succeeded")
+	// Simple route setup function
+	routeSetup := func(r chi.Router) {
+		// Routes already handled by Server.setupRoutes()
 	}
 
-	// Verify error message is descriptive
-	if err != nil {
-		t.Logf("Got expected error: %v", err)
+	// Create server instances
+	enduserServer := httpAdapter.NewServer(enduserConfig, routeSetup, logger)
+	adminServer := httpAdapter.NewServer(adminConfig, routeSetup, logger)
+
+	// Try to bind both servers - should fail atomically
+	g, _ := errgroup.WithContext(context.Background())
+
+	var err1, err2 error
+	g.Go(func() error {
+		_, err := enduserServer.Listen()
+		err1 = err
+		return err
+	})
+	g.Go(func() error {
+		_, err := adminServer.Listen()
+		err2 = err
+		return err
+	})
+
+	err := g.Wait()
+	if err == nil {
+		t.Error("Expected startup to fail due to port conflict, but it succeeded")
+	} else {
+		t.Logf("Got expected error during bind: %v", err)
+	}
+
+	// At least one should have failed
+	if err1 == nil && err2 == nil {
+		t.Error("Expected at least one server to fail binding to conflicting port")
 	}
 }

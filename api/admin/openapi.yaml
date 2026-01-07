@@ -114,7 +114,6 @@ paths:
                   summary: Healthy admin server
                   value:
                     status: healthy
-                    server: admin
                     timestamp: '2025-12-19T10:30:00Z'
                     uptime_seconds: 3600
         '503':
@@ -128,14 +127,12 @@ paths:
                   summary: Server starting
                   value:
                     status: starting
-                    server: admin
                     timestamp: '2025-12-19T10:25:00Z'
                     uptime_seconds: 0
                 shutting_down:
                   summary: Server shutting down
                   value:
                     status: shutting_down
-                    server: admin
                     timestamp: '2025-12-19T11:30:00Z'
                     uptime_seconds: 7200
 
@@ -761,7 +758,6 @@ components:
       type: object
       required:
         - status
-        - server
         - timestamp
         - uptime_seconds
       properties:
@@ -774,13 +770,6 @@ components:
             - unhealthy
           description: Current health state of the server
           example: healthy
-        server:
-          type: string
-          enum:
-            - enduser
-            - admin
-          description: Server identifier (enduser or admin)
-          example: admin
         timestamp:
           type: string
           format: date-time
@@ -794,7 +783,6 @@ components:
           example: 3600
       example:
         status: healthy
-        server: admin
         timestamp: '2025-12-19T10:30:00Z'
         uptime_seconds: 3600
 

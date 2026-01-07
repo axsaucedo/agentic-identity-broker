@@ -1,3 +1,15 @@
+## Spec Driven Development
+
+This repository uses spec-kit for specification driven development. 
+
+Specifications can be found in `specs/NNN-<short name>/*` in the shape of markdown files. In each such folder, the `spec.md` contains the WHAT of a feature and the `plan.md` the how of how it was implemented. 
+
+*MANDORY*: The constitution in `.specify/memory/constituation.md` BINDING and must be user for any change in the Project. 
+
+## Architecture
+
+The architecture of this project can be found in `ARCHITECTURE.md`.
+
 ## Active Technologies
 - Go 1.23.0+ (primary language) (002-flexible-configuration)
 - Node.js 18+ (for Docusaurus), Markdown for content + Docusaurus 3.x, React 18+, MDX for enhanced markdown (001-end-user-docs)

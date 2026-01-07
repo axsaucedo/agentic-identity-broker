@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -34,7 +34,7 @@ func TestPrincipalMiddlewareExtraction(t *testing.T) {
 	}
 
 	// Apply optional principal middleware globally
-	router.Use(httpAdapter.OptionalPrincipalMiddleware(authConfig, logger))
+	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, logger))
 
 	// Create protected route that requires principal
 	router.Post("/protected", func(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +163,7 @@ func TestPrincipalMiddlewareValidation(t *testing.T) {
 
 	// Create a protected group that requires principal
 	router.Group(func(r chi.Router) {
-		r.Use(httpAdapter.RequirePrincipalMiddleware(authConfig, logger))
+		r.Use(middleware.RequirePrincipalMiddleware(authConfig, logger))
 
 		r.Get("/admin/users", func(w http.ResponseWriter, r *http.Request) {
 			p, _ := principal.FromContext(r.Context())
@@ -261,7 +261,7 @@ func TestPrincipalMiddlewareUnicodeSupport(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	router.Use(httpAdapter.OptionalPrincipalMiddleware(authConfig, logger))
+	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, logger))
 
 	router.Get("/user", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := principal.FromContext(r.Context())
@@ -347,7 +347,7 @@ func TestPrincipalMiddlewareWhitespaceHandling(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	router.Use(httpAdapter.OptionalPrincipalMiddleware(authConfig, logger))
+	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, logger))
 
 	router.Get("/principal", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := principal.FromContext(r.Context())
@@ -444,7 +444,7 @@ func TestPrincipalMiddlewareCustomHeader(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	router.Use(httpAdapter.RequirePrincipalMiddleware(authConfig, logger))
+	router.Use(middleware.RequirePrincipalMiddleware(authConfig, logger))
 
 	router.Get("/verify", func(w http.ResponseWriter, r *http.Request) {
 		p, _ := principal.FromContext(r.Context())

@@ -164,7 +164,6 @@ paths:
                   summary: Healthy server
                   value:
                     status: healthy
-                    server: enduser
                     timestamp: '2025-12-19T10:30:00Z'
                     uptime_seconds: 3600
         '503':
@@ -178,21 +177,18 @@ paths:
                   summary: Server starting up
                   value:
                     status: starting
-                    server: enduser
                     timestamp: '2025-12-19T10:25:00Z'
                     uptime_seconds: 0
                 shutting_down:
                   summary: Server shutting down gracefully
                   value:
                     status: shutting_down
-                    server: enduser
                     timestamp: '2025-12-19T11:30:00Z'
                     uptime_seconds: 7200
                 unhealthy:
                   summary: Server in unhealthy state
                   value:
                     status: unhealthy
-                    server: enduser
                     timestamp: '2025-12-19T10:35:00Z'
                     uptime_seconds: 600
   /api/me:
@@ -1183,7 +1179,6 @@ components:
       type: object
       required:
       - status
-      - server
       - timestamp
       - uptime_seconds
       properties:
@@ -1206,13 +1201,6 @@ components:
 
             '
           example: healthy
-        server:
-          type: string
-          enum:
-          - enduser
-          - admin
-          description: Server identifier (always "enduser" for this API)
-          example: enduser
         timestamp:
           type: string
           format: date-time
