@@ -1,0 +1,72 @@
+# GitHub Copilot Coding Agent Setup Steps
+# This workflow is used by GitHub Copilot to set up the development environment
+# before it can compile and run tests on this repository.
+#
+# See: https://docs.github.com/en/copilot/customizing-copilot/customizing-the-development-environment-for-copilot-coding-agent
+
+name: "Copilot Setup Steps"
+
+on: workflow_dispatch
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up Go
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      # Set up Node.js (for web frontend)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      # Install just command runner
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      # Install Go dependencies
+      - name: Install Go dependencies
+        run: go mod download
+
+      # Install ginkgo for E2E tests
+      - name: Install ginkgo
+        run: go install github.com/onsi/ginkgo/v2/ginkgo@latest
+
+      # Install golangci-lint
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          install-mode: binary
+          # Skip running linter - we just want it installed
+          args: --version
+
+      # Install web dependencies
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      # Verify installation
+      - name: Verify tools
+        run: |
+          echo "=== Tool Versions ==="
+          echo "Go: $(go version)"
+          echo "Node: $(node --version)"
+          echo "npm: $(npm --version)"
+          echo "just: $(just --version)"
+          echo "ginkgo: $(ginkgo version)"
+          echo "golangci-lint: $(golangci-lint --version)"
+          echo "=== Build Test ==="
+          just build
+          echo "=== Ready for Copilot ===" 
