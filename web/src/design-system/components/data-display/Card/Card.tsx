@@ -197,8 +197,12 @@ export const Card = React.forwardRef<HTMLElement, CardProps>(
 
     // Apply padding 'none' to the outer card if we have header/footer with padding
     // Otherwise, apply the padding to the card itself
-    const outerPadding = hasHeader || hasFooter ? 'none' : padding;
-    const innerPadding = hasHeader || hasFooter ? padding : 'none';
+    const outerPadding = (hasHeader || hasFooter
+      ? 'none'
+      : padding) as 'none' | 'default' | 'compact' | 'spacious';
+    const innerPadding = (hasHeader || hasFooter
+      ? padding
+      : 'none') as 'none' | 'default' | 'compact' | 'spacious';
 
     return (
       <Component

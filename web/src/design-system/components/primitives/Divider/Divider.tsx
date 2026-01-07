@@ -72,7 +72,7 @@ const dividerLineVariants = cva('', {
 });
 
 export interface DividerProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'style'>,
     VariantProps<typeof dividerVariants> {
   /** Style of the divider: solid or dashed */
   style?: 'solid' | 'dashed';

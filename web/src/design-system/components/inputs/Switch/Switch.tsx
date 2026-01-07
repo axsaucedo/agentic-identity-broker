@@ -56,7 +56,7 @@ const switchThumbVariants = cva(
 );
 
 export interface SwitchProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>>,
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'>,
     VariantProps<typeof switchContainerVariants> {
   /** Whether the switch is checked */
   checked: boolean;

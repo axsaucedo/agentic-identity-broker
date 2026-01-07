@@ -162,9 +162,9 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 // TestIsHopByHopHeader tests hop-by-hop header identification
 func TestIsHopByHopHeader(t *testing.T) {
 	tests := []struct {
-		name          string
-		headerName    string
-		isHopByHop    bool
+		name       string
+		headerName string
+		isHopByHop bool
 	}{
 		// Hop-by-hop headers (RFC 7230)
 		{"Connection", "Connection", true},

@@ -9,11 +9,11 @@ import (
 // TestNewSecureUpstreamClient verifies TLS configuration and client setup.
 func TestNewSecureUpstreamClient(t *testing.T) {
 	tests := []struct {
-		name                      string
-		timeoutSeconds            int
-		verifyTLSConfig           func(t *testing.T, tlsConfig *tls.Config)
-		verifyTransportConfig     func(t *testing.T, tr *http.Transport)
-		wantErr                   bool
+		name                  string
+		timeoutSeconds        int
+		verifyTLSConfig       func(t *testing.T, tlsConfig *tls.Config)
+		verifyTransportConfig func(t *testing.T, tr *http.Transport)
+		wantErr               bool
 	}{
 		{
 			name:           "valid client with positive timeout",
@@ -155,14 +155,14 @@ func TestSecureUpstreamClient_RejectsInsecureCertificates(t *testing.T) {
 func TestSecureUpstreamClient_TLSVersions(t *testing.T) {
 	// This test documents the TLS versions and verifies we're using the right constants
 	tests := []struct {
-		name     string
-		version  uint16
+		name      string
+		version   uint16
 		supported bool
 	}{
-		{"TLS 1.0", tls.VersionTLS10, false},      // Not supported
-		{"TLS 1.1", tls.VersionTLS11, false},      // Not supported
-		{"TLS 1.2", tls.VersionTLS12, true},       // Minimum supported
-		{"TLS 1.3", tls.VersionTLS13, true},       // Supported
+		{"TLS 1.0", tls.VersionTLS10, false}, // Not supported
+		{"TLS 1.1", tls.VersionTLS11, false}, // Not supported
+		{"TLS 1.2", tls.VersionTLS12, true},  // Minimum supported
+		{"TLS 1.3", tls.VersionTLS13, true},  // Supported
 	}
 
 	client, err := NewSecureUpstreamClient(30)

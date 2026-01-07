@@ -172,12 +172,12 @@ export class ConsentApiService {
    * Revoke a grant by creating an empty grant (no delegated tokens).
    *
    * @param agentId - Unique agent identifier
-   * @returns Updated grant (empty delegations)
+   * @returns Updated grant (empty delegations) or null if revoked
    * @throws {ApiError} if request fails
    */
-  async revokeGrant(agentId: string): Promise<UserGrant> {
+  async revokeGrant(agentId: string): Promise<UserGrant | null> {
     return this.createOrUpdateGrant(agentId, {
-      delegatedTokens: [],
+      delegated_oauth2_tokens: [],
     });
   }
 }

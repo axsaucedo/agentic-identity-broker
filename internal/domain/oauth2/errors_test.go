@@ -8,14 +8,14 @@ import (
 // TestBuildErrorRedirectURL tests the buildErrorRedirectURL function with table-driven tests.
 func TestBuildErrorRedirectURL(t *testing.T) {
 	tests := []struct {
-		name               string
-		redirectURI        string
-		state              string
-		errorCode          string
-		errorDescription   string
-		wantErr            bool
-		wantErrMsg         string
-		validateURL        func(t *testing.T, redirectURL string)
+		name             string
+		redirectURI      string
+		state            string
+		errorCode        string
+		errorDescription string
+		wantErr          bool
+		wantErrMsg       string
+		validateURL      func(t *testing.T, redirectURL string)
 	}{
 		{
 			name:             "valid error redirect with all parameters",

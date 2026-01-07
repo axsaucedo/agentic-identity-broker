@@ -42,14 +42,14 @@ func OAuth2AuditMiddleware(logger *slog.Logger) func(http.Handler) http.Handler 
 			// Log audit information
 			duration := time.Since(startTime).Milliseconds()
 			logAuditEvent(logger, &auditEvent{
-				RequestID:   requestID,
-				Principal:   principalValue,
-				Method:      r.Method,
-				Path:        r.URL.Path,
-				StatusCode:  wrapped.statusCode,
-				Duration:    duration,
-				RemoteAddr:  r.RemoteAddr,
-				UserAgent:   r.Header.Get("User-Agent"),
+				RequestID:  requestID,
+				Principal:  principalValue,
+				Method:     r.Method,
+				Path:       r.URL.Path,
+				StatusCode: wrapped.statusCode,
+				Duration:   duration,
+				RemoteAddr: r.RemoteAddr,
+				UserAgent:  r.Header.Get("User-Agent"),
 			})
 		})
 	}
@@ -116,5 +116,5 @@ func logAuditEvent(logger *slog.Logger, event *auditEvent) {
 // generateRequestID generates a simple request ID
 // In production, this could use UUID or other ID generation
 func generateRequestID() string {
-	return time.Now().Format("20060102150405") + "-" + string(rune(time.Now().UnixNano() % 10000))
+	return time.Now().Format("20060102150405") + "-" + string(rune(time.Now().UnixNano()%10000))
 }

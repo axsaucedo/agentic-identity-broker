@@ -21,7 +21,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 			SupportedResponseTypes:    []string{"code"},
 			SupportedGrantTypes:       []string{"authorization_code"},
 		},
@@ -59,7 +59,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 			SupportedResponseTypes:    []string{"code"},
 			SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 		},
@@ -98,7 +98,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -123,7 +123,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
 		newMockGrantRepo(),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -152,7 +152,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_PublicEndpoint(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 

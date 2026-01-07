@@ -24,7 +24,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 		newMockGrantRepo(),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -55,7 +55,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 		newMockGrantRepo(),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -113,7 +113,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_InvalidClient(t *testing.T) {
 		newMockGrantRepo(),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -163,7 +163,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 		newMockGrantRepo(),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -198,9 +198,9 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 
 	grantRepo := newMockGrantRepo()
 	grant := &storage.UserGrant{
-		ID:        "grant-1",
-		Principal: "user@example.com",
-		AgentID:   "agent-1",
+		ID:         "grant-1",
+		Principal:  "user@example.com",
+		AgentID:    "agent-1",
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -213,7 +213,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -254,9 +254,9 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 
 	grantRepo := newMockGrantRepo()
 	grant := &storage.UserGrant{
-		ID:        "grant-1",
-		Principal: "user@example.com",
-		AgentID:   "agent-1",
+		ID:         "grant-1",
+		Principal:  "user@example.com",
+		AgentID:    "agent-1",
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -269,7 +269,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -312,7 +312,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
 		newMockGrantRepo(),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 

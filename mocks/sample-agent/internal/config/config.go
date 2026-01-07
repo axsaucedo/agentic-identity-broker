@@ -22,18 +22,18 @@ type ServerConfig struct {
 
 // OAuth2Config holds OAuth2 client configuration
 type OAuth2Config struct {
-	ClientID     string `yaml:"client_id"`
-	ClientSecret string `yaml:"client_secret"`
-	RedirectURI  string `yaml:"redirect_uri"`
+	ClientID     string   `yaml:"client_id"`
+	ClientSecret string   `yaml:"client_secret"`
+	RedirectURI  string   `yaml:"redirect_uri"`
 	Scopes       []string `yaml:"scopes"`
 }
 
 // BrokerInfoConfig holds identity broker information
 type BrokerInfoConfig struct {
-	BaseURL            string `yaml:"base_url"`
-	AuthorizeEndpoint  string `yaml:"authorize_endpoint"`
-	TokenEndpoint      string `yaml:"token_endpoint"`
-	MetadataEndpoint   string `yaml:"metadata_endpoint"`
+	BaseURL           string `yaml:"base_url"`
+	AuthorizeEndpoint string `yaml:"authorize_endpoint"`
+	TokenEndpoint     string `yaml:"token_endpoint"`
+	MetadataEndpoint  string `yaml:"metadata_endpoint"`
 }
 
 // Load loads configuration from a YAML file

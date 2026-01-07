@@ -178,7 +178,8 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 
 		It("should include valid URLs in metadata", func() {
 			metadataURL := fmt.Sprintf("%s/.well-known/openid-configuration", mockServer.URL())
-			resp, _ := http.Get(metadataURL)
+			resp, err := http.Get(metadataURL)
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 
 			body, _ := io.ReadAll(resp.Body)
@@ -195,10 +196,11 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 			mockServer.WithErrorResponseAndDescription("server_error", "Custom error message")
 
 			tokenURL := fmt.Sprintf("%s/oauth/token", mockServer.URL())
-			resp, _ := http.PostForm(tokenURL, url.Values{
+			resp, err := http.PostForm(tokenURL, url.Values{
 				"grant_type": {"authorization_code"},
 				"code":       {"code"},
 			})
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 
 			body, _ := io.ReadAll(resp.Body)
@@ -213,10 +215,11 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 				WithExpiresIn(7200)
 
 			tokenURL := fmt.Sprintf("%s/oauth/token", mockServer.URL())
-			resp, _ := http.PostForm(tokenURL, url.Values{
+			resp, err := http.PostForm(tokenURL, url.Values{
 				"grant_type": {"authorization_code"},
 				"code":       {"code"},
 			})
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 
 			body, _ := io.ReadAll(resp.Body)
@@ -314,10 +317,11 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 				WithSuccessfulTokenResponse()
 
 			tokenURL := fmt.Sprintf("%s/oauth/token", mockServer.URL())
-			resp, _ := http.PostForm(tokenURL, url.Values{
+			resp, err := http.PostForm(tokenURL, url.Values{
 				"grant_type": {"authorization_code"},
 				"code":       {"code"},
 			})
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))

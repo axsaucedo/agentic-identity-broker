@@ -48,14 +48,14 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	// Build authorization request
 	authReq := &ports.AuthorizationRequest{
-		ClientID:             clientID,
-		RedirectURI:          redirectURI,
-		ResponseType:         responseType,
-		Scope:                scope,
-		State:                state,
-		CodeChallenge:        codeChallenge,
-		CodeChallengeMethod:  codeChallengeMethod,
-		OriginalURL:          r.URL.String(),
+		ClientID:            clientID,
+		RedirectURI:         redirectURI,
+		ResponseType:        responseType,
+		Scope:               scope,
+		State:               state,
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: codeChallengeMethod,
+		OriginalURL:         r.URL.String(),
 	}
 
 	// Handle authorization

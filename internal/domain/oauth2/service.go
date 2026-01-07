@@ -137,11 +137,11 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest) str
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker
 func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
 	metadata := &ports.MetadataResponse{
-		Issuer:                    s.config.PublicURL,
-		AuthorizationEndpoint:     fmt.Sprintf("%s/oauth2/authorize", s.config.PublicURL),
-		TokenEndpoint:             fmt.Sprintf("%s/oauth2/token", s.config.PublicURL),
-		ResponseTypesSupported:    s.config.SupportedResponseTypes,
-		GrantTypesSupported:       s.config.SupportedGrantTypes,
+		Issuer:                            s.config.PublicURL,
+		AuthorizationEndpoint:             fmt.Sprintf("%s/oauth2/authorize", s.config.PublicURL),
+		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", s.config.PublicURL),
+		ResponseTypesSupported:            s.config.SupportedResponseTypes,
+		GrantTypesSupported:               s.config.SupportedGrantTypes,
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 	}
 

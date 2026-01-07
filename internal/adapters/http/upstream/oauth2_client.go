@@ -73,10 +73,10 @@ func NewSecureUpstreamClient(timeoutSeconds int) (*http.Client, error) {
 		IdleConnTimeout:     90 * time.Second,
 
 		// Request limits
-		MaxConnsPerHost:     10,
-		DisableCompression:  false, // Allow compression for efficiency
-		DisableKeepAlives:   false, // Keep connections alive
-		ForceAttemptHTTP2:   true,  // Enable HTTP/2 when available
+		MaxConnsPerHost:       10,
+		DisableCompression:    false, // Allow compression for efficiency
+		DisableKeepAlives:     false, // Keep connections alive
+		ForceAttemptHTTP2:     true,  // Enable HTTP/2 when available
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 

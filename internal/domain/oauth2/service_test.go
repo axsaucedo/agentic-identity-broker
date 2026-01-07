@@ -227,9 +227,9 @@ func TestService_HandleAuthorization(t *testing.T) {
 			},
 			setupGrant: func(r *MockGrantRepository) {
 				grant := &storage.UserGrant{
-					ID:        "grant-1",
-					Principal: "user@example.com",
-					AgentID:   "agent-1",
+					ID:         "grant-1",
+					Principal:  "user@example.com",
+					AgentID:    "agent-1",
 					ValidUntil: nil,
 					DelegatedOAuth2Tokens: []storage.DelegatedToken{
 						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -260,9 +260,9 @@ func TestService_HandleAuthorization(t *testing.T) {
 			setupGrant: func(r *MockGrantRepository) {
 				expiredTime := time.Now().Add(-1 * time.Hour)
 				grant := &storage.UserGrant{
-					ID:        "grant-1",
-					Principal: "user@example.com",
-					AgentID:   "agent-1",
+					ID:         "grant-1",
+					Principal:  "user@example.com",
+					AgentID:    "agent-1",
 					ValidUntil: &expiredTime,
 					DelegatedOAuth2Tokens: []storage.DelegatedToken{
 						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -319,9 +319,9 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 
 	// Add active grant
 	grant := &storage.UserGrant{
-		ID:        "grant-1",
-		Principal: "user@example.com",
-		AgentID:   "agent-1",
+		ID:         "grant-1",
+		Principal:  "user@example.com",
+		AgentID:    "agent-1",
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -376,17 +376,17 @@ func TestService_GenerateMetadata(t *testing.T) {
 	svc := NewService(agentRepo, grantRepo, config)
 
 	tests := []struct {
-		name      string
-		want      *ports.MetadataResponse
+		name string
+		want *ports.MetadataResponse
 	}{
 		{
 			name: "valid metadata generation",
 			want: &ports.MetadataResponse{
-				Issuer:                    "https://broker.example.com",
-				AuthorizationEndpoint:     "https://broker.example.com/oauth2/authorize",
-				TokenEndpoint:             "https://broker.example.com/oauth2/token",
-				ResponseTypesSupported:    []string{"code"},
-				GrantTypesSupported:       []string{"authorization_code", "refresh_token"},
+				Issuer:                            "https://broker.example.com",
+				AuthorizationEndpoint:             "https://broker.example.com/oauth2/authorize",
+				TokenEndpoint:                     "https://broker.example.com/oauth2/token",
+				ResponseTypesSupported:            []string{"code"},
+				GrantTypesSupported:               []string{"authorization_code", "refresh_token"},
 				TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 			},
 		},

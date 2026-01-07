@@ -10,9 +10,9 @@ import (
 
 // Config holds the configuration for the upstream OAuth2 mock server
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
-	OAuth2  OAuth2Config  `yaml:"oauth2"`
-	User    UserConfig    `yaml:"mock_user"`
+	Server ServerConfig `yaml:"server"`
+	OAuth2 OAuth2Config `yaml:"oauth2"`
+	User   UserConfig   `yaml:"mock_user"`
 }
 
 // ServerConfig holds HTTP server configuration
@@ -23,12 +23,12 @@ type ServerConfig struct {
 
 // OAuth2Config holds OAuth2 server configuration
 type OAuth2Config struct {
-	ClientID                 string         `yaml:"client_id"`
-	ClientSecret             string         `yaml:"client_secret"`
-	AccessTokenTTL           time.Duration  `yaml:"access_token_ttl"`
-	RefreshTokenTTL          time.Duration  `yaml:"refresh_token_ttl"`
-	AuthorizationCodeTTL     time.Duration  `yaml:"authorization_code_ttl"`
-	Scopes                   []ScopeConfig  `yaml:"scopes"`
+	ClientID             string        `yaml:"client_id"`
+	ClientSecret         string        `yaml:"client_secret"`
+	AccessTokenTTL       time.Duration `yaml:"access_token_ttl"`
+	RefreshTokenTTL      time.Duration `yaml:"refresh_token_ttl"`
+	AuthorizationCodeTTL time.Duration `yaml:"authorization_code_ttl"`
+	Scopes               []ScopeConfig `yaml:"scopes"`
 }
 
 // ScopeConfig describes a scope

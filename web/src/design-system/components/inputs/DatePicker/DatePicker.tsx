@@ -42,7 +42,10 @@ const dateInputVariants = cva(
 );
 
 export interface DatePickerProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size' | 'type' | 'value'>,
+  extends Omit<
+      React.InputHTMLAttributes<HTMLInputElement>,
+      'size' | 'type' | 'value' | 'onChange'
+    >,
     VariantProps<typeof dateInputVariants> {
   /** Current date value */
   value: Date | null;

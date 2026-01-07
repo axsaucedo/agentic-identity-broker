@@ -200,10 +200,12 @@ export function AgentGrantDetailPage() {
       <AppLayout>
         <div className="space-y-6">
           {/* Breadcrumb skeleton */}
-          <Breadcrumb items={[
-            { label: 'Delegations', href: '/' },
-            { label: <Skeleton width="120px" height="1rem" /> },
-          ]} />
+          <Breadcrumb
+            items={[
+              { label: 'Delegations', href: '/' },
+              { label: 'Loading...' },
+            ]}
+          />
 
           {/* Agent header skeleton */}
           <Card padding="default">
