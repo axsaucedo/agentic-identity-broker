@@ -34,7 +34,8 @@ jobs:
 
       # Install just command runner
       - name: Install just
-        uses: extractions/setup-just@v2
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
       # Install Go dependencies
       - name: Install Go dependencies
@@ -46,12 +47,8 @@ jobs:
 
       # Install golangci-lint
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          install-mode: binary
-          # Skip running linter - we just want it installed
-          args: --version
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
 
       # Install web dependencies
       - name: Install web dependencies
