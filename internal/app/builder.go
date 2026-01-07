@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
@@ -194,6 +196,11 @@ func (b *Builder) Build() (*App, error) {
 		Services: admin.NewServicesHandler(b.storage.Services(), b.logger),
 	}
 
+	// Create HTTP client for token endpoint with configured timeout
+	upstreamClient := &http.Client{
+		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
+	}
+
 	// Enduser handlers
 	app.EnduserHandlers = &EnduserHandlers{
 		UserInfo:       consent.NewUserInfoHandler(b.logger),
@@ -207,6 +214,7 @@ func (b *Builder) Build() (*App, error) {
 		},
 		OAuth2Token: &enduser.OAuth2TokenHandler{
 			UpstreamTokenURL: b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+			Client:           upstreamClient,
 		},
 		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
 			Service: app.OAuth2Service,

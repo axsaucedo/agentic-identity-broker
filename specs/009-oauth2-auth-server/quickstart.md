@@ -197,7 +197,7 @@ func (s *service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
     grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agent.ID)
     if err != nil || grant == nil || grant.IsExpired() {
         // No active grant → redirect to consent UI
-        consentURL := fmt.Sprintf("%s/consent/agents/%s?redirect_uri=%s",
+        consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
             s.config.PublicBaseURL,
             agent.ID,
             url.QueryEscape(req.OriginalURL.String()),
@@ -524,7 +524,7 @@ func TestHandleAuthorization_NoActiveGrant_RedirectsToConsent(t *testing.T) {
 
     assert.NoError(t, err)
     assert.Equal(t, "redirect_to_consent", decision.Action)
-    assert.Contains(t, decision.RedirectURL, "/consent/agents/agent-123")
+    assert.Contains(t, decision.RedirectURL, "/consent/agent/agent-123")
 }
 ```
 

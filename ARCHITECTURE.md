@@ -272,7 +272,73 @@ App
 - **Dependency Scanning**: Regular npm audit for vulnerabilities
 - **TypeScript**: Compile-time type checking prevents runtime errors
 
-#### 3.1.3. Public API Documentation
+#### 3.1.3. End-to-End Testing Architecture
+
+**Purpose**: Comprehensive E2E acceptance tests that validate the complete OAuth2 Authorization Server functionality through real HTTP requests and production code paths.
+
+**Architecture**: Ginkgo BDD-style tests with separation of stable test scenarios (HTTP contract) and volatile setup code (production bootstrap wrappers).
+
+**Key Design Principles** (see [ADR 007](adrs/007-e2e-testing-with-ginkgo.md)):
+
+1. **Use Production Bootstrap**: Tests use production `app.Builder`, `httpAdapter.Server`, and `storage.Adapter` - no custom test implementations
+2. **Stability Through Separation**: Test scenarios focus on HTTP contracts (stable), setup code wraps production bootstrap (volatile)
+3. **Real HTTP Testing**: Tests use `httptest.Server` with full routing, middleware, and handler stack
+4. **Test Isolation**: Each test gets fresh storage and server via `BeforeEach` - no shared state
+5. **BDD Organization**: `Describe`/`Context`/`It` blocks map to acceptance scenarios (Given/When/Then)
+
+**Test Structure**:
+```
+tests/e2e/
+├── e2e_suite_test.go              # Ginkgo test suite entry point
+├── bootstrap/                      # VOLATILE - Wraps production bootstrap
+│   ├── server_factory.go          # Uses app.Builder from production
+│   ├── test_server.go             # Wraps production HTTP server
+│   └── storage.go                 # Uses production storage.Adapter
+├── fixtures/                       # STABLE - Test data (domain model)
+│   ├── agents.go, grants.go, principals.go, config.go
+├── helpers/                        # STABLE - Test utilities
+│   ├── http_helpers.go, mock_upstream.go
+├── matchers/                       # STABLE - Custom Gomega matchers
+│   └── oauth2_matchers.go
+└── Test scenarios (62 scenarios total)
+    ├── oauth2_authorize_test.go   # Authorization endpoint (23 scenarios)
+    ├── oauth2_token_test.go       # Token endpoint (12 scenarios)
+    ├── oauth2_metadata_test.go    # Metadata endpoint (8 scenarios)
+    ├── oauth2_security_test.go    # Security tests (12 scenarios)
+    └── oauth2_edge_cases_test.go  # Edge cases (7 scenarios)
+```
+
+**Running E2E Tests**:
+```bash
+# Run all E2E tests
+just test-e2e
+
+# Run with coverage report
+just test-e2e-coverage
+
+# Watch mode (auto-rerun on changes)
+just test-e2e-watch
+
+# Run specific scenarios
+ginkgo -v --focus="Authorization Endpoint" ./tests/e2e/
+```
+
+**Key Benefits**:
+- **Refactoring-Resistant**: Tests survive routing/DI changes because they use production bootstrap
+- **Fast Execution**: In-memory storage, no database containers (< 60 seconds for full suite)
+- **Clear Mapping**: Each `It()` block maps to one acceptance scenario in spec.md
+- **Readable Output**: Ginkgo output is hierarchical and understandable by non-developers
+- **Production Parity**: Tests exercise the same code path as production (DI, routing, middleware)
+
+**Documentation**: Comprehensive E2E testing guide with examples, patterns, and anti-patterns in [tests/e2e/README.md](tests/e2e/README.md)
+
+**Technologies**:
+- Ginkgo v2 (BDD test framework)
+- Gomega (assertion library)
+- `net/http/httptest` (HTTP test server)
+- Production `app.Builder` and `httpAdapter.Server` (no custom test implementations)
+
+#### 3.1.4. Public API Documentation
 
 **Purpose**: Comprehensive OpenAPI 3.0.3 documentation of all HTTP APIs exposed by the Identity Broker service.
 
@@ -404,17 +470,34 @@ Code Quality Tools: [e.g., ESLint, Black, SonarQube]
 
 [e.g., "Implement event-driven architecture for real-time updates."]
 
-## 10. Project Identification
+## 10. Architecture Decision Records (ADRs)
 
-Project Name: [Insert Project Name]
+This section lists all architectural decisions made for this project. ADRs document important technical choices, their rationale, alternatives considered, and consequences.
+
+### Core Infrastructure
+- [ADR 002: Configuration Libraries](adrs/002-configuration-libraries.md) - Multi-source configuration with Viper, Cobra, and godotenv
+- [ADR 003: Chi Framework Selection](adrs/003-chi-framework.md) - HTTP routing framework choice
+- [ADR 004: Dual-Server Isolation](adrs/004-dual-server-isolation.md) - Separate end-user and admin servers
+- [ADR 004: Storage Layer Architecture](adrs/004-storage-layer-architecture.md) - Hexagonal architecture for persistence
+
+### Frontend & User Interface
+- [ADR 005: SPA Serving Pattern](adrs/005-spa-serving-pattern.md) - Serving React SPA from Go backend
+- [ADR 006: Frontend Stack](adrs/006-frontend-stack.md) - React 18 + Vite + Tailwind CSS v4
+
+### Testing & Quality
+- [ADR 007: E2E Testing with Ginkgo](adrs/007-e2e-testing-with-ginkgo.md) - BDD-style E2E tests using production bootstrap
+
+## 11. Project Identification
+
+Project Name: Agentic Identity Broker
 
 Repository URL: [Insert Repository URL]
 
 Primary Contact/Team: [Insert Lead Developer/Team Name]
 
-Date of Last Update: [YYYY-MM-DD]
+Date of Last Update: 2026-01-06
 
-## 11. Glossary / Acronyms
+## 12. Glossary / Acronyms
 
 Define any project-specific terms or acronyms.)
 

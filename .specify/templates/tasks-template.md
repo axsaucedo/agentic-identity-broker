@@ -63,7 +63,7 @@ These sections provide examples that should be replaced with feature-specific ta
 
 **⚠️ CRITICAL**: No code implementation can begin until this entire phase is complete
 
-**🔒 CONSTITUTION REQUIREMENT**: This phase maps directly to the constitution PRECONDITIONS checklist. All sub-phases (2a-2d) MUST be included in every tasks.md, though specific task details should be adapted to the feature.
+**🔒 CONSTITUTION REQUIREMENT**: This phase maps directly to the constitution PRECONDITIONS checklist. All sub-phases (2a-2f) MUST be included in every tasks.md, though specific task details should be adapted to the feature.
 
 ### Phase 2a: Domain Model & Glossary [MANDATORY]
 
@@ -123,6 +123,21 @@ These sections provide examples that should be replaced with feature-specific ta
 - [ ] T009c Document semantic token usage (trust-deep, success-primary, neutral-*)
 
 **Checkpoint**: Design system usage planned (if applicable)
+
+### Phase 2f: E2E Acceptance Test Design [MANDATORY]
+
+**Constitution Reference**: Principle XIII (End-to-End Acceptance Testing & Spec Traceability)
+
+**Required Tasks** (adapt descriptions to your feature):
+- [ ] T010 Write E2E acceptance tests in `tests/e2e/` for all acceptance scenarios from spec.md
+- [ ] T010a Map each acceptance scenario from spec.md to one `It()` block in E2E tests
+- [ ] T010b Use Ginkgo/Gomega framework following patterns in `tests/e2e/README.md`
+- [ ] T010c Organize tests hierarchically: `Describe` (feature) → `Context` (preconditions) → `It` (scenario)
+- [ ] T010d Use fixtures from `tests/e2e/fixtures/` (agents, grants, principals, config)
+- [ ] T010e Add comment references to spec scenarios in E2E test files
+- [ ] T010f Verify E2E tests FAIL initially (red phase) - no implementation exists yet
+
+**Checkpoint**: E2E acceptance tests written and verified to fail before implementation
 
 ---
 
@@ -265,6 +280,8 @@ These sections provide examples that should be replaced with feature-specific ta
 - [ ] TXXX Verify user/stakeholder confirmed API designs (document reference in PR) (Principle X)
 - [ ] TXXX Verify database schema design documented (migrations or confirmation of no DB changes) (Principle IX)
 - [ ] TXXX [IF FRONTEND] Verify design system review completed and universal components identified (Principle XI)
+- [ ] TXXX Verify E2E acceptance tests written in `tests/e2e/` for all spec scenarios (Principle XIII)
+- [ ] TXXX Verify E2E tests verified to FAIL before implementation (red phase) (Principle XIII)
 
 #### Implementation Phase Verification [MANDATORY]
 
@@ -297,9 +314,23 @@ These sections provide examples that should be replaced with feature-specific ta
 **Architecture Patterns** (Principle VI):
 - [ ] TXXX Verify domain logic uses ports (interfaces) and adapters
 
-**Testing** (Principle VIII):
+**Testing** (Principle VIII - Unit & Integration Tests):
+- [ ] TXXX Verify unit tests written FIRST and failed before implementation (red-green TDD)
+- [ ] TXXX Verify tests drive design (implementation emerges from test requirements)
+- [ ] TXXX Verify tests changed minimally during implementation
 - [ ] TXXX Verify automated tests included (unit, integration, or both)
 - [ ] TXXX Verify no Bash scripts used for code correctness validation
+
+**E2E Acceptance Testing** (Principle XIII):
+- [ ] TXXX Verify E2E tests exist in `tests/e2e/` for all acceptance scenarios from spec.md
+- [ ] TXXX Verify each `It()` block in E2E tests maps to exactly ONE acceptance scenario from spec.md
+- [ ] TXXX Verify E2E tests written BEFORE implementation and failed initially (red phase)
+- [ ] TXXX Verify E2E tests changed minimally during implementation (fixture adjustments only)
+- [ ] TXXX Verify E2E tests turned GREEN as implementation satisfied acceptance criteria
+- [ ] TXXX Verify E2E tests use Ginkgo/Gomega framework following `tests/e2e/README.md` patterns
+- [ ] TXXX Verify E2E test organization uses hierarchical structure (Describe → Context → It)
+- [ ] TXXX Verify E2E tests include comment references to spec scenarios
+- [ ] TXXX Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
 
 **Frontend** (Principle XI - if applicable):
 - [ ] TXXX [IF FRONTEND] Verify frontend components use design system primitives and semantic tokens
@@ -331,7 +362,8 @@ These sections provide examples that should be replaced with feature-specific ta
   - **CRITICAL**: Configuration requirements must be designed with YAML examples
   - **CRITICAL**: APIs must be designed and confirmed by user/stakeholder BEFORE implementation
   - **CRITICAL**: Database schema must be designed and migrations planned (or confirmed no DB changes)
-  - Phase 2a, 2b, 2c, 2d can proceed in parallel, but all must complete before Phase 2.5 begins
+  - **CRITICAL**: E2E acceptance tests must be written for all spec scenarios and verified to FAIL (red phase)
+  - Phase 2a, 2b, 2c, 2d, 2e, 2f can proceed in parallel, but all must complete before Phase 2.5 begins
 - **Foundational Infrastructure (Phase 2.5)**: Depends on ALL of Phase 2 completion - BLOCKS all user stories
 - **User Stories (Phase 3+)**: All depend on Phase 2 + Phase 2.5 completion
   - User stories can then proceed in parallel (if staffed)
@@ -387,6 +419,8 @@ Task: "Create [Entity2] model in src/models/[entity2].py"
    - 2b: Configuration design with YAML examples
    - 2c: API design + user/stakeholder confirmation
    - 2d: Database schema design
+   - 2e: Frontend/design system review (if applicable)
+   - 2f: E2E acceptance test design (tests written and verified to FAIL)
 3. Complete Phase 2.5: Foundational Infrastructure (CRITICAL - blocks all stories)
 4. Complete Phase 3: User Story 1
 5. **STOP and VALIDATE**: Test User Story 1 independently
@@ -409,6 +443,8 @@ With multiple developers or agents:
    - **Phase 2b (Configuration Design)**: Use backend-developer or platform-engineer specialist
    - **Phase 2c (API Design)**: Use api-designer specialist (coordinates with user for confirmation)
    - **Phase 2d (Database Schema)**: Use database-administrator specialist
+   - **Phase 2e (Frontend/Design System)**: Use frontend-developer or ui-designer specialist (if applicable)
+   - **Phase 2f (E2E Acceptance Tests)**: Use qa-expert or test engineer specialist (writes failing tests)
 2. Remaining team/agents complete Setup (Phase 1) while design in progress
 3. Once ALL of Phase 2 complete and confirmed (especially API sign-off):
    - All team/agents complete Foundational Infrastructure (Phase 2.5) together

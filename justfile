@@ -66,6 +66,39 @@ test-coverage-summary:
     go test -race -coverprofile=coverage/coverage.out -covermode=atomic ./...
     go tool cover -func=coverage/coverage.out
 
+# Run end-to-end tests with Ginkgo
+test-e2e:
+    @echo "Running E2E tests..."
+    @if command -v ginkgo > /dev/null; then \
+        ginkgo -v ./tests/e2e/; \
+    else \
+        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
+# Run E2E tests with coverage report
+test-e2e-coverage:
+    @echo "Running E2E tests with coverage..."
+    @mkdir -p coverage
+    @if command -v ginkgo > /dev/null; then \
+        ginkgo -v --cover --coverprofile=e2e.out --output-dir=coverage ./tests/e2e/; \
+        go tool cover -html=coverage/e2e.out -o coverage/e2e.html; \
+        echo "E2E coverage report generated at coverage/e2e.html"; \
+    else \
+        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
+# Watch E2E tests during development (auto-rerun on changes)
+test-e2e-watch:
+    @echo "Starting E2E test watch mode..."
+    @if command -v ginkgo > /dev/null; then \
+        ginkgo watch -v ./tests/e2e/; \
+    else \
+        echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
 # Build and run the application
 run: build
     @echo "Running {{NAME}}..."
@@ -139,13 +172,21 @@ test-integration:
     @echo "Running integration tests..."
     go test -tags=integration -v ./test/integration/storage/...
 
-# Run all unit tests with coverage
+# Run all unit and integration tests with coverage
 test-all: test test-integration
     @echo "All tests completed"
 
-# Run all quality checks (fmt, vet, lint, test)
+# Run all tests: unit, integration, and E2E (comprehensive test suite)
+test-full: test test-integration test-e2e
+    @echo "Full test suite completed"
+
+# Run all quality checks (fmt, vet, lint, unit tests)
 check: fmt vet lint test
     @echo "All checks passed!"
+
+# Run comprehensive checks: formatting, linting, and all tests (unit, integration, E2E)
+check-full: fmt vet lint test test-integration test-e2e
+    @echo "Comprehensive checks passed!"
 
 # =============================================================================
 # Web Development Targets

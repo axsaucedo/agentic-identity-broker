@@ -205,7 +205,7 @@ func setMIMEType(w http.ResponseWriter, path string) {
 
 The implementation provides full support for client-side routing:
 
-1. **Direct URL access**: `/consent/agents/123` serves `index.html`, React Router handles routing
+1. **Direct URL access**: `/consent/agent/123` serves `index.html`, React Router handles routing
 2. **Refresh support**: User can refresh at any SPA route without 404 errors
 3. **Static assets**: CSS, JS, fonts served directly without fallback
 4. **API routes**: `/api/*` unaffected by SPA fallback (processed by existing handlers)
@@ -1715,7 +1715,7 @@ func TestServer_ServeSPA(t *testing.T) {
 		},
 		{
 			name:           "fallback to index.html for unknown route",
-			path:           "/consent/agents/123",
+			path:           "/consent/agent/123",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "Test SPA",
 			expectedHeader: "text/html",

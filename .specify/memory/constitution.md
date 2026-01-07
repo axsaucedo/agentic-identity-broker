@@ -1,48 +1,70 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.5.1 → 1.6.0
-Rationale: MINOR version bump - new principle added for explicit governance of dependency injection patterns.
-  This is additive guidance (Principle XII) that establishes binding rules for service instantiation and
-  HTTP route registration, preventing architectural drift and enabling clear separation of concerns between
-  wiring logic (Builder pattern) and route registration (routing functions).
+Version Change: 1.6.0 → 1.7.0
+Rationale: MINOR version bump - new principle added (Principle XIII: End-to-End Acceptance Testing)
+  and existing Principle VIII materially expanded with red-green TDD clarification. This establishes
+  binding requirements for E2E test coverage mapped to spec scenarios and clarifies that TDD means
+  tests must FAIL before implementation, not skip or check for "not implemented" errors.
 
 Modified Principles:
-- None (existing principles unchanged - Principle XII is new and complementary)
+- Principle VIII: Test-Driven Development & Automated Testing - materially expanded with red-green TDD clarification
+  * Added explicit requirement that tests MUST be written first and MUST FAIL before implementation
+  * Clarified that skipping tests or checking for "not implemented" errors violates TDD principles
+  * Emphasized tests should drive design and change minimally during implementation
 
 Added Principles:
-- Principle XII: Dependency Injection & Component Wiring (centralizes DI pattern governance)
+- Principle XIII: End-to-End Acceptance Testing & Spec Traceability (new principle for E2E testing requirements)
 
 Added Sections:
-- Compliance Checklist: Added Principle XII verification items
-- When Constraints Cannot Be Met: Added Principle XII exception handling
+- Compliance Checklist: Added Principle XIII verification items for E2E testing
+- When Constraints Cannot Be Met: Added Principle XIII exception handling
 
 Removed Sections:
 - None
 
 Templates Status:
-- ⚠ tasks-template.md: PENDING - should add Principle XII verification task to Phase N
-  - Location: Phase N: Constitution Compliance Verification
-  - Suggested task: Verify dependency injection follows Builder pattern; routing functions don't instantiate
-- 🔲 spec-template.md: No updates needed
-- 🔲 plan-template.md: No updates needed (Constitution Check already covers architecture)
+- ✅ tasks-template.md: UPDATED
+  - Added Phase 2f: E2E Acceptance Test Design (mandatory precondition)
+  - Added 9 E2E testing verification tasks to Phase N (Constitution Compliance)
+  - Updated Phase 2 dependencies to include E2E testing as critical blocker
+  - Updated parallel team strategy to include qa-expert for Phase 2f
+- ✅ spec-template.md: UPDATED
+  - Added E2E testing guidance in User Scenarios & Testing section comments
+  - Notes that each acceptance scenario requires corresponding E2E test
+  - Implementation details remain in plan.md per user preference
+- ✅ plan-template.md: UPDATED
+  - Added E2E testing requirements to Constitution Check (Design Preconditions)
+  - Added comprehensive "Testing Strategy" section documenting E2E test structure
+  - Includes scenario mapping table, test data strategy, execution flow, bootstrap strategy
 
-Follow-up TODOs: None - Principle XII is complete and self-contained
+Follow-up TODOs: None - Principle XIII is complete and self-contained
 
 Previous Version History:
+- 1.5.1 → 1.6.0: Added Principle XII (Dependency Injection & Component Wiring) (MINOR)
 - 1.5.0 → 1.5.1: Clarified testing requirements in tasks-template.md (PATCH)
 - 1.4.0 → 1.5.0: Added Governance > Task List Requirements section (MINOR)
 - 1.3.1 → 1.4.0: Added Principle XI (Design System Compliance & Consistency) (MINOR)
 
-Rationale for Principle XII (Dependency Injection & Component Wiring):
-  Separating construction (Builder pattern) from routing (dedicated routing functions) maintains clean
-  architectural boundaries, enables testability through dependency injection, prevents circular dependencies,
-  and makes the dependency graph explicit and auditable. The Builder pattern centralizes wiring logic, making
-  it easy to understand initialization order and dependencies at a glance. Routing functions remain thin and
-  focused solely on route registration, which prevents accidental coupling to internal implementation details.
-  This pattern follows hexagonal architecture principles (Principle VI): domain logic (Builder) is isolated
-  from infrastructure concerns (routing), and dependencies flow from configuration/infrastructure toward
-  domain logic, not vice versa. Establishing explicit rules prevents architectural drift.
+Rationale for Principle XIII (End-to-End Acceptance Testing & Spec Traceability):
+  E2E tests validate the complete system integration against user-facing acceptance criteria defined
+  in spec.md. Requiring 1:1 mapping between spec scenarios and E2E tests ensures complete coverage,
+  enables traceability from requirements to validation, and establishes acceptance tests as the
+  definition of "done". Writing E2E tests before implementation (red-green development) ensures
+  tests are independent verification of requirements, not retrofitted validation. This follows
+  Specification by Example principles: executable specifications that drive development and serve
+  as living documentation. The tests/e2e/ infrastructure (Ginkgo/Gomega, fixtures, bootstrap layers)
+  provides stable, maintainable E2E testing patterns. Minimal changes during implementation prove
+  tests were correctly derived from specs, not implementation details.
+
+Rationale for Principle VIII clarification (Red-Green TDD):
+  TDD requires tests to FAIL before implementation to prove they test the right thing. Writing
+  passing tests (or skipped tests) defeats the purpose: you cannot verify the test detects the
+  absence of functionality. Checking for "not implemented" errors is not TDD - it tests error
+  handling, not functionality. True TDD means: (1) write test for next increment of functionality,
+  (2) verify test FAILS (red), (3) implement minimum code to pass (green), (4) refactor. Tests
+  driving design means implementation decisions emerge from test requirements, not vice versa.
+  Tests changing minimally during implementation proves they were well-designed from specs.
 -->
 
 # Agentic Identity Broker Constitution
@@ -170,10 +192,14 @@ with it rather than bypassing it.
 
 ### VIII. Test-Driven Development & Automated Testing
 
-Code quality and correctness MUST be ensured through automated tests, not manual Bash validation.
+Code quality and correctness MUST be ensured through Test-Driven Development (TDD) and automated tests, not manual validation.
 
 **Rules**:
-- New features MUST include automated tests (unit, integration, or both) written before or alongside implementation (TDD)
+- **Tests MUST be written FIRST and MUST FAIL before implementation begins (red-green-refactor cycle)**
+- New features MUST follow TDD: write test → verify test FAILS (red) → implement minimum code to pass (green) → refactor
+- **Skipping tests or checking for "not implemented" errors is NOT TDD**: tests must verify actual functionality, not error handling
+- Tests MUST drive design: implementation decisions emerge from test requirements, not vice versa
+- Tests MUST change as little as possible during implementation: major test changes indicate poorly derived tests
 - Automated tests MUST cover happy paths, error cases, and edge cases
 - Test files MUST use the Go standard library testing package or established testing frameworks (testify for assertions only)
 - Table-driven tests MUST be used for validation logic and parameterized scenarios
@@ -184,10 +210,13 @@ Code quality and correctness MUST be ensured through automated tests, not manual
 - Unit tests MUST isolate functionality via mocking/interfaces where appropriate
 - See [task templates](./templates/tasks-template.md) for test organization patterns
 
-**Rationale**: Automated tests catch regressions early, document expected behavior, enable refactoring
-with confidence, and scale better than manual validation. Bash-based validation is fragile and
-unmaintainable; it MUST be reserved for infrastructure concerns (e.g., smoke tests in CI/CD) rather
-than code correctness.
+**Rationale**: TDD ensures tests are independent verification of requirements, not retrofitted validation.
+Tests failing first proves they detect absence of functionality. Tests driving design means implementation
+emerges from requirements, ensuring code does exactly what's needed. Minimal test changes during
+implementation proves tests were well-designed from specs. Automated tests catch regressions early,
+document expected behavior, enable refactoring with confidence, and scale better than manual validation.
+Bash-based validation is fragile and unmaintainable; it MUST be reserved for infrastructure concerns
+(e.g., smoke tests in CI/CD) rather than code correctness.
 
 ### IX. Persistence Pattern Consistency & Database Migration Management
 
@@ -354,6 +383,53 @@ architectural drift and ensures consistency across all HTTP route registration.
 4. Pass the pre-wired handler to `SetupEnduserRoutes()` or `SetupAdminRoutes()` as part of the handlers struct
 5. Register routes in `SetupEnduserRoutes()` or `SetupAdminRoutes()` using the passed handler, WITHOUT creating new instances
 
+### XIII. End-to-End Acceptance Testing & Spec Traceability
+
+All features MUST have comprehensive end-to-end (E2E) acceptance tests where each scenario in spec.md
+maps 1:1 to a test scenario in `tests/e2e/`. E2E tests MUST be written BEFORE implementation starts,
+change minimally during implementation, and follow red-green development.
+
+**Rules**:
+- **Every acceptance scenario in `specs/[NNN-feature-name]/spec.md` MUST have a corresponding E2E test in `tests/e2e/`**
+- E2E tests MUST be written BEFORE implementation begins (acceptance-test-driven development)
+- E2E tests MUST FAIL initially (red phase), proving they test actual functionality not error handling
+- E2E tests MUST change minimally during implementation: major changes indicate tests were derived from implementation, not specs
+- E2E tests turn GREEN when implementation satisfies acceptance criteria (green phase)
+- E2E tests MUST use Ginkgo/Gomega BDD framework following patterns in [tests/e2e/README.md](../../tests/e2e/README.md)
+- Each `It()` block MUST map to exactly ONE acceptance scenario from spec.md
+- Test organization MUST use hierarchical structure: `Describe` (feature) → `Context` (preconditions) → `It` (scenario)
+- E2E tests MUST verify complete system integration via real HTTP server, production app initialization, and full request/response cycles
+- E2E tests MUST use production bootstrap code (app.Builder, HTTP server, routing) via test wrappers in `tests/e2e/bootstrap/`
+- Test data MUST use fixtures from `tests/e2e/fixtures/` (agents, grants, principals, config) NOT hardcoded values
+- E2E tests MUST follow Given/When/Then structure mapping to BeforeEach (setup) / action / assertions
+- Test file naming convention: `tests/e2e/[feature]_test.go` (e.g., `oauth2_authorize_test.go`)
+- Each test file MUST include comment references to spec scenarios: `// Scenario X.Y from specs/[NNN-feature]/spec.md`
+- E2E tests MUST be independent and isolated: fresh server and storage for each test via BeforeEach/AfterEach
+- Common E2E test utilities (matchers, helpers, mock servers) MUST be in `tests/e2e/matchers/` and `tests/e2e/helpers/`
+- E2E tests MUST NOT depend on test execution order or shared state between tests
+- See [tests/e2e/README.md](../../tests/e2e/README.md) for comprehensive E2E testing patterns, examples, and anti-patterns
+
+**Rationale**: E2E tests validate complete system integration against user-facing acceptance criteria.
+Requiring 1:1 mapping between spec scenarios and E2E tests ensures complete coverage, enables traceability
+from requirements to validation, and establishes acceptance tests as the definition of "done". Writing E2E
+tests before implementation (red-green development) ensures tests are independent verification of requirements,
+not retrofitted validation. This follows Specification by Example principles: executable specifications that
+drive development and serve as living documentation. The tests/e2e/ infrastructure (Ginkgo/Gomega, fixtures,
+bootstrap layers) provides stable, maintainable E2E testing patterns. Minimal changes during implementation
+prove tests were correctly derived from specs, not implementation details. E2E tests complement unit tests:
+unit tests verify components in isolation (fast, focused), E2E tests verify complete workflows (slower,
+comprehensive). Together they provide defense in depth: unit tests catch logic errors early, E2E tests catch
+integration issues and ensure the system delivers user value.
+
+**Example**: When implementing OAuth2 authorization endpoint:
+1. Read acceptance scenarios from `specs/009-oauth2-auth-server/spec.md` (User Story 1)
+2. Create `tests/e2e/oauth2_authorize_test.go` with one `It()` block per scenario
+3. Write E2E tests that FAIL (no implementation exists yet)
+4. Implement authorization endpoint incrementally
+5. E2E tests turn GREEN as each scenario is satisfied
+6. Minimal test changes during implementation (fixture adjustments only, not test logic)
+7. Final E2E test file provides executable documentation of OAuth2 authorization behavior
+
 ## Development Requirements
 
 ### Compliance Checklist
@@ -368,6 +444,8 @@ architectural drift and ensures consistency across all HTTP route registration.
 - [ ] Database schema designed (migration files and SQL documented, or confirm no DB changes)
 - [ ] Frontend components designed: review [web/src/design-system/docs/INDEX.md](../web/src/design-system/docs/INDEX.md) and ensure design system can be used
 - [ ] Universal components identified: plan to add them to design system in `web/src/design-system/components/` (if applicable)
+- [ ] **E2E acceptance tests written in `tests/e2e/` for all spec scenarios (Principle XIII)**
+- [ ] **E2E tests verified to FAIL before implementation (red phase - Principle XIII)**
 
 **Implementation Phase**:
 
@@ -381,6 +459,9 @@ architectural drift and ensures consistency across all HTTP route registration.
 - [ ] Domain logic uses ports (interfaces) and adapters are separated
 - [ ] No custom cryptography; security features use vetted libraries
 - [ ] Structured logging present for security-critical operations
+- [ ] **Unit tests written FIRST and verified to FAIL before implementation (red phase - Principle VIII)**
+- [ ] **Unit tests drive design: implementation emerges from test requirements (Principle VIII)**
+- [ ] **Unit tests change minimally during implementation (Principle VIII)**
 - [ ] Automated tests included (unit, integration, or both) with meaningful coverage
 - [ ] No Bash scripts used for code correctness validation (only infrastructure tasks)
 - [ ] New persistence entities follow quickstart.md patterns (if applicable)
@@ -395,6 +476,9 @@ architectural drift and ensures consistency across all HTTP route registration.
 - [ ] HTTP routes registered via `SetupAdminRoutes()` and `SetupEnduserRoutes()` functions (Principle XII)
 - [ ] Routing functions receive pre-wired dependencies, do NOT instantiate services (Principle XII)
 - [ ] All handlers and services depend on ports (interfaces), not concrete implementations (Principle XII)
+- [ ] **E2E tests turn GREEN as implementation satisfies acceptance criteria (green phase - Principle XIII)**
+- [ ] **E2E tests changed minimally during implementation (Principle XIII)**
+- [ ] **All spec scenarios have passing E2E tests in `tests/e2e/` (Principle XIII)**
 
 ### When Constraints Cannot Be Met
 
@@ -429,10 +513,10 @@ If Principle VII (Configuration-Driven Design) cannot be satisfied:
 
 If Principle VIII (TDD & Automated Testing) cannot be satisfied:
 
-1. Document the specific reason why automated testing is not feasible
+1. Document the specific reason why TDD or automated testing is not feasible
 2. Propose alternative validation approach (e.g., infrastructure-level testing)
 3. Escalate to project maintainers for exception approval
-4. Do NOT use Bash scripts for code correctness validation without explicit justification
+4. Do NOT skip test-first development or use Bash scripts for code correctness validation without explicit justification
 
 If Principle IX (Persistence Pattern Consistency & Database Migration Management) cannot be satisfied:
 
@@ -465,6 +549,14 @@ If Principle XII (Dependency Injection & Component Wiring) cannot be satisfied:
 4. Create an ADR documenting the exception and alternative pattern
 5. Do NOT implement service instantiation in routing functions or bypass Builder pattern without an accepted ADR
 
+If Principle XIII (End-to-End Acceptance Testing & Spec Traceability) cannot be satisfied:
+
+1. STOP implementation immediately
+2. Document why E2E tests cannot be written for spec scenarios or why 1:1 mapping is not feasible
+3. Propose alternative acceptance testing approach with technical justification
+4. Escalate to project maintainers for exception approval
+5. Do NOT implement features without E2E acceptance tests mapped to spec scenarios without explicit approval
+
 ## Governance
 
 ### Amendment Procedure
@@ -492,6 +584,8 @@ If Principle XII (Dependency Injection & Component Wiring) cannot be satisfied:
 - Reviewers MUST verify frontend components use design system and universal patterns are contributed (Principle XI)
 - Reviewers MUST verify WCAG 2.1 AA accessibility compliance for frontend components (Principle XI)
 - Reviewers MUST verify dependency injection uses Builder pattern and routing functions are thin (Principle XII)
+- Reviewers MUST verify TDD was followed: tests written first and failed before implementation (Principle VIII)
+- Reviewers MUST verify E2E tests exist for all spec scenarios and changed minimally during implementation (Principle XIII)
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
 
 ### Task List Requirements
@@ -522,4 +616,4 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
 - The tasks-template.md uses 🔒 emoji and [MANDATORY] markers to clearly distinguish mandatory from customizable sections
 - Omitting mandatory sections violates this constitution and blocks feature completion
 
-**Version**: 1.6.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-01-05
+**Version**: 1.7.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-01-06

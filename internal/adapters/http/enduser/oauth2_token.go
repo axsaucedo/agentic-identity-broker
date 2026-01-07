@@ -37,6 +37,12 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	// Validate body is not empty
+	if len(body) == 0 {
+		http.Error(w, "request body cannot be empty", http.StatusBadRequest)
+		return
+	}
+
 	// Create upstream request
 	upstreamReq, err := http.NewRequest("POST", h.UpstreamTokenURL, strings.NewReader(string(body)))
 	if err != nil {

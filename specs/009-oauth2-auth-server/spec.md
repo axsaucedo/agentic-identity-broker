@@ -21,7 +21,7 @@ The application does **NOT** for now: Issue, validate, or manage its own tokens.
 
 The configuration block should be called `oauth2_authorization_server`.
 
-The authorize endpoint only interprets the `client_id` parameter and validates it against the registered Agents (use the Agent's client_id attribute) to exist. It also validates against the existing consent functionality that user consent has been given for the agent.  If consent has been given it forwards the authorize request to the target oAuth2 Authorization server. If consent has not been given, user is redirected to `/consent/agents/:agent-id?redirect_uri=<the full URL of the original /oauth2/authorize request>`"
+The authorize endpoint only interprets the `client_id` parameter and validates it against the registered Agents (use the Agent's client_id attribute) to exist. It also validates against the existing consent functionality that user consent has been given for the agent.  If consent has been given it forwards the authorize request to the target oAuth2 Authorization server. If consent has not been given, user is redirected to `/consent/agent/:agent-id?redirect_uri=<the full URL of the original /oauth2/authorize request>`"
 
 ## Clarifications
 
@@ -49,7 +49,7 @@ A client application (agent) needs to obtain authorization from a user to access
 2. **Given** an authorization request with an invalid or missing client_id, **When** the request is processed, **Then** the system returns an OAuth2 error response indicating invalid_client
 3. **Given** an authorization request with a valid client_id, **When** the system checks for existing user consent, **Then** it queries the grant store for an active grant matching the authenticated user's principal and the agent's ID
 4. **Given** an authorization request for which the user has previously granted consent, **When** consent validation completes, **Then** the system issues an HTTP redirect (302/303) to the upstream OAuth2 authorization endpoint preserving all original query parameters
-5. **Given** an authorization request for which no user consent exists, **When** consent validation fails, **Then** the system redirects the user to `/consent/agents/:agent-id?redirect_uri=<URL-encoded full original request URL>`
+5. **Given** an authorization request for which no user consent exists, **When** consent validation fails, **Then** the system redirects the user to `/consent/agent/:agent-id?redirect_uri=<URL-encoded full original request URL>`
 6. **Given** the user is redirected to the consent UI, **When** they complete the consent flow and approve, **Then** the consent UI redirects back to the original authorization request URL and the flow continues
 7. **Given** all OAuth2 parameters from the original request, **When** proxying to the upstream server, **Then** the system forwards client_id, redirect_uri, scope, state, response_type, and any other parameters unchanged
 8. **Given** the user's browser is redirected to the upstream OAuth2 server, **When** the upstream processes the authorization, **Then** the upstream redirects the user's browser directly to the client's redirect_uri with authorization code or error (broker is not in the response path)
@@ -123,7 +123,7 @@ OAuth2 clients and libraries need to discover the identity broker's OAuth2 endpo
 - **FR-007**: Authorization endpoint MUST extract the authenticated user's principal from the request context (set by RequirePrincipalMiddleware which reads the configured principal header)
 - **FR-008**: Authorization endpoint MUST query the grant store to check if an active grant exists matching the user's principal and the agent's ID
 - **FR-009**: Authorization endpoint MUST treat grants with valid_until timestamp in the past as non-existent (expired)
-- **FR-010**: Authorization endpoint MUST redirect to `/consent/agents/:agent-id?redirect_uri=<URL-encoded original request>` when no active grant exists
+- **FR-010**: Authorization endpoint MUST redirect to `/consent/agent/:agent-id?redirect_uri=<URL-encoded original request>` when no active grant exists
 - **FR-011**: Authorization endpoint MUST construct the consent redirect URL with the full original authorization request URL (including all query parameters) as the redirect_uri parameter
 - **FR-012**: Authorization endpoint MUST proxy the authorization request to the configured upstream OAuth2 authorization endpoint when an active grant exists
 - **FR-013**: System MUST forward all original query parameters (client_id, redirect_uri, scope, state, response_type, etc.) when proxying the authorization request

@@ -48,7 +48,7 @@ This directory contains the OpenAPI 3.0 specification for the OAuth2 Authorizati
 
 3. Broker checks consent → No grant found
 
-4. Broker → 302 Location: /consent/agents/agent-123?redirect_uri=<full original URL>
+4. Broker → 302 Location: /consent/agent/agent-123?redirect_uri=<full original URL>
 
 5. User completes consent → Consent UI redirects back to step 1
 
@@ -192,7 +192,7 @@ The broker generates or proxies the following RFC 6749 error codes:
 curl -v "https://identity-broker.example.com/oauth2/authorize?response_type=code&client_id=my-agent&redirect_uri=https://my-agent.example.com/callback&state=xyz123"
 
 # Expected: HTTP 302 redirect to either:
-# - /consent/agents/:agent-id (if no consent)
+# - /consent/agent/:agent-id (if no consent)
 # - upstream OAuth2 server (if consent exists)
 ```
 

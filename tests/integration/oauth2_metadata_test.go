@@ -25,7 +25,7 @@ func TestOAuth2MetadataEndpoint_ReturnsValidJSON(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 			SupportedResponseTypes:    []string{"code"},
 			SupportedGrantTypes:       []string{"authorization_code"},
 		},
@@ -61,7 +61,7 @@ func TestOAuth2MetadataEndpoint_RFC8414Schema(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 			SupportedResponseTypes:    []string{"code"},
 			SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 		},
@@ -106,7 +106,7 @@ func TestOAuth2MetadataEndpoint_HTTPStatus(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -133,7 +133,7 @@ func TestOAuth2MetadataEndpoint_ContentType(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -161,7 +161,7 @@ func TestOAuth2MetadataEndpoint_IsPublic(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -190,7 +190,7 @@ func TestOAuth2MetadataEndpoint_MultipleRequests(t *testing.T) {
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 			SupportedResponseTypes:    []string{"code"},
 			SupportedGrantTypes:       []string{"authorization_code"},
 		},

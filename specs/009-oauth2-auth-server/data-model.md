@@ -207,7 +207,7 @@ Client → /oauth2/authorize?client_id=X&redirect_uri=Y&state=Z
           ↓ Yes
     [GrantRepository.FindByPrincipalAndAgent(principal, agentID)]
           ↓
-    Active grant? → No → HTTP 302 to /consent/agents/:agent-id?redirect_uri=<full original URL>
+    Active grant? → No → HTTP 302 to /consent/agent/:agent-id?redirect_uri=<full original URL>
           ↓ Yes
     HTTP 302 to upstream authorize endpoint (preserve all params)
 ```

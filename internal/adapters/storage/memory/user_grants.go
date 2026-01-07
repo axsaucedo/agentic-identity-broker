@@ -334,3 +334,38 @@ func (r *UserGrantRepository) removeGrantFromAgentIndex(agentID string, grantID 
 		delete(r.grantIDsByAgent, agentID)
 	}
 }
+
+// CreateTestGrant creates a user grant WITHOUT validation - for testing expired/invalid grants.
+// This method MUST NOT be used in production - it bypasses all validation.
+// Only available on memory storage for testing purposes.
+func (r *UserGrantRepository) CreateTestGrant(ctx context.Context, grant *storage.UserGrant) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Generate ID if not provided
+	if grant.ID == "" {
+		grant.ID = uuid.New().String()
+	}
+
+	// Check if grant already exists for this principal+agent pair (upsert semantics)
+	key := principalAgentKey(grant.Principal, grant.AgentID)
+	if existingID, exists := r.byPrincipalAndAgent[key]; exists {
+		// Update existing grant
+		existingGrant := r.grants[existingID]
+		existingGrant.ValidUntil = grant.ValidUntil
+		existingGrant.DelegatedOAuth2Tokens = grant.DelegatedOAuth2Tokens
+		existingGrant.UpdatedAt = grant.UpdatedAt
+
+		// Copy back the existing ID to the provided grant
+		grant.ID = existingID
+	} else {
+		// Store new grant
+		r.grants[grant.ID] = grant.Copy()
+		r.byPrincipalAndAgent[key] = grant.ID
+
+		// Update agent index for cascade delete
+		r.grantIDsByAgent[grant.AgentID] = append(r.grantIDsByAgent[grant.AgentID], grant.ID)
+	}
+
+	return nil
+}

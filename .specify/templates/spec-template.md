@@ -11,13 +11,24 @@
   IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
   Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
   you should still have a viable MVP (Minimum Viable Product) that delivers value.
-  
+
   Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
   Think of each story as a standalone slice of functionality that can be:
   - Developed independently
   - Tested independently
   - Deployed independently
   - Demonstrated to users independently
+
+  E2E ACCEPTANCE TESTING (Constitution Principle XIII):
+  Each acceptance scenario below MUST have a corresponding end-to-end (E2E) test in tests/e2e/.
+  - Each scenario maps 1:1 to one It() block in E2E tests
+  - E2E tests MUST be written BEFORE implementation begins (red-green development)
+  - E2E tests MUST FAIL initially, proving they test actual functionality
+  - E2E tests change minimally during implementation (fixture adjustments only)
+  - E2E tests turn GREEN when implementation satisfies acceptance criteria
+  - Use Ginkgo/Gomega framework following patterns in tests/e2e/README.md
+  - Test file naming: tests/e2e/[feature]_test.go
+  - Include comment references to spec scenarios in E2E test files
 -->
 
 ### User Story 1 - [Brief Title] (Priority: P1)

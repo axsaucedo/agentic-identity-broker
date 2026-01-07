@@ -43,6 +43,9 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](.spe
 - [ ] **API Documentation**: Will OpenAPI specs be created in `/api/enduser/` or `/api/admin/` as applicable?
 - [ ] **API Changes**: Are all API changes confirmed by user/stakeholder (document in PR)?
 - [ ] **Database Design**: Will all schema changes use go-migrate naming in `/migrations/`?
+- [ ] **E2E Acceptance Tests**: Will E2E tests be written for ALL spec scenarios BEFORE implementation?
+- [ ] **E2E Test Mapping**: Will each acceptance scenario map 1:1 to one It() block in tests/e2e/?
+- [ ] **E2E Red Phase**: Will E2E tests FAIL initially, proving they test actual functionality?
 
 **Implementation Considerations**:
 
@@ -118,6 +121,75 @@ ios/ or android/
 
 **Structure Decision**: [Document the selected structure and reference the real
 directories captured above]
+
+## Testing Strategy
+
+<!--
+  Per Constitution Principle XIII (End-to-End Acceptance Testing & Spec Traceability):
+  All features MUST have E2E acceptance tests mapped 1:1 to spec scenarios.
+
+  This section documents HOW E2E tests will be structured and implemented for this feature.
+-->
+
+### End-to-End (E2E) Acceptance Tests
+
+**Test Location**: `tests/e2e/[feature]_test.go`
+
+**Framework**: Ginkgo/Gomega BDD framework following patterns in [tests/e2e/README.md](../../tests/e2e/README.md)
+
+**Test Organization**:
+- **Top-level Describe**: Feature name (e.g., "OAuth2 Authorization Endpoint")
+- **Nested Describe/Context**: Preconditions and scenarios (e.g., "when a valid request arrives" → "and no grant exists")
+- **It blocks**: Individual acceptance scenarios (one It() per scenario from spec.md)
+
+**Scenario Mapping**:
+
+| Spec Scenario | E2E Test Location | Test Description |
+|---------------|-------------------|------------------|
+| [User Story 1, Scenario 1] | `tests/e2e/[feature]_test.go:XX` | `It("should [behavior]", ...)` |
+| [User Story 1, Scenario 2] | `tests/e2e/[feature]_test.go:YY` | `It("should [behavior]", ...)` |
+| [User Story 2, Scenario 1] | `tests/e2e/[feature]_test.go:ZZ` | `It("should [behavior]", ...)` |
+
+*Note: Populate this table during Phase 2f (E2E Acceptance Test Design) with actual line numbers and test descriptions*
+
+**Test Data Strategy**:
+- Use fixtures from `tests/e2e/fixtures/` for stable, reusable test data
+- Required fixtures: [list which fixtures are needed: agents, grants, principals, config, etc.]
+- New fixture creation: [document any new fixtures that need to be created for this feature]
+
+**Test Execution Flow**:
+1. **Phase 2f (Design)**: Write E2E tests for all spec scenarios
+2. **Verify Red Phase**: Run `ginkgo -v ./tests/e2e/[feature]_test.go` - all tests must FAIL
+3. **Implementation**: Implement feature incrementally
+4. **Verify Green Phase**: E2E tests turn GREEN as implementation satisfies acceptance criteria
+5. **Minimal Changes**: Only fixture adjustments during implementation, not test logic
+
+**Bootstrap Strategy**:
+- Tests use production bootstrap code via `tests/e2e/bootstrap/` (app.Builder, HTTP server, routing)
+- Fresh server and storage for each test (BeforeEach/AfterEach isolation)
+- [Document any feature-specific bootstrap requirements]
+
+**Helper Utilities**:
+- Custom matchers needed: [list any new matchers required, or reference existing in tests/e2e/matchers/]
+- HTTP helpers: [reference existing helpers in tests/e2e/helpers/ or document new ones]
+- Mock services: [document any mock upstream services needed]
+
+### Unit & Integration Tests
+
+**Unit Tests**:
+- Location: `internal/[domain]/[entity]_test.go`
+- Coverage: Domain logic, business rules, validation
+- Strategy: TDD - write tests FIRST, verify they FAIL, then implement
+
+**Integration Tests**:
+- Location: `internal/adapters/[adapter]_test.go`
+- Coverage: Database operations, external service integration
+- Strategy: Real PostgreSQL via testcontainers, verify migrations
+
+**Test Coverage Goals**:
+- Unit test coverage: [target percentage or "critical paths only"]
+- Integration test coverage: [specific adapters/repositories to test]
+- E2E test coverage: 100% of acceptance scenarios from spec.md (mandatory per Principle XIII)
 
 ## Complexity Tracking
 

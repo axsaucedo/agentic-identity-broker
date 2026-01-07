@@ -35,7 +35,7 @@ paths:
         1. Extract client_id and validate against Agent registry
         2. Extract principal from request context (set by RequirePrincipalMiddleware)
         3. Check if active grant exists for (principal, agent)
-        4. If no grant: HTTP 302 to /consent/agents/:agent-id?redirect_uri=<full original URL>
+        4. If no grant: HTTP 302 to /consent/agent/:agent-id?redirect_uri=<full original URL>
         5. If grant exists: HTTP 302 to upstream OAuth2 server (preserving all parameters)
 
         **Note**: User's browser is redirected; broker is not in the token response path.
@@ -105,7 +105,7 @@ paths:
                 format: uri
               examples:
                 consent_redirect:
-                  value: https://identity-broker.example.com/consent/agents/agent-123?redirect_uri=https%3A%2F%2Fidentity-broker.example.com%2Foauth2%2Fauthorize%3Fclient_id%3Dmy-agent...
+                  value: https://identity-broker.example.com/consent/agent/agent-123?redirect_uri=https%3A%2F%2Fidentity-broker.example.com%2Foauth2%2Fauthorize%3Fclient_id%3Dmy-agent...
                   summary: Redirect to consent UI (no active grant)
                 upstream_redirect:
                   value: https://upstream-oauth2.example.com/oauth2/authorize?client_id=my-agent&redirect_uri=https%3A%2F%2Fmy-agent.example.com%2Fcallback&scope=read+write&state=xyz123

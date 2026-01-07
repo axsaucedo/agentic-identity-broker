@@ -32,7 +32,7 @@ func TestOAuth2AuthorizeEndpoint_InvalidClientError(t *testing.T) {
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 			SupportedResponseTypes:    []string{"code"},
 			SupportedGrantTypes:       []string{"authorization_code"},
 		},
@@ -78,7 +78,7 @@ func TestOAuth2AuthorizeEndpoint_MissingParameterError(t *testing.T) {
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -134,7 +134,7 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -172,9 +172,9 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 
 	// Create active grant for user
 	grant := &storage.UserGrant{
-		ID:        "grant-1",
-		Principal: "user@example.com",
-		AgentID:   "agent-1",
+		ID:         "grant-1",
+		Principal:  "user@example.com",
+		AgentID:    "agent-1",
 		ValidUntil: nil, // Indefinite grant
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -187,7 +187,7 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -237,9 +237,9 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	// Create expired grant
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	grant := &storage.UserGrant{
-		ID:        "grant-1",
-		Principal: "user@example.com",
-		AgentID:   "agent-1",
+		ID:         "grant-1",
+		Principal:  "user@example.com",
+		AgentID:    "agent-1",
 		ValidUntil: &expiredTime,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -252,7 +252,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -292,9 +292,9 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 	agentRepo.Create(context.Background(), agent)
 
 	grant := &storage.UserGrant{
-		ID:        "grant-1",
-		Principal: "user@example.com",
-		AgentID:   "agent-1",
+		ID:         "grant-1",
+		Principal:  "user@example.com",
+		AgentID:    "agent-1",
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -307,7 +307,7 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
@@ -351,9 +351,9 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 	agentRepo.Create(context.Background(), agent)
 
 	grant := &storage.UserGrant{
-		ID:        "grant-1",
-		Principal: "user@example.com",
-		AgentID:   "agent-1",
+		ID:         "grant-1",
+		Principal:  "user@example.com",
+		AgentID:    "agent-1",
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
@@ -366,7 +366,7 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 		grantRepo,
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:             "https://broker.example.com",
+			PublicURL:                 "https://broker.example.com",
 		},
 	)
 
