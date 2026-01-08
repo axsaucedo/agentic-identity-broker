@@ -311,15 +311,17 @@ func TestStateTokenSecurityTampered_ModifiedToken(t *testing.T) {
 
 	token, err := service.CreateStateToken(claims)
 	require.NoError(t, err, "CreateStateToken should succeed")
+	require.NotEmpty(t, token, "token should not be empty")
 
 	// Modify the token by changing last character
-	if len(token) > 1 {
-		modifiedToken := token[:len(token)-1] + "X"
+	// JWE tokens in compact serialization have 5 parts: header.encrypted_key.iv.ciphertext.tag
+	// Modifying any part should cause authentication to fail
+	modifiedToken := token[:len(token)-1] + "X"
+	require.NotEqual(t, token, modifiedToken, "modified token should be different from original")
 
-		// Try to validate modified token
-		_, err = service.ValidateStateToken(modifiedToken, "user@example.com", "service-123")
-		assert.Error(t, err, "modified token should fail validation (JWE authentication tag should be invalid)")
-	}
+	// Try to validate modified token
+	_, err = service.ValidateStateToken(modifiedToken, "user@example.com", "service-123")
+	assert.Error(t, err, "modified token should fail validation (JWE authentication tag should be invalid)")
 }
 
 // T079: Verify JWE uses authenticated encryption A256GCMKW + A256GCM
