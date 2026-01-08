@@ -171,7 +171,7 @@ func (m *MockUpstreamOAuth2Server) handleAuthorize(w http.ResponseWriter, r *htt
 	m.authorizeCalled = true
 	// Read body if present
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		bodyBytes, _ := readRequestBody(r)
 		m.LastBody = string(bodyBytes)
 	}
@@ -231,7 +231,7 @@ func (m *MockUpstreamOAuth2Server) handleToken(w http.ResponseWriter, r *http.Re
 	m.tokenCalled = true
 	// Read body
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 		bodyBytes, _ := readRequestBody(r)
 		m.LastBody = string(bodyBytes)
 	}
@@ -246,7 +246,7 @@ func (m *MockUpstreamOAuth2Server) handleToken(w http.ResponseWriter, r *http.Re
 			"error":             m.errorCode,
 			"error_description": m.errorDescription,
 		}
-		json.NewEncoder(w).Encode(errResp)
+		_ = json.NewEncoder(w).Encode(errResp)
 		return
 	}
 
@@ -261,7 +261,7 @@ func (m *MockUpstreamOAuth2Server) handleToken(w http.ResponseWriter, r *http.Re
 		"refresh_token": m.refreshToken,
 	}
 
-	json.NewEncoder(w).Encode(tokenResp)
+	_ = json.NewEncoder(w).Encode(tokenResp)
 }
 
 // handleMetadata handles the /.well-known/openid-configuration endpoint.
@@ -288,7 +288,7 @@ func (m *MockUpstreamOAuth2Server) handleMetadata(w http.ResponseWriter, r *http
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 	}
 
-	json.NewEncoder(w).Encode(metadata)
+	_ = json.NewEncoder(w).Encode(metadata)
 }
 
 // readRequestBody is a helper to read request body content.
@@ -298,7 +298,7 @@ func readRequestBody(r *http.Request) ([]byte, error) {
 		return []byte{}, nil
 	}
 
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	var buf [32 * 1024]byte
 	n, err := r.Body.Read(buf[:])

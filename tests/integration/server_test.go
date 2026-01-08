@@ -82,7 +82,7 @@ func TestServerStartup(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reach enduser health endpoint: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -104,7 +104,7 @@ func TestServerStartup(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reach admin health endpoint: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -176,7 +176,7 @@ func TestPortConnectivity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to connect via IPv4: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -189,7 +189,7 @@ func TestPortConnectivity(t *testing.T) {
 		if err != nil {
 			t.Skipf("IPv6 not available: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -202,7 +202,7 @@ func TestPortConnectivity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to connect via localhost: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)

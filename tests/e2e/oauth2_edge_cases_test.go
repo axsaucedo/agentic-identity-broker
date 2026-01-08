@@ -62,7 +62,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 		}
 		// Close storage if created
 		if testStorage != nil {
-			storageFactory.CloseStorage(testStorage)
+			_ = storageFactory.CloseStorage(testStorage)
 		}
 	})
 
@@ -73,7 +73,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			// When: Request without X-Remote-User header
 			resp, err := server.PublicGET("/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/cb&response_type=code")
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 401 Unauthorized
 			// Specification: missing authentication header must return 401
@@ -90,7 +90,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				oversizedPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 400 Bad Request
 			// Specification: principal exceeding max length must be rejected
@@ -116,7 +116,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns error
 			// Specification: client_id is required parameter
@@ -133,7 +133,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns error
 			// Specification: response_type is required parameter
@@ -150,7 +150,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns unsupported_response_type error
 			// Specification: only "code" flow is supported, others must be rejected
@@ -166,7 +166,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns invalid_client error
 			// Specification: request with unknown client must be rejected
@@ -183,7 +183,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Either rejects with 400 or redirects with error
 			// Specification: malformed redirect_uri must be validated
@@ -200,7 +200,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Handles gracefully without panic
 			// Specification: system must safely handle special characters in parameters
@@ -226,7 +226,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				strings.NewReader(`{"grant_type":"authorization_code","code":"test"}`),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 400 Bad Request
 			// Specification: token endpoint requires form-urlencoded body
@@ -246,7 +246,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				strings.NewReader(""),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 400 Bad Request (missing required parameters)
 			// Specification: empty body must be rejected with 400
@@ -295,7 +295,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				agent.ClientID)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns error (either 502/503 or redirect with error)
 			// Specification: upstream unavailability must be handled gracefully
@@ -341,7 +341,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				strings.NewReader("grant_type=authorization_code&code=test&client_id=test&redirect_uri=https://client.example.com/cb"),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns error response when upstream times out
 			// Specification: timeout errors must be handled gracefully
@@ -408,7 +408,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Parameters are forwarded to upstream
 			// Verify redirect happens
@@ -430,7 +430,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			}
 			followResp, err := client.Get(location)
 			Expect(err).ToNot(HaveOccurred())
-			defer followResp.Body.Close()
+			defer func() { _ = followResp.Body.Close() }()
 
 			// Check upstream received the request
 			Expect(mockUpstream.GetAuthorizeCalled()).To(BeTrue())
@@ -466,7 +466,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should safely handle the payload without executing script
 			// Read response body to verify it doesn't contain unescaped script
@@ -488,7 +488,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns error but doesn't expose database details
 			// Specification: injection attempts must be rejected safely
@@ -532,7 +532,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp1.Body.Close()
+			defer func() { _ = resp1.Body.Close() }()
 
 			resp2, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client2.example.com/cb&response_type=code&state=state2",
@@ -540,7 +540,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				fixtures.AnotherPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp2.Body.Close()
+			defer func() { _ = resp2.Body.Close() }()
 
 			// Then: Both requests complete with valid responses
 			// Specification: concurrent requests must not interfere with each other
@@ -570,7 +570,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			// When: Request metadata endpoint without authentication
 			resp, err := server.PublicGET("/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 200 OK with JSON metadata
 			// Specification: metadata endpoint must be publicly accessible
@@ -583,7 +583,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			// When: Request health endpoint without authentication
 			resp, err := server.PublicGET("/health")
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 200 OK
 			// Specification: health endpoint must be publicly accessible

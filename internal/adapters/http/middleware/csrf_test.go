@@ -11,7 +11,7 @@ func TestCSRFProtection_GetRequest(t *testing.T) {
 	store := NewCSRFStore(slog.Default())
 	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	req := httptest.NewRequest("GET", "/api/test", nil)
@@ -47,7 +47,7 @@ func TestCSRFProtection_PostWithoutToken(t *testing.T) {
 	store := NewCSRFStore(slog.Default())
 	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	req := httptest.NewRequest("POST", "/api/test", nil)
@@ -72,7 +72,7 @@ func TestCSRFProtection_PostWithValidToken(t *testing.T) {
 
 	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	req := httptest.NewRequest("POST", "/api/test", nil)
@@ -99,7 +99,7 @@ func TestCSRFProtection_PostWithInvalidToken(t *testing.T) {
 
 	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	req := httptest.NewRequest("POST", "/api/test", nil)

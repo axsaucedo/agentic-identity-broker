@@ -79,7 +79,7 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 		}
 		return nil, fmt.Errorf("discovery request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check HTTP status
 	if resp.StatusCode != http.StatusOK {

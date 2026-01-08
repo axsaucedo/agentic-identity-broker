@@ -44,11 +44,6 @@ type TestServerConfig struct {
 	Logger *slog.Logger
 }
 
-// ServerFactory reference for building the app
-type configUpdaterFactory interface {
-	BuildApp(storage interface{}) (*app.App, error)
-}
-
 // NewTestServer creates a test server from a production app.
 // This wraps httptest.Server with production routes and a test-friendly interface.
 //

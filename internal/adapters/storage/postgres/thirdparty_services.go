@@ -497,7 +497,7 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 			"failed to list services",
 		)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var services []*storage.ThirdpartyOAuth2Service
 

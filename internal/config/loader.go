@@ -228,7 +228,7 @@ func (l *Loader) loadEnvFile(filename string) error {
 	keys := make([]string, 0, len(envMap))
 	for key, value := range envMap {
 		// Set in OS environment (needed for os.Expand() in expandEnvVars phase)
-		os.Setenv(key, value)
+		_ = os.Setenv(key, value)
 
 		// Strip IDENTITY_BROKER_ prefix and convert to Viper format
 		viperKey := key
@@ -491,7 +491,7 @@ func (l *Loader) bindFlags() error {
 	// Bind config file path flag
 	if l.cmd.Flags().Changed("config") {
 		configPath, _ := l.cmd.Flags().GetString("config")
-		os.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
+		_ = os.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
 	}
 
 	// Bind log.level flag

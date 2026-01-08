@@ -35,7 +35,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to read request body: %v", err), http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	// Validate body is not empty
 	if len(body) == 0 {
@@ -72,7 +72,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to contact upstream server: %v", err), http.StatusBadGateway)
 		return
 	}
-	defer upstreamResp.Body.Close()
+	defer func() { _ = upstreamResp.Body.Close() }()
 
 	// Copy response headers from upstream to client, filtering hop-by-hop headers
 	for key, values := range upstreamResp.Header {
@@ -90,7 +90,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Stream response body from upstream
 	if _, err := io.Copy(w, upstreamResp.Body); err != nil {
-		fmt.Fprintf(w, "error streaming response: %v", err)
+		_, _ = fmt.Fprintf(w, "error streaming response: %v", err)
 	}
 }
 

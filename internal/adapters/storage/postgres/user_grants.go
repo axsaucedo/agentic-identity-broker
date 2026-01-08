@@ -319,7 +319,7 @@ func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 	if err != nil {
 		return nil, r.handlePostgresError("ListUserGrants", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var grants []*storage.UserGrant
 
@@ -488,7 +488,7 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal str
 	if err != nil {
 		return nil, r.handlePostgresError("ListByPrincipal", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var grants []storage.UserGrant
 
@@ -604,7 +604,7 @@ func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID str
 	if err != nil {
 		return nil, r.handlePostgresError("ListByServiceID", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var agentIDs []string
 

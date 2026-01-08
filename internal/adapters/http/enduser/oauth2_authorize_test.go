@@ -156,7 +156,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	svc := oauth2.NewService(
 		agentRepo,
@@ -194,7 +194,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	grantRepo := newMockGrantRepo()
 	grant := &storage.UserGrant{
@@ -206,7 +206,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 		},
 	}
-	grantRepo.Create(context.Background(), grant)
+	_ = grantRepo.Create(context.Background(), grant)
 
 	svc := oauth2.NewService(
 		agentRepo,
@@ -250,7 +250,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	grantRepo := newMockGrantRepo()
 	grant := &storage.UserGrant{
@@ -262,7 +262,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 		},
 	}
-	grantRepo.Create(context.Background(), grant)
+	_ = grantRepo.Create(context.Background(), grant)
 
 	svc := oauth2.NewService(
 		agentRepo,

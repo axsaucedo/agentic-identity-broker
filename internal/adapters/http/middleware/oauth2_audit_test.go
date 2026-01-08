@@ -28,7 +28,7 @@ func TestOAuth2AuditMiddleware_LogsRequestID(t *testing.T) {
 	// Create a test handler that will be wrapped
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	wrappedHandler := middleware(nextHandler)
@@ -92,7 +92,7 @@ func TestOAuth2AuditMiddleware_LogsRequestDetails(t *testing.T) {
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	wrappedHandler := middleware(nextHandler)

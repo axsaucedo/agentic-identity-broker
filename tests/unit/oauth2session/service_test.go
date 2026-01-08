@@ -867,7 +867,6 @@ type mockTokenConfig struct {
 	expectedVerifier string
 	expectedCode     string
 	expectedClientID string
-	expectedRedirURI string
 
 	// Retry simulation: fail first N attempts, then succeed
 	failCount      int
@@ -906,7 +905,7 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 		if grantType != "authorization_code" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, `{"error": "unsupported_grant_type"}`)
+			_, _ = fmt.Fprintf(w, `{"error": "unsupported_grant_type"}`)
 			return
 		}
 
@@ -914,14 +913,14 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 		if config.expectedCode != "" && code != config.expectedCode {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, `{"error": "invalid_grant", "error_description": "invalid code"}`)
+			_, _ = fmt.Fprintf(w, `{"error": "invalid_grant", "error_description": "invalid code"}`)
 			return
 		}
 
 		if config.expectedClientID != "" && clientID != config.expectedClientID {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, `{"error": "invalid_client"}`)
+			_, _ = fmt.Fprintf(w, `{"error": "invalid_client"}`)
 			return
 		}
 
@@ -930,14 +929,14 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 			if config.expectedVerifier != "" && codeVerifier != config.expectedVerifier {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
-				fmt.Fprintf(w, `{"error": "invalid_grant", "error_description": "PKCE validation failed"}`)
+				_, _ = fmt.Fprintf(w, `{"error": "invalid_grant", "error_description": "PKCE validation failed"}`)
 				return
 			}
 
 			if codeVerifier == "" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
-				fmt.Fprintf(w, `{"error": "invalid_request", "error_description": "code_verifier required"}`)
+				_, _ = fmt.Fprintf(w, `{"error": "invalid_request", "error_description": "code_verifier required"}`)
 				return
 			}
 		}
@@ -948,7 +947,7 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 			// Return transient error (500) to trigger retry
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, `{"error": "server_error", "error_description": "temporary failure"}`)
+			_, _ = fmt.Fprintf(w, `{"error": "server_error", "error_description": "temporary failure"}`)
 			return
 		}
 
@@ -966,7 +965,7 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 			if config.errorDesc == "" {
 				config.errorDesc = "Unknown error"
 			}
-			fmt.Fprintf(w, `{"error": "%s", "error_description": "%s"}`, config.errorCode, config.errorDesc)
+			_, _ = fmt.Fprintf(w, `{"error": "%s", "error_description": "%s"}`, config.errorCode, config.errorDesc)
 			return
 		}
 
@@ -999,7 +998,7 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 		}
 
 		respJSON, _ := json.Marshal(response)
-		w.Write(respJSON)
+		_, _ = w.Write(respJSON)
 	}))
 }
 
@@ -1062,17 +1061,6 @@ func createTestService(serviceID string) *storage.ThirdpartyOAuth2Service {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-}
-
-// mockFailingEncryption is a mock encryption port that always fails.
-type mockFailingEncryption struct{}
-
-func (m *mockFailingEncryption) Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error) {
-	return nil, errors.New("encryption failed")
-}
-
-func (m *mockFailingEncryption) Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]string) ([]byte, error) {
-	return nil, errors.New("decryption failed")
 }
 
 // =============================================================================

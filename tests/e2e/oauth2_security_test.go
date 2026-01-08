@@ -55,7 +55,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			server.Close()
 		}
 		if testStorage != nil {
-			storageFactory.CloseStorage(testStorage)
+			_ = storageFactory.CloseStorage(testStorage)
 		}
 	})
 
@@ -73,7 +73,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 					agent.ClientID),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 401 Unauthorized
 			// Specification T043: Missing authentication header must return 401
@@ -94,7 +94,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				oversizedPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 400 Bad Request
 			// Specification T043: Principal exceeding max length must be rejected
@@ -112,7 +112,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns error redirect with invalid_client error
 			// Specification T043: Client validation must return OAuth2 error response
@@ -143,7 +143,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 302 redirect
 			// Specification T043: Valid client authorization request should redirect
@@ -165,7 +165,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			// When: Request metadata endpoint without authentication
 			resp, err := server.PublicGET("/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 200 OK with JSON content type
 			// Specification T043: Metadata endpoint is public
@@ -184,7 +184,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			// When: Request metadata endpoint
 			resp, err := server.PublicGET("/.well-known/oauth-authorization-server")
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response includes cache control headers
 			// Specification T044: Cache control headers required for public endpoints
@@ -239,7 +239,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				strings.NewReader(bodyStr),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 400 Bad Request
 			// Specification T043: Content-Type enforcement required
@@ -262,7 +262,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				strings.NewReader(bodyStr),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Request succeeds (proxied to upstream)
 			// Specification T043: Valid Content-Type must be accepted
@@ -280,7 +280,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(map[string]string{
+				_ = json.NewEncoder(w).Encode(map[string]string{
 					"error":             "invalid_client",
 					"error_description": "Client authentication failed",
 				})
@@ -309,7 +309,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				strings.NewReader(bodyStr),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 401 from upstream
 			// Specification T044: Error forwarding must preserve upstream status codes
@@ -321,7 +321,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{
+				_ = json.NewEncoder(w).Encode(map[string]string{
 					"error":             "server_error",
 					"error_description": "Internal server error",
 				})
@@ -350,7 +350,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				strings.NewReader(bodyStr),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns 500 from upstream
 			// Specification T044: Server errors must be forwarded transparently
@@ -367,7 +367,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				w.Header().Set("Cache-Control", "no-store, no-cache")
 				w.Header().Set("Pragma", "no-cache")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]string{
+				_ = json.NewEncoder(w).Encode(map[string]string{
 					"access_token": "token123",
 					"token_type":   "Bearer",
 				})
@@ -396,7 +396,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				strings.NewReader(bodyStr),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response headers from upstream are preserved
 			// Specification T044: Header preservation ensures proper client handling
@@ -412,7 +412,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				w.Header().Set("X-Custom-Header", "custom-value")
 				w.Header().Set("X-RateLimit-Limit", "100")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]string{
+				_ = json.NewEncoder(w).Encode(map[string]string{
 					"access_token": "token123",
 					"token_type":   "Bearer",
 				})
@@ -441,7 +441,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				strings.NewReader(bodyStr),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Custom headers are preserved
 			// Specification T044: Custom headers enable client customization
@@ -462,7 +462,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]string{
+				_ = json.NewEncoder(w).Encode(map[string]string{
 					"access_token": "token123",
 					"token_type":   "Bearer",
 				})
@@ -491,7 +491,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				strings.NewReader(bodyStr),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Connection header not forwarded to upstream
 			// Specification T044: Hop-by-hop headers must be filtered
@@ -516,7 +516,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Payload is not echoed back in response
 			// Specification T043: XSS payloads must be safely handled
@@ -541,7 +541,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Request is handled safely (no database errors)
 			// Specification T043: SQL injection attempts must be safely handled

@@ -202,7 +202,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 					ClientID:    "client-1",
 					DisplayName: "Test Client",
 				}
-				r.Create(context.Background(), agent)
+				_ = r.Create(context.Background(), agent)
 			},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
@@ -223,7 +223,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 					ClientID:    "client-1",
 					DisplayName: "Test Client",
 				}
-				r.Create(context.Background(), agent)
+				_ = r.Create(context.Background(), agent)
 			},
 			setupGrant: func(r *MockGrantRepository) {
 				grant := &storage.UserGrant{
@@ -235,7 +235,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 					},
 				}
-				r.Create(context.Background(), grant)
+				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
 				ClientID:     "client-1",
@@ -255,7 +255,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 					ClientID:    "client-1",
 					DisplayName: "Test Client",
 				}
-				r.Create(context.Background(), agent)
+				_ = r.Create(context.Background(), agent)
 			},
 			setupGrant: func(r *MockGrantRepository) {
 				expiredTime := time.Now().Add(-1 * time.Hour)
@@ -268,7 +268,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 					},
 				}
-				r.Create(context.Background(), grant)
+				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
 				ClientID:     "client-1",
@@ -315,7 +315,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 
 	// Add agent
 	agent := &storage.Agent{ID: "agent-1", ClientID: "client-1"}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	// Add active grant
 	grant := &storage.UserGrant{
@@ -327,7 +327,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 		},
 	}
-	grantRepo.Create(context.Background(), grant)
+	_ = grantRepo.Create(context.Background(), grant)
 
 	svc := NewService(agentRepo, grantRepo, &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",

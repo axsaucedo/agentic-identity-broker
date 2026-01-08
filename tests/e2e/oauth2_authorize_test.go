@@ -69,7 +69,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			mockUpstream.Close()
 		}
 		if testStorage != nil {
-			storageFactory.CloseStorage(testStorage)
+			_ = storageFactory.CloseStorage(testStorage)
 		}
 	})
 
@@ -91,7 +91,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: System processes request successfully (200, 302, or 303, not 400 invalid_client)
 			// Should NOT be 400 (bad request indicating invalid_client)
@@ -115,7 +115,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Returns OAuth2 error with invalid_client
 			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
@@ -140,7 +140,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// When: Authorization request (authenticated as default user)
 			resp, err := server.AuthenticatedGET(originalURL, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Redirects to consent UI
 			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID))
@@ -177,7 +177,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Redirects to upstream
 			Expect(resp.StatusCode).To(SatisfyAny(
@@ -232,7 +232,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Redirects to consent UI (not upstream)
 			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID))
@@ -256,7 +256,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				"/oauth2/authorize?client_id=" + agent.ClientID + "&redirect_uri=https://client.example.com/cb&response_type=code",
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Request should fail (unauthenticated)
 			// Either 401 Unauthorized or 400 Bad Request (depending on implementation)
@@ -294,7 +294,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Request is proxied to upstream (not redirected to error)
 			Expect(resp.StatusCode).To(SatisfyAny(
@@ -330,7 +330,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 					fixtures.DefaultPrincipal().String(),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				// Then: Redirects to consent UI
 				Expect(resp.StatusCode).To(SatisfyAny(
@@ -365,7 +365,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 					fixtures.DefaultPrincipal().String(),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				// Then: Redirects to upstream
 				Expect(resp.StatusCode).To(SatisfyAny(
@@ -407,7 +407,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp1.Body.Close()
+			defer func() { _ = resp1.Body.Close() }()
 
 			// Then: Request proxied to upstream (has grant)
 			Expect(resp1.StatusCode).To(SatisfyAny(
@@ -423,7 +423,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				fixtures.AnotherPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp2.Body.Close()
+			defer func() { _ = resp2.Body.Close() }()
 
 			// Then: Request redirected to consent UI (no grant)
 			Expect(resp2.StatusCode).To(SatisfyAny(

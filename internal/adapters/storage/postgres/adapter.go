@@ -106,7 +106,7 @@ func (a *Adapter) Initialize(ctx context.Context) error {
 	defer cancel()
 
 	if err := db.PingContext(pingCtx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return storage.NewStorageError(
 			"Initialize",
 			storage.ErrorKindConnection,
@@ -117,7 +117,7 @@ func (a *Adapter) Initialize(ctx context.Context) error {
 
 	// Verify schema exists
 	if err := a.verifySchema(ctx, db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return err
 	}
 

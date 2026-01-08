@@ -56,7 +56,7 @@ func TestHealthEndpoint(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reach health endpoint: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// Check status code
 		if resp.StatusCode != http.StatusOK {
@@ -98,7 +98,7 @@ func TestHealthEndpoint(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reach health endpoint: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		var health httpAdapter.HealthResponse
 		if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
@@ -126,7 +126,7 @@ func TestHealthEndpoint(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reach health endpoint: %v", err)
 		}
-		defer resp1.Body.Close()
+		defer func() { _ = resp1.Body.Close() }()
 
 		var health1 httpAdapter.HealthResponse
 		if err := json.NewDecoder(resp1.Body).Decode(&health1); err != nil {
@@ -141,7 +141,7 @@ func TestHealthEndpoint(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to reach health endpoint: %v", err)
 		}
-		defer resp2.Body.Close()
+		defer func() { _ = resp2.Body.Close() }()
 
 		var health2 httpAdapter.HealthResponse
 		if err := json.NewDecoder(resp2.Body).Decode(&health2); err != nil {

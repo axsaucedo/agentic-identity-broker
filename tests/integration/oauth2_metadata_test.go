@@ -80,7 +80,7 @@ func TestOAuth2MetadataEndpoint_RFC8414Schema(t *testing.T) {
 
 	var metadata ports.MetadataResponse
 	body, _ := io.ReadAll(w.Body)
-	json.Unmarshal(body, &metadata)
+	_ = json.Unmarshal(body, &metadata)
 
 	// RFC 8414 required fields
 	assert.NotEmpty(t, metadata.Issuer, "issuer required")
@@ -207,14 +207,14 @@ func TestOAuth2MetadataEndpoint_MultipleRequests(t *testing.T) {
 	w1 := httptest.NewRecorder()
 	handler.ServeHTTP(w1, req1)
 	body1, _ := io.ReadAll(w1.Body)
-	json.Unmarshal(body1, &metadata1)
+	_ = json.Unmarshal(body1, &metadata1)
 
 	// Second request
 	req2 := httptest.NewRequest("GET", "https://broker.example.com/.well-known/oauth-authorization-server", nil)
 	w2 := httptest.NewRecorder()
 	handler.ServeHTTP(w2, req2)
 	body2, _ := io.ReadAll(w2.Body)
-	json.Unmarshal(body2, &metadata2)
+	_ = json.Unmarshal(body2, &metadata2)
 
 	// Verify consistent responses
 	assert.Equal(t, metadata1.Issuer, metadata2.Issuer)

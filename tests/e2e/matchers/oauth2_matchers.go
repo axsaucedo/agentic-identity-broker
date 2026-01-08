@@ -275,7 +275,7 @@ func (m *oauth2SuccessRedirectMatcher) Match(actual interface{}) (success bool, 
 }
 
 func (m *oauth2SuccessRedirectMatcher) FailureMessage(actual interface{}) string {
-	msg := fmt.Sprintf("Expected successful OAuth2 redirect")
+	msg := "Expected successful OAuth2 redirect"
 	if m.actualCode != "" {
 		msg += fmt.Sprintf("\nAuthorization code: %s", m.actualCode)
 	}
@@ -292,7 +292,7 @@ func (m *oauth2SuccessRedirectMatcher) FailureMessage(actual interface{}) string
 }
 
 func (m *oauth2SuccessRedirectMatcher) NegatedFailureMessage(actual interface{}) string {
-	return fmt.Sprintf("Expected response NOT to have successful OAuth2 redirect")
+	return "Expected response NOT to have successful OAuth2 redirect"
 }
 
 // HaveMetadataField checks for a specific field in metadata response.
@@ -338,7 +338,7 @@ func (m *metadataFieldMatcher) Match(actual interface{}) (success bool, err erro
 	// Simple check: look for field name in response body
 	// Note: This is a simplified check that doesn't require JSON unmarshaling
 	if resp.Body != nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		buf := make([]byte, 8192)
 		n, _ := resp.Body.Read(buf)
@@ -446,7 +446,7 @@ func (m *queryParamsMatcher) FailureMessage(actual interface{}) string {
 	}
 
 	if len(m.wrongParams) > 0 {
-		msg += fmt.Sprintf("\nIncorrect parameter values:")
+		msg += "\nIncorrect parameter values:"
 		for name, actualValue := range m.wrongParams {
 			expectedValue := m.expectedParams[name]
 			msg += fmt.Sprintf("\n  %s: expected %q, got %q", name, expectedValue, actualValue)
@@ -461,7 +461,7 @@ func (m *queryParamsMatcher) FailureMessage(actual interface{}) string {
 }
 
 func (m *queryParamsMatcher) NegatedFailureMessage(actual interface{}) string {
-	return fmt.Sprintf("Expected redirect URL NOT to contain all query parameters")
+	return "Expected redirect URL NOT to contain all query parameters"
 }
 
 // HaveStatusCode is a simple matcher for HTTP status codes.

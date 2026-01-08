@@ -42,7 +42,7 @@ func TestDiscoverOAuth2Endpoints_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(metadata)
+		_ = json.NewEncoder(w).Encode(metadata)
 	})
 	defer cleanup()
 
@@ -77,7 +77,7 @@ func TestDiscoverOAuth2Endpoints_WithMetadataURLOverride(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(metadata)
+		_ = json.NewEncoder(w).Encode(metadata)
 	})
 	defer cleanup()
 
@@ -184,7 +184,7 @@ func TestDiscoverOAuth2Endpoints_HTTPError(t *testing.T) {
 func TestDiscoverOAuth2Endpoints_InvalidJSON(t *testing.T) {
 	server, cleanup := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("invalid json"))
+		_, _ = w.Write([]byte("invalid json"))
 	})
 	defer cleanup()
 
@@ -208,7 +208,7 @@ func TestDiscoverOAuth2Endpoints_MissingTokenEndpoint(t *testing.T) {
 
 	server, cleanup := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(metadata)
+		_ = json.NewEncoder(w).Encode(metadata)
 	})
 	defer cleanup()
 
@@ -232,7 +232,7 @@ func TestDiscoverOAuth2Endpoints_MissingAuthorizationEndpoint(t *testing.T) {
 
 	server, cleanup := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(metadata)
+		_ = json.NewEncoder(w).Encode(metadata)
 	})
 	defer cleanup()
 
@@ -257,7 +257,7 @@ func TestDiscoverOAuth2Endpoints_InvalidTokenEndpointURL(t *testing.T) {
 
 	server, cleanup := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(metadata)
+		_ = json.NewEncoder(w).Encode(metadata)
 	})
 	defer cleanup()
 
@@ -282,7 +282,7 @@ func TestDiscoverOAuth2Endpoints_InvalidAuthorizationEndpointURL(t *testing.T) {
 
 	server, cleanup := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(metadata)
+		_ = json.NewEncoder(w).Encode(metadata)
 	})
 	defer cleanup()
 

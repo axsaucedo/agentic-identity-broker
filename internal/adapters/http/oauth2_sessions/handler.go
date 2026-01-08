@@ -37,7 +37,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("principal not found in context")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "unauthorized",
 			"message": "principal not found in context",
 		})
@@ -50,7 +50,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to list sessions", "principal", principalValue, "err", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "internal_error",
 			"message": "failed to list sessions",
 		})
@@ -68,7 +68,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // InitiateFlow handles GET /api/third-party/{serviceId}/oauth2/authorize
@@ -82,7 +82,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("principal not found in context in authorize request")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "unauthorized",
 			"message": "principal not found in context",
 		})
@@ -95,7 +95,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("missing serviceId in URL path")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "invalid_request",
 			"message": "serviceId parameter required in path",
 		})
@@ -108,7 +108,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("missing redirect_uri query parameter", "service_id", serviceID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "invalid_request",
 			"message": "redirect_uri query parameter required",
 		})
@@ -122,7 +122,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("invalid redirect_uri", "redirect_uri", redirectURI, "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "invalid_redirect_uri",
 			"message": "redirect_uri is not a valid URL",
 		})
@@ -138,7 +138,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to parse callback base URL", "callback_url", callbackBaseURL, "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "server_error",
 			"message": "failed to validate redirect_uri",
 		})
@@ -154,7 +154,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 			"service_id", serviceID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "invalid_redirect_uri",
 			"message": "redirect_uri must be on the same origin as the configured public URL",
 		})
@@ -169,7 +169,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 			h.logger.Warn("service not found", "service_id", serviceID)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":   "service_not_found",
 				"message": "third-party service not found",
 			})
@@ -182,7 +182,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 			"error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "internal_error",
 			"message": "failed to initiate OAuth2 flow",
 		})
@@ -217,7 +217,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("principal not found in context in callback")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "unauthorized",
 			"message": "principal not found in context",
 		})
@@ -230,7 +230,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("missing serviceId in callback URL path")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "invalid_request",
 			"message": "serviceId parameter required in path",
 		})
@@ -255,10 +255,6 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			"error_description", callbackReq.ErrorDesc)
 
 		// Redirect to sessions page with error in query
-		errorMsg := callbackReq.Error
-		if callbackReq.ErrorDesc != "" {
-			errorMsg += ": " + callbackReq.ErrorDesc
-		}
 		redirectURL := "/consent/sessions?error=" + url.QueryEscape(callbackReq.Error)
 		if callbackReq.ErrorDesc != "" {
 			redirectURL += "&error_description=" + url.QueryEscape(callbackReq.ErrorDesc)
@@ -290,7 +286,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 				"error", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":   "forbidden",
 				"message": "principal mismatch",
 			})
@@ -304,7 +300,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 				"error", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":   "bad_request",
 				"message": "service_id mismatch",
 			})
@@ -389,7 +385,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("principal not found in context in get session details request")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "unauthorized",
 			"message": "principal not found in context",
 		})
@@ -402,7 +398,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("missing serviceId in URL path")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "invalid_request",
 			"message": "serviceId parameter required in path",
 		})
@@ -417,7 +413,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 			h.logger.Warn("session not found", "service_id", serviceID, "principal", principalValue)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":   "not_found",
 				"message": "session not found",
 			})
@@ -431,7 +427,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 				"error", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":   "forbidden",
 				"message": "you do not have access to this session",
 			})
@@ -445,7 +441,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 			"error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "internal_error",
 			"message": "failed to retrieve session details",
 		})
@@ -468,7 +464,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // TerminateSession handles DELETE /api/third-party/{serviceId}/session
@@ -482,7 +478,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("principal not found in context in terminate session request")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "unauthorized",
 			"message": "principal not found in context",
 		})
@@ -495,7 +491,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("missing serviceId in URL path")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "invalid_request",
 			"message": "serviceId parameter required in path",
 		})
@@ -510,7 +506,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 			h.logger.Warn("session not found for termination", "service_id", serviceID, "principal", principalValue)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":   "not_found",
 				"message": "session not found",
 			})
@@ -524,7 +520,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 				"error", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":   "forbidden",
 				"message": "you do not have permission to terminate this session",
 			})
@@ -538,7 +534,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 			"error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error":   "internal_error",
 			"message": "failed to terminate session",
 		})
@@ -552,7 +548,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 	// Return 200 OK with empty success message
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "session terminated successfully",
 	})
 }

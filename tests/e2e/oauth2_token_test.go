@@ -100,7 +100,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be successful (200 OK)
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -149,7 +149,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be successful
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -191,7 +191,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response status code should match upstream exactly
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -236,7 +236,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be 400 Bad Request (or similar error status)
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
@@ -277,7 +277,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be 400 Bad Request
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
@@ -316,7 +316,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be error status (400 or 500 depending on implementation)
 			Expect(resp.StatusCode).To(Or(Equal(http.StatusBadRequest), Equal(http.StatusInternalServerError)))
@@ -359,7 +359,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be successful (200 OK)
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -405,7 +405,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be error status
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
@@ -446,7 +446,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be error status
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
@@ -486,7 +486,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be error status
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
@@ -519,7 +519,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(jsonBody),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be error (400 Bad Request)
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
@@ -546,7 +546,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should be successful
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -575,7 +575,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				strings.NewReader(formData.Encode()),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Response should have Content-Type header
 			Expect(resp.Header.Get("Content-Type")).NotTo(BeEmpty())

@@ -68,8 +68,8 @@ func TestServerLifecycleBothHealthy(t *testing.T) {
 	}
 
 	// Shutdown
-	lifecycle.SimulateShutdown(0, 1*time.Second)
-	lifecycle.SimulateShutdown(1, 1*time.Second)
+	_ = lifecycle.SimulateShutdown(0, 1*time.Second)
+	_ = lifecycle.SimulateShutdown(1, 1*time.Second)
 
 	// Cancel to stop serving
 	serveCancel()
@@ -184,14 +184,14 @@ func TestServerShutdownWaitsForTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	go lifecycle.SimulateServe(ctx, 0, listener)
+	go func() { _ = lifecycle.SimulateServe(ctx, 0, listener) }()
 
 	// Wait for healthy
 	time.Sleep(100 * time.Millisecond)
 
 	// Shutdown with short timeout
 	shutdownStart := time.Now()
-	lifecycle.SimulateShutdown(0, 500*time.Millisecond)
+	_ = lifecycle.SimulateShutdown(0, 500*time.Millisecond)
 	_ = time.Since(shutdownStart)
 
 	// Verify shutdown completed (quick in our mock, but in real implementation would wait)
@@ -217,7 +217,7 @@ func TestServerHealthStateTransitions(t *testing.T) {
 
 	// During serve: should transition to Healthy
 	ctx, cancel := context.WithCancel(context.Background())
-	go lifecycle.SimulateServe(ctx, 0, listener)
+	go func() { _ = lifecycle.SimulateServe(ctx, 0, listener) }()
 
 	time.Sleep(100 * time.Millisecond)
 	if lifecycle.HealthStatus(0) != ports.HealthStateHealthy {
@@ -225,7 +225,7 @@ func TestServerHealthStateTransitions(t *testing.T) {
 	}
 
 	// Shutdown: transition to ShuttingDown
-	lifecycle.SimulateShutdown(0, 1*time.Second)
+	_ = lifecycle.SimulateShutdown(0, 1*time.Second)
 	if lifecycle.HealthStatus(0) != ports.HealthStateShuttingDown {
 		t.Errorf("After shutdown = %v, want %v", lifecycle.HealthStatus(0), ports.HealthStateShuttingDown)
 	}

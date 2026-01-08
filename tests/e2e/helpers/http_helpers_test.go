@@ -147,7 +147,7 @@ var _ = Describe("CreateAuthorizationRequest", func() {
 var _ = Describe("ReadResponseBody", func() {
 	It("should read response body successfully", func() {
 		w := httptest.NewRecorder()
-		w.WriteString("test response body")
+		_, _ = w.WriteString("test response body")
 		w.WriteHeader(http.StatusOK)
 
 		body, err := helpers.ReadResponseBody(w.Result())
@@ -176,7 +176,7 @@ var _ = Describe("ReadResponseBody", func() {
 	It("should read JSON response body", func() {
 		w := httptest.NewRecorder()
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteString(`{"error":"invalid_request","error_description":"Bad request"}`)
+		_, _ = w.WriteString(`{"error":"invalid_request","error_description":"Bad request"}`)
 		w.WriteHeader(http.StatusBadRequest)
 
 		body, err := helpers.ReadResponseBody(w.Result())

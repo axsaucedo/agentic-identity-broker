@@ -145,7 +145,7 @@ func (h *TestServerLifecycle) SimulateShutdown(serverIdx int, timeout time.Durat
 	atomic.StoreInt32(&h.healthState[serverIdx], int32(ports.HealthStateShuttingDown))
 	h.listenerMu.Lock()
 	if h.listeners[serverIdx] != nil {
-		h.listeners[serverIdx].Close()
+		_ = h.listeners[serverIdx].Close()
 	}
 	h.listenerMu.Unlock()
 	time.Sleep(10 * time.Millisecond)

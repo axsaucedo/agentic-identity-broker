@@ -36,7 +36,7 @@ func (h *OAuth2MetadataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	// Encode and send metadata response
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {
-		fmt.Fprintf(w, "error encoding metadata: %v", err)
+		_, _ = fmt.Fprintf(w, "error encoding metadata: %v", err)
 		return
 	}
 }

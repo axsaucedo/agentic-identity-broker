@@ -127,7 +127,7 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	svc := oauth2.NewService(
 		agentRepo,
@@ -168,7 +168,7 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	// Create active grant for user
 	grant := &storage.UserGrant{
@@ -180,7 +180,7 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 		},
 	}
-	grantRepo.Create(context.Background(), grant)
+	_ = grantRepo.Create(context.Background(), grant)
 
 	svc := oauth2.NewService(
 		agentRepo,
@@ -232,7 +232,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	// Create expired grant
 	expiredTime := time.Now().Add(-1 * time.Hour)
@@ -245,7 +245,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 		},
 	}
-	grantRepo.Create(context.Background(), grant)
+	_ = grantRepo.Create(context.Background(), grant)
 
 	svc := oauth2.NewService(
 		agentRepo,
@@ -289,7 +289,7 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	grant := &storage.UserGrant{
 		ID:         "grant-1",
@@ -300,7 +300,7 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 		},
 	}
-	grantRepo.Create(context.Background(), grant)
+	_ = grantRepo.Create(context.Background(), grant)
 
 	svc := oauth2.NewService(
 		agentRepo,
@@ -348,7 +348,7 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
-	agentRepo.Create(context.Background(), agent)
+	_ = agentRepo.Create(context.Background(), agent)
 
 	grant := &storage.UserGrant{
 		ID:         "grant-1",
@@ -359,7 +359,7 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
 		},
 	}
-	grantRepo.Create(context.Background(), grant)
+	_ = grantRepo.Create(context.Background(), grant)
 
 	svc := oauth2.NewService(
 		agentRepo,

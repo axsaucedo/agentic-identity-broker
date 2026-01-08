@@ -46,7 +46,7 @@ func TestPrincipalMiddlewareExtraction(t *testing.T) {
 
 		resp := map[string]string{"principal": p}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	// Create public route that works with or without principal
@@ -57,7 +57,7 @@ func TestPrincipalMiddlewareExtraction(t *testing.T) {
 			"principal":    p,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	// Start test server
@@ -66,8 +66,8 @@ func TestPrincipalMiddlewareExtraction(t *testing.T) {
 		Handler: router,
 	}
 
-	go testServer.ListenAndServe()
-	defer testServer.Shutdown(context.Background())
+	go func() { _ = testServer.ListenAndServe() }()
+	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
 	// Give server time to start
 	time.Sleep(100 * time.Millisecond)
@@ -132,7 +132,7 @@ func TestPrincipalMiddlewareExtraction(t *testing.T) {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 
@@ -169,7 +169,7 @@ func TestPrincipalMiddlewareValidation(t *testing.T) {
 			p, _ := principal.FromContext(r.Context())
 			resp := map[string]string{"authenticatedAs": p}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		})
 	})
 
@@ -179,8 +179,8 @@ func TestPrincipalMiddlewareValidation(t *testing.T) {
 		Handler: router,
 	}
 
-	go testServer.ListenAndServe()
-	defer testServer.Shutdown(context.Background())
+	go func() { _ = testServer.ListenAndServe() }()
+	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -235,7 +235,7 @@ func TestPrincipalMiddlewareValidation(t *testing.T) {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, tt.expectedStatus, resp.StatusCode, tt.description)
 
@@ -270,7 +270,7 @@ func TestPrincipalMiddlewareUnicodeSupport(t *testing.T) {
 			"principal": p,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	testServer := &http.Server{
@@ -278,8 +278,8 @@ func TestPrincipalMiddlewareUnicodeSupport(t *testing.T) {
 		Handler: router,
 	}
 
-	go testServer.ListenAndServe()
-	defer testServer.Shutdown(context.Background())
+	go func() { _ = testServer.ListenAndServe() }()
+	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -320,7 +320,7 @@ func TestPrincipalMiddlewareUnicodeSupport(t *testing.T) {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -356,7 +356,7 @@ func TestPrincipalMiddlewareWhitespaceHandling(t *testing.T) {
 			"principal": p,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	testServer := &http.Server{
@@ -364,8 +364,8 @@ func TestPrincipalMiddlewareWhitespaceHandling(t *testing.T) {
 		Handler: router,
 	}
 
-	go testServer.ListenAndServe()
-	defer testServer.Shutdown(context.Background())
+	go func() { _ = testServer.ListenAndServe() }()
+	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -417,7 +417,7 @@ func TestPrincipalMiddlewareWhitespaceHandling(t *testing.T) {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -450,7 +450,7 @@ func TestPrincipalMiddlewareCustomHeader(t *testing.T) {
 		p, _ := principal.FromContext(r.Context())
 		resp := map[string]string{"principal": p}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	testServer := &http.Server{
@@ -458,8 +458,8 @@ func TestPrincipalMiddlewareCustomHeader(t *testing.T) {
 		Handler: router,
 	}
 
-	go testServer.ListenAndServe()
-	defer testServer.Shutdown(context.Background())
+	go func() { _ = testServer.ListenAndServe() }()
+	defer func() { _ = testServer.Shutdown(context.Background()) }()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -506,7 +506,7 @@ func TestPrincipalMiddlewareCustomHeader(t *testing.T) {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 		})

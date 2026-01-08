@@ -49,7 +49,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 			}
 			resp, err := client.Get(authzURL)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusFound))
 			lastReq := mockServer.GetLastRequest()
@@ -67,7 +67,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 			}
 			resp, err := client.Get(authzURL)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusFound))
 			location := resp.Header.Get("Location")
@@ -86,7 +86,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 				"code":       {"auth-code"},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			body, _ := io.ReadAll(resp.Body)
@@ -101,7 +101,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 			mockServer.WithSuccessfulTokenResponse()
 
 			tokenURL := fmt.Sprintf("%s/oauth/token", mockServer.URL())
-			http.PostForm(tokenURL, url.Values{
+			_, _ = http.PostForm(tokenURL, url.Values{
 				"grant_type": {"authorization_code"},
 				"code":       {"test-code"},
 			})
@@ -118,7 +118,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 				"code":       {"expired-code"},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 			body, _ := io.ReadAll(resp.Body)
@@ -140,7 +140,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 				"code":       {"code"},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
@@ -156,7 +156,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 
 			resp, err := http.Get(metadataURL)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			Expect(resp.Header.Get("Content-Type")).To(ContainSubstring("application/json"))
@@ -171,7 +171,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 
 		It("should capture metadata request", func() {
 			metadataURL := fmt.Sprintf("%s/.well-known/openid-configuration", mockServer.URL())
-			http.Get(metadataURL)
+			_, _ = http.Get(metadataURL)
 
 			Expect(mockServer.GetMetadataCalled()).To(BeTrue())
 		})
@@ -180,7 +180,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 			metadataURL := fmt.Sprintf("%s/.well-known/openid-configuration", mockServer.URL())
 			resp, err := http.Get(metadataURL)
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
@@ -201,7 +201,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 				"code":       {"code"},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
@@ -220,7 +220,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 				"code":       {"code"},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
@@ -232,7 +232,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 	Describe("Request Capture", func() {
 		It("should capture request method", func() {
 			tokenURL := fmt.Sprintf("%s/oauth/token", mockServer.URL())
-			http.PostForm(tokenURL, url.Values{"code": {"test"}})
+			_, _ = http.PostForm(tokenURL, url.Values{"code": {"test"}})
 
 			lastReq := mockServer.GetLastRequest()
 			Expect(lastReq.Method).To(Equal("POST"))
@@ -240,7 +240,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 
 		It("should capture request URL", func() {
 			authzURL := fmt.Sprintf("%s/oauth/authorize?client_id=client-1&redirect_uri=https://app.example.com/cb&response_type=code&state=xyz", mockServer.URL())
-			http.Get(authzURL)
+			_, _ = http.Get(authzURL)
 
 			lastReq := mockServer.GetLastRequest()
 			Expect(lastReq.URL.Path).To(Equal("/oauth/authorize"))
@@ -251,7 +251,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 			tokenURL := fmt.Sprintf("%s/oauth/token", mockServer.URL())
 
 			for i := 0; i < 5; i++ {
-				go http.PostForm(tokenURL, url.Values{"code": {"test"}})
+				go func() { _, _ = http.PostForm(tokenURL, url.Values{"code": {"test"}}) }()
 			}
 
 			// Should be able to access without panic
@@ -264,7 +264,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 	Describe("Reset Functionality", func() {
 		It("should reset request state", func() {
 			tokenURL := fmt.Sprintf("%s/oauth/token", mockServer.URL())
-			http.PostForm(tokenURL, url.Values{"code": {"test"}})
+			_, _ = http.PostForm(tokenURL, url.Values{"code": {"test"}})
 
 			Expect(mockServer.GetTokenCalled()).To(BeTrue())
 
@@ -322,7 +322,7 @@ var _ = Describe("MockUpstreamOAuth2Server", func() {
 				"code":       {"code"},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 		})
@@ -347,7 +347,7 @@ func TestMockUpstreamOAuth2ServerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get metadata: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)

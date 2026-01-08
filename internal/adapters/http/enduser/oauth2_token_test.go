@@ -16,7 +16,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
 	}))
 	defer mockUpstream.Close()
 
@@ -69,12 +69,12 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 		// Verify hop-by-hop headers were not forwarded
 		for _, header := range []string{"Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailers", "Transfer-Encoding", "Upgrade"} {
 			if r.Header.Get(header) != "" {
-				w.Write([]byte(`{"error": "hop-by-hop header forwarded: ` + header + `"}`))
+				_, _ = w.Write([]byte(`{"error": "hop-by-hop header forwarded: ` + header + `"}`))
 				return
 			}
 		}
 
-		w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
 	}))
 	defer mockUpstream.Close()
 
@@ -108,7 +108,7 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Pragma", "no-cache")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer", "expires_in": 3600}`))
+		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer", "expires_in": 3600}`))
 	}))
 	defer mockUpstream.Close()
 
@@ -138,7 +138,7 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error": "invalid_grant", "error_description": "Authorization code expired"}`))
+		_, _ = w.Write([]byte(`{"error": "invalid_grant", "error_description": "Authorization code expired"}`))
 	}))
 	defer mockUpstream.Close()
 
@@ -206,7 +206,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 		w.Header().Set("X-Custom-Response-Header", "custom-value")
 		w.WriteHeader(http.StatusOK)
 		// Return large response to test streaming
-		w.Write([]byte(`{"access_token": "verylongtoken123456789", "token_type": "Bearer", "expires_in": 3600, "scope": "openid profile email"}`))
+		_, _ = w.Write([]byte(`{"access_token": "verylongtoken123456789", "token_type": "Bearer", "expires_in": 3600, "scope": "openid profile email"}`))
 	}))
 	defer mockUpstream.Close()
 

@@ -29,7 +29,7 @@ func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Pragma", "no-cache")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"access_token": "access_token_xyz",
 			"token_type": "Bearer",
 			"expires_in": 3600,
@@ -69,7 +69,7 @@ func TestOAuth2TokenEndpoint_RefreshTokenGrant(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"access_token": "new_access_token",
 			"token_type": "Bearer",
 			"expires_in": 3600
@@ -98,7 +98,7 @@ func TestOAuth2TokenEndpoint_InvalidGrantError(t *testing.T) {
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"error": "invalid_grant",
 			"error_description": "Authorization code has expired or been revoked"
 		}`))
@@ -130,13 +130,13 @@ func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
 		// Check that hop-by-hop headers were not forwarded
 		if r.Header.Get("Connection") != "" {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error": "hop-by-hop headers not filtered"}`))
+			_, _ = w.Write([]byte(`{"error": "hop-by-hop headers not filtered"}`))
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
 	}))
 	defer mockUpstream.Close()
 
@@ -164,7 +164,7 @@ func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Custom-Header", "custom-value")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
 	}))
 	defer mockUpstream.Close()
 
@@ -219,7 +219,7 @@ func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
 			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.upstreamStatus)
-				w.Write([]byte(tt.upstreamBody))
+				_, _ = w.Write([]byte(tt.upstreamBody))
 			}))
 			defer mockUpstream.Close()
 

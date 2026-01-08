@@ -9,6 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testContextKey is a custom type for test context keys to avoid collisions
+type testContextKey string
+
 func TestWithPrincipal(t *testing.T) {
 	ctx := context.Background()
 	principals := []string{
@@ -58,8 +61,8 @@ func TestFromContext_Missing(t *testing.T) {
 func TestFromContext_WithOtherContextValues(t *testing.T) {
 	// Create context with other values to ensure principal key doesn't collide
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "other-key-1", "value1")
-	ctx = context.WithValue(ctx, "other-key-2", "value2")
+	ctx = context.WithValue(ctx, testContextKey("other-key-1"), "value1")
+	ctx = context.WithValue(ctx, testContextKey("other-key-2"), "value2")
 
 	// Add principal
 	ctx = principal.WithPrincipal(ctx, "alice@example.com")

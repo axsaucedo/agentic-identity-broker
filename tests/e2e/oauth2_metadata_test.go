@@ -83,7 +83,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 			// This eliminates 15+ duplicate request/decode patterns across tests
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Verify basic HTTP contract
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -152,7 +152,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 		It("should have correct Content-Type header", func() {
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Content-Type must be application/json
 			contentType := resp.Header.Get("Content-Type")
@@ -162,7 +162,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 		It("should be publicly accessible (no authentication required)", func() {
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Should succeed without authentication
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -171,7 +171,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 		It("should return proper HTTP status codes", func() {
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Status should be 200 OK
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -181,7 +181,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 		It("should include all required RFC 8414 fields", func() {
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			var metadata map[string]interface{}
 			err = json.NewDecoder(resp.Body).Decode(&metadata)
@@ -202,7 +202,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Should still return 200 OK with charset in Accept header
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -217,7 +217,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 			// Shared fetch and decode for all URL validation tests
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			err = json.NewDecoder(resp.Body).Decode(&metadata)
 			Expect(err).ToNot(HaveOccurred())
@@ -254,7 +254,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 			// Shared fetch and decode for all type validation tests
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			err = json.NewDecoder(resp.Body).Decode(&metadata)
 			Expect(err).ToNot(HaveOccurred())
@@ -300,7 +300,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 		It("should produce valid JSON without errors", func() {
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			var metadata map[string]interface{}
 			err = json.NewDecoder(resp.Body).Decode(&metadata)
@@ -311,7 +311,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 		It("should have string values for endpoint URLs", func() {
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			var metadata map[string]interface{}
 			err = json.NewDecoder(resp.Body).Decode(&metadata)
@@ -329,7 +329,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 		It("should have array values for supported types", func() {
 			resp, err := server.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			var metadata map[string]interface{}
 			err = json.NewDecoder(resp.Body).Decode(&metadata)
@@ -368,7 +368,7 @@ var _ = Describe("OAuth2 Authorization Server Metadata Discovery", func() {
 			// When: Request metadata
 			resp, err := testServer.PublicGET(metadataEndpoint)
 			Expect(err).ToNot(HaveOccurred())
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Verify metadata uses the actual test server URL
 			var metadata map[string]interface{}

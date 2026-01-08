@@ -47,7 +47,7 @@ func TestErrorImplementsErrorInterface(t *testing.T) {
 
 	for _, tc := range testCases {
 		// Should be assignable to error interface
-		var _ error = tc.name
+		var _ = tc.name
 		assert.NotEmpty(t, tc.name.Error())
 	}
 }

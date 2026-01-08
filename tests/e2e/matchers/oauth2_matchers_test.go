@@ -156,7 +156,7 @@ var _ = Describe("HaveMetadataField", func() {
 		// Write body with fields that include the field names
 		// Important: WriteString before WriteHeader to allow proper reading
 		jsonBody := `{"issuer":"https://auth.example.com","authorization_endpoint":"https://auth.example.com/authorize","token_endpoint":"https://auth.example.com/token"}`
-		w.WriteString(jsonBody)
+		_, _ = w.WriteString(jsonBody)
 		w.WriteHeader(http.StatusOK)
 
 		resp := w.Result()
@@ -165,14 +165,14 @@ var _ = Describe("HaveMetadataField", func() {
 		// Create new responses for each test since body can only be read once
 		w2 := httptest.NewRecorder()
 		w2.Header().Set("Content-Type", "application/json")
-		w2.WriteString(jsonBody)
+		_, _ = w2.WriteString(jsonBody)
 		w2.WriteHeader(http.StatusOK)
 
 		Expect(w2.Result()).To(matchers.HaveMetadataField("authorization_endpoint"))
 
 		w3 := httptest.NewRecorder()
 		w3.Header().Set("Content-Type", "application/json")
-		w3.WriteString(jsonBody)
+		_, _ = w3.WriteString(jsonBody)
 		w3.WriteHeader(http.StatusOK)
 
 		Expect(w3.Result()).To(matchers.HaveMetadataField("token_endpoint"))
@@ -185,7 +185,7 @@ var _ = Describe("HaveMetadataField", func() {
 		metadata := map[string]interface{}{
 			"issuer": "https://auth.example.com",
 		}
-		json.NewEncoder(w).Encode(metadata)
+		_ = json.NewEncoder(w).Encode(metadata)
 		w.WriteHeader(http.StatusOK)
 
 		Expect(w.Result()).NotTo(matchers.HaveMetadataField("token_endpoint"))
