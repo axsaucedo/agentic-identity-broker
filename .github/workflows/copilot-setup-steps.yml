@@ -35,10 +35,6 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
-      # Install Go dependencies
-      - name: Install Go dependencies
-        run: go mod download
-
       # Install ginkgo for E2E tests
       - name: Install ginkgo
         run: go install github.com/onsi/ginkgo/v2/ginkgo@latest
