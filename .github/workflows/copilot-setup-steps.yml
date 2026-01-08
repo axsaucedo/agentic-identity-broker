@@ -42,7 +42,7 @@ jobs:
       # Install golangci-lint
       - name: Install golangci-lint
         run: |
-          snap install golangci-lint
+          sudo snap install golangci-lint
 
       # Install web dependencies
       - name: Install web dependencies
