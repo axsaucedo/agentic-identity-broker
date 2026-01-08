@@ -167,6 +167,13 @@ install-tools:
     fi
     @echo "Tools installation complete"
 
+# Setup git hooks for quality checks
+setup-hooks:
+    @echo "Setting up git hooks..."
+    git config core.hooksPath .githooks
+    @echo "✓ Git hooks configured to use .githooks directory"
+    @echo "Pre-commit hook will run: fmt, vet, lint"
+
 # Run integration tests (requires Docker for PostgreSQL tests)
 test-integration:
     @echo "Running integration tests..."
