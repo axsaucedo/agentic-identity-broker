@@ -1,0 +1,52 @@
+version: "2017-09-20"
+
+tags:
+  application: agentic-identity-broker
+
+pipeline:
+  - id: test
+    type: script
+    vm_config:
+      type: linux
+      image: cdp-runtime/go-1.24
+    commands:
+      - desc: "Install pre-requisites"
+        cmd: |
+          apt-get update
+          apt-get --yes install just npm
+          go install github.com/jstemmer/go-junit-report/v2@latest
+          just web-install
+      - desc: "Run quality checks"
+        cmd: |
+          just check
+      - desc: "Run all tests (unit + integration)"
+        cmd: |
+          cdp-wrap-cmd "just test-all-junit" "cdp-tool upload-test-results -t junit $(pwd)/test-results/all-tests-junit.xml"
+      - desc: "Run artifacts build test"
+        cmd: |
+          just build-all
+
+  - id: release
+    type: script
+    when:
+      - event: push
+        branch: main
+    vm_config:
+      type: linux
+      image: cdp-runtime/go-1.24
+    cache:
+      paths:
+        # pkg cache for Go modules and Go build cache
+        - /go/pkg/mod
+        - ~/.cache/go-build
+    commands:
+      - desc: "Build and push Docker image"
+        cmd: |
+          # build and push image to ZCR
+          VERSION="${CDP_BUILD_VERSION}" make docker-push
+
+          # promote image to a production during push/merge pipeline
+          # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker:${CDP_BUILD_VERSION}
+      - desc: git-tag
+        cmd: |
+          git gh-tag "${CDP_BUILD_VERSION}"

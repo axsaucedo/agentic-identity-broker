@@ -51,6 +51,13 @@ test:
     @echo "Running Go tests..."
     go test -v -race ./...
 
+# Run all Go tests and generate JUnit XML report for CI/CD
+test-junit:
+    @echo "Running Go tests with JUnit output..."
+    @mkdir -p test-results
+    @go test -v -race ./... 2>&1 | tee test-results/go-test-output.txt | go-junit-report -set-exit-code > test-results/junit.xml
+    @echo "JUnit report generated at test-results/junit.xml"
+
 # Run tests with coverage report
 test-coverage:
     @echo "Running tests with coverage..."
@@ -120,6 +127,7 @@ clean:
     rm -rf bin
     rm -rf build
     rm -rf coverage
+    rm -rf test-results
     rm -rf web/node_modules web/dist
     @echo "Clean complete"
 
@@ -154,17 +162,19 @@ vet:
     @echo "Running go vet..."
     go vet ./...
 
-# Install development tools (air, golangci-lint)
+# Install development tools (air, golangci-lint, go-junit-report)
 install-tools:
     @echo "Installing development tools..."
     @echo "Installing air for hot reload..."
-    go install github.com/air-verse/air@latest
+    go install github.com/air-verse/air@v1.63.6
     @echo "Installing golangci-lint..."
     @if ! command -v golangci-lint > /dev/null; then \
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell go env GOPATH)/bin; \
+        brew install golangci-lint; \
     else \
         echo "golangci-lint is already installed"; \
     fi
+    @echo "Installing go-junit-report for CI/CD test reporting..."
+    go install github.com/jstemmer/go-junit-report/v2@v2.1.0
     @echo "Tools installation complete"
 
 # Setup git hooks for quality checks
@@ -178,6 +188,43 @@ setup-hooks:
 test-integration:
     @echo "Running integration tests..."
     go test -tags=integration -v ./test/integration/storage/...
+
+# Run integration tests and generate JUnit XML report for CI/CD
+test-integration-junit:
+    @echo "Running integration tests with JUnit output..."
+    @mkdir -p test-results
+    @go test -tags=integration -v ./test/integration/storage/... 2>&1 | tee test-results/integration-test-output.txt | go-junit-report -set-exit-code > test-results/integration-junit.xml
+    @echo "JUnit report generated at test-results/integration-junit.xml"
+
+# Run all tests (unit + integration) and generate single JUnit XML report for CI/CD
+test-all-junit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Running all tests (unit + integration) with JUnit output..."
+    mkdir -p test-results
+    echo ""
+    echo "==> Running unit tests..."
+    go test -v -race ./... 2>&1 | tee test-results/unit-tests-output.txt
+    UNIT_EXIT=${PIPESTATUS[0]}
+    echo ""
+    echo "==> Running integration tests..."
+    go test -v -tags=integration ./test/integration/storage/... 2>&1 | tee test-results/integration-tests-output.txt
+    INTEGRATION_EXIT=${PIPESTATUS[0]}
+    echo ""
+    echo "==> Generating JUnit report..."
+    if command -v go-junit-report > /dev/null; then
+        cat test-results/unit-tests-output.txt test-results/integration-tests-output.txt | go-junit-report > test-results/all-tests-junit.xml
+        echo "✓ JUnit report generated at test-results/all-tests-junit.xml"
+    else
+        echo "Warning: go-junit-report not found. Run 'just install-tools' to install it."
+        echo "✗ JUnit report not generated"
+    fi
+    echo ""
+    if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ]; then
+        echo "✗ Tests failed (unit exit: $UNIT_EXIT, integration exit: $INTEGRATION_EXIT)"
+        exit 1
+    fi
+    echo "✓ All tests passed"
 
 # Run all unit and integration tests with coverage
 test-all: test test-integration
@@ -210,7 +257,7 @@ web-dev:
     cd web && npm run dev
 
 # Build web frontend
-web-build:
+web-build: web-install
     @echo "Building web frontend..."
     cd web && npm run build
 

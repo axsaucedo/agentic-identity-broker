@@ -73,8 +73,8 @@ func TestFromContext_WithOtherContextValues(t *testing.T) {
 	assert.Equal(t, "alice@example.com", p)
 
 	// Verify other values still accessible
-	assert.Equal(t, "value1", ctx.Value("other-key-1"))
-	assert.Equal(t, "value2", ctx.Value("other-key-2"))
+	assert.Equal(t, "value1", ctx.Value(testContextKey("other-key-1")))
+	assert.Equal(t, "value2", ctx.Value(testContextKey("other-key-2")))
 }
 
 func TestMustFromContext_Success(t *testing.T) {
