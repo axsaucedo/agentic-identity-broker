@@ -169,7 +169,7 @@ install-tools:
     go install github.com/air-verse/air@v1.63.6
     @echo "Installing golangci-lint..."
     @if ! command -v golangci-lint > /dev/null; then \
-        brew install golangci-lint; \
+        bash scripts/golangci-lint-install.sh -b $(shell go env GOPATH)/bin v2.8.0; \
     else \
         echo "golangci-lint is already installed"; \
     fi
