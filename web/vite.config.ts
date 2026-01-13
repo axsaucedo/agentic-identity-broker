@@ -39,7 +39,7 @@ export default defineConfig({
     proxy: {
       // Match all paths EXCEPT: node_modules, @vite, __vite, /consent (frontend files), and file extensions
       '^/(?!node_modules|@vite|__vite|consent).*': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path,
         configure: (proxy, _options) => {

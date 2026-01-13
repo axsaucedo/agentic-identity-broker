@@ -171,8 +171,9 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 		"token_expiry", token.Expiry.Format(time.RFC3339))
 
 	// Extract 'sub' claim from access token
-	accessToken, ok := token.Extra("access_token").(string)
-	if !ok {
+	// The golang oauth2 library stores the access token in the AccessToken field, not in Extra
+	accessToken := token.AccessToken
+	if accessToken == "" {
 		slog.Error("Failed to extract access token from response")
 		http.Error(w, "Failed to extract access token", http.StatusInternalServerError)
 		return

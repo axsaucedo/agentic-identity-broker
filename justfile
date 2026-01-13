@@ -2,6 +2,9 @@
 NAME := "agentic-identity-broker"
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
 
+# Determine compose command (docker compose or podman-compose)
+COMPOSE_CMD := `if [ -n "${COMPOSE_CMD:-}" ]; then echo "$COMPOSE_CMD"; elif [ -n "${COMPOSE_TOOL:-}" ]; then echo "$COMPOSE_TOOL"; elif command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; elif command -v docker >/dev/null 2>&1; then echo "docker compose"; else echo "Error: no compose tool found. Please install podman-compose or Docker, or set COMPOSE_CMD." >&2; exit 1; fi`
+
 
 # Default recipe (shown when running `just` with no args)
 default:
@@ -287,6 +290,108 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
     @echo "✓ Multi-architecture images pushed: {{NAME}}:{{VERSION}}"
 
 # =============================================================================
+# Docker Compose - Development (Hot Reload)
+# =============================================================================
+
+# Create .env.compose from .env template if it doesn't exist
+compose-env:
+    @if [ -f .env.compose ]; then \
+        echo ".env.compose already exists"; \
+    else \
+        cp .env .env.compose; \
+        echo "✓ Created: .env.compose (customize as needed)"; \
+    fi
+
+# Validate docker-compose.yml syntax
+compose-validate:
+    @echo "Validating docker-compose.yml..."
+    @{{COMPOSE_CMD}} -f docker-compose.yml config > /dev/null && echo "✓ Syntax valid" || echo "✗ Syntax error"
+
+# Start all services with logs streaming (foreground)
+compose-up: compose-env
+    @echo "Generating JWE signing key..."
+    @echo "Starting docker-compose services with hot reload..."
+    @echo "Services:"
+    @echo "  - Identity Broker (8000, 14000) with Air hot reload"
+    @echo "  - Frontend (3000) with Vite HMR"
+    @echo "  - Upstream OAuth2 (9001)"
+    @echo "  - Third-Party OAuth2 (9000)"
+    @echo "  - Sample Agent (9002)"
+    @echo "  - Seed data will auto-run once broker is healthy"
+    @echo ""
+    @echo "Press Ctrl+C to stop"
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up
+
+# Start all services in background
+compose-up-detached: compose-env
+    @echo "Generating JWE signing key..."
+    @echo "Starting docker-compose services in background..."
+    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up -d
+    @sleep 2
+    @just compose-health
+    @echo ""
+    @echo "Service URLs:"
+    @echo "  - Broker (end-user): http://localhost:8000"
+    @echo "  - Broker (admin): http://localhost:14000"
+    @echo "  - Frontend (consent UI): http://localhost:3000"
+    @echo "  - Sample OAuth2 client: http://localhost:9002/oauth2/authorize"
+    @echo ""
+    @echo "View logs: just compose-logs"
+    @echo "Stop services: just compose-down"
+
+# Stop all services
+compose-down:
+    @echo "Stopping docker-compose services..."
+    {{COMPOSE_CMD}} -f docker-compose.yml down
+
+# Stop all services and remove volumes
+compose-down-volumes:
+    @echo "Stopping docker-compose services and removing volumes..."
+    {{COMPOSE_CMD}} -f docker-compose.yml down -v
+
+# View logs from all services (tail -f)
+compose-logs:
+    {{COMPOSE_CMD}} -f docker-compose.yml logs -f
+
+# View logs from backend only
+compose-logs-backend:
+    {{COMPOSE_CMD}} -f docker-compose.yml logs -f identity-broker
+
+# View logs from frontend only
+compose-logs-frontend:
+    {{COMPOSE_CMD}} -f docker-compose.yml logs -f frontend
+
+# View logs from specific service
+compose-logs-service SERVICE:
+    {{COMPOSE_CMD}} -f docker-compose.yml logs -f {{SERVICE}}
+
+# Restart backend service (after code changes)
+compose-restart-backend:
+    @echo "Restarting identity-broker service..."
+    {{COMPOSE_CMD}} -f docker-compose.yml restart identity-broker
+
+# Restart frontend service (after code changes)
+compose-restart-frontend:
+    @echo "Restarting frontend service..."
+    {{COMPOSE_CMD}} -f docker-compose.yml restart frontend
+
+# Show service status and connectivity
+compose-health:
+    @echo "Checking service health..."
+    @{{COMPOSE_CMD}} -f docker-compose.yml ps
+    @echo ""
+    @echo "Testing connectivity..."
+    @{{COMPOSE_CMD}} -f docker-compose.yml exec -T identity-broker curl -s http://localhost:8000/health && echo "✓ Backend health OK" || echo "✗ Backend not ready"
+    @{{COMPOSE_CMD}} -f docker-compose.yml exec -T frontend curl -s http://localhost:3000 > /dev/null && echo "✓ Frontend responding" || echo "✗ Frontend not ready"
+    @echo ""
+
+# Clean up: stop containers, remove volumes, clean tmp directories
+compose-clean: compose-down-volumes
+    @echo "Cleaning up build and temporary directories..."
+    @rm -rf tmp/ coverage/ bin/ web/dist web/node_modules
+    @echo "✓ Cleanup complete"
+
+# =============================================================================
 # Documentation Targets
 # =============================================================================
 
@@ -345,7 +450,7 @@ mock-third-party-oauth2-build:
 # Register mock third-party service with broker admin API
 mock-third-party-oauth2-register:
     @echo "Registering mock third-party OAuth2 service with broker..."
-    @bash mocks/third-party-service/scripts/register-with-broker.sh
+    @bash scripts/register-mock-thirdparty-service.sh
 
 # Full setup: build, start (background), register
 mock-third-party-oauth2-setup: mock-third-party-oauth2-build

@@ -1,4 +1,4 @@
-# Air configuration for hot-reload development
+# Air configuration for hot-reload development in Docker Compose
 # See https://github.com/air-verse/air for full documentation
 
 root = "."
@@ -40,12 +40,15 @@ tmp_dir = "tmp"
   # This log file places in your tmp_dir
   log = "build-errors.log"
 
-  # Use fsnotify for native development (much faster than polling)
-  # For Docker Compose, use .air.docker.toml with polling enabled
-  poll = false
+  # Poll for file changes instead of using fsnotify
+  # Required for Docker volume mounts (inotify not supported across host/container boundary)
+  poll = true
+
+  # Poll interval (milliseconds) - 300ms for faster feedback in containers
+  poll_interval = 300
 
   # Delay after a detected file change before rebuilding (milliseconds)
-  delay = 1000
+  delay = 300
 
   # Stop running old binary when build errors occur
   stop_on_error = true

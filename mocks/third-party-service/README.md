@@ -99,11 +99,11 @@ mocks/third-party-service/
 │       └── consent.go                 # Consent page handler
 ├── static/
 │   └── (HTML assets served inline)
-├── scripts/
-│   └── register-with-broker.sh        # Service registration
 ├── config.yaml                        # Configuration file
 ├── go.mod                             # Go module definition
 └── README.md                          # This file
+
+Note: The service registration script has been moved to `scripts/register-mock-thirdparty-service.sh` in the project root
 ```
 
 ### Key Components

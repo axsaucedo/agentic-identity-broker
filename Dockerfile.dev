@@ -1,0 +1,31 @@
+# Development Dockerfile for agentic-identity-broker backend
+# Enables hot-reload with Air during development
+# Built for use with docker-compose volume mounts
+
+FROM golang:1.25-alpine
+
+WORKDIR /app
+
+# Install build dependencies, bash for wrapper scripts, and curl for health checks
+RUN apk add --no-cache bash git ca-certificates curl
+
+# Install Air for hot-reload development
+RUN go install github.com/air-verse/air@latest
+
+# Copy go module files
+COPY go.mod go.sum ./
+
+# Download dependencies (cached layer)
+RUN go mod download
+
+# Copy source code (will be overridden by volume mount in docker-compose)
+COPY . .
+
+# Create tmp directory for Air output
+RUN mkdir -p tmp
+
+# Expose ports: 8000 (user API), 14000 (admin API)
+EXPOSE 8000 14000
+
+# Run with Air for hot-reload (uses Docker-specific config with polling)
+CMD ["air", "-c", ".air.docker.toml"]

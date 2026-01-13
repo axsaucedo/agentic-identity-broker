@@ -63,7 +63,7 @@ func handleUserAuthorizationGet(w http.ResponseWriter, r *http.Request, cfg *con
 
 	// Render consent page
 	consentHTML := renderConsentPage(clientID, redirectURI, scope, state, codeChallenge, codeChallengeMethod, cfg.OAuth2.Scopes)
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(consentHTML))
 

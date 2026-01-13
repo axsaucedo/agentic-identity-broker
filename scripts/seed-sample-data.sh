@@ -4,7 +4,8 @@
 
 set -e
 
-ADMIN_API="http://localhost:14000/api"
+# Allow override via environment variable for container support
+ADMIN_API="${ADMIN_API:-http://localhost:14000/api}"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -48,10 +49,13 @@ if [ "$HTTP_CODE" = "201" ]; then
     echo -e "${GREEN}✓ Weather Assistant created${NC}"
     AGENT_ID=$(echo "$RESPONSE_BODY" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     echo "  Agent ID: $AGENT_ID"
+elif [ "$HTTP_CODE" = "409" ]; then
+    echo -e "${YELLOW}✓ Weather Assistant already exists (idempotent)${NC}"
 else
     echo -e "${RED}✗ Failed to create Weather Assistant${NC}"
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response: $RESPONSE_BODY"
+    exit 1
 fi
 echo ""
 
@@ -75,10 +79,13 @@ if [ "$HTTP_CODE" = "201" ]; then
     echo -e "${GREEN}✓ Task Manager Pro created${NC}"
     AGENT_ID=$(echo "$RESPONSE_BODY" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     echo "  Agent ID: $AGENT_ID"
+elif [ "$HTTP_CODE" = "409" ]; then
+    echo -e "${YELLOW}✓ Task Manager Pro already exists (idempotent)${NC}"
 else
     echo -e "${RED}✗ Failed to create Task Manager Pro${NC}"
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response: $RESPONSE_BODY"
+    exit 1
 fi
 echo ""
 
@@ -103,10 +110,13 @@ if [ "$HTTP_CODE" = "201" ]; then
     echo -e "${GREEN}✓ OAuth2 Test Client created${NC}"
     AGENT_ID=$(echo "$RESPONSE_BODY" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     echo "  Agent ID: $AGENT_ID"
+elif [ "$HTTP_CODE" = "409" ]; then
+    echo -e "${YELLOW}✓ OAuth2 Test Client already exists (idempotent)${NC}"
 else
     echo -e "${RED}✗ Failed to create OAuth2 Test Client${NC}"
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response: $RESPONSE_BODY"
+    exit 1
 fi
 echo ""
 
@@ -150,10 +160,13 @@ if [ "$HTTP_CODE" = "201" ]; then
     echo -e "${GREEN}✓ Weather API service created${NC}"
     SERVICE_ID=$(echo "$RESPONSE_BODY" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     echo "  Service ID: $SERVICE_ID"
+elif [ "$HTTP_CODE" = "409" ]; then
+    echo -e "${YELLOW}✓ Weather API service already exists (idempotent)${NC}"
 else
     echo -e "${RED}✗ Failed to create Weather API service${NC}"
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response: $RESPONSE_BODY"
+    exit 1
 fi
 echo ""
 
@@ -197,10 +210,13 @@ if [ "$HTTP_CODE" = "201" ]; then
     echo -e "${GREEN}✓ Calendar API service created${NC}"
     SERVICE_ID=$(echo "$RESPONSE_BODY" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     echo "  Service ID: $SERVICE_ID"
+elif [ "$HTTP_CODE" = "409" ]; then
+    echo -e "${YELLOW}✓ Calendar API service already exists (idempotent)${NC}"
 else
     echo -e "${RED}✗ Failed to create Calendar API service${NC}"
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response: $RESPONSE_BODY"
+    exit 1
 fi
 echo ""
 
@@ -244,10 +260,13 @@ if [ "$HTTP_CODE" = "201" ]; then
     echo -e "${GREEN}✓ Email API service created${NC}"
     SERVICE_ID=$(echo "$RESPONSE_BODY" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     echo "  Service ID: $SERVICE_ID"
+elif [ "$HTTP_CODE" = "409" ]; then
+    echo -e "${YELLOW}✓ Email API service already exists (idempotent)${NC}"
 else
     echo -e "${RED}✗ Failed to create Email API service${NC}"
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response: $RESPONSE_BODY"
+    exit 1
 fi
 echo ""
 

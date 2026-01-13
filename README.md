@@ -68,6 +68,33 @@ just build-all
 
 The binary at `./bin/agentic-identity-broker` is ready for deployment.
 
+### 3b. Docker Compose Development (Complete Stack)
+
+For a fully orchestrated development environment with all services (broker, mock OAuth2 servers, mock agent, and frontend):
+
+```bash
+# Start all services with docker-compose (auto-seeds sample data)
+just compose-up-detached
+
+# View service logs
+just compose-logs
+
+# When ready, stop all services
+just compose-down
+```
+
+This starts the full stack: broker (ports 8000/14000), frontend (3000), and three mock services (9000/9001/9002). All services auto-seed sample data on first startup, and the backend auto-rebuilds on code changes using Air. Seed data is automatically re-generated after each rebuild to test the flow end-to-end.
+
+**Service URLs:**
+- Broker (end-user): http://localhost:8000
+- Broker (admin): http://localhost:14000
+- Frontend (consent UI): http://localhost:3000
+- Sample OAuth2 client: http://localhost:9002/oauth2/authorize
+
+See [docs/docker-compose-setup.md](docs/docker-compose-setup.md) for advanced docker-compose usage and troubleshooting.
+
+**Configuration:** Docker Compose automatically uses `config.docker.yaml` (with container DNS names), while native development (`just run`, `just dev`) uses `config.yaml` (with localhost addresses).
+
 ### 4. Run Tests & Quality Checks
 
 ```bash

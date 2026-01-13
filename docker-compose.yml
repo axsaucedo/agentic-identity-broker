@@ -1,0 +1,139 @@
+# Custom bridge network for service DNS resolution
+networks:
+  aib-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# Shared volumes
+volumes:
+  broker-tmp:
+  aib-frontend-node-modules:  # Preserves containerized npm dependencies to avoid host/container conflicts
+
+services:
+  # Primary application: Identity broker with hot-reload
+  identity-broker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: aib-broker
+    ports:
+      - "8000:8000"
+      - "14000:14000"
+    volumes:
+      # Mount source code for Air hot reload
+      - ./cmd:/app/cmd
+      - ./internal:/app/internal
+      - ./config.docker.yaml:/app/config.docker.yaml:ro
+      - ./migrations:/app/migrations
+      - ./scripts:/app/scripts:ro
+      - ./tests:/app/tests:ro
+      - ./mocks:/app/mocks:ro
+      - broker-tmp:/app/tmp
+      # Mount .air.docker.toml for Docker-optimized hot reload configuration
+      - ./.air.docker.toml:/app/.air.docker.toml:ro
+    environment:
+      - IDENTITY_BROKER_CONFIG_PATH=config.docker.yaml
+      - IDENTITY_BROKER_LOG_LEVEL=debug
+      - IDENTITY_BROKER_LOG_FORMAT=text
+      - IDENTITY_BROKER_JWE_SIGNING_KEY=${IDENTITY_BROKER_JWE_SIGNING_KEY}
+      - IDENTITY_BROKER_STATE_TOKEN_TTL=10m
+      - IDENTITY_BROKER_PKCE_VERIFIER_LENGTH=32
+      - IDENTITY_BROKER_STORAGE_BACKEND=memory
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      upstream-oauth2:
+        condition: service_started
+      third-party-oauth2:
+        condition: service_started
+
+  # Mock upstream OAuth2 server
+  upstream-oauth2:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+      args:
+        SERVICE_PATH: mocks/upstream-oauth2-server/cmd/mock-upstream-oauth2-server
+    container_name: aib-upstream-oauth2
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./mocks/upstream-oauth2-server/config.yaml:/app/config.yaml:ro
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9001/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  # Mock third-party OAuth2 service
+  third-party-oauth2:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+      args:
+        SERVICE_PATH: mocks/third-party-service/cmd/mock-oauth2-server
+    container_name: aib-third-party-oauth2
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./mocks/third-party-service/config.yaml:/app/config.yaml:ro
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  # Mock sample agent service
+  sample-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+      args:
+        SERVICE_PATH: mocks/sample-agent/cmd/sample-agent
+    container_name: aib-sample-agent
+    ports:
+      - "9002:9002"
+    volumes:
+      - ./mocks/sample-agent/config.yaml:/app/config.yaml:ro
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  # Frontend: React + Vite with HMR
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: aib-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount entire web directory for full hot reload of all files (src, config, tools, etc.)
+      - ./web:/app
+      # Preserve containerized node_modules (won't be overwritten by host mount)
+      - aib-frontend-node-modules:/app/node_modules
+    environment:
+      # Use internal service name for Docker Compose network DNS resolution
+      - VITE_API_URL=http://identity-broker:8000
+      - VITE_LOG_LEVEL=debug
+    networks:
+      - aib-network
+    depends_on:
+      identity-broker:
+        condition: service_healthy
