@@ -132,6 +132,9 @@ services:
       # Use internal service name for Docker Compose network DNS resolution
       - VITE_API_URL=http://identity-broker:8000
       - VITE_LOG_LEVEL=debug
+      # Enable polling and HMR for Docker hot-reload
+      - VITE_USE_POLLING=true
+      - VITE_HMR_HOST=localhost
     networks:
       - aib-network
     depends_on:
