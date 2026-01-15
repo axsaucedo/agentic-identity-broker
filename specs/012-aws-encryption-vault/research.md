@@ -134,17 +134,6 @@ func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
 - ✅ Circular reference detection and injection prevention
 - ✅ Source metadata tracking for debugging
 
-**Configuration Extension Required**:
-```yaml
-encryption:
-  backend: "aws-kms"  # or "env-var" for development
-  aws:
-    region: "us-east-1"
-    kms_key_id: "arn:aws:kms:..."
-  env_var:
-    kek_var_name: "ENCRYPTION_KEK"
-```
-
 **Integration Path**: Extend existing schema with AWS-specific fields, no architectural changes needed.
 
 ### 7. E2E Testing Infrastructure
