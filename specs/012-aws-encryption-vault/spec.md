@@ -9,7 +9,7 @@
 
 ### User Story 1 - Encrypt OAuth Tokens Using Envelope Encryption (Priority: P1)
 
-A platform operator deploying the system to production needs to encrypt sensitive OAuth tokens (access tokens, refresh tokens) stored in the sessions table using envelope encryption. Tokens should be encrypted at the application layer using a Data Encryption Key (DEK) before storage, with the DEK itself encrypted by a Key Encryption Key (KEK), providing two layers of protection. The encryption context (principal, service_id, session_id, purpose) must be bound at the DEK level, ensuring tokens are tied to their specific usage context.
+A platform operator deploying the system to production needs to encrypt sensitive OAuth tokens (access tokens, refresh tokens) stored in the sessions table using envelope encryption. Tokens should be encrypted at the application layer using a Data Encryption Key (DEK) before storage, with the DEK itself encrypted by a Key Encryption Key (KEK), providing two layers of protection. The encryption context (service_id) must be bound at the DEK level, ensuring tokens are tied to their specific service.
 
 **Why this priority**: This is the core use case—protecting sensitive tokens at rest in the database using envelope encryption. Envelope encryption with DEK-level context binding provides defense in depth with the DEK and KEK managed separately.
 
@@ -17,7 +17,7 @@ A platform operator deploying the system to production needs to encrypt sensitiv
 
 **Acceptance Scenarios**:
 
-1. **Given** a session with OAuth tokens and associated context (principal, service_id, session_id, purpose) is stored, **When** tokens are saved to the sessions table, **Then** each token is encrypted using a DEK bound to its context, the DEK is encrypted using a KEK with the same context, and both the token ciphertext and wrapped DEK are stored
+1. **Given** a session with OAuth tokens and associated service_id context is stored, **When** tokens are saved to the sessions table, **Then** each token is encrypted using a DEK bound to its service context, the DEK is encrypted using a KEK with the same service context, and both the token ciphertext and wrapped DEK are stored
 2. **Given** encrypted tokens and wrapped DEKs in the sessions table, **When** a session is retrieved and tokens are requested, **Then** the KEK is used to unwrap the DEK (verifying context), the DEK is used to decrypt the token (verifying context), and the plaintext token is returned
 3. **Given** an attacker gains direct database access and reads encrypted tokens with wrapped DEKs, **When** they attempt to use the encrypted tokens with different context, **Then** the tokens are invalid because context verification fails at both DEK and KEK layers
 4. **Given** a session is loaded from the database, **When** context verification fails at any layer, **Then** the application fails securely and does not fall back to plaintext tokens
@@ -43,7 +43,7 @@ A security team needs the Key Encryption Key (KEK) to be securely stored using i
 
 ### User Story 3 - DEK Generation and Context Binding (Priority: P1)
 
-A security architect needs Data Encryption Keys (DEK) to be generated securely and bound to the token's usage context. Each session (containing access and refresh tokens) should use a fresh DEK generated with cryptographically secure randomness, with the context (principal, service_id, session_id, purpose) cryptographically bound during DEK encryption. DEKs should be unique per session and tightly coupled with their encrypted tokens and context.
+A security architect needs Data Encryption Keys (DEK) to be generated securely and bound to the token's service context. Each session (containing access and refresh tokens) should use a fresh DEK generated with cryptographically secure randomness, with the service_id context cryptographically bound during DEK encryption. DEKs should be unique per session and tightly coupled with their encrypted tokens and service context.
 
 **Why this priority**: DEK security and context binding are crucial for envelope encryption. Generating fresh, random DEKs per session with context binding ensures that tokens cannot be reused in different contexts, and compromise of one session's DEK doesn't affect other sessions.
 
@@ -57,35 +57,19 @@ A security architect needs Data Encryption Keys (DEK) to be generated securely a
 
 ---
 
-### User Story 4 - Local File-Based Key Storage for Development (Priority: P1)
+### User Story 4 - Environment Variable KEK Injection for Development (Priority: P1)
 
-A developer in a local development or test environment needs to use locally-stored keys for envelope encryption without requiring cloud key management services. Both DEK and KEK operations should use local key material securely stored in files with appropriate protections.
+A developer in a local development or test environment needs to inject KEK material via environment variables without requiring cloud key management services. This enables full-stack development in containers, local machines, and CI/CD environments using simple environment variable configuration.
 
-**Why this priority**: Supporting local key storage is essential for development flexibility. Developers and test environments cannot always access cloud services, so local key storage enables full-stack development.
+**Why this priority**: Supporting environment variable KEK injection is essential for development flexibility. Developers and test environments cannot always access AWS services, so environment variable support via existing `${env_var}` interpolation enables full-stack development without cloud dependencies.
 
-**Independent Test**: Can be fully tested by storing KEKs in local files with restricted permissions, encrypting/decrypting tokens with context, and verifying tokens persist correctly across application restarts.
-
-**Acceptance Scenarios**:
-
-1. **Given** the encryption backend is configured to use local file-based keys, **When** the application starts, **Then** KEK material is loaded from the configured file path
-2. **Given** local key files exist with restricted file permissions, **When** envelope encryption is used, **Then** only the application process can read the key material
-3. **Given** a token is encrypted and decrypted with local file-based keys and context, **When** the application restarts, **Then** the same local KEK can still decrypt previously encrypted tokens with the same context
-
----
-
-### User Story 4.5 - KEK from Environment Variables (Priority: P1)
-
-A developer or operator in a containerized environment needs to inject KEK material via environment variables instead of file paths. This enables easier deployment in container orchestration platforms where secrets are managed through environment variables or secret management systems that inject via environment.
-
-**Why this priority**: Environment variable support is essential for containerized deployments. Container platforms (Docker, Kubernetes) commonly use environment variables for secret injection, so supporting this pattern enables seamless integration with standard deployment practices.
-
-**Independent Test**: Can be fully tested by providing KEK via environment variable, encrypting/decrypting tokens, and verifying the KEK from environment is used correctly.
+**Independent Test**: Can be fully tested by setting ENCRYPTION_KEK environment variable, configuring `encryption.key_encryption_key: ${ENCRYPTION_KEK}`, encrypting/decrypting tokens with context, and verifying tokens persist correctly across application restarts.
 
 **Acceptance Scenarios**:
 
-1. **Given** the encryption backend is configured to use environment variables, **When** the KEK environment variable is set before application startup, **Then** KEK material is loaded from the environment variable
+1. **Given** the encryption configuration is set to `encryption.key_encryption_key: ${ENCRYPTION_KEK}` and ENCRYPTION_KEK environment variable is set before application startup, **When** the application starts, **Then** KEK material is loaded from the environment variable via interpolation
 2. **Given** KEK material is provided via environment variable, **When** tokens are encrypted and decrypted, **Then** the environment variable KEK is used correctly for both DEK wrapping and unwrapping
-3. **Given** the application is deployed with KEK in an environment variable, **When** the application restarts, **Then** tokens encrypted with previous environment KEK can still be decrypted if the environment variable is set to the same value
+3. **Given** a token is encrypted and decrypted with environment variable KEK and context, **When** the application restarts with the same ENCRYPTION_KEK value, **Then** the same KEK can still decrypt previously encrypted tokens with the same context
 
 ---
 
@@ -99,25 +83,25 @@ A developer using the session repository needs token envelope encryption to be t
 
 **Acceptance Scenarios**:
 
-1. **Given** a session with tokens and context (principal, service_id, session_id, purpose) is passed to the repository's `Create` method, **When** the session is stored, **Then** tokens are encrypted using envelope encryption with context binding and plaintext tokens are not stored
+1. **Given** a session with tokens and service_id context is passed to the repository's `Create` method, **When** the session is stored, **Then** tokens are encrypted using envelope encryption with service_id context binding and plaintext tokens are not stored
 2. **Given** a session is retrieved with the repository's `Get` method, **When** the session is returned, **Then** tokens are automatically decrypted using envelope encryption with context verification and available as plaintext
 3. **Given** the session repository is used normally, **When** envelope encryption/decryption happens, **Then** no manual encryption steps are required by calling code
 
 ---
 
-### User Story 6 - Encryption Context Prevents Token Reuse Across Contexts (Priority: P2)
+### User Story 6 - Encryption Context Prevents Token Reuse Across Services (Priority: P2)
 
-A security architect needs tokens to be bound to their specific usage context (principal, service_id, session_id, purpose) at the cryptographic level. Tokens encrypted in one context must not be usable in a different context, even if an attacker has access to ciphertext from both contexts.
+A security architect needs tokens to be bound to their specific service context (service_id) at the cryptographic level. Tokens encrypted for one service must not be usable for a different service, even if an attacker has access to ciphertext from both services.
 
-**Why this priority**: Encryption context adds defense in depth by binding tokens to specific contexts. While not essential for MVP, it's an important security enhancement that prevents cross-context token reuse attacks.
+**Why this priority**: Encryption context adds defense in depth by binding tokens to specific services. While not essential for MVP, it's an important security enhancement that prevents cross-service token reuse attacks.
 
-**Independent Test**: Can be fully tested by encrypting tokens with specific context values, attempting to decrypt with different context values, and verifying decryption fails at both the DEK and KEK verification layers.
+**Independent Test**: Can be fully tested by encrypting tokens with specific service context values, attempting to decrypt with different service context values, and verifying decryption fails at both the DEK and KEK verification layers.
 
 **Acceptance Scenarios**:
 
-1. **Given** a token is encrypted with encryption context `{"principal": "user@example.com", "service_id": "oauth2", "session_id": "ABC123", "purpose": "access"}`, **When** decryption is attempted with matching context, **Then** decryption succeeds
-2. **Given** a token encrypted with specific context, **When** decryption is attempted with different principal, service_id, session_id, or purpose values, **Then** decryption fails at both DEK verification and KEK unwrapping
-3. **Given** tokens with different contexts stored in the database, **When** an attacker tries to use ciphertext from one context with a different context, **Then** both DEK decryption and KEK unwrapping fail, and the attack is prevented
+1. **Given** a token is encrypted with encryption context `{"service_id": "oauth2"}`, **When** decryption is attempted with matching context, **Then** decryption succeeds
+2. **Given** a token encrypted for one service, **When** decryption is attempted with a different service_id value, **Then** decryption fails at both DEK verification and KEK unwrapping
+3. **Given** tokens for different services stored in the database, **When** an attacker tries to use ciphertext from one service with a different service_id, **Then** both DEK decryption and KEK unwrapping fail, and the attack is prevented
 
 ---
 
@@ -153,12 +137,12 @@ A forward-thinking security team wants the encryption vault to support post-quan
 
 - **FR-001**: System MUST use envelope encryption to encrypt OAuth tokens: a unique Data Encryption Key (DEK) encrypts the token with context binding, and the DEK is wrapped (encrypted) by a Key Encryption Key (KEK) with the same context
 - **FR-002**: System MUST generate a fresh DEK for each token encryption with cryptographically secure randomness (minimum 256 bits entropy)
-- **FR-003**: System MUST bind encryption context (principal, service_id, session_id, purpose) to the DEK encryption as authenticated additional data
+- **FR-003**: System MUST bind encryption context (service_id) to the DEK encryption as authenticated additional data
 - **FR-004**: System MUST bind the same encryption context to the KEK wrapping operation (DEK wrapping with authenticated encryption)
 - **FR-005**: System MUST wrap the DEK using the KEK with context verification and store the wrapped DEK alongside the encrypted token
 - **FR-006**: System MUST decrypt tokens by first unwrapping the DEK using the KEK (verifying context), then using the DEK to decrypt the token (verifying context)
 - **FR-007**: System MUST reject token decryption if context verification fails at either the DEK layer or the KEK layer
-- **FR-008**: System MUST support configurable KEK storage backends: externalized key management service and local file-based storage
+- **FR-008**: System MUST support configurable KEK storage via single `encryption.key_encryption_key` field: AWS KMS ARN for production or `${ENCRYPTION_KEK}` for environment variable injection
 - **FR-009**: System MUST automatically decrypt OAuth tokens when retrieving sessions, performing DEK unwrapping and token decryption transparently with context verification
 - **FR-010**: System MUST encode encrypted tokens in base64 for safe storage in database columns
 - **FR-011**: System MUST validate KEK is accessible before the application starts (fail-fast on startup if KEK unavailable)
@@ -178,11 +162,11 @@ A forward-thinking security team wants the encryption vault to support post-quan
 
 **Aggregates** (consistency boundaries):
 
-- **OAuthTokenVault**: Root aggregate managing envelope encryption/decryption. Manages DEK generation, DEK encryption with context, DEK wrapping with KEK and context, and transparent integration at the repository layer
+- **UserSession** (existing): Aggregate root extended to support envelope encryption. Storage adapters handle transparent encryption/decryption via EncryptionPort, with DEK generation, context binding, and KEK wrapping managed by the encryption adapter.
 
 **Value Objects** (things without identity):
 
-- **EncryptionContext**: Map containing exactly four token metadata fields: principal (user identity), service_id (OAuth service), session_id (session identifier), purpose (token usage type). Immutable and bound to both DEK encryption and KEK wrapping
+- **EncryptionContext**: Map containing exactly one field: service_id (OAuth service identifier). Immutable and bound to both DEK encryption and KEK wrapping as authenticated additional data (AAD). Optimizes key management operations while providing service-level separation of encrypted tokens.
 - **WrappedEnvelope**: Represents the complete encrypted output: token ciphertext with DEK context verification, wrapped (encrypted) DEK with KEK context verification, and authentication metadata
 
 **Domain Events** (state changes of business significance):
@@ -197,23 +181,21 @@ A forward-thinking security team wants the encryption vault to support post-quan
 
 **Configuration Parameters**:
 
-The system supports two KEK storage mechanisms:
+The system uses a single unified configuration parameter that supports both AWS KMS and environment variable KEK storage via the existing `${env_var}` interpolation:
 
-1. **Externalized key management** - for production deployments with centralized key management, audit logging, and access controls
-2. **Environment-injected KEK** - for development and containerized deployments where KEK material is provided via environment variables
+- **`encryption.key_encryption_key`**: Single field accepting either an AWS KMS ARN or `${ENCRYPTION_KEK}` for environment variable interpolation
+  - **AWS KMS (production)**: `arn:aws:kms:region:account-id:key/key-id` or `arn:aws:kms:region:account-id:alias/alias-name`
+  - **Environment variable (development/containers)**: `${ENCRYPTION_KEK}` - resolves to the ENCRYPTION_KEK environment variable at runtime
 
-Configuration is managed via environment variables leveraging the existing `.env` configuration approach:
-- If externalized key management is configured, the system uses it
-- Otherwise, the system uses KEK material from the ENCRYPTION_KEK environment variable
-- At most one mechanism should be active for any deployment
+The system automatically detects the KEK type by checking if the value is an AWS KMS ARN or an environment variable reference, and configures the appropriate AWS Encryption SDK keyring accordingly.
 
-**Configuration Location**: Encryption configuration is integrated into the existing `.env` configuration approach from feature 002-flexible-configuration
+**Configuration Location**: Encryption configuration is integrated into the existing `.env` configuration approach from feature 002-flexible-configuration, leveraging the platform's native `${env_var}` interpolation support.
 
 ### API Requirements
 
 - **API-001**: Encryption port interface MUST define `Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error)` performing envelope encryption with DEK (binding context) + KEK wrapping (binding context)
 - **API-002**: Encryption port interface MUST define `Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]string) ([]byte, error)` performing envelope decryption with DEK unwrapping (verifying context) and token decryption (verifying context)
-- **API-003**: EncryptionContext parameter MUST contain exactly four keys: principal, service_id, session_id, purpose
+- **API-003**: EncryptionContext parameter MUST contain exactly one key: service_id (OAuth service identifier)
 - **API-004**: Session repository MUST accept configured encryption backend and transparently perform envelope encryption/decryption on tokens with context binding from session data
 - **API-005**: Configuration system MUST support encryption settings via `config.encryption.*` namespace
 - **API-006**: All encryption/decryption operations MUST be context-aware and respect context deadlines
@@ -225,40 +207,42 @@ Configuration is managed via environment variables leveraging the existing `.env
 - **SR-001**: Encryption MUST use envelope encryption with two key layers: DEK for token encryption and KEK for DEK wrapping
 - **SR-002**: DEK MUST be unique for each token, generated with cryptographically secure randomness (minimum 256 bits entropy)
 - **SR-003**: Encryption MUST use authenticated encryption (AEAD ciphers) ensuring both confidentiality and integrity of tokens
-- **SR-004**: Encryption MUST prevent chosen-ciphertext attacks through authenticated encryption and commitment policies
-- **SR-005**: DEK encryption MUST bind encryption context (principal, service_id, session_id, purpose) as authenticated additional data (AAD)
-- **SR-006**: DEK wrapping MUST bind the same encryption context as authenticated additional data to the KEK wrapping operation
-- **SR-007**: Context verification MUST fail the entire decryption if context does not match at either DEK or KEK layer
-- **SR-008**: Post-quantum cryptography algorithms (if enabled) MUST use NIST-approved or IETF-standardized algorithms
+- **SR-004**: Encryption MUST use AWS Encryption SDK with AESGCMSIV (Encrypt-then-MAC with counter mode) for authenticated encryption
+- **SR-005**: DEK encryption MUST bind encryption context (service_id) as authenticated additional data (AAD)
+- **SR-006**: DEK wrapping MUST bind the same encryption context (service_id) as authenticated additional data to the KEK wrapping operation
+- **SR-007**: Context verification MUST fail the entire decryption if context (service_id) does not match at either DEK or KEK layer
+- **SR-008**: Encryption MUST prevent chosen-ciphertext attacks through authenticated encryption (AESGCMSIV authentication tag)
+- **SR-009**: Post-quantum cryptography support via Go 1.24+ and AWS Encryption SDK MUST be available for future deployment
 
 #### Key Management Requirements
 
-- **SR-009**: KEK MUST be securely stored following industry best practices: externalized in centralized key management service for production or locally with restricted file permissions for development
-- **SR-010**: KEK MUST NEVER exist in plaintext in application memory during normal operation (only in use for wrapping/unwrapping operations)
-- **SR-011**: KEK MUST NEVER be stored in plaintext in logs, configuration files, or debug output
-- **SR-012**: External key management service (when configured) MUST support audit logging of all KEK operations (wrapping and unwrapping)
-- **SR-013**: Local KEK files MUST be created with restrictive permissions (0600) readable only by the application process
-- **SR-014**: System MUST validate KEK accessibility at startup and fail fast if KEK cannot be accessed
+- **SR-010**: KEK MUST be securely stored following industry best practices: AWS KMS for production or environment variable injection for development/containers
+- **SR-011**: KEK MUST support key rotation with backward compatibility—tokens encrypted with previous KEK versions MUST remain decryptable after rotation
+- **SR-012**: KEK MUST NEVER exist in plaintext in application memory during normal operation (only in use for wrapping/unwrapping operations)
+- **SR-013**: KEK MUST NEVER be stored in plaintext in logs, configuration files (beyond `${ENCRYPTION_KEK}` variable reference), or debug output
+- **SR-014**: AWS KMS key operations (when configured) MUST support audit logging of all KEK operations (wrapping and unwrapping) via AWS CloudTrail
+- **SR-015**: Environment variable KEK injection (when configured) MUST NOT expose the KEK in error logs, stack traces, or application logs; AWS Encryption SDK MUST handle KEK securely from environment
+- **SR-016**: System MUST validate KEK accessibility at startup and fail fast if KEK cannot be accessed
 
 #### Buffer and Memory Requirements
 
-- **SR-015**: Plaintext OAuth tokens MUST be zeroed from memory after use via secure buffer handling (defer statements or equivalent)
-- **SR-016**: DEK material MUST be zeroed from memory after use (after DEK wrapping during encryption, after DEK unwrapping during decryption)
-- **SR-017**: Plaintext DEK MUST NOT persist in memory across multiple operations
-- **SR-018**: KEK and DEK material MUST be protected against swapping to disk (memory locking) when possible
-- **SR-019**: Core dumps MUST NOT contain plaintext KEK or DEK material (enable core dump exclusion for sensitive memory regions when supported)
-- **SR-020**: All sensitive buffers (plaintext tokens, DEK, KEK) MUST be handled with memory protection best practices (no copying to temporary buffers, no intermediate allocations)
+- **SR-017**: Plaintext OAuth tokens MUST be zeroed from memory after use via secure buffer handling using memguard library (defer statements with secure cleanup)
+- **SR-018**: DEK material MUST be zeroed from memory after use (after DEK wrapping during encryption, after DEK unwrapping during decryption) using memguard
+- **SR-019**: Plaintext DEK MUST NOT persist in memory across multiple operations (single-use temporary buffers)
+- **SR-020**: KEK and DEK material MUST be protected against swapping to disk (memory locking via memguard) when possible
+- **SR-021**: Core dumps MUST NOT contain plaintext KEK or DEK material (core dump exclusion via memguard)
+- **SR-022**: All sensitive buffers (plaintext tokens, DEK, KEK) MUST be handled with memguard library providing secure cleanup, memory locking, and core dump exclusion
 
 #### Operational Security Requirements
 
-- **SR-021**: All token encryption/decryption operations MUST be auditable: successes logged with operation type and context fields, failures logged with sufficient context for debugging
-- **SR-022**: OAuth tokens MUST NOT be logged as plaintext in any logs or error messages
-- **SR-023**: Encryption keys (DEK and KEK) MUST NOT be logged in any logs or error messages
-- **SR-024**: System MUST NOT silently fall back to plaintext token storage if envelope encryption fails
-- **SR-025**: System MUST NOT silently fall back to plaintext tokens if decryption fails
-- **SR-026**: Decryption failures MUST result in application-level failures, not silent acceptance of corrupted data
-- **SR-027**: Context verification failures MUST cause immediate decryption failure with no fallback or retry
-- **SR-028**: All DEK and KEK operations MUST include context verification as integral part of cryptographic operations
+- **SR-023**: All token encryption/decryption operations MUST be auditable: successes logged with operation type and context fields, failures logged with sufficient context for debugging
+- **SR-024**: OAuth tokens MUST NOT be logged as plaintext in any logs or error messages
+- **SR-025**: Encryption keys (DEK and KEK) MUST NOT be logged in any logs or error messages
+- **SR-026**: System MUST NOT silently fall back to plaintext token storage if envelope encryption fails
+- **SR-027**: System MUST NOT silently fall back to plaintext tokens if decryption fails
+- **SR-028**: Decryption failures MUST result in application-level failures, not silent acceptance of corrupted data
+- **SR-029**: Context verification failures MUST cause immediate decryption failure with no fallback or retry
+- **SR-030**: All DEK and KEK operations MUST include context verification (service_id) as integral part of cryptographic operations
 
 ### Performance Requirements
 
@@ -268,9 +252,9 @@ Configuration is managed via environment variables leveraging the existing `.env
 
 ### Key Entities
 
-- **EncryptedOAuthToken**: Encapsulates encrypted token envelope with wrapped DEK and context
+- **EncryptedOAuthToken**: Encapsulates encrypted token envelope with wrapped DEK and service_id context
 - **EncryptionConfig**: Manages KEK storage backend configuration
-- **OAuthTokenVault**: Core aggregate managing DEK generation, DEK encryption with context binding, and envelope encryption/decryption
+- **EncryptionPort**: Interface for envelope encryption/decryption, implemented by AWS SDK adapter
 
 ## Success Criteria *(mandatory)*
 
@@ -278,7 +262,7 @@ Configuration is managed via environment variables leveraging the existing `.env
 
 - **SC-001**: Envelope encryption is implemented—100% of OAuth tokens are encrypted using DEK + wrapped KEK with context binding, 0% plaintext
 - **SC-002**: DEK generation is cryptographically secure—each token has a unique DEK generated with minimum 256 bits entropy
-- **SC-003**: Context binding is enforced—encryption context (principal, service_id, session_id, purpose) is bound to both DEK encryption and KEK wrapping
+- **SC-003**: Context binding is enforced—encryption context (service_id) is bound to both DEK encryption and KEK wrapping
 - **SC-004**: Context verification prevents cross-context reuse—tokens encrypted in one context cannot be decrypted in a different context
 - **SC-005**: KEK security follows industry best practices—KEKs are securely stored (externalized or locally with 0600 permissions), never in plaintext
 - **SC-006**: External key management works—tokens encrypted/decrypted via external KMS with zero plaintext KEKs on disk
@@ -293,24 +277,38 @@ Configuration is managed via environment variables leveraging the existing `.env
 ## Assumptions
 
 - OAuth token size is typically 1-10 KB (standard OAuth2 token sizes with JWTs)
-- Encryption context fields (principal, service_id, session_id, purpose) are available from session data at encryption and decryption time
-- External key management service is available for production deployments and supports key versioning/rotation
-- Cryptographic library supports authenticated encryption ciphers with AAD (Additional Authenticated Data) and will support post-quantum algorithms in future versions
-- Local key material is stored on secure, non-networked storage
+- Encryption context field (service_id) is available from session data at encryption and decryption time
+- AWS KMS is available for production deployments, supports key versioning/rotation, and supports backward compatibility after rotation
+- AWS Encryption SDK supports authenticated encryption with AESGCMSIV and includes post-quantum cryptography support via Go 1.24+
+- Environment variable interpolation (`${env_var}`) is available in the configuration system for development/container KEK injection
 - Session repository from feature 005-session-management is available and can be extended with envelope encryption
-- Operators manage KEKs according to organizational security policies and best practices
-- DEK context binding is enforced as integral part of the encryption/decryption algorithm, not as separate validation step
+- memguard library is available for memory protection (buffer zeroing, memory locking, core dump exclusion)
+- Operators manage KEKs (AWS KMS keys or environment variables) according to organizational security policies and best practices
+- DEK context binding (service_id) is enforced as integral part of the encryption/decryption algorithm via AWS Encryption SDK, not as separate validation step
+- Configuration system properly handles sensitive values and prevents KEK exposure in logs via existing security practices
+
+## Clarifications
+
+### Session 2026-01-15
+
+- Q: Should OAuthTokenVault aggregate exist or should storage adapters call EncryptionPort directly? → A: Remove OAuthTokenVault, storage adapters call EncryptionPort directly
+- Q: Pre-commit to AWS Encryption SDK algorithms or keep algorithm-agnostic? → A: Pre-commit to AWS Encryption SDK (AESGCMSIV)
+- Q: Is backward compatibility across KEK key rotations required? → A: Yes, support backward compatibility with old KEK versions
+- Q: Mandate memguard library for memory protection or remain agnostic? → A: Mandate memguard library
+- Q: EncryptionContext fields optimization? → A: Reduce to service_id only (removes redundancy with principal, session_id, purpose)
+- Q: Configuration design for KEK storage (separate backends vs. unified field)? → A: Single `encryption.key_encryption_key` field with `${env_var}` interpolation (leverages existing config system, AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development)
+- Q: Update all context references from 4-field to service_id only for consistency? → A: Yes, update all user stories, functional requirements, and success criteria to reflect service_id-only context
 
 ## Notes
 
-This specification uses **Envelope Encryption** with two key layers and context binding at the DEK level: Data Encryption Keys (DEK) that encrypt individual tokens with encryption context as authenticated additional data, and Key Encryption Keys (KEK) that wrap (encrypt) the DEKs with the same context as authenticated additional data. Each token encryption generates a fresh, random DEK, binds context during encryption, and the DEK is wrapped by the KEK with context verification. Context verification happens at both layers: DEK decryption verifies context, and DEK unwrapping verifies context. Mismatch at either layer causes decryption to fail immediately.
+This specification uses **Envelope Encryption** with two key layers and context binding at the DEK level: Data Encryption Keys (DEK) that encrypt individual tokens with encryption context (service_id) as authenticated additional data, and Key Encryption Keys (KEK) that wrap (encrypt) the DEKs with the same context as authenticated additional data. Each token encryption generates a fresh, random DEK, binds service_id context during encryption, and the DEK is wrapped by the KEK with context verification. Context verification happens at both layers: DEK decryption verifies context, and DEK unwrapping verifies context. Mismatch at either layer causes decryption to fail immediately.
 
-The KEK is securely stored following industry best practices: externalized in a centralized key management service (for production) with audit logging and access controls, or locally with restricted file permissions (for development). The system explicitly forbids plaintext fallback and requires fail-closed behavior if KEK access or context verification fails at any point.
+The KEK is securely stored following industry best practices: externalized in a centralized key management service (for production) with audit logging and access controls, or locally with restricted file permissions (for development). The system explicitly forbids plaintext fallback and requires fail-closed behavior if KEK access or context verification fails at any point. KEK key rotation is supported with backward compatibility—tokens encrypted with previous KEK versions remain decryptable after rotation.
 
-Encryption context consists of exactly four fields from the sessions table: principal (user identity), service_id (OAuth service identifier), session_id (session identifier), and purpose (token usage type). These fields bind each token to its specific usage context, preventing token reuse across contexts.
+Encryption context consists of a single field: service_id (OAuth service identifier). This field binds each token to its service, providing defense-in-depth separation across services and optimizing key management operations. Memory protection uses the memguard library to protect plaintext tokens, DEKs, and KEKs through secure buffer handling, memory locking, and core dump exclusion.
 
-Implementation will determine specific cryptographic algorithms, authentication modes, and key sizes during the planning phase based on the project's cryptographic library and compliance requirements.
+Implementation uses AWS Encryption SDK with AESGCMSIV (Encrypt-then-MAC with counter mode) for authenticated encryption, providing battle-tested cryptographic implementation and future post-quantum cryptography support via Go 1.24+.
 
 ---
 
-**Version**: 1.0 | **Status**: Draft | **Last Updated**: 2026-01-14
+**Version**: 1.3 | **Status**: Draft | **Last Updated**: 2026-01-15 | **Clarifications Applied**: 7 clarification questions resolved
