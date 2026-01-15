@@ -136,7 +136,7 @@ A forward-thinking security team wants the encryption vault to support post-quan
 ### Functional Requirements
 
 - **FR-001**: System MUST use envelope encryption to encrypt OAuth tokens: a unique Data Encryption Key (DEK) encrypts the token with context binding, and the DEK is wrapped (encrypted) by a Key Encryption Key (KEK) with the same context
-- **FR-002**: System MUST generate a fresh DEK for each token encryption with cryptographically secure randomness (minimum 256 bits entropy)
+- **FR-002**: System MUST generate a fresh DEK for each session with cryptographically secure randomness (minimum 256 bits entropy)
 - **FR-003**: System MUST bind encryption context (service_id) to the DEK encryption as authenticated additional data
 - **FR-004**: System MUST bind the same encryption context to the KEK wrapping operation (DEK wrapping with authenticated encryption)
 - **FR-005**: System MUST wrap the DEK using the KEK with context verification and store the wrapped DEK alongside the encrypted token
