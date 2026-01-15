@@ -32,7 +32,7 @@
 - [x] Scope is clearly bounded
   - Feature focuses exclusively on encrypting OAuth tokens using envelope encryption
   - Supports multiple deployment models (externalized key management and environment-injected KEK)
-  - Explicit context binding (principal, service_id, session_id, purpose)
+  - Explicit context binding (service_id)
 - [x] Dependencies and assumptions identified
   - Assumptions section documents key dependencies
   - Externalized key management availability for production

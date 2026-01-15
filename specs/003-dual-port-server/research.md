@@ -259,7 +259,7 @@ server:
 - `internal/domain/server/lifecycle.go`: Server state management (starting, running, shutting_down, stopped)
 
 **Entry Point**:
-- `cmd/identity-broker/main.go`: Initializes dependencies, starts manager, handles signals
+- `cmd/agentic-identity-broker/main.go`: Initializes dependencies, starts manager, handles signals
 
 ### Testing Strategy
 
