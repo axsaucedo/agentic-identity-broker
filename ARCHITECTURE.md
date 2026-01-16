@@ -579,6 +579,24 @@ Define any project-specific terms or acronyms.)
 
 **Encryption Context**: Additional authenticated data (AAD) included in token encryption. Binds ciphertext to principal, service_id, session_id, and purpose ("oauth2_token"). Stored as JSONB in PostgreSQL. Used for auditing and prevents cross-context token usage (tokens encrypted for one session cannot be decrypted for another).
 
+### RFC 8693 Token Exchange
+
+**TokenExchangeRequest**: RFC 8693 token exchange request containing grant_type, subject_token, client_assertion, and resource parameters. Parsed from form-urlencoded POST body to /oauth2/token endpoint. Immutable value object after parsing.
+
+**TokenExchangeResponse**: RFC 8693 compliant response containing access_token, token_type, issued_token_type, and optional expires_in. Returned as JSON from successful token exchange. Format enables clients to use the exchanged token with third-party services.
+
+**ClientAssertion**: JWT authenticating the gateway (API gateway or reverse proxy) making the token exchange request. Contains gateway identifier in 'sub' claim. Validated against upstream OAuth2 server's JWKS. Represents the gateway's identity and authorization to perform token exchange.
+
+**SubjectToken**: JWT containing both user principal and agent identifier from the upstream OAuth2 server. Principal extracted via configurable CEL expression (default: sub claim). Agent identifier extracted via configurable CEL expression (default: azp claim). Identifies the end-user and agent on whose behalf token exchange is requested.
+
+**ResourceURI**: URI identifying the target resource or third-party service for token exchange. Normalized (trailing slashes removed) before storage and lookup. Matched against service protected_resources to determine which third-party service to exchange tokens for. Example: "https://api.github.com" or "https://github.com/api/v3".
+
+**Gateway**: API gateway or reverse proxy that initiates token exchange on behalf of agents. Authenticates using client_assertion JWT. Acts as intermediary between agent and identity broker, passing through user's subject_token for exchange.
+
+**CEL Authorization**: Common Expression Language policy evaluation for gateway authorization. Expression evaluated against client_assertion claims and request context. Expression must return boolean; defaults to "true" (allow all valid gateways). Enables flexible authorization policies beyond basic JWT validation.
+
+**Protected Resources**: Array of normalized resource URIs on ThirdpartyOAuth2Service that identify which resources map to that service for RFC 8693 token exchange. Used to discover correct service when processing token exchange requests. URIs are normalized (trailing slashes removed) for consistent matching. Stored as TEXT[] column in PostgreSQL with GIN index for efficient lookups.
+
 ### General Acronyms
 
 **ADR**: Architecture Decision Record - Documents important architectural decisions and their rationale

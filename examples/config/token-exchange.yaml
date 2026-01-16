@@ -1,0 +1,108 @@
+# RFC 8693 OAuth 2.0 Token Exchange Configuration Example
+# This configuration enables the identity broker to exchange tokens on behalf of gateways,
+# allowing agents to access third-party OAuth2 services using user credentials previously
+# authenticated with the upstream OAuth2 server.
+
+# Token exchange configuration
+token_exchange:
+  # Claim extraction configures CEL expressions to extract claims from subject_token
+  claim_extraction:
+    # principal_expression extracts the user principal/subject from the subject_token JWT.
+    # Expression should return a string representing the authenticated user.
+    # Default: "subject_token.sub" (extracts the 'sub' claim)
+    # Examples:
+    #   - "subject_token.sub"                    # Standard sub claim
+    #   - "subject_token.email"                  # Custom: use email claim
+    #   - "subject_token.preferred_username"     # Custom: use preferred_username
+    principal_expression: "subject_token.sub"
+
+    # agent_client_id_expression extracts the agent/application client ID from subject_token.
+    # Expression should return a string identifying the requesting agent.
+    # Default: "subject_token.azp" (extracts the 'azp' claim - authorized party)
+    # Examples:
+    #   - "subject_token.azp"                    # Standard azp claim (authorized party)
+    #   - "subject_token.client_id"              # Custom: use client_id claim
+    #   - "subject_token.claims.agent_id"        # Custom: use nested claim
+    agent_client_id_expression: "subject_token.azp"
+
+  # Authorization configures gateway authorization rules
+  authorization:
+    # type specifies the authorization method to use
+    # Options:
+    #   - "cel": CEL expression-based authorization (current implementation)
+    #   - "opa": OPA policy engine (reserved for future implementation)
+    type: "cel"
+
+    # CEL authorization configuration
+    cel:
+      # expression is a CEL boolean expression evaluated for each request
+      # Expression context includes:
+      #   - client_assertion: validated client assertion JWT claims (gateway identity)
+      #   - subject_token: validated subject token JWT claims (user identity)
+      #   - request: request context with resource, grant_type, scope
+      #
+      # Expression must return a boolean:
+      #   - true: authorization succeeds, proceed with token exchange
+      #   - false: authorization fails, return 403 access_denied error
+      #
+      # Default: "true" (allow all valid gateways with valid JWTs)
+      #
+      # Examples:
+      #   - 'true'                                                        # Allow all
+      #   - 'client_assertion.iss == "https://trusted-gateway.example.com"'  # Only trusted issuer
+      #   - 'client_assertion.sub in ["gateway-1", "gateway-2"]'        # Whitelist specific gateways
+      #   - 'client_assertion.claims.tier == "production"'              # Only production gateways
+      #   - 'has(client_assertion.claims.org_id) && client_assertion.claims.org_id == subject_token.claims.org_id'  # Same org
+      #   - '"admin" in subject_token.claims.roles'                     # Only admin users
+      expression: 'true'
+
+  # Refresh configures automatic token refresh behavior
+  refresh:
+    # enabled determines whether expired access tokens should be automatically refreshed
+    # using the stored refresh_token.
+    # Default: true (enable automatic refresh)
+    # Options:
+    #   - true: If access_token is expired but refresh_token is valid, attempt refresh
+    #   - false: Never attempt refresh; return invalid_grant error for expired tokens
+    enabled: true
+
+# EXTERNAL CONFIGURATION REFERENCE
+# ================================
+# The following existing configuration is used alongside token_exchange config:
+#
+# upstream_oauth2:
+#   issuer: "https://auth.example.com"              # Must match client_assertion and subject_token iss claim
+#   jwks_uri: "https://auth.example.com/.well-known/jwks.json"  # JWKS endpoint for JWT validation
+#   # (other upstream OAuth2 config)
+#
+# These are referenced in token exchange but configured separately in the main config.yaml
+
+# COMPLETE MINIMAL EXAMPLE
+# ========================
+# token_exchange:
+#   claim_extraction:
+#     principal_expression: "subject_token.sub"
+#     agent_client_id_expression: "subject_token.azp"
+#   authorization:
+#     type: "cel"
+#     cel:
+#       expression: "true"
+#   refresh:
+#     enabled: true
+
+# COMPLETE PRODUCTION EXAMPLE WITH AUTHORIZATION
+# ===============================================
+# token_exchange:
+#   claim_extraction:
+#     principal_expression: "subject_token.sub"
+#     agent_client_id_expression: "subject_token.azp"
+#   authorization:
+#     type: "cel"
+#     cel:
+#       # Only allow token exchange from specific trusted gateway
+#       # and only if the user has admin role
+#       expression: |
+#         client_assertion.sub == "trusted-gateway-prod" &&
+#         "admin" in subject_token.claims.roles
+#   refresh:
+#     enabled: true

@@ -1133,6 +1133,19 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/OAuth2Scope'
+        protected_resources:
+          type: array
+          description: |
+            List of protected resource URIs for RFC 8693 token exchange.
+            These URIs identify which resources this service can provide tokens for.
+            URIs are normalized (trailing slashes removed) for consistent matching.
+            Example: ["https://api.github.com", "https://github.com/api/v3"]
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
         created_at:
           type: string
           format: date-time
@@ -1197,6 +1210,18 @@ components:
               description: Full control of private repositories
             - scope_value: read:org
               description: Read organization membership
+        protected_resources:
+          type: array
+          description: |
+            List of protected resource URIs for RFC 8693 token exchange (optional).
+            These URIs identify which resources this service can provide tokens for.
+            URIs are normalized (trailing slashes removed) for consistent matching.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
 
     ServiceUpdateRequest:
       type: object
@@ -1243,6 +1268,18 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/OAuth2ScopeRequest'
+        protected_resources:
+          type: array
+          description: |
+            List of protected resource URIs for RFC 8693 token exchange (optional).
+            These URIs identify which resources this service can provide tokens for.
+            URIs are normalized (trailing slashes removed) for consistent matching.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
 
     DiscoveryConfig:
       type: object

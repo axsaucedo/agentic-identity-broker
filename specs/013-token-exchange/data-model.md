@@ -640,6 +640,54 @@ DROP COLUMN IF EXISTS protected_resources;
 
 ---
 
+## Domain Invariants
+
+These invariants MUST be maintained at all times and are enforced through validation, database constraints, or business logic:
+
+### JWT Validation Invariants
+
+1. **JWT Validation Mandatory**: Every token exchange request MUST validate both client_assertion and subject_token JWTs against the upstream OAuth2 server's JWKS. There is NO bypass configuration or mode where JWT validation can be disabled.
+
+2. **Signature Verification**: JWT signatures MUST be verified using lestrrat-go/jwx/v3 library with no custom cryptographic implementations. Validation failure results in immediate request denial.
+
+3. **Issuer Verification**: Both client_assertion and subject_token issuers (iss claim) MUST match the configured upstream_oauth2.issuer value. Mismatch results in immediate rejection.
+
+4. **Expiration Check**: Token expiration (exp claim) MUST be checked before processing. Expired tokens are rejected with invalid_request error. Clock skew tolerance is configurable but defaults to 60 seconds.
+
+5. **Audience Validation**: client_assertion audience (aud claim) MUST include the broker's configured identifier. JWKS verification prevents audience spoofing.
+
+### Authorization Invariants
+
+6. **UserGrant Verification Required**: Token exchange MUST verify that the user has an active, non-revoked, non-expired grant for the (principal, agent_client_id, service_id) combination. Missing grants return 403 access_denied with specific error description.
+
+7. **Grant Status Checks**: A grant is only valid if: (a) status is "active" (not "revoked"), (b) valid_until is null OR valid_until > NOW(), and (c) the grant contains a delegated_token for the target service.
+
+8. **CEL Authorization Enforced**: If authorization.type is "cel", the configured CEL expression MUST be evaluated and return true for authorization to proceed. False return results in 403 access_denied.
+
+### Resource Discovery Invariants
+
+9. **Resource URI Normalization**: All resource URIs MUST be normalized (trailing slashes removed) consistently for storage and lookup. Example: "https://api.github.com/" becomes "https://api.github.com" before storage and comparison.
+
+10. **Exact Resource Match**: Resource lookup uses exact string matching on normalized URIs. Both ambiguous matches (multiple services) and no-match cases return 400 invalid_target error with descriptive error_description.
+
+11. **Database Query Correctness**: PostgreSQL FindByProtectedResource MUST use the GIN index with @> operator for performant array containment queries. In-memory storage uses iterative matching of resource arrays.
+
+### Session & Token Invariants
+
+12. **Token Refresh Logic**: If access_token is expired but refresh_token is valid, system MUST attempt automatic refresh using the stored refresh_token. If refresh fails or refresh is disabled (refresh.enabled=false), return 400 invalid_grant error.
+
+13. **No Token Duplication**: Only one (principal, service_id) session can exist at any time (enforced by database unique constraint). Tokens are stored encrypted in token vault.
+
+14. **Session Lookup Order**: When tokens don't exist, grant verification MUST occur before session lookup to distinguish between "no grant" (403 access_denied) and "no session" (400 invalid_grant) error codes.
+
+### Configuration Invariants
+
+15. **CEL Expression Validation at Startup**: All CEL expressions (principal_expression, agent_client_id_expression, authorization.cel.expression) MUST be validated at application startup. Syntax errors cause application startup failure with clear error messages.
+
+16. **Configuration Immutability**: TokenExchangeConfig is loaded once at startup and never changed during runtime. Configuration changes require application restart.
+
+---
+
 ## Glossary Additions (for ARCHITECTURE.md)
 
 | Term | Definition |

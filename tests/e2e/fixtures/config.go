@@ -71,6 +71,19 @@ func DefaultOAuth2Config() *ports.Config {
 			StateTokenTTL:      10 * time.Minute,
 			PKCEVerifierLength: 32,
 		},
+		TokenExchange: ports.TokenExchangeConfig{
+			ClaimExtraction: ports.ClaimExtractionConfig{
+				PrincipalExpression:     "subject_token.sub",
+				AgentClientIDExpression: "subject_token.azp",
+			},
+			Authorization: ports.AuthorizationConfig{
+				Type: "cel",
+				CEL: ports.CELAuthorizationConfig{
+					Expression:        "true",
+					EvaluationTimeout: 100 * time.Millisecond,
+				},
+			},
+		},
 	}
 }
 
@@ -122,5 +135,37 @@ func OAuth2ConfigWithPublicURL(publicURL string) *ports.Config {
 func OAuth2ConfigWithStorage(backend string) *ports.Config {
 	config := DefaultOAuth2Config()
 	config.Storage.Backend = backend
+	return config
+}
+
+// TokenExchangeConfigWithCELExpression returns a config with a custom CEL authorization expression.
+// Useful for testing different CEL authorization policies.
+// Expression: specified by caller (e.g., "claims.iss == 'https://auth.example.com'")
+// All other settings match DefaultOAuth2Config().
+func TokenExchangeConfigWithCELExpression(expression string) *ports.Config {
+	config := DefaultOAuth2Config()
+	config.TokenExchange.Authorization.CEL.Expression = expression
+	return config
+}
+
+// TokenExchangeConfigWithInvalidCELSyntax returns a config with an invalid CEL expression.
+// Used to test that invalid CEL syntax is caught at startup (per FR-017).
+// InvalidExpression: A malformed CEL expression that should fail compilation.
+// This is used in US4-S4 to test startup validation.
+func TokenExchangeConfigWithInvalidCELSyntax(invalidExpression string) *ports.Config {
+	config := DefaultOAuth2Config()
+	config.TokenExchange.Authorization.CEL.Expression = invalidExpression
+	return config
+}
+
+// TokenExchangeConfigWithClaimExtraction returns a config with custom claim extraction expressions.
+// Useful for testing different claim mapping strategies.
+// PrincipalExpr: CEL expression to extract principal (e.g., "subject_token.preferred_username")
+// AgentExpr: CEL expression to extract agent ID (e.g., "subject_token.client_id")
+// All other settings match DefaultOAuth2Config().
+func TokenExchangeConfigWithClaimExtraction(principalExpr, agentExpr string) *ports.Config {
+	config := DefaultOAuth2Config()
+	config.TokenExchange.ClaimExtraction.PrincipalExpression = principalExpr
+	config.TokenExchange.ClaimExtraction.AgentClientIDExpression = agentExpr
 	return config
 }

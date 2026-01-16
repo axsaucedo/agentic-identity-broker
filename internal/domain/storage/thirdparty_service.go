@@ -12,16 +12,17 @@ import (
 // ThirdpartyOAuth2Service represents an external OAuth2 provider that agents can access
 // on behalf of users (e.g., GitHub, Google, Databricks).
 type ThirdpartyOAuth2Service struct {
-	ID           string          `json:"id" db:"id"`
-	DisplayName  string          `json:"display_name" db:"display_name"`
-	ClientID     string          `json:"client_id" db:"client_id"`
-	ClientSecret string          `json:"-" db:"client_secret_encrypted"` // Never serialized to JSON
-	IssuerURI    string          `json:"issuer_uri" db:"issuer_uri"`
-	Discovery    DiscoveryConfig `json:"discovery" db:"-"`
-	Endpoints    OAuth2Endpoints `json:"endpoints" db:"-"`
-	Scopes       []OAuthScope    `json:"scopes" db:"scopes"`
-	CreatedAt    time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at" db:"updated_at"`
+	ID                 string          `json:"id" db:"id"`
+	DisplayName        string          `json:"display_name" db:"display_name"`
+	ClientID           string          `json:"client_id" db:"client_id"`
+	ClientSecret       string          `json:"-" db:"client_secret_encrypted"` // Never serialized to JSON
+	IssuerURI          string          `json:"issuer_uri" db:"issuer_uri"`
+	Discovery          DiscoveryConfig `json:"discovery" db:"-"`
+	Endpoints          OAuth2Endpoints `json:"endpoints" db:"-"`
+	Scopes             []OAuthScope    `json:"scopes" db:"scopes"`
+	ProtectedResources []string        `json:"protected_resources,omitempty" db:"protected_resources"` // RFC 8693 resource URIs
+	CreatedAt          time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at" db:"updated_at"`
 }
 
 // DiscoveryConfig holds OAuth2 endpoint discovery configuration.
@@ -189,9 +190,9 @@ func (s *ThirdpartyOAuth2Service) RedactedCopy() *ThirdpartyOAuth2Service {
 		return nil
 	}
 
-	copy := s.Copy()
-	copy.ClientSecret = "REDACTED"
-	return copy
+	result := s.Copy()
+	result.ClientSecret = "REDACTED"
+	return result
 }
 
 // Copy creates a deep copy of the ThirdpartyOAuth2Service.
@@ -200,7 +201,7 @@ func (s *ThirdpartyOAuth2Service) Copy() *ThirdpartyOAuth2Service {
 		return nil
 	}
 
-	copy := &ThirdpartyOAuth2Service{
+	result := &ThirdpartyOAuth2Service{
 		ID:           s.ID,
 		DisplayName:  s.DisplayName,
 		ClientID:     s.ClientID,
@@ -219,16 +220,20 @@ func (s *ThirdpartyOAuth2Service) Copy() *ThirdpartyOAuth2Service {
 
 	if s.Discovery.MetadataURL != nil {
 		metadataURL := *s.Discovery.MetadataURL
-		copy.Discovery.MetadataURL = &metadataURL
+		result.Discovery.MetadataURL = &metadataURL
 	}
 
 	// Deep copy scopes
-	copy.Scopes = make([]OAuthScope, len(s.Scopes))
+	result.Scopes = make([]OAuthScope, len(s.Scopes))
 	for i, scope := range s.Scopes {
-		copy.Scopes[i] = scope.Copy()
+		result.Scopes[i] = scope.Copy()
 	}
 
-	return copy
+	// Deep copy protected_resources
+	result.ProtectedResources = make([]string, len(s.ProtectedResources))
+	copy(result.ProtectedResources, s.ProtectedResources)
+
+	return result
 }
 
 // Scan implements sql.Scanner for JSONB deserialization of scopes.

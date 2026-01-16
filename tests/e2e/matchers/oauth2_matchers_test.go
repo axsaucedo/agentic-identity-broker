@@ -339,4 +339,116 @@ var _ = Describe("Matcher edge cases", func() {
 		Expect(negMsg).To(ContainSubstring("NOT"))
 		Expect(negMsg).To(ContainSubstring("redirect"))
 	})
+
+	It("should show human-readable status names in failure messages", func() {
+		w := httptest.NewRecorder()
+		w.WriteHeader(http.StatusBadRequest) // 400
+
+		matcher := matchers.HaveStatusCode(http.StatusConflict) // Expect 409
+		matches, _ := matcher.Match(w.Result())
+		Expect(matches).To(BeFalse())
+
+		failMsg := matcher.FailureMessage(w.Result())
+		Expect(failMsg).To(ContainSubstring("409 Conflict"))
+		Expect(failMsg).To(ContainSubstring("400 Bad Request"))
+	})
+})
+
+var _ = Describe("HaveTokenExchangeSuccess", func() {
+	It("should match a valid RFC 8693 token exchange response", func() {
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		tokenResponse := map[string]interface{}{
+			"access_token":      "test-token-123",
+			"token_type":        "Bearer",
+			"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+			"expires_in":        3600,
+		}
+		_ = json.NewEncoder(w).Encode(tokenResponse)
+
+		Expect(w.Result()).To(matchers.HaveTokenExchangeSuccess())
+	})
+
+	It("should validate specific field values when using With methods", func() {
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		tokenResponse := map[string]interface{}{
+			"access_token":      "github-token-xyz",
+			"token_type":        "Bearer",
+			"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+			"expires_in":        3600,
+		}
+		_ = json.NewEncoder(w).Encode(tokenResponse)
+
+		Expect(w.Result()).To(matchers.HaveTokenExchangeSuccess().
+			WithAccessToken("github-token-xyz").
+			WithTokenType("Bearer").
+			WithIssuedTokenType("urn:ietf:params:oauth:token-type:access_token").
+			WithExpiresIn(3600))
+	})
+
+	It("should fail if Content-Type is not application/json", func() {
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("plain text response"))
+
+		Expect(w.Result()).NotTo(matchers.HaveTokenExchangeSuccess())
+	})
+
+	It("should fail if required RFC 8693 fields are missing", func() {
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		// Missing issued_token_type field
+		tokenResponse := map[string]interface{}{
+			"access_token": "test-token",
+			"token_type":   "Bearer",
+		}
+		_ = json.NewEncoder(w).Encode(tokenResponse)
+
+		Expect(w.Result()).NotTo(matchers.HaveTokenExchangeSuccess())
+	})
+
+	It("should fail if expected field values do not match", func() {
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		tokenResponse := map[string]interface{}{
+			"access_token":      "actual-token",
+			"token_type":        "Bearer",
+			"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+		}
+		_ = json.NewEncoder(w).Encode(tokenResponse)
+
+		Expect(w.Result()).NotTo(matchers.HaveTokenExchangeSuccess().
+			WithAccessToken("expected-different-token"))
+	})
+
+	It("should provide detailed failure messages", func() {
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		// Missing issued_token_type
+		tokenResponse := map[string]interface{}{
+			"access_token": "test-token",
+			"token_type":   "Bearer",
+		}
+		_ = json.NewEncoder(w).Encode(tokenResponse)
+
+		matcher := matchers.HaveTokenExchangeSuccess()
+		matches, _ := matcher.Match(w.Result())
+		Expect(matches).To(BeFalse())
+
+		failMsg := matcher.FailureMessage(w.Result())
+		Expect(failMsg).To(ContainSubstring("RFC 8693"))
+		Expect(failMsg).To(ContainSubstring("issued_token_type"))
+	})
 })
