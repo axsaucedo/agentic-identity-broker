@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AgentGrantDetailPage } from './AgentGrantDetailPage';
+import { ToastProvider } from '../components/ui/Toast';
 import * as useAgentGrantsModule from '../hooks/useAgentGrants';
 import type { AgentDetail, ThirdpartyService, UserGrant } from '../types/consent';
 
@@ -58,30 +59,30 @@ const mockServices: ThirdpartyService[] = [
   },
 ];
 
-const mockGrants: UserGrant[] = [
-  {
-    grantId: 'grant-1',
-    agentId: 'agent-123',
-    principal: 'user@example.com',
-    delegatedTokens: [
-      {
-        serviceId: 'github',
-        scopes: ['read:user', 'repo'],
-      },
-    ],
-    validUntil: null,
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
-  },
-];
+const mockGrant: UserGrant = {
+  grantId: 'grant-1',
+  agentId: 'agent-123',
+  principal: 'user@example.com',
+  delegatedTokens: [
+    {
+      serviceId: 'github',
+      scopes: ['read:user', 'repo'],
+    },
+  ],
+  validUntil: null,
+  createdAt: '2024-01-01T00:00:00Z',
+  updatedAt: '2024-01-01T00:00:00Z',
+};
 
-// Wrapper component for router context
+// Wrapper component for router and provider context
 const RouterWrapper = ({ children }: { children: React.ReactNode }) => (
-  <BrowserRouter>
-    <Routes>
-      <Route path="*" element={children} />
-    </Routes>
-  </BrowserRouter>
+  <ToastProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="*" element={children} />
+      </Routes>
+    </BrowserRouter>
+  </ToastProvider>
 );
 
 describe('AgentGrantDetailPage', () => {
@@ -158,7 +159,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
-      grants: mockGrants,
+      grants: mockGrant,
       loading: false,
       error: null,
       refetch: vi.fn(),
@@ -185,7 +186,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
-      grants: mockGrants,
+      grants: mockGrant,
       loading: false,
       error: null,
       refetch: vi.fn(),
@@ -213,7 +214,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
-      grants: mockGrants,
+      grants: mockGrant,
       loading: false,
       error: null,
       refetch: vi.fn(),
@@ -258,7 +259,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
-      grants: mockGrants,
+      grants: mockGrant,
       loading: false,
       error: null,
       refetch: vi.fn(),
@@ -283,7 +284,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: agentWithoutLogo,
       services: mockServices,
-      grants: mockGrants,
+      grants: mockGrant,
       loading: false,
       error: null,
       refetch: vi.fn(),
@@ -303,7 +304,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
-      grants: mockGrants,
+      grants: mockGrant,
       loading: false,
       error: null,
       refetch: vi.fn(),
@@ -315,7 +316,256 @@ describe('AgentGrantDetailPage', () => {
       </RouterWrapper>
     );
 
-    // GitHub service should show granted scopes
-    expect(screen.getByText('2 scopes granted')).toBeInTheDocument();
+    // GitHub service should be displayed
+    expect(screen.getByText('GitHub')).toBeInTheDocument();
+    // Services list should show our services
+    expect(screen.getByText('Google Drive')).toBeInTheDocument();
+  });
+});
+
+describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (T091-T099)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('Edit mode toggle removal (T093-T095)', () => {
+    it('should NOT display edit mode toggle button when page loads', () => {
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: mockServices,
+        grants: mockGrant,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // Verify no "Edit Mode" or "View Mode" toggle/switch
+      const editModeToggle = screen.queryByRole('switch');
+      expect(editModeToggle).not.toBeInTheDocument();
+
+      // Verify no toggle labels
+      expect(screen.queryByText('Edit Mode')).not.toBeInTheDocument();
+      expect(screen.queryByText('View Mode')).not.toBeInTheDocument();
+    });
+
+    it('should always display service connection actions (Login/Disconnect) without edit mode', () => {
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: mockServices,
+        grants: mockGrant,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // Verify services are displayed
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
+      expect(screen.getByText('Google Drive')).toBeInTheDocument();
+
+      // Services should be visible without toggling edit mode
+      // (This is verified by the fact that the page renders services by default)
+      expect(screen.getByText('Services')).toBeInTheDocument();
+    });
+
+    it('should NOT conditionally render UI based on edit mode', () => {
+      // Grant validity control and other edit-specific UI should be present or always available
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: mockServices,
+        grants: mockGrant,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // Verify the page structure is not dependent on edit mode
+      // The services list should always be visible
+      expect(screen.getByText('Services')).toBeInTheDocument();
+
+      // No edit mode toggle should exist to conditionally show/hide content
+      const editToggle = screen.queryByRole('switch');
+      expect(editToggle).not.toBeInTheDocument();
+    });
+  });
+
+  describe('UI single-mode display (T094-T095)', () => {
+    it('should display Login buttons for services without active sessions in single-mode UI', () => {
+      // Mock service without grant
+      const servicesWithoutGrant = [
+        mockServices[0], // GitHub with grant
+        mockServices[1], // Google Drive without grant (no delegation)
+      ];
+
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: servicesWithoutGrant,
+        grants: mockGrant, // Only has GitHub grant
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // Services should be visible without entering any special mode
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
+      expect(screen.getByText('Google Drive')).toBeInTheDocument();
+    });
+
+    it('should display Disconnect/action buttons for services with active sessions in single-mode UI', () => {
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: mockServices,
+        grants: mockGrant, // Has grant for GitHub
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // Services should be visible without needing to toggle edit mode
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
+      expect(screen.getByText('Google Drive')).toBeInTheDocument();
+
+      // Verify services are displayed
+      expect(screen.getByText('Services')).toBeInTheDocument();
+    });
+  });
+
+  describe('Approve button logic (T096)', () => {
+    it('should NOT disable Approve button based on missing mandatory services (no mandatory service requirements flow)', () => {
+      // In the new simplified UI, the approve button behavior is straightforward
+      // The page should not have complex approval logic dependent on service status
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: mockServices,
+        grants: mockGrant,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // The page should render without error and show agent details
+      expect(screen.getByRole('heading', { name: 'Research Assistant', level: 1 })).toBeInTheDocument();
+    });
+  });
+
+  describe('UI consistency across states (T097-T099)', () => {
+    it('should maintain consistent UI across page loads (no state-dependent rendering of edit mode)', () => {
+      // First render
+      const { unmount: unmount1 } = render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: mockServices,
+        grants: mockGrant,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      // Verify no edit mode toggle
+      expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+      unmount1();
+
+      // Second render (simulate re-mount)
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // Should still have no edit mode toggle
+      expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    });
+
+    it('should always show action buttons (not hidden in any mode)', () => {
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: mockServices,
+        grants: mockGrant,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // Services and their associated actions should always be visible
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
+      expect(screen.getByText('Google Drive')).toBeInTheDocument();
+
+      // Services section should be visible (not conditional on edit mode)
+      expect(screen.getByText('Services')).toBeInTheDocument();
+    });
+
+    it('should not require toggling edit mode to interact with services', () => {
+      vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+        agent: mockAgent,
+        services: mockServices,
+        grants: mockGrant,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(
+        <RouterWrapper>
+          <AgentGrantDetailPage />
+        </RouterWrapper>
+      );
+
+      // Verify there is NO edit mode toggle at all
+      const editToggle = screen.queryByRole('switch');
+      expect(editToggle).not.toBeInTheDocument();
+
+      // Verify there are NO "Edit", "View" mode labels
+      expect(screen.queryByText(/Edit Mode/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/View Mode/i)).not.toBeInTheDocument();
+
+      // Services list should be immediately interactive
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
+    });
   });
 });

@@ -32,40 +32,42 @@ apply_seed_data() {
     # Set environment variables for seed scripts
     export ADMIN_API="http://localhost:14000/api"
     export BROKER_HEALTH_URL="http://localhost:14000/health"
-    export MOCK_SERVER_URL="http://localhost:9000"
+
+    # Detect if running in Docker/Podman vs local development
+    # Token endpoint: service-to-service communication (use service name in Docker, localhost in local)
+    # Authorize endpoint: browser redirect (always use localhost)
+    # Try to resolve service name - if successful, we're in Docker/Podman, otherwise we're in local dev
+    if getent hosts aib-third-party-oauth2 > /dev/null 2>&1; then
+        # Running in Docker/Podman Compose - use service name for token endpoint
+        export MOCK_SERVER_TOKEN_URL="http://aib-third-party-oauth2:9000"
+        echo -e "${YELLOW}[Broker Wrapper]${NC} Running in container - using service name for token endpoint"
+    else
+        # Running in local development - use localhost for both
+        export MOCK_SERVER_TOKEN_URL="http://localhost:9000"
+        echo -e "${YELLOW}[Broker Wrapper]${NC} Running in local development - using localhost for endpoints"
+    fi
+    # Authorize endpoint always uses localhost (accessed by browser on user's machine)
+    export MOCK_SERVER_AUTHORIZE_URL="http://localhost:9000"
 
     echo -e "${YELLOW}[Broker Wrapper]${NC} Seeding data..."
+    echo -e "${YELLOW}[Broker Wrapper]${NC} Token endpoint: ${MOCK_SERVER_TOKEN_URL}"
+    echo -e "${YELLOW}[Broker Wrapper]${NC} Authorize endpoint: ${MOCK_SERVER_AUTHORIZE_URL}"
 
-    # Run seed scripts with improved error visibility
-    if [ -f "./scripts/seed-sample-data.sh" ]; then
+    # Run combined setup script with improved error visibility
+    # This creates agents, services, AND service requirements
+    if [ -f "./scripts/setup-dev-data.sh" ]; then
         # Capture output in temp file for error reporting
-        SEED_LOG=$(mktemp)
-        trap "rm -f $SEED_LOG" RETURN
+        SETUP_LOG=$(mktemp)
+        trap "rm -f $SETUP_LOG" RETURN
 
-        if bash ./scripts/seed-sample-data.sh > "$SEED_LOG" 2>&1; then
-            echo -e "${GREEN}[Broker Wrapper]${NC} seed-sample-data.sh completed"
+        if bash ./scripts/setup-dev-data.sh > "$SETUP_LOG" 2>&1; then
+            echo -e "${GREEN}[Broker Wrapper]${NC} setup-dev-data.sh completed"
             # Show summary lines only on success
-            tail -3 "$SEED_LOG" | grep -E "(Agents created|Services created|Summary)" || true
+            tail -5 "$SETUP_LOG" | grep -E "(Agents|Services|requirements)" || true
         else
-            echo -e "${RED}[Broker Wrapper]${NC} seed-sample-data.sh FAILED - showing full output:"
+            echo -e "${RED}[Broker Wrapper]${NC} setup-dev-data.sh FAILED - showing full output:"
             echo "----------------------------------------"
-            cat "$SEED_LOG"
-            echo "----------------------------------------"
-        fi
-    fi
-
-    if [ -f "./scripts/register-mock-thirdparty-service.sh" ]; then
-        REGISTER_LOG=$(mktemp)
-        trap "rm -f $REGISTER_LOG" RETURN
-
-        if bash ./scripts/register-mock-thirdparty-service.sh > "$REGISTER_LOG" 2>&1; then
-            echo -e "${GREEN}[Broker Wrapper]${NC} register-mock-thirdparty-service.sh completed"
-            # Show success message from script
-            tail -2 "$REGISTER_LOG" | grep -E "(Mock OAuth2 service|registered)" || true
-        else
-            echo -e "${RED}[Broker Wrapper]${NC} register-mock-thirdparty-service.sh FAILED - showing full output:"
-            echo "----------------------------------------"
-            cat "$REGISTER_LOG"
+            cat "$SETUP_LOG"
             echo "----------------------------------------"
         fi
     fi
@@ -73,8 +75,8 @@ apply_seed_data() {
     echo -e "${GREEN}[Broker Wrapper]${NC} Auto-seed complete"
 }
 
-# Only auto-seed if seed scripts are present (indicates docker-compose environment)
-if [ -f "./scripts/seed-sample-data.sh" ] || [ -f "./scripts/register-mock-thirdparty-service.sh" ]; then
+# Only auto-seed if setup script is present (indicates docker-compose environment)
+if [ -f "./scripts/setup-dev-data.sh" ]; then
     echo -e "${YELLOW}[Broker Wrapper]${NC} Auto-seed enabled - seeding will run in background"
 
     # Kill any existing seed job before starting new one

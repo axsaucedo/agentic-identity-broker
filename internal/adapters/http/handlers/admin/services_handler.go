@@ -17,16 +17,18 @@ import (
 // ServicesHandler handles HTTP requests for third-party OAuth2 service CRUD operations.
 type ServicesHandler struct {
 	repo   ports.ThirdpartyOAuth2ServiceRepository
+	config *ports.Config
 	logger *slog.Logger
 }
 
 // NewServicesHandler creates a new services handler.
-func NewServicesHandler(repo ports.ThirdpartyOAuth2ServiceRepository, logger *slog.Logger) *ServicesHandler {
+func NewServicesHandler(repo ports.ThirdpartyOAuth2ServiceRepository, config *ports.Config, logger *slog.Logger) *ServicesHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ServicesHandler{
 		repo:   repo,
+		config: config,
 		logger: logger,
 	}
 }
@@ -130,8 +132,13 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// If discovery is enabled, attempt to discover endpoints
+	skipHTTPSValidation := false
+	if h.config != nil {
+		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
+	}
+
 	if req.Discovery.EnableDiscovery {
-		endpoints, err := storage.DiscoverOAuth2Endpoints(ctx, req.IssuerURI, req.Discovery.MetadataURL)
+		endpoints, err := storage.DiscoverOAuth2Endpoints(ctx, req.IssuerURI, req.Discovery.MetadataURL, skipHTTPSValidation)
 		if err != nil {
 			h.logger.Warn("OAuth2 endpoint discovery failed, falling back to manual endpoints",
 				"issuer_uri", req.IssuerURI,
@@ -158,7 +165,16 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Create in repository (will validate and encrypt client secret)
+	// Validate service with configuration-based HTTPS validation skipping
+	if err := service.ValidateForCreateWith(skipHTTPSValidation); err != nil {
+		h.logger.Warn("service validation failed",
+			"client_id", service.ClientID,
+			"error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	// Create in repository (skip validation since we already did it above)
 	if err := h.repo.Create(ctx, service); err != nil {
 		h.handleStorageError(w, r, "CreateService", err)
 		return
@@ -244,8 +260,13 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// If discovery is enabled, attempt to discover endpoints
+	skipHTTPSValidation := false
+	if h.config != nil {
+		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
+	}
+
 	if req.Discovery.EnableDiscovery {
-		endpoints, err := storage.DiscoverOAuth2Endpoints(ctx, req.IssuerURI, req.Discovery.MetadataURL)
+		endpoints, err := storage.DiscoverOAuth2Endpoints(ctx, req.IssuerURI, req.Discovery.MetadataURL, skipHTTPSValidation)
 		if err != nil {
 			h.logger.Warn("OAuth2 endpoint discovery failed, falling back to manual endpoints",
 				"issuer_uri", req.IssuerURI,
@@ -272,7 +293,16 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Update in repository (will validate and encrypt client secret)
+	// Validate service with configuration-based HTTPS validation skipping
+	if err := service.ValidateWith(skipHTTPSValidation); err != nil {
+		h.logger.Warn("service validation failed",
+			"client_id", service.ClientID,
+			"error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	// Update in repository (skip validation since we already did it above)
 	if err := h.repo.Update(ctx, service); err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
 		return

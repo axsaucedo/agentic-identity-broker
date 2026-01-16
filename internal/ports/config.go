@@ -38,6 +38,7 @@ type Config struct {
 	Storage          StorageConfig          `mapstructure:"storage" validate:"required"`
 	ThirdPartyOAuth2 ThirdPartyOAuth2Config `mapstructure:"third_party_oauth2"`
 	OAuth2AuthServer OAuth2AuthServerConfig `mapstructure:"oauth2_authorization_server"`
+	Security         SecurityConfig         `mapstructure:"security"`
 }
 
 // ServerConfig contains configuration for both HTTP servers.
@@ -263,4 +264,13 @@ func (e *oauth2ValidationError) Error() string {
 // Field returns the error field for test compatibility
 func (e *oauth2ValidationError) Field() string {
 	return e.field
+}
+
+// SecurityConfig contains security-related configuration.
+type SecurityConfig struct {
+	// SkipThirdpartyHTTPSValidation skips HTTPS certificate validation for third-party OAuth2 services.
+	// WARNING: This is ONLY for development/test environments!
+	// Allows HTTP connections and invalid HTTPS certificates.
+	// NEVER enable this in production.
+	SkipThirdpartyHTTPSValidation bool `mapstructure:"skip_thirdparty_https_validation"`
 }

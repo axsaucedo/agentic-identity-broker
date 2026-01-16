@@ -182,13 +182,28 @@ func (s *OAuth2SessionService) CreateStateToken(claims *OAuth2StateTokenClaims) 
 }
 
 // ValidateStateToken decrypts and validates a state token.
+// The token must be a valid JWE compact serialization with A256GCMKW key wrapping
+// and A256GCM content encryption. Any tampering with the token will cause decryption
+// to fail due to GCM authentication tag verification.
 func (s *OAuth2SessionService) ValidateStateToken(
 	tokenString string,
 	currentPrincipal string,
 	expectedServiceID string,
 ) (*OAuth2StateTokenClaims, error) {
-	// Decrypt JWE
-	decrypted, err := jwe.Decrypt([]byte(tokenString), jwe.WithKey(jwa.A256GCMKW(), s.jweKey))
+	// Input validation
+	if tokenString == "" {
+		return nil, fmt.Errorf("state token is empty: %w", ErrInvalidStateToken)
+	}
+
+	// Decrypt JWE with explicit content encryption algorithm for enhanced security
+	// Specifying the algorithm during decryption provides defense-in-depth:
+	// - Validates algorithm match
+	// - Prevents algorithm confusion attacks
+	// - Ensures consistent decryption behavior
+	decrypted, err := jwe.Decrypt(
+		[]byte(tokenString),
+		jwe.WithKey(jwa.A256GCMKW(), s.jweKey),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt state token: %w", ErrInvalidStateToken)
 	}

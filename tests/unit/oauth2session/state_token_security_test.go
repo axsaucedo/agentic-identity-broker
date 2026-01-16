@@ -24,7 +24,7 @@ func TestStateTokenSecurityExpiration_RejectedAtBoundary(t *testing.T) {
 		ServiceID:    "service-123",
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now().Add(-5 * time.Minute),
-		ExpiresAt:    time.Now().Add(-1 * time.Millisecond), // Just expired
+		ExpiresAt:    time.Now().Add(-100 * time.Millisecond), // Expired 100ms ago (reliable boundary)
 	}
 
 	// Should be marked as expired
@@ -39,7 +39,7 @@ func TestStateTokenSecurityExpiration_ValidJustBeforeExpiry(t *testing.T) {
 		ServiceID:    "service-123",
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now().Add(-5 * time.Minute),
-		ExpiresAt:    time.Now().Add(1 * time.Millisecond), // Just about to expire
+		ExpiresAt:    time.Now().Add(100 * time.Millisecond), // Expires in 100ms (reliable boundary)
 	}
 
 	// Should be valid (not yet expired)
@@ -296,6 +296,8 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 }
 
 // TestStateTokenSecurityTampered_ModifiedToken tests rejection of tokens with modified payload.
+// This test validates that the JWE authentication tag prevents acceptance of tampered tokens.
+// It uses deterministic tampering strategies that reliably modify the authentication tag.
 func TestStateTokenSecurityTampered_ModifiedToken(t *testing.T) {
 	service := setupTestService(t)
 
@@ -313,15 +315,32 @@ func TestStateTokenSecurityTampered_ModifiedToken(t *testing.T) {
 	require.NoError(t, err, "CreateStateToken should succeed")
 	require.NotEmpty(t, token, "token should not be empty")
 
-	// Modify the token by changing last character
-	// JWE tokens in compact serialization have 5 parts: header.encrypted_key.iv.ciphertext.tag
-	// Modifying any part should cause authentication to fail
-	modifiedToken := token[:len(token)-1] + "X"
-	require.NotEqual(t, token, modifiedToken, "modified token should be different from original")
+	// Verify original token is valid first
+	_, err = service.ValidateStateToken(token, "user@example.com", "service-123")
+	require.NoError(t, err, "original token should validate successfully")
 
-	// Try to validate modified token
+	// Strategy: Modify a character in the middle of the token (ciphertext/payload part)
+	// This ensures tampering detection is more deterministic than modifying base64url-encoded bytes.
+	// Base64url encoding can sometimes result in multiple valid encodings of the same data,
+	// which could theoretically pass authentication by accident. By modifying the actual
+	// encrypted payload, we ensure the GCM authentication tag will always detect tampering.
+
+	tokenBytes := []byte(token)
+	require.True(t, len(tokenBytes) > 50, "token should be long enough to modify middle section")
+
+	// Flip a bit in the middle of the token (part of the encrypted content)
+	// Use XOR with 0xFF to guarantee the byte changes to a different value
+	middleIdx := len(tokenBytes) / 2
+	originalByte := tokenBytes[middleIdx]
+	tokenBytes[middleIdx] = originalByte ^ 0xFF // XOR with 0xFF guarantees different value
+
+	modifiedToken := string(tokenBytes)
+	require.NotEqual(t, token, modifiedToken, "modified token should be different from original")
+	require.NotEqual(t, originalByte, tokenBytes[middleIdx], "byte at middle index should be different")
+
+	// Try to validate modified token - must fail
 	_, err = service.ValidateStateToken(modifiedToken, "user@example.com", "service-123")
-	assert.Error(t, err, "modified token should fail validation (JWE authentication tag should be invalid)")
+	assert.Error(t, err, "modified token should always fail validation - JWE authentication tag should reject any tampering")
 }
 
 // T079: Verify JWE uses authenticated encryption A256GCMKW + A256GCM

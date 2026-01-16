@@ -535,7 +535,15 @@ Define any project-specific terms or acronyms.)
 
 ### Domain Model and Consent Management
 
-**Agent**: An AI agent registered in the identity broker system. Each agent has a unique client_id, display name, description, and optional URLs for governance documentation and user interface. Agents request delegated OAuth2 permissions from users through the consent flow.
+**Agent**: An AI agent registered in the identity broker system. Each agent has a unique client_id, display name, description, and optional URLs for governance documentation and user interface. Agents request delegated OAuth2 permissions from users through the consent flow. Optionally, agents may specify service requirements (mandatory and optional third-party services with required scopes).
+
+**ServiceRequirement**: A value object representing a single third-party OAuth2 service that an agent requires or can optionally use. Each requirement specifies: (1) service_id - which third-party service (UUID reference), (2) requirement_type - whether "mandatory" or "optional", and (3) required_scopes - which OAuth2 scopes must be granted (string array). Stored as JSONB in the agent's service_requirements column. Validates structure at domain layer and referential integrity at application layer.
+
+**RequirementType**: Enum with two values: "mandatory" (agent cannot function without this service, authorization blocked until requirement satisfied) and "optional" (agent can use if available, authorization proceeds regardless). Case-sensitive, lowercase only. Controls authorization flow behavior - only mandatory requirements block authorization.
+
+**Mandatory Service**: A third-party OAuth2 service marked with requirement_type="mandatory" in an agent's service requirements. Authorization flow validates that user has an active, non-expired OAuth2 session with all mandatory services and that session scopes are a superset of required_scopes (case-sensitive). If validation fails, user is redirected to consent screen to establish missing sessions before authorization continues.
+
+**Optional Service**: A third-party OAuth2 service marked with requirement_type="optional" in an agent's service requirements. Displayed in consent UI with visual distinction (neutral badge vs trust-deep for mandatory). Does not block authorization flow - if user lacks session or scopes, authorization proceeds anyway. Allows agents to degrade gracefully when optional integrations unavailable.
 
 **ThirdpartyOAuth2Service**: External OAuth2 provider (e.g., GitHub, Google, Microsoft) registered in the system. Each service defines a set of OAuth scopes that can be delegated to agents. Services have a client_id, client_secret (stored securely, redacted in responses), and display name.
 

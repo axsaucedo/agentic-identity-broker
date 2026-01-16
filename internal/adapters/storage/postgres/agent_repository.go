@@ -4,6 +4,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -65,15 +66,30 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
+	// Marshal service_requirements to JSON (NULL if empty/nil)
+	var serviceReqsJSON []byte
+	var err error
+	if len(agent.ServiceRequirements) > 0 {
+		serviceReqsJSON, err = json.Marshal(agent.ServiceRequirements)
+		if err != nil {
+			return storage.NewStorageError(
+				"CreateAgent",
+				storage.ErrorKindValidation,
+				err,
+				"failed to marshal service_requirements to JSON",
+			)
+		}
+	}
+
 	query := `
 		INSERT INTO agents (
 			id, client_id, external_id, display_name, description,
 			governance_url, user_documentation_url, agent_interface_url,
-			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			service_requirements, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 
-	_, err := r.adapter.db.ExecContext(
+	_, err = r.adapter.db.ExecContext(
 		execCtx,
 		query,
 		agent.ID,
@@ -84,6 +100,7 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		agent.GovernanceURL,
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
+		serviceReqsJSON, // NULL if empty
 		agent.CreatedAt,
 		agent.UpdatedAt,
 	)
@@ -154,16 +171,33 @@ func (r *AgentRepository) Get(ctx context.Context, id string) (*storage.Agent, e
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
-	agent := &storage.Agent{}
+	var (
+		serviceReqsJSON []byte
+	)
+
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       created_at, updated_at
+		       service_requirements, created_at, updated_at
 		FROM agents
 		WHERE id = $1
 	`
 
-	err := r.adapter.db.GetContext(queryCtx, agent, query, id)
+	agent := &storage.Agent{}
+	err := r.adapter.db.QueryRowContext(queryCtx, query, id).Scan(
+		&agent.ID,
+		&agent.ClientID,
+		&agent.ExternalID,
+		&agent.DisplayName,
+		&agent.Description,
+		&agent.GovernanceURL,
+		&agent.UserDocumentationURL,
+		&agent.AgentInterfaceURL,
+		&serviceReqsJSON,
+		&agent.CreatedAt,
+		&agent.UpdatedAt,
+	)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, storage.NewStorageError(
@@ -187,6 +221,18 @@ func (r *AgentRepository) Get(ctx context.Context, id string) (*storage.Agent, e
 			err,
 			"failed to get agent",
 		)
+	}
+
+	// Unmarshal service_requirements from JSON (if not NULL)
+	if len(serviceReqsJSON) > 0 {
+		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
+			return nil, storage.NewStorageError(
+				"GetAgent",
+				storage.ErrorKindValidation,
+				err,
+				"failed to unmarshal service_requirements from JSON",
+			)
+		}
 	}
 
 	// Return deep copy to prevent external mutation
@@ -227,6 +273,21 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
+	// Marshal service_requirements to JSON (NULL if empty/nil)
+	var serviceReqsJSON []byte
+	var err error
+	if len(agent.ServiceRequirements) > 0 {
+		serviceReqsJSON, err = json.Marshal(agent.ServiceRequirements)
+		if err != nil {
+			return storage.NewStorageError(
+				"UpdateAgent",
+				storage.ErrorKindValidation,
+				err,
+				"failed to marshal service_requirements to JSON",
+			)
+		}
+	}
+
 	query := `
 		UPDATE agents
 		SET client_id = $2,
@@ -236,7 +297,8 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		    governance_url = $6,
 		    user_documentation_url = $7,
 		    agent_interface_url = $8,
-		    updated_at = $9
+		    service_requirements = $9,
+		    updated_at = $10
 		WHERE id = $1
 	`
 
@@ -251,6 +313,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		agent.GovernanceURL,
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
+		serviceReqsJSON, // NULL if empty
 		agent.UpdatedAt,
 	)
 

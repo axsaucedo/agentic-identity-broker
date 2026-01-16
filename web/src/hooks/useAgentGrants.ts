@@ -17,8 +17,8 @@ interface UseAgentGrantsState {
   agent: AgentDetail | null;
   /** Available third-party services */
   services: ThirdpartyService[];
-  /** User's existing grants for this agent */
-  grants: UserGrant[];
+  /** User's existing grant for this agent (null if no grant exists) */
+  grants: UserGrant | null;
   /** Loading state */
   loading: boolean;
   /** Error message if any */
@@ -41,7 +41,7 @@ export function useAgentGrants(agentId: string): UseAgentGrantsReturn {
   const [state, setState] = useState<UseAgentGrantsState>({
     agent: null,
     services: [],
-    grants: [],
+    grants: null,
     loading: true,
     error: null,
   });
@@ -94,7 +94,7 @@ export function useAgentGrants(agentId: string): UseAgentGrantsReturn {
       setState({
         agent: null,
         services: [],
-        grants: [],
+        grants: null,
         loading: false,
         error: errorMessage,
       });

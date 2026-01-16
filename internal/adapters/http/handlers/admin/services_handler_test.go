@@ -11,11 +11,21 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+// testConfig creates a minimal config for tests with HTTPS validation enabled (strict mode)
+func testConfig() *ports.Config {
+	return &ports.Config{
+		Security: ports.SecurityConfig{
+			SkipThirdpartyHTTPSValidation: false,
+		},
+	}
+}
 
 // MockServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ServiceRepository
 type MockServiceRepository struct {
@@ -63,7 +73,7 @@ func TestServicesHandler_CreateService(t *testing.T) {
 
 	t.Run("successful creation without discovery", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		reqBody := ServiceRequest{
 			DisplayName:  "GitHub",
@@ -111,7 +121,7 @@ func TestServicesHandler_CreateService(t *testing.T) {
 
 	t.Run("invalid request body", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
@@ -129,7 +139,7 @@ func TestServicesHandler_CreateService(t *testing.T) {
 
 	t.Run("validation error", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		reqBody := ServiceRequest{
 			DisplayName: "", // Invalid: empty display name
@@ -160,7 +170,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 
 	t.Run("successful get", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		service := &storage.ThirdpartyOAuth2Service{
 			ID:           "service-123",
@@ -206,7 +216,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 
 	t.Run("service not found", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		mockRepo.On("Get", mock.Anything, "nonexistent").Return(nil,
 			storage.NewStorageError("GetService", storage.ErrorKindNotFound, nil, "service not found"))
@@ -234,7 +244,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 	t.Run("successful update", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		existing := &storage.ThirdpartyOAuth2Service{
 			ID:           "service-123",
@@ -296,7 +306,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 
 	t.Run("successful deletion", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		mockRepo.On("Delete", mock.Anything, "service-123").Return(nil)
 
@@ -315,7 +325,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 
 	t.Run("deletion blocked by grants", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		mockRepo.On("Delete", mock.Anything, "service-123").Return(
 			storage.NewStorageError("DeleteService", storage.ErrorKindConflict, nil, "cannot delete service: 5 grants reference it"))
@@ -342,7 +352,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 
 	t.Run("service not found", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		mockRepo.On("Delete", mock.Anything, "nonexistent").Return(
 			storage.NewStorageError("DeleteService", storage.ErrorKindNotFound, nil, "service not found"))
@@ -367,7 +377,7 @@ func TestServicesHandler_ListServices(t *testing.T) {
 
 	t.Run("successful list", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		services := []*storage.ThirdpartyOAuth2Service{
 			{
@@ -419,7 +429,7 @@ func TestServicesHandler_ListServices(t *testing.T) {
 
 	t.Run("empty list", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		mockRepo.On("List", mock.Anything).Return([]*storage.ThirdpartyOAuth2Service{}, nil)
 
@@ -444,7 +454,7 @@ func TestServicesHandler_SecretRedaction(t *testing.T) {
 
 	t.Run("secret redacted in all responses", func(t *testing.T) {
 		mockRepo := new(MockServiceRepository)
-		handler := NewServicesHandler(mockRepo, logger)
+		handler := NewServicesHandler(mockRepo, testConfig(), logger)
 
 		service := &storage.ThirdpartyOAuth2Service{
 			ID:           "service-123",

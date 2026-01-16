@@ -7,6 +7,8 @@
 
 import { apiClient } from './client';
 import { apiCache } from './cache';
+import { AxiosError } from 'axios';
+import { isSafeRedirectUrl } from '../../utils/validation';
 import type {
   UserInfo,
   AgentDelegation,
@@ -110,18 +112,18 @@ export class ConsentApiService {
   }
 
   /**
-   * Get all grants for a specific agent for the current user.
+   * Get grant for a specific agent for the current user.
    * Results are cached for 5 minutes.
    *
    * @param agentId - Unique agent identifier
-   * @returns Array of user grants for this agent
+   * @returns User grant for this agent (null if no grant exists)
    * @throws {ApiError} if request fails
    */
-  async getAgentGrants(agentId: string): Promise<UserGrant[]> {
+  async getAgentGrants(agentId: string): Promise<UserGrant | null> {
     const cacheKey = `/consent/agent/${agentId}/grants`;
 
     // Check cache first
-    const cached = apiCache.get<UserGrant[]>(cacheKey);
+    const cached = apiCache.get<UserGrant | null>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -144,28 +146,85 @@ export class ConsentApiService {
    *
    * @param agentId - Unique agent identifier
    * @param request - Grant configuration
-   * @returns Created or updated grant
+   * @param redirectUri - Optional redirect URI for seamless flow continuation (FR-025)
+   * @returns Created or updated grant (or null if redirected)
    * @throws {ApiError} if request fails or validation errors
    */
   async createOrUpdateGrant(
     agentId: string,
-    request: CreateOrUpdateGrantRequest
+    request: CreateOrUpdateGrantRequest,
+    redirectUri?: string
   ): Promise<UserGrant | null> {
-    const response = await apiClient.post<CreateOrUpdateGrantResponse>(
-      `/consent/agent/${agentId}/grants`,
-      request
-    );
-
-    // Invalidate caches for this agent since data changed
-    apiCache.invalidatePattern(`/consent/agent/${agentId}*`);
-    apiCache.invalidate('/consent/agents');
-
-    // Handle 204 No Content response (grant revoked with empty tokens)
-    if (response.status === 204) {
-      return null;
+    // Build URL with optional redirect_uri query parameter (FR-025, T055)
+    let url = `/consent/agent/${agentId}/grants`;
+    if (redirectUri) {
+      url += `?redirect_uri=${encodeURIComponent(redirectUri)}`;
     }
 
-    return response.data.data;
+    try {
+      // Disable automatic redirect following for this request
+      // so we can manually handle 303 redirects
+      const response = await apiClient.post<CreateOrUpdateGrantResponse>(
+        url,
+        request,
+        {
+          maxRedirects: 0, // Disable automatic redirect following
+          validateStatus: (status) => (status >= 200 && status < 300) || status === 303, // Accept 2xx and 303 redirects
+        }
+      );
+
+      // Handle 303 See Other (redirect to continue OAuth2 flow)
+      if (response.status === 303) {
+        const locationHeader = response.headers.location;
+        if (locationHeader) {
+          // Defense-in-depth: Validate redirect URL is same-origin before following
+          // Backend already validates (SR-003), but frontend validation adds security layer
+          if (!isSafeRedirectUrl(locationHeader)) {
+            throw new Error('Redirect URL validation failed: URL must be same-origin');
+          }
+          
+          // Manually redirect using window.location.href
+          // This allows the browser to navigate seamlessly
+          window.location.href = locationHeader;
+          // Return null - we're navigating away
+          return null;
+        }
+      }
+
+      // Invalidate caches for this agent since data changed
+      apiCache.invalidatePattern(`/consent/agent/${agentId}*`);
+      apiCache.invalidate('/consent/agents');
+
+      // Handle 204 No Content response (grant revoked with empty tokens)
+      if (response.status === 204) {
+        return null;
+      }
+
+      // Handle 201 Created response
+      if (response.status === 201) {
+        return response.data.data;
+      }
+
+      // Unexpected status - shouldn't reach here with validateStatus above
+      throw new Error(`Unexpected status code: ${response.status}`);
+    } catch (error) {
+      // If error is a 303 with location, let it redirect
+      if (error instanceof AxiosError && error.response?.status === 303) {
+        const locationHeader = error.response.headers?.location;
+        if (locationHeader) {
+          // Defense-in-depth: Validate redirect URL is same-origin before following
+          // Backend already validates (SR-003), but frontend validation adds security layer
+          if (!isSafeRedirectUrl(locationHeader)) {
+            throw new Error('Redirect URL validation failed: URL must be same-origin');
+          }
+          
+          window.location.href = locationHeader;
+          return null;
+        }
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   /**

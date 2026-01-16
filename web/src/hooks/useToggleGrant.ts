@@ -27,7 +27,7 @@ interface UseToggleGrantReturn extends UseToggleGrantState {
   /** Update selected delegated tokens */
   setDelegatedTokens: (tokens: DelegatedToken[]) => void;
   /** Submit grant request */
-  submit: (validUntil?: string | null) => Promise<UserGrant | null>;
+  submit: (validUntil?: string | null, redirectUri?: string) => Promise<UserGrant | null>;
   /** Reset state */
   reset: () => void;
   /** Clear error */
@@ -64,9 +64,10 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
   /**
    * Submit grant request to backend.
    * Uses optimistic updates and rolls back on error.
+   * If redirectUri is provided and backend returns 303, navigates to the redirect URL.
    */
   const submit = useCallback(
-    async (validUntil?: string | null): Promise<UserGrant | null> => {
+    async (validUntil?: string | null, redirectUri?: string): Promise<UserGrant | null> => {
       // Set submitting state
       setState((prev) => ({
         ...prev,
@@ -85,8 +86,8 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
           valid_until: validUntil || undefined,
         };
 
-        // Call API
-        const grant = await consentApi.createOrUpdateGrant(agentId, request);
+        // Call API with optional redirectUri (FR-025)
+        const grant = await consentApi.createOrUpdateGrant(agentId, request, redirectUri);
 
         // Update state with success
         setState((prev) => ({
