@@ -144,3 +144,67 @@ func TestResourceURIString(t *testing.T) {
 		t.Errorf("String() on nil: expected empty string, got %q", nilURI.String())
 	}
 }
+
+func TestNormalize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "URI without trailing slash",
+			input:    "https://api.github.com",
+			expected: "https://api.github.com",
+		},
+		{
+			name:     "URI with trailing slash",
+			input:    "https://api.github.com/",
+			expected: "https://api.github.com",
+		},
+		{
+			name:     "URI with path and trailing slash",
+			input:    "https://api.github.com/v3/",
+			expected: "https://api.github.com/v3",
+		},
+		{
+			name:     "URI with path but no trailing slash",
+			input:    "https://api.github.com/v3",
+			expected: "https://api.github.com/v3",
+		},
+		{
+			name:     "URI with port and trailing slash",
+			input:    "http://localhost:8080/",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:     "URI with port but no trailing slash",
+			input:    "http://localhost:8080",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "idempotent - normalizing twice yields same result",
+			input:    "https://api.example.com/",
+			expected: "https://api.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Normalize(tt.input)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+
+			// Verify idempotency - normalizing twice should yield same result
+			result2 := Normalize(result)
+			if result != result2 {
+				t.Errorf("idempotency failed: first call %q, second call %q", result, result2)
+			}
+		})
+	}
+}

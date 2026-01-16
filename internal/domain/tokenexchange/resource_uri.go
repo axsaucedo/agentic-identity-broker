@@ -65,3 +65,16 @@ func (r *ResourceURI) Equal(other *ResourceURI) bool {
 	}
 	return r.value == other.value
 }
+
+// Normalize returns the normalized (trailing slash removed) resource URI string.
+// This function is idempotent - normalizing a normalized URI yields the same result.
+// Example: "https://api.example.com/" → "https://api.example.com"
+// Note: This function only removes trailing slashes; it does NOT validate the URI format.
+// For validation, use NewResourceURI instead.
+// This is useful for normalizing URIs before calling FindByProtectedResource:
+//
+//	normalizedURI := Normalize(requestURI)
+//	service, err := repo.FindByProtectedResource(ctx, normalizedURI)
+func Normalize(uri string) string {
+	return strings.TrimSuffix(uri, "/")
+}

@@ -184,7 +184,9 @@ type ThirdpartyOAuth2ServiceRepository interface {
 
 	// FindByProtectedResource retrieves an OAuth2 service configuration by matching resource URI
 	// against protected_resources field. Used for resource-based service discovery in token exchange.
-	// The resourceURI parameter should be normalized before calling (trailing slashes removed).
+	// The resourceURI parameter MUST be normalized before calling using tokenexchange.Normalize()
+	// to remove trailing slashes for consistent matching.
+	// Example: normalizedURI := tokenexchange.Normalize(requestURI)
 	// Returns the service whose protected_resources contains the resourceURI (case-sensitive match).
 	// Returns error if:
 	// - No service configured with matching protected_resources (InvalidTargetError: "No service configured for the requested resource")

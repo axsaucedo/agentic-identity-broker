@@ -839,3 +839,96 @@ func TestThirdpartyServiceRepository_FindByProtectedResource_ThreadSafe(t *testi
 
 	wg.Wait()
 }
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_WithNormalize(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+	ctx := context.Background()
+
+	// Create service with protected resources (stored without trailing slashes)
+	service := &storage.ThirdpartyOAuth2Service{
+		ID:           "service-1",
+		DisplayName:  "API Service",
+		ClientID:     "api-client",
+		ClientSecret: "api-secret",
+		IssuerURI:    "https://api.example.com",
+		Discovery: storage.DiscoveryConfig{
+			EnableDiscovery: false,
+		},
+		Endpoints: storage.OAuth2Endpoints{
+			TokenEndpoint:     "https://api.example.com/oauth/token",
+			AuthorizeEndpoint: "https://api.example.com/oauth/authorize",
+		},
+		Scopes: []storage.OAuthScope{
+			{ScopeValue: "api", Description: "API access"},
+		},
+		ProtectedResources: []string{
+			"https://api.example.com",
+			"https://api.example.com/v2",
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, service)
+	if err != nil {
+		t.Fatalf("expected no error creating service, got: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		requestURI  string // URI that may have trailing slash
+		expectFound bool
+	}{
+		{
+			name:        "exact match without trailing slash",
+			requestURI:  "https://api.example.com",
+			expectFound: true,
+		},
+		{
+			name:        "match after normalizing trailing slash",
+			requestURI:  "https://api.example.com/",
+			expectFound: true,
+		},
+		{
+			name:        "path match without trailing slash",
+			requestURI:  "https://api.example.com/v2",
+			expectFound: true,
+		},
+		{
+			name:        "path match after normalizing trailing slash",
+			requestURI:  "https://api.example.com/v2/",
+			expectFound: true,
+		},
+		{
+			name:        "no match",
+			requestURI:  "https://api.example.com/v3",
+			expectFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Demonstrate the pattern: normalize before calling FindByProtectedResource
+			normalizedURI := tokenexchange.Normalize(tt.requestURI)
+			found, err := repo.FindByProtectedResource(ctx, normalizedURI)
+
+			if tt.expectFound {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+				if found == nil {
+					t.Error("expected to find service")
+				} else if found.ID != "service-1" {
+					t.Errorf("expected service-1, got %s", found.ID)
+				}
+			} else {
+				if err == nil {
+					t.Error("expected error for non-matching resource")
+				}
+				if found != nil {
+					t.Errorf("expected no service to be found")
+				}
+			}
+		})
+	}
+}
