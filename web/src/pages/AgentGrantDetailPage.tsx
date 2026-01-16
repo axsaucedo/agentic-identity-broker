@@ -14,8 +14,8 @@
  * - Smooth scroll to errors on validation failure
  */
 
-import { useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useCallback, useEffect } from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import { AppLayout } from '@components/layout/AppLayout';
 import { PageTransition } from '@components/ui/PageTransition';
 import { Skeleton } from '@components/ui/Skeleton';
@@ -34,7 +34,7 @@ import { useToggleGrant } from '../hooks/useToggleGrant';
 import { useUpdateValidity } from '../hooks/useUpdateValidity';
 import { validateGrantRequest, formatValidationErrors } from '../utils/validation';
 import { scrollToError } from '../utils/scrollToError';
-import type { DelegatedToken } from '../types/consent';
+import type { DelegatedToken, ThirdpartyService } from '../types/consent';
 
 /**
  * AgentGrantDetailPage displays detailed agent information and service grants.
@@ -43,9 +43,15 @@ import type { DelegatedToken } from '../types/consent';
 export function AgentGrantDetailPage() {
   const { agentId } = useParams<{ agentId: string }>();
   const { showToast } = useToast();
+  const location = useLocation();
 
-  // State for edit mode toggle
-  const [isEditMode, setIsEditMode] = useState(false);
+  // Extract redirect_uri from query parameters (FR-025)
+  const searchParams = new URLSearchParams(location.search);
+  const redirectUri = searchParams.get('redirect_uri') || undefined;
+
+  // Edit mode removed in Phase 8 (US5): Simplified UI without edit mode toggle
+  // All actions are now always visible, removing the need for edit mode
+  const isEditMode = false; // Fixed to false - edit mode is always off
 
   // Validate agentId parameter
   if (!agentId) {
@@ -75,15 +81,31 @@ export function AgentGrantDetailPage() {
     clearError,
   } = useToggleGrant(agentId);
 
-  // Validity hook (initialized from first grant if exists)
+  // Initialize delegatedTokens from loaded grant on mount or when grant changes
+  useEffect(() => {
+    if (grants) {
+      // Extract delegated tokens from grant to populate the form state
+      const initialTokens = grants.delegated_oauth2_tokens || [];
+      if (initialTokens.length > 0) {
+        setDelegatedTokens(initialTokens);
+      }
+    }
+  }, [grants, setDelegatedTokens]);
+
+  // Validity hook (initialized from grant if exists)
   const { validityState, setValidityState, getValidUntil, validate: validateValidity } =
-    useUpdateValidity(grants[0] || null);
+    useUpdateValidity(grants || null);
+
+
 
   // Track if form has changes
   const [hasChanges, setHasChanges] = useState(false);
 
   // Validation errors
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Track unmet mandatory requirements (FR-024: disable Approve button until satisfied)
+  const [hasUnmetMandatoryRequirements, setHasUnmetMandatoryRequirements] = useState(false);
 
   // Handle grants change
   const handleGrantsChange = useCallback((tokens: DelegatedToken[]) => {
@@ -129,9 +151,10 @@ export function AgentGrantDetailPage() {
     return errors.length === 0;
   };
 
-  // Handle form submission
+  // Handle form submission (removed in Phase 8 - edit mode is no longer available)
   const handleSubmit = async () => {
     console.log('[AgentGrantDetailPage] handleSubmit - delegatedTokens:', delegatedTokens);
+    console.log('[AgentGrantDetailPage] redirectUri:', redirectUri);
 
     // Clear previous errors
     clearError();
@@ -145,19 +168,24 @@ export function AgentGrantDetailPage() {
     // Submit grant
     const validUntil = getValidUntil();
     console.log('[AgentGrantDetailPage] submitting grant request with validUntil:', validUntil);
-    const result = await submit(validUntil);
+    const result = await submit(validUntil, redirectUri);
     console.log('[AgentGrantDetailPage] submit result:', result);
 
-    // Check for errors (result can be null for successful revocation)
+    // Check for errors (result can be null for successful revocation or redirect)
     if (submitError) {
       // Show error toast
       showToast(submitError, 'error');
       return;
     }
 
+    // If redirectUri was provided and result is null, we've been redirected
+    // (handled by window.location.href in the API service)
+    if (!result && redirectUri) {
+      return;
+    }
+
     // Success - refetch data and show toast notification
     await refetch();
-    setIsEditMode(false);
     setHasChanges(false);
 
     // Show appropriate success message
@@ -168,31 +196,91 @@ export function AgentGrantDetailPage() {
     }
   };
 
-  // Handle cancel
+  // Handle cancel (removed in Phase 8 - edit mode is no longer available)
   const handleCancel = () => {
-    setIsEditMode(false);
     setHasChanges(false);
     setValidationErrors([]);
     clearError();
   };
 
-  // Handle edit mode toggle
-  const handleEditModeToggle = (enabled: boolean) => {
-    if (!enabled && hasChanges) {
-      // Confirm before discarding changes
-      const confirmed = window.confirm(
-        'You have unsaved changes. Are you sure you want to discard them?'
-      );
-      if (!confirmed) {
-        return;
-      }
+  // Handle service login (FR-020a: redirect to third-party OAuth2 flow)
+  // Extract redirect logic to separate function for testability
+  const buildServiceLoginUrl = useCallback((serviceId: string): string => {
+    const currentUrl = window.location.href;
+    return `/api/third-party/${serviceId}/oauth2/authorize?redirect_uri=${encodeURIComponent(currentUrl)}`;
+  }, []);
+
+  const handleServiceLogin = useCallback((serviceId: string) => {
+    const loginUrl = buildServiceLoginUrl(serviceId);
+    window.location.href = loginUrl;
+  }, [buildServiceLoginUrl]);
+
+  // Handle service delegation (select service for grant)
+  const handleDelegate = useCallback((serviceId: string) => {
+    const service = services.find(s => s.serviceId === serviceId);
+    if (!service) return;
+
+    // If service is not connected, initiate login first
+    if (service.connectionStatus !== 'connected') {
+      handleServiceLogin(serviceId);
+      return;
     }
-    setIsEditMode(enabled);
-    setHasChanges(false);
-    setValidationErrors([]);
-    clearError();
-  };
 
+    // Otherwise, add to delegated tokens with all required scopes
+    const scopesToDelegate = service.requiredScopes
+      ? service.requiredScopes.map(s => s.name)
+      : (service.scopes ? service.scopes.map(s => s.value) : []);
+
+    const newToken = {
+      thirdparty_oauth2_service_id: serviceId,
+      scopes: scopesToDelegate,
+    };
+
+    // Add or update this service in delegated tokens
+    const existingIndex = delegatedTokens.findIndex(
+      t => t.thirdparty_oauth2_service_id === serviceId
+    );
+
+    const updated = [...delegatedTokens];
+    if (existingIndex >= 0) {
+      updated[existingIndex] = newToken;
+    } else {
+      updated.push(newToken);
+    }
+
+    setDelegatedTokens(updated);
+    setHasChanges(true);
+    showToast('Service selected for delegation', 'success');
+  }, [services, delegatedTokens, handleServiceLogin, showToast]);
+
+  // Handle service revocation (deselect service from grant)
+  const handleRevoke = useCallback((serviceId: string) => {
+    const updated = delegatedTokens.filter(
+      t => t.thirdparty_oauth2_service_id !== serviceId
+    );
+    setDelegatedTokens(updated);
+    setHasChanges(true);
+    showToast('Service removed from delegation', 'success');
+  }, [delegatedTokens, showToast]);
+
+  // Edit mode toggle removed in Phase 8 (US5)
+  // All service connection actions are now always visible
+
+  // Update hasUnmetMandatoryRequirements whenever agent or services change
+  useEffect(() => {
+    if (!agent || !services) {
+      setHasUnmetMandatoryRequirements(false);
+      return;
+    }
+
+    // Filter for services that are requirements (have requirementType) and are mandatory
+    const mandatoryRequirements = services.filter(
+      (s) => s.requirementType === 'mandatory' && s.connectionStatus === 'not_connected'
+    );
+
+    const hasUnmet = mandatoryRequirements.length > 0;
+    setHasUnmetMandatoryRequirements(hasUnmet);
+  }, [agent, services]);
 
   // Loading state
   if (loading) {
@@ -260,11 +348,18 @@ export function AgentGrantDetailPage() {
     );
   }
 
-  // Get delegated tokens grouped by service
+  // Get delegated tokens for a specific service from the current grant
   const getDelegatedTokensForService = (serviceId: string): DelegatedToken[] => {
-    return grants
-      .flatMap((grant) => grant.delegated_oauth2_tokens || [])
+    if (!grants) {
+      return [];
+    }
+    return (grants.delegated_oauth2_tokens || [])
       .filter((token) => token != null && token.thirdparty_oauth2_service_id === serviceId);
+  };
+
+  // Check if service is currently selected for delegation in this session
+  const isServiceCurrentlyDelegated = (serviceId: string): boolean => {
+    return delegatedTokens.some((token) => token.thirdparty_oauth2_service_id === serviceId);
   };
 
   return (
@@ -305,12 +400,8 @@ export function AgentGrantDetailPage() {
                   <p className="mt-2 text-slate-600">{agent.description}</p>
                 </div>
 
-                {/* Edit mode toggle */}
-                <Switch
-                  checked={isEditMode}
-                  onChange={handleEditModeToggle}
-                  label={isEditMode ? 'Edit Mode' : 'View Mode'}
-                />
+                {/* Edit mode toggle removed in Phase 8 (US5) */}
+                {/* All service actions are now always visible */}
               </div>
 
               {/* Agent links */}
@@ -436,75 +527,83 @@ export function AgentGrantDetailPage() {
           </div>
         )}
 
-        {/* Services section */}
+        {/* Services section - Flattened layout with mandatory services first */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-trust-deep">
-              Services
-              <span className="ml-2 text-sm font-normal text-slate-500">
-                ({services.length})
-              </span>
-            </h2>
+            <div>
+              <h2 className="text-xl font-semibold text-trust-deep">
+                Services
+                <span className="ml-2 text-sm font-normal text-slate-500">
+                  ({services.length})
+                </span>
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Delegate your permissions in these services to {agent.displayName}. The agent will use these services on your behalf.
+              </p>
+            </div>
           </div>
 
           {services.length === 0 ? (
-            <div className="card p-8 text-center">
-              <svg
-                className="mx-auto h-12 w-12 text-slate-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                />
-              </svg>
-              <h3 className="mt-4 text-lg font-medium text-trust-deep">
-                No services available
-              </h3>
-              <p className="mt-2 text-slate-600">
-                This agent has no services configured yet.
-              </p>
-            </div>
-          ) : isEditMode ? (
-            <ServiceGrantList
-              services={services}
-              grants={grants}
-              onGrantsChange={handleGrantsChange}
-              isEditable={true}
-            />
+            <Card padding="default">
+              <div className="text-center">
+                <svg
+                  className="mx-auto h-12 w-12 text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  />
+                </svg>
+                <h3 className="mt-4 text-lg font-medium text-trust-deep">
+                  No services available
+                </h3>
+                <p className="mt-2 text-slate-600">
+                  This agent has no services configured yet.
+                </p>
+              </div>
+            </Card>
           ) : (
             <div className="space-y-4">
-              {services.map((service) => (
-                <ServiceCard
-                  key={service.serviceId}
-                  service={service}
-                  grants={getDelegatedTokensForService(service.serviceId)}
-                />
-              ))}
+              {/* Sort services: mandatory first, then optional, then others */}
+              {services
+                .sort((a, b) => {
+                  if (a.requirementType === 'mandatory' && b.requirementType !== 'mandatory') return -1;
+                  if (a.requirementType !== 'mandatory' && b.requirementType === 'mandatory') return 1;
+                  if (a.requirementType === 'optional' && b.requirementType !== 'optional') return -1;
+                  if (a.requirementType !== 'optional' && b.requirementType === 'optional') return 1;
+                  return 0;
+                })
+                .map((service) => (
+                  <ServiceCard
+                    key={service.serviceId}
+                    service={service}
+                    grants={getDelegatedTokensForService(service.serviceId)}
+                    isDelegated={isServiceCurrentlyDelegated(service.serviceId)}
+                    onDelegate={handleDelegate}
+                    onRevoke={handleRevoke}
+                  />
+                ))}
             </div>
           )}
         </div>
 
-        {/* Action buttons (only in edit mode) */}
-        {isEditMode && (
-          <div className="flex items-center justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={handleCancel} disabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleSubmit}
-              isLoading={isSubmitting}
-              disabled={!hasChanges || isSubmitting}
-            >
-              Approve & Delegate
-            </Button>
-          </div>
-        )}
+        {/* Action buttons - Always visible (FR-023), Approve disabled until mandatory requirements met (FR-024) */}
+        <div className="flex items-center justify-end gap-3 pt-4">
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            isLoading={isSubmitting}
+            disabled={hasUnmetMandatoryRequirements || isSubmitting}
+            title={hasUnmetMandatoryRequirements ? 'Please connect all required services first' : 'Approve and delegate'}
+          >
+            Approve & Delegate
+          </Button>
+        </div>
       </div>
       </PageTransition>
     </AppLayout>

@@ -240,3 +240,272 @@ func TestAgent_Copy_Nil(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+func TestAgent_ValidateServiceRequirements(t *testing.T) {
+	tests := []struct {
+		name    string
+		agent   *Agent
+		wantErr string
+	}{
+		{
+			name: "valid agent with no service requirements",
+			agent: &Agent{
+				ServiceRequirements: nil,
+			},
+			wantErr: "",
+		},
+		{
+			name: "valid agent with empty service requirements array",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{},
+			},
+			wantErr: "",
+		},
+		{
+			name: "valid agent with single mandatory requirement",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{
+					{
+						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						RequirementType: RequirementTypeMandatory,
+						RequiredScopes:  []string{"repo", "user:email"},
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "valid agent with single optional requirement",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{
+					{
+						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						RequirementType: RequirementTypeOptional,
+						RequiredScopes:  []string{"read:user"},
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "valid agent with multiple requirements for different services",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{
+					{
+						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						RequirementType: RequirementTypeMandatory,
+						RequiredScopes:  []string{"repo"},
+					},
+					{
+						ServiceID:       "660e8400-e29b-41d4-a716-446655440001",
+						RequirementType: RequirementTypeOptional,
+						RequiredScopes:  []string{"profile"},
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "invalid requirement - missing service_id",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{
+					{
+						ServiceID:       "", // Missing
+						RequirementType: RequirementTypeMandatory,
+						RequiredScopes:  []string{"repo"},
+					},
+				},
+			},
+			wantErr: "service_requirements[0] invalid: service_id is required",
+		},
+		{
+			name: "invalid requirement - invalid requirement_type",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{
+					{
+						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						RequirementType: RequirementType("invalid"),
+						RequiredScopes:  []string{"repo"},
+					},
+				},
+			},
+			wantErr: "service_requirements[0] invalid: requirement_type validation failed",
+		},
+		{
+			name: "invalid requirement - empty required_scopes",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{
+					{
+						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						RequirementType: RequirementTypeMandatory,
+						RequiredScopes:  []string{}, // Empty
+					},
+				},
+			},
+			wantErr: "service_requirements[0] invalid: required_scopes must contain at least one scope",
+		},
+		{
+			name: "duplicate service_id in requirements",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{
+					{
+						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						RequirementType: RequirementTypeMandatory,
+						RequiredScopes:  []string{"repo"},
+					},
+					{
+						ServiceID:       "550e8400-e29b-41d4-a716-446655440000", // Duplicate
+						RequirementType: RequirementTypeOptional,
+						RequiredScopes:  []string{"user:email"},
+					},
+				},
+			},
+			wantErr: "duplicate service_id \"550e8400-e29b-41d4-a716-446655440000\" found at indices 0 and 1",
+		},
+		{
+			name: "multiple invalid requirements - reports first error",
+			agent: &Agent{
+				ServiceRequirements: []ServiceRequirement{
+					{
+						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						RequirementType: RequirementTypeMandatory,
+						RequiredScopes:  []string{"repo"},
+					},
+					{
+						ServiceID:       "", // Invalid - missing service_id
+						RequirementType: RequirementTypeMandatory,
+						RequiredScopes:  []string{"user:email"},
+					},
+				},
+			},
+			wantErr: "service_requirements[1] invalid: service_id is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.agent.ValidateServiceRequirements()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestAgent_ValidateServiceRequirements_IntegrationWithValidate(t *testing.T) {
+	t.Run("Validate() calls ValidateServiceRequirements()", func(t *testing.T) {
+		agent := &Agent{
+			ID:          "550e8400-e29b-41d4-a716-446655440000",
+			ClientID:    "test-client",
+			DisplayName: "Test Agent",
+			Description: "A test agent",
+			ServiceRequirements: []ServiceRequirement{
+				{
+					ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+					RequirementType: RequirementTypeMandatory,
+					RequiredScopes:  []string{}, // Invalid - empty scopes
+				},
+			},
+		}
+
+		err := agent.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "service_requirements validation failed")
+		assert.Contains(t, err.Error(), "required_scopes must contain at least one scope")
+	})
+
+	t.Run("ValidateForCreate() calls ValidateServiceRequirements()", func(t *testing.T) {
+		agent := &Agent{
+			ClientID:    "test-client",
+			DisplayName: "Test Agent",
+			Description: "A test agent",
+			ServiceRequirements: []ServiceRequirement{
+				{
+					ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+					RequirementType: RequirementType("invalid"), // Invalid type
+					RequiredScopes:  []string{"repo"},
+				},
+			},
+		}
+
+		err := agent.ValidateForCreate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "service_requirements validation failed")
+		assert.Contains(t, err.Error(), "requirement_type validation failed")
+	})
+}
+
+func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
+	t.Run("copies service requirements with deep copy", func(t *testing.T) {
+		original := &Agent{
+			ID:          "550e8400-e29b-41d4-a716-446655440000",
+			ClientID:    "test-client",
+			DisplayName: "Test Agent",
+			Description: "A test agent",
+			ServiceRequirements: []ServiceRequirement{
+				{
+					ServiceID:       "660e8400-e29b-41d4-a716-446655440001",
+					RequirementType: RequirementTypeMandatory,
+					RequiredScopes:  []string{"repo", "user:email"},
+				},
+				{
+					ServiceID:       "770e8400-e29b-41d4-a716-446655440002",
+					RequirementType: RequirementTypeOptional,
+					RequiredScopes:  []string{"read:user"},
+				},
+			},
+		}
+
+		copy := original.Copy()
+
+		// Verify copy is equal
+		require.Len(t, copy.ServiceRequirements, 2)
+		assert.Equal(t, original.ServiceRequirements[0].ServiceID, copy.ServiceRequirements[0].ServiceID)
+		assert.Equal(t, original.ServiceRequirements[0].RequirementType, copy.ServiceRequirements[0].RequirementType)
+		assert.Equal(t, original.ServiceRequirements[0].RequiredScopes, copy.ServiceRequirements[0].RequiredScopes)
+
+		// Verify deep copy (modifying copy doesn't affect original)
+		copy.ServiceRequirements[0].RequiredScopes[0] = "modified"
+		assert.Equal(t, "repo", original.ServiceRequirements[0].RequiredScopes[0])
+		assert.Equal(t, "modified", copy.ServiceRequirements[0].RequiredScopes[0])
+
+		// Verify modifying copy array doesn't affect original
+		copy.ServiceRequirements = append(copy.ServiceRequirements, ServiceRequirement{
+			ServiceID:       "880e8400-e29b-41d4-a716-446655440003",
+			RequirementType: RequirementTypeMandatory,
+			RequiredScopes:  []string{"new"},
+		})
+		assert.Len(t, original.ServiceRequirements, 2)
+		assert.Len(t, copy.ServiceRequirements, 3)
+	})
+
+	t.Run("handles nil service requirements", func(t *testing.T) {
+		original := &Agent{
+			ID:                  "550e8400-e29b-41d4-a716-446655440000",
+			ClientID:            "test-client",
+			DisplayName:         "Test Agent",
+			Description:         "A test agent",
+			ServiceRequirements: nil,
+		}
+
+		copy := original.Copy()
+		assert.Nil(t, copy.ServiceRequirements)
+	})
+
+	t.Run("handles empty service requirements", func(t *testing.T) {
+		original := &Agent{
+			ID:                  "550e8400-e29b-41d4-a716-446655440000",
+			ClientID:            "test-client",
+			DisplayName:         "Test Agent",
+			Description:         "A test agent",
+			ServiceRequirements: []ServiceRequirement{},
+		}
+
+		copy := original.Copy()
+		assert.NotNil(t, copy.ServiceRequirements)
+		assert.Len(t, copy.ServiceRequirements, 0)
+	})
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -30,9 +31,11 @@ type OAuth2Config struct {
 
 // Service implements the OAuth2Service port
 type Service struct {
-	agentRepo ports.AgentRepository
-	grantRepo ports.UserGrantRepository
-	config    *OAuth2Config
+	agentRepo   ports.AgentRepository
+	grantRepo   ports.UserGrantRepository
+	sessionRepo ports.UserSessionRepository
+	config      *OAuth2Config
+	logger      *slog.Logger
 }
 
 // NewService creates a new OAuth2Service implementation
@@ -41,6 +44,24 @@ func NewService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantReposi
 		agentRepo: agentRepo,
 		grantRepo: grantRepo,
 		config:    config,
+	}
+}
+
+// NewServiceWithSessions creates a new OAuth2Service implementation with session support
+// for mandatory requirement validation
+func NewServiceWithSessions(
+	agentRepo ports.AgentRepository,
+	grantRepo ports.UserGrantRepository,
+	sessionRepo ports.UserSessionRepository,
+	config *OAuth2Config,
+	logger *slog.Logger,
+) ports.OAuth2Service {
+	return &Service{
+		agentRepo:   agentRepo,
+		grantRepo:   grantRepo,
+		sessionRepo: sessionRepo,
+		config:      config,
+		logger:      logger,
 	}
 }
 
@@ -97,7 +118,31 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}, nil
 	}
 
-	// Active grant exists - redirect to upstream OAuth2 server
+	// Step 4: Validate mandatory service requirements (if session repo available)
+	if s.sessionRepo != nil && len(agent.ServiceRequirements) > 0 {
+		err := s.validateMandatoryRequirements(ctx, principal, agent)
+		if err != nil {
+			// Mandatory requirement not met - redirect to consent screen
+			if s.logger != nil {
+				s.logger.Warn(
+					"MandatoryRequirementValidationFailed",
+					"agent_id", agent.ID,
+					"error", err.Error(),
+				)
+			}
+			consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
+				s.config.PublicURL,
+				agent.ID,
+				url.QueryEscape(req.OriginalURL),
+			)
+			return &ports.AuthorizationDecision{
+				Action:      "redirect_to_consent",
+				RedirectURL: consentURL,
+			}, nil
+		}
+	}
+
+	// Active grant exists and all mandatory requirements satisfied - redirect to upstream OAuth2 server
 	upstreamURL := s.buildUpstreamAuthorizeURL(req)
 	return &ports.AuthorizationDecision{
 		Action:      "redirect_to_upstream",
@@ -146,4 +191,102 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	}
 
 	return metadata, nil
+}
+
+// validateMandatoryRequirements checks that user has active sessions for all mandatory services
+// with required scopes. Returns error if any mandatory requirement is not satisfied.
+// Optional requirements are ignored and never block authorization.
+func (s *Service) validateMandatoryRequirements(
+	ctx context.Context,
+	principal string,
+	agent *storage.Agent,
+) error {
+	// If agent has no service requirements, nothing to validate
+	if len(agent.ServiceRequirements) == 0 {
+		return nil
+	}
+
+	// Check each mandatory requirement
+	for _, req := range agent.ServiceRequirements {
+		// Skip optional requirements
+		if !req.IsMandatory() {
+			continue
+		}
+
+		// Verify user has active session for this service
+		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, req.ServiceID)
+		if err != nil {
+			// Session not found
+			if s.logger != nil {
+				s.logger.Warn(
+					"MandatoryRequirementNotMet",
+					"agent_id", agent.ID,
+					"service_id", req.ServiceID,
+					"reason", "session_not_found",
+				)
+			}
+			return fmt.Errorf("session_required: user does not have required session for service %s", req.ServiceID)
+		}
+
+		// Check if session is expired
+		if session.IsExpired() {
+			if s.logger != nil {
+				s.logger.Warn(
+					"MandatoryRequirementNotMet",
+					"agent_id", agent.ID,
+					"service_id", req.ServiceID,
+					"reason", "session_expired",
+				)
+			}
+			return fmt.Errorf("session_expired: user session has expired for service %s", req.ServiceID)
+		}
+
+		// Check if session scopes include all required scopes (superset check)
+		if !s.hasRequiredScopes(session.Scope, req.RequiredScopes) {
+			if s.logger != nil {
+				s.logger.Warn(
+					"MandatoryRequirementNotMet",
+					"agent_id", agent.ID,
+					"service_id", req.ServiceID,
+					"reason", "scope_mismatch",
+					"required_scopes", req.RequiredScopes,
+					"actual_scopes", session.Scope,
+				)
+			}
+			return fmt.Errorf("scope_mismatch: user session lacks required scopes for service %s", req.ServiceID)
+		}
+	}
+
+	// All mandatory requirements satisfied
+	return nil
+}
+
+// hasRequiredScopes checks if sessionScopes is a superset of requiredScopes (case-sensitive).
+// Returns true if sessionScopes contains all scopes in requiredScopes, allowing for extra scopes.
+// Returns true if requiredScopes is empty or nil (no requirements).
+func (s *Service) hasRequiredScopes(sessionScopes []string, requiredScopes []string) bool {
+	// If no required scopes, always pass
+	if len(requiredScopes) == 0 {
+		return true
+	}
+
+	// If required scopes exist but session has none, fail
+	if len(sessionScopes) == 0 {
+		return false
+	}
+
+	// Build map of session scopes for efficient lookup
+	sessionScopeMap := make(map[string]bool)
+	for _, scope := range sessionScopes {
+		sessionScopeMap[scope] = true
+	}
+
+	// Check that all required scopes exist in session scopes
+	for _, required := range requiredScopes {
+		if !sessionScopeMap[required] {
+			return false
+		}
+	}
+
+	return true
 }

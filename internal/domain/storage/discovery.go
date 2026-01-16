@@ -30,19 +30,20 @@ func SetHTTPClientForTesting(client *http.Client) {
 //   - ctx: Context for request cancellation and timeout
 //   - issuerURI: The OAuth2 issuer URI (must be HTTPS)
 //   - metadataURL: Optional override URL for metadata endpoint
+//   - skipHTTPSValidation: If true, allows HTTP URLs in dev/test mode
 //
 // Returns:
 //   - OAuth2Endpoints with token_endpoint and authorization_endpoint
 //   - Error if discovery fails, network timeout, invalid JSON, or missing required fields
-func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL *string) (*OAuth2Endpoints, error) {
+func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL *string, skipHTTPSValidation bool) (*OAuth2Endpoints, error) {
 	// Validate issuer URI
 	if issuerURI == "" {
 		return nil, errors.New("issuer_uri cannot be empty")
 	}
 
-	// Validate issuer_uri is HTTPS (or HTTP for localhost)
-	if !isAllowedScheme(issuerURI) {
-		return nil, errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost)")
+	// Validate issuer_uri is HTTPS (or HTTP for localhost/dev mode)
+	if !isAllowedScheme(issuerURI, skipHTTPSValidation) {
+		return nil, errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
 	}
 
 	// Determine discovery URL
@@ -56,9 +57,9 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 		discoveryURL = fmt.Sprintf("%s/.well-known/oauth-authorization-server", issuerURI)
 	}
 
-	// Validate discovery URL (HTTPS or HTTP for localhost)
-	if !isAllowedScheme(discoveryURL) {
-		return nil, errors.New("discovery URL must be a valid HTTPS URL (HTTP allowed only for localhost)")
+	// Validate discovery URL (HTTPS or HTTP for localhost/dev mode)
+	if !isAllowedScheme(discoveryURL, skipHTTPSValidation) {
+		return nil, errors.New("discovery URL must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
 	}
 
 	// Create request with context
@@ -107,12 +108,12 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 		return nil, errors.New("discovery response missing required field: authorization_endpoint")
 	}
 
-	// Validate endpoint URLs are valid HTTPS URLs
-	if err := validateEndpointURL(metadata.TokenEndpoint); err != nil {
+	// Validate endpoint URLs are valid HTTPS URLs (or HTTP in dev mode)
+	if err := validateEndpointURL(metadata.TokenEndpoint, skipHTTPSValidation); err != nil {
 		return nil, fmt.Errorf("invalid token_endpoint: %w", err)
 	}
 
-	if err := validateEndpointURL(metadata.AuthorizationEndpoint); err != nil {
+	if err := validateEndpointURL(metadata.AuthorizationEndpoint, skipHTTPSValidation); err != nil {
 		return nil, fmt.Errorf("invalid authorization_endpoint: %w", err)
 	}
 
@@ -123,15 +124,15 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 	}, nil
 }
 
-// validateEndpointURL validates that a URL is a valid HTTPS URL (or HTTP for localhost).
-func validateEndpointURL(urlStr string) error {
+// validateEndpointURL validates that a URL is a valid HTTPS URL (or HTTP for localhost/dev mode).
+func validateEndpointURL(urlStr string, skipHTTPSValidation bool) error {
 	if urlStr == "" {
 		return errors.New("URL cannot be empty")
 	}
 
-	// Use isAllowedScheme to allow HTTP for localhost
-	if !isAllowedScheme(urlStr) {
-		return errors.New("URL must be a valid HTTPS URL (HTTP allowed only for localhost)")
+	// Use isAllowedScheme with configurable validation
+	if !isAllowedScheme(urlStr, skipHTTPSValidation) {
+		return errors.New("URL must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
 	}
 
 	return nil

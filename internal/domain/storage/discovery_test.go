@@ -47,7 +47,7 @@ func TestDiscoverOAuth2Endpoints_Success(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	endpoints, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	endpoints, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
@@ -83,7 +83,7 @@ func TestDiscoverOAuth2Endpoints_WithMetadataURLOverride(t *testing.T) {
 
 	ctx := context.Background()
 	customURL := server.URL + "/custom/metadata"
-	endpoints, err := DiscoverOAuth2Endpoints(ctx, server.URL, &customURL)
+	endpoints, err := DiscoverOAuth2Endpoints(ctx, server.URL, &customURL, false)
 
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
@@ -96,7 +96,7 @@ func TestDiscoverOAuth2Endpoints_WithMetadataURLOverride(t *testing.T) {
 
 func TestDiscoverOAuth2Endpoints_EmptyIssuerURI(t *testing.T) {
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, "", nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, "", nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for empty issuer_uri")
@@ -109,7 +109,7 @@ func TestDiscoverOAuth2Endpoints_EmptyIssuerURI(t *testing.T) {
 
 func TestDiscoverOAuth2Endpoints_InvalidIssuerURI(t *testing.T) {
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, "not-a-url", nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, "not-a-url", nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for invalid issuer_uri")
@@ -123,7 +123,7 @@ func TestDiscoverOAuth2Endpoints_InvalidIssuerURI(t *testing.T) {
 
 func TestDiscoverOAuth2Endpoints_NonHTTPSIssuer(t *testing.T) {
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, "http://oauth.example.com", nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, "http://oauth.example.com", nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for non-HTTPS issuer")
@@ -137,7 +137,7 @@ func TestDiscoverOAuth2Endpoints_NonHTTPSIssuer(t *testing.T) {
 func TestDiscoverOAuth2Endpoints_InvalidMetadataURL(t *testing.T) {
 	ctx := context.Background()
 	invalidURL := "not-a-url"
-	_, err := DiscoverOAuth2Endpoints(ctx, "https://oauth.example.com", &invalidURL)
+	_, err := DiscoverOAuth2Endpoints(ctx, "https://oauth.example.com", &invalidURL, false)
 
 	if err == nil {
 		t.Fatal("expected error for invalid metadata URL")
@@ -152,7 +152,7 @@ func TestDiscoverOAuth2Endpoints_InvalidMetadataURL(t *testing.T) {
 func TestDiscoverOAuth2Endpoints_NonHTTPSMetadataURL(t *testing.T) {
 	ctx := context.Background()
 	httpURL := "http://oauth.example.com/metadata"
-	_, err := DiscoverOAuth2Endpoints(ctx, "https://oauth.example.com", &httpURL)
+	_, err := DiscoverOAuth2Endpoints(ctx, "https://oauth.example.com", &httpURL, false)
 
 	if err == nil {
 		t.Fatal("expected error for non-HTTPS metadata URL")
@@ -170,7 +170,7 @@ func TestDiscoverOAuth2Endpoints_HTTPError(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for HTTP 404")
@@ -189,7 +189,7 @@ func TestDiscoverOAuth2Endpoints_InvalidJSON(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
@@ -213,7 +213,7 @@ func TestDiscoverOAuth2Endpoints_MissingTokenEndpoint(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for missing token_endpoint")
@@ -237,7 +237,7 @@ func TestDiscoverOAuth2Endpoints_MissingAuthorizationEndpoint(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for missing authorization_endpoint")
@@ -262,7 +262,7 @@ func TestDiscoverOAuth2Endpoints_InvalidTokenEndpointURL(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for invalid token_endpoint URL")
@@ -287,7 +287,7 @@ func TestDiscoverOAuth2Endpoints_InvalidAuthorizationEndpointURL(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for invalid authorization_endpoint URL")
@@ -310,7 +310,7 @@ func TestDiscoverOAuth2Endpoints_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for context timeout")
@@ -334,7 +334,7 @@ func TestDiscoverOAuth2Endpoints_ContextCancellation(t *testing.T) {
 	// Cancel context immediately
 	cancel()
 
-	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil)
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
 
 	if err == nil {
 		t.Fatal("expected error for cancelled context")
@@ -346,14 +346,14 @@ func TestDiscoverOAuth2Endpoints_ContextCancellation(t *testing.T) {
 }
 
 func TestValidateEndpointURL_Valid(t *testing.T) {
-	err := validateEndpointURL("https://oauth.example.com/token")
+	err := validateEndpointURL("https://oauth.example.com/token", false)
 	if err != nil {
 		t.Errorf("expected no error for valid HTTPS URL, got: %v", err)
 	}
 }
 
 func TestValidateEndpointURL_Empty(t *testing.T) {
-	err := validateEndpointURL("")
+	err := validateEndpointURL("", false)
 	if err == nil {
 		t.Fatal("expected error for empty URL")
 	}
@@ -363,14 +363,14 @@ func TestValidateEndpointURL_Empty(t *testing.T) {
 }
 
 func TestValidateEndpointURL_Invalid(t *testing.T) {
-	err := validateEndpointURL("not-a-url")
+	err := validateEndpointURL("not-a-url", false)
 	if err == nil {
 		t.Fatal("expected error for invalid URL")
 	}
 }
 
 func TestValidateEndpointURL_NonHTTPS(t *testing.T) {
-	err := validateEndpointURL("http://oauth.example.com/token")
+	err := validateEndpointURL("http://oauth.example.com/token", false)
 	if err == nil {
 		t.Fatal("expected error for non-HTTPS URL")
 	}

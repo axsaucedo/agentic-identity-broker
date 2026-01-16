@@ -37,8 +37,9 @@ type OAuth2Endpoints struct {
 }
 
 // isAllowedScheme checks if a URL uses an allowed scheme.
-// HTTPS is always allowed. HTTP is only allowed for localhost addresses in development.
-func isAllowedScheme(urlStr string) bool {
+// HTTPS is always allowed. HTTP is allowed for localhost addresses in development
+// or when HTTPS validation is skipped (dev/test mode).
+func isAllowedScheme(urlStr string, skipHTTPSValidation bool) bool {
 	parsed, err := url.Parse(urlStr)
 	if err != nil {
 		return false
@@ -49,7 +50,12 @@ func isAllowedScheme(urlStr string) bool {
 		return true
 	}
 
-	// HTTP is allowed only for localhost/127.0.0.1 (development)
+	// HTTP is allowed if HTTPS validation is explicitly skipped (dev/test only)
+	if skipHTTPSValidation && parsed.Scheme == "http" {
+		return true
+	}
+
+	// HTTP is allowed for localhost/127.0.0.1 (development)
 	if parsed.Scheme == "http" {
 		hostname := parsed.Hostname()
 		return hostname == "localhost" || hostname == "127.0.0.1"
@@ -58,8 +64,9 @@ func isAllowedScheme(urlStr string) bool {
 	return false
 }
 
-// Validate performs validation on the ThirdpartyOAuth2Service entity.
-func (s *ThirdpartyOAuth2Service) Validate() error {
+// ValidateWith performs validation on the ThirdpartyOAuth2Service entity with optional HTTPS validation skip.
+// skipHTTPSValidation allows HTTP URLs in dev/test mode (WARNING: insecure, dev-only).
+func (s *ThirdpartyOAuth2Service) ValidateWith(skipHTTPSValidation bool) error {
 	// Required fields
 	if s.ID == "" {
 		return errors.New("service ID cannot be empty")
@@ -80,9 +87,9 @@ func (s *ThirdpartyOAuth2Service) Validate() error {
 		return errors.New("issuer_uri is required")
 	}
 
-	// Validate issuer_uri is HTTPS (or HTTP for localhost)
-	if !isAllowedScheme(s.IssuerURI) {
-		return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost)")
+	// Validate issuer_uri is HTTPS (or HTTP for localhost/dev mode)
+	if !isAllowedScheme(s.IssuerURI, skipHTTPSValidation) {
+		return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
 	}
 
 	// If discovery disabled, endpoints are required
@@ -95,10 +102,10 @@ func (s *ThirdpartyOAuth2Service) Validate() error {
 		}
 	}
 
-	// Validate metadata_url if provided (HTTPS or HTTP for localhost)
+	// Validate metadata_url if provided (HTTPS or HTTP for localhost/dev mode)
 	if s.Discovery.MetadataURL != nil {
-		if !isAllowedScheme(*s.Discovery.MetadataURL) {
-			return errors.New("metadata_url must be a valid HTTPS URL (HTTP allowed only for localhost)")
+		if !isAllowedScheme(*s.Discovery.MetadataURL, skipHTTPSValidation) {
+			return errors.New("metadata_url must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
 		}
 	}
 
@@ -117,8 +124,14 @@ func (s *ThirdpartyOAuth2Service) Validate() error {
 	return nil
 }
 
-// ValidateForCreate validates a service before creation.
-func (s *ThirdpartyOAuth2Service) ValidateForCreate() error {
+// Validate performs validation on the ThirdpartyOAuth2Service entity (uses default strict HTTPS validation).
+func (s *ThirdpartyOAuth2Service) Validate() error {
+	return s.ValidateWith(false)
+}
+
+// ValidateForCreateWith validates a service before creation with optional HTTPS validation skip.
+// skipHTTPSValidation allows HTTP URLs in dev/test mode (WARNING: insecure, dev-only).
+func (s *ThirdpartyOAuth2Service) ValidateForCreateWith(skipHTTPSValidation bool) error {
 	if s.DisplayName == "" {
 		return errors.New("display_name is required")
 	}
@@ -135,9 +148,9 @@ func (s *ThirdpartyOAuth2Service) ValidateForCreate() error {
 		return errors.New("issuer_uri is required")
 	}
 
-	// Validate issuer_uri is HTTPS (or HTTP for localhost)
-	if !isAllowedScheme(s.IssuerURI) {
-		return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost)")
+	// Validate issuer_uri is HTTPS (or HTTP for localhost/dev mode)
+	if !isAllowedScheme(s.IssuerURI, skipHTTPSValidation) {
+		return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
 	}
 
 	if !s.Discovery.EnableDiscovery {
@@ -149,10 +162,10 @@ func (s *ThirdpartyOAuth2Service) ValidateForCreate() error {
 		}
 	}
 
-	// Validate metadata_url if provided (HTTPS or HTTP for localhost)
+	// Validate metadata_url if provided (HTTPS or HTTP for localhost/dev mode)
 	if s.Discovery.MetadataURL != nil {
-		if !isAllowedScheme(*s.Discovery.MetadataURL) {
-			return errors.New("metadata_url must be a valid HTTPS URL (HTTP allowed only for localhost)")
+		if !isAllowedScheme(*s.Discovery.MetadataURL, skipHTTPSValidation) {
+			return errors.New("metadata_url must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
 		}
 	}
 

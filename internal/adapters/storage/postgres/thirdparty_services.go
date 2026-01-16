@@ -53,16 +53,6 @@ func (r *ThirdpartyServiceRepository) Create(ctx context.Context, service *stora
 		)
 	}
 
-	// Validate before storing
-	if err := service.ValidateForCreate(); err != nil {
-		return storage.NewStorageError(
-			"CreateThirdpartyOAuth2Service",
-			storage.ErrorKindValidation,
-			err,
-			"service validation failed",
-		)
-	}
-
 	// Generate ID if not provided
 	if service.ID == "" {
 		service.ID = uuid.New().String()
@@ -283,15 +273,10 @@ func (r *ThirdpartyServiceRepository) Update(ctx context.Context, service *stora
 		)
 	}
 
-	// Validate before updating
-	if err := service.Validate(); err != nil {
-		return storage.NewStorageError(
-			"UpdateThirdpartyOAuth2Service",
-			storage.ErrorKindValidation,
-			err,
-			"service validation failed",
-		)
-	}
+	// NOTE: Validation is performed by the HTTP handler (services_handler.go) before calling this method.
+	// This allows the handler to use configuration-based HTTPS validation skipping for dev/test modes.
+	// The repository does not re-validate to avoid duplicate validation logic and consistency issues.
+	// Handlers must call ValidateWith() before calling Update().
 
 	// Encrypt client secret
 	encryptionContext := map[string]string{
