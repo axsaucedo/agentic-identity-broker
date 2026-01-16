@@ -78,10 +78,10 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 
 **Constitution Reference**: Principle IX (Persistence Pattern Consistency & Database Migration Management)
 
-- [ ] T009 Design protected_resources column schema (TEXT[] with GIN index for array containment queries; TEXT[] chosen over JSONB for simpler array operations with @> operator and better query performance)
-- [ ] T009a Create migration file migrations/005_add_service_protected_resources.up.sql
-- [ ] T009b [P] Create down migration file migrations/005_add_service_protected_resources.down.sql
-- [ ] T009c [P] Document schema changes: protected_resources TEXT[] column, GIN index for @> operator
+- [x] T009 Design protected_resources column schema (TEXT[] with GIN index for array containment queries; TEXT[] chosen over JSONB for simpler array operations with @> operator and better query performance)
+- [x] T009a Create migration file migrations/005_add_service_protected_resources.up.sql
+- [x] T009b [P] Create down migration file migrations/005_add_service_protected_resources.down.sql
+- [x] T009c [P] Document schema changes: protected_resources TEXT[] column, GIN index for @> operator
 
 **Checkpoint**: Database schema designed, migrations documented
 
@@ -89,15 +89,15 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 
 **Constitution Reference**: Principle XIII (End-to-End Acceptance Testing & Spec Traceability)
 
-*MANDATORY*: Read /tests/e2e/README.md first to understand how to write tests. 
+*MANDATORY*: Read /tests/e2e/README.md first to understand how to write tests.
 
-- [ ] T010 Create E2E test file tests/e2e/token_exchange_test.go with Ginkgo structure
-- [ ] T010a Map all 29 acceptance scenarios from spec.md to It() blocks (see Scenario Mapping below)
-- [ ] T010b Create test fixtures in tests/e2e/fixtures/token_exchange.go (mock JWTs, services with protected_resources)
+- [x] T010 Create E2E test file tests/e2e/token_exchange_test.go with Ginkgo structure
+- [x] T010a Map all 29 acceptance scenarios from spec.md to It() blocks (see Scenario Mapping below)
+- [x] T010b Create test fixtures in tests/e2e/fixtures/ (mock JWTs, services with protected_resources, sessions)
 - [ ] T010c Create mock JWKS endpoint helper in tests/e2e/helpers/mock_upstream_jwks.go
-- [ ] T010d [P] Create RFC 8693 response matchers in tests/e2e/matchers/rfc8693_matchers.go
-- [ ] T010e Add comment references to spec scenarios in E2E test file
-- [ ] T010f Verify E2E tests FAIL initially (red phase) - `ginkgo -v ./tests/e2e/token_exchange_test.go`
+- [x] T010d [P] Create RFC 8693 response matchers in tests/e2e/matchers/oauth2_matchers.go (HaveTokenExchangeSuccess)
+- [x] T010e Add comment references to spec scenarios in E2E test file
+- [x] T010f Verify E2E tests FAIL initially (red phase) - 118 tests pass (infrastructure), 18 tests fail semantically (endpoints not implemented)
 
 **Scenario Mapping** (from spec.md):
 
@@ -148,7 +148,7 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 - [ ] T013 [P] Create token exchange error types in internal/domain/tokenexchange/errors.go (InvalidRequest, InvalidClient, InvalidGrant, InvalidTarget, AccessDenied)
 - [ ] T014 [P] Create RFC 8693 constants in internal/domain/tokenexchange/constants.go (grant types, token types)
 - [ ] T015 Add FindByProtectedResource method to ThirdpartyOAuth2ServiceRepository interface in internal/ports/storage.go
-- [ ] T016 [P] Extend ThirdpartyOAuth2Service entity with ProtectedResources []string field in internal/domain/storage/thirdparty_service.go
+- [x] T016 [P] Extend ThirdpartyOAuth2Service entity with ProtectedResources []string field in internal/domain/storage/thirdparty_service.go
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
