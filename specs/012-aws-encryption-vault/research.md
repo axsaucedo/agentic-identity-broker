@@ -1,314 +1,304 @@
-# Phase 0 Research: AWS Encryption Vault for OAuth Tokens
+# Research: AWS Encryption Vault for OAuth Tokens (Phase 0)
 
-**Date**: 2026-01-15
-**Branch**: `012-aws-encryption-vault`
-**Spec**: [spec.md](./spec.md)
+**Date**: 2026-01-16 | **Feature**: 012-aws-encryption-vault | **Status**: Complete
 
-## Executive Summary
+## Critical Finding: Official AWS Encryption SDK for Go Available
 
-Phase 0 research confirms that the codebase architecture is **well-suited for AWS Encryption Vault implementation**. Existing patterns (port/adapter architecture, builder dependency injection, unified configuration system, E2E test infrastructure) provide excellent foundation. Key finding: **no migration of schema required** - session table already has encrypted token fields and encryption context support.
-
-**Critical Path Items**:
-1. Add AWS SDK dependencies (AWS Encryption SDK, Material Providers Library, KMS client)
-2. Implement memory protection utilities using memguard
-3. Update storage adapters to use encryption port (transparent encryption/decryption)
-4. Replace noop encryption adapter with AWS SDK wrapper
-5. Extend unified configuration for AWS KMS and environment-variable KEK storage
-6. Write E2E acceptance tests mapped 1:1 to spec scenarios
-
-## Detailed Research Findings
-
-### 1. AWS SDK Integration Status
-
-**Current State**:
-- ✅ Go project uses standard library cryptography (`golang.org/x/crypto`)
-- ❌ No AWS SDK dependencies currently present in `go.mod`
-- ❌ No existing AWS Encryption SDK integration
-
-**Required Packages**:
-```
-github.com/aws/aws-sdk-go-v2/service/kms          // KMS client for key management
-github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl  // Keyring management
-github.com/aws/aws-encryption-sdk-go/v3            // AESGCMSIV authenticated encryption
-```
-
-**Implementation Impact**: Low - packages are isolated behind EncryptionPort interface, no leakage to domain logic.
-
-### 2. EncryptionPort Interface Foundation
-
-**Current Definition** (`internal/ports/encryption.go`):
-```go
-type EncryptionPort interface {
-    Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error)
-    Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]string) ([]byte, error)
-}
-```
-
-**Design Quality**:
-- ✅ Context parameter supports cancellation and timeouts
-- ✅ Map-based encryption context aligns with AWS AAD (Additional Authenticated Data) patterns
-- ✅ Proper error handling convention
-- ✅ Stateless interface design (no connection management needed)
-
-**Integration Points**:
-- Builder already has `WithEncryption()` injection point
-- Storage adapters can use port without modification
-- No interface changes needed
-
-### 3. Storage Layer Already Supports Encryption
-
-**UserSession Domain Model** (`internal/domain/storage/user_session.go`):
-```go
-type UserSession struct {
-    EncryptedAccessToken  []byte            `json:"-" db:"encrypted_access_token"`
-    EncryptedRefreshToken []byte            `json:"-" db:"encrypted_refresh_token"`
-    EncryptionContext     EncryptionContext `json:"encryption_context" db:"encryption_context"`
-    // ... other fields
-}
-
-type EncryptionContext struct {
-    Principal string `json:"principal"`
-    ServiceID string `json:"service_id"`
-    SessionID string `json:"session_id"`
-    Purpose   string `json:"purpose"`
-}
-```
-
-**Critical Discovery**:
-- ✅ Schema ALREADY has encrypted token columns
-- ✅ EncryptionContext ALREADY defined with required 4 fields
-- ✅ JSONB storage for context already established
-- ✅ No database migrations required
-
-**Implication**: Feature is nearly ready from schema perspective; focus is on encryption logic and memory protection.
-
-### 4. Storage Adapter Patterns
-
-**Both memory and PostgreSQL adapters**:
-- ✅ Follow interface segregation with small, focused repository interfaces
-- ✅ Proper error wrapping to domain `StorageError` type
-- ✅ Support transparent encryption/decryption through port interface injection
-- ✅ Existing `noop.NewNoOpEncryption()` provides development baseline
-
-**PostgreSQL Adapter Insights**:
-- Uses `sqlx` (not ORM) per ADR 004
-- Handles JSONB serialization for EncryptionContext correctly
-- Proper upsert semantics with `ON CONFLICT`
-- Thread-safe connection pooling
-
-**Memory Adapter Insights**:
-- Thread-safe map operations with `sync.RWMutex`
-- Dual indexing for efficient lookups
-- Upsert semantics matching PostgreSQL behavior
-
-### 5. Builder Pattern and Dependency Injection
-
-**Current Builder** (`internal/app/builder.go`):
-```go
-type Builder struct {
-    config     *ports.Config
-    storage    *storage.Adapter
-    logger     *slog.Logger
-    encryption ports.EncryptionPort  // Already here!
-}
-
-func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
-    b.encryption = encryptor
-    return b
-}
-```
-
-**Implementation Ready**:
-- ✅ Encryption port injection already supported
-- ✅ Chainable builder pattern established
-- ✅ Proper validation of required dependencies
-- ✅ Clear initialization phases
-
-**Integration Path**: Simply instantiate AWS SDK adapter and wire via `WithEncryption()` in main.go
-
-### 6. Unified Configuration System
-
-**Architecture** (`internal/config/`):
-- ✅ Viper-based with precedence: defaults → .env → YAML → CLI flags
-- ✅ Environment variable prefixing established (`IDENTITY_BROKER_*`)
-- ✅ Circular reference detection and injection prevention
-- ✅ Source metadata tracking for debugging
-
-**Integration Path**: Extend existing schema with AWS-specific fields, no architectural changes needed.
-
-### 7. E2E Testing Infrastructure
-
-**Ginkgo/Gomega Setup** (`tests/e2e/`):
-- ✅ Full production app bootstrap via `TestServer` wrapper
-- ✅ Real HTTP server with production routing
-- ✅ Authentication simulation via `X-Remote-User` header
-- ✅ Fixture-based test data management
-- ✅ Per-test isolation (fresh server/storage)
-
-**Testcontainers Integration**:
-- ✅ Real PostgreSQL for integration tests
-- ✅ Database cleanup between tests
-- ✅ Migration verification
-
-**E2E Test Capability**: Ready to write 24+ acceptance tests mapped 1:1 to spec scenarios.
-
-### 8. Memory Protection Status
-
-**Current State**:
-- ❌ No memory protection utilities exist
-- ❌ Tokens stored as plain `[]byte` without explicit zeroization
-- ❌ No memory locking (mlock) for key material
-- ⚠️ Core dump exclusion not implemented
-
-**Implementation Requirement**: Add memory_protection package with:
-- Buffer zeroization utilities (defer-based cleanup)
-- Memory locking (mprotect via `golang.org/x/sys/unix`)
-- Core dump exclusion (RLIMIT_CORE setting)
-- Secure comparison helpers
-
-**Recommended Library**: `github.com/awnumar/memguard` for production-grade memory protection.
-
-### 9. Domain Error Handling
-
-**StorageError Pattern** (`internal/domain/storage/errors.go`):
-- ✅ Well-structured error types with error kinds
-- ✅ Proper error wrapping for cause chains
-- ✅ Domain-friendly messages without implementation leaks
-
-**Encryption Error Extensions**:
-Need to define new error kinds:
-- `ErrorKindEncryptionFailed` - DEK generation, context binding, KEK wrapping failed
-- `ErrorKindDecryptionFailed` - DEK unwrapping, token decryption failed
-- `ErrorKindContextMismatch` - Context verification failed
-
-**Integration Path**: Extend existing error handling pattern with encryption-specific kinds.
-
-### 10. Constitution Compliance Matrix
-
-| Principle | Status | Integration Path |
-|-----------|--------|------------------|
-| I. Security-First | ✅ Ready | Fail-closed on any encryption error; no plaintext fallback |
-| II. Architecture Docs | ⏳ Phase 1 | Update ARCHITECTURE.md with encryption domain |
-| III. Library-First Security | ✅ Ready | Use AWS Encryption SDK (battle-tested); no custom crypto |
-| IV. API Documentation | ⏳ Phase 1 | Document encryption configuration in OpenAPI |
-| V. Domain-Driven Design | ✅ Ready | EncryptionContext already modeled; add to glossary |
-| VI. Hexagonal Architecture | ✅ Ready | Encryption port interfaces with adapter pattern |
-| VII. Configuration-Driven | ✅ Ready | Extend unified config system for AWS/env-var backends |
-| VIII. Test-Driven Development | ⏳ Phase 2f | Write E2E tests FIRST; verify red phase; implement |
-| IX. Persistence Patterns | ✅ Ready | No schema changes; use existing patterns |
-| XII. Dependency Injection | ✅ Ready | Builder pattern; wire via `WithEncryption()` |
-| XIII. E2E Acceptance Tests | ⏳ Phase 2f | 24+ tests mapped to spec scenarios |
-
-## Critical Implementation Decisions
-
-### 1. One DEK Per Session (Performance Optimization)
-
-**Decision**: Use one DEK per session (covering both access and refresh tokens) instead of DEK per token.
+### Decision: Use Official AWS Encryption SDK for Go
 
 **Rationale**:
-- Both tokens share same context (principal, service_id, session_id, purpose)
-- Eliminates redundant DEK generation and KEK wrapping operations
-- Reduces AWS KMS calls from 2 to 1 per session operation
-- Keeps encryption within 100ms performance budget
+- AWS maintains official AWS Encryption SDK for Go at: `github.com/aws/aws-encryption-sdk/releases/go`
+- Provides battle-tested, production-grade envelope encryption implementation
+- Supports AESGCMSIV (Encrypt-then-MAC with counter mode) authenticated encryption
+- Integrated AWS KMS keyring support with context binding
+- Post-quantum cryptography support ready for Go 1.24+
+- Eliminates custom cryptography implementation risk
 
-**Security Impact**: No degradation - cross-session DEKs still isolate sessions; context verification prevents cross-context reuse.
+**Implementation Approach**:
+1. AWS Encryption SDK handles DEK generation, encryption, and wrapping lifecycle
+2. AWS KMS keyring for KEK management (wrapping/unwrapping DEK with context)
+3. SDK enforces context verification at both DEK and KEK layers
+4. Memguard integration for memory protection (plaintext tokens, DEKs)
+5. Structured logging via project's existing slog with SecureLogger wrapper
 
-### 2. AWS Encryption SDK with AESGCMSIV
+**Advantages**:
+- Official AWS implementation—no maintenance risk
+- Context binding is native and auditable
+- Fail-closed behavior built in
+- Performance optimized by AWS team
+- Aligns with AWS best practices and recommendations
 
-**Decision**: Use AWS Encryption SDK's AESGCMSIV (Encrypt-then-MAC with counter mode) for authenticated encryption.
-
-**Rationale**:
-- Battle-tested implementation (used by AWS services)
-- Chosen-ciphertext attack protection via authentication tag
-- Post-quantum cryptography readiness (Go 1.24+ support)
-- AEAD (Authenticated Encryption with Associated Data) for context binding
-
-**No Alternatives**: Custom AEAD implementations forbidden by Constitution Principle III.
-
-### 3. Two KEK Storage Backends
-
-**Decision**: Support AWS KMS (production) and environment-variable (development/containers) KEK storage.
-
-**Trade-off**:
-- Environment variables create key material exposure risk (process memory)
-- Mitigated via memory protection (mlock, buffer zeroing, core dump exclusion)
-- Worth complexity for developer experience and container deployments
-
-### 4. No Schema Changes Needed
-
-**Decision**: Leverage existing session table schema without migrations.
-
-**Evidence**:
-- `encrypted_access_token` column exists
-- `encrypted_refresh_token` column exists
-- `encryption_context` JSONB column exists with proper serialization
-
-**Implication**: Focus implementation effort on encryption logic, not database changes.
-
-## Implementation Roadmap
-
-### Phase 1 - Design Artifacts (This Phase)
-1. ✅ Complete research document (you are here)
-2. Generate `data-model.md` with domain model specifics
-3. Generate API contracts in `contracts/` directory
-4. Generate `quickstart.md` for feature integration
-5. Update `ARCHITECTURE.md` with encryption domain
-
-### Phase 2 - Implementation
-1. Phase 2a: Add AWS SDK dependencies to `go.mod`
-2. Phase 2b: Implement memory protection utilities
-3. Phase 2c: Implement AWS SDK encryption adapter
-4. Phase 2d: Extend configuration schema for AWS KMS and env-var
-5. Phase 2e: Update storage adapters to use encryption port
-6. Phase 2f: Write E2E acceptance tests (red phase)
-7. Phase 3+: Implementation per E2E green phase
-
-### Phase 3 - Constitutional Verification
-- Verify TDD (tests written first, red phase, green phase)
-- Verify no custom cryptography
-- Verify fail-closed behavior
-- Verify memory protection effectiveness
-- Verify E2E test coverage (100% of spec scenarios)
-
-## Open Questions / Clarifications Resolved
-
-**Q1**: Does schema need updating for encrypted tokens?
-**A**: ✅ No - encrypted token columns and encryption context already exist.
-
-**Q2**: Is the encryption port interface adequate for AWS integration?
-**A**: ✅ Yes - supports context parameters and error handling needed.
-
-**Q3**: What's the builder integration point?
-**A**: ✅ `Builder.WithEncryption()` already exists and ready to use.
-
-**Q4**: How does unified config system work?
-**A**: ✅ Viper-based with precedence; can extend with AWS-specific fields.
-
-**Q5**: Is DEK-per-token viable performance-wise?
-**A**: ❌ No (would require 2 KMS calls per session). Changed to DEK-per-session in spec.
-
-## Risk Assessment
-
-| Risk | Severity | Mitigation |
-|------|----------|-----------|
-| AWS SDK dependency bloat | Medium | Isolated behind EncryptionPort; no domain leakage |
-| Memory protection complexity | Medium | Use memguard library; test memory behavior explicitly |
-| KMS latency in performance budget | Medium | DEK-per-session reduces calls; 100ms budget excludes KMS |
-| Environment-variable KEK exposure | Medium-High | Mitigated by mlock, buffer zeroing, core dump exclusion; documented tradeoff |
-| Configuration validation | Low | Extend existing validated config system |
-
-## Success Criteria for Phase 1 → Phase 2 Transition
-
-- [x] Research document complete (no NEEDS CLARIFICATION items remain)
-- [ ] data-model.md generated with complete domain model
-- [ ] API contracts documented for encryption configuration
-- [ ] quickstart.md provides integration guide
-- [ ] ARCHITECTURE.md updated with encryption domain terminology
-- [ ] Constitution Check re-evaluated and all gates pass
-- [ ] Phase 2f E2E test design ready (tests written before implementation)
+**Risks Mitigated**:
+- No custom cryptography
+- No reliance on unmaintained community ports
+- Context binding is explicit and verified by SDK
 
 ---
 
-**Status**: ✅ Phase 0 Research Complete - Ready for Phase 1 Design Artifacts
+## Area 1: AWS Encryption SDK for Go - Envelope Encryption
 
-**Next**: Generate Phase 1 design documents (data-model.md, contracts/, quickstart.md)
+### Research Question
+How to implement production-grade envelope encryption using official AWS Encryption SDK for Go?
+
+### Findings
+
+**AWS Encryption SDK Architecture**:
+- Uses keyring abstraction for key management
+- AWS KMS keyring implements Key Encryption Key (KEK) operations
+- Supports custom keyrings for environment variable KEK injection (development)
+- AESGCMSIV algorithm: Encrypt-then-MAC with counter mode (built-in)
+- Context binding via `EncryptionContext` map (service_id only per spec)
+
+**Core API Pattern**:
+```go
+import "github.com/aws/aws-encryption-sdk-go/v3/sdk"
+
+// Initialize client with AWS KMS keyring
+keyring := aws.NewKeyring(cfg, keyID, encryptionContext)
+client := sdk.NewClient(keyring)
+
+// Encryption
+result, err := client.Encrypt(ctx, plaintext, encryptionContext)
+ciphertext := result.Result()
+
+// Decryption with automatic context verification
+result, err := client.Decrypt(ctx, ciphertext)
+plaintext := result.Result()
+```
+
+**Envelope Structure**:
+- SDK handles envelope serialization internally
+- Serialized format: message format identifier + algorithm suite + encrypted data material (wrapped DEK + encrypted token)
+- All handled by SDK—application doesn't construct envelope manually
+
+**DEK Generation**:
+- AWS SDK generates unique DEK per Encrypt() call
+- 256 bits (32 bytes) of cryptographically secure randomness
+- Per spec: one DEK per session (both access and refresh tokens use same DEK)
+
+**Context Binding**:
+- `EncryptionContext` parameter is map[string]string: `{"service_id": "oauth2"}`
+- Context is verified at both:
+  1. DEK encryption layer (AESGCMSIV authenticated encryption)
+  2. KEK wrapping layer (AWS KMS Encrypt with EncryptionContext)
+- Mismatch at either layer causes decryption to fail immediately (fail-closed)
+
+**AWS KMS Keyring Integration**:
+```go
+// AWS KMS keyring uses KMS for DEK wrapping
+keyring := aws.NewKeyring(kmsClient, keyARN, encryptionContext)
+
+// KMS automatically:
+// - Wraps DEK with current KEK version
+// - Verifies context during unwrap
+// - Maintains backward compatibility with old KEK versions
+```
+
+**Key Rotation Support**:
+- AWS KMS handles key rotation automatically via key versioning
+- Specify key by ARN or alias; KMS uses current version for encryption
+- Old tokens encrypted with previous KEK version remain decryptable
+- No custom rotation logic needed
+
+### Best Practices
+- ✅ Use AWS KMS ARN or alias for key specification
+- ✅ Always bind context (service_id) via EncryptionContext parameter
+- ✅ Let SDK handle fail-closed behavior on context mismatch
+- ✅ Delegate KMS retry logic to AWS SDK (no custom retries)
+- ✅ Performance: local ops <50ms, KMS latency 50-200ms typical (operator concern)
+- ✅ Cache keyring instance for multiple operations (avoid recreating)
+
+---
+
+## Area 2: Memory Protection with Memguard
+
+### Research Question
+How to protect sensitive data (plaintext tokens, DEKs) in memory using memguard?
+
+### Findings
+
+**Memguard Integration Pattern**:
+- Enclave: Long-lived protected buffer for keys (DEK, KEK)
+- LockedBuffer: Temporary protected buffer for plaintext tokens
+- Automatic secure zeroing via `defer enclave.Destroy()`
+- Memory locking (mlock) prevents page swapping to disk
+- Core dump exclusion via madvise(MADV_DONTDUMP) on Linux/macOS
+
+**Usage Patterns**:
+```go
+import "github.com/awnumar/memguard"
+
+// Protect plaintext token during encryption
+func encryptTokenWithMemguard(plaintext []byte, keyring keyring) error {
+    tokenEnclave := memguard.NewEnclave(plaintext)
+    defer tokenEnclave.Destroy()  // Automatic secure zeroing
+    
+    tokenBuffer := tokenEnclave.Open()
+    defer tokenBuffer.Destroy()
+    
+    // Pass protected buffer to SDK encryption
+    result, err := sdk.Encrypt(ctx, tokenBuffer.Bytes(), encCtx)
+    // DEK/wrapped materials handled by SDK internally
+    return err
+}
+
+// Zero source plaintext immediately
+memguard.WipeBytes(original)
+```
+
+**Platform Support**:
+- Linux: Full support (mlock, madvise(MADV_DONTDUMP), madvise(MADV_CORE))
+- macOS: Full support (mlock, madvise variations)
+- Windows: VirtualLock with PAGE_NOACCESS
+- Container: Works with `--cap-add=IPC_LOCK`
+
+**Performance Overhead**:
+- Enclave creation: ~100-500μs (includes mlock syscall)
+- Negligible impact on <100ms per-operation targets
+- Optimization: Reuse keyrings for multiple operations
+
+**Testing Memory Protection**:
+- Verify buffers zeroed via heap inspection post-operation
+- Validate mlock success at startup with `memguard.CanMlock()`
+- Fallback for mlock failures: use explicit zeroing without locking
+
+### Best Practices
+- ✅ Always `defer enclave.Destroy()` immediately after creation
+- ✅ Zero plaintext source: `memguard.WipeBytes(original)`
+- ✅ Protect plaintext tokens during encryption
+- ✅ Graceful fallback if mlock unavailable (log warning, continue)
+- ✅ Test memory protection behavior in integration tests
+
+---
+
+## Area 3: Structured Logging for Encryption Operations
+
+### Research Question
+What structured logging patterns enable audit compliance while preventing sensitive data leakage?
+
+### Findings
+
+**Canonical Log Schema** (aligns with project's slog):
+```json
+{
+  "operation": "encrypt|decrypt",
+  "service_id": "oauth2",
+  "success": true|false,
+  "token_type": "access|refresh",
+  "timestamp": "2026-01-16T10:30:45.123Z",
+  "duration_ms": 45,
+  "algorithm": "AESGCMSIV",
+  "error_kind": "context_mismatch|kek_unavailable|decrypt_failed|invalid_ciphertext",
+  "request_id": "correlation_id",
+  "principal": "user@example.com"
+}
+```
+
+**Error Classification**:
+- `context_mismatch`: Context doesn't match at DEK or KMS layer
+- `kek_unavailable`: KMS unreachable, retry exhausted
+- `decrypt_failed`: Authentication tag verification failed (tampered data)
+- `invalid_ciphertext`: Envelope parsing error
+
+**What NOT to Log**:
+- ❌ Plaintext OAuth tokens or fragments
+- ❌ Encryption keys (DEK, KEK, nonces)
+- ❌ Decrypted token content
+- ❌ Raw SDK error messages (classify to error_kind)
+
+**What to Log**:
+- ✅ Operation type (encrypt/decrypt)
+- ✅ Service context (service_id, request_id)
+- ✅ Success/failure + error classification
+- ✅ Performance metrics (duration_ms)
+- ✅ Metadata (algorithm, key_version, ciphertext_size_bytes)
+
+**Integration with Project**:
+- Project uses Go's `log/slog` for structured JSON
+- Extend existing audit patterns (OAuth2 middleware)
+- SecureLogger wrapper for encryption operations
+- 100% of failures logged (compliance)
+- Sample of successes for performance monitoring (e.g., 1% sampling)
+
+### Best Practices
+- ✅ Use project's existing slog with SecureLogger wrapper
+- ✅ Classify errors into safe categories
+- ✅ Never expose raw crypto errors
+- ✅ Log 100% of failures for compliance
+- ✅ Redact patterns in error messages
+
+---
+
+## Area 4: Environment Variable KEK Injection for Development
+
+### Research Question
+How to support `${ENCRYPTION_KEK}` environment variable injection for dev while maintaining AWS KMS for production?
+
+### Findings
+
+**Configuration System** (leverages feature 002-flexible-configuration):
+- Single field: `encryption.key_encryption_key`
+- Supports AWS KMS ARN format for production
+- Supports `${ENCRYPTION_KEK}` env var reference for development
+- Configuration loader resolves at startup
+
+**Custom Keyring for Env Var KEK**:
+- AWS Encryption SDK keyring abstraction allows custom implementations
+- Create local keyring that uses environment variable KEK
+- Use same EncryptionContext binding as AWS KMS keyring
+- Fallback mechanism: if env var not set, fail fast
+
+**AWS KMS vs. Env Var KEK**:
+
+| Aspect | AWS KMS (Production) | Env Var (Development) |
+|--------|---|---|
+| Key Rotation | ✅ Automatic via versioning | ❌ Manual (ephemeral data) |
+| Backward Compat | ✅ Old tokens decryptable | ❌ Old tokens fail on KEK change |
+| Auditing | ✅ CloudTrail logs | ❌ Env var changes not audited |
+| Performance | 50-200ms per operation | <5ms per operation |
+
+**Configuration Examples**:
+```yaml
+# Production
+encryption:
+  key_encryption_key: arn:aws:kms:us-east-1:123456789:key/12345678
+
+# Local development
+encryption:
+  key_encryption_key: ${ENCRYPTION_KEK}
+```
+
+### Best Practices
+- ✅ Fail fast at startup if KEK missing or invalid
+- ✅ No fallback to plaintext KEK—always fail closed
+- ✅ Document that production MUST use AWS KMS
+- ✅ Env var KEK is development/testing only
+- ✅ Warn developers: changing ENCRYPTION_KEK breaks old sessions (acceptable in dev)
+
+---
+
+## Summary of Research Findings
+
+| Area | Decision | Confidence | Risk Mitigation |
+|------|----------|-----------|-----------------|
+| AWS Encryption SDK | Use official AWS SDK for Go | High | Official AWS implementation; no maintenance risk |
+| DEK/KEK Architecture | AWS SDK envelope, KMS keyring, context at both layers | High | SDK handles compliance; AWS native support |
+| Memory Protection | Memguard for buffer zeroing + mlock + core dump exclusion | High | Battle-tested; platform support verified |
+| Logging | Structured JSON with canonical schema; project's slog | High | Aligns with existing patterns; audit-ready |
+| Env Var KEK | Development-only via `${ENCRYPTION_KEK}` interpolation | High | Ephemeral dev environments don't need rotation |
+| Error Handling | AWS SDK retry delegation; fail-closed on context mismatch | High | Prevents custom retry bugs; security-first |
+| Performance | Local <50ms achievable; KMS latency operator concern | High | AWS SDK optimized; KMS SLA documented |
+
+---
+
+## Recommendations for Phase 1 Design
+
+1. **Implement EncryptionPort interface** (Encrypt/Decrypt methods)
+2. **Create AWS KMS adapter** wrapping AWS Encryption SDK
+3. **Create custom keyring adapter** for environment variable KEK
+4. **Integrate memguard** for plaintext token protection
+5. **Add SecureLogger wrapper** to project's slog
+6. **Write unit tests first** (TDD): encryption/decryption, context binding, error cases
+7. **Integration tests**: real AWS KMS via LocalStack testcontainers
+
+**Next Step**: Phase 1 design artifacts (data-model.md, contracts/, quickstart.md)

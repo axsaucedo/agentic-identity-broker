@@ -1,6 +1,6 @@
 # Implementation Plan: Encryption Vault for OAuth Tokens (Envelope Encryption)
 
-**Branch**: `012-aws-encryption-vault` | **Date**: 2026-01-15 | **Spec**: [spec.md](./spec.md)
+**Branch**: `012-aws-encryption-vault` | **Date**: 2026-01-16 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/012-aws-encryption-vault/spec.md`
 
 ## Summary
@@ -11,8 +11,8 @@ Implement application-layer envelope encryption for OAuth tokens stored in the s
 
 **Language/Version**: Go 1.24.0+ (post-quantum cryptography support)
 **Primary Dependencies**:
-- `github.com/aws/aws-encryption-sdk-go/v3` - AESGCMSIV authenticated encryption
-- `github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl` - Keyring management
+- `github.com/aws/aws-encryption-sdk/releases/go` - Official AWS Encryption SDK with AESGCMSIV authenticated encryption
+- `github.com/aws/aws-cryptographic-material-providers/releases/go` - Keyring management for KMS
 - `github.com/aws/aws-sdk-go-v2/service/kms` - AWS KMS client
 - `github.com/awnumar/memguard` - Memory protection (buffer zeroing, mlock, core dump exclusion)
 

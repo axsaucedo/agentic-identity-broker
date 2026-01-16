@@ -43,7 +43,7 @@ A security team needs the Key Encryption Key (KEK) to be securely stored using i
 
 ### User Story 3 - DEK Generation and Context Binding (Priority: P1)
 
-A security architect needs Data Encryption Keys (DEK) to be generated securely and bound to the token's service context. Each session (containing access and refresh tokens) should use a fresh DEK generated with cryptographically secure randomness, with the service_id context cryptographically bound during DEK encryption. DEKs should be unique per session and tightly coupled with their encrypted tokens and service context.
+A security architect needs Data Encryption Keys (DEK) to be generated securely and bound to the token's service context. Each session (containing access and refresh tokens) should use a single fresh DEK generated with cryptographically secure randomness, with the service_id context cryptographically bound during DEK encryption. DEKs should be unique per session and tightly coupled with their encrypted tokens and service context. All tokens within a session (access_token and refresh_token) share the same DEK, optimized for a single KMS wrap operation.
 
 **Why this priority**: DEK security and context binding are crucial for envelope encryption. Generating fresh, random DEKs per session with context binding ensures that tokens cannot be reused in different contexts, and compromise of one session's DEK doesn't affect other sessions.
 
@@ -149,7 +149,7 @@ A forward-thinking security team wants the encryption vault to support post-quan
 - **FR-012**: System MUST fail securely if KEK is missing, inaccessible, or unwrapping fails (no plaintext fallback)
 - **FR-013**: System MUST never log plaintext OAuth tokens or encryption keys (DEK or KEK)
 - **FR-014**: System MUST verify integrity of encrypted tokens during decryption; if integrity verification fails, decryption MUST fail
-- **FR-015**: System MUST support multiple token types (access tokens, refresh tokens, id tokens)
+- **FR-015**: System MUST support token types: access tokens and refresh tokens (no id tokens)
 - **FR-016**: System MUST support post-quantum cryptographic algorithms for both DEK encryption and KEK wrapping when available
 - **FR-017**: System MUST protect against chosen-ciphertext attacks during envelope encryption and decryption
 
@@ -235,7 +235,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 
 #### Operational Security Requirements
 
-- **SR-023**: All token encryption/decryption operations MUST be auditable: successes logged with operation type and context fields, failures logged with sufficient context for debugging
+- **SR-023**: All token encryption/decryption operations MUST be auditable using structured JSON logging with canonical fields: operation (encrypt|decrypt), service_id, success (true|false), token_type (access|refresh), timestamp (ISO 8601), error_kind (for failures). No plaintext tokens or keys in logs. Follow existing agentic-identity-broker logging patterns.
 - **SR-024**: OAuth tokens MUST NOT be logged as plaintext in any logs or error messages
 - **SR-025**: Encryption keys (DEK and KEK) MUST NOT be logged in any logs or error messages
 - **SR-026**: System MUST NOT silently fall back to plaintext token storage if envelope encryption fails
@@ -243,12 +243,15 @@ The system automatically detects the KEK type by checking if the value is an AWS
 - **SR-028**: Decryption failures MUST result in application-level failures, not silent acceptance of corrupted data
 - **SR-029**: Context verification failures MUST cause immediate decryption failure with no fallback or retry
 - **SR-030**: All DEK and KEK operations MUST include context verification (service_id) as integral part of cryptographic operations
+- **SR-031**: If AWS KMS becomes unavailable during token decryption, delegate to AWS SDK retry behavior. If AWS SDK retries exhaust, fail the operation with SDK error. No custom retry logic. Total p99 latency target: <300ms (50ms local ops + 250ms KMS buffer).
+- **SR-032**: Key rotation is supported via AWS KMS native key versioning for production deployments. Environment variable KEK (development-only) does not support rotation—old tokens become unrecoverable on KEK change; this is acceptable for ephemeral dev environments.
 
 ### Performance Requirements
 
-- **PR-001**: Encryption of a typical session (both access and refresh tokens) using envelope encryption with one DEK and context binding SHOULD complete in under 100ms (excluding external key management service latency)
-- **PR-002**: Decryption of a typical session (both access and refresh tokens) using envelope encryption with context verification SHOULD complete in under 100ms (excluding external key management service latency)
+- **PR-001**: Local encrypt/decrypt operations (DEK generation, wrapping, memguard buffer cleanup) SHOULD complete in under 50ms, excluding AWS KMS latency. AWS KMS latency is variable (typically 50-200ms per AWS SLA ~99.99%). Target total p99 latency: <300ms (50ms local + 250ms KMS buffer)
+- **PR-002**: Decryption of a typical session (both access and refresh tokens) using envelope encryption with context verification and local operations SHOULD complete in under 50ms, excluding KMS unwrap latency
 - **PR-003**: System MUST handle encryption and decryption operations without blocking the session repository under normal load
+- **PR-004**: KMS latency variability is an operator/deployment concern; local performance targets assume KMS availability within AWS SLA
 
 ### Key Entities
 
@@ -299,6 +302,14 @@ The system automatically detects the KEK type by checking if the value is an AWS
 - Q: Configuration design for KEK storage (separate backends vs. unified field)? → A: Single `encryption.key_encryption_key` field with `${env_var}` interpolation (leverages existing config system, AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development)
 - Q: Update all context references from 4-field to service_id only for consistency? → A: Yes, update all user stories, functional requirements, and success criteria to reflect service_id-only context
 
+### Session 2026-01-16
+
+- Q: Runtime KMS Failure Handling → A: Delegate to AWS SDK retry behavior. If KMS becomes unavailable during token decryption, the AWS SDK will handle transient retries according to its configured policy. If retries exhaust, the operation fails with the SDK error. No custom retry logic needed.
+- Q: DEK-Per-Session Trade-off → A: One DEK per session. Sessions contain only access_token and refresh_token (no id_token). Both tokens share one DEK per session, optimized to single KMS call per session wrap operation.
+- Q: Observability & Audit Logging Format → A: Use structured JSON logging following existing project logging patterns. Canonical fields: operation, service_id, success, token_type, timestamp, error_kind. No plaintext tokens or keys. Align with current agentic-identity-broker logging conventions.
+- Q: Backward Compatibility Scope for KEK Rotation → A: AWS KMS handles rotation natively with key versioning. Environment variable KEK (development-only) does not require rotation support; production must use AWS KMS for key rotation and backward compatibility.
+- Q: Performance Target Interpretation → A: Separate performance budgets. Local encrypt/decrypt ops (DEK generation, wrapping, memguard): <50ms. KMS latency: variable (AWS SLA ~99.99%). Total p99 latency goal: <300ms. KMS latency is operator/deployment concern.
+
 ## Notes
 
 This specification uses **Envelope Encryption** with two key layers and context binding at the DEK level: Data Encryption Keys (DEK) that encrypt individual tokens with encryption context (service_id) as authenticated additional data, and Key Encryption Keys (KEK) that wrap (encrypt) the DEKs with the same context as authenticated additional data. Each token encryption generates a fresh, random DEK, binds service_id context during encryption, and the DEK is wrapped by the KEK with context verification. Context verification happens at both layers: DEK decryption verifies context, and DEK unwrapping verifies context. Mismatch at either layer causes decryption to fail immediately.
@@ -311,4 +322,4 @@ Implementation uses AWS Encryption SDK with AESGCMSIV (Encrypt-then-MAC with cou
 
 ---
 
-**Version**: 1.3 | **Status**: Draft | **Last Updated**: 2026-01-15 | **Clarifications Applied**: 7 clarification questions resolved
+**Version**: 1.4 | **Status**: Draft | **Last Updated**: 2026-01-16 | **Clarifications Applied**: 12 clarification questions resolved (7 from session 2026-01-15, 5 from session 2026-01-16)
