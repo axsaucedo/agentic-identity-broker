@@ -26,7 +26,7 @@ A platform operator deploying the system to production needs to encrypt sensitiv
 
 ### User Story 2 - Secure KEK Storage Using Industry Best Practices (Priority: P1)
 
-A security team needs the Key Encryption Key (KEK) to be securely stored using industry-standard key management practices. For cloud deployments, KEKs should be managed by a centralized, enterprise-grade key management service. For development, KEKs may. be stored locally with appropriate protections. Under no circumstances should KEKs exist in plaintext in application memory or on disk.
+A security team needs the Key Encryption Key (KEK) to be securely stored using industry-standard key management practices. For cloud deployments, KEKs should be managed by a centralized, enterprise-grade key management service. For development, KEKs may be stored locally with appropriate protections. Under no circumstances should KEKs exist in plaintext in application memory or on disk.
 
 **Why this priority**: KEK security is fundamental to envelope encryption. Following industry best practices for KEK storage ensures the security of the entire token encryption system.
 
