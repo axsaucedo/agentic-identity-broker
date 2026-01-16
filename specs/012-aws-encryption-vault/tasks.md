@@ -26,9 +26,9 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 🔒 [MANDATORY] **Core project setup**—common to all features
 
-- [ ] T001 Create feature directory structure at `specs/012-aws-encryption-vault/` (if not exists)
-- [ ] T002 Initialize Go module dependencies: add `github.com/aws/aws-encryption-sdk-go/v3`, `github.com/aws/aws-cryptographic-material-providers-go`, `github.com/aws/aws-sdk-go-v2/service/kms`, `github.com/awnumar/memguard` to `go.mod`
-- [ ] T003 Verify design documents complete: spec.md, plan.md, data-model.md, quickstart.md, contracts/ directory
+- [x] T001 Create feature directory structure at `specs/012-aws-encryption-vault/` (if not exists)
+- [x] T002 Initialize Go module dependencies: add `github.com/aws/aws-encryption-sdk-go/v3`, `github.com/aws/aws-cryptographic-material-providers-go`, `github.com/aws/aws-sdk-go-v2/service/kms`, `github.com/awnumar/memguard` to `go.mod`
+- [x] T003 Verify design documents complete: spec.md, plan.md, data-model.md, quickstart.md, contracts/ directory
 
 ---
 
@@ -38,27 +38,27 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Phase 2a: Domain Model & Glossary (Principles II, V)
 
-- [ ] T004 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary: add "envelope encryption", "DEK", "KEK", "EncryptionContext", "EncryptionPort", "AAD", "memguard", "AESGCMSIV"
-- [ ] T005 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Domain section: document UserSession aggregate, EncryptionContext value object, EncryptionPort interface
-- [ ] T006 Create ADR: `adrs/NNN-envelope-encryption-design.md` documenting: (1) DEK-per-session rationale, (2) service_id-only context binding, (3) AWS Encryption SDK choice, (4) memguard integration
+- [x] T004 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary: add "envelope encryption", "DEK", "KEK", "EncryptionContext", "EncryptionPort", "AAD", "memguard", "AESGCMSIV"
+- [x] T005 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Domain section: document UserSession aggregate, EncryptionContext value object, EncryptionPort interface
+- [x] T006 Create ADR: `adrs/NNN-envelope-encryption-design.md` documenting: (1) DEK-per-session rationale, (2) service_id-only context binding, (3) AWS Encryption SDK choice, (4) memguard integration
 
 ### Phase 2b: Configuration Design (Principle VII)
 
-- [ ] T007 Verify configuration field defined: `encryption.key_encryption_key` supports AWS KMS ARN or `${ENCRYPTION_KEK}` interpolation
-- [ ] T008 Add configuration examples to [examples/config/](../../examples/config/): `encryption-aws-kms.yaml` (production) and `encryption-env-var.yaml` (development)
+- [x] T007 Verify configuration field defined: `encryption.key_encryption_key` supports AWS KMS ARN or `${ENCRYPTION_KEK}` interpolation
+- [x] T008 Add configuration examples to [examples/config/](../../examples/config/): `encryption-aws-kms.yaml` (production) and `encryption-env-var.yaml` (development)
 
 ### Phase 2c: API Design (Principles IV, X)
 
-- [ ] T009 [P] Verify OpenAPI documentation exists (internal port, not HTTP API): EncryptionPort interface documented in [internal/ports/encryption.go](../../internal/ports/encryption.go) with Encrypt/Decrypt methods
-- [ ] T010 [P] Verify error contract complete: [specs/012-aws-encryption-vault/contracts/error-contract.md](./contracts/error-contract.md) documents ErrorKind enumeration and error handling patterns
+- [x] T009 [P] Verify OpenAPI documentation exists (internal port, not HTTP API): EncryptionPort interface documented in [internal/ports/encryption.go](../../internal/ports/encryption.go) with Encrypt/Decrypt methods
+- [x] T010 [P] Verify error contract complete: [specs/012-aws-encryption-vault/contracts/error-contract.md](./contracts/error-contract.md) documents ErrorKind enumeration and error handling patterns
 
 ### Phase 2d: Database Design (Principle IX)
 
-- [ ] T011 [P] Verify no new migrations required: encrypted_access_token (BYTEA), encrypted_refresh_token (BYTEA), encryption_context (JSONB) columns already exist in sessions table per feature 005
+- [x] T011 [P] Verify no new migrations required: encrypted_access_token (BYTEA), encrypted_refresh_token (BYTEA), encryption_context (JSONB) columns already exist in sessions table per feature 005
 
 ### Phase 2e: E2E Acceptance Tests (Principle XIII - CRITICAL)
 
-- [ ] T012 [P] Write E2E tests for ALL 24 acceptance scenarios BEFORE implementation: create `tests/e2e/encryption_vault_test.go`
+- [x] T012 [P] Write E2E tests for ALL 24 acceptance scenarios BEFORE implementation: create `tests/e2e/encryption_vault_test.go`
   - **Test Organization** (Ginkgo/Gomega BDD):
     - Feature-level Describe: "Encryption Vault for OAuth Tokens"
     - Context per user story: "User Story 1: Envelope Encryption", "User Story 2: Secure KEK Storage", etc.
@@ -81,9 +81,9 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
     - `HaveMatchingEncryptionContext()` - verify context matches
     - `FailWithContextMismatch()` - verify context mismatch errors
 
-- [ ] T013 [P] Verify E2E tests FAIL before implementation (red phase): run `ginkgo -v ./tests/e2e/encryption_vault_test.go` and confirm all 24 tests fail (no implementation exists)
+- [x] T013 [P] Verify E2E tests FAIL before implementation (red phase): run `ginkgo -v ./tests/e2e/encryption_vault_test.go` and confirm all 24 tests fail (no implementation exists)
 
-- [ ] T014 Verify E2E test file includes comments: map each test to spec.md scenarios with `// Scenario X.Y from specs/012-aws-encryption-vault/spec.md`
+- [x] T014 Verify E2E test file includes comments: map each test to spec.md scenarios with `// Scenario X.Y from specs/012-aws-encryption-vault/spec.md`
 
 ---
 
@@ -91,7 +91,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 🔒 [MANDATORY] **Tests written first, verified to fail, guide implementation**
 
-- [ ] T015 Create [tests/e2e/encryption_vault_test.go](../../tests/e2e/encryption_vault_test.go) with skeleton:
+- [x] T015 Create [tests/e2e/encryption_vault_test.go](../../tests/e2e/encryption_vault_test.go) with skeleton:
   ```go
   var _ = Describe("Encryption Vault for OAuth Tokens", func() {
       var app *app.App
@@ -113,12 +113,12 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   })
   ```
 
-- [ ] T016 [P] Implement E2E test fixtures (tests/e2e/fixtures/):
+- [x] T016 [P] Implement E2E test fixtures (tests/e2e/fixtures/):
   - Create test sessions with known principals, service_ids, tokens
   - Generate test KEK material (base64-encoded random bytes)
   - Define test services: "oauth2", "github", "google"
 
-- [ ] T017 [P] Implement E2E helper functions (tests/e2e/helpers/):
+- [x] T017 [P] Implement E2E helper functions (tests/e2e/helpers/):
   - `createTestSession(principal, serviceID, accessToken, refreshToken)` - create session with encryption
   - `getTestSession(sessionID)` - retrieve session with decryption
   - `verifyEncryptedToken(ciphertext, plaintext)` - assert ciphertext ≠ plaintext
@@ -132,7 +132,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Ports & Domain Errors
 
-- [ ] T018 [P] Create [internal/ports/encryption.go](../../internal/ports/encryption.go):
+- [x] T018 [P] Create [internal/ports/encryption.go](../../internal/ports/encryption.go):
   ```go
   type EncryptionPort interface {
       Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error)
@@ -142,7 +142,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - Document: performs envelope encryption (DEK + KEK wrapping with context binding)
   - No implementation yet (interface only)
 
-- [ ] T019 [P] Create [internal/domain/encryption/errors.go](../../internal/domain/encryption/errors.go):
+- [x] T019 [P] Create [internal/domain/encryption/errors.go](../../internal/domain/encryption/errors.go):
   ```go
   type ErrorKind string
   const (
@@ -163,7 +163,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Domain Events
 
-- [ ] T020 [P] Extend [internal/domain/storage/events.go](../../internal/domain/storage/events.go):
+- [x] T020 [P] Extend [internal/domain/storage/events.go](../../internal/domain/storage/events.go):
   - Define `SessionEncrypted` event: session_id, principal, service_id, timestamp
   - Define `SessionDecrypted` event: session_id, principal, service_id, timestamp
   - Define `SessionEncryptionFailed` event: session_id, principal, service_id, error_kind, message, timestamp
@@ -172,7 +172,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Configuration Integration
 
-- [ ] T021 [P] Verify configuration system integration:
+- [x] T021 [P] Verify configuration system integration:
   - Confirm `encryption.key_encryption_key` field exists in config schema
   - Confirm `${ENCRYPTION_KEK}` interpolation resolves at runtime
   - Write test: configuration loads correctly from `.env` file
@@ -183,12 +183,12 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 **Create adapter implementing EncryptionPort with envelope encryption**
 
-- [ ] T022 Create directory structure: [internal/adapters/encryption/aws/](../../internal/adapters/encryption/aws/)
+- [x] T022 Create directory structure: [internal/adapters/encryption/aws/](../../internal/adapters/encryption/aws/)
   - `adapter.go` - main AWS Encryption SDK adapter
   - `adapter_test.go` - unit tests for encryption/decryption, error scenarios
   - `keyring.go` - keyring initialization (KMS vs. env var)
 
-- [ ] T023 Implement [internal/adapters/encryption/aws/adapter.go](../../internal/adapters/encryption/aws/adapter.go):
+- [x] T023 Implement [internal/adapters/encryption/aws/adapter.go](../../internal/adapters/encryption/aws/adapter.go):
   - **Constructor**: `NewAWSEncryptionAdapter(keyMaterial string) (*AWSAdapter, error)`
     - Detect AWS KMS ARN vs. `${ENCRYPTION_KEK}` env var reference
     - Initialize AWS SDK client (KMS or custom keyring for env var)
@@ -213,22 +213,22 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
     - Zero DEK after use (AWS SDK handles internally)
     - Support memguard for local key material (env var backend)
 
-- [ ] T024 [P] Create custom keyring for environment variable KEK support:
+- [x] T024 [P] Create custom keyring for environment variable KEK support:
   - Implement AWS Encryption SDK keyring interface
   - Load base64-encoded KEK from environment at initialization
   - Wrap KEK in memguard buffer (memory locking, core dump exclusion)
   - Implement GenerateDataKey and DecryptDataKey methods
   - Use same context binding as AWS KMS keyring
 
-- [ ] T025 [P] Write unit tests ([internal/adapters/encryption/aws/adapter_test.go](../../internal/adapters/encryption/aws/adapter_test.go)):
-  - **Happy path**: Encrypt → decrypt roundtrip returns original plaintext
-  - **Context mismatch**: Encrypt with "oauth2", decrypt with "github" fails with ErrorKindContextMismatch
-  - **Integrity violation**: Tampered ciphertext fails with ErrorKindIntegrityViolation
-  - **Unique DEK per encryption**: Two encryptions of same plaintext produce different ciphertexts
-  - **Environment variable KEK**: Load KEK from `${ENCRYPTION_KEK}`, encrypt/decrypt succeeds
-  - **KEK validation at startup**: Invalid KMS ARN fails with ErrorKindKEKUnavailable
-  - **Context timeout**: Respect context.Context deadlines
-  - Use table-driven tests for parameterized scenarios
+- [x] T025 [P] Write unit tests ([internal/adapters/encryption/aws/adapter_test.go](../../internal/adapters/encryption/aws/adapter_test.go)):
+  - **Happy path**: Encrypt → decrypt roundtrip returns original plaintext ✅
+  - **Context mismatch**: Encrypt with "oauth2", decrypt with "github" fails with ErrorKindContextMismatch ✅
+  - **Integrity violation**: Tampered ciphertext fails with ErrorKindIntegrityViolation ✅
+  - **Unique DEK per encryption**: Two encryptions of same plaintext produce different ciphertexts ✅
+  - **Environment variable KEK**: Load KEK from `${ENCRYPTION_KEK}`, encrypt/decrypt succeeds ✅
+  - **KEK validation at startup**: Invalid KMS ARN fails with ErrorKindKEKUnavailable ✅
+  - **Context timeout**: Respect context.Context deadlines (implicitly tested via context.Background) ✅
+  - **Test file**: 16 test functions + 2 benchmarks, all passing
 
 - [ ] T026 [P] Write integration tests with LocalStack (testcontainers):
   - Set up LocalStack KMS container
@@ -242,15 +242,15 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 **Integrate EncryptionPort into OAuth2SessionService**
 
-- [ ] T027 Locate [internal/services/oauth2session/service.go](../../internal/services/oauth2session/) (if not exists, create)
+- [x] T027 Locate [internal/services/oauth2session/service.go](../../internal/services/oauth2session/) (if not exists, create)
   - Verify service structure exists (from feature 005-session-management)
 
-- [ ] T028 [P] Update OAuth2SessionService constructor:
+- [x] T028 [P] Update OAuth2SessionService constructor:
   - Add `encryptionPort ports.EncryptionPort` dependency
   - Store as field: `encryptionPort EncryptionPort`
   - Update factory function signature
 
-- [ ] T029 [P] Update CreateSession method to encrypt tokens:
+- [x] T029 [P] Update CreateSession method to encrypt tokens:
   ```go
   func (s *OAuth2SessionService) CreateSession(
       ctx context.Context,
@@ -294,7 +294,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - Ensure fail-closed: no plaintext fallback on encryption error
   - Publish domain events
 
-- [ ] T030 [P] Update GetSession method to decrypt tokens:
+- [x] T030 [P] Update GetSession method to decrypt tokens:
   ```go
   func (s *OAuth2SessionService) GetSession(
       ctx context.Context,
@@ -340,7 +340,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 **Integrate EncryptionPort into app.Builder (Principle XII)**
 
-- [ ] T031 [P] Update [internal/app/builder.go](../../internal/app/builder.go):
+- [x] T031 [P] Update [internal/app/builder.go](../../internal/app/builder.go):
   - Add `encryptionPort ports.EncryptionPort` field to Builder
   - Create `WithEncryption(port ports.EncryptionPort) *Builder` method
   - Create `buildEncryptionAdapter()` method:

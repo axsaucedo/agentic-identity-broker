@@ -10,6 +10,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
@@ -169,11 +170,23 @@ func (b *Builder) Build() (*App, error) {
 	// Constitution Principle VII: Configuration-Driven Design
 	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
 
-	// Use configured encryption or no-op for development
+	// Initialize encryption adapter based on configuration or builder override
+	// Constitution Principle VII: Configuration-Driven Design
 	var encryptor ports.EncryptionPort
 	if b.encryption != nil {
+		// Builder override takes precedence (for testing)
 		encryptor = b.encryption
+	} else if b.config.Encryption.KeyEncryptionKey != "" {
+		// Production: Initialize AWS Encryption SDK adapter with configured KEK
+		// Supports both AWS KMS ARN and environment variable injection
+		adapter, err := awsencryption.NewAWSEncryptionAdapter(b.config.Encryption.KeyEncryptionKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize AWS encryption adapter: %w", err)
+		}
+		encryptor = adapter
+		b.logger.Info("AWS Encryption SDK adapter initialized", "kek_type", adapter.GetKEKType())
 	} else {
+		// Development: No-op encryption for local development without AWS dependencies
 		encryptor = noop.NewNoOpEncryption()
 	}
 
