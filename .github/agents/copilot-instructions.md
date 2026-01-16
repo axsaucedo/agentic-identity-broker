@@ -1,10 +1,10 @@
 # agentic-identity-broker Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-01-08
+Auto-generated from all feature plans. Last updated: 2026-01-16
 
 ## Active Technologies
 
-- Go 1.23.0+ (from go.mod) (copilot/create-plan-for-spec-md)
+- Go 1.24.0 (per go.mod) (013-token-exchange)
 
 ## Project Structure
 
@@ -15,15 +15,15 @@ tests/
 
 ## Commands
 
-# Add commands for Go 1.23.0+ (from go.mod)
+# Add commands for Go 1.24.0 (per go.mod)
 
 ## Code Style
 
-Go 1.23.0+ (from go.mod): Follow standard conventions
+Go 1.24.0 (per go.mod): Follow standard conventions
 
 ## Recent Changes
 
-- copilot/create-plan-for-spec-md: Added Go 1.23.0+ (from go.mod)
+- 013-token-exchange: Added Go 1.24.0 (per go.mod)
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

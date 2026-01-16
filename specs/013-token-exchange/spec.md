@@ -164,27 +164,27 @@ Administrators need to configure which resource URIs map to which third-party se
 - **FR-005**: System MUST extract user principal from subject_token using a configurable CEL expression (default: `subject_token.sub`)
 - **FR-005a**: System MUST extract agent_client_id from subject_token using a configurable CEL expression (default: `subject_token.azp`)
 - **FR-006**: System MUST validate client_assertion parameter is a valid JWT issued by the Upstream OAuth2 Server; the client_assertion identifies the **gateway** (not the agent)
+- **FR-006a**: System MUST extract gateway identifier from client_assertion 'sub' claim for authorization evaluation and audit logging
 - **FR-007**: System MUST validate client_assertion_type equals `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
 - **FR-008**: System MUST require resource parameter to identify target third-party service
-- **FR-009**: System MUST look up ThirdpartyOAuth2Service by matching resource URI against protected_resources field (after normalization)
-- **FR-009a**: System MUST normalize resource URIs by removing trailing slashes before storage and comparison
+- **FR-008a**: System MUST validate that multiple resource parameters (if provided) all map to same service; if resources map to different services, return error=invalid_target with error_description "Multiple resources must map to the same service"
+- **FR-009**: System MUST normalize resource URIs by removing trailing slashes, then look up ThirdpartyOAuth2Service by matching normalized resource URI against normalized protected_resources field
 - **FR-010**: System MUST verify user has an active UserGrant for the agent (agent_client_id extracted from subject_token) and target service before retrieving tokens
 - **FR-011**: System MUST retrieve stored third-party OAuth2 tokens from token vault using principal and service ID
 - **FR-012**: System MUST return RFC 8693 compliant response with access_token, token_type (pass-through from stored third-party token response), issued_token_type, and optional expires_in
 - **FR-013**: System MUST set issued_token_type to the original token type from the third-party service (typically urn:ietf:params:oauth:token-type:access_token)
 - **FR-014**: System MUST automatically refresh expired access_tokens if refresh_token is available and valid
+- **FR-014a**: When token refresh fails with invalid_grant from third-party service, system MUST return error=invalid_grant with error_description indicating re-authentication required
 - **FR-015**: System MUST return appropriate RFC 8693 error responses (invalid_request, invalid_client, invalid_grant, invalid_target, access_denied)
 - **FR-016**: System MUST support CEL-based authorization for client_assertion (gateway) validation
-- **FR-017**: System MUST validate CEL expressions at startup and fail fast on syntax errors
-- **FR-018**: System MUST validate claim extraction CEL expressions (principal_expression, agent_client_id_expression) at startup
+- **FR-017**: System MUST validate all CEL expressions at startup (authorization and claim extraction) and fail fast on syntax errors
 
 ### Admin API Requirements
 
 - **API-001**: PUT /api/services/{service-id} MUST accept optional `protected_resources` array field
 - **API-002**: POST /api/services MUST accept optional `protected_resources` array field
 - **API-003**: GET /api/services and GET /api/services/{service-id} MUST return `protected_resources` field
-- **API-004**: protected_resources values MUST be valid URI strings
-- **API-004a**: protected_resources URIs MUST be normalized (trailing slashes removed) before storage
+- **API-004**: protected_resources values MUST be valid URI strings and normalized per FR-009 (trailing slashes removed) before storage
 - **API-005**: protected_resources MUST be unique across all services (no duplicate URIs after normalization)
 - **API-006**: protected_resources validation MUST return 400 for invalid URIs, 409 for duplicate URIs (checked after normalization)
 
@@ -197,7 +197,9 @@ Administrators need to configure which resource URIs map to which third-party se
 - **token_exchange.authorization.cel.expression**: (string) CEL expression for gateway authorization. Default: "true" (allow all valid gateways)
 - **token_exchange.refresh.enabled**: (boolean) Enable automatic token refresh. Default: true
 
-**Upstream OAuth2 Configuration**: Token exchange reuses the existing root-level `upstream_oauth2` configuration (issuer, jwks_uri, audience). No separate token_exchange-specific upstream config is needed.
+**Upstream OAuth2 Configuration**: Token exchange reuses the existing root-level `upstream_oauth2` configuration (issuer, jwks_uri, audience). JWKS caching is configured via:
+- **upstream_oauth2.jwks_cache.min_refresh_interval**: (duration) Minimum time between JWKS refreshes. Default: "15m"
+- **upstream_oauth2.jwks_cache.refresh_interval**: (duration) Automatic JWKS refresh interval. Default: "1h"
 
 **Note**: Token exchange is always enabled. There is no toggle to disable this feature.
 
@@ -208,6 +210,9 @@ upstream_oauth2:
   issuer: "https://upstream-oauth2.example.com"
   jwks_uri: "https://upstream-oauth2.example.com/.well-known/jwks.json"
   audience: "agentic-identity-broker"
+  jwks_cache:
+    min_refresh_interval: "15m"
+    refresh_interval: "1h"
 
 # Token exchange specific configuration
 token_exchange:
@@ -240,8 +245,8 @@ Per Constitution Principle IV and X, API design precedes implementation:
 
 ### Database Requirements
 
-- **DB-001**: Migration MUST add `protected_resources` column (TEXT[] or JSONB) to thirdparty_services table
-- **DB-002**: Migration file MUST follow naming convention: `005_add_service_protected_resources.up.sql` (adjust number as needed)
+- **DB-001**: Migration MUST add `protected_resources` column (TEXT[]) to thirdparty_services table
+- **DB-002**: Migration file MUST follow naming convention: `005_add_service_protected_resources.up.sql`
 - **DB-003**: Migration MUST include corresponding down migration
 - **DB-004**: Index MUST be created on protected_resources for efficient lookup
 - **DB-005**: Unique constraint SHOULD be enforced at application level (checking across all services)
@@ -250,12 +255,11 @@ Per Constitution Principle IV and X, API design precedes implementation:
 
 - **SR-001**: JWT signature verification MUST use Upstream OAuth2 Server's published JWKS
 - **SR-002**: JWKS MUST be cached with configurable TTL and automatic refresh
-- **SR-003**: All token exchange requests MUST be logged for audit including full principal (plaintext), agent_id, service_id, resource, outcome, and timestamp (excluding token values)
-- **SR-004**: CEL expressions MUST NOT allow access to system resources (sandboxed execution)
+- **SR-003**: All token exchange requests MUST be logged for audit including full principal (plaintext), agent_id, service_id, resource, outcome, and timestamp (excluding token values). Note: Full principal logging enables complete audit trails and incident investigation; PII concerns should be addressed via log retention policies and access controls, not by redacting audit data
+- **SR-004**: CEL expressions MUST be validated at startup (per FR-017) and sandboxed during execution to prevent access to system resources
 - **SR-005**: Token values MUST never appear in logs (redact access_token, refresh_token)
 - **SR-006**: System MUST fail closed: if JWT validation fails, deny the request
 - **SR-007**: System MUST verify UserGrant exists before returning tokens (consent enforcement)
-- **SR-008**: CEL expressions for claim extraction MUST be validated at startup and fail fast on errors
 
 ### Domain Model
 
@@ -308,7 +312,7 @@ Per Constitution Principle IV and X, API design precedes implementation:
 - **SC-003**: System correctly rejects 100% of invalid token exchange requests with appropriate RFC 8693 error codes
 - **SC-004**: Administrators can configure protected_resources on services via admin API without system restart
 - **SC-005**: CEL authorization expressions are evaluated in under 100ms
-- **SC-006**: System handles 100 concurrent token exchange requests without degradation
+- **SC-006**: System handles 100 concurrent token exchange requests without degradation (degradation defined as: p95 latency increase >20% OR error rate >1%)
 - **SC-007**: All token exchange operations are logged for audit with sufficient detail for security review (excluding sensitive token values)
 - **SC-008**: System correctly enforces UserGrant verification - 100% of requests without valid grants are rejected with access_denied
 
