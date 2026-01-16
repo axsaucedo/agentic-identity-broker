@@ -55,8 +55,8 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 
 **Constitution Reference**: Principle VII (Configuration-Driven Design)
 
-- [ ] T006 Create example YAML showing all token_exchange config options in examples/config/token-exchange.yaml
-- [ ] T006a [P] Document configuration parameters: token_exchange.claim_extraction.principal_expression, agent_client_id_expression, authorization.type, authorization.cel.expression, refresh.enabled
+- [x] T006 Create example YAML showing all token_exchange config options in examples/config/token-exchange.yaml
+- [x] T006a [P] Document configuration parameters: token_exchange.claim_extraction.principal_expression, agent_client_id_expression, authorization.type, authorization.cel.expression, refresh.enabled
 - [ ] T006b [P] Update examples/config/README.md to reference token-exchange.yaml configuration section
 
 **Checkpoint**: Configuration requirements designed with YAML examples
