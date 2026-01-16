@@ -179,12 +179,28 @@ func (b *Builder) Build() (*App, error) {
 	} else if b.config.Encryption.KeyEncryptionKey != "" {
 		// Production: Initialize AWS Encryption SDK adapter with configured KEK
 		// Supports both AWS KMS ARN and environment variable injection
-		adapter, err := awsencryption.NewAWSEncryptionAdapter(b.config.Encryption.KeyEncryptionKey)
+		// Parse BranchKeyTTL from config
+		branchKeyTTL := time.Duration(0)
+		if b.config.Encryption.BranchKeyTTL != "" {
+			var err error
+			branchKeyTTL, err = time.ParseDuration(b.config.Encryption.BranchKeyTTL)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse encryption.branch_key_ttl %q: %w", b.config.Encryption.BranchKeyTTL, err)
+			}
+		}
+
+		adapter, err := awsencryption.NewAWSEncryptionAdapterWithConfig(
+			b.config.Encryption.KeyEncryptionKey,
+			b.config.Encryption.DynamoDBTableName,
+			branchKeyTTL,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize AWS encryption adapter: %w", err)
 		}
 		encryptor = adapter
-		b.logger.Info("AWS Encryption SDK adapter initialized", "kek_type", adapter.GetKEKType())
+		b.logger.Info("AWS Encryption SDK adapter initialized",
+			"dynamodb_table", b.config.Encryption.DynamoDBTableName,
+			"branch_key_ttl", branchKeyTTL)
 	} else {
 		// Development: No-op encryption for local development without AWS dependencies
 		encryptor = noop.NewNoOpEncryption()

@@ -12,7 +12,6 @@ import (
 	mpltypes "github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographymaterialproviderssmithygeneratedtypes"
 	client "github.com/aws/aws-encryption-sdk/releases/go/encryption-sdk/awscryptographyencryptionsdksmithygenerated"
 	esdktypes "github.com/aws/aws-encryption-sdk/releases/go/encryption-sdk/awscryptographyencryptionsdksmithygeneratedtypes"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
@@ -21,18 +20,19 @@ import (
 const (
 	// DefaultKEKValidationTimeout is the timeout for KMS key accessibility checks
 	DefaultKEKValidationTimeout = 30 * time.Second
+	// DefaultBranchKeyTTL is the TTL for branch keys in the DynamoDB cache
+	DefaultBranchKeyTTL = 1 * time.Hour
+	// DefaultBranchKeyTableName is the default DynamoDB table for caching branch keys
+	DefaultBranchKeyTableName = "EncryptionBranchKeys"
 )
 
 // AWSAdapter implements the EncryptionPort interface using AWS Encryption SDK.
-// Supports envelope encryption with AWS KMS (production) and environment variable KEK injection (development).
+// Supports envelope encryption with AWS KMS hierarchical keyring (production) and environment variable KEK injection (development).
+// The hierarchical keyring uses DynamoDB for caching branch keys, reducing KMS API calls and improving performance.
 // Provides memory protection via memguard for sensitive data.
 type AWSAdapter struct {
-	encryptionClient *client.Client                                                    // AWS Encryption SDK client for encrypt/decrypt operations
-	matProvider      *mpl.Client                                                       // Material Providers client for keyring operations
-	keyring          mpltypes.IKeyring                                                 // Keyring (AWS KMS or Raw AES)
-	kekType          string                                                            // "kms" or "env_var"
-	kmsKeyID         string                                                            // KMS key ARN/alias (for kms mode only)
-	kekMaterial      []byte                                                            // Memory-protected KEK (for env_var mode only)
+	encryptionClient *client.Client    // AWS Encryption SDK client for encrypt/decrypt operations
+	keyring          mpltypes.IKeyring // Keyring (AWS KMS hierarchical, KMS, or Raw AES)
 }
 
 // NewAWSEncryptionAdapter creates a new AWS Encryption SDK adapter with envelope encryption.
@@ -55,7 +55,7 @@ func NewAWSEncryptionAdapter(keyMaterial string) (*AWSAdapter, error) {
 
 	// Assume it's an AWS KMS ARN
 	if strings.HasPrefix(keyMaterial, "arn:aws:kms:") {
-		return newAdapterWithKMSARN(keyMaterial)
+		return newAdapterWithKMSARN(keyMaterial, "", 0)
 	}
 
 	// Invalid format
@@ -65,48 +65,62 @@ func NewAWSEncryptionAdapter(keyMaterial string) (*AWSAdapter, error) {
 	)
 }
 
-// newAdapterWithKMSARN creates an adapter using AWS KMS for key management.
-func newAdapterWithKMSARN(kmsARN string) (*AWSAdapter, error) {
-	// Load AWS configuration
-	cfg, err := config.LoadDefaultConfig(context.Background())
-	if err != nil {
-		return nil, encryption.NewKEKUnavailableError(
-			fmt.Sprintf("failed to load AWS config: %v", err),
-			err,
-		)
+// NewAWSEncryptionAdapterWithConfig creates a new AWS Encryption SDK adapter with custom hierarchical keyring configuration.
+// This constructor allows configuration of DynamoDB table name and branch key TTL.
+//
+// Parameters:
+//   - keyMaterial: KMS ARN or environment variable reference
+//   - dynamoDBTableName: DynamoDB table for branch key caching (uses default if empty)
+//   - branchKeyTTL: TTL for cached branch keys (uses default if zero)
+func NewAWSEncryptionAdapterWithConfig(keyMaterial, dynamoDBTableName string, branchKeyTTL time.Duration) (*AWSAdapter, error) {
+	if keyMaterial == "" {
+		return nil, encryption.NewKEKUnavailableError("key encryption key material is required", nil)
 	}
 
-	// Create KMS client
-	kmsClient := kms.NewFromConfig(cfg)
+	// Determine if this is an environment variable reference or AWS KMS ARN
+	if strings.HasPrefix(keyMaterial, "${") && strings.HasSuffix(keyMaterial, "}") {
+		// Environment variable reference: ${ENCRYPTION_KEK}
+		// Note: env var KEK doesn't use hierarchical keyring, so config params are ignored
+		envVarName := keyMaterial[2 : len(keyMaterial)-1]
+		return newAdapterWithEnvVarKEK(envVarName)
+	}
 
-	// Verify KMS key is accessible
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultKEKValidationTimeout)
-	defer cancel()
+	// Assume it's an AWS KMS ARN with hierarchical keyring configuration
+	if strings.HasPrefix(keyMaterial, "arn:aws:kms:") {
+		return newAdapterWithKMSARN(keyMaterial, dynamoDBTableName, branchKeyTTL)
+	}
 
-	if err := verifyKMSKeyAccessible(ctx, kmsClient, kmsARN); err != nil {
+	// Invalid format
+	return nil, encryption.NewKEKUnavailableError(
+		fmt.Sprintf("invalid key material format: must be AWS KMS ARN or ${ENV_VAR}, got: %s", keyMaterial),
+		nil,
+	)
+}
+
+// newAdapterWithKMSARN creates an adapter using AWS KMS hierarchical keyring for key management.
+// The hierarchical keyring uses DynamoDB for caching branch keys, reducing KMS API calls.
+// dynamoDBTableName and branchKeyTTL override defaults if provided (non-empty/non-zero).
+func newAdapterWithKMSARN(kmsARN, dynamoDBTableName string, branchKeyTTL time.Duration) (*AWSAdapter, error) {
+	// Create hierarchical keyring with configured or default values
+	dynamoDBTable := dynamoDBTableName
+	if dynamoDBTable == "" {
+		dynamoDBTable = DefaultBranchKeyTableName
+	}
+
+	ttl := branchKeyTTL
+	if ttl == 0 {
+		ttl = DefaultBranchKeyTTL
+	}
+
+	keyringCfg := HierarchicalKeyringConfig{
+		KMSKeyARN:         kmsARN,
+		DynamoDBTableName: dynamoDBTable,
+		BranchKeyTTL:      ttl,
+	}
+
+	keyring, err := createHierarchicalKeyring(context.Background(), keyringCfg)
+	if err != nil {
 		return nil, err
-	}
-
-	// Create Material Providers client
-	matProvider, err := mpl.NewClient(mpltypes.MaterialProvidersConfig{})
-	if err != nil {
-		return nil, encryption.NewKEKUnavailableError(
-			fmt.Sprintf("failed to create Material Providers client: %v", err),
-			err,
-		)
-	}
-
-	// Create AWS KMS keyring
-	keyringInput := mpltypes.CreateAwsKmsKeyringInput{
-		KmsClient: kmsClient,
-		KmsKeyId:  kmsARN,
-	}
-	keyring, err := matProvider.CreateAwsKmsKeyring(context.Background(), keyringInput)
-	if err != nil {
-		return nil, encryption.NewKEKUnavailableError(
-			fmt.Sprintf("failed to create AWS KMS keyring: %v", err),
-			err,
-		)
 	}
 
 	// Create Encryption SDK client
@@ -120,10 +134,7 @@ func newAdapterWithKMSARN(kmsARN string) (*AWSAdapter, error) {
 
 	return &AWSAdapter{
 		encryptionClient: encryptionClient,
-		matProvider:      matProvider,
 		keyring:          keyring,
-		kekType:          "kms",
-		kmsKeyID:         kmsARN,
 	}, nil
 }
 
@@ -190,10 +201,7 @@ func newAdapterWithEnvVarKEK(envVarName string) (*AWSAdapter, error) {
 
 	return &AWSAdapter{
 		encryptionClient: encryptionClient,
-		matProvider:      matProvider,
 		keyring:          keyring,
-		kekType:          "env_var",
-		kekMaterial:      kekBytes,
 	}, nil
 }
 
@@ -308,15 +316,6 @@ func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionC
 	}
 
 	return result.Plaintext, nil
-}
-
-// GetKEKType returns the type of Key Encryption Key in use ("kms" or "env_var").
-// Useful for diagnostics and logging.
-func (a *AWSAdapter) GetKEKType() string {
-	if a == nil {
-		return ""
-	}
-	return a.kekType
 }
 
 // verifyKMSKeyAccessible checks that the KMS key is accessible.

@@ -302,4 +302,34 @@ type EncryptionConfig struct {
 	//
 	// SECURITY: This field contains sensitive key material and will be redacted in logs.
 	KeyEncryptionKey string `mapstructure:"key_encryption_key" validate:"required"`
+
+	// DynamoDBTableName specifies the DynamoDB table for caching branch keys in the AWS KMS hierarchical keyring.
+	// The hierarchical keyring uses this table to cache branch keys, reducing the number of KMS API calls.
+	// Each branch key is cached with a TTL for automatic expiration.
+	//
+	// Required for AWS KMS hierarchical keyring deployments.
+	// Defaults to "EncryptionBranchKeys" if not specified.
+	//
+	// The table must have the following schema:
+	// - Partition key: "BranchKeyId" (String)
+	// - Sort key: "TimeToLive" (Number, for TTL-based auto-deletion)
+	//
+	// AWS will automatically delete expired items when TTL expires.
+	DynamoDBTableName string `mapstructure:"dynamodb_table_name"`
+
+	// BranchKeyTTL specifies the Time-To-Live for cached branch keys in DynamoDB.
+	// Branch keys are cached in DynamoDB to reduce KMS API calls in high-throughput scenarios.
+	// After this duration, cached branch keys expire and new ones are generated from KMS.
+	//
+	// Valid range: 1 minute to 24 hours. Defaults to 1 hour if not specified.
+	// Shorter TTL values provide better key rotation but increase KMS API calls.
+	// Longer TTL values reduce KMS API calls but delay key rotation.
+	//
+	// Format: duration string (e.g., "1h", "30m", "3600s")
+	// Examples:
+	//   - "30m" - 30 minutes
+	//   - "1h" - 1 hour
+	//   - "4h" - 4 hours
+	//   - "24h" - 24 hours
+	BranchKeyTTL string `mapstructure:"branch_key_ttl"`
 }

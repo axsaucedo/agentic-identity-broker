@@ -10,6 +10,12 @@ encryption:
   # This enables secure key management without hardcoding secrets in configuration files
   key_encryption_key: "${ENCRYPTION_KEK}"
 
+  # Note: DynamoDB branch key caching is only used with AWS KMS ARN configuration
+  # Environment variable KEK uses in-memory Raw AES keyring (no DynamoDB caching)
+  # The following parameters are ignored when using environment variable KEK:
+  # - dynamodb_table_name
+  # - branch_key_ttl
+
 # Environment variable setup:
 #
 # Linux/macOS:

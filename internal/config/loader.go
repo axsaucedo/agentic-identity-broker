@@ -139,9 +139,18 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("third_party_oauth2.state_token_ttl", "IDENTITY_BROKER_STATE_TOKEN_TTL")
 	_ = l.v.BindEnv("third_party_oauth2.pkce_verifier_length", "IDENTITY_BROKER_PKCE_VERIFIER_LENGTH")
 
+	// Bind encryption configuration to environment variables
+	_ = l.v.BindEnv("encryption.key_encryption_key", "IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY")
+	_ = l.v.BindEnv("encryption.dynamodb_table_name", "IDENTITY_BROKER_ENCRYPTION_DYNAMODB_TABLE_NAME")
+	_ = l.v.BindEnv("encryption.branch_key_ttl", "IDENTITY_BROKER_ENCRYPTION_BRANCH_KEY_TTL")
+
 	// Set OAuth2 configuration defaults
 	l.v.SetDefault("third_party_oauth2.state_token_ttl", "10m")
 	l.v.SetDefault("third_party_oauth2.pkce_verifier_length", 32)
+
+	// Set encryption configuration defaults
+	l.v.SetDefault("encryption.dynamodb_table_name", "EncryptionBranchKeys")
+	l.v.SetDefault("encryption.branch_key_ttl", "1h")
 
 	// Set security configuration defaults
 	l.v.SetDefault("security.skip_thirdparty_https_validation", false)
@@ -161,6 +170,7 @@ func (l *Loader) setDefaults() {
 			"server.shutdown.timeout",
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
 			"third_party_oauth2.state_token_ttl", "third_party_oauth2.pkce_verifier_length",
+			"encryption.dynamodb_table_name", "encryption.branch_key_ttl",
 			"security.skip_thirdparty_https_validation",
 		},
 	})

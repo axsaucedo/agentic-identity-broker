@@ -1,9 +1,10 @@
-# AWS KMS Encryption Configuration (Production)
+# AWS KMS Encryption Configuration with Hierarchical Keyring (Production)
 #
-# This configuration demonstrates envelope encryption using AWS KMS as the Key Encryption Key (KEK) provider.
+# This configuration demonstrates envelope encryption using AWS KMS as the Key Encryption Key (KEK) provider
+# with hierarchical keyring and DynamoDB branch key caching for performance optimization.
 # Recommended for production environments where enterprise-grade key management is required.
 
-# Encryption configuration for production environments using AWS KMS
+# Encryption configuration for production environments using AWS KMS hierarchical keyring
 encryption:
   # AWS KMS Customer-Managed Key (CMK) ARN
   # Replace with your actual KMS key ARN from the AWS Console or CLI
@@ -17,6 +18,24 @@ encryption:
   # - Multi-region replication for high availability
   # - Compliance certifications (FIPS 140-2, Common Criteria)
   key_encryption_key: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+
+  # DynamoDB table name for caching branch keys (optional)
+  # The hierarchical keyring caches branch keys in DynamoDB to reduce KMS API calls and improve performance
+  # Default: "EncryptionBranchKeys"
+  # Required schema:
+  #   - Partition key: "BranchKeyId" (String)
+  #   - Sort key: "TimeToLive" (Number, for TTL-based auto-deletion)
+  # AWS will automatically delete expired items when TTL expires
+  dynamodb_table_name: "EncryptionBranchKeys"
+
+  # Branch key Time-To-Live (TTL) in DynamoDB (optional)
+  # Cached branch keys expire after this duration, forcing new generation from KMS
+  # Valid range: 1 minute to 24 hours
+  # Default: "1h"
+  # Shorter TTL = better key rotation but more KMS calls
+  # Longer TTL = fewer KMS calls but delayed key rotation
+  # Examples: "30m", "1h", "4h", "24h"
+  branch_key_ttl: "1h"
 
 # Required AWS IAM permissions for the identity broker service:
 # {

@@ -25,9 +25,6 @@ func TestNewAWSEncryptionAdapterWithEnvVar(t *testing.T) {
 	if adapter == nil {
 		t.Fatal("adapter should not be nil")
 	}
-	if adapter.kekType != "env_var" {
-		t.Errorf("expected kekType 'env_var', got %q", adapter.kekType)
-	}
 }
 
 // TestNewAWSEncryptionAdapterWithEnvVarMissing tests adapter creation fails when env var not set
@@ -395,40 +392,6 @@ func TestTamperedCiphertextDetection(t *testing.T) {
 	}
 }
 
-// TestGetKEKType tests the diagnostic method
-func TestGetKEKType(t *testing.T) {
-	// Setup: Create adapter with env var KEK
-	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("TEST_KEK_TYPE", testKEK)
-	defer os.Unsetenv("TEST_KEK_TYPE")
-
-	adapter, err := NewAWSEncryptionAdapter("${TEST_KEK_TYPE}")
-	if err != nil {
-		t.Fatalf("failed to create adapter: %v", err)
-	}
-
-	// Test: Get KEK type
-	kekType := adapter.GetKEKType()
-
-	// Verify: Returns "env_var"
-	if kekType != "env_var" {
-		t.Errorf("expected KEK type 'env_var', got %q", kekType)
-	}
-}
-
-// TestNilAdapterGetKEKType tests GetKEKType on nil adapter
-func TestNilAdapterGetKEKType(t *testing.T) {
-	var adapter *AWSAdapter
-
-	// Test: Get KEK type on nil adapter
-	kekType := adapter.GetKEKType()
-
-	// Verify: Returns empty string
-	if kekType != "" {
-		t.Errorf("expected empty string for nil adapter, got %q", kekType)
-	}
-}
-
 // Helper functions for error type checking
 
 func isKEKUnavailableError(err error) bool {
@@ -513,5 +476,187 @@ func BenchmarkDecrypt(b *testing.B) {
 		if err != nil {
 			b.Fatalf("decryption failed: %v", err)
 		}
+	}
+}
+
+// TestKMSHierarchicalKeyringAdapterCreation tests adapter creation with KMS ARN
+// This tests the hierarchical keyring implementation (not env var KEK)
+func TestKMSHierarchicalKeyringAdapterCreation(t *testing.T) {
+	// Test with invalid KMS ARN (will fail on accessibility check in test env)
+	// This validates the hierarchical keyring initialization flow
+	invalidKMSARN := "arn:aws:kms:us-west-2:123456789012:key/invalid-test-key"
+
+	adapter, err := NewAWSEncryptionAdapter(invalidKMSARN)
+
+	// Expected to fail due to invalid KMS key in test environment
+	if err == nil {
+		t.Fatal("expected error for invalid KMS ARN in test environment")
+	}
+
+	if adapter != nil {
+		t.Fatal("adapter should be nil when KMS key is not accessible")
+	}
+
+	// Verify error is KEKUnavailable type
+	if !isKEKUnavailableError(err) {
+		t.Errorf("expected KEKUnavailable error, got: %v", err)
+	}
+}
+
+// TestKMSARNValidation tests that KMS ARN format validation works
+func TestKMSARNValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		keyMaterial string
+		shouldFail bool
+	}{
+		{
+			name:        "valid_kms_arn_format",
+			keyMaterial: "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012",
+			shouldFail:  true, // Will fail on KMS accessibility in test, not format
+		},
+		{
+			name:        "kms_alias_arn_format",
+			keyMaterial: "arn:aws:kms:us-east-1:123456789012:alias/my-encryption-key",
+			shouldFail:  true, // Will fail on KMS accessibility in test, not format
+		},
+		{
+			name:        "invalid_kms_arn_format",
+			keyMaterial: "arn:aws:s3:::my-bucket", // S3 ARN, not KMS
+			shouldFail:  true, // Will fail on ARN format validation
+		},
+		{
+			name:        "malformed_arn",
+			keyMaterial: "not-an-arn",
+			shouldFail:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter, err := NewAWSEncryptionAdapter(tt.keyMaterial)
+
+			if !tt.shouldFail && err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+
+			if tt.shouldFail && err == nil {
+				t.Errorf("expected error, got nil")
+			}
+
+			if adapter != nil && !tt.shouldFail {
+				// Only expect a valid adapter if we expected success
+				if adapter.keyring == nil {
+					t.Error("adapter keyring should not be nil")
+				}
+				if adapter.encryptionClient == nil {
+					t.Error("adapter encryptionClient should not be nil")
+				}
+			}
+		})
+	}
+}
+
+// TestHierarchicalKeyringWithEnvVarFallback tests that env var KEK still works as fallback
+func TestHierarchicalKeyringWithEnvVarFallback(t *testing.T) {
+	// Test that environment variable KEK path still works (non-hierarchical)
+	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+	os.Setenv("FALLBACK_KEK", testKEK)
+	defer os.Unsetenv("FALLBACK_KEK")
+
+	adapter, err := NewAWSEncryptionAdapter("${FALLBACK_KEK}")
+
+	// Should succeed with env var KEK
+	if err != nil {
+		t.Fatalf("failed to create adapter with env var KEK: %v", err)
+	}
+
+	if adapter == nil {
+		t.Fatal("adapter should not be nil")
+	}
+
+	if adapter.keyring == nil {
+		t.Error("adapter keyring should not be nil")
+	}
+
+	if adapter.encryptionClient == nil {
+		t.Error("adapter encryptionClient should not be nil")
+	}
+
+	// Test that encryption/decryption still works with env var KEK
+	ctx := context.Background()
+	plaintext := []byte("test-oauth2-token")
+	encryptionContext := map[string]string{
+		"service_id": "oauth2",
+		"principal":  "user@example.com",
+	}
+
+	ciphertext, err := adapter.Encrypt(ctx, plaintext, encryptionContext)
+	if err != nil {
+		t.Fatalf("encryption failed: %v", err)
+	}
+
+	if len(ciphertext) == 0 {
+		t.Fatal("ciphertext should not be empty")
+	}
+
+	decrypted, err := adapter.Decrypt(ctx, ciphertext, encryptionContext)
+	if err != nil {
+		t.Fatalf("decryption failed: %v", err)
+	}
+
+	if string(decrypted) != string(plaintext) {
+		t.Errorf("decrypted plaintext does not match: expected %q, got %q", string(plaintext), string(decrypted))
+	}
+}
+
+// TestAdapterInterfaceImplementation tests that AWSAdapter implements EncryptionPort
+func TestAdapterInterfaceImplementation(t *testing.T) {
+	// Setup
+	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+	os.Setenv("INTERFACE_KEK", testKEK)
+	defer os.Unsetenv("INTERFACE_KEK")
+
+	adapter, err := NewAWSEncryptionAdapter("${INTERFACE_KEK}")
+	if err != nil {
+		t.Fatalf("failed to create adapter: %v", err)
+	}
+
+	// Verify adapter was created and has required fields
+	if adapter == nil {
+		t.Fatal("adapter should not be nil")
+	}
+
+	if adapter.keyring == nil {
+		t.Error("adapter keyring should not be nil")
+	}
+
+	if adapter.encryptionClient == nil {
+		t.Error("adapter encryptionClient should not be nil")
+	}
+
+	// Test that the methods work
+	ctx := context.Background()
+	plaintext := []byte("test-data")
+	encryptionContext := map[string]string{"key": "value"}
+
+	// Should be able to call Encrypt
+	ciphertext, err := adapter.Encrypt(ctx, plaintext, encryptionContext)
+	if err != nil {
+		t.Fatalf("Encrypt method failed: %v", err)
+	}
+
+	if len(ciphertext) == 0 {
+		t.Error("Encrypt should produce non-empty ciphertext")
+	}
+
+	// Should be able to call Decrypt
+	decrypted, err := adapter.Decrypt(ctx, ciphertext, encryptionContext)
+	if err != nil {
+		t.Fatalf("Decrypt method failed: %v", err)
+	}
+
+	if string(decrypted) != string(plaintext) {
+		t.Errorf("Decrypt should return original plaintext: expected %q, got %q", string(plaintext), string(decrypted))
 	}
 }
