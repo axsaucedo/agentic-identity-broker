@@ -4,7 +4,8 @@ import "context"
 
 // EncryptionPort defines the interface for encrypting and decrypting sensitive data.
 // This port allows the domain to remain independent of specific encryption implementations.
-// Production implementations should use AES-256-GCM or similar authenticated encryption.
+// Production implementations perform envelope encryption (DEK + KEK wrapping) with context binding
+// for service isolation. Implementations should use AES-256-GCM or AESGCMSIV for authenticated encryption.
 type EncryptionPort interface {
 	// Encrypt encrypts plaintext data with optional encryption context.
 	// The encryption context provides additional authenticated data (AAD) that is

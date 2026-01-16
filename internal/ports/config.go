@@ -39,6 +39,7 @@ type Config struct {
 	ThirdPartyOAuth2 ThirdPartyOAuth2Config `mapstructure:"third_party_oauth2"`
 	OAuth2AuthServer OAuth2AuthServerConfig `mapstructure:"oauth2_authorization_server"`
 	Security         SecurityConfig         `mapstructure:"security"`
+	Encryption       EncryptionConfig       `mapstructure:"encryption"`
 }
 
 // ServerConfig contains configuration for both HTTP servers.
@@ -273,4 +274,32 @@ type SecurityConfig struct {
 	// Allows HTTP connections and invalid HTTPS certificates.
 	// NEVER enable this in production.
 	SkipThirdpartyHTTPSValidation bool `mapstructure:"skip_thirdparty_https_validation"`
+}
+
+// EncryptionConfig contains configuration for encryption operations.
+// Used by the EncryptionPort to configure envelope encryption with AWS KMS or environment variables.
+type EncryptionConfig struct {
+	// KeyEncryptionKey specifies the Key Encryption Key (KEK) for envelope encryption.
+	// Supports two formats:
+	//   1. AWS KMS ARN: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+	//   2. Environment variable reference: "${ENCRYPTION_KEK}" (for development/testing)
+	//
+	// The KEK is used to encrypt/decrypt Data Encryption Keys (DEKs) in the envelope encryption pattern.
+	// Each user session generates a unique DEK that encrypts OAuth2 tokens, then the DEK is encrypted
+	// with this KEK and stored alongside the encrypted tokens.
+	//
+	// AWS KMS format provides enterprise-grade key management with:
+	// - Hardware Security Module (HSM) protection
+	// - Automatic key rotation capabilities
+	// - CloudTrail audit logging
+	// - Fine-grained IAM access control
+	// - Multi-region replication support
+	//
+	// Environment variable format is intended for:
+	// - Development and testing environments
+	// - Local debugging without AWS dependencies
+	// - CI/CD pipelines with injected secrets
+	//
+	// SECURITY: This field contains sensitive key material and will be redacted in logs.
+	KeyEncryptionKey string `mapstructure:"key_encryption_key" validate:"required"`
 }

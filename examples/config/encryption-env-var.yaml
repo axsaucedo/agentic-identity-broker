@@ -1,0 +1,116 @@
+# Environment Variable Encryption Configuration (Development)
+#
+# This configuration demonstrates envelope encryption using an environment variable as the Key Encryption Key (KEK).
+# Recommended for development, testing, and CI/CD environments where AWS KMS is not available or desired.
+
+# Encryption configuration using environment variable KEK
+encryption:
+  # Environment variable reference for the Key Encryption Key
+  # The ${ENCRYPTION_KEK} will be substituted with the value from the ENCRYPTION_KEK environment variable
+  # This enables secure key management without hardcoding secrets in configuration files
+  key_encryption_key: "${ENCRYPTION_KEK}"
+
+# Environment variable setup:
+#
+# Linux/macOS:
+# export ENCRYPTION_KEK="base64-encoded-32-byte-key"
+#
+# Windows:
+# set ENCRYPTION_KEK=base64-encoded-32-byte-key
+#
+# Docker:
+# docker run -e ENCRYPTION_KEK="base64-encoded-32-byte-key" your-image
+#
+# Kubernetes Secret:
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: identity-broker-secrets
+# data:
+#   ENCRYPTION_KEK: YmFzZTY0LWVuY29kZWQtMzItYnl0ZS1rZXk=  # base64 encoded
+
+# Generate a secure 32-byte key:
+#
+# Using OpenSSL:
+# openssl rand -base64 32
+#
+# Using Go:
+# go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt"; "os"); func main() { key := make([]byte, 32); rand.Read(key); fmt.Println(base64.StdEncoding.EncodeToString(key)) }'
+#
+# Using Python:
+# python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
+
+# Development-friendly logging configuration
+log:
+  level: debug      # Verbose logging for development
+  format: text      # Human-readable text format for local development
+
+# In-memory storage for development (no database required)
+storage:
+  backend: memory   # No PostgreSQL dependency for local development
+  timeouts:
+    read: 1s
+    write: 2s
+
+# Server configuration for local development
+server:
+  enduser:
+    port: 8000
+    bind: "::"
+    public_url: "http://localhost:8000"
+  admin:
+    port: 14000
+    bind: "::"
+    public_url: "http://localhost:14000"
+  shutdown:
+    timeout: 5s
+
+# Relaxed security for development (DO NOT use in production)
+security:
+  skip_thirdparty_https_validation: true  # Allow HTTP OAuth2 services for testing
+
+# Example third-party OAuth2 configuration for development
+third_party_oauth2:
+  # Generate with: openssl rand -base64 32
+  jwe_signing_key: "your-base64-encoded-32-byte-jwe-key"
+  state_token_ttl: 10m
+  pkce_verifier_length: 32
+
+# Docker Compose example:
+# version: '3.8'
+# services:
+#   identity-broker:
+#     image: identity-broker:latest
+#     environment:
+#       - ENCRYPTION_KEK=YmFzZTY0LWVuY29kZWQtMzItYnl0ZS1rZXk=
+#       - GO_ENV=development
+#     ports:
+#       - "8000:8000"
+#       - "14000:14000"
+#     volumes:
+#       - ./config:/app/config
+#     command: ["--config", "/app/config/encryption-env-var.yaml"]
+
+# CI/CD Pipeline example (GitHub Actions):
+# env:
+#   ENCRYPTION_KEK: ${{ secrets.ENCRYPTION_KEK }}
+#
+# Where ENCRYPTION_KEK is stored as a repository secret with a base64-encoded 32-byte key
+
+# Security considerations for environment variable approach:
+#
+# Pros:
+# - No cloud provider dependencies
+# - Suitable for local development and testing
+# - Easy to inject via CI/CD pipelines
+# - No additional service setup required
+#
+# Cons:
+# - Key material stored in process environment (visible in ps, /proc)
+# - No automatic key rotation
+# - No hardware security module protection
+# - No centralized audit logging of key usage
+# - Risk of accidental exposure in logs or error dumps
+#
+# Recommendation: Use this approach only for development/testing.
+# For production, prefer AWS KMS configuration (see encryption-aws-kms.yaml)
