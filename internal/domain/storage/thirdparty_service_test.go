@@ -372,3 +372,78 @@ func TestOAuthScope_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestThirdpartyOAuth2Service_ValidateProtectedResources(t *testing.T) {
+	tests := []struct {
+		name               string
+		protectedResources []string
+		wantErr            string
+	}{
+		{
+			name:               "empty protected_resources",
+			protectedResources: []string{},
+			wantErr:            "",
+		},
+		{
+			name:               "single valid HTTPS URI",
+			protectedResources: []string{"https://api.github.com"},
+			wantErr:            "",
+		},
+		{
+			name:               "multiple valid URIs",
+			protectedResources: []string{"https://api.github.com", "https://www.googleapis.com", "https://graph.microsoft.com"},
+			wantErr:            "",
+		},
+		{
+			name:               "URI with path",
+			protectedResources: []string{"https://api.example.com/v1"},
+			wantErr:            "",
+		},
+		{
+			name:               "URI with trailing slash",
+			protectedResources: []string{"https://api.github.com/"},
+			wantErr:            "",
+		},
+		{
+			name:               "local HTTP URI",
+			protectedResources: []string{"http://localhost:8080"},
+			wantErr:            "",
+		},
+		{
+			name:               "invalid URI - no scheme",
+			protectedResources: []string{"api.github.com"},
+			wantErr:            "protected_resources[0]",
+		},
+		{
+			name:               "invalid URI - not a URL",
+			protectedResources: []string{"not-a-valid-uri"},
+			wantErr:            "protected_resources[0]",
+		},
+		{
+			name:               "invalid URI - scheme only",
+			protectedResources: []string{"https://"},
+			wantErr:            "protected_resources[0]",
+		},
+		{
+			name:               "mixed valid and invalid URIs",
+			protectedResources: []string{"https://api.github.com", "invalid-uri"},
+			wantErr:            "protected_resources[1]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := &ThirdpartyOAuth2Service{
+				ProtectedResources: tt.protectedResources,
+			}
+
+			err := service.ValidateProtectedResources()
+			if tt.wantErr != "" {
+				require.Error(t, err, "expected error but got nil")
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				require.NoError(t, err, "expected no error but got: %v", err)
+			}
+		})
+	}
+}

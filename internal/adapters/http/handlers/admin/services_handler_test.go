@@ -68,6 +68,14 @@ func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Contex
 	return args.Int(0), args.Error(1)
 }
 
+func (m *MockServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx, resourceURI)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
 func TestServicesHandler_CreateService(t *testing.T) {
 	logger := slog.Default()
 

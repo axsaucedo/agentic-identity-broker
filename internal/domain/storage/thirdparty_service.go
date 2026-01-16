@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/url"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 )
 
 // ThirdpartyOAuth2Service represents an external OAuth2 provider that agents can access
@@ -177,6 +179,25 @@ func (s *ThirdpartyOAuth2Service) ValidateForCreateWith(skipHTTPSValidation bool
 	for i, scope := range s.Scopes {
 		if err := scope.Validate(); err != nil {
 			return fmt.Errorf("scope %d: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+// ValidateProtectedResources validates the protected_resources field for RFC 8693 token exchange.
+// Ensures all resource URIs are valid and normalizes them (removes trailing slashes).
+// Returns error if any URI is invalid. Protected resources are optional (empty slice is valid).
+func (s *ThirdpartyOAuth2Service) ValidateProtectedResources() error {
+	// Protected resources are optional, so empty slice is valid
+	if len(s.ProtectedResources) == 0 {
+		return nil
+	}
+
+	// Validate each protected resource URI
+	for i, resourceURI := range s.ProtectedResources {
+		if _, err := tokenexchange.NewResourceURI(resourceURI); err != nil {
+			return fmt.Errorf("protected_resources[%d]: %w", i, err)
 		}
 	}
 

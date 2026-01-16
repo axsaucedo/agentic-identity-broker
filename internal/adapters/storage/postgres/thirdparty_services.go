@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -90,8 +91,8 @@ func (r *ThirdpartyServiceRepository) Create(ctx context.Context, service *stora
 		INSERT INTO thirdparty_oauth2_services (
 			id, display_name, client_id, client_secret_encrypted, issuer_uri,
 			enable_discovery, metadata_url, token_endpoint, authorize_endpoint,
-			scopes, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			scopes, protected_resources, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
 	_, err = r.adapter.db.ExecContext(
@@ -107,6 +108,7 @@ func (r *ThirdpartyServiceRepository) Create(ctx context.Context, service *stora
 		service.Endpoints.TokenEndpoint,
 		service.Endpoints.AuthorizeEndpoint,
 		scopesJSON,
+		service.ProtectedResources,
 		service.CreatedAt,
 		service.UpdatedAt,
 	)
@@ -171,7 +173,7 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 	query := `
 		SELECT id, display_name, client_id, client_secret_encrypted, issuer_uri,
 		       enable_discovery, metadata_url, token_endpoint, authorize_endpoint,
-		       scopes, created_at, updated_at
+		       scopes, protected_resources, created_at, updated_at
 		FROM thirdparty_oauth2_services
 		WHERE id = $1
 	`
@@ -193,6 +195,7 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 		&service.Endpoints.TokenEndpoint,
 		&service.Endpoints.AuthorizeEndpoint,
 		&scopesJSON,
+		&service.ProtectedResources,
 		&service.CreatedAt,
 		&service.UpdatedAt,
 	)
@@ -317,7 +320,8 @@ func (r *ThirdpartyServiceRepository) Update(ctx context.Context, service *stora
 		    token_endpoint = $8,
 		    authorize_endpoint = $9,
 		    scopes = $10,
-		    updated_at = $11
+		    protected_resources = $11,
+		    updated_at = $12
 		WHERE id = $1
 	`
 
@@ -334,6 +338,7 @@ func (r *ThirdpartyServiceRepository) Update(ctx context.Context, service *stora
 		service.Endpoints.TokenEndpoint,
 		service.Endpoints.AuthorizeEndpoint,
 		scopesJSON,
+		service.ProtectedResources,
 		service.UpdatedAt,
 	)
 
@@ -460,7 +465,7 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 	query := `
 		SELECT id, display_name, client_id, client_secret_encrypted, issuer_uri,
 		       enable_discovery, metadata_url, token_endpoint, authorize_endpoint,
-		       scopes, created_at, updated_at
+		       scopes, protected_resources, created_at, updated_at
 		FROM thirdparty_oauth2_services
 		ORDER BY created_at DESC
 	`
@@ -504,6 +509,7 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 			&service.Endpoints.TokenEndpoint,
 			&service.Endpoints.AuthorizeEndpoint,
 			&scopesJSON,
+			&service.ProtectedResources,
 			&service.CreatedAt,
 			&service.UpdatedAt,
 		)
@@ -604,4 +610,148 @@ func (r *ThirdpartyServiceRepository) CountGrantsReferencingService(ctx context.
 	}
 
 	return count, nil
+}
+
+// FindByProtectedResource retrieves an OAuth2 service configuration by matching resource URI
+// against protected_resources field. Used for resource-based service discovery in token exchange.
+// Uses PostgreSQL array containment operator @> with GIN index for efficient queries.
+// The resourceURI parameter should be normalized before calling (trailing slashes removed).
+// Returns the service whose protected_resources contains the resourceURI (case-sensitive match).
+// Returns StorageError with Kind=NotFound if no service matches.
+// Returns StorageError with Kind=Conflict if multiple services match (misconfiguration).
+// Client secret will be decrypted using the configured EncryptionPort.
+func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	if r.adapter.db == nil {
+		return nil, storage.NewStorageError(
+			"FindByProtectedResource",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	if resourceURI == "" {
+		return nil, storage.NewStorageError(
+			"FindByProtectedResource",
+			storage.ErrorKindValidation,
+			nil,
+			"resource URI cannot be empty",
+		)
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	// Query to find services whose protected_resources array contains the resourceURI.
+	// Uses the @> operator with GIN index for efficient array containment queries.
+	query := `
+		SELECT id, display_name, client_id, client_secret_encrypted, issuer_uri,
+		       enable_discovery, metadata_url, token_endpoint, authorize_endpoint,
+		       scopes, protected_resources, created_at, updated_at
+		FROM thirdparty_oauth2_services
+		WHERE protected_resources @> $1::text[]
+	`
+
+	rows, err := r.adapter.db.QueryContext(queryCtx, query, []string{resourceURI})
+	if err != nil {
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			return nil, storage.NewStorageError(
+				"FindByProtectedResource",
+				storage.ErrorKindTimeout,
+				err,
+				"operation exceeded timeout",
+			)
+		}
+		return nil, storage.NewStorageError(
+			"FindByProtectedResource",
+			storage.ErrorKindConnection,
+			err,
+			"failed to find service by protected resource",
+		)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var services []*storage.ThirdpartyOAuth2Service
+
+	for rows.Next() {
+		var (
+			service         storage.ThirdpartyOAuth2Service
+			encryptedSecret []byte
+			scopesJSON      []byte
+		)
+
+		err := rows.Scan(
+			&service.ID,
+			&service.DisplayName,
+			&service.ClientID,
+			&encryptedSecret,
+			&service.IssuerURI,
+			&service.Discovery.EnableDiscovery,
+			&service.Discovery.MetadataURL,
+			&service.Endpoints.TokenEndpoint,
+			&service.Endpoints.AuthorizeEndpoint,
+			&scopesJSON,
+			&service.ProtectedResources,
+			&service.CreatedAt,
+			&service.UpdatedAt,
+		)
+
+		if err != nil {
+			return nil, storage.NewStorageError(
+				"FindByProtectedResource",
+				storage.ErrorKindConnection,
+				err,
+				"failed to scan service row",
+			)
+		}
+
+		// Unmarshal scopes
+		if err := json.Unmarshal(scopesJSON, &service.Scopes); err != nil {
+			return nil, storage.NewStorageError(
+				"FindByProtectedResource",
+				storage.ErrorKindConnection,
+				err,
+				"failed to unmarshal scopes",
+			)
+		}
+
+		// Decrypt client secret
+		encryptionContext := map[string]string{
+			"service_id": service.ID,
+		}
+		decryptedSecret, err := r.encryptionPort.Decrypt(ctx, encryptedSecret, encryptionContext)
+		if err != nil {
+			return nil, storage.NewStorageError(
+				"FindByProtectedResource",
+				storage.ErrorKindConnection,
+				err,
+				"failed to decrypt client secret",
+			)
+		}
+		service.ClientSecret = string(decryptedSecret)
+
+		services = append(services, service.Copy())
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError(
+			"FindByProtectedResource",
+			storage.ErrorKindConnection,
+			err,
+			"error iterating service rows",
+		)
+	}
+
+	// No match found
+	if len(services) == 0 {
+		return nil, tokenexchange.NewInvalidTargetError("no service configured for the requested resource")
+	}
+
+	// Multiple matches found (misconfiguration)
+	if len(services) > 1 {
+		return nil, tokenexchange.NewInvalidTargetError("multiple services configured for the same resource")
+	}
+
+	// Return single matching service
+	return services[0], nil
 }

@@ -35,13 +35,14 @@ func NewServicesHandler(repo ports.ThirdpartyOAuth2ServiceRepository, config *po
 
 // ServiceRequest represents the request body for creating/updating a service.
 type ServiceRequest struct {
-	DisplayName  string                  `json:"display_name"`
-	ClientID     string                  `json:"client_id"`
-	ClientSecret string                  `json:"client_secret"`
-	IssuerURI    string                  `json:"issuer_uri"`
-	Discovery    DiscoveryConfigRequest  `json:"discovery"`
-	Endpoints    *OAuth2EndpointsRequest `json:"endpoints,omitempty"`
-	Scopes       []OAuthScopeRequest     `json:"scopes"`
+	DisplayName        string                  `json:"display_name"`
+	ClientID           string                  `json:"client_id"`
+	ClientSecret       string                  `json:"client_secret"`
+	IssuerURI          string                  `json:"issuer_uri"`
+	Discovery          DiscoveryConfigRequest  `json:"discovery"`
+	Endpoints          *OAuth2EndpointsRequest `json:"endpoints,omitempty"`
+	Scopes             []OAuthScopeRequest     `json:"scopes"`
+	ProtectedResources []string                `json:"protected_resources,omitempty"` // RFC 8693 resource URIs
 }
 
 // DiscoveryConfigRequest represents the discovery configuration in requests.
@@ -65,16 +66,17 @@ type OAuthScopeRequest struct {
 // ServiceResponse represents the response body for service operations.
 // Client secret is always redacted in responses per SR-003.
 type ServiceResponse struct {
-	ID           string                  `json:"id"`
-	DisplayName  string                  `json:"display_name"`
-	ClientID     string                  `json:"client_id"`
-	ClientSecret string                  `json:"client_secret"` // Always "REDACTED"
-	IssuerURI    string                  `json:"issuer_uri"`
-	Discovery    DiscoveryConfigResponse `json:"discovery"`
-	Endpoints    OAuth2EndpointsResponse `json:"endpoints"`
-	Scopes       []OAuthScopeResponse    `json:"scopes"`
-	CreatedAt    string                  `json:"created_at"`
-	UpdatedAt    string                  `json:"updated_at"`
+	ID                 string                  `json:"id"`
+	DisplayName        string                  `json:"display_name"`
+	ClientID           string                  `json:"client_id"`
+	ClientSecret       string                  `json:"client_secret"` // Always "REDACTED"
+	IssuerURI          string                  `json:"issuer_uri"`
+	Discovery          DiscoveryConfigResponse `json:"discovery"`
+	Endpoints          OAuth2EndpointsResponse `json:"endpoints"`
+	Scopes             []OAuthScopeResponse    `json:"scopes"`
+	ProtectedResources []string                `json:"protected_resources,omitempty"` // RFC 8693 resource URIs
+	CreatedAt          string                  `json:"created_at"`
+	UpdatedAt          string                  `json:"updated_at"`
 }
 
 // DiscoveryConfigResponse represents the discovery configuration in responses.
@@ -118,9 +120,10 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 			EnableDiscovery: req.Discovery.EnableDiscovery,
 			MetadataURL:     req.Discovery.MetadataURL,
 		},
-		Scopes:    make([]storage.OAuthScope, len(req.Scopes)),
-		CreatedAt: now,
-		UpdatedAt: now,
+		Scopes:             make([]storage.OAuthScope, len(req.Scopes)),
+		ProtectedResources: req.ProtectedResources,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 
 	// Convert scopes
@@ -172,6 +175,31 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 			"error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
+	}
+
+	// Validate protected_resources (RFC 8693 resource URIs) - return 400 for invalid format (T023)
+	if err := service.ValidateProtectedResources(); err != nil {
+		h.logger.Warn("protected_resources validation failed",
+			"service_id", service.ID,
+			"error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	// Check for duplicate resource URIs across existing services (T022)
+	if len(service.ProtectedResources) > 0 {
+		for _, resource := range service.ProtectedResources {
+			existing, err := h.repo.FindByProtectedResource(ctx, resource)
+			if err == nil && existing != nil {
+				// Conflict: another service already has this resource URI
+				h.logger.Warn("duplicate protected resource",
+					"resource", resource,
+					"service_id", existing.ID)
+				h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
+				return
+			}
+			// Ignore NotFound errors, those are expected when no existing service has the resource
+		}
 	}
 
 	// Create in repository (skip validation since we already did it above)
@@ -237,18 +265,19 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 
 	// Update service entity
 	service := &storage.ThirdpartyOAuth2Service{
-		ID:           clientID,
-		DisplayName:  req.DisplayName,
-		ClientID:     req.ClientID,
-		ClientSecret: req.ClientSecret,
-		IssuerURI:    req.IssuerURI,
-		Discovery: storage.DiscoveryConfig{
+		ID:                 clientID,
+		DisplayName:        req.DisplayName,
+		ClientID:           req.ClientID,
+		ClientSecret:       req.ClientSecret,
+		IssuerURI:          req.IssuerURI,
+		Discovery:          storage.DiscoveryConfig{
 			EnableDiscovery: req.Discovery.EnableDiscovery,
 			MetadataURL:     req.Discovery.MetadataURL,
 		},
-		Scopes:    make([]storage.OAuthScope, len(req.Scopes)),
-		CreatedAt: existing.CreatedAt,
-		UpdatedAt: time.Now().UTC(),
+		Scopes:             make([]storage.OAuthScope, len(req.Scopes)),
+		ProtectedResources: req.ProtectedResources,
+		CreatedAt:          existing.CreatedAt,
+		UpdatedAt:          time.Now().UTC(),
 	}
 
 	// Convert scopes
@@ -300,6 +329,32 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 			"error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
+	}
+
+	// Validate protected_resources (RFC 8693 resource URIs) - return 400 for invalid format (T023)
+	if err := service.ValidateProtectedResources(); err != nil {
+		h.logger.Warn("protected_resources validation failed",
+			"service_id", service.ID,
+			"error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	// Check for duplicate resource URIs across other services (T022)
+	// Only check resources that are different from existing service's resources
+	if len(service.ProtectedResources) > 0 {
+		for _, resource := range service.ProtectedResources {
+			existing, err := h.repo.FindByProtectedResource(ctx, resource)
+			if err == nil && existing != nil && existing.ID != service.ID {
+				// Conflict: another service already has this resource URI
+				h.logger.Warn("duplicate protected resource",
+					"resource", resource,
+					"service_id", existing.ID)
+				h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
+				return
+			}
+			// Ignore NotFound errors, those are expected when no existing service has the resource
+		}
 	}
 
 	// Update in repository (skip validation since we already did it above)
@@ -381,22 +436,23 @@ func (h *ServicesHandler) toResponse(service *storage.ThirdpartyOAuth2Service) S
 	}
 
 	return ServiceResponse{
-		ID:           service.ID,
-		DisplayName:  service.DisplayName,
-		ClientID:     service.ClientID,
-		ClientSecret: service.ClientSecret, // Should be "REDACTED"
-		IssuerURI:    service.IssuerURI,
-		Discovery: DiscoveryConfigResponse{
+		ID:                 service.ID,
+		DisplayName:        service.DisplayName,
+		ClientID:           service.ClientID,
+		ClientSecret:       service.ClientSecret, // Should be "REDACTED"
+		IssuerURI:          service.IssuerURI,
+		Discovery:          DiscoveryConfigResponse{
 			EnableDiscovery: service.Discovery.EnableDiscovery,
 			MetadataURL:     service.Discovery.MetadataURL,
 		},
-		Endpoints: OAuth2EndpointsResponse{
+		Endpoints:          OAuth2EndpointsResponse{
 			TokenEndpoint:     service.Endpoints.TokenEndpoint,
 			AuthorizeEndpoint: service.Endpoints.AuthorizeEndpoint,
 		},
-		Scopes:    scopes,
-		CreatedAt: service.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: service.UpdatedAt.Format(time.RFC3339),
+		Scopes:             scopes,
+		ProtectedResources: service.ProtectedResources,
+		CreatedAt:          service.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:          service.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
