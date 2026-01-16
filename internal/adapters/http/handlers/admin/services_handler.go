@@ -265,12 +265,12 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 
 	// Update service entity
 	service := &storage.ThirdpartyOAuth2Service{
-		ID:                 clientID,
-		DisplayName:        req.DisplayName,
-		ClientID:           req.ClientID,
-		ClientSecret:       req.ClientSecret,
-		IssuerURI:          req.IssuerURI,
-		Discovery:          storage.DiscoveryConfig{
+		ID:           clientID,
+		DisplayName:  req.DisplayName,
+		ClientID:     req.ClientID,
+		ClientSecret: req.ClientSecret,
+		IssuerURI:    req.IssuerURI,
+		Discovery: storage.DiscoveryConfig{
 			EnableDiscovery: req.Discovery.EnableDiscovery,
 			MetadataURL:     req.Discovery.MetadataURL,
 		},
@@ -436,16 +436,16 @@ func (h *ServicesHandler) toResponse(service *storage.ThirdpartyOAuth2Service) S
 	}
 
 	return ServiceResponse{
-		ID:                 service.ID,
-		DisplayName:        service.DisplayName,
-		ClientID:           service.ClientID,
-		ClientSecret:       service.ClientSecret, // Should be "REDACTED"
-		IssuerURI:          service.IssuerURI,
-		Discovery:          DiscoveryConfigResponse{
+		ID:           service.ID,
+		DisplayName:  service.DisplayName,
+		ClientID:     service.ClientID,
+		ClientSecret: service.ClientSecret, // Should be "REDACTED"
+		IssuerURI:    service.IssuerURI,
+		Discovery: DiscoveryConfigResponse{
 			EnableDiscovery: service.Discovery.EnableDiscovery,
 			MetadataURL:     service.Discovery.MetadataURL,
 		},
-		Endpoints:          OAuth2EndpointsResponse{
+		Endpoints: OAuth2EndpointsResponse{
 			TokenEndpoint:     service.Endpoints.TokenEndpoint,
 			AuthorizeEndpoint: service.Endpoints.AuthorizeEndpoint,
 		},
