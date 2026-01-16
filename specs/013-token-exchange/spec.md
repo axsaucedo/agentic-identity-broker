@@ -3,7 +3,7 @@
 **Feature Branch**: `013-token-exchange`  
 **Created**: 2026-01-15  
 **Status**: Draft  
-**Input**: User description: "Implement RFC 8693 OAuth 2.0 Token Exchange via /oauth2/token endpoint enabling exchange of tokens issued by the Upstream OAuth2 Server to third-party OAuth2 tokens. Both subject_token and client_assertion are issued by the Upstream OAuth2 Server. Token retrieval from token vault with principal from subject_token 'sub' claim. Use resource parameter to identify target service. Allow adding protected resources URIs to services via admin API. Configuration should contain authorization options to validate the pre-validated client assertion with CEL support and future OPA support."
+**Input**: User description: "Implement RFC 8693 OAuth 2.0 Token Exchange via /oauth2/token endpoint enabling exchange of tokens issued by the Upstream OAuth2 Server to third-party OAuth2 tokens. Both subject_token and client_assertion are issued by the Upstream OAuth2 Server. Token retrieval from token vault with principal from subject_token 'sub' claim. Use resource parameter to identify target service. Allow adding protected resources URIs to services via admin API. Configuration should contain authorization options to validate the client assertion with CEL support and future OPA support."
 
 ## Clarifications
 
