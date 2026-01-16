@@ -309,6 +309,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 - Q: Observability & Audit Logging Format → A: Use structured JSON logging following existing project logging patterns. Canonical fields: operation, service_id, success, token_type, timestamp, error_kind. No plaintext tokens or keys. Align with current agentic-identity-broker logging conventions.
 - Q: Backward Compatibility Scope for KEK Rotation → A: AWS KMS handles rotation natively with key versioning. Environment variable KEK (development-only) does not require rotation support; production must use AWS KMS for key rotation and backward compatibility.
 - Q: Performance Target Interpretation → A: Separate performance budgets. Local encrypt/decrypt ops (DEK generation, wrapping, memguard): <50ms. KMS latency: variable (AWS SLA ~99.99%). Total p99 latency goal: <300ms. KMS latency is operator/deployment concern.
+- Q: Should EncryptionPort accept memguard.Enclave for early plaintext protection? → A: Defer architectural change to future spec refinement. Keep current EncryptionPort interface accepting []byte. This decision impacts abstraction boundaries and warrants dedicated architectural review post-Phase-4 acceptance tests. Current implementation prioritizes feature completion with planned hardening in Phase 11 (Polish & Hardening).
 
 ## Notes
 
