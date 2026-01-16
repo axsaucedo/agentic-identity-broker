@@ -133,7 +133,7 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 | US6-S4 | US6 | "should include protected_resources in GET response" |
 | US6-S5 | US6 | "should accept protected_resources in POST /api/services" |
 
-**Checkpoint**: E2E acceptance tests written and verified to fail before implementation. They must compile which might need that enough structures and interfaces need to be defined. The tests schould not change after this phase so expectations should be precise. 
+**Checkpoint**: E2E acceptance tests written and verified to fail before implementation. They must compile which might need that enough structures and interfaces need to be defined. The tests should not change after this phase so expectations should be precise. 
 
 ---
 
