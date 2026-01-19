@@ -541,8 +541,10 @@ func (m *tokenExchangeSuccessMatcher) WithIssuedTokenType(issuedType string) *to
 }
 
 // WithExpiresIn sets an expected expires_in value (in seconds).
+// Allows ±1 second tolerance to account for timing variations in testing.
 func (m *tokenExchangeSuccessMatcher) WithExpiresIn(seconds int) *tokenExchangeSuccessMatcher {
 	m.expectedFields["expires_in"] = float64(seconds)
+	m.expectedFields["_expires_in_tolerance"] = true // Flag for special handling
 	return m
 }
 
@@ -599,12 +601,35 @@ func (m *tokenExchangeSuccessMatcher) Match(actual interface{}) (success bool, e
 
 	// Check expected field values if specified
 	for field, expectedValue := range m.expectedFields {
+		// Skip internal flags
+		if field == "_expires_in_tolerance" {
+			continue
+		}
+
 		actualValue, exists := body[field]
 		if !exists {
 			m.error = fmt.Sprintf("expected field %q not found in response", field)
 			return false, nil
 		}
-		if actualValue != expectedValue {
+
+		// Special handling for expires_in with tolerance
+		if field == "expires_in" && m.expectedFields["_expires_in_tolerance"] == true {
+			expectedSeconds, ok := expectedValue.(float64)
+			if !ok {
+				m.error = fmt.Sprintf("expected expires_in to be numeric, got %T", expectedValue)
+				return false, nil
+			}
+			actualSeconds, ok := actualValue.(float64)
+			if !ok {
+				m.error = fmt.Sprintf("actual expires_in is not numeric: %v", actualValue)
+				return false, nil
+			}
+			// Allow ±1 second tolerance for timing variations
+			if actualSeconds < expectedSeconds-1 || actualSeconds > expectedSeconds+1 {
+				m.error = fmt.Sprintf("field %q mismatch: expected %v (±1s), got %v", field, expectedSeconds, actualSeconds)
+				return false, nil
+			}
+		} else if actualValue != expectedValue {
 			m.error = fmt.Sprintf("field %q mismatch: expected %v, got %v", field, expectedValue, actualValue)
 			return false, nil
 		}

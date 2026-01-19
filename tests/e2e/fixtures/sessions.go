@@ -30,8 +30,8 @@ func GitHubSessionForPrincipal(principal string) *storage.UserSession {
 		ID:                    uuid.New().String(),
 		Principal:             principal,
 		ServiceID:             "github-service",
-		EncryptedAccessToken:  []byte("encrypted-github-access-token"),  // Mock encrypted token
-		EncryptedRefreshToken: []byte("encrypted-github-refresh-token"), // Mock encrypted token
+		EncryptedAccessToken:  []byte("github-token-xyz"),   // NoOp encryption returns as-is
+		EncryptedRefreshToken: []byte("github-refresh-xyz"), // NoOp encryption returns as-is
 		TokenType:             "Bearer",
 		AccessTokenExpiresAt:  &accessTokenExpires,
 		RefreshTokenExpiresAt: &refreshTokenExpires,
@@ -59,8 +59,8 @@ func ExpiredGitHubSessionForPrincipal(principal string) *storage.UserSession {
 		ID:                    uuid.New().String(),
 		Principal:             principal,
 		ServiceID:             "github-service",
-		EncryptedAccessToken:  []byte("encrypted-expired-access-token"),
-		EncryptedRefreshToken: []byte("encrypted-refresh-token"),
+		EncryptedAccessToken:  []byte("expired-github-token"),
+		EncryptedRefreshToken: []byte("github-refresh-xyz"),
 		TokenType:             "Bearer",
 		AccessTokenExpiresAt:  &accessTokenExpired,
 		RefreshTokenExpiresAt: &refreshTokenValid,
@@ -88,8 +88,8 @@ func FullyExpiredSessionForPrincipal(principal, serviceID string) *storage.UserS
 		ID:                    uuid.New().String(),
 		Principal:             principal,
 		ServiceID:             serviceID,
-		EncryptedAccessToken:  []byte("encrypted-expired-access-token"),
-		EncryptedRefreshToken: []byte("encrypted-expired-refresh-token"),
+		EncryptedAccessToken:  []byte("fully-expired-access-token"),
+		EncryptedRefreshToken: []byte("fully-expired-refresh-token"),
 		TokenType:             "Bearer",
 		AccessTokenExpiresAt:  &accessTokenExpired,
 		RefreshTokenExpiresAt: &refreshTokenExpired,
@@ -117,8 +117,8 @@ func SessionForService(principal, serviceID string) *storage.UserSession {
 		ID:                    uuid.New().String(),
 		Principal:             principal,
 		ServiceID:             serviceID,
-		EncryptedAccessToken:  []byte("encrypted-access-token-" + serviceID),
-		EncryptedRefreshToken: []byte("encrypted-refresh-token-" + serviceID),
+		EncryptedAccessToken:  []byte("token-" + serviceID),
+		EncryptedRefreshToken: []byte("refresh-" + serviceID),
 		TokenType:             "Bearer",
 		AccessTokenExpiresAt:  &accessTokenExpires,
 		RefreshTokenExpiresAt: &refreshTokenExpires,
@@ -145,7 +145,7 @@ func SessionWithoutRefreshToken(principal, serviceID string) *storage.UserSessio
 		ID:                    uuid.New().String(),
 		Principal:             principal,
 		ServiceID:             serviceID,
-		EncryptedAccessToken:  []byte("encrypted-access-token"),
+		EncryptedAccessToken:  []byte("access-token-only"),
 		EncryptedRefreshToken: nil, // No refresh token
 		TokenType:             "Bearer",
 		AccessTokenExpiresAt:  &accessTokenExpires,

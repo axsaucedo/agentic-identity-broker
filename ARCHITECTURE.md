@@ -487,6 +487,9 @@ This section lists all architectural decisions made for this project. ADRs docum
 ### Testing & Quality
 - [ADR 007: E2E Testing with Ginkgo](adrs/007-e2e-testing-with-ginkgo.md) - BDD-style E2E tests using production bootstrap
 
+### RFC 8693 Token Exchange
+- [ADR 008: Token Exchange JWKS Adapter Pattern](adrs/008-token-exchange-jwks-adapter-pattern.md) - HTTP abstraction for JWKS fetching and caching
+
 ## 11. Project Identification
 
 Project Name: Agentic Identity Broker

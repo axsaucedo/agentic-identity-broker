@@ -29,6 +29,7 @@ type TokenFixtures struct {
 	SubjectToken              string // Valid subject token with principal and agent ID
 	ClientAssertion           string // Valid client assertion for gateway authentication
 	ExpiredSubjectToken       string // Expired subject token (exp in past)
+	MalformedSubjectToken     string // Malformed subject token (not a valid JWT)
 	MissingSubClaimToken      string // Token without 'sub' claim
 	MissingAudClaimToken      string // Token without 'aud' claim
 	InvalidIssuerToken        string // Token with wrong issuer
@@ -280,10 +281,10 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 		// Spec Reference: US1-S6 from specs/013-token-exchange/spec.md
 		It("[US1-S6] should return 400 invalid_request with invalid subject_token", func() {
-			// Given: Request with invalid subject_token
+			// Given: Request with malformed subject_token (not a valid JWT structure)
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {tokenFixtures.ExpiredSubjectToken},
+				"subject_token":         {tokenFixtures.MalformedSubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
 				"client_assertion":      {tokenFixtures.ClientAssertion},
@@ -409,8 +410,31 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 		// Spec Reference: US2-S5 from specs/013-token-exchange/spec.md
 		It("[US2-S5] should return 400 invalid_target for ambiguous resource", func() {
-			// Given: Multiple services configured with same protected_resource
-			// (creates ambiguous mapping)
+			// Given: Multiple services configured with same protected_resource (creates ambiguous mapping)
+			ctx := context.Background()
+			// Create a second service with the same protected_resource as GitHub
+			ambiguousService := &storagedomain.ThirdpartyOAuth2Service{
+				ID:           "ambiguous-service",
+				DisplayName:  "Ambiguous Service",
+				ClientID:     "ambiguous-client-id",
+				ClientSecret: "ambiguous-client-secret",
+				IssuerURI:    "https://ambiguous.example.com",
+				Discovery: storagedomain.DiscoveryConfig{
+					EnableDiscovery: false,
+				},
+				Endpoints: storagedomain.OAuth2Endpoints{
+					TokenEndpoint:     "https://ambiguous.example.com/token",
+					AuthorizeEndpoint: "https://ambiguous.example.com/authorize",
+				},
+				Scopes: []storagedomain.OAuthScope{
+					{ScopeValue: "read", Description: "Read access"},
+				},
+				ProtectedResources: []string{"https://api.github.com"}, // Same resource as GitHub service!
+				CreatedAt:          time.Now(),
+				UpdatedAt:          time.Now(),
+			}
+			err := testStorage.Services().Create(ctx, ambiguousService)
+			Expect(err).NotTo(HaveOccurred())
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
@@ -465,6 +489,17 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// Spec Reference: US3-S2 from specs/013-token-exchange/spec.md
 		It("[US3-S2] should return 403 access_denied without user grant", func() {
 			// Given: User without grant for agent+service
+			// Delete the grant that was created in BeforeEach so this principal has no grant
+			ctx := context.Background()
+			// Get the active grant first to delete it
+			activeGrants, err := testStorage.UserGrants().ListByPrincipalAndAgent(ctx, principal, agent.ClientID)
+			Expect(err).NotTo(HaveOccurred())
+			// Delete each active grant for this principal+agent combination
+			for _, g := range activeGrants {
+				err := testStorage.UserGrants().Delete(ctx, g.ID)
+				Expect(err).NotTo(HaveOccurred())
+			}
+
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
 				"subject_token":         {tokenFixtures.SubjectToken},
@@ -491,6 +526,12 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// Spec Reference: US3-S3 from specs/013-token-exchange/spec.md
 		It("[US3-S3] should return 403 access_denied when grant revoked", func() {
 			// Given: User with revoked grant
+			// Replace the active grant with a revoked one (ValidUntil set to past)
+			ctx := context.Background()
+			revokedGrant := fixtures.ExpiredGrant(principal, agent.ClientID, "github-service", []string{"repo", "user"})
+			err := testStorage.UserGrants().Create(ctx, revokedGrant)
+			Expect(err).NotTo(HaveOccurred())
+
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
 				"subject_token":         {tokenFixtures.SubjectToken},
@@ -517,6 +558,11 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// Spec Reference: US3-S4 from specs/013-token-exchange/spec.md
 		It("[US3-S4] should return 403 access_denied when grant expired", func() {
 			// Given: User with expired grant
+			ctx := context.Background()
+			expiredGrant := fixtures.ExpiredGrant(principal, agent.ClientID, "github-service", []string{"repo", "user"})
+			err := testStorage.UserGrants().Create(ctx, expiredGrant)
+			Expect(err).NotTo(HaveOccurred())
+
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
 				"subject_token":         {tokenFixtures.SubjectToken},
@@ -707,9 +753,34 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// Spec Reference: US5-S1 from specs/013-token-exchange/spec.md
 		It("[US5-S1] should return 400 invalid_grant when no session exists", func() {
 			// Given: User has no session with service
+			// Delete the session that was created in BeforeEach
+			// This allows the test to verify behavior when session doesn't exist
+			ctx := context.Background()
+			// Create a new in-memory session storage to have no sessions at all
+			// Actually, we just need to delete the existing session.
+			// The session storage doesn't expose a delete by principal+service method,
+			// so we'll create a different principal with no session.
+			anotherPrincipal := fixtures.AnotherPrincipal().String()
+			anotherPrincipalClaims := map[string]interface{}{
+				"sub": anotherPrincipal,
+				"azp": agent.ClientID,
+				"iss": mockUpstream.URL(),
+				"aud": "token-exchange-broker",
+				"exp": time.Now().Add(1 * time.Hour).Unix(),
+				"iat": time.Now().Unix(),
+			}
+			privateKeyPEM := mockUpstream.GetPrivateKeyPEM()
+			anotherToken, err := helpers.SignTestJWT(anotherPrincipalClaims, privateKeyPEM)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Also create grant for the other principal so the error is about session, not grant
+			grantForOther := fixtures.ActiveGrant(anotherPrincipal, agent.ClientID, "github-service", []string{"repo", "user"})
+			err = testStorage.UserGrants().Create(ctx, grantForOther)
+			Expect(err).NotTo(HaveOccurred())
+
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {tokenFixtures.SubjectToken},
+				"subject_token":         {anotherToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
 				"client_assertion":      {tokenFixtures.ClientAssertion},
@@ -733,6 +804,11 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// Spec Reference: US5-S2 from specs/013-token-exchange/spec.md
 		It("[US5-S2] should return 400 invalid_grant when tokens fully expired", func() {
 			// Given: Both access and refresh tokens expired
+			ctx := context.Background()
+			fullyExpiredSession := fixtures.FullyExpiredSessionForPrincipal(principal, "github-service")
+			err := testStorage.UserSessions().Create(ctx, fullyExpiredSession)
+			Expect(err).NotTo(HaveOccurred())
+
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
 				"subject_token":         {tokenFixtures.SubjectToken},
@@ -758,17 +834,38 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 		// Spec Reference: US5-S3 from specs/013-token-exchange/spec.md
 		It("[US5-S3] should include sufficient info in error_description for re-auth flow", func() {
-			// Given: Request that will fail with invalid_grant
+			// Given: Request that will fail with invalid_grant (no session exists)
+			ctx := context.Background()
+			anotherPrincipal := fixtures.AdminPrincipal().String()
+
+			// Create a token for principal with no session
+			adminClaims := map[string]interface{}{
+				"sub": anotherPrincipal,
+				"azp": agent.ClientID,
+				"iss": mockUpstream.URL(),
+				"aud": "token-exchange-broker",
+				"exp": time.Now().Add(1 * time.Hour).Unix(),
+				"iat": time.Now().Unix(),
+			}
+			privateKeyPEM := mockUpstream.GetPrivateKeyPEM()
+			adminToken, err := helpers.SignTestJWT(adminClaims, privateKeyPEM)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Create grant for admin so error is specifically about session
+			grantForAdmin := fixtures.ActiveGrant(anotherPrincipal, agent.ClientID, "github-service", []string{"repo", "user"})
+			err = testStorage.UserGrants().Create(ctx, grantForAdmin)
+			Expect(err).NotTo(HaveOccurred())
+
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {tokenFixtures.SubjectToken},
+				"subject_token":         {adminToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
 				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
-			// When: Token exchange fails with invalid_grant
+			// When: Token exchange fails with invalid_grant (no session exists)
 			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -989,6 +1086,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 // - SubjectToken: Valid subject token with principal and agent claims for successful exchange
 // - ClientAssertion: Valid client assertion for gateway authentication
 // - ExpiredSubjectToken: Subject token with exp claim in the past for expiration testing
+// - MalformedSubjectToken: Token that is not a valid JWT structure for malformed token testing
 // - MissingSubClaimToken: Token without 'sub' claim for validation testing
 // - MissingAudClaimToken: Token without 'aud' claim for validation testing
 // - InvalidIssuerToken: Token with incorrect issuer URI for issuer validation testing
@@ -1039,6 +1137,11 @@ func generateTokenFixtures(mockUpstream *helpers.MockUpstreamOAuth2Server, princ
 	token, err = helpers.SignTestJWT(expiredTokenClaims, privateKeyPEM)
 	Expect(err).NotTo(HaveOccurred())
 	fixtures.ExpiredSubjectToken = token
+
+	// MalformedSubjectToken: Token that is not a valid JWT structure
+	// Used to test handling of malformed/invalid tokens (US1-S6)
+	// Create a string that looks like it could be a token but isn't valid JWT format
+	fixtures.MalformedSubjectToken = "not.a.valid.jwt.structure"
 
 	// MissingSubClaimToken: Token without 'sub' claim
 	// Used to test validation of required claims
