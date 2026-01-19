@@ -89,19 +89,21 @@ A developer using the session repository needs token envelope encryption to be t
 
 ---
 
-### User Story 6 - Encryption Context Prevents Token Reuse Across Services (Priority: P2)
+### User Story 6 - Multi-Service Isolation via Encryption Context (Priority: P2)
 
-A security architect needs tokens to be bound to their specific service context (service_id) at the cryptographic level. Tokens encrypted for one service must not be usable for a different service, even if an attacker has access to ciphertext from both services.
+A platform operator managing multiple OAuth2 services (GitHub, Google, custom OAuth providers) needs tokens from different services to be isolated at the cryptographic level: tokens encrypted for service A cannot be used for service B, preventing cross-service token reuse attacks even if an attacker compromises the database and gains direct read access to encrypted tokens and wrapped DEKs.
 
-**Why this priority**: Encryption context adds defense in depth by binding tokens to specific services. While not essential for MVP, it's an important security enhancement that prevents cross-service token reuse attacks.
+**Why this priority**: Multi-service isolation validates that core envelope encryption (US1) prevents high-level cross-service attacks. US1 enforces context verification at DEK/KEK layers; US6 validates this mechanism prevents practical attack scenarios. P2 because context verification is mandatory (US1), but testing it across multiple services is validation/integration work.
 
-**Independent Test**: Can be fully tested by encrypting tokens with specific service context values, attempting to decrypt with different service context values, and verifying decryption fails at both the DEK and KEK verification layers.
+**Dependencies**: Depends on User Story 1 (Envelope Encryption) for the context verification mechanism.
+
+**Independent Test**: Can be fully tested by creating sessions for multiple services, extracting encrypted ciphertexts from the database, and verifying ciphertext from service A cannot be decrypted in service B's context through any attack vector.
 
 **Acceptance Scenarios**:
 
-1. **Given** a token is encrypted with encryption context `{"service_id": "oauth2"}`, **When** decryption is attempted with matching context, **Then** decryption succeeds
-2. **Given** a token encrypted for one service, **When** decryption is attempted with a different service_id value, **Then** decryption fails at both DEK verification and KEK unwrapping
-3. **Given** tokens for different services stored in the database, **When** an attacker tries to use ciphertext from one service with a different service_id, **Then** both DEK decryption and KEK unwrapping fail, and the attack is prevented
+1. **Given** an application managing sessions for services "oauth2", "github", and "google", **When** sessions are created for each service with unique tokens and encryption context, **Then** each session has a unique DEK wrapped with its own service_id context (no shared DEK across services)
+2. **Given** ciphertext from service "oauth2" stored in database, **When** decryption is attempted with service_id "github", **Then** decryption fails at both DEK verification layer (AAD mismatch) AND KEK unwrap layer (context mismatch), preventing cross-service reuse
+3. **Given** an attacker with database access extracts encrypted tokens and wrapped DEKs from service "oauth2" and attempts to decrypt them as service "github" tokens, **When** they call the application's decryption endpoint with wrong service_id context, **Then** both cryptographic layers reject the ciphertext with ErrorKindContextMismatch, and the attack is prevented with clear audit log entry
 
 ---
 
@@ -121,15 +123,24 @@ A forward-thinking security team wants the encryption vault to support post-quan
 
 ---
 
-### Edge Cases
+### User Story 8 - Edge Cases & Error Handling (Priority: P1)
 
-- What happens if a token is too large to encrypt efficiently with envelope encryption?
-- How does the system handle DEK generation failures during session creation?
-- What happens if KEK access fails (e.g., key management service unavailable) during session retrieval?
-- How does the system behave if local key file permissions are too permissive (world-readable)?
-- What happens when decrypting a token that was wrapped with a different KEK version?
-- How does the system recover if context verification fails for some tokens but not others?
-- What happens if a token is encrypted with one context and someone tries to decrypt it with a completely different context?
+A reliability engineer needs the system to handle edge cases gracefully: large tokens that exceed encryption buffer limits, DEK generation failures, KEK unavailability during decryption, and context mismatch scenarios. Errors must fail fast and clearly rather than silently corrupting data or causing data loss.
+
+**Why this priority**: Error handling is critical for production stability. Edge cases must fail fast with clear error messages to operators.
+
+**Independent Test**: Can be fully tested by simulating each edge case and verifying application responses are safe, predictable, and fail-closed.
+
+**Acceptance Scenarios**:
+
+1. **Given** a token larger than 1MB (boundary test), **When** encryption is attempted, **Then** encryption fails with ErrorKindEncryptionFailed and error message includes max buffer size (no silent truncation)
+2. **Given** DEK generation fails (e.g., insufficient randomness from OS), **When** session creation is attempted, **Then** application fails with ErrorKindEncryptionFailed and no session is created (fail-closed)
+3. **Given** AWS KMS becomes unavailable during token decryption (network failure, service down), **When** GetSession is called, **Then** application fails with ErrorKindKEKUnavailable after AWS SDK timeout (default 10s) with clear error message for operator
+4. **Given** encryption context (service_id) mismatches between encryption and decryption, **When** token decryption is attempted, **Then** failure occurs at both DEK verification AND KEK unwrap layers with ErrorKindContextMismatch error
+5. **Given** ciphertext is tampered (bytes corrupted due to storage fault), **When** decryption is attempted, **Then** AESGCMSIV authentication tag verification fails with ErrorKindIntegrityViolation (no silent data corruption)
+6. **Given** plaintext token is nil or empty, **When** encryption is attempted, **Then** encryption succeeds (empty tokens are valid; edge case handled correctly)
+
+---
 
 ## Requirements *(mandatory)*
 
@@ -276,6 +287,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 - **SC-011**: Transparent encryption—session repository envelope encryption/decryption requires zero manual steps
 - **SC-012**: Backward compatibility—tokens encrypted with previous algorithm versions can be decrypted after updates
 - **SC-013**: Performance baseline—envelope encryption/decryption of typical tokens with context binding completes in under 100ms
+- **SC-014**: Edge cases handled safely—large tokens, DEK generation failures, KEK unavailability, context mismatch, integrity violations all fail fast with clear errors
 
 ## Assumptions
 

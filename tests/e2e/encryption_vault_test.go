@@ -64,12 +64,26 @@ var _ = Describe("Encryption Vault for OAuth Tokens", func() {
 	Context("User Story 1: Envelope Encryption", func() {
 		// Scenario 1.1 from specs/012-aws-encryption-vault/spec.md
 		It("encrypts OAuth tokens using DEK bound to service context and wrapped KEK", func() {
-			Skip("Not implemented - RED phase")
-			// Given a session with OAuth tokens and associated service_id context is stored
-			// When tokens are saved to the sessions table
-			// Then each token is encrypted using a DEK bound to its service context,
-			//      the DEK is encrypted using a KEK with the same service context,
-			//      and both the token ciphertext and wrapped DEK are stored
+			// GIVEN a session with OAuth tokens and associated service_id context
+			serviceID := "oauth2"
+			encryptionContext := map[string]string{"service_id": serviceID}
+			plainAccessToken := []byte("access_token_abc123")
+			plainRefreshToken := []byte("refresh_token_xyz789")
+
+			// WHEN tokens are encrypted using encryptionPort
+			// TODO Phase 3a: encryptionPort must be initialized in BeforeEach
+			// encryptedAccess, err := encryptionPort.Encrypt(ctx, plainAccessToken, encryptionContext)
+			// Expect(err).ToNot(HaveOccurred())
+			// encryptedRefresh, err := encryptionPort.Encrypt(ctx, plainRefreshToken, encryptionContext)
+			// Expect(err).ToNot(HaveOccurred())
+
+			// THEN each token is encrypted using DEK bound to service context, and DEK wrapped with KEK
+			// Expect(encryptedAccess).NotTo(Equal(plainAccessToken)) // Verify encryption happened
+			// Expect(encryptedRefresh).NotTo(Equal(plainRefreshToken))
+			// Expect(encryptedAccess).NotTo(Equal(encryptedRefresh)) // Different DEKs (unique per encryption)
+
+			// Placeholder: This test fails semantically because encryptionPort is not yet available
+			Skip("Awaiting Phase 3a: EncryptionPort initialization with LocalStack bootstrap")
 		})
 
 		// Scenario 1.2 from specs/012-aws-encryption-vault/spec.md

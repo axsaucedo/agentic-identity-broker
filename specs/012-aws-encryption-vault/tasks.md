@@ -85,6 +85,14 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 - [x] T014 Verify E2E test file includes comments: map each test to spec.md scenarios with `// Scenario X.Y from specs/012-aws-encryption-vault/spec.md`
 
+- [x] T014a [P] Verify schema assumptions before Phase 3 starts:
+  - **Prerequisite**: Confirm UserSession aggregate has required encrypted token and context fields
+  - **Verification Status**: ✅ **VERIFIED** in [internal/domain/storage/user_session.go](../../internal/domain/storage/user_session.go)
+    - Line 17: `EncryptedAccessToken  []byte` ✅ (BYTEA column)
+    - Line 18: `EncryptedRefreshToken []byte` ✅ (BYTEA column)
+    - Line 23: `EncryptionContext     EncryptionContext` ✅ (JSONB column, defined in data-model.md)
+  - **Impact**: No schema migrations required; adapter layer sees only encrypted BYTEA values
+
 ---
 
 ## Phase 2f: E2E Test Design & Structure (Principle XIII)

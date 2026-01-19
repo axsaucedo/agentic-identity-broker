@@ -140,3 +140,24 @@ services:
     depends_on:
       identity-broker:
         condition: service_healthy
+
+  # LocalStack for manual local testing of AWS KMS + DynamoDB (optional)
+  # E2E tests use testcontainers bootstrap instead (tests/e2e/bootstrap/localstack.go)
+  # Enable this service if you want to manually test encryption with docker-compose
+  localstack:
+    image: localstack/localstack:latest
+    container_name: aib-localstack
+    ports:
+      - "4566:4566"  # LocalStack API endpoint
+    environment:
+      SERVICES: kms,dynamodb
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-central-1
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "awslocal", "kms", "list-keys"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
