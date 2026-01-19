@@ -6,17 +6,17 @@ import (
 	"time"
 )
 
-// TestHierarchicalKeyringConfig tests configuration validation
-func TestHierarchicalKeyringConfig(t *testing.T) {
+// TestKeyStoreConfig tests configuration validation
+func TestKeyStoreConfig(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         HierarchicalKeyringConfig
-		expectedError  bool
-		errorContains  string
+		name          string
+		config        KeyStoreConfig
+		expectedError bool
+		errorContains string
 	}{
 		{
 			name: "empty_kms_key_arn",
-			config: HierarchicalKeyringConfig{
+			config: KeyStoreConfig{
 				KMSKeyARN:         "",
 				DynamoDBTableName: "TestTable",
 				BranchKeyTTL:      1 * time.Hour,
@@ -26,7 +26,7 @@ func TestHierarchicalKeyringConfig(t *testing.T) {
 		},
 		{
 			name: "invalid_kms_arn_format",
-			config: HierarchicalKeyringConfig{
+			config: KeyStoreConfig{
 				KMSKeyARN:         "not-a-valid-arn",
 				DynamoDBTableName: "TestTable",
 				BranchKeyTTL:      1 * time.Hour,
@@ -36,7 +36,7 @@ func TestHierarchicalKeyringConfig(t *testing.T) {
 		},
 		{
 			name: "default_table_name_applied",
-			config: HierarchicalKeyringConfig{
+			config: KeyStoreConfig{
 				KMSKeyARN:         "", // Will fail on KMS check but shows defaults work
 				DynamoDBTableName: "",
 				BranchKeyTTL:      0,
@@ -48,7 +48,7 @@ func TestHierarchicalKeyringConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := createHierarchicalKeyring(context.Background(), tt.config)
+			_, err := createKeyStore(context.Background(), tt.config, "TestKeyStore")
 
 			if tt.expectedError {
 				if err == nil {
@@ -66,15 +66,15 @@ func TestHierarchicalKeyringConfig(t *testing.T) {
 	}
 }
 
-// TestHierarchicalKeyringConfigDefaults tests that defaults are applied
-func TestHierarchicalKeyringConfigDefaults(t *testing.T) {
-	config := HierarchicalKeyringConfig{
+// TestKeyStoreConfigDefaults tests that defaults are applied
+func TestKeyStoreConfigDefaults(t *testing.T) {
+	config := KeyStoreConfig{
 		KMSKeyARN:         "",
 		DynamoDBTableName: "",
 		BranchKeyTTL:      0,
 	}
 
-	// Apply defaults like createHierarchicalKeyring does
+	// Apply defaults like createKeyStore does
 	if config.DynamoDBTableName == "" {
 		config.DynamoDBTableName = DefaultBranchKeyTableName
 	}
@@ -95,10 +95,10 @@ func TestHierarchicalKeyringConfigDefaults(t *testing.T) {
 // TestKeyStoreConfigStructure tests that KeyStore configuration is properly structured
 func TestKeyStoreConfigStructure(t *testing.T) {
 	// This test verifies the KeyStore config matches what the AWS library expects
-	// It's primarily a compile-time check via the struct literals in keyring.go
+	// It's primarily a compile-time check via the struct literals in keystore.go
 
-	// Test that HierarchicalKeyringConfig has required fields
-	config := HierarchicalKeyringConfig{
+	// Test that KeyStoreConfig has required fields
+	config := KeyStoreConfig{
 		KMSKeyARN:         "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012",
 		DynamoDBTableName: "TestBranchKeys",
 		BranchKeyTTL:      2 * time.Hour,
@@ -117,8 +117,8 @@ func TestKeyStoreConfigStructure(t *testing.T) {
 	}
 }
 
-// TestKMSARNValidationInHierarchicalKeyring tests KMS ARN validation
-func TestKMSARNValidationInHierarchicalKeyring(t *testing.T) {
+// TestKMSARNValidationInKeyStore tests KMS ARN validation
+func TestKMSARNValidationInKeyStore(t *testing.T) {
 	tests := []struct {
 		name          string
 		kmsARN        string
@@ -145,13 +145,13 @@ func TestKMSARNValidationInHierarchicalKeyring(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := HierarchicalKeyringConfig{
+			config := KeyStoreConfig{
 				KMSKeyARN:         tt.kmsARN,
 				DynamoDBTableName: DefaultBranchKeyTableName,
 				BranchKeyTTL:      DefaultBranchKeyTTL,
 			}
 
-			_, err := createHierarchicalKeyring(context.Background(), config)
+			_, err := createKeyStore(context.Background(), config, "TestKeyStore")
 
 			if !tt.shouldFail && err != nil {
 				t.Errorf("expected no error, got: %v", err)
@@ -199,7 +199,7 @@ func TestBranchKeyTTLConfiguration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := HierarchicalKeyringConfig{
+			config := KeyStoreConfig{
 				KMSKeyARN:         "arn:aws:kms:us-west-2:123456789012:key/test",
 				DynamoDBTableName: DefaultBranchKeyTableName,
 				BranchKeyTTL:      tt.ttl,
@@ -217,19 +217,19 @@ func TestBranchKeyTTLConfiguration(t *testing.T) {
 	}
 }
 
-// TestHierarchicalKeyringConfigIntegration tests hierarchical keyring with adapter
-func TestHierarchicalKeyringConfigIntegration(t *testing.T) {
-	// This test verifies that HierarchicalKeyringConfig can be used to create a keyring
+// TestKeyStoreInitialization tests KeyStore initialization flow
+func TestKeyStoreInitialization(t *testing.T) {
+	// This test verifies that KeyStoreConfig can be used to create a KeyStore
 	// The actual KMS call will fail in test environment, but the configuration flow is validated
 
-	config := HierarchicalKeyringConfig{
+	config := KeyStoreConfig{
 		KMSKeyARN:         "arn:aws:kms:us-west-2:123456789012:key/invalid-in-test",
 		DynamoDBTableName: "TestBranchKeys",
 		BranchKeyTTL:      1 * time.Hour,
 	}
 
 	// Should fail on KMS key verification, not on configuration
-	_, err := createHierarchicalKeyring(context.Background(), config)
+	_, err := createKeyStore(context.Background(), config, "TestKeyStore")
 	if err == nil {
 		t.Fatal("expected error due to invalid KMS key in test")
 	}

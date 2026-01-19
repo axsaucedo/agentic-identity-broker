@@ -101,7 +101,9 @@ func NewAWSEncryptionAdapterWithConfig(keyMaterial, dynamoDBTableName string, br
 // The hierarchical keyring uses DynamoDB for caching branch keys, reducing KMS API calls.
 // dynamoDBTableName and branchKeyTTL override defaults if provided (non-empty/non-zero).
 func newAdapterWithKMSARN(kmsARN, dynamoDBTableName string, branchKeyTTL time.Duration) (*AWSAdapter, error) {
-	// Create hierarchical keyring with configured or default values
+	ctx := context.Background()
+
+	// Create KeyStore with configured or default values
 	dynamoDBTable := dynamoDBTableName
 	if dynamoDBTable == "" {
 		dynamoDBTable = DefaultBranchKeyTableName
@@ -112,13 +114,22 @@ func newAdapterWithKMSARN(kmsARN, dynamoDBTableName string, branchKeyTTL time.Du
 		ttl = DefaultBranchKeyTTL
 	}
 
-	keyringCfg := HierarchicalKeyringConfig{
+	keyStoreCfg := KeyStoreConfig{
 		KMSKeyARN:         kmsARN,
 		DynamoDBTableName: dynamoDBTable,
 		BranchKeyTTL:      ttl,
 	}
 
-	keyring, err := createHierarchicalKeyring(context.Background(), keyringCfg)
+	keyStore, err := createKeyStore(ctx, keyStoreCfg, "IdentityBrokerEncryptionVault")
+	if err != nil {
+		return nil, err
+	}
+
+	// Create branch key supplier
+	supplier := &branchKeySupplier{}
+
+	// Create hierarchical keyring using KeyStore and supplier
+	keyring, err := createHierarchicalKeyring(ctx, keyStore, supplier)
 	if err != nil {
 		return nil, err
 	}

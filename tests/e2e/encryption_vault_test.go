@@ -65,10 +65,10 @@ var _ = Describe("Encryption Vault for OAuth Tokens", func() {
 		// Scenario 1.1 from specs/012-aws-encryption-vault/spec.md
 		It("encrypts OAuth tokens using DEK bound to service context and wrapped KEK", func() {
 			// GIVEN a session with OAuth tokens and associated service_id context
-			serviceID := "oauth2"
-			encryptionContext := map[string]string{"service_id": serviceID}
-			plainAccessToken := []byte("access_token_abc123")
-			plainRefreshToken := []byte("refresh_token_xyz789")
+			_ = "oauth2"        // serviceID
+			_ = map[string]string{"service_id": "oauth2"}  // encryptionContext
+			_ = []byte("access_token_abc123")             // plainAccessToken
+			_ = []byte("refresh_token_xyz789")            // plainRefreshToken
 
 			// WHEN tokens are encrypted using encryptionPort
 			// TODO Phase 3a: encryptionPort must be initialized in BeforeEach
