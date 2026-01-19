@@ -21,12 +21,12 @@ encryption:
 
   # DynamoDB table name for caching branch keys (optional)
   # The hierarchical keyring caches branch keys in DynamoDB to reduce KMS API calls and improve performance
-  # Default: "EncryptionBranchKeys"
+  # Default: "IdentityBrokerEncryptionBranchKeys"
   # Required schema:
   #   - Partition key: "BranchKeyId" (String)
   #   - Sort key: "TimeToLive" (Number, for TTL-based auto-deletion)
   # AWS will automatically delete expired items when TTL expires
-  dynamodb_table_name: "EncryptionBranchKeys"
+  dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys"
 
   # Branch key Time-To-Live (TTL) in DynamoDB (optional)
   # Cached branch keys expire after this duration, forcing new generation from KMS

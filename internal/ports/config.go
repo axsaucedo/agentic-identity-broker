@@ -308,7 +308,7 @@ type EncryptionConfig struct {
 	// Each branch key is cached with a TTL for automatic expiration.
 	//
 	// Required for AWS KMS hierarchical keyring deployments.
-	// Defaults to "EncryptionBranchKeys" if not specified.
+	// Defaults to "IdentityBrokerEncryptionBranchKeys" if not specified.
 	//
 	// The table must have the following schema:
 	// - Partition key: "BranchKeyId" (String)

@@ -5,10 +5,10 @@ go 1.24.0
 toolchain go1.24.5
 
 require (
-	github.com/awnumar/memguard v0.23.0
 	github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl v0.3.0
 	github.com/aws/aws-encryption-sdk/releases/go/encryption-sdk v0.3.0
 	github.com/aws/aws-sdk-go-v2/config v1.31.15
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.2
 	github.com/aws/aws-sdk-go-v2/service/kms v1.49.5
 	github.com/go-chi/chi/v5 v5.2.4
 	github.com/google/uuid v1.6.0
@@ -31,7 +31,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/awnumar/memcall v0.4.0 // indirect
 	github.com/aws/aws-cryptographic-material-providers-library/releases/go/dynamodb v0.3.0 // indirect
 	github.com/aws/aws-cryptographic-material-providers-library/releases/go/kms v0.3.0 // indirect
 	github.com/aws/aws-cryptographic-material-providers-library/releases/go/primitives v0.3.0 // indirect
@@ -42,7 +41,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.17 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.17 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.11 // indirect

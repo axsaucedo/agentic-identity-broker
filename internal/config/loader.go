@@ -149,7 +149,7 @@ func (l *Loader) setDefaults() {
 	l.v.SetDefault("third_party_oauth2.pkce_verifier_length", 32)
 
 	// Set encryption configuration defaults
-	l.v.SetDefault("encryption.dynamodb_table_name", "EncryptionBranchKeys")
+	l.v.SetDefault("encryption.dynamodb_table_name", "IdentityBrokerEncryptionBranchKeys")
 	l.v.SetDefault("encryption.branch_key_ttl", "1h")
 
 	// Set security configuration defaults

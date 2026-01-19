@@ -23,7 +23,7 @@ const (
 	// DefaultBranchKeyTTL is the TTL for branch keys in the DynamoDB cache
 	DefaultBranchKeyTTL = 1 * time.Hour
 	// DefaultBranchKeyTableName is the default DynamoDB table for caching branch keys
-	DefaultBranchKeyTableName = "EncryptionBranchKeys"
+	DefaultBranchKeyTableName = "IdentityBrokerEncryptionBranchKeys"
 )
 
 // AWSAdapter implements the EncryptionPort interface using AWS Encryption SDK.
