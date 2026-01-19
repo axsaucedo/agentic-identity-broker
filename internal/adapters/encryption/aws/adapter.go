@@ -126,7 +126,7 @@ func newAdapterWithKMSARN(kmsARN, dynamoDBTableName string, branchKeyTTL time.Du
 	}
 
 	// Create branch key supplier
-	supplier := &branchKeySupplier{}
+	supplier := &DynamicBranchKeySupplier{}
 
 	// Create hierarchical keyring using KeyStore and supplier
 	keyring, err := createHierarchicalKeyring(ctx, keyStore, supplier)
