@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"time"
 
+	httpMiddleware "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -93,6 +94,11 @@ func NewTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
 	router.Use(middleware.RealIP)
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
+
+	// Apply optional principal middleware to all routes (matches production)
+	// This allows routes to optionally extract principal from X-Remote-User header
+	// Public routes like /oauth2/token can ignore it, authenticated routes require it
+	router.Use(httpMiddleware.OptionalPrincipalMiddleware(app.Config.Server.EndUser.Authentication, logger))
 
 	// Health endpoint (public)
 	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -309,6 +315,55 @@ func (ts *TestServer) PublicGET(path string) (*http.Response, error) {
 	return resp, nil
 }
 
+// PublicPOST makes an unauthenticated POST request (no Principal).
+// Use this for public endpoints like /oauth2/token that authenticate via request body (JWTs).
+// Do NOT use X-Remote-User header as authentication comes from subject_token and client_assertion.
+//
+// Parameters:
+//   - path: Request path (e.g., "/oauth2/token")
+//   - contentType: Content-Type header (e.g., "application/x-www-form-urlencoded")
+//   - body: Request body reader (e.g., strings.NewReader(urlEncodedData))
+//
+// Returns:
+//   - *http.Response: Response from server (caller must close Body)
+//   - error: If request fails
+//
+// Example:
+//
+//	data := url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:token-exchange"}, ...}
+//	resp, err := server.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+//	require.NoError(t, err)
+//	defer resp.Body.Close()
+//	assert.Equal(t, http.StatusOK, resp.StatusCode)
+func (ts *TestServer) PublicPOST(path string, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", ts.BaseURL()+path, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set content type if provided
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	// No authentication header (public endpoint, authenticates via request body JWTs)
+
+	// Make request using HTTP client that does NOT follow redirects
+	// E2E tests need to verify redirect responses themselves
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // Don't follow redirects
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	return resp, nil
+}
+
 // DirectRequest makes a raw HTTP request (for advanced testing).
 // Use AuthenticatedGET/POST for most tests.
 //
@@ -434,6 +489,10 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 	router.Use(middleware.RealIP)
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
+
+	// Apply optional principal middleware to all routes (matches production)
+	// This allows routes to optionally extract principal from X-Remote-User header
+	router.Use(httpMiddleware.OptionalPrincipalMiddleware(b.config.Server.EndUser.Authentication, b.logger))
 
 	// Add health endpoint (available immediately)
 	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {

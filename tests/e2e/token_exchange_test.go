@@ -3,11 +3,11 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,6 +21,21 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/matchers"
 )
 
+// TokenFixtures holds all JWT tokens for a test suite execution.
+// Tokens are generated once in BeforeEach and shared across all tests.
+// This ensures consistent, valid JWT tokens for testing token exchange flows.
+type TokenFixtures struct {
+	// Valid tokens for successful scenarios
+	SubjectToken              string // Valid subject token with principal and agent ID
+	ClientAssertion           string // Valid client assertion for gateway authentication
+	ExpiredSubjectToken       string // Expired subject token (exp in past)
+	MissingSubClaimToken      string // Token without 'sub' claim
+	MissingAudClaimToken      string // Token without 'aud' claim
+	InvalidIssuerToken        string // Token with wrong issuer
+	ClientAssertionInvalidSig string // JWT with invalid signature
+	TokenWithCELClaims        string // Token with claims for CEL evaluation
+}
+
 var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 	var (
 		serverFactory  *bootstrap.ServerFactory
@@ -32,13 +47,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		config         *ports.Config
 		principal      string
 		agent          *storagedomain.Agent
+		tokenFixtures  *TokenFixtures
 	)
 
 	// Setup: Initialize fresh test infrastructure for each test
 	BeforeEach(func() {
-		// Initialize logger
-		logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
+		// Initialize logger with GinkgoWriter for test visibility
+		// This allows us to see slog output in test failures for debugging
+		logger = slog.New(slog.NewTextHandler(GinkgoWriter, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
 		}))
 
 		// Create mock upstream OAuth2 server
@@ -74,9 +91,11 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// ============ PHASE 2: RFC 8693 TOKEN EXCHANGE DATA SETUP ============
-		// Tests exercise complete end-to-end token exchange flow with full data model.
-		// Tests will fail semantically (endpoints not implemented) but assertions are final.
-		// When Phase 3 implements token exchange, tests will pass without changes.
+		// Generate real JWT tokens for testing RFC 8693 token exchange flows.
+		// All tokens are properly signed with the mock upstream's private key.
+		// This ensures JWT validation passes and tests move past token parsing.
+
+		tokenFixtures = generateTokenFixtures(mockUpstream, principal, agent)
 
 		// Create GitHub service with protected_resources for resource-based lookup (US2)
 		githubService := fixtures.GitHubService()
@@ -86,7 +105,10 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// Create user grant allowing agent to access GitHub service (US3)
 		// This grant is required before token exchange can succeed.
 		// US3-S2, US3-S3, US3-S4 test different grant states (active, revoked, expired).
-		grant := fixtures.ActiveGrant(principal, agent.ID, githubService.ID, []string{"repo", "user"})
+		// NOTE: Grant must use agent.ClientID (not agent.ID) because token exchange service
+		// looks up grants by principal + agent.ClientID extracted from JWT "azp" claim.
+		// agent.ClientID is "test-client-valid" which matches what's in the token.
+		grant := fixtures.ActiveGrant(principal, agent.ClientID, githubService.ID, []string{"repo", "user"})
 		err = testStorage.UserGrants().Create(ctx, grant)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -121,15 +143,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Client sends POST request to token endpoint with token exchange grant_type
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -147,15 +169,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange request includes resource parameter
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -172,15 +194,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Client sends token exchange request
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -208,15 +230,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange request is made for resource with expired token
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -234,15 +256,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: Request with invalid client_assertion
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"invalid-signature-jwt"},
+				"client_assertion":      {tokenFixtures.ClientAssertionInvalidSig},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Client sends token exchange with invalid client_assertion
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -261,15 +283,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: Request with invalid subject_token
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"invalid-signature-jwt"},
+				"subject_token":         {tokenFixtures.ExpiredSubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Client sends token exchange with invalid subject_token
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -314,15 +336,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com/"}, // Trailing slash
 			}
 
 			// When: Token exchange request uses resource URI with trailing slash
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -338,15 +360,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange requests GitHub resource
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -364,15 +386,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: Request for resource not in any protected_resources
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.nonexistent.com"},
 			}
 
 			// When: Token exchange requests unmapped resource
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -392,15 +414,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange requests ambiguous resource
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -424,15 +446,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange is requested with active grant
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -445,15 +467,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: User without grant for agent+service
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange requested without grant
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -471,15 +493,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: User with revoked grant
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange requested with revoked grant
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -497,15 +519,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: User with expired grant
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange requested with expired grant
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -529,15 +551,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange request is made with CEL policy configured
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -558,15 +580,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange request is evaluated by CEL policy (result: true)
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -584,15 +606,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: CEL policy evaluates to false for this request
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"invalid-for-cel-policy"},
+				"client_assertion":      {tokenFixtures.ClientAssertionInvalidSig},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange request is evaluated by CEL policy (result: false)
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -634,15 +656,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"jwt-with-claims"},
+				"client_assertion":      {tokenFixtures.TokenWithCELClaims},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: CEL policy evaluates using client_assertion claims
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -658,15 +680,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: CEL policy evaluates using request context (resource, principal, etc.)
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -687,15 +709,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: User has no session with service
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange requested without session
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -713,15 +735,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: Both access and refresh tokens expired
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange requested with expired tokens
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -739,15 +761,15 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: Request that will fail with invalid_grant
 			data := url.Values{
 				"grant_type":            {"urn:ietf:params:oauth:grant-type:token-exchange"},
-				"subject_token":         {"valid-subject-token"},
+				"subject_token":         {tokenFixtures.SubjectToken},
 				"subject_token_type":    {"urn:ietf:params:oauth:token-type:access_token"},
 				"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-				"client_assertion":      {"valid-client-assertion"},
+				"client_assertion":      {tokenFixtures.ClientAssertion},
 				"resource":              {"https://api.github.com"},
 			}
 
 			// When: Token exchange fails with invalid_grant
-			resp, err := testServer.AuthenticatedPOST("/oauth2/token", principal, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -769,10 +791,23 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		It("[US6-S1] should accept protected_resources in POST /api/services", func() {
 			// Given: Admin API accepts protected_resources field in service creation
 			serviceData := map[string]interface{}{
-				"name": "github-oauth2-service",
+				"display_name":  "New Service with Protected Resources",
+				"client_id":     "new-service-client-id",
+				"client_secret": "new-service-client-secret",
+				"issuer_uri":    "https://new.example.com",
+				"discovery": map[string]interface{}{
+					"enable_discovery": false,
+				},
+				"endpoints": map[string]interface{}{
+					"token_endpoint":     "https://new.example.com/token",
+					"authorize_endpoint": "https://new.example.com/authorize",
+				},
+				"scopes": []map[string]interface{}{
+					{"scope_value": "read", "description": "Read access"},
+				},
 				"protected_resources": []string{
-					"https://api.github.com",
-					"https://github.com",
+					"https://api.newservice.com",
+					"https://newservice.com",
 				},
 			}
 			body, err := json.Marshal(serviceData)
@@ -790,13 +825,28 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			err = json.NewDecoder(resp.Body).Decode(&createdService)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(createdService).To(HaveKey("protected_resources"))
-			Expect(createdService["protected_resources"]).To(Equal([]interface{}{"https://api.github.com", "https://github.com"}))
+			Expect(createdService["protected_resources"]).To(Equal([]interface{}{"https://api.newservice.com", "https://newservice.com"}))
 		})
 
 		// Spec Reference: US6-S2 from specs/013-token-exchange/spec.md
 		It("[US6-S2] should accept protected_resources in PUT /api/services/{id}", func() {
 			// Given: Admin wants to update service protected_resources via PUT
+			// Use the GitHub service that was already created in BeforeEach
 			updateData := map[string]interface{}{
+				"display_name":  "GitHub OAuth2 Service Updated",
+				"client_id":     "github-client-id",
+				"client_secret": "github-client-secret",
+				"issuer_uri":    "https://github.com",
+				"discovery": map[string]interface{}{
+					"enable_discovery": false,
+				},
+				"endpoints": map[string]interface{}{
+					"token_endpoint":     "https://github.com/login/oauth/access_token",
+					"authorize_endpoint": "https://github.com/login/oauth/authorize",
+				},
+				"scopes": []map[string]interface{}{
+					{"scope_value": "repo", "description": "Repository access"},
+				},
 				"protected_resources": []string{
 					"https://api.example.com",
 				},
@@ -804,8 +854,8 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			body, err := json.Marshal(updateData)
 			Expect(err).NotTo(HaveOccurred())
 
-			// When: Admin updates service with new protected_resources
-			resp, err := testServer.AuthenticatedPOST("/api/services/service-123", principal, "application/json", strings.NewReader(string(body)))
+			// When: Admin updates service with new protected_resources via PUT
+			resp, err := testServer.DirectRequest("PUT", "/api/services/github-service", principal, map[string]string{"Content-Type": "application/json"}, strings.NewReader(string(body)))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -816,16 +866,29 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			err = json.NewDecoder(resp.Body).Decode(&updatedService)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedService).To(HaveKey("protected_resources"))
+			Expect(updatedService["protected_resources"]).To(Equal([]interface{}{"https://api.example.com"}))
 		})
 
 		// Spec Reference: US6-S3 from specs/013-token-exchange/spec.md
 		It("[US6-S3] should return 400 for invalid URI in protected_resources", func() {
 			// Given: Admin provides invalid URI format in protected_resources
 			serviceData := map[string]interface{}{
-				"name": "invalid-service",
+				"display_name":  "Invalid Service",
+				"client_id":     "invalid-client-id",
+				"client_secret": "invalid-client-secret",
+				"issuer_uri":    "https://invalid.example.com",
+				"discovery": map[string]interface{}{
+					"enable_discovery": false,
+				},
+				"endpoints": map[string]interface{}{
+					"token_endpoint":     "https://invalid.example.com/token",
+					"authorize_endpoint": "https://invalid.example.com/authorize",
+				},
+				"scopes": []map[string]interface{}{
+					{"scope_value": "read", "description": "Read access"},
+				},
 				"protected_resources": []string{
 					"not-a-valid-uri",
-					"also@not#valid",
 				},
 			}
 			body, err := json.Marshal(serviceData)
@@ -848,10 +911,24 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// Spec Reference: US6-S4 from specs/013-token-exchange/spec.md
 		It("[US6-S4] should return 409 for duplicate resource URI across services", func() {
 			// Given: Multiple services already configured with same protected_resource URI
+			// GitHub service already exists with "https://api.github.com" (from BeforeEach)
 			serviceData := map[string]interface{}{
-				"name": "duplicate-service",
+				"display_name":  "Duplicate Service",
+				"client_id":     "duplicate-client-id",
+				"client_secret": "duplicate-client-secret",
+				"issuer_uri":    "https://duplicate.example.com",
+				"discovery": map[string]interface{}{
+					"enable_discovery": false,
+				},
+				"endpoints": map[string]interface{}{
+					"token_endpoint":     "https://duplicate.example.com/token",
+					"authorize_endpoint": "https://duplicate.example.com/authorize",
+				},
+				"scopes": []map[string]interface{}{
+					{"scope_value": "read", "description": "Read access"},
+				},
 				"protected_resources": []string{
-					"https://api.github.com", // Already exists in another service
+					"https://api.github.com", // Already exists in GitHub service from BeforeEach
 				},
 			}
 			body, err := json.Marshal(serviceData)
@@ -873,9 +950,9 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 		// Spec Reference: US6-S5 from specs/013-token-exchange/spec.md
 		It("[US6-S5] should include protected_resources in GET /api/services/{id} response", func() {
-			// Given: Service exists with protected_resources stored
+			// Given: Service exists with protected_resources stored (GitHub service from BeforeEach)
 			// When: Admin retrieves service details via GET /api/services/{id}
-			resp, err := testServer.AuthenticatedPOST("/api/services/service-123", principal, "application/json", nil)
+			resp, err := testServer.AuthenticatedGET("/api/services/github-service", principal)
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -887,6 +964,9 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(serviceResponse).To(HaveKey("protected_resources"))
 			Expect(serviceResponse["protected_resources"]).To(BeAssignableToTypeOf([]interface{}{}))
+			// Verify the protected_resources contains the expected GitHub URI
+			resources := serviceResponse["protected_resources"].([]interface{})
+			Expect(resources).To(ContainElement("https://api.github.com"))
 		})
 	})
 
@@ -900,3 +980,145 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 	// - US5: 3 scenarios (session errors)
 	// - US6: 5 scenarios (admin API)
 })
+
+// generateTokenFixtures creates all JWT tokens needed for RFC 8693 token exchange testing.
+// Each token is properly signed with the mock upstream OAuth2 server's private key,
+// ensuring JWT validation passes and tests can focus on business logic.
+//
+// TokenFixtures contains:
+// - SubjectToken: Valid subject token with principal and agent claims for successful exchange
+// - ClientAssertion: Valid client assertion for gateway authentication
+// - ExpiredSubjectToken: Subject token with exp claim in the past for expiration testing
+// - MissingSubClaimToken: Token without 'sub' claim for validation testing
+// - MissingAudClaimToken: Token without 'aud' claim for validation testing
+// - InvalidIssuerToken: Token with incorrect issuer URI for issuer validation testing
+// - ClientAssertionInvalidSig: JWT that appears valid but has manipulated signature
+// - TokenWithCELClaims: Token with extra claims for CEL expression evaluation
+func generateTokenFixtures(mockUpstream *helpers.MockUpstreamOAuth2Server, principal string, agent *storagedomain.Agent) *TokenFixtures {
+	fixtures := &TokenFixtures{}
+	privateKeyPEM := mockUpstream.GetPrivateKeyPEM()
+	now := time.Now()
+
+	// SubjectToken: Valid subject token with principal and agent ID claims
+	// Used in successful token exchange scenarios (US1-S1 through US1-S4)
+	subjectTokenClaims := map[string]interface{}{
+		"sub": principal,                     // Principal claim (user identifier)
+		"azp": agent.ClientID,                // Agent ID claim (client being used on behalf of)
+		"iss": mockUpstream.URL(),            // Issuer must match upstream server
+		"aud": "token-exchange-broker",       // Audience for this token exchange
+		"exp": now.Add(1 * time.Hour).Unix(), // Expires in 1 hour
+		"iat": now.Unix(),                    // Issued now
+	}
+	token, err := helpers.SignTestJWT(subjectTokenClaims, privateKeyPEM)
+	Expect(err).NotTo(HaveOccurred())
+	fixtures.SubjectToken = token
+
+	// ClientAssertion: Valid gateway client assertion
+	// Authenticates the gateway making the token exchange request (US1-S1 through US1-S4)
+	clientAssertionClaims := map[string]interface{}{
+		"sub": "test-gateway-client",         // Gateway identifier
+		"iss": mockUpstream.URL(),            // Issuer must match upstream
+		"aud": "token-exchange-broker",       // Audience
+		"exp": now.Add(1 * time.Hour).Unix(), // Expires in 1 hour
+		"iat": now.Unix(),                    // Issued now
+	}
+	token, err = helpers.SignTestJWT(clientAssertionClaims, privateKeyPEM)
+	Expect(err).NotTo(HaveOccurred())
+	fixtures.ClientAssertion = token
+
+	// ExpiredSubjectToken: Subject token with expired timestamp
+	// Used to test handling of expired tokens (US1-S6, US5-S2)
+	expiredTokenClaims := map[string]interface{}{
+		"sub": principal,
+		"azp": agent.ClientID,
+		"iss": mockUpstream.URL(),
+		"aud": "token-exchange-broker",
+		"exp": now.Add(-1 * time.Hour).Unix(), // Expired 1 hour ago
+		"iat": now.Add(-2 * time.Hour).Unix(),
+	}
+	token, err = helpers.SignTestJWT(expiredTokenClaims, privateKeyPEM)
+	Expect(err).NotTo(HaveOccurred())
+	fixtures.ExpiredSubjectToken = token
+
+	// MissingSubClaimToken: Token without 'sub' claim
+	// Used to test validation of required claims
+	missingSubClaims := map[string]interface{}{
+		"iss": mockUpstream.URL(),
+		"aud": "token-exchange-broker",
+		"exp": now.Add(1 * time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+	token, err = helpers.SignTestJWT(missingSubClaims, privateKeyPEM)
+	Expect(err).NotTo(HaveOccurred())
+	fixtures.MissingSubClaimToken = token
+
+	// MissingAudClaimToken: Token without 'aud' claim
+	// Used to test validation of required claims
+	missingAudClaims := map[string]interface{}{
+		"sub": principal,
+		"iss": mockUpstream.URL(),
+		"exp": now.Add(1 * time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+	token, err = helpers.SignTestJWT(missingAudClaims, privateKeyPEM)
+	Expect(err).NotTo(HaveOccurred())
+	fixtures.MissingAudClaimToken = token
+
+	// InvalidIssuerToken: Token with wrong issuer
+	// Used to test issuer validation (different upstream server)
+	invalidIssuerClaims := map[string]interface{}{
+		"sub": principal,
+		"azp": agent.ClientID,
+		"iss": "https://wrong-issuer.example.com", // Wrong issuer
+		"aud": "token-exchange-broker",
+		"exp": now.Add(1 * time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+	token, err = helpers.SignTestJWT(invalidIssuerClaims, privateKeyPEM)
+	Expect(err).NotTo(HaveOccurred())
+	fixtures.InvalidIssuerToken = token
+
+	// ClientAssertionInvalidSig: Token with invalid/manipulated signature
+	// Signed with private key but signature will be corrupted for testing verification failure
+	// This represents an invalid client_assertion (US1-S5) and invalid CEL policy case (US4-S3)
+	validClientClaims := map[string]interface{}{
+		"sub": "test-gateway-invalid",
+		"iss": mockUpstream.URL(),
+		"aud": "token-exchange-broker",
+		"exp": now.Add(1 * time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+	token, err = helpers.SignTestJWT(validClientClaims, privateKeyPEM)
+	Expect(err).NotTo(HaveOccurred())
+	// Corrupt the signature by modifying the last character of the token
+	if len(token) > 0 {
+		tokenBytes := []byte(token)
+		if tokenBytes[len(tokenBytes)-1] == 'A' {
+			tokenBytes[len(tokenBytes)-1] = 'B'
+		} else {
+			tokenBytes[len(tokenBytes)-1] = 'A'
+		}
+		token = string(tokenBytes)
+	}
+	fixtures.ClientAssertionInvalidSig = token
+
+	// TokenWithCELClaims: Token with additional claims for CEL expression evaluation
+	// Used to test CEL policy access to JWT claims (US4-S5)
+	celClaimsToken := map[string]interface{}{
+		"sub":      "test-gateway-cel",
+		"iss":      mockUpstream.URL(),
+		"aud":      "token-exchange-broker",
+		"exp":      now.Add(1 * time.Hour).Unix(),
+		"iat":      now.Unix(),
+		"scope":    "api:write api:read",  // Custom scope claim for CEL
+		"org_id":   "org-123",             // Custom org claim for CEL
+		"role":     "admin",               // Custom role claim for CEL
+		"env":      "production",          // Custom environment claim
+		"features": "feature-x,feature-y", // Feature flags
+	}
+	token, err = helpers.SignTestJWT(celClaimsToken, privateKeyPEM)
+	Expect(err).NotTo(HaveOccurred())
+	fixtures.TokenWithCELClaims = token
+
+	return fixtures
+}

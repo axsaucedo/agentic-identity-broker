@@ -3,6 +3,8 @@ package tokenexchange
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestTokenExchangeResponse_ValidMinimal tests a minimal valid response.
@@ -414,7 +416,7 @@ func TestTokenExchangeResponse_RFC8693Format(t *testing.T) {
 	}
 
 	var actual map[string]interface{}
-	json.Unmarshal(jsonBytes, &actual)
+	require.NoError(t, json.Unmarshal(jsonBytes, &actual))
 
 	for key, expectedVal := range expected {
 		if actualVal, ok := actual[key]; !ok || actualVal != expectedVal {

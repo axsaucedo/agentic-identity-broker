@@ -221,14 +221,14 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 // GetService handles GET /api/third-party/oauth2/clients/:client-id
 func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID := chi.URLParam(r, "client-id")
+	serviceID := chi.URLParam(r, "service-id")
 
-	if clientID == "" {
-		h.writeError(w, http.StatusBadRequest, "client ID is required", "")
+	if serviceID == "" {
+		h.writeError(w, http.StatusBadRequest, "service ID is required", "")
 		return
 	}
 
-	service, err := h.repo.Get(ctx, clientID)
+	service, err := h.repo.Get(ctx, serviceID)
 	if err != nil {
 		h.handleStorageError(w, r, "GetService", err)
 		return
@@ -239,13 +239,13 @@ func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-// UpdateService handles PUT /api/third-party/oauth2/clients/:client-id
+// UpdateService handles PUT /api/services/:service-id
 func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID := chi.URLParam(r, "client-id")
+	serviceID := chi.URLParam(r, "service-id")
 
-	if clientID == "" {
-		h.writeError(w, http.StatusBadRequest, "client ID is required", "")
+	if serviceID == "" {
+		h.writeError(w, http.StatusBadRequest, "service ID is required", "")
 		return
 	}
 
@@ -257,7 +257,7 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Get existing service to preserve created_at
-	existing, err := h.repo.Get(ctx, clientID)
+	existing, err := h.repo.Get(ctx, serviceID)
 	if err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
 		return
@@ -265,7 +265,7 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 
 	// Update service entity
 	service := &storage.ThirdpartyOAuth2Service{
-		ID:           clientID,
+		ID:           serviceID,
 		DisplayName:  req.DisplayName,
 		ClientID:     req.ClientID,
 		ClientSecret: req.ClientSecret,
@@ -372,24 +372,24 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-// DeleteService handles DELETE /api/third-party/oauth2/clients/:client-id
+// DeleteService handles DELETE /api/services/:service-id
 func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID := chi.URLParam(r, "client-id")
+	serviceID := chi.URLParam(r, "service-id")
 
-	if clientID == "" {
-		h.writeError(w, http.StatusBadRequest, "client ID is required", "")
+	if serviceID == "" {
+		h.writeError(w, http.StatusBadRequest, "service ID is required", "")
 		return
 	}
 
 	// Delete from repository
-	if err := h.repo.Delete(ctx, clientID); err != nil {
+	if err := h.repo.Delete(ctx, serviceID); err != nil {
 		// Special handling for conflict errors (grants exist)
 		if storageErr, ok := err.(*storage.StorageError); ok && storageErr.Kind == storage.ErrorKindConflict {
 			// Extract grant count from error message if possible
 			message := storageErr.Message
 			h.logger.Warn("service deletion blocked due to existing grants",
-				"service_id", clientID,
+				"service_id", serviceID,
 				"error", message)
 			h.writeError(w, http.StatusConflict, "conflict", message)
 			return
@@ -399,7 +399,7 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.logger.Info("OAuth2 service deleted", "service_id", clientID)
+	h.logger.Info("OAuth2 service deleted", "service_id", serviceID)
 
 	// Return 204 No Content
 	w.WriteHeader(http.StatusNoContent)

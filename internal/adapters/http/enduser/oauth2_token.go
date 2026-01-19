@@ -1,20 +1,37 @@
 package enduser
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// OAuth2TokenHandler handles OAuth2 token endpoint requests (proxy to upstream)
+// OAuth2TokenHandler handles OAuth2 token endpoint requests
+// Routes between token exchange (RFC 8693) and standard OAuth2 token requests
 type OAuth2TokenHandler struct {
 	UpstreamTokenURL string
 	Client           *http.Client
+	Services         ports.ThirdpartyOAuth2ServiceRepository // For resource lookup in token exchange
+	TokenExchange    *tokenexchange.TokenExchangeService     // RFC 8693 token exchange service
+	Logger           *slog.Logger                            // For structured logging
 }
 
 // ServeHTTP implements http.Handler for the token endpoint
 func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.Logger != nil {
+		h.Logger.Info("OAuth2TokenHandler.ServeHTTP called",
+			"method", r.Method,
+			"path", r.URL.Path,
+		)
+	}
+
 	// Verify request method
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -43,8 +60,162 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse form data to detect request type
+	formData, err := url.ParseQuery(string(body))
+	if err != nil {
+		http.Error(w, "failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	grantType := formData.Get("grant_type")
+	if h.Logger != nil {
+		h.Logger.Info("Token endpoint request received",
+			"grant_type", grantType,
+			"expected_grant_type", tokenexchange.TokenExchangeGrantType,
+		)
+	}
+
+	// Detect token exchange request (RFC 8693) by grant_type parameter
+	if grantType == tokenexchange.TokenExchangeGrantType {
+		if h.Logger != nil {
+			h.Logger.Info("Routing to token exchange handler")
+		}
+		h.handleTokenExchange(w, r, formData)
+		return
+	}
+
+	// For other grant types, proxy to upstream (standard OAuth2 flow)
+	if h.Logger != nil {
+		h.Logger.Info("Proxying to upstream", "grant_type", grantType)
+	}
+	h.proxyToUpstream(w, r, string(body))
+}
+
+// handleTokenExchange processes RFC 8693 token exchange requests
+// Implements complete token exchange flow: validation, authorization, token retrieval
+func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.Request, formData url.Values) {
+	if h.Logger != nil {
+		h.Logger.Info("handleTokenExchange invoked",
+			"token_exchange_service_nil", h.TokenExchange == nil,
+		)
+	}
+
+	// Validate service is available (should have been validated in builder, but defensive check)
+	if h.TokenExchange == nil {
+		if h.Logger != nil {
+			h.Logger.Error("Token exchange service not configured")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "server_error",
+			"error_description": "token exchange service not configured",
+		})
+		return
+	}
+
+	// Parse token exchange request parameters from form data
+	// Per RFC 8693: all parameters are form-encoded in request body
+	req := tokenexchange.NewTokenExchangeRequest(
+		formData.Get("grant_type"),
+		formData.Get("subject_token"),
+		formData.Get("subject_token_type"),
+		formData.Get("client_assertion"),
+		formData.Get("client_assertion_type"),
+		formData.Get("resource"),
+		formData.Get("scope"),
+	)
+
+	// Step 1: Validate required parameter: resource
+	// Per FR-008: resource parameter is mandatory and validation occurs at HTTP layer
+	if req.Resource == "" {
+		if h.Logger != nil {
+			h.Logger.Warn("Resource parameter missing")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_request",
+			"error_description": "resource parameter is required",
+		})
+		return
+	}
+
+	if h.Logger != nil {
+		h.Logger.Info("Calling TokenExchangeService.Exchange",
+			"resource", req.Resource,
+			"subject_token_present", req.SubjectToken != "",
+			"client_assertion_present", req.ClientAssertion != "",
+		)
+	}
+
+	// Step 2: Call token exchange service
+	// Service handles: request validation, JWT validation, authorization, token retrieval
+	// Per Constitution Principle I (Security-First): service validates all inputs and fails closed
+	response, err := h.TokenExchange.Exchange(r.Context(), req)
+	if err != nil {
+		if h.Logger != nil {
+			h.Logger.Error("Token exchange failed",
+				"error", err.Error(),
+				"error_type", fmt.Sprintf("%T", err),
+			)
+		}
+		// Handle token exchange errors with proper RFC 8693 error codes
+		h.handleTokenExchangeError(w, err)
+		return
+	}
+
+	// Step 3: Return successful RFC 8693 response
+	// Response includes: access_token, token_type, issued_token_type, expires_in
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"access_token":      response.AccessToken,
+		"token_type":        response.TokenType,
+		"issued_token_type": response.IssuedTokenType,
+		"expires_in":        response.ExpiresIn,
+	})
+
+	// Audit log successful token exchange (optional, for operational observability)
+	// Per SR-058: caller is responsible for audit logging (done here for successful flows)
+	if h.Logger != nil {
+		h.Logger.InfoContext(r.Context(), "token_exchange_succeeded",
+			"resource", req.Resource,
+			"issued_token_type", response.IssuedTokenType,
+		)
+	}
+}
+
+// handleTokenExchangeError maps domain-layer token exchange errors to RFC 8693 error responses
+// Per spec FR-043: all errors return application/json error responses with standardized codes
+// Per Constitution Principle I (Security-First): never expose sensitive token values in errors
+func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err error) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Check if error is a domain TokenExchangeError with RFC 8693 error codes
+	if tokenExchangeErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
+		// RFC 8693 error: use error code and description from domain
+		w.WriteHeader(tokenExchangeErr.HTTPStatus())
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             tokenExchangeErr.Code(),
+			"error_description": tokenExchangeErr.Description(),
+		})
+		return
+	}
+
+	// Unexpected error: return generic server_error
+	// Per Constitution Principle I (Security-First): don't expose implementation details
+	w.WriteHeader(http.StatusInternalServerError)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             "server_error",
+		"error_description": "internal server error during token exchange",
+	})
+}
+
+// proxyToUpstream forwards requests to upstream OAuth2 server (for non-token-exchange flows)
+func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Request, body string) {
 	// Create upstream request
-	upstreamReq, err := http.NewRequest("POST", h.UpstreamTokenURL, strings.NewReader(string(body)))
+	upstreamReq, err := http.NewRequest("POST", h.UpstreamTokenURL, strings.NewReader(body))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create upstream request: %v", err), http.StatusInternalServerError)
 		return
@@ -118,5 +289,15 @@ func NewOAuth2TokenHandler(upstreamTokenURL string, client *http.Client) *OAuth2
 	return &OAuth2TokenHandler{
 		UpstreamTokenURL: upstreamTokenURL,
 		Client:           client,
+	}
+}
+
+// NewOAuth2TokenHandlerWithServices creates a new token handler with service repository
+// for RFC 8693 token exchange support
+func NewOAuth2TokenHandlerWithServices(upstreamTokenURL string, client *http.Client, services ports.ThirdpartyOAuth2ServiceRepository) *OAuth2TokenHandler {
+	return &OAuth2TokenHandler{
+		UpstreamTokenURL: upstreamTokenURL,
+		Client:           client,
+		Services:         services,
 	}
 }

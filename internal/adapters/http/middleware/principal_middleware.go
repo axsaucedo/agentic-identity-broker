@@ -34,6 +34,10 @@ func RequirePrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *s
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger.Debug("RequirePrincipalMiddleware processing request",
+				"path", r.URL.Path,
+				"method", r.Method)
+
 			// Extract the principal from the configured header
 			principalValue := r.Header.Get(headerName)
 
@@ -43,7 +47,7 @@ func RequirePrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *s
 			// Validate: principal must be present and non-empty
 			if principalValue == "" {
 				err := principal.NewMissingPrincipalError(headerName)
-				logger.Warn("Missing or empty principal",
+				logger.Warn("Missing or empty principal (401 REJECT)",
 					"header", headerName,
 					"remote_addr", r.RemoteAddr,
 					"path", r.URL.Path)

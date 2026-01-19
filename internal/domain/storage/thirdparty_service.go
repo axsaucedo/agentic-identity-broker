@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"net/url"
 	"time"
-
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 )
 
 // ThirdpartyOAuth2Service represents an external OAuth2 provider that agents can access
@@ -186,7 +184,7 @@ func (s *ThirdpartyOAuth2Service) ValidateForCreateWith(skipHTTPSValidation bool
 }
 
 // ValidateProtectedResources validates the protected_resources field for RFC 8693 token exchange.
-// Ensures all resource URIs are valid and normalizes them (removes trailing slashes).
+// Ensures all resource URIs are valid absolute URLs (must have scheme and host).
 // Returns error if any URI is invalid. Protected resources are optional (empty slice is valid).
 func (s *ThirdpartyOAuth2Service) ValidateProtectedResources() error {
 	// Protected resources are optional, so empty slice is valid
@@ -196,8 +194,22 @@ func (s *ThirdpartyOAuth2Service) ValidateProtectedResources() error {
 
 	// Validate each protected resource URI
 	for i, resourceURI := range s.ProtectedResources {
-		if _, err := tokenexchange.NewResourceURI(resourceURI); err != nil {
-			return fmt.Errorf("protected_resources[%d]: %w", i, err)
+		if resourceURI == "" {
+			return fmt.Errorf("protected_resources[%d]: cannot be empty", i)
+		}
+
+		// Parse to validate it's a valid URL
+		parsed, err := url.Parse(resourceURI)
+		if err != nil {
+			return fmt.Errorf("protected_resources[%d]: invalid URL: %w", i, err)
+		}
+
+		// Ensure absolute URL (must have scheme and host)
+		if parsed.Scheme == "" {
+			return fmt.Errorf("protected_resources[%d]: must include a scheme (e.g., https://)", i)
+		}
+		if parsed.Host == "" {
+			return fmt.Errorf("protected_resources[%d]: must include a host", i)
 		}
 	}
 

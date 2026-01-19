@@ -24,6 +24,7 @@ type MockUpstreamOAuth2Server struct {
 	authorizeCalled     bool
 	tokenCalled         bool
 	metadataCalled      bool
+	jwksCalled          bool
 	successfulTokenResp bool
 	errorCode           string
 	errorDescription    string
@@ -32,10 +33,17 @@ type MockUpstreamOAuth2Server struct {
 	refreshToken        string
 	tokenType           string
 	expiresIn           int
+
+	// RSA key pair for JWT signing (generated on init)
+	privateKeyPEM string
+	publicKeyPEM  string
+	jwksSet       map[string]interface{}
 }
 
 // NewMockUpstreamOAuth2Server creates a new mock upstream OAuth2 server.
-// The server handles /oauth/authorize, /oauth/token, and /.well-known/openid-configuration endpoints.
+// The server handles /oauth/authorize, /oauth/token, /.well-known/openid-configuration,
+// and /.well-known/jwks.json endpoints.
+// Generates RSA key pair on initialization for JWT signing in tests.
 func NewMockUpstreamOAuth2Server() *MockUpstreamOAuth2Server {
 	m := &MockUpstreamOAuth2Server{
 		accessToken:  "mock-access-token",
@@ -44,10 +52,29 @@ func NewMockUpstreamOAuth2Server() *MockUpstreamOAuth2Server {
 		expiresIn:    3600,
 	}
 
+	// Generate RSA key pair for JWT signing in E2E tests
+	// This allows tests to create real, signed JWTs that the validator can verify
+	privateKeyPEM, publicKeyPEM, err := GenerateTestRSAKeyPair()
+	if err != nil {
+		// Panic only in test setup - this is a test infrastructure failure, not a runtime error
+		panic(fmt.Sprintf("failed to generate test RSA key pair: %v", err))
+	}
+
+	m.privateKeyPEM = privateKeyPEM
+	m.publicKeyPEM = publicKeyPEM
+
+	// Generate JWKS Set from public key for /.well-known/jwks.json endpoint
+	jwksSet, err := GenerateJWKSFromPublicKey(publicKeyPEM)
+	if err != nil {
+		panic(fmt.Sprintf("failed to generate JWKS from public key: %v", err))
+	}
+	m.jwksSet = jwksSet
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/oauth/authorize", m.handleAuthorize)
 	mux.HandleFunc("/oauth/token", m.handleToken)
 	mux.HandleFunc("/.well-known/openid-configuration", m.handleMetadata)
+	mux.HandleFunc("/.well-known/jwks.json", m.handleJWKS)
 
 	m.Server = httptest.NewServer(mux)
 	return m
@@ -151,6 +178,23 @@ func (m *MockUpstreamOAuth2Server) GetMetadataCalled() bool {
 	return m.metadataCalled
 }
 
+// GetJWKSCalled returns whether JWKS endpoint was called.
+func (m *MockUpstreamOAuth2Server) GetJWKSCalled() bool {
+	m.requestMutex.RLock()
+	defer m.requestMutex.RUnlock()
+	return m.jwksCalled
+}
+
+// GetPrivateKeyPEM returns the private key in PEM format for test JWT signing.
+func (m *MockUpstreamOAuth2Server) GetPrivateKeyPEM() string {
+	return m.privateKeyPEM
+}
+
+// GetPublicKeyPEM returns the public key in PEM format for test verification.
+func (m *MockUpstreamOAuth2Server) GetPublicKeyPEM() string {
+	return m.publicKeyPEM
+}
+
 // Reset clears captured request state for reuse in tests.
 func (m *MockUpstreamOAuth2Server) Reset() {
 	m.requestMutex.Lock()
@@ -161,6 +205,7 @@ func (m *MockUpstreamOAuth2Server) Reset() {
 	m.authorizeCalled = false
 	m.tokenCalled = false
 	m.metadataCalled = false
+	m.jwksCalled = false
 }
 
 // handleAuthorize handles the /oauth/authorize endpoint.
@@ -289,6 +334,21 @@ func (m *MockUpstreamOAuth2Server) handleMetadata(w http.ResponseWriter, r *http
 	}
 
 	_ = json.NewEncoder(w).Encode(metadata)
+}
+
+// handleJWKS handles the /.well-known/jwks.json endpoint.
+// Returns the JWKS Set containing the public key used for JWT validation.
+// This endpoint is called by the JWT validator to fetch keys for JWT signature verification.
+func (m *MockUpstreamOAuth2Server) handleJWKS(w http.ResponseWriter, r *http.Request) {
+	m.requestMutex.Lock()
+	m.LastRequest = r
+	m.jwksCalled = true
+	m.requestMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	_ = json.NewEncoder(w).Encode(m.jwksSet)
 }
 
 // readRequestBody is a helper to read request body content.
