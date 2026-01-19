@@ -177,9 +177,17 @@ func (b *Builder) Build() (*App, error) {
 		// Builder override takes precedence (for testing)
 		encryptor = b.encryption
 	} else if b.config.Encryption.KeyEncryptionKey != "" {
-		// Production: Initialize AWS Encryption SDK adapter with configured KEK
+		// Production/Staging: Initialize AWS Encryption SDK adapter with configured KEK
 		// Supports both AWS KMS ARN and environment variable injection
-		// Parse BranchKeyTTL from config
+		// This follows a 6-phase initialization flow:
+		//   1. Parse configuration values
+		//   2. Apply configuration defaults
+		//   3. Validate configuration
+		//   4. Create KeyStore with AWS clients
+		//   5. Create BranchKeySupplier
+		//   6. Create hierarchical keyring
+
+		// Phase 1-2: Parse and apply defaults for BranchKeyTTL
 		branchKeyTTL := time.Duration(0)
 		if b.config.Encryption.BranchKeyTTL != "" {
 			var err error
@@ -189,6 +197,22 @@ func (b *Builder) Build() (*App, error) {
 			}
 		}
 
+		// Apply KeyStoreLogicalName default if not specified
+		keyStoreLogicalName := b.config.Encryption.KeyStoreLogicalName
+		if keyStoreLogicalName == "" {
+			keyStoreLogicalName = "IdentityBrokerEncryptionVault"
+		}
+
+		// Phase 3: Validate keyring type if specified
+		keyringType := b.config.Encryption.KeyringType
+		if keyringType == "" {
+			keyringType = "hierarchical" // default
+		}
+		if keyringType != "hierarchical" && keyringType != "raw" {
+			return nil, fmt.Errorf("invalid encryption.keyring_type %q: must be 'hierarchical' or 'raw'", keyringType)
+		}
+
+		// Phase 4-6: Create AWS encryption adapter (orchestrates KeyStore, Supplier, Keyring creation)
 		adapter, err := awsencryption.NewAWSEncryptionAdapterWithConfig(
 			b.config.Encryption.KeyEncryptionKey,
 			b.config.Encryption.DynamoDBTableName,
@@ -198,12 +222,20 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to initialize AWS encryption adapter: %w", err)
 		}
 		encryptor = adapter
+
+		// Log initialization with all configuration details
 		b.logger.Info("AWS Encryption SDK adapter initialized",
+			"keystore_logical_name", keyStoreLogicalName,
+			"keyring_type", keyringType,
 			"dynamodb_table", b.config.Encryption.DynamoDBTableName,
-			"branch_key_ttl", branchKeyTTL)
+			"dynamodb_region", b.config.Encryption.DynamoDBRegion,
+			"branch_key_ttl", branchKeyTTL,
+			"dynamodb_read_timeout", b.config.Encryption.DynamoDBReadTimeout,
+			"dynamodb_write_timeout", b.config.Encryption.DynamoDBWriteTimeout)
 	} else {
 		// Development: No-op encryption for local development without AWS dependencies
 		encryptor = noop.NewNoOpEncryption()
+		b.logger.Info("No-op encryption enabled (development mode)")
 	}
 
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(

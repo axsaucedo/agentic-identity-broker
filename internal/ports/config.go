@@ -332,4 +332,64 @@ type EncryptionConfig struct {
 	//   - "4h" - 4 hours
 	//   - "24h" - 24 hours
 	BranchKeyTTL string `mapstructure:"branch_key_ttl"`
+
+	// KeyStoreLogicalName specifies a logical identifier for the KeyStore instance.
+	// Used for audit logging and operational visibility.
+	// Example values: "IdentityBrokerProd", "IdentityBrokerStaging", "IdentityBrokerDev"
+	//
+	// Defaults to "IdentityBrokerEncryptionVault" if not specified.
+	KeyStoreLogicalName string `mapstructure:"keystore_logical_name"`
+
+	// KeyringType specifies the type of keyring to use for encryption.
+	// Valid values: "hierarchical" (recommended), "kms", "raw"
+	//
+	// - "hierarchical": AWS KMS hierarchical keyring with DynamoDB caching (recommended for production)
+	//   Uses branch keys cached in DynamoDB to reduce KMS API calls.
+	//   Provides best performance and cost efficiency.
+	//
+	// - "kms": Direct AWS KMS keyring without caching
+	//   Every encryption/decryption operation calls KMS directly.
+	//   Higher API costs but simpler deployment.
+	//
+	// - "raw": Raw AES keyring for environment variable KEK
+	//   Used only for development/testing with ${ENCRYPTION_KEK} format.
+	//
+	// Defaults to "hierarchical" if not specified.
+	KeyringType string `mapstructure:"keyring_type"`
+
+	// DynamoDBRegion specifies the AWS region for DynamoDB operations.
+	// Only used with hierarchical keyring type.
+	//
+	// If not specified, uses the default AWS region from AWS SDK configuration:
+	// - AWS_REGION environment variable
+	// - AWS_DEFAULT_REGION environment variable
+	// - ~/.aws/config default region
+	// - EC2 instance metadata (if running on EC2)
+	//
+	// Examples: "us-east-1", "eu-west-1", "ap-southeast-1"
+	DynamoDBRegion string `mapstructure:"dynamodb_region"`
+
+	// DynamoDBReadTimeout specifies the timeout for DynamoDB read operations.
+	// Only used with hierarchical keyring type.
+	//
+	// Format: duration string (e.g., "5s", "1000ms")
+	// Valid range: 1 second to 5 minutes. Defaults to 5 seconds if not specified.
+	//
+	// Examples:
+	//   - "1s" - 1 second
+	//   - "5s" - 5 seconds
+	//   - "30s" - 30 seconds
+	DynamoDBReadTimeout string `mapstructure:"dynamodb_read_timeout"`
+
+	// DynamoDBWriteTimeout specifies the timeout for DynamoDB write operations.
+	// Only used with hierarchical keyring type.
+	//
+	// Format: duration string (e.g., "5s", "1000ms")
+	// Valid range: 1 second to 5 minutes. Defaults to 5 seconds if not specified.
+	//
+	// Examples:
+	//   - "1s" - 1 second
+	//   - "5s" - 5 seconds
+	//   - "30s" - 30 seconds
+	DynamoDBWriteTimeout string `mapstructure:"dynamodb_write_timeout"`
 }
