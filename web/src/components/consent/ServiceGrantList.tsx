@@ -135,11 +135,6 @@ export function ServiceGrantList({
             key={service.serviceId}
             service={service}
             grants={getGrantsForService(service.serviceId)}
-            isEditable={isEditable}
-            onServiceToggle={handleServiceToggle}
-            onScopeChange={handleScopeChange}
-            isServiceEnabled={serviceState.isEnabled}
-            selectedScopes={serviceState.selectedScopes}
           />
         );
       })}

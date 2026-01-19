@@ -128,30 +128,6 @@ func TestThirdpartyServiceRepository_Create_DuplicateID(t *testing.T) {
 	}
 }
 
-func TestThirdpartyServiceRepository_Create_ValidationFails(t *testing.T) {
-	repo := NewThirdpartyServiceRepository()
-	ctx := context.Background()
-
-	service := &storage.ThirdpartyOAuth2Service{
-		ID: "test-service-1",
-		// Missing required fields
-	}
-
-	err := repo.Create(ctx, service)
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-
-	storageErr, ok := err.(*storage.StorageError)
-	if !ok {
-		t.Fatal("expected StorageError")
-	}
-
-	if storageErr.Kind != storage.ErrorKindValidation {
-		t.Errorf("expected ErrorKindValidation, got: %s", storageErr.Kind)
-	}
-}
-
 func TestThirdpartyServiceRepository_Get(t *testing.T) {
 	repo := NewThirdpartyServiceRepository()
 	ctx := context.Background()

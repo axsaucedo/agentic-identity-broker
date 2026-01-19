@@ -62,6 +62,28 @@ has_git() {
     git rev-parse --show-toplevel >/dev/null 2>&1
 }
 
+# Get base feature branch from environment variables
+# This is useful when working on a non-standard branch that targets a feature branch
+get_base_feature_branch() {
+    # Check common CI/agent environment variables for base branch information
+    local base_ref=""
+    
+    # GitHub Copilot agent sets COPILOT_AGENT_BASE_COMMIT
+    if [[ -n "${COPILOT_AGENT_BASE_COMMIT:-}" ]]; then
+        base_ref="$COPILOT_AGENT_BASE_COMMIT"
+    # GitHub Actions sets GITHUB_BASE_REF for pull requests
+    elif [[ -n "${GITHUB_BASE_REF:-}" ]]; then
+        base_ref="$GITHUB_BASE_REF"
+    fi
+    
+    # Extract branch name from refs (e.g., refs/heads/011-feature -> 011-feature)
+    if [[ -n "$base_ref" ]]; then
+        base_ref="${base_ref#refs/heads/}"
+        base_ref="${base_ref#refs/remotes/origin/}"
+        echo "$base_ref"
+    fi
+}
+
 check_feature_branch() {
     local branch="$1"
     local has_git_repo="$2"
@@ -72,13 +94,22 @@ check_feature_branch() {
         return 0
     fi
 
-    if [[ ! "$branch" =~ ^[0-9]{3}- ]]; then
-        echo "ERROR: Not on a feature branch. Current branch: $branch" >&2
-        echo "Feature branches should be named like: 001-feature-name" >&2
-        return 1
+    # Check if current branch matches the feature branch pattern
+    if [[ "$branch" =~ ^[0-9]{3}- ]]; then
+        return 0
     fi
-
-    return 0
+    
+    # If current branch doesn't match, check if we have a base feature branch from environment
+    local base_branch=$(get_base_feature_branch)
+    if [[ -n "$base_branch" ]] && [[ "$base_branch" =~ ^[0-9]{3}- ]]; then
+        echo "[specify] Info: Current branch '$branch' doesn't match feature pattern, but base branch '$base_branch' does" >&2
+        return 0
+    fi
+    
+    # Neither current nor base branch match the pattern
+    echo "ERROR: Not on a feature branch. Current branch: $branch" >&2
+    echo "Feature branches should be named like: 001-feature-name" >&2
+    return 1
 }
 
 get_feature_dir() { echo "$1/specs/$2"; }
@@ -92,12 +123,27 @@ find_feature_dir_by_prefix() {
 
     # Extract numeric prefix from branch (e.g., "004" from "004-whatever")
     if [[ ! "$branch_name" =~ ^([0-9]{3})- ]]; then
-        # If branch doesn't have numeric prefix, fall back to exact match
+        # If current branch doesn't have numeric prefix, try base branch
+        local base_branch=$(get_base_feature_branch)
+        if [[ -n "$base_branch" ]] && [[ "$base_branch" =~ ^([0-9]{3})- ]]; then
+            # Use base branch prefix instead
+            branch_name="$base_branch"
+            echo "[specify] Info: Using base branch '$base_branch' to find spec directory" >&2
+        else
+            # Neither has numeric prefix, fall back to exact match with current branch
+            echo "$specs_dir/$branch_name"
+            return
+        fi
+    fi
+
+    # Extract prefix from branch_name (either original or base)
+    if [[ "$branch_name" =~ ^([0-9]{3})- ]]; then
+        local prefix="${BASH_REMATCH[1]}"
+    else
+        # Shouldn't happen, but handle gracefully
         echo "$specs_dir/$branch_name"
         return
     fi
-
-    local prefix="${BASH_REMATCH[1]}"
 
     # Search for directories in specs/ that start with this prefix
     local matches=()

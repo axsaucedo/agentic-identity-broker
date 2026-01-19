@@ -143,6 +143,9 @@ func (l *Loader) setDefaults() {
 	l.v.SetDefault("third_party_oauth2.state_token_ttl", "10m")
 	l.v.SetDefault("third_party_oauth2.pkce_verifier_length", 32)
 
+	// Set security configuration defaults
+	l.v.SetDefault("security.skip_thirdparty_https_validation", false)
+
 	// Record defaults source
 	l.sources = append(l.sources, ports.ConfigSource{
 		Type:       ports.SourceTypeDefault,
@@ -158,6 +161,7 @@ func (l *Loader) setDefaults() {
 			"server.shutdown.timeout",
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
 			"third_party_oauth2.state_token_ttl", "third_party_oauth2.pkce_verifier_length",
+			"security.skip_thirdparty_https_validation",
 		},
 	})
 }

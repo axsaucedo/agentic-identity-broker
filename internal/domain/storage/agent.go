@@ -10,16 +10,17 @@ import (
 // Agent represents an AI agent registered in the identity broker.
 // An agent can request delegated permissions from users to access third-party services.
 type Agent struct {
-	ID                   string    `json:"id" db:"id"`
-	ClientID             string    `json:"client_id" db:"client_id"`
-	ExternalID           *string   `json:"external_id,omitempty" db:"external_id"`
-	DisplayName          string    `json:"display_name" db:"display_name"`
-	Description          string    `json:"description" db:"description"`
-	GovernanceURL        *string   `json:"governance_url,omitempty" db:"governance_url"`
-	UserDocumentationURL *string   `json:"user_documentation_url,omitempty" db:"user_documentation_url"`
-	AgentInterfaceURL    *string   `json:"agent_interface_url,omitempty" db:"agent_interface_url"`
-	CreatedAt            time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at" db:"updated_at"`
+	ID                   string               `json:"id" db:"id"`
+	ClientID             string               `json:"client_id" db:"client_id"`
+	ExternalID           *string              `json:"external_id,omitempty" db:"external_id"`
+	DisplayName          string               `json:"display_name" db:"display_name"`
+	Description          string               `json:"description" db:"description"`
+	GovernanceURL        *string              `json:"governance_url,omitempty" db:"governance_url"`
+	UserDocumentationURL *string              `json:"user_documentation_url,omitempty" db:"user_documentation_url"`
+	AgentInterfaceURL    *string              `json:"agent_interface_url,omitempty" db:"agent_interface_url"`
+	ServiceRequirements  []ServiceRequirement `json:"service_requirements,omitempty" db:"service_requirements"`
+	CreatedAt            time.Time            `json:"created_at" db:"created_at"`
+	UpdatedAt            time.Time            `json:"updated_at" db:"updated_at"`
 }
 
 // Validate performs validation on the Agent entity.
@@ -54,6 +55,11 @@ func (a *Agent) Validate() error {
 	}
 	if a.AgentInterfaceURL != nil && !isValidURL(*a.AgentInterfaceURL) {
 		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
+	}
+
+	// Service requirements validation
+	if err := a.ValidateServiceRequirements(); err != nil {
+		return fmt.Errorf("service_requirements validation failed: %w", err)
 	}
 
 	return nil
@@ -100,6 +106,18 @@ func (a *Agent) Copy() *Agent {
 		copy.AgentInterfaceURL = &agentURL
 	}
 
+	// Deep copy service requirements
+	if a.ServiceRequirements != nil {
+		copy.ServiceRequirements = make([]ServiceRequirement, len(a.ServiceRequirements))
+		for i, sr := range a.ServiceRequirements {
+			copy.ServiceRequirements[i] = ServiceRequirement{
+				ServiceID:       sr.ServiceID,
+				RequirementType: sr.RequirementType,
+				RequiredScopes:  append([]string(nil), sr.RequiredScopes...),
+			}
+		}
+	}
+
 	return copy
 }
 
@@ -131,6 +149,39 @@ func (a *Agent) ValidateForCreate() error {
 	}
 	if a.AgentInterfaceURL != nil && !isValidURL(*a.AgentInterfaceURL) {
 		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
+	}
+
+	// Service requirements validation
+	if err := a.ValidateServiceRequirements(); err != nil {
+		return fmt.Errorf("service_requirements validation failed: %w", err)
+	}
+
+	return nil
+}
+
+// ValidateServiceRequirements validates the service requirements array.
+// Returns error if:
+// - Any service requirement is invalid
+// - Duplicate service_id exists in the array
+func (a *Agent) ValidateServiceRequirements() error {
+	if len(a.ServiceRequirements) == 0 {
+		return nil // Empty array is valid (no requirements)
+	}
+
+	// Validate each service requirement
+	for i, sr := range a.ServiceRequirements {
+		if err := sr.Validate(); err != nil {
+			return fmt.Errorf("service_requirements[%d] invalid: %w", i, err)
+		}
+	}
+
+	// Check for duplicate service_id (domain invariant)
+	seen := make(map[string]int)
+	for i, sr := range a.ServiceRequirements {
+		if prevIdx, exists := seen[sr.ServiceID]; exists {
+			return fmt.Errorf("duplicate service_id %q found at indices %d and %d", sr.ServiceID, prevIdx, i)
+		}
+		seen[sr.ServiceID] = i
 	}
 
 	return nil

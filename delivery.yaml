@@ -13,9 +13,11 @@ pipeline:
       - desc: "Install pre-requisites"
         cmd: |
           apt-get update
-          apt-get --yes install just npm
+          apt-get --yes install just npm curl
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get --yes install nodejs
           go install github.com/jstemmer/go-junit-report/v2@latest
-          just web-install
+          just web-ci
       - desc: "Run quality checks"
         cmd: |
           just check

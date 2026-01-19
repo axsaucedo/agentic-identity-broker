@@ -4,8 +4,11 @@ package consent
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
@@ -164,6 +167,33 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for redirect_uri parameter early - validate before processing grant (T051-T054)
+	redirectURI := r.URL.Query().Get("redirect_uri")
+	if redirectURI != "" {
+		// Validate redirect_uri early to prevent unnecessary processing
+		valid, err := validateRedirectURI(redirectURI, r)
+		if err != nil {
+			h.logger.Warn("malformed redirect_uri",
+				"redirect_uri", redirectURI,
+				"principal", principalValue,
+				"agent_id", agentID,
+				"error", err)
+			h.writeError(w, http.StatusBadRequest, "invalid redirect_uri", fmt.Sprintf("redirect_uri format is invalid: %v", err))
+			return
+		}
+
+		if !valid {
+			// External domain - reject (T054)
+			h.logger.Warn("redirect_uri to external domain rejected",
+				"redirect_uri", redirectURI,
+				"request_host", r.Host,
+				"principal", principalValue,
+				"agent_id", agentID)
+			h.writeError(w, http.StatusBadRequest, "invalid redirect_uri", "redirect_uri must be same-origin or relative")
+			return
+		}
+	}
+
 	// Validate valid_until is in future
 	if req.ValidUntil != nil && req.ValidUntil.Before(time.Now()) {
 		h.logger.Warn("valid_until is in the past",
@@ -235,6 +265,54 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 		"grant_id", grant.ID)
 
+	// If redirect_uri was provided and already validated, issue redirect (T056: Issue HTTP 302/303 redirect)
+	if redirectURI != "" {
+		// Defensive re-validation of redirect_uri at the sink to prevent open redirects.
+		// Normalize backslashes to forward slashes before parsing to avoid browser quirks.
+		normalizedRedirectURI := strings.ReplaceAll(redirectURI, "\\", "/")
+
+		target, err := url.Parse(normalizedRedirectURI)
+		if err != nil {
+			h.logger.Warn("malformed redirect_uri at redirect time",
+				"redirect_uri", redirectURI,
+				"principal", principalValue,
+				"agent_id", agentID,
+				"error", err)
+			h.writeError(w, http.StatusBadRequest, "invalid redirect_uri", fmt.Sprintf("redirect_uri format is invalid: %v", err))
+			return
+		}
+
+		// Allow only relative URLs or same-origin absolute URLs.
+		// Derive the request host from the HTTP Host header, not from r.URL, which may be empty.
+		var requestHost string
+		if r.Host != "" {
+			// Prepend a dummy scheme so we can reliably parse the host.
+			if u, parseErr := url.Parse("http://" + r.Host); parseErr == nil {
+				requestHost = u.Hostname()
+			}
+		}
+		targetHost := target.Hostname()
+		if targetHost != "" && targetHost != requestHost {
+			h.logger.Warn("redirect_uri to external domain rejected at redirect time",
+				"redirect_uri", redirectURI,
+				"target_host", targetHost,
+				"request_host", requestHost,
+				"principal", principalValue,
+				"agent_id", agentID)
+			h.writeError(w, http.StatusBadRequest, "invalid redirect_uri", "redirect_uri must be same-origin or relative")
+			return
+		}
+
+		// Issue redirect (T056, T057) with the normalized, validated URL.
+		h.logger.Info("redirecting after grant approval",
+			"redirect_uri", normalizedRedirectURI,
+			"principal", principalValue,
+			"agent_id", agentID)
+		http.Redirect(w, r, target.String(), http.StatusSeeOther)
+		return
+	}
+
+	// No redirect_uri: return success response (T057: Display success confirmation)
 	response := h.toGrantResponse(grant)
 	// Wrap in data envelope to match frontend expectations
 	h.writeJSON(w, http.StatusCreated, map[string]interface{}{
@@ -279,4 +357,103 @@ func (h *GrantsHandler) writeError(w http.ResponseWriter, statusCode int, error 
 		Message: message,
 	}
 	h.writeJSON(w, statusCode, resp)
+}
+
+// =========================================================================
+// Helper Functions for Redirect URI Validation (User Story 6)
+// =========================================================================
+
+// validateRedirectURI validates that a redirect_uri is safe for redirection.
+// It enforces same-origin policy: allows relative URLs and same-origin absolute URLs.
+// Returns (valid, error):
+// - (true, nil): redirect_uri is valid (relative or same-origin absolute)
+// - (false, nil): redirect_uri is not valid (external domain)
+// - (false, error): redirect_uri format is invalid (malformed URL)
+//
+// Per FR-026, FR-027: System MUST validate redirect_uri is same-origin or relative before redirecting
+func validateRedirectURI(redirectURI string, r *http.Request) (bool, error) {
+	// T049: Test case 8 - Empty redirect_uri is allowed
+	if redirectURI == "" {
+		return true, nil
+	}
+
+	// T049: Test case 1, 2 - Relative URLs (no scheme) are always allowed (T053)
+	parsedURL, err := url.Parse(redirectURI)
+	if err != nil {
+		// T049: Test case 11 - Malformed URL returns error
+		return false, fmt.Errorf("failed to parse redirect_uri: %w", err)
+	}
+
+	// If no scheme, it's relative - always allowed (T053)
+	if parsedURL.Scheme == "" {
+		return true, nil
+	}
+
+	// Absolute URL - perform same-origin check (T052)
+	return isSameOrigin(parsedURL, r), nil
+}
+
+// isSameOrigin checks if a parsed URL has the same origin as the current request.
+// Compares scheme, host, and port.
+// Handles port normalization: http default 80, https default 443.
+// SECURITY: Uses r.TLS to detect scheme (not hostname heuristics).
+func isSameOrigin(u *url.URL, r *http.Request) bool {
+	// Determine request scheme from TLS connection or X-Forwarded-Proto header
+	// This is more reliable than trying to infer from hostname (prevents open redirect)
+	requestScheme := "http"
+	if r.TLS != nil {
+		requestScheme = "https"
+	}
+	// Fallback for reverse proxy scenarios where TLS is terminated upstream
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		requestScheme = proto
+	}
+
+	// Parse request origin with correct scheme
+	requestURL, err := url.Parse(fmt.Sprintf("%s://%s", requestScheme, r.Host))
+	if err != nil {
+		// If we can't parse the request host, it's not same-origin
+		return false
+	}
+
+	// Compare scheme (T049: Test case 6 - Different scheme is not same-origin)
+	if u.Scheme != requestURL.Scheme {
+		return false
+	}
+
+	// Get normalized hosts and ports
+	uHost := u.Hostname()
+	reqHost := requestURL.Hostname()
+	if uHost != reqHost {
+		// T049: Test case 5 - Different domain is not same-origin
+		return false
+	}
+
+	// Get ports with normalization
+	uPort := normalizePort(u.Port(), u.Scheme)
+	reqPort := normalizePort(requestURL.Port(), requestURL.Scheme)
+	if uPort != reqPort {
+		// T049: Test case 7 - Different port is not same-origin
+		return false
+	}
+
+	// T049: Test case 3, 4, 9, 10 - Same-origin is valid
+	return true
+}
+
+// normalizePort returns the port number, applying defaults for well-known schemes.
+// http defaults to 80, https defaults to 443.
+func normalizePort(port string, scheme string) string {
+	if port != "" {
+		return port
+	}
+
+	switch scheme {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	default:
+		return ""
+	}
 }

@@ -109,6 +109,29 @@ func NewTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
 		Logger:         logger,
 	})
 
+	// Register admin routes for agent and service management
+	// Admin routes are under /api/agents and /api/services
+	// In production, these would be on a separate port, but for E2E testing we combine them
+	if app.AdminHandlers != nil {
+		// Agent management routes (under /api)
+		router.Route("/api/agents", func(r chi.Router) {
+			r.Post("/", app.AdminHandlers.Agents.CreateAgent)             // POST /api/agents
+			r.Get("/", app.AdminHandlers.Agents.ListAgents)               // GET /api/agents
+			r.Get("/{agent-id}", app.AdminHandlers.Agents.GetAgent)       // GET /api/agents/:agent-id
+			r.Put("/{agent-id}", app.AdminHandlers.Agents.UpdateAgent)    // PUT /api/agents/:agent-id
+			r.Delete("/{agent-id}", app.AdminHandlers.Agents.DeleteAgent) // DELETE /api/agents/:agent-id
+		})
+
+		// Services management routes (under /api)
+		router.Route("/api/services", func(r chi.Router) {
+			r.Post("/", app.AdminHandlers.Services.CreateService)               // POST /api/services
+			r.Get("/", app.AdminHandlers.Services.ListServices)                 // GET /api/services
+			r.Get("/{service-id}", app.AdminHandlers.Services.GetService)       // GET /api/services/:service-id
+			r.Put("/{service-id}", app.AdminHandlers.Services.UpdateService)    // PUT /api/services/:service-id
+			r.Delete("/{service-id}", app.AdminHandlers.Services.DeleteService) // DELETE /api/services/:service-id
+		})
+	}
+
 	// Create httptest server with production router
 	server := httptest.NewServer(router)
 

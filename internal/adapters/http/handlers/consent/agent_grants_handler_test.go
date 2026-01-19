@@ -81,20 +81,6 @@ func TestGetAgentGrants_Success(t *testing.T) {
 					CreatedAt: time.Now().Add(-48 * time.Hour),
 					UpdatedAt: time.Now().Add(-1 * time.Hour),
 				},
-				{
-					ID:         "grant-2",
-					Principal:  principalValue,
-					AgentID:    agentID,
-					ValidUntil: nil, // Indefinite grant
-					DelegatedOAuth2Tokens: []storage.DelegatedToken{
-						{
-							ThirdpartyOAuth2ServiceID: "google",
-							Scopes:                    []string{"email"},
-						},
-					},
-					CreatedAt: time.Now().Add(-24 * time.Hour),
-					UpdatedAt: time.Now().Add(-24 * time.Hour),
-				},
 			}, nil
 		},
 	}
@@ -125,31 +111,23 @@ func TestGetAgentGrants_Success(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	// Verify grants
-	if len(response.Data) != 2 {
-		t.Errorf("expected 2 grants, got %d", len(response.Data))
+	// Verify grant exists (due to 1:1 relationship, only one grant is returned)
+	if response.Data == nil {
+		t.Error("expected grant to be returned, got nil")
 	}
 
-	// Verify first grant
-	if response.Data[0].ID != "grant-1" {
-		t.Errorf("expected grant ID 'grant-1', got %s", response.Data[0].ID)
+	// Verify grant details
+	if response.Data.ID != "grant-1" {
+		t.Errorf("expected grant ID 'grant-1', got %s", response.Data.ID)
 	}
-	if response.Data[0].Principal != principalValue {
-		t.Errorf("expected principal %s, got %s", principalValue, response.Data[0].Principal)
+	if response.Data.Principal != principalValue {
+		t.Errorf("expected principal %s, got %s", principalValue, response.Data.Principal)
 	}
-	if response.Data[0].ValidUntil == nil {
+	if response.Data.ValidUntil == nil {
 		t.Error("expected ValidUntil to be set")
 	}
-	if len(response.Data[0].DelegatedOAuth2Tokens) != 1 {
-		t.Errorf("expected 1 delegated token, got %d", len(response.Data[0].DelegatedOAuth2Tokens))
-	}
-
-	// Verify second grant (indefinite)
-	if response.Data[1].ID != "grant-2" {
-		t.Errorf("expected grant ID 'grant-2', got %s", response.Data[1].ID)
-	}
-	if response.Data[1].ValidUntil != nil {
-		t.Error("expected ValidUntil to be nil for indefinite grant")
+	if len(response.Data.DelegatedOAuth2Tokens) != 1 {
+		t.Errorf("expected 1 delegated token, got %d", len(response.Data.DelegatedOAuth2Tokens))
 	}
 }
 
@@ -190,9 +168,9 @@ func TestGetAgentGrants_EmptyGrants(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	// Verify empty grants array
-	if len(response.Data) != 0 {
-		t.Errorf("expected 0 grants, got %d", len(response.Data))
+	// Verify no grant exists (Data should be nil when user hasn't granted access)
+	if response.Data != nil {
+		t.Errorf("expected Data to be nil for empty grants, got %v", response.Data)
 	}
 }
 

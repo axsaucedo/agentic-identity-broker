@@ -192,8 +192,8 @@ func (b *Builder) Build() (*App, error) {
 
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
-		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.logger),
-		Services: admin.NewServicesHandler(b.storage.Services(), b.logger),
+		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
+		Services: admin.NewServicesHandler(b.storage.Services(), b.config, b.logger),
 	}
 
 	// Create HTTP client for token endpoint with configured timeout
@@ -201,11 +201,17 @@ func (b *Builder) Build() (*App, error) {
 		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
 	}
 
+	// Create agent detail handler with repository dependencies for service requirements (Phase 6)
+	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger).
+		WithAgentRepository(b.storage.Agents()).
+		WithSessionRepository(b.storage.UserSessions()).
+		WithServiceRepository(b.storage.Services())
+
 	// Enduser handlers
 	app.EnduserHandlers = &EnduserHandlers{
 		UserInfo:       consent.NewUserInfoHandler(b.logger),
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
-		AgentDetail:    consent.NewAgentDetailHandler(app.ConsentService, b.logger),
+		AgentDetail:    agentDetailHandler,
 		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
 		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),

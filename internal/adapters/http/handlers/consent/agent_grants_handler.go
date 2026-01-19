@@ -49,8 +49,9 @@ type DelegatedTokenDTO struct {
 }
 
 // GetAgentGrantsResponse represents the response for GET /api/consent/agent/:agentId/grants.
+// Returns a single grant (or null if no grant exists) due to 1:1 relationship per (principal, agent_id).
 type GetAgentGrantsResponse struct {
-	Data []UserGrantDTO `json:"data"`
+	Data *UserGrantDTO `json:"data"`
 }
 
 // GetAgentGrants handles GET /api/consent/agent/:agentId/grants
@@ -81,6 +82,7 @@ func (h *AgentGrantsHandler) GetAgentGrants(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Call consent service to get user grants
+	// Note: Due to unique constraint (principal, agent_id), there is at most one grant
 	grants, err := h.consentService.GetUserGrants(ctx, principalValue, agentID)
 	if err != nil {
 		if errors.Is(err, consent.ErrAgentNotFound) {
@@ -99,20 +101,21 @@ func (h *AgentGrantsHandler) GetAgentGrants(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Convert grants to DTOs
-	grantDTOs := make([]UserGrantDTO, len(grants))
-	for i, grant := range grants {
-		grantDTOs[i] = h.toUserGrantDTO(grant)
+	// Extract the single grant (or nil if no grant exists)
+	var grantDTO *UserGrantDTO
+	if len(grants) > 0 {
+		dto := h.toUserGrantDTO(grants[0])
+		grantDTO = &dto
 	}
 
-	// Return response (empty array if no grants)
-	h.logger.Info("user grants retrieved",
+	// Return response (null if no grant exists)
+	h.logger.Info("user grant retrieved",
 		"agent_id", agentID,
 		"principal", principalValue,
-		"count", len(grantDTOs))
+		"has_grant", grantDTO != nil)
 
 	response := GetAgentGrantsResponse{
-		Data: grantDTOs,
+		Data: grantDTO,
 	}
 
 	h.writeJSON(w, http.StatusOK, response)

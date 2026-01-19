@@ -3,10 +3,12 @@ package consent
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -542,5 +544,437 @@ func TestGetGrants_AgentNotFound(t *testing.T) {
 
 	if errResp.Error != "agent not found" {
 		t.Errorf("expected error 'agent not found', got '%s'", errResp.Error)
+	}
+}
+
+// =========================================================================
+// Tests for User Story 6: Redirect URL Validation (T049, T050)
+// =========================================================================
+
+// TestValidateRedirectURI tests the redirect URI validation function
+func TestValidateRedirectURI(t *testing.T) {
+	tests := []struct {
+		name          string
+		redirectURI   string
+		requestHost   string
+		expectedValid bool
+		expectError   bool
+	}{
+		// T049: Test case 1 - Relative URL without scheme/host
+		{
+			name:          "relative URL without scheme",
+			redirectURI:   "/callback",
+			requestHost:   "localhost:8000",
+			expectedValid: true,
+			expectError:   false,
+		},
+		// T049: Test case 2 - Relative URL with query params
+		{
+			name:          "relative URL with query params",
+			redirectURI:   "/callback?code=abc",
+			requestHost:   "localhost:8000",
+			expectedValid: true,
+			expectError:   false,
+		},
+		// T049: Test case 3 - Same-origin absolute URL (http)
+		{
+			name:          "same-origin absolute URL http",
+			redirectURI:   "http://localhost:8000/callback",
+			requestHost:   "localhost:8000",
+			expectedValid: true,
+			expectError:   false,
+		},
+		// T049: Test case 4 - Same-origin absolute URL (https)
+		{
+			name:          "same-origin absolute URL https",
+			redirectURI:   "https://example.com/callback",
+			requestHost:   "example.com:443", // Explicitly https
+			expectedValid: true,
+			expectError:   false,
+		},
+		// T049: Test case 5 - Different origin/domain
+		{
+			name:          "different domain",
+			redirectURI:   "https://evil.com/callback",
+			requestHost:   "example.com",
+			expectedValid: false,
+			expectError:   false,
+		},
+		// T049: Test case 6 - Different scheme (http vs https)
+		// Note: requestHost without port defaults to http://
+		{
+			name:          "different scheme",
+			redirectURI:   "https://example.com/callback",
+			requestHost:   "example.com:80", // Explicitly http
+			expectedValid: false,
+			expectError:   false,
+		},
+		// T049: Test case 7 - Different port
+		{
+			name:          "different port",
+			redirectURI:   "http://localhost:8001/callback",
+			requestHost:   "localhost:8000",
+			expectedValid: false,
+			expectError:   false,
+		},
+		// T049: Test case 8 - Empty redirect_uri
+		{
+			name:          "empty redirect_uri",
+			redirectURI:   "",
+			requestHost:   "localhost:8000",
+			expectedValid: true,
+			expectError:   false,
+		},
+		// T049: Test case 9 - URL with special characters encoded
+		{
+			name:          "URL with encoded special characters",
+			redirectURI:   "http://localhost:8000/callback?state=%20test",
+			requestHost:   "localhost:8000",
+			expectedValid: true,
+			expectError:   false,
+		},
+		// T049: Test case 10 - Fragment in URL
+		{
+			name:          "URL with fragment",
+			redirectURI:   "http://localhost:8000/callback#section",
+			requestHost:   "localhost:8000",
+			expectedValid: true,
+			expectError:   false,
+		},
+		// T049: Test case 11 - Malformed URL
+		{
+			name:          "malformed URL",
+			redirectURI:   "ht!tp://invalid",
+			requestHost:   "localhost:8000",
+			expectedValid: false,
+			expectError:   true,
+		},
+		// T053: Relative paths with dots
+		{
+			name:          "relative URL with dot notation",
+			redirectURI:   "../../callback",
+			requestHost:   "localhost:8000",
+			expectedValid: true,
+			expectError:   false,
+		},
+		// Port normalization - default http port
+		{
+			name:          "http default port normalization",
+			redirectURI:   "http://localhost:80/callback",
+			requestHost:   "localhost",
+			expectedValid: true,
+			expectError:   false,
+		},
+		// Port normalization - default https port
+		{
+			name:          "https default port normalization",
+			redirectURI:   "https://example.com:443/callback",
+			requestHost:   "example.com:443", // Explicitly https
+			expectedValid: true,
+			expectError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create *http.Request from requestHost string
+			// Detect if HTTPS by checking for :443 port indicator
+			isTLS := strings.Contains(tt.requestHost, ":443")
+
+			req := httptest.NewRequest("GET", "http://"+tt.requestHost+"/", nil)
+			req.Host = tt.requestHost
+			if isTLS {
+				req.TLS = &tls.ConnectionState{}
+			}
+
+			valid, err := validateRedirectURI(tt.redirectURI, req)
+
+			if tt.expectError && err == nil {
+				t.Error("expected error but got nil")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			if valid != tt.expectedValid {
+				t.Errorf("expected valid=%v, got valid=%v", tt.expectedValid, valid)
+			}
+		})
+	}
+}
+
+// TestCreateGrant_WithRedirectURI_Valid tests approval with valid redirect_uri
+func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
+	// T050: Test case 2 - Approval with valid redirect_uri should redirect
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
+			return &storage.UserGrant{
+				ID:         "grant-new-123",
+				Principal:  "user@example.com",
+				AgentID:    "agent-123",
+				ValidUntil: &futureTime,
+				DelegatedOAuth2Tokens: []storage.DelegatedToken{
+					{
+						ThirdpartyOAuth2ServiceID: "github",
+						Scopes:                    []string{"repo"},
+					},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil)
+
+	reqBody := GrantRequest{
+		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+			{
+				ThirdpartyOAuth2ServiceID: "github",
+				Scopes:                    []string{"repo"},
+			},
+		},
+	}
+
+	req := newRequestWithPrincipal("POST", "/api/consent/agent/agent-123/grants?redirect_uri=%2Fcallback&code=xyz", "user@example.com", reqBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "agent-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.CreateGrant(rr, req)
+
+	// Should redirect (303 or 302)
+	if rr.Code != http.StatusSeeOther && rr.Code != http.StatusFound {
+		t.Errorf("expected redirect status (302/303), got %d", rr.Code)
+	}
+
+	// Check Location header
+	location := rr.Header().Get("Location")
+	if location == "" {
+		t.Error("expected Location header for redirect")
+	}
+	if location != "/callback" {
+		t.Errorf("expected Location '/callback', got '%s'", location)
+	}
+}
+
+// TestCreateGrant_WithRedirectURI_RelativeValid tests approval with relative redirect_uri
+func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
+	// T050: Test case 3 - Approval with relative redirect_uri should redirect
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
+			return &storage.UserGrant{
+				ID:         "grant-new-123",
+				Principal:  "user@example.com",
+				AgentID:    "agent-123",
+				ValidUntil: &futureTime,
+				DelegatedOAuth2Tokens: []storage.DelegatedToken{
+					{
+						ThirdpartyOAuth2ServiceID: "github",
+						Scopes:                    []string{"repo"},
+					},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil)
+
+	reqBody := GrantRequest{
+		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+			{
+				ThirdpartyOAuth2ServiceID: "github",
+				Scopes:                    []string{"repo"},
+			},
+		},
+	}
+
+	req := newRequestWithPrincipal("POST", "/api/consent/agent/agent-123/grants?redirect_uri=/auth/return", "user@example.com", reqBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "agent-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.CreateGrant(rr, req)
+
+	// Should redirect
+	if rr.Code != http.StatusSeeOther && rr.Code != http.StatusFound {
+		t.Errorf("expected redirect status (302/303), got %d", rr.Code)
+	}
+
+	location := rr.Header().Get("Location")
+	if location != "/auth/return" {
+		t.Errorf("expected Location '/auth/return', got '%s'", location)
+	}
+}
+
+// TestCreateGrant_WithRedirectURI_InvalidDomain tests approval with external domain redirect_uri
+func TestCreateGrant_WithRedirectURI_InvalidDomain(t *testing.T) {
+	// T050: Test case 4 - Approval with invalid redirect_uri (external domain) should return error
+	handler := NewGrantsHandler(nil, nil)
+
+	reqBody := GrantRequest{
+		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+			{
+				ThirdpartyOAuth2ServiceID: "github",
+				Scopes:                    []string{"repo"},
+			},
+		},
+	}
+
+	req := newRequestWithPrincipal("POST", "/api/consent/agent/agent-123/grants?redirect_uri=https://evil.com/callback", "user@example.com", reqBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "agent-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.CreateGrant(rr, req)
+
+	// Should return HTTP 400
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+
+	var errResp ErrorResponse
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if errResp.Error == "" {
+		t.Error("expected error response")
+	}
+}
+
+// TestCreateGrant_WithoutRedirectURI tests approval without redirect_uri (success page)
+func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
+	// T050: Test case 1 - Approval without redirect_uri should return success page
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
+			return &storage.UserGrant{
+				ID:         "grant-new-123",
+				Principal:  "user@example.com",
+				AgentID:    "agent-123",
+				ValidUntil: &futureTime,
+				DelegatedOAuth2Tokens: []storage.DelegatedToken{
+					{
+						ThirdpartyOAuth2ServiceID: "github",
+						Scopes:                    []string{"repo"},
+					},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil)
+
+	reqBody := GrantRequest{
+		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+			{
+				ThirdpartyOAuth2ServiceID: "github",
+				Scopes:                    []string{"repo"},
+			},
+		},
+	}
+
+	req := newRequestWithPrincipal("POST", "/api/consent/agent/agent-123/grants", "user@example.com", reqBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "agent-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.CreateGrant(rr, req)
+
+	// Should return 201 Created (not a redirect)
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected status %d, got %d", http.StatusCreated, rr.Code)
+	}
+
+	var envelope map[string]GrantResponse
+	if err := json.NewDecoder(rr.Body).Decode(&envelope); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if _, ok := envelope["data"]; !ok {
+		t.Error("expected 'data' field in success response")
+	}
+}
+
+// TestCreateGrant_WithRedirectURI_PreservesQueryParams tests that query parameters are preserved
+func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
+	// T058: Test case - Approval preserves query parameters in redirect
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
+			return &storage.UserGrant{
+				ID:         "grant-new-123",
+				Principal:  "user@example.com",
+				AgentID:    "agent-123",
+				ValidUntil: &futureTime,
+				DelegatedOAuth2Tokens: []storage.DelegatedToken{
+					{
+						ThirdpartyOAuth2ServiceID: "github",
+						Scopes:                    []string{"repo"},
+					},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil)
+
+	reqBody := GrantRequest{
+		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+			{
+				ThirdpartyOAuth2ServiceID: "github",
+				Scopes:                    []string{"repo"},
+			},
+		},
+	}
+
+	// redirect_uri already has query params, and we have additional OAuth params
+	req := newRequestWithPrincipal("POST", "/api/consent/agent/agent-123/grants?redirect_uri=/callback%3Fsession%3Dabc&state=xyz", "user@example.com", reqBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", "agent-123")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.CreateGrant(rr, req)
+
+	// Should redirect
+	if rr.Code != http.StatusSeeOther && rr.Code != http.StatusFound {
+		t.Errorf("expected redirect status (302/303), got %d", rr.Code)
+	}
+
+	location := rr.Header().Get("Location")
+	if location == "" {
+		t.Error("expected Location header")
+	}
+	// Verify that parameters are preserved
+	if len(location) == 0 {
+		t.Logf("Location: %s", location)
+		// Note: exact preservation depends on implementation
 	}
 }

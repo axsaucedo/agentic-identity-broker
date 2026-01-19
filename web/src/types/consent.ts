@@ -72,19 +72,37 @@ export interface AgentDetail {
 /**
  * External OAuth2 service that can be delegated to agents.
  * Part of GET /api/consent/agent/:agent-id response.
+ *
+ * Note: Can be either a full ThirdpartyService or a ServiceRequirementForUser
+ * (when agent has service requirements defined).
  */
 export interface ThirdpartyService {
   /** Unique service identifier */
   serviceId: string;
 
   /** Service display name (e.g., "Google Drive", "GitHub") */
-  displayName: string;
+  displayName?: string;
+
+  /** Service name (used when service is a requirement) */
+  serviceName?: string;
 
   /** URL to service logo */
   logoUrl?: string;
 
   /** Available OAuth2 scopes for this service */
-  scopes: ServiceScope[];
+  scopes?: ServiceScope[];
+
+  /** Required scopes when service is a requirement */
+  requiredScopes?: Array<{
+    name: string;
+    description?: string;
+  }>;
+
+  /** Whether this service is mandatory or optional (when it's a requirement) */
+  requirementType?: 'mandatory' | 'optional';
+
+  /** Connection status with the service (when it's a requirement) */
+  connectionStatus?: 'connected' | 'not_connected';
 }
 
 /**
@@ -165,9 +183,10 @@ export interface GetAgentDetailResponse {
 
 /**
  * Response from GET /api/consent/agent/:agent-id/grants
+ * Returns a single grant (or null if no grant exists) due to 1:1 relationship per (principal, agent_id)
  */
 export interface GetAgentGrantsResponse {
-  data: UserGrant[];
+  data: UserGrant | null;
 }
 
 /**
@@ -234,6 +253,41 @@ export interface GrantValidityState {
 export interface LoadingState {
   isLoading: boolean;
   error?: ApiError;
+}
+
+/**
+ * Service requirement for an agent (Phase 6).
+ * Specifies which services an agent needs access to.
+ */
+export interface ServiceRequirement {
+  /** Unique service identifier */
+  serviceId: string;
+
+  /** Service display name */
+  serviceName: string;
+
+  /** Whether this service is mandatory or optional for the agent */
+  requirementType: 'mandatory' | 'optional';
+
+  /** Scopes required for this service */
+  requiredScopes: Array<{
+    /** OAuth2 scope value (e.g., "read:email") */
+    name: string;
+    /** Human-readable description of what the scope does */
+    description?: string;
+  }>;
+
+  /** Current connection status with the service */
+  connectionStatus: 'connected' | 'not_connected';
+}
+
+/**
+ * Agent with service requirements (Phase 6).
+ * Response from GET /api/consent/agent/:agent-id with requirements.
+ */
+export interface AgentWithServiceRequirements extends AgentDetail {
+  /** List of service requirements for this agent */
+  serviceRequirements: ServiceRequirement[];
 }
 
 // Note: Validation functions moved to utils/validation.ts

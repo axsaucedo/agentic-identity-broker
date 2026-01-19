@@ -499,7 +499,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
     post:
-      summary: Create or update grant for an agent
+      summary: Create or update grant for an agent with optional redirect
       description: 'Creates a new grant or updates an existing grant for the specified agent.
 
 
@@ -530,6 +530,23 @@ paths:
         - Deletes the grant entirely
 
 
+        **Redirect After Approval (Optional)**:
+
+        - Use `redirect_uri` query parameter to redirect after grant approval
+
+        - Must be same-origin URL or relative URL (prevents open redirect attacks)
+
+        - External domain redirects are rejected with HTTP 400
+
+        - Returns HTTP 302/303 redirect when redirect_uri is provided and valid
+
+        - Returns HTTP 201 with success response when redirect_uri is not provided
+
+        - Relative URLs (e.g., `/callback`) are always allowed
+
+        - Absolute URLs must match current origin (scheme, host, port)
+
+
         **Validation**:
 
         - All service IDs must exist and be available to the agent
@@ -537,6 +554,8 @@ paths:
         - All scopes must be valid for the specified services
 
         - At least one scope required per service
+
+        - redirect_uri must be same-origin or relative (security requirement)
 
         - Returns `400 Bad Request` with details if validation fails
 
@@ -549,12 +568,21 @@ paths:
 
         - User revokes all access to an agent
 
+        - Redirect to authorization flow continuation URL after consent approval
+
         '
       operationId: createOrUpdateGrant
       tags:
       - Consent
       parameters:
       - $ref: '#/components/parameters/AgentIdParam'
+      - name: redirect_uri
+        in: query
+        description: 'Optional URL to redirect to after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected.'
+        required: false
+        schema:
+          type: string
+          format: uri-reference
       requestBody:
         required: true
         description: Grant request with delegated services and optional expiration
@@ -596,7 +624,7 @@ paths:
                   delegated_oauth2_tokens: []
       responses:
         '201':
-          description: Grant created or updated successfully
+          description: Grant created or updated successfully (no redirect_uri provided)
           content:
             application/json:
               schema:
@@ -621,10 +649,33 @@ paths:
                         - write:repos
                       created_at: '2025-12-19T10:00:00Z'
                       updated_at: '2025-12-19T10:00:00Z'
+        '302':
+          description: Redirect to redirect_uri after grant approval (temporary redirect with Location header). Use HTTP 303 to force GET for browser compatibility.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri-reference
+              description: The redirect_uri provided in query parameter. Preserved with all original query parameters.
         '204':
           description: Grant revoked successfully (empty delegated_oauth2_tokens)
         '400':
-          $ref: '#/components/responses/ValidationError'
+          description: Bad Request - Invalid grant or redirect_uri. Response includes error code and message for debugging.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/responses/ValidationError'
+              examples:
+                invalidRedirectUri:
+                  summary: Invalid redirect_uri (external domain)
+                  value:
+                    error: invalid_redirect_uri
+                    message: redirect_uri must be same-origin or relative
+                invalidGrant:
+                  summary: Invalid grant data
+                  value:
+                    error: invalid_scopes
+                    message: 'invalid scopes requested: delegation 0 (service=example-service) has invalid scopes: [invalid:scope]'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1432,6 +1483,55 @@ components:
             Users select which scopes to grant when creating a delegation.
 
             '
+    ScopeWithDescription:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          description: Scope name (e.g., "user.email", "repo.read")
+          example: read:user
+        description:
+          type: string
+          nullable: true
+          description: Human-readable description of scope permissions
+          example: Read user profile information
+    ServiceRequirementForUser:
+      type: object
+      required:
+      - serviceId
+      - serviceName
+      - requirementType
+      - requiredScopes
+      - connectionStatus
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+          description: Unique identifier for third-party service
+          example: github-service-uuid
+        serviceName:
+          type: string
+          description: Human-readable service name for display
+          example: GitHub
+        requirementType:
+          type: string
+          enum:
+          - mandatory
+          - optional
+          description: Whether this service is required or optional for the agent
+        requiredScopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScopeWithDescription'
+          description: OAuth2 scopes required for this service
+        connectionStatus:
+          type: string
+          enum:
+          - connected
+          - not_connected
+          description: User's current connection status with this service
     GetAgentDetailResponse:
       type: object
       required:
@@ -1452,6 +1552,18 @@ components:
               description: 'Array of available third-party services that can be delegated
 
                 to this agent. Empty array if no services are available.
+
+                '
+            serviceRequirements:
+              type: array
+              items:
+                $ref: '#/components/schemas/ServiceRequirementForUser'
+              nullable: true
+              description: 'Array of service requirements for this agent with user connection status.
+
+                Includes mandatory and optional third-party services the agent needs.
+
+                Null or empty if agent has no service requirements.
 
                 '
     DelegatedToken:

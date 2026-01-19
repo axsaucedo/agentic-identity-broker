@@ -66,3 +66,9 @@ oauth2_authorization_server:
 
   # Operation mode: proxy (default) or authorization_server
   mode: proxy
+
+# Security configuration
+security:
+  # Skip HTTPS validation for third-party OAuth2 services (dev/test only!)
+  # Allows HTTP connections to mock OAuth2 services during development
+  skip_thirdparty_https_validation: true

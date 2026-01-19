@@ -845,6 +845,28 @@ components:
           nullable: true
           description: URL where users can interact with the agent (must be HTTP/HTTPS)
           example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            - **Mandatory requirements**: Block authorization if user lacks active sessions with required scopes
+            - **Optional requirements**: Display in consent UI but never block authorization
+            - Referential integrity enforced: service_id must exist, required_scopes must match service definition
+          items:
+            $ref: '#/components/schemas/ServiceRequirement'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              service_name: GitHub
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
+            - service_id: 550e8400-e29b-41d4-a716-446655440002
+              service_name: Google Drive
+              requirement_type: optional
+              required_scopes:
+                - https://www.googleapis.com/auth/drive.readonly
         created_at:
           type: string
           format: date-time
@@ -906,6 +928,20 @@ components:
           nullable: true
           description: URL where users can interact with the agent (must be HTTP/HTTPS)
           example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            Referential integrity is validated: service_id must exist and required_scopes must match service definition.
+          items:
+            $ref: '#/components/schemas/ServiceRequirementRequest'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
 
     AgentUpdateRequest:
       type: object
@@ -955,6 +991,92 @@ components:
           nullable: true
           description: URL where users can interact with the agent (must be HTTP/HTTPS)
           example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            Referential integrity is validated: service_id must exist and required_scopes must match service definition.
+          items:
+            $ref: '#/components/schemas/ServiceRequirementRequest'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
+
+    ServiceRequirement:
+      type: object
+      required:
+        - service_id
+        - requirement_type
+        - required_scopes
+      properties:
+        service_id:
+          type: string
+          format: uuid
+          description: UUID of the third-party OAuth2 service this requirement references
+          example: 550e8400-e29b-41d4-a716-446655440001
+        service_name:
+          type: string
+          description: Display name of the referenced service (resolved from service configuration)
+          example: GitHub
+          readOnly: true
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          description: |
+            - **mandatory**: Authorization fails if user lacks active session with required scopes
+            - **optional**: Displayed in consent UI but never blocks authorization
+          example: mandatory
+        required_scopes:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: |
+            List of OAuth2 scopes the agent requires from this service.
+            - Scopes are case-sensitive and must match service scope definitions
+            - User must have superset of required scopes (case-sensitive comparison)
+          example:
+            - repo
+            - user:email
+
+    ServiceRequirementRequest:
+      type: object
+      required:
+        - service_id
+        - requirement_type
+        - required_scopes
+      properties:
+        service_id:
+          type: string
+          format: uuid
+          description: UUID of the third-party OAuth2 service this requirement references
+          example: 550e8400-e29b-41d4-a716-446655440001
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          description: |
+            - **mandatory**: Authorization fails if user lacks active session with required scopes
+            - **optional**: Displayed in consent UI but never blocks authorization
+          example: mandatory
+        required_scopes:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: |
+            List of OAuth2 scopes the agent requires from this service.
+            Referential integrity enforced: all scopes must exist in the referenced service's scope definitions.
+          example:
+            - repo
+            - user:email
 
     Service:
       type: object

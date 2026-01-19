@@ -17,6 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
       # Set up Go
       - name: Set up Go
         uses: actions/setup-go@v5

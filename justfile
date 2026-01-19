@@ -237,12 +237,12 @@ test-all: test test-integration
 test-full: test test-integration test-e2e
     @echo "Full test suite completed"
 
-# Run all quality checks (fmt, vet, lint, unit tests)
-check: fmt vet lint test
+# Run all quality checks (fmt, vet, lint, unit tests, and frontend tests)
+check: fmt vet lint test web-test
     @echo "All checks passed!"
 
-# Run comprehensive checks: formatting, linting, and all tests (unit, integration, E2E)
-check-full: fmt vet lint test test-integration test-e2e
+# Run comprehensive checks: formatting, linting, and all tests (unit, integration, E2E, frontend)
+check-full: fmt vet lint test test-integration test-e2e web-test
     @echo "Comprehensive checks passed!"
 
 # =============================================================================
@@ -254,6 +254,12 @@ web-install:
     @echo "Installing web dependencies..."
     cd web && npm install
 
+# Install web dependencies for CI with strict engine checking
+web-ci:
+    @echo "Installing web dependencies for CI..."
+    npm config set engine-strict true
+    cd web && npm ci
+
 # Start web development server
 web-dev:
     @echo "Starting web development server..."
@@ -263,6 +269,16 @@ web-dev:
 web-build: web-install
     @echo "Building web frontend..."
     cd web && npm run build
+
+# Run web frontend tests
+web-test: web-install
+    @echo "Running web frontend tests..."
+    cd web && npm test -- --run
+
+# Run web frontend tests with coverage
+web-test-coverage: web-install
+    @echo "Running web frontend tests with coverage..."
+    cd web && npm run test:coverage
 
 # Build both Go backend and web frontend in release quality
 # Produces artifacts: ./bin/{{NAME}} and ./web/dist/

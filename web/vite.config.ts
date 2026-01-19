@@ -36,6 +36,21 @@ export default defineConfig({
     port: 3000,
     strictPort: false,
     open: false,
+
+    // Conditionally enable polling and HMR for Docker (only when VITE_USE_POLLING=true)
+    ...(process.env.VITE_USE_POLLING === 'true' ? {
+      host: '0.0.0.0',
+      watch: {
+        usePolling: true,
+        interval: 300,  // Same as Air's 300ms poll_interval for consistency
+      },
+      hmr: {
+        host: process.env.VITE_HMR_HOST || 'localhost',
+        port: 3000,
+        protocol: 'ws',
+      },
+    } : {}),
+
     proxy: {
       // Match all paths EXCEPT: node_modules, @vite, __vite, /consent (frontend files), and file extensions
       '^/(?!node_modules|@vite|__vite|consent).*': {
