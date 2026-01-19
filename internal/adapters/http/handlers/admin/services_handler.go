@@ -16,20 +16,22 @@ import (
 
 // ServicesHandler handles HTTP requests for third-party OAuth2 service CRUD operations.
 type ServicesHandler struct {
-	repo   ports.ThirdpartyOAuth2ServiceRepository
-	config *ports.Config
-	logger *slog.Logger
+	serviceRepository ports.ThirdpartyOAuth2ServiceRepository
+	branchKeyManager  ports.BranchKeyManager
+	config            *ports.Config
+	logger            *slog.Logger
 }
 
 // NewServicesHandler creates a new services handler.
-func NewServicesHandler(repo ports.ThirdpartyOAuth2ServiceRepository, config *ports.Config, logger *slog.Logger) *ServicesHandler {
+func NewServicesHandler(repo ports.ThirdpartyOAuth2ServiceRepository, branchKeyManager ports.BranchKeyManager, config *ports.Config, logger *slog.Logger) *ServicesHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ServicesHandler{
-		repo:   repo,
-		config: config,
-		logger: logger,
+		serviceRepository: repo,
+		branchKeyManager:  branchKeyManager,
+		config:            config,
+		logger:            logger,
 	}
 }
 
@@ -174,8 +176,20 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Provision branch key before creating service (fail-fast for encryption setup)
+	if h.branchKeyManager != nil {
+		h.logger.Info("provisioning branch key for service", "service_id", service.ID)
+		branchKeyID, err := h.branchKeyManager.Create(ctx, service.ID)
+		if err != nil {
+			h.logger.Error("failed to provision branch key", "service_id", service.ID, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "branch key provisioning failed", err.Error())
+			return
+		}
+		h.logger.Info("branch key provisioned", "service_id", service.ID, "branch_key_id", branchKeyID)
+	}
+
 	// Create in repository (skip validation since we already did it above)
-	if err := h.repo.Create(ctx, service); err != nil {
+	if err := h.serviceRepository.Create(ctx, service); err != nil {
 		h.handleStorageError(w, r, "CreateService", err)
 		return
 	}
@@ -200,7 +214,7 @@ func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	service, err := h.repo.Get(ctx, clientID)
+	service, err := h.serviceRepository.Get(ctx, clientID)
 	if err != nil {
 		h.handleStorageError(w, r, "GetService", err)
 		return
@@ -229,7 +243,7 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Get existing service to preserve created_at
-	existing, err := h.repo.Get(ctx, clientID)
+	existing, err := h.serviceRepository.Get(ctx, clientID)
 	if err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
 		return
@@ -303,7 +317,7 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Update in repository (skip validation since we already did it above)
-	if err := h.repo.Update(ctx, service); err != nil {
+	if err := h.serviceRepository.Update(ctx, service); err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
 		return
 	}
@@ -328,7 +342,7 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Delete from repository
-	if err := h.repo.Delete(ctx, clientID); err != nil {
+	if err := h.serviceRepository.Delete(ctx, clientID); err != nil {
 		// Special handling for conflict errors (grants exist)
 		if storageErr, ok := err.(*storage.StorageError); ok && storageErr.Kind == storage.ErrorKindConflict {
 			// Extract grant count from error message if possible
@@ -354,7 +368,7 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 func (h *ServicesHandler) ListServices(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	services, err := h.repo.List(ctx)
+	services, err := h.serviceRepository.List(ctx)
 	if err != nil {
 		h.handleStorageError(w, r, "ListServices", err)
 		return

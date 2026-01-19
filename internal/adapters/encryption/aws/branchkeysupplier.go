@@ -6,31 +6,16 @@ import (
 	mpltypes "github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographymaterialproviderssmithygeneratedtypes"
 )
 
-// DynamicBranchKeySupplier implements IBranchKeyIdSupplier using dynamic service-id based mapping.
-// Each service_id from the encryption context maps to a deterministic branch key identifier,
-// enabling unlimited services without hardcoded mappings.
+// BranchKeyIdSupplier implements IBranchKeyIdSupplier for the AWS hierarchical keyring.
+// It resolves branch key IDs based on the service_id from the encryption context.
+// This is required by the AWS Encryption SDK's hierarchical keyring at runtime.
 //
-// Branch Key ID Generation:
-//   service_id "oauth2" → branch key "service_oauth2_branch_key"
-//   service_id "github" → branch key "service_github_branch_key"
-//   service_id "microsoft" → branch key "service_microsoft_branch_key"
-//
-// This ensures cryptographic isolation between services:
-// - Each service gets its own branch key
-// - Tokens encrypted with one service's context cannot be decrypted with another's
-// - Adding new services requires no code changes, only service creation
-//
-// Requirements:
-// - Encryption context MUST contain "service_id" key with non-empty value
-// - Branch key must be pre-created in DynamoDB before first use
-//
-// Architecture:
-// - Encryption context binding: service_id acts as key context
-// - Branch key naming: Deterministic and service-specific
-// - Scalability: Supports unlimited number of services
-type DynamicBranchKeySupplier struct{}
+// The supplier delegates to ResolveDeterministicBranchKeyID() for the actual ID generation,
+// ensuring a single source of truth for branch key ID formatting.
+type BranchKeyIdSupplier struct{}
 
 // GetBranchKeyId returns a deterministic branch key identifier based on service_id from encryption context.
+// Called by the AWS Encryption SDK hierarchical keyring during encryption/decryption.
 //
 // Parameters:
 //   - input.EncryptionContext: Must contain "service_id" key with service identifier
@@ -38,16 +23,8 @@ type DynamicBranchKeySupplier struct{}
 // Returns:
 //   - BranchKeyId: "service_{service_id}_branch_key" (e.g., "service_oauth2_branch_key")
 //   - error: If encryption context is missing or invalid
-//
-// Error Cases:
-//   - Missing "service_id" key in encryption context
-//   - Empty "service_id" value
-//
-// The branch key ID is deterministic: same service_id always produces same branch key ID.
-// This enables proper context binding at both DEK and KEK layers.
-func (d *DynamicBranchKeySupplier) GetBranchKeyId(input mpltypes.GetBranchKeyIdInput) (*mpltypes.GetBranchKeyIdOutput, error) {
+func (d *BranchKeyIdSupplier) GetBranchKeyId(input mpltypes.GetBranchKeyIdInput) (*mpltypes.GetBranchKeyIdOutput, error) {
 	// Extract service_id from encryption context
-	// This is the cryptographic binding key for the service
 	ec := input.EncryptionContext
 	serviceID, exists := ec["service_id"]
 
@@ -56,12 +33,19 @@ func (d *DynamicBranchKeySupplier) GetBranchKeyId(input mpltypes.GetBranchKeyIdI
 		return nil, fmt.Errorf("encryption context missing or empty required key 'service_id'")
 	}
 
-	// Generate deterministic branch key identifier
-	// Format: service_{service_id}_branch_key
-	// Examples: service_oauth2_branch_key, service_github_branch_key
-	branchKeyID := fmt.Sprintf("service_%s_branch_key", serviceID)
+	// Use deterministic ID generation (single source of truth)
+	branchKeyID := getBranchKeyId(serviceID)
 
 	return &mpltypes.GetBranchKeyIdOutput{
 		BranchKeyId: branchKeyID,
 	}, nil
+}
+
+// ResolveDeterministicBranchKeyID generates a deterministic branch key ID from a service_id.
+// Single source of truth for branch key ID generation: service_{service_id}_branch_key
+// This is exported for use by other implementations (e.g., in-memory provider for testing).
+// Format: service_{service_id}_branch_key
+// Example: service_oauth2_branch_key, service_github_branch_key
+func getBranchKeyId(serviceID string) string {
+	return fmt.Sprintf("service_%s_branch_key", serviceID)
 }

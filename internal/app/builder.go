@@ -11,6 +11,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	encmemory "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
@@ -31,7 +32,8 @@ type App struct {
 	Config *ports.Config
 
 	// Repositories
-	Storage *storage.Adapter
+	Storage            *storage.Adapter
+	BranchKeyManager   ports.BranchKeyManager
 
 	// Domain services
 	ConsentService       *consentservice.Service
@@ -57,10 +59,11 @@ type App struct {
 //		WithLogger(logger).
 //		Build()
 type Builder struct {
-	config     *ports.Config
-	storage    *storage.Adapter
-	logger     *slog.Logger
-	encryption ports.EncryptionPort // Optional: custom encryption implementation
+	config           *ports.Config
+	storage          *storage.Adapter
+	logger           *slog.Logger
+	encryption       ports.EncryptionPort    // Optional: custom encryption implementation
+	branchKeyManager ports.BranchKeyManager  // Optional: custom branch key manager
 }
 
 // NewBuilder creates a new application builder.
@@ -91,6 +94,14 @@ func (b *Builder) WithLogger(logger *slog.Logger) *Builder {
 // Use this to inject a production encryption adapter.
 func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
 	b.encryption = encryptor
+	return b
+}
+
+// WithBranchKeyManager sets a custom branch key manager for the builder.
+// If not set, defaults based on keyring type (AWS manager or in-memory).
+// Use this to inject a test or custom branch key manager.
+func (b *Builder) WithBranchKeyManager(mgr ports.BranchKeyManager) *Builder {
+	b.branchKeyManager = mgr
 	return b
 }
 
@@ -212,8 +223,8 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("invalid encryption.keyring_type %q: must be 'hierarchical' or 'raw'", keyringType)
 		}
 
-		// Phase 4-6: Create AWS encryption adapter (orchestrates KeyStore, Supplier, Keyring creation)
-		adapter, err := awsencryption.NewAWSEncryptionAdapterWithConfig(
+		// Phase 4-6: Create AWS encryption adapter with branch key manager
+		adapter, branchKeyManager, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(
 			b.config.Encryption.KeyEncryptionKey,
 			b.config.Encryption.DynamoDBTableName,
 			branchKeyTTL,
@@ -222,6 +233,12 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to initialize AWS encryption adapter: %w", err)
 		}
 		encryptor = adapter
+
+		// Wire BranchKeyManager from AWS adapter if not already set
+		if b.branchKeyManager == nil && branchKeyManager != nil {
+			b.branchKeyManager = branchKeyManager
+			b.logger.Info("BranchKeyManager wired from AWS encryption adapter")
+		}
 
 		// Log initialization with all configuration details
 		b.logger.Info("AWS Encryption SDK adapter initialized",
@@ -236,6 +253,17 @@ func (b *Builder) Build() (*App, error) {
 		// Development: No-op encryption for local development without AWS dependencies
 		encryptor = noop.NewNoOpEncryption()
 		b.logger.Info("No-op encryption enabled (development mode)")
+
+		// Wire in-memory BranchKeyManager for development if not already set
+		if b.branchKeyManager == nil {
+			b.branchKeyManager = encmemory.NewInMemoryBranchKeyRepository()
+			b.logger.Info("BranchKeyManager wired from in-memory implementation (development mode)")
+		}
+	}
+
+	// Assign BranchKeyManager to app if wired
+	if b.branchKeyManager != nil {
+		app.BranchKeyManager = b.branchKeyManager
 	}
 
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(
@@ -254,7 +282,7 @@ func (b *Builder) Build() (*App, error) {
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
 		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
-		Services: admin.NewServicesHandler(b.storage.Services(), b.config, b.logger),
+		Services: admin.NewServicesHandler(b.storage.Services(), app.BranchKeyManager, b.config, b.logger),
 	}
 
 	// Create HTTP client for token endpoint with configured timeout

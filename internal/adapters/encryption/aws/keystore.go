@@ -104,3 +104,22 @@ func createKeyStore(ctx context.Context, cfg KeyStoreConfig, logicalKeyStoreName
 		config: cfg,
 	}, nil
 }
+
+// CreateBranchKey creates a branch key in DynamoDB with the specified ID.
+// Returns the branch key identifier or error if creation fails.
+func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (string, error) {
+	if ks == nil || ks.client == nil {
+		return "", encryption.NewKEKUnavailableError("KeyStore not initialized", nil)
+	}
+
+	// Use underlying AWS KeyStore client to create the branch key
+	// The KeyStore internally handles KMS/DynamoDB operations
+	branchKey, err := ks.client.CreateKey(ctx, keystoretypes.CreateKeyInput{})
+	if err != nil {
+		return "", encryption.NewKEKUnavailableError(
+			fmt.Sprintf("failed to create branch key in DynamoDB: %v", err),
+			err,
+		)
+	}
+	return branchKey.BranchKeyIdentifier, nil
+}
