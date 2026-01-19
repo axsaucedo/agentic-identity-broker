@@ -246,6 +246,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
 			encryptor,
+			upstreamClient,
 			&b.config.TokenExchange,
 		)
 		if err != nil {

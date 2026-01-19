@@ -2,6 +2,7 @@ package tokenexchange
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -166,6 +167,8 @@ func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal s
 
 // TestNewTokenExchangeService tests service creation with various parameter combinations
 func TestNewTokenExchangeService(t *testing.T) {
+	httpClient := &http.Client{}
+
 	tests := []struct {
 		name          string
 		jwtValidator  *JWTValidator
@@ -174,6 +177,7 @@ func TestNewTokenExchangeService(t *testing.T) {
 		grantRepo     ports.UserGrantRepository
 		sessionRepo   ports.UserSessionRepository
 		encryption    ports.EncryptionPort
+		httpClient    *http.Client
 		config        *ports.TokenExchangeConfig
 		expectError   bool
 		errorContains string
@@ -186,6 +190,7 @@ func TestNewTokenExchangeService(t *testing.T) {
 			grantRepo:    &MockGrantRepository{},
 			sessionRepo:  &MockSessionRepository{},
 			encryption:   &MockEncryption{},
+			httpClient:   httpClient,
 			config: &ports.TokenExchangeConfig{
 				ClaimExtraction: ports.ClaimExtractionConfig{
 					PrincipalExpression:     "subject_token.sub",
@@ -211,6 +216,7 @@ func TestNewTokenExchangeService(t *testing.T) {
 			jwtValidator:  &JWTValidator{},
 			celEvaluator:  nil,
 			encryption:    &MockEncryption{},
+			httpClient:    httpClient,
 			expectError:   true,
 			errorContains: "celEvaluator",
 		},
@@ -220,6 +226,7 @@ func TestNewTokenExchangeService(t *testing.T) {
 			celEvaluator:  &CELEvaluator{},
 			serviceRepo:   nil,
 			encryption:    &MockEncryption{},
+			httpClient:    httpClient,
 			expectError:   true,
 			errorContains: "serviceRepository",
 		},
@@ -230,6 +237,7 @@ func TestNewTokenExchangeService(t *testing.T) {
 			serviceRepo:   &MockServiceRepository{},
 			grantRepo:     nil,
 			encryption:    &MockEncryption{},
+			httpClient:    httpClient,
 			expectError:   true,
 			errorContains: "grantRepository",
 		},
@@ -241,6 +249,7 @@ func TestNewTokenExchangeService(t *testing.T) {
 			grantRepo:     &MockGrantRepository{},
 			sessionRepo:   nil,
 			encryption:    &MockEncryption{},
+			httpClient:    httpClient,
 			expectError:   true,
 			errorContains: "sessionRepository",
 		},
@@ -252,8 +261,21 @@ func TestNewTokenExchangeService(t *testing.T) {
 			grantRepo:     &MockGrantRepository{},
 			sessionRepo:   &MockSessionRepository{},
 			encryption:    nil,
+			httpClient:    httpClient,
 			expectError:   true,
 			errorContains: "encryptionPort",
+		},
+		{
+			name:          "nil httpClient",
+			jwtValidator:  &JWTValidator{},
+			celEvaluator:  &CELEvaluator{},
+			serviceRepo:   &MockServiceRepository{},
+			grantRepo:     &MockGrantRepository{},
+			sessionRepo:   &MockSessionRepository{},
+			encryption:    &MockEncryption{},
+			httpClient:    nil,
+			expectError:   true,
+			errorContains: "httpClient",
 		},
 		{
 			name:          "nil config",
@@ -263,6 +285,7 @@ func TestNewTokenExchangeService(t *testing.T) {
 			grantRepo:     &MockGrantRepository{},
 			sessionRepo:   &MockSessionRepository{},
 			encryption:    &MockEncryption{},
+			httpClient:    httpClient,
 			config:        nil,
 			expectError:   true,
 			errorContains: "config",
@@ -278,6 +301,7 @@ func TestNewTokenExchangeService(t *testing.T) {
 				tt.grantRepo,
 				tt.sessionRepo,
 				tt.encryption,
+				tt.httpClient,
 				tt.config,
 			)
 
@@ -318,6 +342,7 @@ func TestExchange_InvalidRequest(t *testing.T) {
 		&MockGrantRepository{},
 		&MockSessionRepository{},
 		&MockEncryption{},
+		&http.Client{},
 		config,
 	)
 	require.NoError(t, err)
@@ -405,6 +430,7 @@ func TestCalculateExpiresIn(t *testing.T) {
 		&MockGrantRepository{},
 		&MockSessionRepository{},
 		&MockEncryption{},
+		&http.Client{},
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)
@@ -465,6 +491,7 @@ func TestBuildRequestContext(t *testing.T) {
 		&MockGrantRepository{},
 		&MockSessionRepository{},
 		&MockEncryption{},
+		&http.Client{},
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)
@@ -504,6 +531,7 @@ func TestGrantVerification_MissingGrant(t *testing.T) {
 		mockGrant,
 		&MockSessionRepository{},
 		&MockEncryption{},
+		&http.Client{},
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)
@@ -547,6 +575,7 @@ func TestGrantVerification_ExpiredGrant(t *testing.T) {
 		mockGrant,
 		&MockSessionRepository{},
 		&MockEncryption{},
+		&http.Client{},
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)
@@ -591,6 +620,7 @@ func TestGrantVerification_ActiveGrant(t *testing.T) {
 		mockGrant,
 		&MockSessionRepository{},
 		&MockEncryption{},
+		&http.Client{},
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)

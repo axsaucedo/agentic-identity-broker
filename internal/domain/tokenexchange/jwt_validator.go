@@ -106,7 +106,7 @@ func (v *JWTValidator) ValidateSubjectToken(ctx context.Context, tokenString str
 
 	// Parse JWT without verification (just structure check)
 	if _, err := jwt.ParseString(tokenString, jwt.WithVerify(false)); err != nil {
-		return nil, NewInvalidGrantError("subject_token is malformed")
+		return nil, NewInvalidRequestError("subject_token is malformed")
 	}
 
 	// Fetch JWKS and get the specific key
@@ -127,7 +127,7 @@ func (v *JWTValidator) ValidateSubjectToken(ctx context.Context, tokenString str
 		jwt.WithKeySet(keyset),
 	)
 	if err != nil {
-		return nil, NewInvalidGrantError("subject_token signature verification failed")
+		return nil, NewInvalidRequestError("subject_token signature verification failed")
 	}
 
 	// Verify issuer
