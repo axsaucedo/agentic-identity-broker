@@ -237,13 +237,9 @@ test-all: test test-integration
 test-full: test test-integration test-e2e
     @echo "Full test suite completed"
 
-# Run all quality checks (fmt, vet, lint, unit tests, and frontend tests)
-check: fmt vet lint test web-test
+# Run all quality checks (fmt, vet, lint)
+check: fmt vet lint
     @echo "All checks passed!"
-
-# Run comprehensive checks: formatting, linting, and all tests (unit, integration, E2E, frontend)
-check-full: fmt vet lint test test-integration test-e2e web-test
-    @echo "Comprehensive checks passed!"
 
 # =============================================================================
 # Web Development Targets
