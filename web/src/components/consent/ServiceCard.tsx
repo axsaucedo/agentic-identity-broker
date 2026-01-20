@@ -50,7 +50,8 @@ export function ServiceCard({
 }: ServiceCardProps) {
 
   // Get service display name
-  const serviceDisplayName = service.displayName || 'Unknown Service';
+  // When service is a requirement, backend uses serviceName field
+  const serviceDisplayName = service.displayName || service.serviceName || 'Unknown Service';
 
   // Normalize scopes to have consistent structure (value, description)
   // Support both ServiceScope (with 'value') and requiredScopes (with 'name')

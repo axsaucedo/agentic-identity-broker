@@ -211,8 +211,8 @@ AGENT_RESPONSE=$(curl -s -X POST "${ADMIN_API}/agents" \
   -w "\n%{http_code}" \
   -d "{
     \"client_id\": \"upstream-oauth2-client\",
-    \"display_name\": \"OAuth2 Test Client\",
-    \"description\": \"Test client for OAuth2 authorization flow with upstream mock server on port 9001\",
+    \"display_name\": \"Sample Agent\",
+    \"description\": \"An agent that uses a thirdparty service\",
     \"governance_url\": \"https://example.com/oauth2-test/governance\",
     \"user_documentation_url\": \"https://example.com/oauth2-test/docs\",
     \"agent_interface_url\": \"http://localhost:3000\",

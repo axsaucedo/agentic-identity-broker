@@ -7,7 +7,6 @@
 
 import { apiClient } from './client';
 import { apiCache } from './cache';
-import { AxiosError } from 'axios';
 import { isSafeRedirectUrl } from '../../utils/validation';
 import type {
   UserInfo,
@@ -161,70 +160,43 @@ export class ConsentApiService {
       url += `?redirect_uri=${encodeURIComponent(redirectUri)}`;
     }
 
-    try {
-      // Disable automatic redirect following for this request
-      // so we can manually handle 303 redirects
-      const response = await apiClient.post<CreateOrUpdateGrantResponse>(
-        url,
-        request,
-        {
-          maxRedirects: 0, // Disable automatic redirect following
-          validateStatus: (status) => (status >= 200 && status < 300) || status === 303, // Accept 2xx and 303 redirects
-        }
-      );
+    const response = await apiClient.post<CreateOrUpdateGrantResponse>(
+      url,
+      request
+    );
 
-      // Handle 303 See Other (redirect to continue OAuth2 flow)
-      if (response.status === 303) {
-        const locationHeader = response.headers.location;
-        if (locationHeader) {
-          // Defense-in-depth: Validate redirect URL is same-origin before following
-          // Backend already validates (SR-003), but frontend validation adds security layer
-          if (!isSafeRedirectUrl(locationHeader)) {
-            throw new Error('Redirect URL validation failed: URL must be same-origin');
-          }
-          
-          // Manually redirect using window.location.href
-          // This allows the browser to navigate seamlessly
-          window.location.href = locationHeader;
-          // Return null - we're navigating away
-          return null;
-        }
-      }
+    // Invalidate caches for this agent since data changed
+    apiCache.invalidatePattern(`/consent/agent/${agentId}*`);
+    apiCache.invalidate('/consent/agents');
 
-      // Invalidate caches for this agent since data changed
-      apiCache.invalidatePattern(`/consent/agent/${agentId}*`);
-      apiCache.invalidate('/consent/agents');
-
-      // Handle 204 No Content response (grant revoked with empty tokens)
-      if (response.status === 204) {
-        return null;
-      }
-
-      // Handle 201 Created response
-      if (response.status === 201) {
-        return response.data.data;
-      }
-
-      // Unexpected status - shouldn't reach here with validateStatus above
-      throw new Error(`Unexpected status code: ${response.status}`);
-    } catch (error) {
-      // If error is a 303 with location, let it redirect
-      if (error instanceof AxiosError && error.response?.status === 303) {
-        const locationHeader = error.response.headers?.location;
-        if (locationHeader) {
-          // Defense-in-depth: Validate redirect URL is same-origin before following
-          // Backend already validates (SR-003), but frontend validation adds security layer
-          if (!isSafeRedirectUrl(locationHeader)) {
-            throw new Error('Redirect URL validation failed: URL must be same-origin');
-          }
-          
-          window.location.href = locationHeader;
-          return null;
-        }
-      }
-      // Re-throw other errors
-      throw error;
+    // Handle 204 No Content response (grant revoked with empty tokens)
+    if (response.status === 204) {
+      return null;
     }
+
+    // Handle 201 Created response
+    if (response.status === 201) {
+      // Check if backend provided a redirect_url in the response body (FR-025, T056)
+      // Backend returns redirect_url instead of HTTP 303 to avoid CORS issues with cross-origin redirects
+      const redirectUrl = (response.data as any).redirect_url;
+      if (redirectUrl) {
+        // Defense-in-depth: Validate redirect URL is same-origin before following
+        // Backend already validates (SR-003), but frontend validation adds security layer
+        if (!isSafeRedirectUrl(redirectUrl)) {
+          throw new Error('Redirect URL validation failed: URL must be same-origin');
+        }
+
+        // Use window.location.href to navigate (not XHR/fetch)
+        // This allows proper handling of redirect chains including cross-origin redirects
+        window.location.href = redirectUrl;
+        return null; // We're navigating away
+      }
+
+      return response.data.data;
+    }
+
+    // Unexpected status
+    throw new Error(`Unexpected status code: ${response.status}`);
   }
 
   /**
