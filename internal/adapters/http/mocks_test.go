@@ -1,4 +1,4 @@
-package unit
+package http
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -160,11 +159,11 @@ func (h *TestServerLifecycle) HealthStatus(serverIdx int) ports.HealthState {
 // NewTestServer creates an HTTP server with a simple no-op route setup for testing.
 // This is a convenience function for tests that just need to verify server lifecycle
 // without registering actual routes.
-func NewTestServer(config httpAdapter.ServerConfig, logger *slog.Logger) *httpAdapter.Server {
+func NewTestServer(config ServerConfig, logger *slog.Logger) *Server {
 	// Simple route setup function that does nothing
 	routeSetup := func(r chi.Router) {
 		// No-op - health endpoint is already registered by Server.setupRoutes()
 	}
 
-	return httpAdapter.NewServer(config, routeSetup, logger)
+	return NewServer(config, routeSetup, logger)
 }

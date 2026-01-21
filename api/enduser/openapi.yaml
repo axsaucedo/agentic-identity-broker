@@ -532,15 +532,17 @@ paths:
 
         **Redirect After Approval (Optional)**:
 
-        - Use `redirect_uri` query parameter to redirect after grant approval
+        - Use `redirect_uri` query parameter to continue OAuth2 flow after grant approval
 
         - Must be same-origin URL or relative URL (prevents open redirect attacks)
 
         - External domain redirects are rejected with HTTP 400
 
-        - Returns HTTP 302/303 redirect when redirect_uri is provided and valid
+        - Returns HTTP 201 with `redirect_url` field in response body when redirect_uri is provided and valid
 
-        - Returns HTTP 201 with success response when redirect_uri is not provided
+        - Frontend should navigate to `redirect_url` using `window.location.href` (not XHR) to properly handle cross-origin redirect chains
+
+        - Returns HTTP 201 with grant data (no redirect_url field) when redirect_uri is not provided
 
         - Relative URLs (e.g., `/callback`) are always allowed
 
@@ -578,7 +580,7 @@ paths:
       - $ref: '#/components/parameters/AgentIdParam'
       - name: redirect_uri
         in: query
-        description: 'Optional URL to redirect to after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected.'
+        description: 'Optional URL for OAuth2 flow continuation after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). When provided, response includes redirect_url field in body instead of HTTP redirect (avoids CORS issues with cross-origin redirect chains). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected.'
         required: false
         schema:
           type: string
@@ -624,14 +626,14 @@ paths:
                   delegated_oauth2_tokens: []
       responses:
         '201':
-          description: Grant created or updated successfully (no redirect_uri provided)
+          description: Grant created or updated successfully. If redirect_uri was provided, response includes redirect_url field for frontend to navigate to.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateOrUpdateGrantResponse'
               examples:
                 grantCreated:
-                  summary: New grant created
+                  summary: New grant created (no redirect_uri)
                   value:
                     data:
                       id: 770e8400-e29b-41d4-a716-446655440002
@@ -649,14 +651,22 @@ paths:
                         - write:repos
                       created_at: '2025-12-19T10:00:00Z'
                       updated_at: '2025-12-19T10:00:00Z'
-        '302':
-          description: Redirect to redirect_uri after grant approval (temporary redirect with Location header). Use HTTP 303 to force GET for browser compatibility.
-          headers:
-            Location:
-              schema:
-                type: string
-                format: uri-reference
-              description: The redirect_uri provided in query parameter. Preserved with all original query parameters.
+                grantCreatedWithRedirect:
+                  summary: Grant created with redirect_uri (includes redirect_url)
+                  value:
+                    data:
+                      id: 770e8400-e29b-41d4-a716-446655440002
+                      principal: user@example.com
+                      agent_id: 550e8400-e29b-41d4-a716-446655440000
+                      valid_until: null
+                      delegated_oauth2_tokens:
+                      - thirdparty_oauth2_service_id: google-drive-service-id
+                        scopes:
+                        - read:files
+                        - write:files
+                      created_at: '2025-12-19T10:00:00Z'
+                      updated_at: '2025-12-19T10:00:00Z'
+                    redirect_url: /oauth2/authorize?client_id=example&redirect_uri=http://localhost:9002/callback
         '204':
           description: Grant revoked successfully (empty delegated_oauth2_tokens)
         '400':
@@ -1866,6 +1876,11 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/UserGrant'
+        redirect_url:
+          type: string
+          format: uri-reference
+          description: 'Optional redirect URL returned when redirect_uri query parameter was provided. Frontend should navigate to this URL using window.location.href (not XHR) to properly handle cross-origin redirect chains in OAuth2 flow continuation.'
+          example: /oauth2/authorize?client_id=example&redirect_uri=http://localhost:9002/callback
 
     # OAuth2 Schemas
     OAuth2ErrorResponse:

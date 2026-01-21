@@ -64,3 +64,6 @@ tmp
 
 .worktrees
 agentic-identity-broker
+
+tests/e2e/frontend/coverage/screenshots
+

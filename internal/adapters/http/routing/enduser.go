@@ -110,6 +110,13 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 
 	// Register SPA handler if configured (must be last, after /api routes)
 	if h.SPA != nil {
-		r.Handle("/*", h.SPA)
+		// Redirect root and /consent to /consent/ for better UX
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/consent/", http.StatusMovedPermanently)
+		})
+		r.Get("/consent", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/consent/", http.StatusMovedPermanently)
+		})
+		r.Handle("/consent/*", h.SPA)
 	}
 }

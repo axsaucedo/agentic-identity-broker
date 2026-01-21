@@ -265,7 +265,9 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 		"grant_id", grant.ID)
 
-	// If redirect_uri was provided and already validated, issue redirect (T056: Issue HTTP 302/303 redirect)
+	// If redirect_uri was provided and already validated, return redirect URL in response body
+	// instead of HTTP 303 redirect (T056, T057). This avoids CORS issues when the redirect chain
+	// includes cross-origin redirects (e.g., to upstream OAuth2 server).
 	if redirectURI != "" {
 		// Defensive re-validation of redirect_uri at the sink to prevent open redirects.
 		// Normalize backslashes to forward slashes before parsing to avoid browser quirks.
@@ -303,12 +305,18 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Issue redirect (T056, T057) with the normalized, validated URL.
-		h.logger.Info("redirecting after grant approval",
+		// Return redirect URL in response body instead of HTTP redirect.
+		// The frontend will use window.location.href to navigate, which properly handles
+		// cross-origin redirects that would otherwise cause CORS errors with XMLHttpRequest.
+		h.logger.Info("returning redirect URL after grant approval",
 			"redirect_uri", normalizedRedirectURI,
 			"principal", principalValue,
 			"agent_id", agentID)
-		http.Redirect(w, r, target.String(), http.StatusSeeOther)
+		response := h.toGrantResponse(grant)
+		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
+			"data":         response,
+			"redirect_url": normalizedRedirectURI,
+		})
 		return
 	}
 

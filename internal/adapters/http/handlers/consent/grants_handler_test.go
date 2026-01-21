@@ -748,18 +748,23 @@ func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
 
 	handler.CreateGrant(rr, req)
 
-	// Should redirect (303 or 302)
-	if rr.Code != http.StatusSeeOther && rr.Code != http.StatusFound {
-		t.Errorf("expected redirect status (302/303), got %d", rr.Code)
+	// Should return 201 Created with redirect_url in response body (not HTTP redirect)
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected 201 Created, got %d", rr.Code)
 	}
 
-	// Check Location header
-	location := rr.Header().Get("Location")
-	if location == "" {
-		t.Error("expected Location header for redirect")
+	// Check response body contains redirect_url
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
 	}
-	if location != "/callback" {
-		t.Errorf("expected Location '/callback', got '%s'", location)
+
+	redirectUrl, ok := response["redirect_url"].(string)
+	if !ok {
+		t.Error("expected redirect_url in response body")
+	}
+	if redirectUrl != "/callback" {
+		t.Errorf("expected redirect_url '/callback', got '%s'", redirectUrl)
 	}
 }
 
@@ -808,14 +813,23 @@ func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
 
 	handler.CreateGrant(rr, req)
 
-	// Should redirect
-	if rr.Code != http.StatusSeeOther && rr.Code != http.StatusFound {
-		t.Errorf("expected redirect status (302/303), got %d", rr.Code)
+	// Should return 201 Created with redirect_url in response body (not HTTP redirect)
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected 201 Created, got %d", rr.Code)
 	}
 
-	location := rr.Header().Get("Location")
-	if location != "/auth/return" {
-		t.Errorf("expected Location '/auth/return', got '%s'", location)
+	// Check response body contains redirect_url
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	redirectUrl, ok := response["redirect_url"].(string)
+	if !ok {
+		t.Error("expected redirect_url in response body")
+	}
+	if redirectUrl != "/auth/return" {
+		t.Errorf("expected redirect_url '/auth/return', got '%s'", redirectUrl)
 	}
 }
 
@@ -963,18 +977,23 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 
 	handler.CreateGrant(rr, req)
 
-	// Should redirect
-	if rr.Code != http.StatusSeeOther && rr.Code != http.StatusFound {
-		t.Errorf("expected redirect status (302/303), got %d", rr.Code)
+	// Should return 201 Created with redirect_url in response body (not HTTP redirect)
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected 201 Created, got %d", rr.Code)
 	}
 
-	location := rr.Header().Get("Location")
-	if location == "" {
-		t.Error("expected Location header")
+	// Check response body contains redirect_url
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
 	}
-	// Verify that parameters are preserved
-	if len(location) == 0 {
-		t.Logf("Location: %s", location)
-		// Note: exact preservation depends on implementation
+
+	redirectUrl, ok := response["redirect_url"].(string)
+	if !ok {
+		t.Error("expected redirect_url in response body")
+	}
+	// Verify that query parameters are preserved in the redirect URL
+	if redirectUrl != "/callback?session=abc" {
+		t.Errorf("expected redirect_url '/callback?session=abc', got '%s'", redirectUrl)
 	}
 }
