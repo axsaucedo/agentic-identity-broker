@@ -118,7 +118,7 @@ func TestGetKeySet(t *testing.T) {
 	testKey, err := jwk.Import([]byte("secret_key_material_32_bytes_long_"))
 	require.NoError(t, err)
 	require.NoError(t, testKey.Set(jwk.KeyIDKey, "test-kid"))
-	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256))
+	require.NoError(t, testKey.Set(jwk.AlgorithmKey, jwa.HS256()))
 
 	keyset := jwk.NewSet()
 	require.NoError(t, keyset.AddKey(testKey))
@@ -241,12 +241,12 @@ func TestGetKey(t *testing.T) {
 	key1, err := jwk.Import([]byte("secret_key_material_32_bytes_long_1"))
 	require.NoError(t, err)
 	require.NoError(t, key1.Set(jwk.KeyIDKey, "kid-1"))
-	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256))
+	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256()))
 
 	key2, err := jwk.Import([]byte("secret_key_material_32_bytes_long_2"))
 	require.NoError(t, err)
 	require.NoError(t, key2.Set(jwk.KeyIDKey, "kid-2"))
-	require.NoError(t, key2.Set(jwk.AlgorithmKey, jwa.HS256))
+	require.NoError(t, key2.Set(jwk.AlgorithmKey, jwa.HS256()))
 
 	keyset := jwk.NewSet()
 	require.NoError(t, keyset.AddKey(key1))
@@ -290,7 +290,7 @@ func TestGetKey_NotFound(t *testing.T) {
 	key1, err := jwk.Import([]byte("secret_key_material_32_bytes_long_1"))
 	require.NoError(t, err)
 	require.NoError(t, key1.Set(jwk.KeyIDKey, "kid-1"))
-	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256))
+	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256()))
 
 	keyset := jwk.NewSet()
 	require.NoError(t, keyset.AddKey(key1))
@@ -328,7 +328,7 @@ func TestGetKey_ConcurrentAccess(t *testing.T) {
 	key1, err := jwk.Import([]byte("secret_key_material_32_bytes_long_1"))
 	require.NoError(t, err)
 	require.NoError(t, key1.Set(jwk.KeyIDKey, "kid-1"))
-	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256))
+	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256()))
 
 	keyset := jwk.NewSet()
 	require.NoError(t, keyset.AddKey(key1))
@@ -376,7 +376,7 @@ func TestGetKeySet_Caching(t *testing.T) {
 	key1, err := jwk.Import([]byte("secret_key_material_32_bytes_long_1"))
 	require.NoError(t, err)
 	require.NoError(t, key1.Set(jwk.KeyIDKey, "kid-1"))
-	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256))
+	require.NoError(t, key1.Set(jwk.AlgorithmKey, jwa.HS256()))
 
 	keyset := jwk.NewSet()
 	require.NoError(t, keyset.AddKey(key1))

@@ -207,7 +207,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 
 		// Set up chi URL params
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)
@@ -233,7 +233,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "nonexistent")
+		rctx.URLParams.Add("service-id", "nonexistent")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)
@@ -292,7 +292,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.UpdateService(w, req)
@@ -322,7 +322,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -342,7 +342,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -369,7 +369,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "nonexistent")
+		rctx.URLParams.Add("service-id", "nonexistent")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -480,11 +480,11 @@ func TestServicesHandler_SecretRedaction(t *testing.T) {
 		// Test Get endpoint
 		mockRepo.On("Get", mock.Anything, "service-123").Return(service, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/service-123", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/services/service-123", nil)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)
