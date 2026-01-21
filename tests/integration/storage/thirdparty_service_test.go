@@ -16,6 +16,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -112,15 +113,16 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 		{"001_create_agents.up.sql", 1},
 		{"002_create_thirdparty_services.up.sql", 2},
 		{"003_create_user_grants.up.sql", 3},
-		{"005_add_service_protected_resources.up.sql", 5},
+		{"004_create_user_sessions.up.sql", 4},
+		{"005_add_agent_service_requirements.up.sql", 5},
+		{"006_add_service_protected_resources.up.sql", 6},
 	}
 
 	for _, migration := range migrations {
 		migrationPath := filepath.Join(migrationsDir, migration.file)
 		data, err := os.ReadFile(migrationPath)
 		if err != nil {
-			t.Logf("Warning: Could not read migration %s: %v", migration.file, err)
-			continue
+			t.Fatalf("Could not read migration %s: %v", migration.file, err)
 		}
 
 		// Execute migration SQL directly in container
@@ -132,18 +134,20 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 		})
 
 		if err != nil || exitCode != 0 {
-			t.Logf("Warning: Migration %s failed (exit %d): %v", migration.file, exitCode, err)
-			continue
+			t.Fatalf("Migration %s failed (exit %d): %v", migration.file, exitCode, err)
 		}
 
 		// Record migration version
 		versionSQL := fmt.Sprintf("INSERT INTO schema_migrations (version, dirty) VALUES (%d, FALSE) ON CONFLICT DO NOTHING;", migration.version)
-		container.Exec(ctx, []string{
+		exitCode, _, err = container.Exec(ctx, []string{
 			"psql",
 			"-U", "testuser",
 			"-d", "testdb",
 			"-c", versionSQL,
 		})
+		if err != nil || exitCode != 0 {
+			t.Fatalf("Failed to record migration version %d: %v", migration.version, err)
+		}
 	}
 }
 
@@ -169,8 +173,15 @@ func findProjectRoot() (string, error) {
 
 // createTestService is a helper to create a test service with specified properties
 func createTestService(id, displayName string, protectedResources []string) *storage.ThirdpartyOAuth2Service {
+	// If id looks like a UUID, use it; otherwise use it as a seed for generating a deterministic UUID
+	serviceID := id
+	if !isValidUUID(id) {
+		// Generate a deterministic UUID based on the id string
+		serviceID = generateUUIDFromString(id)
+	}
+
 	return &storage.ThirdpartyOAuth2Service{
-		ID:           id,
+		ID:           serviceID,
 		DisplayName:  displayName,
 		ClientID:     id + "-client",
 		ClientSecret: "test-secret",
@@ -189,6 +200,17 @@ func createTestService(id, displayName string, protectedResources []string) *sto
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
 	}
+}
+
+// isValidUUID checks if a string is a valid UUID
+func isValidUUID(id string) bool {
+	_, err := uuid.Parse(id)
+	return err == nil
+}
+
+// generateUUIDFromString creates a deterministic UUID from a string
+func generateUUIDFromString(s string) string {
+	return uuid.NewSHA1(uuid.Nil, []byte(s)).String()
 }
 
 // TestFindByProtectedResource_SingleMatch tests the happy path: single matching service
@@ -229,8 +251,10 @@ func TestFindByProtectedResource_SingleMatch(t *testing.T) {
 	found, err := repo.FindByProtectedResource(ctx, "https://api.github.com")
 	require.NoError(t, err)
 	require.NotNil(t, found)
-	require.Equal(t, "github-service", found.ID)
 	require.Equal(t, "GitHub", found.DisplayName)
+	require.NotEmpty(t, found.ID) // Verify ID was generated
+	require.Len(t, found.ProtectedResources, 2)
+	require.Contains(t, found.ProtectedResources, "https://api.github.com")
 }
 
 // TestFindByProtectedResource_NoMatch tests error case: no matching service
@@ -372,7 +396,8 @@ func TestFindByProtectedResource_URINormalization(t *testing.T) {
 	found, err := repo.FindByProtectedResource(ctx, "https://api.example.com")
 	require.NoError(t, err)
 	require.NotNil(t, found)
-	require.Equal(t, "api-service", found.ID)
+	require.Equal(t, service.ID, found.ID) // Use actual generated ID
+	require.Equal(t, "API Service", found.DisplayName)
 }
 
 // TestFindByProtectedResource_MultipleServicesNonOverlapping tests multiple services without overlap
@@ -433,22 +458,22 @@ func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
 	}{
 		{
 			resource:     "https://api.github.com",
-			expectedID:   "github-service",
+			expectedID:   service1.ID,
 			expectedName: "GitHub",
 		},
 		{
 			resource:     "https://api.github.com/user",
-			expectedID:   "github-service",
+			expectedID:   service1.ID,
 			expectedName: "GitHub",
 		},
 		{
 			resource:     "https://www.googleapis.com",
-			expectedID:   "google-service",
+			expectedID:   service2.ID,
 			expectedName: "Google",
 		},
 		{
 			resource:     "https://api.databricks.com",
-			expectedID:   "databricks-service",
+			expectedID:   service3.ID,
 			expectedName: "Databricks",
 		},
 	}
@@ -617,19 +642,19 @@ func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
 			name:          "Find service 1",
 			resource:      "https://api1.example.com",
 			shouldSucceed: true,
-			expectedID:    "service-1",
+			expectedID:    service1.ID,
 		},
 		{
 			name:          "Find service 3a",
 			resource:      "https://api3a.example.com",
 			shouldSucceed: true,
-			expectedID:    "service-3",
+			expectedID:    service3.ID,
 		},
 		{
 			name:          "Find service 3b",
 			resource:      "https://api3b.example.com",
 			shouldSucceed: true,
-			expectedID:    "service-3",
+			expectedID:    service3.ID,
 		},
 		{
 			name:          "Service 2 has no resources",
@@ -759,6 +784,7 @@ func TestFindByProtectedResource_GINIndexQuery(t *testing.T) {
 	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
 
 	// Create multiple services to test query efficiency
+	servicesByName := make(map[string]*storage.ThirdpartyOAuth2Service)
 	for i := 1; i <= 10; i++ {
 		resources := []string{}
 		for j := 1; j <= 5; j++ {
@@ -771,11 +797,12 @@ func TestFindByProtectedResource_GINIndexQuery(t *testing.T) {
 		)
 		err = repo.Create(ctx, service)
 		require.NoError(t, err)
+		servicesByName[fmt.Sprintf("Service %d", i)] = service
 	}
 
 	// Query should be efficient even with many services
 	found, err := repo.FindByProtectedResource(ctx, "https://api1.example.com/v1")
 	require.NoError(t, err)
 	require.NotNil(t, found)
-	require.Equal(t, "service-1", found.ID)
+	require.Equal(t, servicesByName["Service 1"].ID, found.ID)
 }

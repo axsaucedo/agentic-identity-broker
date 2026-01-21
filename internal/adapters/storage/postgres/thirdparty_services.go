@@ -15,6 +15,26 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// parsePostgresArray parses a PostgreSQL TEXT[] array string into a []string.
+// PostgreSQL represents arrays as strings like "{value1,value2}" or "{}" for empty arrays.
+func parsePostgresArray(arrayStr string) []string {
+	if arrayStr == "" || arrayStr == "{}" {
+		return nil
+	}
+
+	// Remove the leading { and trailing }
+	arrayStr = strings.TrimPrefix(arrayStr, "{")
+	arrayStr = strings.TrimSuffix(arrayStr, "}")
+
+	if arrayStr == "" {
+		return nil
+	}
+
+	// Split by comma
+	values := strings.Split(arrayStr, ",")
+	return values
+}
+
 // ThirdpartyServiceRepository implements ports.ThirdpartyOAuth2ServiceRepository using PostgreSQL.
 type ThirdpartyServiceRepository struct {
 	adapter        *Adapter
@@ -134,11 +154,13 @@ func (r *ThirdpartyServiceRepository) Create(ctx context.Context, service *stora
 			)
 		}
 
+		// Return error with details for better debugging
+		errMsg := fmt.Sprintf("failed to create service: %v", err)
 		return storage.NewStorageError(
 			"CreateThirdpartyOAuth2Service",
 			storage.ErrorKindConnection,
 			err,
-			"failed to create service",
+			errMsg,
 		)
 	}
 
@@ -179,9 +201,10 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 	`
 
 	var (
-		service         storage.ThirdpartyOAuth2Service
-		encryptedSecret []byte
-		scopesJSON      []byte
+		service                 storage.ThirdpartyOAuth2Service
+		encryptedSecret         []byte
+		scopesJSON              []byte
+		protectedResourcesArray string
 	)
 
 	err := r.adapter.db.QueryRowContext(queryCtx, query, id).Scan(
@@ -195,7 +218,7 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 		&service.Endpoints.TokenEndpoint,
 		&service.Endpoints.AuthorizeEndpoint,
 		&scopesJSON,
-		&service.ProtectedResources,
+		&protectedResourcesArray,
 		&service.CreatedAt,
 		&service.UpdatedAt,
 	)
@@ -234,6 +257,9 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 			"failed to unmarshal scopes",
 		)
 	}
+
+	// Parse protected_resources array from PostgreSQL format
+	service.ProtectedResources = parsePostgresArray(protectedResourcesArray)
 
 	// Decrypt client secret
 	encryptionContext := map[string]string{
@@ -493,9 +519,10 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 
 	for rows.Next() {
 		var (
-			service         storage.ThirdpartyOAuth2Service
-			encryptedSecret []byte
-			scopesJSON      []byte
+			service                 storage.ThirdpartyOAuth2Service
+			encryptedSecret         []byte
+			scopesJSON              []byte
+			protectedResourcesArray string
 		)
 
 		err := rows.Scan(
@@ -509,17 +536,18 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 			&service.Endpoints.TokenEndpoint,
 			&service.Endpoints.AuthorizeEndpoint,
 			&scopesJSON,
-			&service.ProtectedResources,
+			&protectedResourcesArray,
 			&service.CreatedAt,
 			&service.UpdatedAt,
 		)
 
 		if err != nil {
+			errMsg := fmt.Sprintf("failed to scan service row: %v", err)
 			return nil, storage.NewStorageError(
 				"ListThirdpartyOAuth2Services",
 				storage.ErrorKindConnection,
 				err,
-				"failed to scan service row",
+				errMsg,
 			)
 		}
 
@@ -532,6 +560,9 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 				"failed to unmarshal scopes",
 			)
 		}
+
+		// Parse protected_resources array from PostgreSQL format
+		service.ProtectedResources = parsePostgresArray(protectedResourcesArray)
 
 		// Decrypt client secret
 		encryptionContext := map[string]string{
@@ -675,9 +706,10 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 
 	for rows.Next() {
 		var (
-			service         storage.ThirdpartyOAuth2Service
-			encryptedSecret []byte
-			scopesJSON      []byte
+			service                 storage.ThirdpartyOAuth2Service
+			encryptedSecret         []byte
+			scopesJSON              []byte
+			protectedResourcesArray string
 		)
 
 		err := rows.Scan(
@@ -691,17 +723,18 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 			&service.Endpoints.TokenEndpoint,
 			&service.Endpoints.AuthorizeEndpoint,
 			&scopesJSON,
-			&service.ProtectedResources,
+			&protectedResourcesArray,
 			&service.CreatedAt,
 			&service.UpdatedAt,
 		)
 
 		if err != nil {
+			errMsg := fmt.Sprintf("failed to scan service row: %v", err)
 			return nil, storage.NewStorageError(
 				"FindByProtectedResource",
 				storage.ErrorKindConnection,
 				err,
-				"failed to scan service row",
+				errMsg,
 			)
 		}
 
@@ -714,6 +747,9 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 				"failed to unmarshal scopes",
 			)
 		}
+
+		// Parse protected_resources array from PostgreSQL format
+		service.ProtectedResources = parsePostgresArray(protectedResourcesArray)
 
 		// Decrypt client secret
 		encryptionContext := map[string]string{
