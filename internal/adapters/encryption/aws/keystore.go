@@ -105,21 +105,49 @@ func createKeyStore(ctx context.Context, cfg KeyStoreConfig, logicalKeyStoreName
 	}, nil
 }
 
-// CreateBranchKey creates a branch key in DynamoDB with the specified ID.
+// CreateBranchKey creates a branch key in DynamoDB with the specified ID and encryption context.
 // Returns the branch key identifier or error if creation fails.
+// Note: AWS Encryption SDK KeyStore requires encryption context when using custom branch key identifiers.
 func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (string, error) {
 	if ks == nil || ks.client == nil {
 		return "", encryption.NewKEKUnavailableError("KeyStore not initialized", nil)
 	}
 
-	// Use underlying AWS KeyStore client to create the branch key
-	// The KeyStore internally handles KMS/DynamoDB operations
-	branchKey, err := ks.client.CreateKey(ctx, keystoretypes.CreateKeyInput{})
+	if branchKeyID == "" {
+		return "", encryption.NewKEKUnavailableError("branchKeyID cannot be empty", nil)
+	}
+
+	// AWS Encryption SDK KeyStore requires encryption context when using custom branch key identifiers
+	// Extract service_id from branch key ID (format: "service_{service_id}_branch_key")
+	encryptionCtx := extractEncryptionContextFromBranchKeyID(branchKeyID)
+
+	// Use underlying AWS KeyStore client to create the branch key with the specified ID
+	// The BranchKeyIdentifier must be set to ensure deterministic ID matching with BranchKeyIdSupplier
+	branchKey, err := ks.client.CreateKey(ctx, keystoretypes.CreateKeyInput{
+		BranchKeyIdentifier: &branchKeyID,
+		EncryptionContext:   encryptionCtx,
+	})
 	if err != nil {
 		return "", encryption.NewKEKUnavailableError(
-			fmt.Sprintf("failed to create branch key in DynamoDB: %v", err),
+			fmt.Sprintf("failed to create branch key %s in DynamoDB: %v", branchKeyID, err),
 			err,
 		)
 	}
 	return branchKey.BranchKeyIdentifier, nil
+}
+
+// extractEncryptionContextFromBranchKeyID extracts service_id from a branch key ID.
+// Branch key IDs follow the format: "service_{service_id}_branch_key"
+func extractEncryptionContextFromBranchKeyID(branchKeyID string) map[string]string {
+	// Parse service_id from "service_{service_id}_branch_key"
+	const prefix = "service_"
+	const suffix = "_branch_key"
+
+	if len(branchKeyID) > len(prefix)+len(suffix) {
+		serviceID := branchKeyID[len(prefix) : len(branchKeyID)-len(suffix)]
+		return map[string]string{"service_id": serviceID}
+	}
+
+	// Fallback if parsing fails
+	return map[string]string{}
 }

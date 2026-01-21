@@ -27,7 +27,7 @@ func TestLocalStackKMSEncryptDecryptRoundtrip(t *testing.T) {
 
 	// Create adapter with LocalStack KMS ARN
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapterWithConfig(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter with LocalStack KMS: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestLocalStackContextMismatchDetection(t *testing.T) {
 
 	// Create adapter with LocalStack KMS
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapterWithConfig(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestLocalStackUniqueEncryptionPerCall(t *testing.T) {
 
 	// Create adapter with LocalStack KMS
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapterWithConfig(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestLocalStackTamperedCiphertextDetection(t *testing.T) {
 
 	// Create adapter with LocalStack KMS
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapterWithConfig(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestLocalStackMultipleServices(t *testing.T) {
 
 	// Create adapter with LocalStack KMS
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapterWithConfig(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}

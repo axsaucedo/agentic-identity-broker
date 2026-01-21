@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 
+	keystore "github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographykeystoresmithygenerated"
+	keystoretypes "github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographykeystoresmithygeneratedtypes"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -13,18 +15,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
-)
-
-const (
-	localStackTestNetwork = "localstack-test"
 )
 
 // LocalStackContainer manages LocalStack KMS + DynamoDB for E2E encryption tests
 type LocalStackContainer struct {
 	Container testcontainers.Container
-	Network   testcontainers.Network
 	Endpoint  string
 	KMSKeyID  string
 	// Environment variables set for AWS SDK client configuration
@@ -35,21 +31,17 @@ type LocalStackContainer struct {
 // Usage: In BeforeEach, `ls := bootstrap.StartLocalStack(ctx, GinkgoT())`
 // Usage: In AfterEach, `defer ls.Terminate(ctx)`
 func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
-	// Create a named network for LocalStack to support both Docker and Podman
-	// This avoids issues with the default bridge network in some environments
-	net, err := network.New(ctx, network.WithLabels(map[string]string{"name": localStackTestNetwork}))
-	if err != nil {
-		t.Fatalf("failed to create network for LocalStack: %v", err)
-	}
-
+	// Use default bridge network to avoid network creation issues with testcontainers reaper
+	// The bridge network is always available and compatible with all Docker configurations
 	req := testcontainers.ContainerRequest{
-		Image: "localstack/localstack:latest",
-		Networks: []string{net.Name},
+		Image: "localstack/localstack:4.12.0",
 		Env: map[string]string{
 			"SERVICES":              "kms,dynamodb",
 			"AWS_ACCESS_KEY_ID":     "test",
 			"AWS_SECRET_ACCESS_KEY": "test",
 			"AWS_DEFAULT_REGION":    "eu-central-1",
+			// Disable Ryuk reaper to avoid Docker network issues in constrained environments
+			"TESTCONTAINERS_RYUK_DISABLED": "true",
 		},
 		ExposedPorts: []string{"4566/tcp"},
 		WaitingFor:   wait.ForLog("Ready."),
@@ -60,7 +52,6 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 		Started:          true,
 	})
 	if err != nil {
-		net.Remove(ctx)
 		t.Fatalf("failed to start LocalStack container: %v", err)
 	}
 
@@ -92,27 +83,27 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 
 	// Create DynamoDB table for branch key cache
 	// Per AWS Encryption SDK KeyStore requirements:
-	// Partition key: "partition_key" (S), Sort key: "sort_key" (S)
+	// Partition key: "branch-key-id" (S), Sort key: "type" (S)
 	dynamoClient := dynamodb.NewFromConfig(awsConfigForLocalStack(ctx, endpoint))
 	_, err = dynamoClient.CreateTable(ctx, &dynamodb.CreateTableInput{
 		TableName: wrap("IdentityBrokerEncryptionBranchKeys"),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{
-				AttributeName: wrap("partition_key"),
+				AttributeName: wrap("branch-key-id"),
 				AttributeType: types.ScalarAttributeTypeS,
 			},
 			{
-				AttributeName: wrap("sort_key"),
+				AttributeName: wrap("type"),
 				AttributeType: types.ScalarAttributeTypeS,
 			},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{
-				AttributeName: wrap("partition_key"),
+				AttributeName: wrap("branch-key-id"),
 				KeyType:       types.KeyTypeHash,
 			},
 			{
-				AttributeName: wrap("sort_key"),
+				AttributeName: wrap("type"),
 				KeyType:       types.KeyTypeRange,
 			},
 		},
@@ -122,6 +113,14 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	if err != nil {
 		container.Terminate(ctx)
 		t.Fatalf("failed to create DynamoDB table: %v", err)
+	}
+
+	// Pre-populate branch keys in DynamoDB for test services
+	// The hierarchical keyring requires these to exist
+	err = preBranchKeysForLocalStack(ctx, kmsClient, dynamoClient, keyID)
+	if err != nil {
+		container.Terminate(ctx)
+		t.Fatalf("failed to pre-populate branch keys: %v", err)
 	}
 
 	// Set environment variables so AWS SDK client code uses LocalStack endpoint
@@ -134,7 +133,6 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 
 	return &LocalStackContainer{
 		Container:        container,
-		Network:          net,
 		Endpoint:         endpoint,
 		KMSKeyID:         keyID,
 		OriginalEndpoint: os.Getenv("AWS_ENDPOINT_URL"),
@@ -166,16 +164,54 @@ func (ls *LocalStackContainer) CleanupLocalStackEnvironment() {
 	os.Unsetenv("AWS_DEFAULT_REGION")
 }
 
-// Terminate stops and removes the LocalStack container and its network
+// Terminate stops and removes the LocalStack container
 func (ls *LocalStackContainer) Terminate(ctx context.Context) error {
-	// First terminate the container
-	if err := ls.Container.Terminate(ctx); err != nil {
-		return err
+	if ls.Container == nil {
+		return nil
 	}
-	// Then remove the network
-	if ls.Network != nil {
-		return ls.Network.Remove(ctx)
+	return ls.Container.Terminate(ctx)
+}
+
+// preBranchKeysForLocalStack creates branch keys using the KeyStore for test services.
+// Branch keys must exist in DynamoDB before the hierarchical keyring can use them.
+// This function uses the AWS Encryption SDK KeyStore to create proper branch key records.
+func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dynamoClient *dynamodb.Client, keyID string) error {
+	testServices := []string{"oauth2", "github", "google"}
+
+	// Create KeyStore client
+	kmsARN := fmt.Sprintf("arn:aws:kms:eu-central-1:000000000000:key/%s", keyID)
+	kmsConfig := keystoretypes.KMSConfigurationMemberkmsKeyArn{
+		Value: kmsARN,
 	}
+
+	keystoreClient, err := keystore.NewClient(keystoretypes.KeyStoreConfig{
+		DdbTableName:        "IdentityBrokerEncryptionBranchKeys",
+		KmsConfiguration:    &kmsConfig,
+		LogicalKeyStoreName: "IdentityBrokerEncryptionVault",
+		DdbClient:           dynamoClient,
+		KmsClient:           kmsClient,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create KeyStore client: %w", err)
+	}
+
+	// Create branch keys for each test service
+	// Branch key IDs must match the deterministic format used by BranchKeyIdSupplier: "service_{service_id}_branch_key"
+	// Custom branch key identifiers require encryption context per AWS Encryption SDK KeyStore
+	for _, service := range testServices {
+		branchKeyID := fmt.Sprintf("service_%s_branch_key", service)
+		encryptionCtx := map[string]string{
+			"service_id": service,
+		}
+		_, err := keystoreClient.CreateKey(ctx, keystoretypes.CreateKeyInput{
+			BranchKeyIdentifier: &branchKeyID,
+			EncryptionContext:   encryptionCtx,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create branch key for service %s: %w", service, err)
+		}
+	}
+
 	return nil
 }
 

@@ -10,15 +10,19 @@ import (
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
 var _ = Describe("Encryption Vault for OAuth Tokens", func() {
 	var (
-		// Variables for test setup
+		// Test infrastructure
 		testStorage    *storageadapter.Adapter
 		storageFactory *bootstrap.StorageFactory
 		logger         *slog.Logger
 		ctx            context.Context
+
+		// AWS resources (for integration tests)
+		localStack *bootstrap.LocalStackContainer
 	)
 
 	BeforeEach(func() {
@@ -39,77 +43,114 @@ var _ = Describe("Encryption Vault for OAuth Tokens", func() {
 		// Initialize context for operations
 		ctx = context.Background()
 
-		// TODO Phase 4-10: Initialize encryption port when AWS Encryption SDK adapter is implemented
-		// This will be a production implementation of ports.EncryptionPort using AWS Encryption SDK
-		// with envelope encryption (DEK + KEK wrapping) and context binding
-		// encryptionPort = awsencryption.NewAdapter(logger, kekConfig)
-
-		// TODO Phase 4-10: Build app with encryption configuration
-		// The app builder will need to be extended to accept encryption port configuration
-		// app = app.NewBuilder(logger).WithStorage(testStorage).WithEncryption(encryptionPort).Build()
+		// Initialize LocalStack for integration tests (set to nil by default)
+		localStack = nil
 	})
 
 	AfterEach(func() {
 		// Cleanup resources after each test to prevent resource leaks
 		if testStorage != nil {
-			// Storage cleanup will be handled by the storage factory
-			// In-memory storage auto-cleans, but connections need proper closure
+			storageFactory.CloseStorage(testStorage)
 		}
-		if ctx != nil && ctx.Done() != nil {
-			// Cancel context if it's cancellable to prevent goroutine leaks
+		if localStack != nil {
+			localStack.Terminate(ctx)
 		}
 		// Memory cleanup for sensitive data will be handled by memguard in encryption adapter
 	})
 
 	Context("User Story 1: Envelope Encryption", func() {
+		var encryptionHelper *helpers.EncryptionTestHelper
+
+		BeforeEach(func() {
+			// Initialize encryption port with environment variable KEK
+			testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+			os.Setenv("TEST_ENCRYPTION_KEK", testKEK)
+
+			// Create encryption adapter from environment variable
+			adapter, err := helpers.NewEncryptionAdapter("${TEST_ENCRYPTION_KEK}")
+			Expect(err).ToNot(HaveOccurred(), "encryption adapter should initialize successfully")
+
+			// Create helper for test operations
+			encryptionHelper = helpers.NewEncryptionTestHelper(adapter, ctx)
+		})
+
+		AfterEach(func() {
+			os.Unsetenv("TEST_ENCRYPTION_KEK")
+		})
+
 		// Scenario 1.1 from specs/012-aws-encryption-vault/spec.md
 		It("encrypts OAuth tokens using DEK bound to service context and wrapped KEK", func() {
 			// GIVEN a session with OAuth tokens and associated service_id context
-			_ = "oauth2"        // serviceID
-			_ = map[string]string{"service_id": "oauth2"}  // encryptionContext
-			_ = []byte("access_token_abc123")             // plainAccessToken
-			_ = []byte("refresh_token_xyz789")            // plainRefreshToken
+			plainAccessToken := "access_token_abc123"
+			plainRefreshToken := "refresh_token_xyz789"
+			encryptionContext := map[string]string{"service_id": "oauth2"}
 
 			// WHEN tokens are encrypted using encryptionPort
-			// TODO Phase 3a: encryptionPort must be initialized in BeforeEach
-			// encryptedAccess, err := encryptionPort.Encrypt(ctx, plainAccessToken, encryptionContext)
-			// Expect(err).ToNot(HaveOccurred())
-			// encryptedRefresh, err := encryptionPort.Encrypt(ctx, plainRefreshToken, encryptionContext)
-			// Expect(err).ToNot(HaveOccurred())
+			encryptedAccess, err := encryptionHelper.EncryptTestToken(plainAccessToken, encryptionContext)
+			Expect(err).ToNot(HaveOccurred(), "encryption should succeed")
+
+			encryptedRefresh, err := encryptionHelper.EncryptTestToken(plainRefreshToken, encryptionContext)
+			Expect(err).ToNot(HaveOccurred(), "encryption should succeed")
 
 			// THEN each token is encrypted using DEK bound to service context, and DEK wrapped with KEK
-			// Expect(encryptedAccess).NotTo(Equal(plainAccessToken)) // Verify encryption happened
-			// Expect(encryptedRefresh).NotTo(Equal(plainRefreshToken))
-			// Expect(encryptedAccess).NotTo(Equal(encryptedRefresh)) // Different DEKs (unique per encryption)
-
-			// Placeholder: This test fails semantically because encryptionPort is not yet available
-			Skip("Awaiting Phase 3a: EncryptionPort initialization with LocalStack bootstrap")
+			Expect(encryptedAccess).NotTo(Equal([]byte(plainAccessToken)), "access token should be encrypted")
+			Expect(encryptedRefresh).NotTo(Equal([]byte(plainRefreshToken)), "refresh token should be encrypted")
+			Expect(encryptedAccess).NotTo(Equal(encryptedRefresh), "different DEKs should produce different ciphertexts")
 		})
 
 		// Scenario 1.2 from specs/012-aws-encryption-vault/spec.md
 		It("decrypts OAuth tokens by unwrapping DEK with KEK and verifying context", func() {
-			Skip("Not implemented - RED phase")
-			// Given encrypted tokens and wrapped DEKs in the sessions table
-			// When a session is retrieved and tokens are requested
-			// Then the KEK is used to unwrap the DEK (verifying context),
-			//      the DEK is used to decrypt the token (verifying context),
-			//      and the plaintext token is returned
+			// GIVEN tokens encrypted with service_id context
+			plainToken := "test-oauth2-token"
+			encryptionContext := map[string]string{"service_id": "oauth2"}
+
+			ciphertext, err := encryptionHelper.EncryptTestToken(plainToken, encryptionContext)
+			Expect(err).ToNot(HaveOccurred(), "encryption should succeed")
+
+			// WHEN decryption is attempted with matching context
+			decrypted, err := encryptionHelper.DecryptTestToken(ciphertext, encryptionContext)
+			Expect(err).ToNot(HaveOccurred(), "decryption should succeed with matching context")
+
+			// THEN plaintext token is returned after DEK unwrap and verification
+			Expect(string(decrypted)).To(Equal(plainToken), "decrypted token should match original plaintext")
 		})
 
 		// Scenario 1.3 from specs/012-aws-encryption-vault/spec.md
 		It("prevents token reuse with different context via context verification failure", func() {
-			Skip("Not implemented - RED phase")
-			// Given an attacker gains direct database access and reads encrypted tokens with wrapped DEKs
-			// When they attempt to use the encrypted tokens with different context
-			// Then the tokens are invalid because context verification fails at both DEK and KEK layers
+			// GIVEN tokens encrypted for "oauth2" service
+			plainToken := "test-token-for-oauth2"
+			originalContext := map[string]string{"service_id": "oauth2"}
+
+			ciphertext, err := encryptionHelper.EncryptTestToken(plainToken, originalContext)
+			Expect(err).ToNot(HaveOccurred(), "encryption should succeed")
+
+			// WHEN an attacker attempts to decrypt with different service_id
+			wrongContext := map[string]string{"service_id": "github"}
+
+			// THEN decryption fails at both DEK and KEK layers
+			decrypted, err := encryptionHelper.DecryptTestToken(ciphertext, wrongContext)
+			Expect(err).To(HaveOccurred(), "decryption should fail with wrong context")
+			Expect(decrypted).To(BeNil(), "no plaintext should be returned on context mismatch")
 		})
 
 		// Scenario 1.4 from specs/012-aws-encryption-vault/spec.md
 		It("fails securely when context verification fails with no plaintext fallback", func() {
-			Skip("Not implemented - RED phase")
-			// Given a session is loaded from the database
-			// When context verification fails at any layer
-			// Then the application fails securely and does not fall back to plaintext tokens
+			// GIVEN an encrypted token with valid context
+			plainToken := "oauth2-token-value"
+			validContext := map[string]string{"service_id": "oauth2"}
+
+			ciphertext, err := encryptionHelper.EncryptTestToken(plainToken, validContext)
+			Expect(err).ToNot(HaveOccurred(), "encryption should succeed")
+
+			// WHEN context verification fails (wrong context used)
+			invalidContext := map[string]string{"service_id": "invalid"}
+
+			decrypted, err := encryptionHelper.DecryptTestToken(ciphertext, invalidContext)
+
+			// THEN application fails securely without plaintext fallback
+			Expect(err).To(HaveOccurred(), "decryption should fail securely")
+			Expect(decrypted).To(BeNil(), "no plaintext fallback should occur")
+			Expect(err.Error()).To(ContainSubstring("context"), "error should indicate context issue")
 		})
 	})
 

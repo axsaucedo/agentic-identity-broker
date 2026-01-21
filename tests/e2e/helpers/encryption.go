@@ -3,14 +3,22 @@ package helpers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	. "github.com/onsi/gomega"
 
 	"github.com/google/uuid"
 
+	awsadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 )
+
+// NewEncryptionAdapter creates an encryption adapter for testing
+// Supports both AWS KMS ARN and environment variable KEK references (${VAR})
+func NewEncryptionAdapter(keyMaterial string) (ports.EncryptionPort, error) {
+	return awsadapter.NewAWSEncryptionAdapter(keyMaterial, "", 0*time.Second)
+}
 
 // EncryptionTestHelper provides helper functions for encryption vault E2E testing
 // This helper focuses on encryption port operations and will be extended when
@@ -106,6 +114,16 @@ func (h *EncryptionTestHelper) EncryptTestToken(plaintext string, encryptionCont
 		return nil, fmt.Errorf("encryption failed: %v", err)
 	}
 	return ciphertext, nil
+}
+
+// DecryptTestToken decrypts a test token with the given context
+// Returns plaintext or error if decryption fails
+func (h *EncryptionTestHelper) DecryptTestToken(ciphertext []byte, encryptionContext map[string]string) ([]byte, error) {
+	plaintext, err := h.encryptionPort.Decrypt(h.ctx, ciphertext, encryptionContext)
+	if err != nil {
+		return nil, fmt.Errorf("decryption failed: %v", err)
+	}
+	return plaintext, nil
 }
 
 // VerifyTokensEncryptedInDatabase verifies that tokens are stored encrypted, not as plaintext
