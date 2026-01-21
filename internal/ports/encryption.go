@@ -36,26 +36,16 @@ type BranchKeyRepository interface {
 	Get(ctx context.Context, serviceID string) (string, error)
 }
 
-// BranchKeyManager defines unified operations for branch key lifecycle management.
-// Consolidates both branch key ID resolution (for runtime encryption context binding)
-// and branch key provisioning (for infrastructure setup during service creation).
+// BranchKeyManager is an alias for BranchKeyRepository, consolidating branch key lifecycle management.
+// This provides a unified interface for branch key provisioning during service creation.
 //
-// This separation of concerns enables:
+// Architecture:
+// - Create: Provisions a new branch key for a service in DynamoDB
+// - Get: Retrieves an existing branch key (future use)
+// - ID resolution at runtime happens via BranchKeyIdSupplier (not this interface)
+//
+// This separation enables:
 // - Clean EncryptionPort that handles only Encrypt/Decrypt operations
-// - Centralized branch key operations without adapter overload
+// - Simple, focused branch key provisioning interface
 // - Easy testing and mocking of provisioning logic separately from encryption
-type BranchKeyManager interface {
-	BranchKeyRepository
-
-	// ResolveBranchKeyID returns a deterministic branch key identifier based on service_id.
-	// Used by the hierarchical keyring during encryption/decryption to resolve the correct branch key.
-	// This is a pure function - same service_id always returns the same branch key ID.
-	//
-	// Parameters:
-	//   - serviceID: Service identifier from encryption context
-	//
-	// Returns:
-	//   - Branch key ID in format: service_{service_id}_branch_key
-	//   - error: If service_id is empty or invalid
-	ResolveBranchKeyID(serviceID string) (string, error)
-}
+type BranchKeyManager = BranchKeyRepository

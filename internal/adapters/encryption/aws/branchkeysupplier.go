@@ -34,18 +34,40 @@ func (d *BranchKeyIdSupplier) GetBranchKeyId(input mpltypes.GetBranchKeyIdInput)
 	}
 
 	// Use deterministic ID generation (single source of truth)
-	branchKeyID := getBranchKeyId(serviceID)
+	branchKeyID := GetBranchKeyID(serviceID)
 
 	return &mpltypes.GetBranchKeyIdOutput{
 		BranchKeyId: branchKeyID,
 	}, nil
 }
 
-// ResolveDeterministicBranchKeyID generates a deterministic branch key ID from a service_id.
+// GetBranchKeyID generates a deterministic branch key ID from a service_id.
 // Single source of truth for branch key ID generation: service_{service_id}_branch_key
 // This is exported for use by other implementations (e.g., in-memory provider for testing).
 // Format: service_{service_id}_branch_key
 // Example: service_oauth2_branch_key, service_github_branch_key
-func getBranchKeyId(serviceID string) string {
+func GetBranchKeyID(serviceID string) string {
 	return fmt.Sprintf("service_%s_branch_key", serviceID)
+}
+
+// ExtractServiceIDFromBranchKeyID extracts the service ID from a branch key ID.
+// This is the inverse operation of GetBranchKeyID, ensuring symmetric operations.
+// Format: service_{service_id}_branch_key -> service_id
+// Example: service_oauth2_branch_key -> oauth2
+//
+// Returns:
+//   - string: The extracted service ID, or empty string if parsing fails
+func ExtractServiceIDFromBranchKeyID(branchKeyID string) string {
+	const prefix = "service_"
+	const suffix = "_branch_key"
+
+	// Validate format and extract service ID
+	if len(branchKeyID) > len(prefix)+len(suffix) &&
+		branchKeyID[:len(prefix)] == prefix &&
+		branchKeyID[len(branchKeyID)-len(suffix):] == suffix {
+		return branchKeyID[len(prefix) : len(branchKeyID)-len(suffix)]
+	}
+
+	// Return empty string if parsing fails
+	return ""
 }

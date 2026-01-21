@@ -118,8 +118,16 @@ func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (st
 	}
 
 	// AWS Encryption SDK KeyStore requires encryption context when using custom branch key identifiers
-	// Extract service_id from branch key ID (format: "service_{service_id}_branch_key")
-	encryptionCtx := extractEncryptionContextFromBranchKeyID(branchKeyID)
+	// Extract service_id from branch key ID using the centralized parser
+	serviceID := ExtractServiceIDFromBranchKeyID(branchKeyID)
+	if serviceID == "" {
+		return "", encryption.NewKEKUnavailableError(
+			fmt.Sprintf("invalid branch key ID format: %s", branchKeyID),
+			nil,
+		)
+	}
+
+	encryptionCtx := map[string]string{"service_id": serviceID}
 
 	// Use underlying AWS KeyStore client to create the branch key with the specified ID
 	// The BranchKeyIdentifier must be set to ensure deterministic ID matching with BranchKeyIdSupplier
@@ -136,18 +144,3 @@ func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (st
 	return branchKey.BranchKeyIdentifier, nil
 }
 
-// extractEncryptionContextFromBranchKeyID extracts service_id from a branch key ID.
-// Branch key IDs follow the format: "service_{service_id}_branch_key"
-func extractEncryptionContextFromBranchKeyID(branchKeyID string) map[string]string {
-	// Parse service_id from "service_{service_id}_branch_key"
-	const prefix = "service_"
-	const suffix = "_branch_key"
-
-	if len(branchKeyID) > len(prefix)+len(suffix) {
-		serviceID := branchKeyID[len(prefix) : len(branchKeyID)-len(suffix)]
-		return map[string]string{"service_id": serviceID}
-	}
-
-	// Fallback if parsing fails
-	return map[string]string{}
-}

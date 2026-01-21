@@ -54,17 +54,6 @@ func (r *InMemoryBranchKeyRepository) Get(ctx context.Context, serviceID string)
 	return "", fmt.Errorf("branch key not found for service_id: %s", serviceID)
 }
 
-// ResolveBranchKeyID returns a deterministic branch key identifier based on service_id.
-// Used by the hierarchical keyring during encryption/decryption to resolve the correct branch key.
-// This is a pure function - same service_id always returns the same branch key ID.
-func (r *InMemoryBranchKeyRepository) ResolveBranchKeyID(serviceID string) (string, error) {
-	if serviceID == "" {
-		return "", fmt.Errorf("service_id cannot be empty")
-	}
-
-	return getBranchKeyId(serviceID), nil
-}
-
 func getBranchKeyId(serviceID string) string {
 	return fmt.Sprintf("service_%s_branch_key", serviceID)
 }

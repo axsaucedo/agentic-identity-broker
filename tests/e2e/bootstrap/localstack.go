@@ -16,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 )
 
 // LocalStackContainer manages LocalStack KMS + DynamoDB for E2E encryption tests
@@ -195,11 +197,9 @@ func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dyna
 		return fmt.Errorf("failed to create KeyStore client: %w", err)
 	}
 
-	// Create branch keys for each test service
-	// Branch key IDs must match the deterministic format used by BranchKeyIdSupplier: "service_{service_id}_branch_key"
-	// Custom branch key identifiers require encryption context per AWS Encryption SDK KeyStore
+	// Create branch keys for each test service using centralized ID generation
 	for _, service := range testServices {
-		branchKeyID := fmt.Sprintf("service_%s_branch_key", service)
+		branchKeyID := awsencryption.GetBranchKeyID(service)
 		encryptionCtx := map[string]string{
 			"service_id": service,
 		}
