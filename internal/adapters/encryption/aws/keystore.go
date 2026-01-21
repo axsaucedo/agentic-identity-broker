@@ -143,4 +143,3 @@ func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (st
 	}
 	return branchKey.BranchKeyIdentifier, nil
 }
-

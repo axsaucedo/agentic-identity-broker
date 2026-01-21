@@ -64,13 +64,13 @@ func TestEncryptionConfigFieldTags(t *testing.T) {
 	// Test that all expected configuration sections exist
 	// This ensures the EncryptionConfig is properly integrated alongside other configs
 	testConfigs := map[string]interface{}{
-		"Log":                mainConfig.Log,
-		"Server":             mainConfig.Server,
-		"Storage":            mainConfig.Storage,
-		"ThirdPartyOAuth2":   mainConfig.ThirdPartyOAuth2,
-		"OAuth2AuthServer":   mainConfig.OAuth2AuthServer,
-		"Security":           mainConfig.Security,
-		"Encryption":         mainConfig.Encryption,
+		"Log":              mainConfig.Log,
+		"Server":           mainConfig.Server,
+		"Storage":          mainConfig.Storage,
+		"ThirdPartyOAuth2": mainConfig.ThirdPartyOAuth2,
+		"OAuth2AuthServer": mainConfig.OAuth2AuthServer,
+		"Security":         mainConfig.Security,
+		"Encryption":       mainConfig.Encryption,
 	}
 
 	for name, config := range testConfigs {

@@ -25,7 +25,7 @@ func TestLocalStackKMSEncryptDecryptRoundtrip(t *testing.T) {
 
 	// Create adapter with LocalStack KMS ARN
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter with LocalStack KMS: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestLocalStackContextMismatchDetection(t *testing.T) {
 
 	// Create adapter with LocalStack KMS
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestLocalStackUniqueEncryptionPerCall(t *testing.T) {
 
 	// Create adapter with LocalStack KMS
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestLocalStackTamperedCiphertextDetection(t *testing.T) {
 
 	// Create adapter with LocalStack KMS
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestLocalStackMultipleServices(t *testing.T) {
 
 	// Create adapter with LocalStack KMS
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, err := awsencryption.NewAWSEncryptionAdapter(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestHierarchicalKeyringInitialization(t *testing.T) {
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
 
 	// Create adapter WITH branch key manager (hierarchical keyring)
-	adapter, manager, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter with branch key manager: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestBranchKeyProvisioningAndCaching(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, manager, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, manager, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -422,7 +422,7 @@ func TestBranchKeyRetrievalFromCache(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestDynamoDBInteraction(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -503,7 +503,7 @@ func TestBranchKeySupplierMapping(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -565,7 +565,7 @@ func TestContextBindingAtDEKLayer(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -613,7 +613,7 @@ func TestContextBindingAtKEKLayer(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -656,7 +656,7 @@ func TestContextBindingThroughBothLayers(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -705,7 +705,7 @@ func TestAADInclusionInEncryption(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -748,7 +748,7 @@ func TestContextMismatchFailureAtBothLayers(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -788,7 +788,7 @@ func TestLargeTokenEncryption(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -827,7 +827,7 @@ func TestEmptyPlaintextTokenEncryption(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -862,7 +862,7 @@ func TestPartialCiphertextTampering(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -920,7 +920,7 @@ func TestUnknownServiceContextDecryption(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -958,7 +958,7 @@ func TestContextMismatchErrorCascade(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1003,7 +1003,7 @@ func TestDEKSecureDeletion(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1043,7 +1043,7 @@ func TestPlaintextTokenMemoryManagement(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1082,7 +1082,7 @@ func TestErrorMessagesSanitization(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1107,9 +1107,9 @@ func TestErrorMessagesSanitization(t *testing.T) {
 
 	// Verify error message doesn't contain sensitive material
 	sensitivePatterns := []string{
-		string(plaintext),    // plaintext token
-		"base64",             // encoded key material
-		"arn:aws:kms",        // KMS ARN (context ok, keys sensitive)
+		string(plaintext), // plaintext token
+		"base64",          // encoded key material
+		"arn:aws:kms",     // KMS ARN (context ok, keys sensitive)
 	}
 
 	for _, pattern := range sensitivePatterns[:1] { // Just check plaintext
@@ -1136,7 +1136,7 @@ func TestMemoryLockingIntegration(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1175,7 +1175,7 @@ func TestBranchKeyIsolationPerService(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1228,7 +1228,7 @@ func TestDEKVarianceAcrossServices(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1269,7 +1269,7 @@ func TestCrossServiceDecryptionAttack(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1339,7 +1339,7 @@ func TestServiceContextInAAD(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1382,7 +1382,7 @@ func TestBranchKeyCacheForensics(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1434,7 +1434,7 @@ func TestKMSARNValidation(t *testing.T) {
 	validARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
 
 	// Valid ARN should succeed
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(validARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(validARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("valid KMS ARN failed: %v", err)
 	}
@@ -1450,7 +1450,7 @@ func TestKMSARNValidation(t *testing.T) {
 	}
 
 	for _, invalidARN := range invalidARNs {
-		_, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(invalidARN, "IdentityBrokerEncryptionBranchKeys", 0)
+		_, _, err := awsencryption.NewAWSEncryption(invalidARN, "IdentityBrokerEncryptionBranchKeys", 0)
 		if err == nil && invalidARN != "" {
 			t.Logf("Note: Invalid ARN %q accepted (may fail at runtime)", invalidARN)
 		}
@@ -1468,7 +1468,7 @@ func TestBranchKeyPrePopulationValidation(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1506,7 +1506,7 @@ func TestEnvironmentVariableKEKInjectionSupport(t *testing.T) {
 
 	// Valid environment variable reference format
 	envVarRef := "${ENCRYPTION_KEK}"
-	_, err := awsencryption.NewAWSEncryptionAdapter(envVarRef, "", 0)
+	_, _, err := awsencryption.NewAWSEncryption(envVarRef, "", 0)
 
 	if err != nil {
 		// Expected to fail if ENCRYPTION_KEK not set, but should recognize the format
@@ -1515,7 +1515,7 @@ func TestEnvironmentVariableKEKInjectionSupport(t *testing.T) {
 
 	// Invalid format should be rejected
 	invalidRef := "ENCRYPTION_KEK"
-	_, err = awsencryption.NewAWSEncryptionAdapter(invalidRef, "", 0)
+	_, _, err = awsencryption.NewAWSEncryption(invalidRef, "", 0)
 	if err == nil {
 		t.Logf("Note: Non-reference format accepted (expected to fail)")
 	}
@@ -1534,7 +1534,7 @@ func TestBranchKeyCacheHitRate(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1581,7 +1581,7 @@ func TestConcurrentServiceEncryption(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -1631,7 +1631,7 @@ func TestEncryptionTransparencyInSessionRepository(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}

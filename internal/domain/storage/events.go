@@ -81,9 +81,9 @@ func NewSessionDecrypted(sessionID, serviceID string) *SessionDecrypted {
 // Emitted when OAuth2 token encryption fails for any reason.
 type SessionEncryptionFailed struct {
 	BaseEvent
-	ServiceID string                  `json:"service_id"`
-	ErrorKind encryption.ErrorKind    `json:"error_kind"`
-	Message   string                  `json:"message"` // Sanitized message safe for logging
+	ServiceID string               `json:"service_id"`
+	ErrorKind encryption.ErrorKind `json:"error_kind"`
+	Message   string               `json:"message"` // Sanitized message safe for logging
 }
 
 // NewSessionEncryptionFailed creates a new SessionEncryptionFailed event.
@@ -104,9 +104,9 @@ func NewSessionEncryptionFailed(sessionID, serviceID string, errorKind encryptio
 // Emitted when encrypted OAuth2 token decryption fails for any reason.
 type SessionDecryptionFailed struct {
 	BaseEvent
-	ServiceID string                  `json:"service_id"`
-	ErrorKind encryption.ErrorKind    `json:"error_kind"`
-	Message   string                  `json:"message"` // Sanitized message safe for logging
+	ServiceID string               `json:"service_id"`
+	ErrorKind encryption.ErrorKind `json:"error_kind"`
+	Message   string               `json:"message"` // Sanitized message safe for logging
 }
 
 // NewSessionDecryptionFailed creates a new SessionDecryptionFailed event.

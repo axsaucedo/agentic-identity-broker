@@ -32,8 +32,8 @@ type App struct {
 	Config *ports.Config
 
 	// Repositories
-	Storage            *storage.Adapter
-	BranchKeyManager   ports.BranchKeyManager
+	Storage          *storage.Adapter
+	BranchKeyManager ports.BranchKeyManager
 
 	// Domain services
 	ConsentService       *consentservice.Service
@@ -59,11 +59,11 @@ type App struct {
 //		WithLogger(logger).
 //		Build()
 type Builder struct {
-	config           *ports.Config
-	storage          *storage.Adapter
-	logger           *slog.Logger
-	encryption       ports.EncryptionPort    // Optional: custom encryption implementation
-	branchKeyManager ports.BranchKeyManager  // Optional: custom branch key manager
+	config                 *ports.Config
+	storage                *storage.Adapter
+	logger                 *slog.Logger
+	encryption             ports.EncryptionPort   // Optional: custom encryption implementation
+	branchKeyManager       ports.BranchKeyManager // Optional: custom branch key manager
 	staticWebResourcesPath string
 }
 
@@ -232,7 +232,7 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		// Phase 4-6: Create AWS encryption adapter with branch key manager
-		adapter, branchKeyManager, err := awsencryption.NewAWSEncryptionAdapterWithBranchKeyManager(
+		adapter, branchKeyManager, err := awsencryption.NewAWSEncryption(
 			b.config.Encryption.KeyEncryptionKey,
 			b.config.Encryption.DynamoDBTableName,
 			branchKeyTTL,

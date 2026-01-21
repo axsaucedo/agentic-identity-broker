@@ -38,60 +38,29 @@ type AWSAdapter struct {
 	keyring          mpltypes.IKeyring // Keyring (AWS KMS hierarchical, KMS, or Raw AES)
 }
 
-// NewAWSEncryptionAdapter creates a new AWS Encryption SDK adapter with envelope encryption.
+// NewAWSEncryption creates an AWS Encryption SDK adapter with automatic fan-out to supported scenarios:
+// Scenario A (development): Environment variable KEK (${ENV_VAR_NAME})
+// Scenario B (production): Hierarchical keyring with AWS KMS and DynamoDB branch key caching (KMS ARN)
+//
 // keyMaterial can be either:
 //   - AWS KMS ARN: "arn:aws:kms:region:account:key/key-id" or "arn:aws:kms:region:account:alias/alias-name"
-//   - Environment variable reference: "${ENCRYPTION_KEK}" (resolves to base64-encoded key)
-//
-// For KMS ARNs, optional dynamoDBTableName and branchKeyTTL can be provided for branch key caching.
-// If dynamoDBTableName is empty, defaults to DefaultBranchKeyTableName.
-// If branchKeyTTL is zero, defaults to DefaultBranchKeyTTL.
-//
-// The adapter validates KEK accessibility at startup (fail-fast).
-func NewAWSEncryptionAdapter(keyMaterial, dynamoDBTableName string, branchKeyTTL time.Duration) (*AWSAdapter, error) {
-	if keyMaterial == "" {
-		return nil, encryption.NewKEKUnavailableError("key encryption key material is required", nil)
-	}
-
-	// Determine if this is an environment variable reference or AWS KMS ARN
-	if strings.HasPrefix(keyMaterial, "${") && strings.HasSuffix(keyMaterial, "}") {
-		// Environment variable reference: ${ENCRYPTION_KEK}
-		envVarName := keyMaterial[2 : len(keyMaterial)-1]
-		return newAdapterWithEnvVarKEK(envVarName)
-	}
-
-	// Assume it's an AWS KMS ARN
-	if strings.HasPrefix(keyMaterial, "arn:aws:kms:") {
-		adapter, _, err := newAdapterWithKMSARNAndKeyStore(keyMaterial, dynamoDBTableName, branchKeyTTL)
-		return adapter, err
-	}
-
-	// Invalid format
-	return nil, encryption.NewKEKUnavailableError(
-		fmt.Sprintf("invalid key material format: must be AWS KMS ARN or ${ENV_VAR}, got: %s", keyMaterial),
-		nil,
-	)
-}
-
-// NewAWSEncryptionAdapterWithBranchKeyManager creates an AWS Encryption SDK adapter with a branch key manager.
-// Returns both the adapter (for encryption operations) and the manager (for branch key provisioning).
-// This is the primary constructor for production use where branch key management is needed.
+//   - Environment variable reference: "${ENCRYPTION_KEK}" (resolves to base64-encoded AES-256 key)
 //
 // Parameters:
 //   - keyMaterial: KMS ARN or environment variable reference
-//   - dynamoDBTableName: DynamoDB table for branch key caching (uses default if empty)
-//   - branchKeyTTL: TTL for cached branch keys (uses default if zero)
+//   - dynamoDBTableName: DynamoDB table for branch key caching (uses default if empty, ignored for env var scenario)
+//   - branchKeyTTL: TTL for cached branch keys (uses default if zero, ignored for env var scenario)
 //
 // Returns:
 //   - adapter: EncryptionPort implementation for Encrypt/Decrypt operations
-//   - manager: BranchKeyManager implementation for provisioning/managing branch keys
+//   - manager: BranchKeyManager implementation for provisioning/managing branch keys (nil for env var scenario)
 //   - error: If initialization fails
-func NewAWSEncryptionAdapterWithBranchKeyManager(keyMaterial, dynamoDBTableName string, branchKeyTTL time.Duration) (*AWSAdapter, *AWSBranchKeyManager, error) {
+func NewAWSEncryption(keyMaterial, dynamoDBTableName string, branchKeyTTL time.Duration) (*AWSAdapter, *AWSBranchKeyManager, error) {
 	if keyMaterial == "" {
 		return nil, nil, encryption.NewKEKUnavailableError("key encryption key material is required", nil)
 	}
 
-	// For environment variable references, branch key manager is not available
+	// Scenario A: Environment variable reference for development (raw AES keyring)
 	if strings.HasPrefix(keyMaterial, "${") && strings.HasSuffix(keyMaterial, "}") {
 		envVarName := keyMaterial[2 : len(keyMaterial)-1]
 		adapter, err := newAdapterWithEnvVarKEK(envVarName)
@@ -102,7 +71,7 @@ func NewAWSEncryptionAdapterWithBranchKeyManager(keyMaterial, dynamoDBTableName 
 		return adapter, nil, nil
 	}
 
-	// Assume it's an AWS KMS ARN with hierarchical keyring configuration
+	// Scenario B: AWS KMS ARN for production (hierarchical keyring with DynamoDB caching)
 	if strings.HasPrefix(keyMaterial, "arn:aws:kms:") {
 		adapter, keyStore, err := newAdapterWithKMSARNAndKeyStore(keyMaterial, dynamoDBTableName, branchKeyTTL)
 		if err != nil {

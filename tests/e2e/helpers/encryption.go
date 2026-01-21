@@ -17,7 +17,8 @@ import (
 // NewEncryptionAdapter creates an encryption adapter for testing
 // Supports both AWS KMS ARN and environment variable KEK references (${VAR})
 func NewEncryptionAdapter(keyMaterial string) (ports.EncryptionPort, error) {
-	return awsadapter.NewAWSEncryptionAdapter(keyMaterial, "", 0*time.Second)
+	adapter, _, err := awsadapter.NewAWSEncryption(keyMaterial, "", 0*time.Second)
+	return adapter, err
 }
 
 // EncryptionTestHelper provides helper functions for encryption vault E2E testing

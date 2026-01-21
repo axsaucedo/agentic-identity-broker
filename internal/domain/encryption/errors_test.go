@@ -212,9 +212,9 @@ func TestFormatSanitizedError(t *testing.T) {
 			name:      "safe context keys",
 			operation: "decryption failed",
 			context: map[string]string{
-				"service_id":  "service-123",
-				"session_id":  "session-456",
-				"principal":   "user@example.com",
+				"service_id": "service-123",
+				"session_id": "session-456",
+				"principal":  "user@example.com",
 			},
 			expected: "decryption failed with context: map[principal:user@example.com service_id:service-123 session_id:session-456]",
 		},

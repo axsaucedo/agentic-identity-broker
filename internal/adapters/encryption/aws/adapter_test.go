@@ -8,15 +8,15 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 )
 
-// TestNewAWSEncryptionAdapterWithEnvVar tests adapter creation with environment variable KEK
-func TestNewAWSEncryptionAdapterWithEnvVar(t *testing.T) {
+// TestNewAWSEncryptionWithEnvVar tests adapter creation with environment variable KEK
+func TestNewAWSEncryptionWithEnvVar(t *testing.T) {
 	// Setup: Create test KEK material (base64-encoded 32 bytes)
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
 	os.Setenv("TEST_KEK", testKEK)
 	defer os.Unsetenv("TEST_KEK")
 
 	// Test: Create adapter with environment variable reference
-	adapter, err := NewAWSEncryptionAdapter("${TEST_KEK}", "", 0)
+	adapter, _, err := NewAWSEncryption("${TEST_KEK}", "", 0)
 
 	// Verify: Adapter created successfully
 	if err != nil {
@@ -27,13 +27,13 @@ func TestNewAWSEncryptionAdapterWithEnvVar(t *testing.T) {
 	}
 }
 
-// TestNewAWSEncryptionAdapterWithEnvVarMissing tests adapter creation fails when env var not set
-func TestNewAWSEncryptionAdapterWithEnvVarMissing(t *testing.T) {
+// TestNewAWSEncryptionWithEnvVarMissing tests adapter creation fails when env var not set
+func TestNewAWSEncryptionWithEnvVarMissing(t *testing.T) {
 	// Ensure env var is not set
 	os.Unsetenv("MISSING_KEK_ENV_VAR")
 
 	// Test: Try to create adapter with missing environment variable
-	adapter, err := NewAWSEncryptionAdapter("${MISSING_KEK_ENV_VAR}", "", 0)
+	adapter, _, err := NewAWSEncryption("${MISSING_KEK_ENV_VAR}", "", 0)
 
 	// Verify: Error returned
 	if err == nil {
@@ -51,14 +51,14 @@ func TestNewAWSEncryptionAdapterWithEnvVarMissing(t *testing.T) {
 	_ = kekErr // silence unused
 }
 
-// TestNewAWSEncryptionAdapterWithInvalidEnvVarFormat tests adapter rejects invalid base64 KEK
-func TestNewAWSEncryptionAdapterWithInvalidEnvVarFormat(t *testing.T) {
+// TestNewAWSEncryptionWithInvalidEnvVarFormat tests adapter rejects invalid base64 KEK
+func TestNewAWSEncryptionWithInvalidEnvVarFormat(t *testing.T) {
 	// Setup: Create invalid base64 KEK material
 	os.Setenv("INVALID_KEK", "not-valid-base64!!!")
 	defer os.Unsetenv("INVALID_KEK")
 
 	// Test: Try to create adapter with invalid base64
-	adapter, err := NewAWSEncryptionAdapter("${INVALID_KEK}", "", 0)
+	adapter, _, err := NewAWSEncryption("${INVALID_KEK}", "", 0)
 
 	// Verify: Error returned
 	if err == nil {
@@ -74,15 +74,15 @@ func TestNewAWSEncryptionAdapterWithInvalidEnvVarFormat(t *testing.T) {
 	}
 }
 
-// TestNewAWSEncryptionAdapterWithInvalidKEKLength tests adapter rejects KEK with wrong length
-func TestNewAWSEncryptionAdapterWithInvalidKEKLength(t *testing.T) {
+// TestNewAWSEncryptionWithInvalidKEKLength tests adapter rejects KEK with wrong length
+func TestNewAWSEncryptionWithInvalidKEKLength(t *testing.T) {
 	// Setup: Create 16-byte KEK (too short, need 32)
 	// "SGVsbG8gV29ybGQgSGVsbG8gV29ybGQ=" is 16 bytes base64-encoded
 	os.Setenv("SHORT_KEK", "SGVsbG8gV29ybGQgSGVsbG8gV29ybGQ=")
 	defer os.Unsetenv("SHORT_KEK")
 
 	// Test: Try to create adapter with 16-byte KEK
-	adapter, err := NewAWSEncryptionAdapter("${SHORT_KEK}", "", 0)
+	adapter, _, err := NewAWSEncryption("${SHORT_KEK}", "", 0)
 
 	// Verify: Error returned
 	if err == nil {
@@ -98,8 +98,8 @@ func TestNewAWSEncryptionAdapterWithInvalidKEKLength(t *testing.T) {
 	}
 }
 
-// TestNewAWSEncryptionAdapterWithInvalidFormat tests adapter rejects invalid key material format
-func TestNewAWSEncryptionAdapterWithInvalidFormat(t *testing.T) {
+// TestNewAWSEncryptionWithInvalidFormat tests adapter rejects invalid key material format
+func TestNewAWSEncryptionWithInvalidFormat(t *testing.T) {
 	tests := []struct {
 		name        string
 		keyMaterial string
@@ -112,7 +112,7 @@ func TestNewAWSEncryptionAdapterWithInvalidFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adapter, err := NewAWSEncryptionAdapter(tt.keyMaterial, "", 0)
+			adapter, _, err := NewAWSEncryption(tt.keyMaterial, "", 0)
 
 			if err == nil {
 				t.Fatal("expected error for invalid format")
@@ -135,7 +135,7 @@ func TestEncryptDecryptRoundtrip(t *testing.T) {
 	os.Setenv("TEST_KEK_ROUNDTRIP", testKEK)
 	defer os.Unsetenv("TEST_KEK_ROUNDTRIP")
 
-	adapter, err := NewAWSEncryptionAdapter("${TEST_KEK_ROUNDTRIP}", "", 0)
+	adapter, _, err := NewAWSEncryption("${TEST_KEK_ROUNDTRIP}", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestContextMismatchDetection(t *testing.T) {
 	os.Setenv("TEST_KEK_CONTEXT", testKEK)
 	defer os.Unsetenv("TEST_KEK_CONTEXT")
 
-	adapter, err := NewAWSEncryptionAdapter("${TEST_KEK_CONTEXT}", "", 0)
+	adapter, _, err := NewAWSEncryption("${TEST_KEK_CONTEXT}", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestUniqueEncryptionPerCall(t *testing.T) {
 	os.Setenv("TEST_KEK_UNIQUE", testKEK)
 	defer os.Unsetenv("TEST_KEK_UNIQUE")
 
-	adapter, err := NewAWSEncryptionAdapter("${TEST_KEK_UNIQUE}", "", 0)
+	adapter, _, err := NewAWSEncryption("${TEST_KEK_UNIQUE}", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestEncryptEmptyPlaintext(t *testing.T) {
 	os.Setenv("TEST_KEK_EMPTY", testKEK)
 	defer os.Unsetenv("TEST_KEK_EMPTY")
 
-	adapter, err := NewAWSEncryptionAdapter("${TEST_KEK_EMPTY}", "", 0)
+	adapter, _, err := NewAWSEncryption("${TEST_KEK_EMPTY}", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestDecryptEmptyCiphertext(t *testing.T) {
 	os.Setenv("TEST_KEK_EMPTY_CIPHER", testKEK)
 	defer os.Unsetenv("TEST_KEK_EMPTY_CIPHER")
 
-	adapter, err := NewAWSEncryptionAdapter("${TEST_KEK_EMPTY_CIPHER}", "", 0)
+	adapter, _, err := NewAWSEncryption("${TEST_KEK_EMPTY_CIPHER}", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestTamperedCiphertextDetection(t *testing.T) {
 	os.Setenv("TEST_KEK_TAMPER", testKEK)
 	defer os.Unsetenv("TEST_KEK_TAMPER")
 
-	adapter, err := NewAWSEncryptionAdapter("${TEST_KEK_TAMPER}", "", 0)
+	adapter, _, err := NewAWSEncryption("${TEST_KEK_TAMPER}", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}
@@ -426,7 +426,7 @@ func BenchmarkEncrypt(b *testing.B) {
 	os.Setenv("BENCH_KEK", testKEK)
 	defer os.Unsetenv("BENCH_KEK")
 
-	adapter, err := NewAWSEncryptionAdapter("${BENCH_KEK}", "", 0)
+	adapter, _, err := NewAWSEncryption("${BENCH_KEK}", "", 0)
 	if err != nil {
 		b.Fatalf("failed to create adapter: %v", err)
 	}
@@ -453,7 +453,7 @@ func BenchmarkDecrypt(b *testing.B) {
 	os.Setenv("BENCH_KEK_DECRYPT", testKEK)
 	defer os.Unsetenv("BENCH_KEK_DECRYPT")
 
-	adapter, err := NewAWSEncryptionAdapter("${BENCH_KEK_DECRYPT}", "", 0)
+	adapter, _, err := NewAWSEncryption("${BENCH_KEK_DECRYPT}", "", 0)
 	if err != nil {
 		b.Fatalf("failed to create adapter: %v", err)
 	}
@@ -486,7 +486,7 @@ func TestKMSHierarchicalKeyringAdapterCreation(t *testing.T) {
 	// This validates the hierarchical keyring initialization flow
 	invalidKMSARN := "arn:aws:kms:us-west-2:123456789012:key/invalid-test-key"
 
-	adapter, err := NewAWSEncryptionAdapter(invalidKMSARN, "", 0)
+	adapter, _, err := NewAWSEncryption(invalidKMSARN, "", 0)
 
 	// Expected to fail due to invalid KMS key in test environment
 	if err == nil {
@@ -506,9 +506,9 @@ func TestKMSHierarchicalKeyringAdapterCreation(t *testing.T) {
 // TestKMSARNValidation tests that KMS ARN format validation works
 func TestKMSARNValidation(t *testing.T) {
 	tests := []struct {
-		name       string
+		name        string
 		keyMaterial string
-		shouldFail bool
+		shouldFail  bool
 	}{
 		{
 			name:        "valid_kms_arn_format",
@@ -523,7 +523,7 @@ func TestKMSARNValidation(t *testing.T) {
 		{
 			name:        "invalid_kms_arn_format",
 			keyMaterial: "arn:aws:s3:::my-bucket", // S3 ARN, not KMS
-			shouldFail:  true, // Will fail on ARN format validation
+			shouldFail:  true,                     // Will fail on ARN format validation
 		},
 		{
 			name:        "malformed_arn",
@@ -534,7 +534,7 @@ func TestKMSARNValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adapter, err := NewAWSEncryptionAdapter(tt.keyMaterial, "", 0)
+			adapter, _, err := NewAWSEncryption(tt.keyMaterial, "", 0)
 
 			if !tt.shouldFail && err != nil {
 				t.Errorf("expected no error, got: %v", err)
@@ -564,7 +564,7 @@ func TestHierarchicalKeyringWithEnvVarFallback(t *testing.T) {
 	os.Setenv("FALLBACK_KEK", testKEK)
 	defer os.Unsetenv("FALLBACK_KEK")
 
-	adapter, err := NewAWSEncryptionAdapter("${FALLBACK_KEK}", "", 0)
+	adapter, _, err := NewAWSEncryption("${FALLBACK_KEK}", "", 0)
 
 	// Should succeed with env var KEK
 	if err != nil {
@@ -617,7 +617,7 @@ func TestAdapterInterfaceImplementation(t *testing.T) {
 	os.Setenv("INTERFACE_KEK", testKEK)
 	defer os.Unsetenv("INTERFACE_KEK")
 
-	adapter, err := NewAWSEncryptionAdapter("${INTERFACE_KEK}", "", 0)
+	adapter, _, err := NewAWSEncryption("${INTERFACE_KEK}", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create adapter: %v", err)
 	}

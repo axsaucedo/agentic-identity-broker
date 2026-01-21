@@ -70,4 +70,3 @@ func (m *AWSBranchKeyManager) Get(ctx context.Context, serviceID string) (string
 	// (assumes key exists since it was created by Create())
 	return branchKeyID, nil
 }
-

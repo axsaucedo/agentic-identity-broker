@@ -33,9 +33,9 @@ func TestSessionWithService(serviceName string) *TestSessionData {
 	serviceID := services[serviceName]
 
 	return &TestSessionData{
-		Principal:   "test-user@example.com",
-		ServiceID:   serviceID,
-		AccessToken: "test-access-token-" + serviceName + "-" + generateRandomSuffix(8),
+		Principal:    "test-user@example.com",
+		ServiceID:    serviceID,
+		AccessToken:  "test-access-token-" + serviceName + "-" + generateRandomSuffix(8),
 		RefreshToken: "test-refresh-token-" + serviceName + "-" + generateRandomSuffix(8),
 		EncryptionCtx: map[string]string{
 			"service_id": serviceName,
@@ -49,9 +49,9 @@ func TestSessionForPrincipal(principal, serviceName string) *TestSessionData {
 	serviceID := services[serviceName]
 
 	return &TestSessionData{
-		Principal:   principal,
-		ServiceID:   serviceID,
-		AccessToken: "test-access-token-" + principal + "-" + serviceName + "-" + generateRandomSuffix(8),
+		Principal:    principal,
+		ServiceID:    serviceID,
+		AccessToken:  "test-access-token-" + principal + "-" + serviceName + "-" + generateRandomSuffix(8),
 		RefreshToken: "test-refresh-token-" + principal + "-" + serviceName + "-" + generateRandomSuffix(8),
 		EncryptionCtx: map[string]string{
 			"service_id": serviceName,
@@ -92,11 +92,11 @@ func TestKEKMaterialDeterministic() string {
 // TestEncryptionContexts provides various encryption contexts for testing
 func TestEncryptionContexts() map[string]map[string]string {
 	return map[string]map[string]string{
-		"oauth2": {"service_id": "oauth2"},
-		"github": {"service_id": "github"},
-		"google": {"service_id": "google"},
-		"wrong_context": {"service_id": "wrong_service"},
-		"empty_context": {},
+		"oauth2":          {"service_id": "oauth2"},
+		"github":          {"service_id": "github"},
+		"google":          {"service_id": "google"},
+		"wrong_context":   {"service_id": "wrong_service"},
+		"empty_context":   {},
 		"invalid_context": {"wrong_key": "wrong_value"},
 	}
 }
