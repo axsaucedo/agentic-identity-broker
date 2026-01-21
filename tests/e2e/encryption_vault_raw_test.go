@@ -30,7 +30,6 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 		testStorage    *storageadapter.Adapter
 		storageFactory *bootstrap.StorageFactory
 		logger         *slog.Logger
-		localStack     *bootstrap.LocalStackContainer
 	)
 
 	// Shared BeforeEach for all test contexts
@@ -49,9 +48,6 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 		testStorage, err = storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Initialize LocalStack for integration tests (set to nil by default)
-		localStack = nil
-
 		// Setup environment variable KEK for all tests
 		// Using a deterministic 32-byte base64-encoded key (256-bit AES key)
 		testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
@@ -59,18 +55,14 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 
 		// Create encryption adapter directly from production code
 		// This tests the actual aws.NewAWSEncryptionAdapter implementation
-		var err2 error
-		adapter, err2 = awsadapter.NewAWSEncryptionAdapter("${TEST_ENCRYPTION_KEK}", "", 0)
-		Expect(err2).ToNot(HaveOccurred(), "encryption adapter should initialize with environment variable KEK")
+		adapter, err = awsadapter.NewAWSEncryptionAdapter("${TEST_ENCRYPTION_KEK}", "", 0)
+		Expect(err).ToNot(HaveOccurred(), "encryption adapter should initialize with environment variable KEK")
 	})
 
 	AfterEach(func() {
 		// Cleanup resources
 		if testStorage != nil {
 			storageFactory.CloseStorage(testStorage)
-		}
-		if localStack != nil {
-			localStack.Terminate(ctx)
 		}
 		// Unset environment variable
 		os.Unsetenv("TEST_ENCRYPTION_KEK")
