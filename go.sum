@@ -10,6 +10,10 @@ github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
+github.com/awnumar/memcall v0.4.0 h1:B7hgZYdfH6Ot1Goaz8jGne/7i8xD4taZie/PNSFZ29g=
+github.com/awnumar/memcall v0.4.0/go.mod h1:8xOx1YbfyuCg3Fy6TO8DK0kZUua3V42/goA5Ru47E8w=
+github.com/awnumar/memguard v0.23.0 h1:sJ3a1/SWlcuKIQ7MV+R9p0Pvo9CWsMbGZvcZQtmc68A=
+github.com/awnumar/memguard v0.23.0/go.mod h1:olVofBrsPdITtJ2HgxQKrEYEMyIBAIciVG4wNnZhW9M=
 github.com/aws/aws-cryptographic-material-providers-library/releases/go/dynamodb v0.3.0 h1:W2psoXXwbASCjcuTaIcMF8SCT897im9TXJ39xJv2zVI=
 github.com/aws/aws-cryptographic-material-providers-library/releases/go/dynamodb v0.3.0/go.mod h1:yyr6CNQRAKEcE2tKwwhDo6Xva0/LBdRCqCkL5IOZ9T8=
 github.com/aws/aws-cryptographic-material-providers-library/releases/go/kms v0.3.0 h1:zvZHvrcEn9YBd58yTVWtxfdzmMGYF9sX+xDCIN71sb0=

@@ -34,6 +34,8 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/awnumar/memcall v0.4.0 // indirect
+	github.com/awnumar/memguard v0.23.0 // indirect
 	github.com/aws/aws-cryptographic-material-providers-library/releases/go/dynamodb v0.3.0 // indirect
 	github.com/aws/aws-cryptographic-material-providers-library/releases/go/kms v0.3.0 // indirect
 	github.com/aws/aws-cryptographic-material-providers-library/releases/go/primitives v0.3.0 // indirect
