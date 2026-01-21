@@ -19,8 +19,6 @@ interface ServiceGrantListProps {
   grants: UserGrant[];
   /** Callback when grants change */
   onGrantsChange: (delegatedTokens: DelegatedToken[]) => void;
-  /** Whether the list is in editable mode */
-  isEditable: boolean;
 }
 
 interface ServiceState {
@@ -36,7 +34,6 @@ export function ServiceGrantList({
   services,
   grants,
   onGrantsChange,
-  isEditable,
 }: ServiceGrantListProps) {
   // Track state for each service
   const [serviceStates, setServiceStates] = useState<Map<string, ServiceState>>(new Map());
