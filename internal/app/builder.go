@@ -64,11 +64,14 @@ type Builder struct {
 	logger           *slog.Logger
 	encryption       ports.EncryptionPort    // Optional: custom encryption implementation
 	branchKeyManager ports.BranchKeyManager  // Optional: custom branch key manager
+	staticWebResourcesPath string
 }
 
 // NewBuilder creates a new application builder.
 func NewBuilder() *Builder {
-	return &Builder{}
+	return &Builder{
+		staticWebResourcesPath: "web/dist",
+	}
 }
 
 // WithConfig sets the application configuration for the builder.
@@ -102,6 +105,11 @@ func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
 // Use this to inject a test or custom branch key manager.
 func (b *Builder) WithBranchKeyManager(mgr ports.BranchKeyManager) *Builder {
 	b.branchKeyManager = mgr
+	return b
+}
+
+func (b *Builder) WithStaticWebResourcesPath(path string) *Builder {
+	b.staticWebResourcesPath = path
 	return b
 }
 
@@ -250,7 +258,6 @@ func (b *Builder) Build() (*App, error) {
 			"dynamodb_read_timeout", b.config.Encryption.DynamoDBReadTimeout,
 			"dynamodb_write_timeout", b.config.Encryption.DynamoDBWriteTimeout)
 	} else {
-		// Development: No-op encryption for local development without AWS dependencies
 		encryptor = noop.NewNoOpEncryption()
 		b.logger.Info("No-op encryption enabled (development mode)")
 
@@ -314,7 +321,7 @@ func (b *Builder) Build() (*App, error) {
 		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
 			Service: app.OAuth2Service,
 		},
-		SPA: handlers.NewSPAHandler("web/dist/consent", b.logger),
+		SPA: handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
 	}
 
 	return app, nil

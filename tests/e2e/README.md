@@ -2075,11 +2075,584 @@ Describe("OAuth2 token exchange", func() {
 9. **Keep It() blocks concise** - 5-15 lines typical, not 30+
 10. **Group related tests** - use nested Describe/Context for organization
 
+## Frontend E2E Testing with Playwright
+
+This section covers E2E testing for the frontend UI using Playwright and Ginkgo.
+
+### Running Frontend E2E Tests
+
+**Built Mode** (Production-like, self-contained, recommended for CI):
+
+```bash
+# Run all frontend E2E tests (built mode with headless browser)
+just test-frontend-e2e
+
+# Run with browser visible for debugging
+HEADLESS=false just test-frontend-e2e
+
+# Run with visible browser AND verbose output
+HEADLESS=false ginkgo -v ./tests/e2e/frontend/
+
+# Run specific test
+ginkgo -v --focus="should display service scopes" ./tests/e2e/frontend/
+```
+
+**Dev Mode** (Interactive development with Vite HMR, requires `just web-dev`):
+
+Dev mode connects Playwright to the Vite dev server (http://localhost:3000) for hot module reloading. The test backend automatically runs on fixed port 8000 to match Vite's proxy configuration.
+
+```bash
+# Terminal 1: Start Vite dev server with HMR
+just web-dev
+
+# Terminal 2: Run tests in dev mode
+E2E_FRONTEND_MODE=dev ginkgo -v ./tests/e2e/frontend/
+
+# Or with visible browser for debugging
+HEADLESS=false E2E_FRONTEND_MODE=dev ginkgo -v ./tests/e2e/frontend/
+```
+
+**Key Differences:**
+- **Built Mode**: Frontend assets bundled and served by Go backend on random port, no HMR, test-isolated
+- **Dev Mode**: Frontend served by Vite (port 3000) with HMR, backend on fixed port 8000, proxied API requests via Vite
+
+**Architecture Details (Dev Mode):**
+- Frontend: http://localhost:3000 (Vite dev server with HMR)
+- Backend: http://localhost:8000 (Test server on fixed port)
+- Vite proxy: http://localhost:3000/api/* → http://localhost:8000/api/*
+- Authentication: X-Remote-User header injected by Vite proxy (dev@example.com)
+
+### Test Organization
+
+Frontend E2E tests are located in `/tests/e2e/frontend/`:
+
+```
+tests/e2e/frontend/
+├── frontend_suite_test.go        # Suite entry point (browser/Playwright setup)
+├── consent_flow_test.go          # Tests for consent management flow
+├── bootstrap/
+│   └── playwright.go             # Playwright initialization
+├── fixtures/
+│   └── frontend.go               # Frontend-specific test data
+├── pages/                        # Page Object Models
+│   ├── consent_page.go           # Consent management page
+│   ├── grant_management_page.go  # Grant management page
+│   └── [page_name]_page.go       # Add new pages here
+├── helpers/
+│   └── ui_helpers.go             # UI-specific helper functions
+└── README.md                      # This file
+```
+
+### Selector Best Practices
+
+When writing frontend E2E tests, use this selector hierarchy (best to worst):
+
+#### 1. **Semantic Selectors (BEST)** ✅
+
+Use `GetByRole`, `GetByLabel`, `GetByText` - these test what users actually see:
+
+```go
+// Find button by its accessible role and visible text
+button := cp.page().GetByRole("button", playwright.PageGetByRoleOptions{Name: "Approve & Delegate"})
+
+// Find input by its associated label
+input := cp.page().GetByLabel("Expiration")
+
+// Find element by visible text
+link := cp.page().GetByText("Learn More")
+
+// Find checkbox/radio by label
+checkbox := cp.page().GetByRole("checkbox")
+```
+
+**Why semantic selectors are best:**
+- Test what users actually see (accessibility-first)
+- Resistant to styling/CSS changes
+- Self-documenting test intent
+- Improve accessibility of your application
+
+#### 2. **data-testid Attributes** - Use as fallback only
+
+When semantic selectors aren't sufficient:
+
+```go
+// Use only for complex components without clear semantic role
+badge := cp.page().Locator("[data-testid='status-badge']")
+```
+
+**When to use:**
+- Complex components with no clear semantic role
+- When multiple elements share the same role/label
+- Last resort before brittle selectors
+
+**Never use for:**
+- Simple buttons, links, form inputs (use semantic selectors)
+- Components with clear ARIA roles
+
+#### 3. **IDs** - Acceptable but risky ⚠️
+
+```go
+// Use sparingly - can change for styling reasons
+button := cp.page().Locator("#submit-button")
+```
+
+#### 4. **CSS Classes** - Brittle ❌
+
+```go
+// AVOID - breaks whenever CSS is refactored
+// button := cp.page().Locator(".btn.primary.large")
+```
+
+#### 5. **XPath** - Last resort ❌
+
+```go
+// AVOID - extremely fragile and hard to maintain
+// button := cp.page().Locator("xpath=//div[@class='card']//button[1]")
+```
+
+### Page Objects Pattern
+
+Page Objects encapsulate UI selectors and interactions into high-level methods. This makes tests more readable and maintainable.
+
+#### Structure
+
+```go
+package pages
+
+// ConsentPage represents a specific page/feature
+type ConsentPage struct {
+    page    playwright.Page
+    baseURL string
+}
+
+// NewConsentPage creates a page object
+func NewConsentPage(page playwright.Page, baseURL string) *ConsentPage {
+    return &ConsentPage{
+        page:    page,
+        baseURL: baseURL,
+    }
+}
+
+// High-level methods describe user actions
+func (cp *ConsentPage) NavigateToAgent(ctx context.Context, agentID string) error {
+    // Implementation: find element, click, wait, etc.
+}
+
+func (cp *ConsentPage) GetAvailableScopes(ctx context.Context) ([]string, error) {
+    // Implementation: extract data from page
+}
+
+func (cp *ConsentPage) DelegateService(ctx context.Context, serviceName string) error {
+    // Implementation: perform action
+}
+```
+
+#### Benefits
+
+1. **Readability**: Tests read like specifications
+   ```go
+   // Clear intent - no need to understand selectors
+   err := consentPage.DelegateService(ctx, "GitHub")
+   ```
+
+2. **Maintainability**: Change selectors in one place
+   ```go
+   // If GitHub service selector changes, update once in page object
+   // All tests using DelegateService() automatically use new selector
+   ```
+
+3. **Reusability**: Share complex interactions across tests
+   ```go
+   // Multiple tests can use the same high-level method
+   err := consentPage.SelectScope(ctx, "repo")
+   err := consentPage.ClearScope(ctx, "repo")
+   ```
+
+#### Page Object Guidelines
+
+1. **High-level methods** - Describe what the user does, not how
+   ```go
+   // ✅ Good: What user does
+   func (cp *ConsentPage) DelegateService(ctx context.Context, name string) error
+
+   // ❌ Bad: How it's implemented
+   func (cp *ConsentPage) ClickServiceButton(ctx context.Context, selector string) error
+   ```
+
+2. **No selectors in tests** - Selectors only in page object
+   ```go
+   // ✅ Good: Test uses page object method
+   err := consentPage.DelegateService(ctx, "GitHub")
+
+   // ❌ Bad: Test contains selectors
+   button := page.GetByRole("button", opts)
+   err := button.Click()
+   ```
+
+3. **Handle waits in page object** - Tests shouldn't manage timing
+   ```go
+   // ✅ Good: Page object handles waiting
+   func (cp *ConsentPage) GetAvailableScopes(ctx context.Context) ([]string, error) {
+       deadline := time.Now().Add(10 * time.Second)
+       for {
+           indicators := cp.page.Locator("div.inline-flex.items-center")
+           if count, _ := indicators.Count(); count > 0 {
+               // Extract scopes
+               return scopes, nil
+           }
+           if time.Now().After(deadline) {
+               return nil, fmt.Errorf("scopes not found after timeout")
+           }
+           time.Sleep(100 * time.Millisecond)
+       }
+   }
+
+   // ❌ Bad: Test manages timing
+   scopes, _ := consentPage.GetAvailableScopes(ctx)
+   time.Sleep(2 * time.Second)  // Hack to wait
+   ```
+
+4. **Return meaningful data** - Extract what tests need
+   ```go
+   // ✅ Good: Returns extracted data
+   func (cp *ConsentPage) GetAgentName(ctx context.Context) (string, error)
+   func (cp *ConsentPage) GetAvailableScopes(ctx context.Context) ([]string, error)
+
+   // ❌ Bad: Returns raw elements
+   func (cp *ConsentPage) GetAgentHeading(ctx context.Context) (playwright.Locator, error)
+   ```
+
+### Ginkgo By() for Longer Test Sequences
+
+For complex tests with multiple steps, use Ginkgo's `By()` function to organize and report progress:
+
+#### Structure
+
+```go
+It("should complete multi-step approval workflow", func() {
+    // By() organizes longer tests into logical steps
+    // Each By() prints as a progress line in test output
+
+    By("navigating to agent page")
+    err := consentPage.NavigateToAgent(ctx, testAgentID)
+    Expect(err).NotTo(HaveOccurred())
+
+    By("verifying agent details display")
+    agentName, err := consentPage.GetAgentName(ctx)
+    Expect(err).NotTo(HaveOccurred())
+    Expect(agentName).To(Equal("Test Agent"))
+
+    By("viewing available scopes")
+    scopes, err := consentPage.GetAvailableScopes(ctx)
+    Expect(err).NotTo(HaveOccurred())
+    Expect(scopes).To(HaveLen(2))
+
+    By("delegating GitHub service")
+    err = consentPage.DelegateService(ctx, "GitHub")
+    Expect(err).NotTo(HaveOccurred())
+
+    By("taking screenshot for verification")
+    err = consentPage.TakeScreenshot(ctx, "service_delegated")
+    Expect(err).NotTo(HaveOccurred())
+
+    GetLogger().Info("Workflow completed successfully")
+})
+```
+
+#### Test Output with By()
+
+```
+Consent Flow
+  should complete multi-step approval workflow
+    [By] navigating to agent page
+    [By] verifying agent details display
+    [By] viewing available scopes
+    [By] delegating GitHub service
+    [By] taking screenshot for verification
+    ✓ completed successfully (1.234s)
+```
+
+#### Guidelines for By()
+
+1. **One action per By()** - Keep steps focused
+   ```go
+   // ✅ Good
+   By("navigating to agent page")
+   err := consentPage.NavigateToAgent(ctx, agentID)
+
+   // ❌ Bad - multiple actions in one step
+   By("navigating and verifying")
+   consentPage.NavigateToAgent(ctx, agentID)
+   consentPage.GetAgentName(ctx)
+   ```
+
+2. **Use imperative form** - "verb the noun"
+   ```go
+   // ✅ Good verbs for By()
+   By("navigating to consent page")
+   By("viewing available scopes")
+   By("delegating GitHub service")
+   By("verifying successful completion")
+
+   // ❌ Bad
+   By("consent page navigation")
+   By("available scopes are visible")
+   ```
+
+3. **Include context in assertions** - Make failures clear
+   ```go
+   By("delegating GitHub service")
+   err := consentPage.DelegateService(ctx, "GitHub")
+   Expect(err).NotTo(HaveOccurred(), "Failed to delegate GitHub service")
+
+   By("verifying service appears delegated")
+   isDelegated, err := consentPage.IsServiceDelegated(ctx, "GitHub")
+   Expect(err).NotTo(HaveOccurred(), "Failed to check service status")
+   Expect(isDelegated).To(BeTrue(), "GitHub service should show as delegated")
+   ```
+
+4. **Use for complex workflows only** - Simple tests don't need By()
+   ```go
+   // ✅ Good: By() for multi-step workflow
+   It("should complete full consent workflow", func() {
+       By("navigating to page")
+       // ...
+       By("clicking button")
+       // ...
+       By("verifying result")
+       // ...
+   })
+
+   // ✅ OK: Simple test without By()
+   It("should display agent name", func() {
+       err := consentPage.NavigateToAgent(ctx, agentID)
+       Expect(err).NotTo(HaveOccurred())
+
+       name, err := consentPage.GetAgentName(ctx)
+       Expect(err).NotTo(HaveOccurred())
+       Expect(name).NotTo(BeEmpty())
+   })
+   ```
+
+#### Example: Multi-Step Workflow
+
+```go
+var _ = Describe("Consent Workflow", func() {
+    var (
+        consentPage *pages.ConsentPage
+        testAgentID string
+    )
+
+    BeforeEach(func() {
+        // Setup...
+    })
+
+    It("should complete grant approval workflow with service delegation", func() {
+        By("navigating to agent consent page")
+        err := consentPage.NavigateToAgent(ctx, testAgentID)
+        Expect(err).NotTo(HaveOccurred(), "Navigation failed")
+
+        By("viewing agent details and required services")
+        agentName, err := consentPage.GetAgentName(ctx)
+        Expect(err).NotTo(HaveOccurred())
+        Expect(agentName).NotTo(BeEmpty())
+
+        By("retrieving list of available scopes")
+        scopes, err := consentPage.GetAvailableScopes(ctx)
+        Expect(err).NotTo(HaveOccurred())
+        Expect(scopes).NotTo(BeEmpty(), "Should have at least one scope")
+
+        By("delegating GitHub service access")
+        err = consentPage.DelegateService(ctx, "GitHub")
+        Expect(err).NotTo(HaveOccurred())
+
+        By("verifying service shows as delegated")
+        isDelegated, err := consentPage.IsMandatoryServiceConnected(ctx, "GitHub")
+        Expect(err).NotTo(HaveOccurred())
+        Expect(isDelegated).To(BeTrue(), "GitHub should show as connected")
+
+        By("taking final verification screenshot")
+        err = consentPage.TakeScreenshot(ctx, "workflow_completed")
+        Expect(err).NotTo(HaveOccurred())
+
+        GetLogger().Info("Consent workflow completed successfully",
+            "agent_name", agentName,
+            "scopes_found", len(scopes),
+        )
+    })
+})
+```
+
+### Frontend E2E Testing Best Practices
+
+#### 1. **Always use page objects** - Never put selectors in tests
+
+```go
+// ✅ Good
+err := consentPage.DelegateService(ctx, "GitHub")
+
+// ❌ Bad - selector in test
+button := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: "Delegate"})
+err := button.Click()
+```
+
+#### 2. **Test user workflows** - Not implementation details
+
+```go
+// ✅ Good - tests what user does
+func (cp *ConsentPage) DelegateService(ctx context.Context, name string) error {
+    serviceHeading := cp.page().GetByRole("heading", opts)
+    button := serviceHeading.GetByRole("button", opts)
+    return button.Click()
+}
+
+// ❌ Bad - tests React state directly
+Expect(consentPage.GetServiceState(ctx, "GitHub")).To(Equal("delegated"))
+```
+
+#### 3. **Wait for elements implicitly** - Not with sleep()
+
+```go
+// ✅ Good - Playwright waits automatically
+button := cp.page().GetByRole("button", opts)
+err := button.Click()  // Waits for clickable
+
+// ❌ Bad - explicit waits
+time.Sleep(2 * time.Second)  // Race condition!
+button := cp.page().GetByRole("button", opts)
+err := button.Click()
+```
+
+#### 4. **Use descriptive assertion messages**
+
+```go
+// ✅ Good
+Expect(scopes).NotTo(BeEmpty(), "Should have at least one scope available from service")
+Expect(isDelegated).To(BeTrue(), "GitHub service should show as delegated after clicking")
+
+// ❌ Bad
+Expect(scopes).NotTo(BeEmpty())
+Expect(isDelegated).To(BeTrue())
+```
+
+#### 5. **Organize related tests with Context**
+
+```go
+// ✅ Good - organized by user path
+Describe("OAuth2 Consent Flow", func() {
+    Describe("when user views service details", func() {
+        It("should display service name", func() { /* */ })
+        It("should display required scopes", func() { /* */ })
+    })
+
+    Describe("when user delegates service", func() {
+        It("should mark service as connected", func() { /* */ })
+        It("should show success message", func() { /* */ })
+    })
+})
+
+// ❌ Bad - random organization
+Describe("Consent Tests", func() {
+    It("displays name", func() { /* */ })
+    It("confirms delegation", func() { /* */ })
+    It("shows scopes", func() { /* */ })
+    It("delegation success", func() { /* */ })
+})
+```
+
+### Common Frontend Testing Patterns
+
+#### Pattern: Testing Visibility
+
+```go
+It("should display service scopes", func() {
+    By("navigating to service page")
+    err := consentPage.NavigateToAgent(ctx, agentID)
+    Expect(err).NotTo(HaveOccurred())
+
+    By("retrieving visible scopes")
+    scopes, err := consentPage.GetAvailableScopes(ctx)
+    Expect(err).NotTo(HaveOccurred())
+
+    By("verifying expected scopes are displayed")
+    Expect(scopes).To(ContainElement("repo"))
+    Expect(scopes).To(ContainElement("user"))
+})
+```
+
+#### Pattern: Testing User Interaction
+
+```go
+It("should delegate service on button click", func() {
+    By("navigating to service page")
+    err := consentPage.NavigateToAgent(ctx, agentID)
+    Expect(err).NotTo(HaveOccurred())
+
+    By("clicking delegate button")
+    err = consentPage.DelegateService(ctx, "GitHub")
+    Expect(err).NotTo(HaveOccurred())
+
+    By("verifying service shows as delegated")
+    isDelegated, err := consentPage.IsMandatoryServiceConnected(ctx, "GitHub")
+    Expect(err).NotTo(HaveOccurred())
+    Expect(isDelegated).To(BeTrue())
+})
+```
+
+#### Pattern: Testing Error Handling
+
+```go
+It("should show error message on failure", func() {
+    By("navigating to page")
+    err := consentPage.NavigateToAgent(ctx, agentID)
+    Expect(err).NotTo(HaveOccurred())
+
+    By("attempting invalid action")
+    // Simulate error condition
+
+    By("verifying error message appears")
+    errorMsg, err := consentPage.GetErrorMessage(ctx)
+    Expect(err).NotTo(HaveOccurred())
+    Expect(errorMsg).To(ContainSubstring("required"))
+})
+```
+
+### Debugging Frontend Tests
+
+#### Enable Visible Browser
+
+```bash
+# Run with browser visible for debugging
+HEADLESS=false ginkgo -v --focus="test-name" ./tests/e2e/frontend/
+```
+
+#### Add Screenshots in Tests
+
+```go
+By("taking screenshot at this point")
+err := consentPage.TakeScreenshot(ctx, "debug-point-name")
+Expect(err).NotTo(HaveOccurred())
+// Screenshot saved to tests/e2e/frontend/screenshots/
+```
+
+#### Add Detailed Logging
+
+```go
+By("checking service status")
+isDelegated, err := consentPage.IsMandatoryServiceConnected(ctx, "GitHub")
+GetLogger().Info("Service check complete",
+    "service", "GitHub",
+    "is_delegated", isDelegated,
+    "error", err,
+)
+```
+
 ## See Also
 
 - [/tests/e2e/fixtures/README.md](fixtures/README.md) - Detailed fixture documentation
 - [/tests/e2e/fixtures/FIXTURE_EXAMPLES.md](fixtures/FIXTURE_EXAMPLES.md) - Comprehensive fixture examples
 - [/tests/e2e/bootstrap/test_server.go](bootstrap/test_server.go) - Server implementation details
+- [/tests/e2e/pages/](pages/) - Page Object implementations
 - [/specs/009-oauth2-auth-server/spec.md](../../specs/009-oauth2-auth-server/spec.md) - Feature specification
 - `/ARCHITECTURE.md` - System architecture overview
 - `/justfile` - Available test commands

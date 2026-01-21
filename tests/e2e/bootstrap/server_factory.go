@@ -106,16 +106,10 @@ func (f *ServerFactory) BuildApp(storage interface{}) (*app.App, error) {
 	builder.
 		WithConfig(f.config).
 		WithStorage(storageAdapter).
-		WithLogger(f.logger)
+		WithLogger(f.logger).
+		WithStaticWebResourcesPath("../../../web/dist")
 
-	// Build production App
-	// This follows the exact same DI wiring as production main()
-	built, err := builder.Build()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build app: %w", err)
-	}
-
-	return built, nil
+	return builder.Build()
 }
 
 // ValidateFactory checks factory is properly initialized.

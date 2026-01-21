@@ -1,10 +1,9 @@
-package unit
+package server
 
 import (
 	"testing"
 	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -318,7 +317,7 @@ func TestServerConfigValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := server.ValidateServerConfig(&tt.config)
+			err := ValidateServerConfig(&tt.config)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("ValidateServerConfig() expected error containing %q, got nil", tt.errMsg)

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
@@ -104,6 +106,12 @@ func NewTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
 	// Register production routes using production routing setup
 	// This ensures proper middleware application: some routes are public (metadata, token),
 	// while others require authentication (authorize, consent API)
+	// However, we need to customize SPA mounting for test environment
+
+	// Temporarily disable SPA in production routing by setting it to nil
+	spaSaved := app.EnduserHandlers.SPA
+	app.EnduserHandlers.SPA = nil
+
 	routing.SetupEnduserRoutes(router, app.EnduserHandlers, routing.EnduserRouteConfig{
 		Authentication: app.Config.Server.EndUser.Authentication,
 		Logger:         logger,
@@ -132,8 +140,37 @@ func NewTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
 		})
 	}
 
+	// Mount SPA handler at root (/*) as catch-all for History API fallback.
+	// Chi router evaluates routes in order:
+	// - /api/* routes match first (explicit paths from SetupEnduserRoutes)
+	// - /api/agents/* and /api/services/* routes match next (explicit admin paths)
+	// - /* matches everything else, serving the SPA for client-side routing
+	// This ensures the SPA doesn't intercept API requests.
+	if spaSaved != nil {
+		router.Handle("/*", spaSaved)
+	}
+
 	// Create httptest server with production router
-	server := httptest.NewServer(router)
+	// For dev mode with Vite proxy, use fixed port 8000 (Vite proxy hardcoded to this port)
+	// For built mode, use random port for test isolation
+	var server *httptest.Server
+	if os.Getenv("E2E_FRONTEND_MODE") == "dev" {
+		// Dev mode: Use fixed port 8000 to match Vite proxy configuration
+		listener, err := net.Listen("tcp", "127.0.0.1:8000")
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen on port 8000 (ensure no other service is running): %w", err)
+		}
+		server = &httptest.Server{
+			Listener: listener,
+			Config:   &http.Server{Handler: router},
+		}
+		server.Start()
+		logger.Info("Test server listening on fixed port 8000 for dev mode", "url", server.URL)
+	} else {
+		// Built mode: Use random port for test isolation
+		server = httptest.NewServer(router)
+		logger.Info("Test server listening on random port for built mode", "url", server.URL)
+	}
 
 	return &TestServer{
 		app:    app,

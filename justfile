@@ -77,7 +77,7 @@ test-coverage-summary:
     go tool cover -func=coverage/coverage.out
 
 # Run end-to-end tests with Ginkgo
-test-e2e:
+test-backend-e2e:
     @echo "Running E2E tests..."
     @if command -v ginkgo > /dev/null; then \
         ginkgo -v ./tests/e2e/; \
@@ -87,7 +87,7 @@ test-e2e:
     fi
 
 # Run E2E tests with coverage report
-test-e2e-coverage:
+test-backend-e2e-coverage:
     @echo "Running E2E tests with coverage..."
     @mkdir -p coverage
     @if command -v ginkgo > /dev/null; then \
@@ -100,7 +100,7 @@ test-e2e-coverage:
     fi
 
 # Watch E2E tests during development (auto-rerun on changes)
-test-e2e-watch:
+test-backend-e2e-watch:
     @echo "Starting E2E test watch mode..."
     @if command -v ginkgo > /dev/null; then \
         ginkgo watch -v ./tests/e2e/; \
@@ -109,10 +109,38 @@ test-e2e-watch:
         exit 1; \
     fi
 
+# Run frontend E2E tests with pre-built frontend (production-like)
+test-frontend-e2e:
+    #!/usr/bin/env bash
+    set -e
+    just web-build
+    E2E_FRONTEND_MODE=built ginkgo -v ./tests/e2e/frontend/
+
+# Run frontend E2E tests with Vite dev server (hot reload)
+# NOTE: Requires 'just web-dev' running in another terminal
+test-frontend-e2e-dev:
+    #!/usr/bin/env bash
+    E2E_FRONTEND_MODE=dev ginkgo -v ./tests/e2e/frontend/
+
+# Run frontend E2E tests with coverage report
+test-frontend-e2e-coverage:
+    #!/usr/bin/env bash
+    set -e
+    just web-build
+    E2E_FRONTEND_MODE=built ginkgo -v --cover ./tests/e2e/frontend/
+
+# Run all E2E tests: backend + frontend
+test-e2e-full:
+    #!/usr/bin/env bash
+    set -e
+    just web-build
+    ginkgo -v ./tests/e2e/ --skip="Frontend"
+    just test-frontend-e2e
+
 # Build and run the application
 run: build
     @echo "Running {{NAME}}..."
-    ./bin/{{NAME}}
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` ./bin/{{NAME}}
 
 # Run with Air for hot-reload development (requires air to be installed)
 dev:
@@ -179,6 +207,10 @@ install-tools:
     fi
     @echo "Installing go-junit-report for CI/CD test reporting..."
     go install github.com/jstemmer/go-junit-report/v2@v2.1.0
+    @echo "Installing ginkgo for E2E testing..."
+    go install github.com/onsi/ginkgo/v2/ginkgo@v2.27.3
+    @echo "Installing Playwright Go binary..."
+    go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 install --with-deps
     @echo "Tools installation complete"
 
 # Setup git hooks for quality checks
@@ -191,43 +223,125 @@ setup-hooks:
 # Run integration tests (requires Docker for PostgreSQL tests)
 test-integration:
     @echo "Running integration tests..."
-    go test -tags=integration -v ./test/integration/storage/...
+    go test -tags=integration -v ./tests/integration/storage/...
 
 # Run integration tests and generate JUnit XML report for CI/CD
 test-integration-junit:
     @echo "Running integration tests with JUnit output..."
     @mkdir -p test-results
-    @go test -tags=integration -v ./test/integration/storage/... 2>&1 | tee test-results/integration-test-output.txt | go-junit-report -set-exit-code > test-results/integration-junit.xml
+    @go test -tags=integration -v ./tests/integration/storage/... 2>&1 | tee test-results/integration-test-output.txt | go-junit-report -set-exit-code > test-results/integration-junit.xml
     @echo "JUnit report generated at test-results/integration-junit.xml"
 
-# Run all tests (unit + integration) and generate single JUnit XML report for CI/CD
+# Run all tests (unit, integration, E2E, E2E frontend) and generate consolidated JUnit XML report
 test-all-junit:
     #!/usr/bin/env bash
-    set -euo pipefail
-    echo "Running all tests (unit + integration) with JUnit output..."
+    set +e  # Don't exit on errors; we'll handle them at the end
+
+    echo "Running all tests (unit + integration + E2E) with JUnit output..."
     mkdir -p test-results
+
+    # Initialize exit code tracking
+    UNIT_EXIT=0
+    INTEGRATION_EXIT=0
+    E2E_EXIT=0
+    E2E_FRONTEND_EXIT=0
+    MERGER_EXIT=0
+
+    # ===== UNIT TESTS =====
     echo ""
-    echo "==> Running unit tests..."
-    go test -v -race ./... 2>&1 | tee test-results/unit-tests-output.txt
-    UNIT_EXIT=${PIPESTATUS[0]}
+    echo "==> Running unit tests (cmd/ and internal/)..."
+    if go test -v -race ./cmd/... ./internal/... 2>&1 | tee test-results/unit-tests-output.txt | go-junit-report -set-exit-code > test-results/unit-junit.xml; then
+        echo "✓ Unit tests passed"
+    else
+        UNIT_EXIT=$?
+        echo "✗ Unit tests failed (exit code: $UNIT_EXIT)"
+    fi
+
+    # ===== INTEGRATION TESTS =====
     echo ""
     echo "==> Running integration tests..."
-    go test -v -tags=integration ./test/integration/storage/... 2>&1 | tee test-results/integration-tests-output.txt
-    INTEGRATION_EXIT=${PIPESTATUS[0]}
-    echo ""
-    echo "==> Generating JUnit report..."
-    if command -v go-junit-report > /dev/null; then
-        cat test-results/unit-tests-output.txt test-results/integration-tests-output.txt | go-junit-report > test-results/all-tests-junit.xml
-        echo "✓ JUnit report generated at test-results/all-tests-junit.xml"
+    if go test -v ./tests/integration/... 2>&1 | tee test-results/integration-tests-output.txt | go-junit-report -set-exit-code > test-results/integration-junit.xml; then
+        echo "✓ Integration tests passed"
     else
-        echo "Warning: go-junit-report not found. Run 'just install-tools' to install it."
-        echo "✗ JUnit report not generated"
+        INTEGRATION_EXIT=$?
+        echo "✗ Integration tests failed (exit code: $INTEGRATION_EXIT)"
     fi
+
+    # Run storage-specific integration tests with PostgreSQL containers
     echo ""
-    if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ]; then
-        echo "✗ Tests failed (unit exit: $UNIT_EXIT, integration exit: $INTEGRATION_EXIT)"
+    echo "==> Running storage integration tests (PostgreSQL)..."
+    if go test -v -tags=integration ./tests/integration/storage/... 2>&1 | tee test-results/storage-tests-output.txt | go-junit-report -set-exit-code > test-results/storage-junit.xml; then
+        echo "✓ Storage integration tests passed"
+    else
+        STORAGE_EXIT=$?
+        echo "✗ Storage integration tests failed (exit code: $STORAGE_EXIT)"
+        INTEGRATION_EXIT=$STORAGE_EXIT
+    fi
+
+    # ===== E2E TESTS =====
+    echo ""
+    echo "==> Running E2E tests (Ginkgo)..."
+    if ! command -v ginkgo > /dev/null; then
+        echo "✗ ginkgo not installed"
+        echo "  Run 'just install-tools' to install required development tools"
+        E2E_EXIT=1
+    else
+        if ginkgo run -v --junit-report=test-results/e2e-junit.xml ./tests/e2e/; then
+            echo "✓ E2E tests passed"
+        else
+            E2E_EXIT=$?
+            echo "✗ E2E tests failed (exit code: $E2E_EXIT)"
+        fi
+    fi
+
+    # ===== E2E FRONTEND TESTS =====
+    echo ""
+    echo "==> Running E2E frontend tests (Ginkgo)..."
+
+    if ! command -v ginkgo > /dev/null; then
+        echo "✗ ginkgo not installed"
+        echo "  Run 'just install-tools' to install required development tools"
+        E2E_FRONTEND_EXIT=1
+    else
+        if ginkgo run -v --junit-report=test-results/e2e-frontend-junit.xml ./tests/e2e/frontend/; then
+            echo "✓ E2E frontend tests passed"
+        else
+            E2E_FRONTEND_EXIT=$?
+            echo "✗ E2E frontend tests failed (exit code: $E2E_FRONTEND_EXIT)"
+        fi
+    fi
+
+    # ===== MERGE JUNIT REPORTS =====
+    echo ""
+    echo "==> Merging JUnit reports..."
+    if command -v npx > /dev/null; then
+        if npx -y junit-report-merger@9.0.3 test-results/all-tests-junit.xml test-results/*-junit.xml; then
+            echo "✓ Merged report generated at test-results/all-tests-junit.xml"
+        else
+            MERGER_EXIT=$?
+            echo "⚠ junit-report-merger failed (exit code: $MERGER_EXIT)"
+        fi
+    else
+        echo "⚠ npx not found, junit-report-merger not available"
+        echo "  Install Node.js to use junit-report-merger, or reports will not be merged"
+    fi
+
+    # ===== FINAL SUMMARY =====
+    echo ""
+    echo "=== Test Summary ==="
+    echo "Unit tests exit code: $UNIT_EXIT"
+    echo "Integration tests exit code: $INTEGRATION_EXIT"
+    echo "E2E tests exit code: $E2E_EXIT"
+    echo "E2E frontend tests exit code: $E2E_FRONTEND_EXIT"
+    echo "JUnit XML merger exit code: $MERGER_EXIT"
+    echo ""
+
+    # Fail if any test suite failed
+    if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ] || [ $E2E_EXIT -ne 0 ] || [ $E2E_FRONTEND_EXIT -ne 0 ] || [ $MERGER_EXIT -ne 0 ]; then
+        echo "✗ Some tests failed"
         exit 1
     fi
+
     echo "✓ All tests passed"
 
 # Run all unit and integration tests with coverage
@@ -235,16 +349,12 @@ test-all: test test-integration
     @echo "All tests completed"
 
 # Run all tests: unit, integration, and E2E (comprehensive test suite)
-test-full: test test-integration test-e2e
+test-full: test test-integration test-backend-e2e test-frontend-e2e
     @echo "Full test suite completed"
 
-# Run all quality checks (fmt, vet, lint, unit tests, and frontend tests)
-check: fmt vet lint test web-test
+# Run all quality checks (fmt, vet, lint)
+check: fmt vet lint
     @echo "All checks passed!"
-
-# Run comprehensive checks: formatting, linting, and all tests (unit, integration, E2E, frontend)
-check-full: fmt vet lint test test-integration test-e2e web-test
-    @echo "Comprehensive checks passed!"
 
 # =============================================================================
 # Web Development Targets

@@ -34,15 +34,27 @@ func (h *SPAHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Construct file path from request URL
+	// Note: If the SPA is mounted at /consent/* and staticPath is "web/dist",
+	// then /consent/assets/foo.js will naturally map to web/dist/consent/assets/foo.js
+	filePath := r.URL.Path
+
 	// Construct the full file path
-	path := filepath.Join(h.staticPath, r.URL.Path)
+	path := filepath.Join(h.staticPath, filePath)
 
 	// Check if the file exists
 	fileInfo, err := os.Stat(path)
 
 	// If file doesn't exist or is a directory, serve index.html (History API fallback)
 	if err != nil || fileInfo.IsDir() {
-		indexPath := filepath.Join(h.staticPath, "index.html")
+		// Determine index.html location based on the request path
+		// If request starts with /consent, look for index.html in consent subdirectory
+		var indexPath string
+		if strings.HasPrefix(r.URL.Path, "/consent") {
+			indexPath = filepath.Join(h.staticPath, "consent", "index.html")
+		} else {
+			indexPath = filepath.Join(h.staticPath, "index.html")
+		}
 
 		// Check if index.html exists
 		if _, err := os.Stat(indexPath); err != nil {
