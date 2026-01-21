@@ -56,15 +56,18 @@ type App struct {
 //		WithLogger(logger).
 //		Build()
 type Builder struct {
-	config     *ports.Config
-	storage    *storage.Adapter
-	logger     *slog.Logger
-	encryption ports.EncryptionPort // Optional: custom encryption implementation
+	config                 *ports.Config
+	storage                *storage.Adapter
+	logger                 *slog.Logger
+	encryption             ports.EncryptionPort // Optional: custom encryption implementation
+	staticWebResourcesPath string
 }
 
 // NewBuilder creates a new application builder.
 func NewBuilder() *Builder {
-	return &Builder{}
+	return &Builder{
+		staticWebResourcesPath: "web/dist",
+	}
 }
 
 // WithConfig sets the application configuration for the builder.
@@ -90,6 +93,11 @@ func (b *Builder) WithLogger(logger *slog.Logger) *Builder {
 // Use this to inject a production encryption adapter.
 func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
 	b.encryption = encryptor
+	return b
+}
+
+func (b *Builder) WithStaticWebResourcesPath(path string) *Builder {
+	b.staticWebResourcesPath = path
 	return b
 }
 
@@ -225,7 +233,7 @@ func (b *Builder) Build() (*App, error) {
 		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
 			Service: app.OAuth2Service,
 		},
-		SPA: handlers.NewSPAHandler("web/dist/consent", b.logger),
+		SPA: handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
 	}
 
 	return app, nil

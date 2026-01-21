@@ -1,0 +1,128 @@
+// Package e2e_test provides end-to-end tests for the frontend UI using Playwright.
+// This file contains tests for the OAuth2 consent flow.
+package e2e_test
+
+import (
+	"context"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/pages"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+)
+
+// ConsentFlow tests verify the OAuth2 consent flow where users grant scopes to agents.
+var _ = Describe("Consent Flow", func() {
+	var (
+		ctx         context.Context
+		consentPage *pages.ConsentPage
+		testAgentID string
+	)
+
+	// Setup per-test resources in BeforeEach
+	BeforeEach(func() {
+		ctx = context.Background()
+
+		// Step 1: Create a third-party OAuth2 service with scopes
+		// This provides the scopes that can be delegated by the user
+		service := &storage.ThirdpartyOAuth2Service{
+			ID:           "github-service",
+			DisplayName:  "GitHub",
+			ClientID:     "github-client-id",
+			ClientSecret: "github-client-secret",
+			IssuerURI:    "https://github.com",
+			Endpoints: storage.OAuth2Endpoints{
+				AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+				TokenEndpoint:     "https://github.com/login/oauth/access_token",
+			},
+			Scopes: []storage.OAuthScope{
+				{ScopeValue: "repo", Description: "Repository access"},
+				{ScopeValue: "user", Description: "User profile access"},
+			},
+		}
+		err := GetTestStorage().Services().Create(ctx, service)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create test service")
+
+		// Step 2: Create a test agent with service requirements
+		// The agent's service requirements define what services can be delegated to it
+		agent := fixtures.ValidAgent()
+		testAgentID = agent.ID
+		agent.ServiceRequirements = []storage.ServiceRequirement{
+			{
+				ServiceID:       "github-service",
+				RequirementType: storage.RequirementTypeMandatory,
+				RequiredScopes:  []string{"repo", "user"},
+			},
+		}
+		err = GetTestStorage().Agents().Create(ctx, agent)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create test agent")
+
+		// Step 3: Create a grant linking the agent to the current user
+		// This makes the agent appear in the user's consent page with delegated services/scopes
+		principal := fixtures.DefaultPrincipal().String()
+		grant := fixtures.IndefiniteGrant(principal, testAgentID)
+		err = GetTestStorage().UserGrants().Create(ctx, grant)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create test grant")
+
+		// Initialize the page object
+		consentPage = pages.NewConsentPage(GetTestPage(), GetFrontendURL())
+	})
+
+	// Cleanup after each test
+	AfterEach(func() {
+		if consentPage != nil {
+			_ = consentPage.Close()
+		}
+	})
+
+	// Minimal test: Verify Playwright works and frontend renders
+	It("should load consent page and display basic UI elements", func() {
+		// When: Navigate to consent page for the test agent
+		err := consentPage.NavigateToAgent(ctx, testAgentID)
+		Expect(err).NotTo(HaveOccurred(), "Failed to navigate to consent page")
+
+		// Then: Agent name heading should be visible
+		agentName, err := consentPage.GetAgentName(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to get agent name")
+		Expect(agentName).NotTo(BeEmpty(), "Agent name should not be empty")
+
+		// And: Available scopes should be present
+		scopes, err := consentPage.GetAvailableScopes(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to get available scopes")
+		Expect(scopes).NotTo(BeEmpty(), "Should have at least one scope available")
+
+		// And: Take screenshot for verification
+		err = consentPage.TakeScreenshot(ctx, "consent_page_loaded")
+		Expect(err).NotTo(HaveOccurred(), "Failed to take screenshot")
+
+		GetLogger().Info("Test passed: Consent page renders correctly with UI elements visible")
+	})
+
+	// Test: Verify scopes are displayed correctly
+	// Note: In the current UI (Phase 8), scopes are displayed as read-only badges based on service requirements.
+	// Service delegation happens at the service level (Login/Delegate buttons), not at individual scope level.
+	It("should display service scopes as read-only badges based on requirements", func() {
+		// Given: User navigates to consent page
+		err := consentPage.NavigateToAgent(ctx, testAgentID)
+		Expect(err).NotTo(HaveOccurred(), "Failed to navigate to consent page")
+
+		// When: Get available scopes displayed on the page
+		scopes, err := consentPage.GetAvailableScopes(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to get scopes")
+		Expect(scopes).NotTo(BeEmpty(), "Must have at least one scope")
+
+		// Then: Verify expected scopes from service definition are present
+		Expect(scopes).To(ContainElement("repo"), "Service should display 'repo' scope")
+		Expect(scopes).To(ContainElement("user"), "Service should display 'user' scope")
+
+		// And: Take screenshot for verification
+		err = consentPage.TakeScreenshot(ctx, "service_scopes_displayed")
+		Expect(err).NotTo(HaveOccurred(), "Failed to take screenshot")
+
+		GetLogger().Info("Test passed: Service scopes are displayed correctly as read-only badges",
+			"scopes_count", len(scopes),
+			"scopes", scopes,
+		)
+	})
+})

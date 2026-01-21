@@ -78,9 +78,16 @@ export const StatusIndicator = React.forwardRef<HTMLDivElement, StatusIndicatorP
     },
     ref
   ) => {
+    // Generate data-testid for scope indicators for E2E testing
+    // Pattern: scope-indicator-{scope-value}
+    const testId = `scope-indicator-${label.toLowerCase().replace(/\s+/g, '-')}`;
+
     return (
       <div
         ref={ref}
+        role="img"
+        aria-label={label}
+        data-testid={testId}
         className={cn(statusIndicatorVariants({ variant, interactive }), className)}
         {...props}
       >

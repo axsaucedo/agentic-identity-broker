@@ -396,7 +396,7 @@ export function AgentGrantDetailPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold text-trust-deep">{agent.displayName}</h1>
+                  <h1 className="text-2xl font-bold text-trust-deep" data-testid="agent-name-heading">{agent.displayName}</h1>
                   <p className="mt-2 text-slate-600">{agent.description}</p>
                 </div>
 

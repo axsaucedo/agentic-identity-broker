@@ -77,7 +77,7 @@ test-coverage-summary:
     go tool cover -func=coverage/coverage.out
 
 # Run end-to-end tests with Ginkgo
-test-e2e:
+test-backend-e2e:
     @echo "Running E2E tests..."
     @if command -v ginkgo > /dev/null; then \
         ginkgo -v ./tests/e2e/; \
@@ -87,7 +87,7 @@ test-e2e:
     fi
 
 # Run E2E tests with coverage report
-test-e2e-coverage:
+test-backend-e2e-coverage:
     @echo "Running E2E tests with coverage..."
     @mkdir -p coverage
     @if command -v ginkgo > /dev/null; then \
@@ -100,7 +100,7 @@ test-e2e-coverage:
     fi
 
 # Watch E2E tests during development (auto-rerun on changes)
-test-e2e-watch:
+test-backend-e2e-watch:
     @echo "Starting E2E test watch mode..."
     @if command -v ginkgo > /dev/null; then \
         ginkgo watch -v ./tests/e2e/; \
@@ -109,10 +109,38 @@ test-e2e-watch:
         exit 1; \
     fi
 
+# Run frontend E2E tests with pre-built frontend (production-like)
+test-frontend-e2e:
+    #!/usr/bin/env bash
+    set -e
+    just web-build
+    E2E_FRONTEND_MODE=built ginkgo -v ./tests/e2e/frontend/
+
+# Run frontend E2E tests with Vite dev server (hot reload)
+# NOTE: Requires 'just web-dev' running in another terminal
+test-frontend-e2e-dev:
+    #!/usr/bin/env bash
+    E2E_FRONTEND_MODE=dev ginkgo -v ./tests/e2e/frontend/
+
+# Run frontend E2E tests with coverage report
+test-frontend-e2e-coverage:
+    #!/usr/bin/env bash
+    set -e
+    just web-build
+    E2E_FRONTEND_MODE=built ginkgo -v --cover ./tests/e2e/frontend/
+
+# Run all E2E tests: backend + frontend
+test-e2e-full:
+    #!/usr/bin/env bash
+    set -e
+    just web-build
+    ginkgo -v ./tests/e2e/ --skip="Frontend"
+    just test-frontend-e2e
+
 # Build and run the application
 run: build
     @echo "Running {{NAME}}..."
-    ./bin/{{NAME}}
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` ./bin/{{NAME}}
 
 # Run with Air for hot-reload development (requires air to be installed)
 dev:
@@ -178,6 +206,8 @@ install-tools:
     fi
     @echo "Installing go-junit-report for CI/CD test reporting..."
     go install github.com/jstemmer/go-junit-report/v2@v2.1.0
+    @echo "Installing Playwright Go binary..."
+    go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 install --with-deps
     @echo "Tools installation complete"
 
 # Setup git hooks for quality checks
@@ -202,7 +232,7 @@ test-integration-junit:
 # Run all tests (unit + integration) and generate single JUnit XML report for CI/CD
 test-all-junit:
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -uo pipefail
     echo "Running all tests (unit + integration) with JUnit output..."
     mkdir -p test-results
     echo ""
@@ -234,7 +264,7 @@ test-all: test test-integration
     @echo "All tests completed"
 
 # Run all tests: unit, integration, and E2E (comprehensive test suite)
-test-full: test test-integration test-e2e
+test-full: test test-integration test-backend-e2e test-frontend-e2e
     @echo "Full test suite completed"
 
 # Run all quality checks (fmt, vet, lint)

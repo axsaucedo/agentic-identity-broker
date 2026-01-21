@@ -78,12 +78,17 @@ export function ServiceCard({
   const isConnected = service.connectionStatus === 'connected';
 
   return (
-    <Card
-      padding="none"
-      hover="none"
-      border="subtle"
-      className={isDelegated ? 'ring-2 ring-success-primary bg-success-50' : ''}
+    <article
+      role="article"
+      aria-label={`Service: ${serviceDisplayName}`}
+      data-testid={`service-card-${service.serviceId}`}
     >
+      <Card
+        padding="none"
+        hover="none"
+        border="subtle"
+        className={isDelegated ? 'ring-2 ring-success-primary bg-success-50' : ''}
+      >
       {/* Service header */}
       <div className="p-6">
         <Stack direction="row" gap="md" align="start">
@@ -164,7 +169,7 @@ export function ServiceCard({
           </Stack>
 
           {/* Action button - Login / Delegate / Revoke */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0" data-testid={`service-actions-${service.serviceId}`}>
             {!isConnected ? (
               <Button
                 variant="primary"
@@ -173,6 +178,7 @@ export function ServiceCard({
                 disabled={isLoading}
                 title="Connect to this service"
                 className="bg-success-primary hover:bg-success-hover text-white"
+                data-testid="service-login-button"
               >
                 Login
               </Button>
@@ -183,6 +189,7 @@ export function ServiceCard({
                 onClick={() => onRevoke?.(service.serviceId)}
                 disabled={isLoading}
                 title="Revoke delegation for this service"
+                data-testid="service-revoke-button"
               >
                 Revoke
               </Button>
@@ -193,6 +200,7 @@ export function ServiceCard({
                 onClick={() => onDelegate?.(service.serviceId)}
                 disabled={isLoading}
                 title="Delegate this service"
+                data-testid="service-delegate-button"
               >
                 Delegate
               </Button>
@@ -200,7 +208,8 @@ export function ServiceCard({
           </div>
         </Stack>
       </div>
-    </Card>
+      </Card>
+    </article>
   );
 }
 
