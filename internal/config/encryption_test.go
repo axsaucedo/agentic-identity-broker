@@ -96,7 +96,7 @@ func TestEncryptionConfigFieldTypes(t *testing.T) {
 	var config ports.EncryptionConfig
 
 	// KeyEncryptionKey should be a string
-	var _ string = config.KeyEncryptionKey
+	_ = config.KeyEncryptionKey
 
 	// Test assignment of different valid formats
 	testValues := []string{

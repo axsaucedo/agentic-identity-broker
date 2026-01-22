@@ -133,7 +133,7 @@ func TestBaseEvent(t *testing.T) {
 
 func TestEventInterface(t *testing.T) {
 	// Test that all event types implement the Event interface
-	var events []Event = []Event{
+	events := []Event{
 		NewSessionEncrypted("session-1", "service-1"),
 		NewSessionDecrypted("session-2", "service-2"),
 		NewSessionEncryptionFailed("session-3", "service-3", encryption.ErrorKindEncryptionFailed, "encryption failed"),

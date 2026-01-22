@@ -126,12 +126,24 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	}
 
 	// Set environment variables so AWS SDK client code uses LocalStack endpoint
-	os.Setenv("AWS_ENDPOINT_URL", endpoint)
-	os.Setenv("AWS_ENDPOINT_URL_KMS", endpoint)
-	os.Setenv("AWS_ENDPOINT_URL_DYNAMODB", endpoint)
-	os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	os.Setenv("AWS_DEFAULT_REGION", "eu-central-1")
+	if err := os.Setenv("AWS_ENDPOINT_URL", endpoint); err != nil {
+		t.Fatalf("failed to set AWS_ENDPOINT_URL: %v", err)
+	}
+	if err := os.Setenv("AWS_ENDPOINT_URL_KMS", endpoint); err != nil {
+		t.Fatalf("failed to set AWS_ENDPOINT_URL_KMS: %v", err)
+	}
+	if err := os.Setenv("AWS_ENDPOINT_URL_DYNAMODB", endpoint); err != nil {
+		t.Fatalf("failed to set AWS_ENDPOINT_URL_DYNAMODB: %v", err)
+	}
+	if err := os.Setenv("AWS_ACCESS_KEY_ID", "test"); err != nil {
+		t.Fatalf("failed to set AWS_ACCESS_KEY_ID: %v", err)
+	}
+	if err := os.Setenv("AWS_SECRET_ACCESS_KEY", "test"); err != nil {
+		t.Fatalf("failed to set AWS_SECRET_ACCESS_KEY: %v", err)
+	}
+	if err := os.Setenv("AWS_DEFAULT_REGION", "eu-central-1"); err != nil {
+		t.Fatalf("failed to set AWS_DEFAULT_REGION: %v", err)
+	}
 
 	return &LocalStackContainer{
 		Container:        container,
@@ -144,26 +156,26 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 // SetupLocalStackEnvironment configures the AWS SDK to use LocalStack endpoint for the test
 // Call this before creating encryption adapters, then call Cleanup() in defer
 func (ls *LocalStackContainer) SetupLocalStackEnvironment() {
-	os.Setenv("AWS_ENDPOINT_URL", ls.Endpoint)
-	os.Setenv("AWS_ENDPOINT_URL_KMS", ls.Endpoint)
-	os.Setenv("AWS_ENDPOINT_URL_DYNAMODB", ls.Endpoint)
-	os.Setenv("AWS_ACCESS_KEY_ID", "test")
-	os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
-	os.Setenv("AWS_DEFAULT_REGION", "eu-central-1")
+	_ = os.Setenv("AWS_ENDPOINT_URL", ls.Endpoint)
+	_ = os.Setenv("AWS_ENDPOINT_URL_KMS", ls.Endpoint)
+	_ = os.Setenv("AWS_ENDPOINT_URL_DYNAMODB", ls.Endpoint)
+	_ = os.Setenv("AWS_ACCESS_KEY_ID", "test")
+	_ = os.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	_ = os.Setenv("AWS_DEFAULT_REGION", "eu-central-1")
 }
 
 // CleanupLocalStackEnvironment restores original environment variables
 func (ls *LocalStackContainer) CleanupLocalStackEnvironment() {
 	if ls.OriginalEndpoint != "" {
-		os.Setenv("AWS_ENDPOINT_URL", ls.OriginalEndpoint)
+		_ = os.Setenv("AWS_ENDPOINT_URL", ls.OriginalEndpoint)
 	} else {
-		os.Unsetenv("AWS_ENDPOINT_URL")
+		_ = os.Unsetenv("AWS_ENDPOINT_URL")
 	}
-	os.Unsetenv("AWS_ENDPOINT_URL_KMS")
-	os.Unsetenv("AWS_ENDPOINT_URL_DYNAMODB")
-	os.Unsetenv("AWS_ACCESS_KEY_ID")
-	os.Unsetenv("AWS_SECRET_ACCESS_KEY")
-	os.Unsetenv("AWS_DEFAULT_REGION")
+	_ = os.Unsetenv("AWS_ENDPOINT_URL_KMS")
+	_ = os.Unsetenv("AWS_ENDPOINT_URL_DYNAMODB")
+	_ = os.Unsetenv("AWS_ACCESS_KEY_ID")
+	_ = os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+	_ = os.Unsetenv("AWS_DEFAULT_REGION")
 }
 
 // Terminate stops and removes the LocalStack container

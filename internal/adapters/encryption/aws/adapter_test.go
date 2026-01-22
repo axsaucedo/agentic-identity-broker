@@ -12,8 +12,10 @@ import (
 func TestNewAWSEncryptionWithEnvVar(t *testing.T) {
 	// Setup: Create test KEK material (base64-encoded 32 bytes)
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("TEST_KEK", testKEK)
-	defer os.Unsetenv("TEST_KEK")
+	if err := os.Setenv("TEST_KEK", testKEK); err != nil {
+		t.Fatalf("failed to set TEST_KEK environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("TEST_KEK") }()
 
 	// Test: Create adapter with environment variable reference
 	adapter, _, err := NewAWSEncryption("${TEST_KEK}", "", 0)
@@ -30,7 +32,7 @@ func TestNewAWSEncryptionWithEnvVar(t *testing.T) {
 // TestNewAWSEncryptionWithEnvVarMissing tests adapter creation fails when env var not set
 func TestNewAWSEncryptionWithEnvVarMissing(t *testing.T) {
 	// Ensure env var is not set
-	os.Unsetenv("MISSING_KEK_ENV_VAR")
+	_ = os.Unsetenv("MISSING_KEK_ENV_VAR")
 
 	// Test: Try to create adapter with missing environment variable
 	adapter, _, err := NewAWSEncryption("${MISSING_KEK_ENV_VAR}", "", 0)
@@ -54,8 +56,10 @@ func TestNewAWSEncryptionWithEnvVarMissing(t *testing.T) {
 // TestNewAWSEncryptionWithInvalidEnvVarFormat tests adapter rejects invalid base64 KEK
 func TestNewAWSEncryptionWithInvalidEnvVarFormat(t *testing.T) {
 	// Setup: Create invalid base64 KEK material
-	os.Setenv("INVALID_KEK", "not-valid-base64!!!")
-	defer os.Unsetenv("INVALID_KEK")
+	if err := os.Setenv("INVALID_KEK", "not-valid-base64!!!"); err != nil {
+		t.Fatalf("failed to set INVALID_KEK environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("INVALID_KEK") }()
 
 	// Test: Try to create adapter with invalid base64
 	adapter, _, err := NewAWSEncryption("${INVALID_KEK}", "", 0)
@@ -78,8 +82,10 @@ func TestNewAWSEncryptionWithInvalidEnvVarFormat(t *testing.T) {
 func TestNewAWSEncryptionWithInvalidKEKLength(t *testing.T) {
 	// Setup: Create 16-byte KEK (too short, need 32)
 	// "SGVsbG8gV29ybGQgSGVsbG8gV29ybGQ=" is 16 bytes base64-encoded
-	os.Setenv("SHORT_KEK", "SGVsbG8gV29ybGQgSGVsbG8gV29ybGQ=")
-	defer os.Unsetenv("SHORT_KEK")
+	if err := os.Setenv("SHORT_KEK", "SGVsbG8gV29ybGQgSGVsbG8gV29ybGQ="); err != nil {
+		t.Fatalf("failed to set SHORT_KEK environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("SHORT_KEK") }()
 
 	// Test: Try to create adapter with 16-byte KEK
 	adapter, _, err := NewAWSEncryption("${SHORT_KEK}", "", 0)
@@ -132,8 +138,10 @@ func TestNewAWSEncryptionWithInvalidFormat(t *testing.T) {
 func TestEncryptDecryptRoundtrip(t *testing.T) {
 	// Setup: Create adapter with env var KEK
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("TEST_KEK_ROUNDTRIP", testKEK)
-	defer os.Unsetenv("TEST_KEK_ROUNDTRIP")
+	if err := os.Setenv("TEST_KEK_ROUNDTRIP", testKEK); err != nil {
+		t.Fatalf("failed to set TEST_KEK_ROUNDTRIP environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("TEST_KEK_ROUNDTRIP") }()
 
 	adapter, _, err := NewAWSEncryption("${TEST_KEK_ROUNDTRIP}", "", 0)
 	if err != nil {
@@ -178,8 +186,10 @@ func TestEncryptDecryptRoundtrip(t *testing.T) {
 func TestContextMismatchDetection(t *testing.T) {
 	// Setup: Create adapter with env var KEK
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("TEST_KEK_CONTEXT", testKEK)
-	defer os.Unsetenv("TEST_KEK_CONTEXT")
+	if err := os.Setenv("TEST_KEK_CONTEXT", testKEK); err != nil {
+		t.Fatalf("failed to set TEST_KEK_CONTEXT environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("TEST_KEK_CONTEXT") }()
 
 	adapter, _, err := NewAWSEncryption("${TEST_KEK_CONTEXT}", "", 0)
 	if err != nil {
@@ -224,8 +234,10 @@ func TestContextMismatchDetection(t *testing.T) {
 func TestUniqueEncryptionPerCall(t *testing.T) {
 	// Setup: Create adapter with env var KEK
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("TEST_KEK_UNIQUE", testKEK)
-	defer os.Unsetenv("TEST_KEK_UNIQUE")
+	if err := os.Setenv("TEST_KEK_UNIQUE", testKEK); err != nil {
+		t.Fatalf("failed to set TEST_KEK_UNIQUE environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("TEST_KEK_UNIQUE") }()
 
 	adapter, _, err := NewAWSEncryption("${TEST_KEK_UNIQUE}", "", 0)
 	if err != nil {
@@ -278,8 +290,10 @@ func TestUniqueEncryptionPerCall(t *testing.T) {
 func TestEncryptEmptyPlaintext(t *testing.T) {
 	// Setup: Create adapter with env var KEK
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("TEST_KEK_EMPTY", testKEK)
-	defer os.Unsetenv("TEST_KEK_EMPTY")
+	if err := os.Setenv("TEST_KEK_EMPTY", testKEK); err != nil {
+		t.Fatalf("failed to set TEST_KEK_EMPTY environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("TEST_KEK_EMPTY") }()
 
 	adapter, _, err := NewAWSEncryption("${TEST_KEK_EMPTY}", "", 0)
 	if err != nil {
@@ -308,8 +322,10 @@ func TestEncryptEmptyPlaintext(t *testing.T) {
 func TestDecryptEmptyCiphertext(t *testing.T) {
 	// Setup: Create adapter with env var KEK
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("TEST_KEK_EMPTY_CIPHER", testKEK)
-	defer os.Unsetenv("TEST_KEK_EMPTY_CIPHER")
+	if err := os.Setenv("TEST_KEK_EMPTY_CIPHER", testKEK); err != nil {
+		t.Fatalf("failed to set TEST_KEK_EMPTY_CIPHER environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("TEST_KEK_EMPTY_CIPHER") }()
 
 	adapter, _, err := NewAWSEncryption("${TEST_KEK_EMPTY_CIPHER}", "", 0)
 	if err != nil {
@@ -345,8 +361,10 @@ func TestDecryptEmptyCiphertext(t *testing.T) {
 func TestTamperedCiphertextDetection(t *testing.T) {
 	// Setup: Create adapter with env var KEK
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("TEST_KEK_TAMPER", testKEK)
-	defer os.Unsetenv("TEST_KEK_TAMPER")
+	if err := os.Setenv("TEST_KEK_TAMPER", testKEK); err != nil {
+		t.Fatalf("failed to set TEST_KEK_TAMPER environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("TEST_KEK_TAMPER") }()
 
 	adapter, _, err := NewAWSEncryption("${TEST_KEK_TAMPER}", "", 0)
 	if err != nil {
@@ -418,8 +436,10 @@ func isDecryptionFailedError(err error) bool {
 func BenchmarkEncrypt(b *testing.B) {
 	// Setup: Create adapter with env var KEK
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("BENCH_KEK", testKEK)
-	defer os.Unsetenv("BENCH_KEK")
+	if err := os.Setenv("BENCH_KEK", testKEK); err != nil {
+		b.Fatalf("failed to set BENCH_KEK environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("BENCH_KEK") }()
 
 	adapter, _, err := NewAWSEncryption("${BENCH_KEK}", "", 0)
 	if err != nil {
@@ -445,8 +465,10 @@ func BenchmarkEncrypt(b *testing.B) {
 func BenchmarkDecrypt(b *testing.B) {
 	// Setup: Create adapter and prepare ciphertext
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("BENCH_KEK_DECRYPT", testKEK)
-	defer os.Unsetenv("BENCH_KEK_DECRYPT")
+	if err := os.Setenv("BENCH_KEK_DECRYPT", testKEK); err != nil {
+		b.Fatalf("failed to set BENCH_KEK_DECRYPT environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("BENCH_KEK_DECRYPT") }()
 
 	adapter, _, err := NewAWSEncryption("${BENCH_KEK_DECRYPT}", "", 0)
 	if err != nil {
@@ -556,8 +578,10 @@ func TestKMSARNValidation(t *testing.T) {
 func TestHierarchicalKeyringWithEnvVarFallback(t *testing.T) {
 	// Test that environment variable KEK path still works (non-hierarchical)
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("FALLBACK_KEK", testKEK)
-	defer os.Unsetenv("FALLBACK_KEK")
+	if err := os.Setenv("FALLBACK_KEK", testKEK); err != nil {
+		t.Fatalf("failed to set FALLBACK_KEK environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("FALLBACK_KEK") }()
 
 	adapter, _, err := NewAWSEncryption("${FALLBACK_KEK}", "", 0)
 
@@ -609,8 +633,10 @@ func TestHierarchicalKeyringWithEnvVarFallback(t *testing.T) {
 func TestAdapterInterfaceImplementation(t *testing.T) {
 	// Setup
 	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	os.Setenv("INTERFACE_KEK", testKEK)
-	defer os.Unsetenv("INTERFACE_KEK")
+	if err := os.Setenv("INTERFACE_KEK", testKEK); err != nil {
+		t.Fatalf("failed to set INTERFACE_KEK environment variable: %v", err)
+	}
+	defer func() { _ = os.Unsetenv("INTERFACE_KEK") }()
 
 	adapter, _, err := NewAWSEncryption("${INTERFACE_KEK}", "", 0)
 	if err != nil {
