@@ -502,7 +502,7 @@ log:
 
 **Valid Formats**:
 - AWS KMS ARN: `arn:aws:kms:region:account:key/key-id` or `arn:aws:kms:region:account:alias/alias-name`
-- Environment variable reference: `${ENCRYPTION_KEK}` (resolves to base64-encoded AES-256 key)
+- Base64-encoded AES key: Raw base64-encoded 256-bit (32-byte) key (can be populated from environment variable)
 
 **Default**: None (required for token encryption; startup fails if not provided and encryption is enabled)
 
@@ -524,15 +524,15 @@ encryption:
 IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY=arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012
 ```
 
-**Development (Environment Variable)**:
+**Development (Base64-Encoded Key from Environment Variable)**:
 ```bash
-# .env.local - Development with environment variable KEK
-ENCRYPTION_KEK=$(base64 < /dev/urandom | head -c 44)
-IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY='${ENCRYPTION_KEK}'
+# .env.local - Development with base64-encoded key in environment variable
+ENCRYPTION_KEK=$(openssl rand -base64 32)
+IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY="${ENCRYPTION_KEK}"
 ```
 
 ```yaml
-# config.yaml - Development deployment
+# config.yaml - Development deployment (interpolates ENCRYPTION_KEK from environment)
 encryption:
   key_encryption_key: "${ENCRYPTION_KEK}"
 ```

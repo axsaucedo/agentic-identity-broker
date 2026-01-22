@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -40,36 +39,31 @@ type AWSAdapter struct {
 }
 
 // NewAWSEncryption creates an AWS Encryption SDK adapter with automatic fan-out to supported scenarios:
-// Scenario A (development): Environment variable KEK (${ENV_VAR_NAME})
+// Scenario A (development): Base64-encoded AES-256 key (raw material)
 // Scenario B (production): Hierarchical keyring with AWS KMS and DynamoDB branch key caching (KMS ARN)
 //
 // keyMaterial can be either:
 //   - AWS KMS ARN: "arn:aws:kms:region:account:key/key-id" or "arn:aws:kms:region:account:alias/alias-name"
-//   - Environment variable reference: "${ENCRYPTION_KEK}" (resolves to base64-encoded AES-256 key)
+//   - Base64-encoded 32-byte AES-256 key: "aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890AB=="
+//
+// Environment variable interpolation is handled by the config loader before this function is called.
+// Configuration example with environment variable:
+//   - YAML: encryption.key_encryption_key: "${ENCRYPTION_KEK}"
+//   - Config loader expands ${ENCRYPTION_KEK} → reads ENCRYPTION_KEK environment variable
+//   - This function receives: the actual base64 key value (not the ${...} reference)
 //
 // Parameters:
-//   - keyMaterial: KMS ARN or environment variable reference
-//   - dynamoDBTableName: DynamoDB table for branch key caching (uses default if empty, ignored for env var scenario)
-//   - branchKeyTTL: TTL for cached branch keys (uses default if zero, ignored for env var scenario)
+//   - keyMaterial: AWS KMS ARN or base64-encoded 32-byte AES-256 key
+//   - dynamoDBTableName: DynamoDB table for branch key caching (uses default if empty, ignored for base64 scenario)
+//   - branchKeyTTL: TTL for cached branch keys (uses default if zero, ignored for base64 scenario)
 //
 // Returns:
 //   - adapter: EncryptionPort implementation for Encrypt/Decrypt operations
-//   - manager: BranchKeyManager implementation for provisioning/managing branch keys (nil for env var scenario)
+//   - manager: BranchKeyManager implementation for provisioning/managing branch keys (nil for base64 scenario)
 //   - error: If initialization fails
 func NewAWSEncryption(keyMaterial, dynamoDBTableName string, branchKeyTTL time.Duration) (*AWSAdapter, *AWSBranchKeyManager, error) {
 	if keyMaterial == "" {
 		return nil, nil, encryption.NewKEKUnavailableError("key encryption key material is required", nil)
-	}
-
-	// Scenario A: Environment variable reference for development (raw AES keyring)
-	if strings.HasPrefix(keyMaterial, "${") && strings.HasSuffix(keyMaterial, "}") {
-		envVarName := keyMaterial[2 : len(keyMaterial)-1]
-		adapter, err := newAdapterWithEnvVarKEK(envVarName)
-		if err != nil {
-			return nil, nil, err
-		}
-		// No branch key manager for raw AES keyring
-		return adapter, nil, nil
 	}
 
 	// Scenario B: AWS KMS ARN for production (hierarchical keyring with DynamoDB caching)
@@ -83,11 +77,15 @@ func NewAWSEncryption(keyMaterial, dynamoDBTableName string, branchKeyTTL time.D
 		return adapter, manager, nil
 	}
 
-	// Invalid format
-	return nil, nil, encryption.NewKEKUnavailableError(
-		fmt.Sprintf("invalid key material format: must be AWS KMS ARN or ${ENV_VAR}, got: %s", keyMaterial),
-		nil,
-	)
+	// Scenario A: Base64-encoded AES-256 key for development (raw AES keyring)
+	// Note: Environment variable interpolation (${VAR_NAME}) is handled by the config loader
+	// This function receives the actual base64-encoded key value
+	adapter, err := newAdapterWithBase64KEK(keyMaterial)
+	if err != nil {
+		return nil, nil, err
+	}
+	// No branch key manager for raw AES keyring
+	return adapter, nil, nil
 }
 
 // newAdapterWithKMSARNAndKeyStore creates an adapter using AWS KMS hierarchical keyring and returns the KeyStore.
@@ -146,12 +144,12 @@ func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKey
 }
 
 // newAdapterWithEnvVarKEK creates an adapter using environment variable for key material.
-func newAdapterWithEnvVarKEK(envVarName string) (*AWSAdapter, error) {
-	// Load KEK from environment variable
-	keyMaterial := os.Getenv(envVarName)
+// newAdapterWithBase64KEK creates an adapter with a base64-encoded AES-256 key.
+// The keyMaterial should be a base64-encoded 32-byte key (already interpolated from environment variables by config loader).
+func newAdapterWithBase64KEK(keyMaterial string) (*AWSAdapter, error) {
 	if keyMaterial == "" {
 		return nil, encryption.NewKEKUnavailableError(
-			fmt.Sprintf("environment variable %s not set", envVarName),
+			"key_encryption_key is empty; must be AWS KMS ARN or base64-encoded 32-byte key",
 			nil,
 		)
 	}
@@ -160,7 +158,7 @@ func newAdapterWithEnvVarKEK(envVarName string) (*AWSAdapter, error) {
 	kekBytes, err := base64.StdEncoding.DecodeString(keyMaterial)
 	if err != nil {
 		return nil, encryption.NewKEKUnavailableError(
-			fmt.Sprintf("failed to decode base64-encoded KEK from %s: %v", envVarName, err),
+			fmt.Sprintf("failed to decode key_encryption_key: key must be base64-encoded 32-byte AES-256 key, got: %v", err),
 			err,
 		)
 	}

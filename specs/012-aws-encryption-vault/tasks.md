@@ -44,8 +44,8 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Phase 2b: Configuration Design (Principle VII)
 
-- [x] T007 Verify configuration field defined: `encryption.key_encryption_key` supports AWS KMS ARN or `${ENCRYPTION_KEK}` interpolation
-- [x] T008 Add configuration examples to [examples/config/](../../examples/config/): `encryption-aws-kms.yaml` (production) and `encryption-env-var.yaml` (development)
+- [x] T007 Verify configuration field defined: `encryption.key_encryption_key` supports AWS KMS ARN or base64-encoded AES key (populated from environment variable if needed)
+- [x] T008 Add configuration examples to [examples/config/](../../examples/config/): `encryption-aws-kms.yaml` (production with KMS ARN) and `encryption-env-var.yaml` (development with base64-encoded key from environment variable)
 
 ### Phase 2c: API Design (Principles IV, X)
 
@@ -184,8 +184,8 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 - [x] T021 [P] Verify configuration system integration:
   - Confirm `encryption.key_encryption_key` field exists in config schema
-  - Confirm `${ENCRYPTION_KEK}` interpolation resolves at runtime
-  - Write test: configuration loads correctly from `.env` file
+  - Confirm environment variable interpolation resolves at runtime (e.g., `${ENCRYPTION_KEK}` → base64 key)
+  - Write test: configuration loads correctly from `.env` file with base64-encoded key
 
 ---
 
@@ -200,10 +200,10 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 - [x] T023 Implement [internal/adapters/encryption/aws/adapter.go](../../internal/adapters/encryption/aws/adapter.go):
   - **Constructor**: `NewAWSEncryptionAdapter(keyMaterial string) (*AWSAdapter, error)`
-    - Detect AWS KMS ARN vs. `${ENCRYPTION_KEK}` env var reference
-    - Initialize AWS SDK client (KMS or custom keyring for env var)
+    - Detect AWS KMS ARN vs. base64-encoded AES key
+    - Initialize AWS SDK client (KMS or custom keyring for base64 key)
     - Validate KEK accessible at startup (fail-fast)
-    - Return error if KEK unavailable
+    - Return error if KEK unavailable or invalid base64
   - **Encrypt method**:
     - Accept plaintext, encryptionContext (service_id)
     - Use AWS Encryption SDK to perform envelope encryption
@@ -223,9 +223,10 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
     - Zero DEK after use (AWS SDK handles internally)
     - Support memguard for local key material (env var backend)
 
-- [x] T024 [P] Create custom keyring for environment variable KEK support:
+- [x] T024 [P] Create custom keyring for base64-encoded KEK support:
   - Implement AWS Encryption SDK keyring interface
-  - Load base64-encoded KEK from environment at initialization
+  - Load base64-encoded KEK (provided directly as parameter)
+  - Validate base64 encoding and key length (32 bytes)
   - Wrap KEK in memguard buffer (memory locking, core dump exclusion)
   - Implement GenerateDataKey and DecryptDataKey methods
   - Use same context binding as AWS KMS keyring
@@ -235,7 +236,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - **Context mismatch**: Encrypt with "oauth2", decrypt with "github" fails with ErrorKindContextMismatch ✅
   - **Integrity violation**: Tampered ciphertext fails with ErrorKindIntegrityViolation ✅
   - **Unique DEK per encryption**: Two encryptions of same plaintext produce different ciphertexts ✅
-  - **Environment variable KEK**: Load KEK from `${ENCRYPTION_KEK}`, encrypt/decrypt succeeds ✅
+  - **Base64-encoded KEK**: Load base64-encoded KEK directly, encrypt/decrypt succeeds ✅
   - **KEK validation at startup**: Invalid KMS ARN fails with ErrorKindKEKUnavailable ✅
   - **Context timeout**: Respect context.Context deadlines (implicitly tested via context.Background) ✅
   - **Test file**: 16 test functions + 2 benchmarks, all passing
@@ -450,10 +451,10 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### US2 Unit Tests
 
-- [ ] T044 [P] [US2] Unit test: Environment variable KEK loaded securely
-  - Load KEK from `${ENCRYPTION_KEK}`
-  - Verify KEK is loaded into memguard buffer
-  - Verify environment variable is not read multiple times
+- [ ] T044 [P] [US2] Unit test: Base64-encoded KEK loaded securely
+  - Load base64-encoded KEK from parameter
+  - Verify KEK is decoded and loaded into memguard buffer
+  - Verify base64 validation passes for valid keys and fails for invalid
 
 - [ ] T045 [P] [US2] Unit test: Plaintext KEK never logged
   - Capture logs during encrypt/decrypt
@@ -467,9 +468,9 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - Configure adapter with LocalStack KMS ARN
   - Encrypt/decrypt succeeds
 
-- [ ] T047 [P] [US2] Integration test: Environment variable KEK persists
-  - Set `ENCRYPTION_KEK=<base64>`
-  - Create session (encrypt)
+- [ ] T047 [P] [US2] Integration test: Base64 KEK persists across restarts
+  - Set `ENCRYPTION_KEK=<base64-key>` in environment
+  - Create session (encrypt with base64 KEK)
   - Stop application
   - Start application with same `ENCRYPTION_KEK`
   - Retrieve session (decrypt with same KEK) succeeds
@@ -526,20 +527,20 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### US4 E2E Tests (3 scenarios)
 
-- [x] T054 [US4] E2E Test - Scenario 4.1: "Load KEK from environment variable"
-  - Set `ENCRYPTION_KEK=<base64-key>`
-  - Configure `encryption.key_encryption_key: ${ENCRYPTION_KEK}`
+- [x] T054 [US4] E2E Test - Scenario 4.1: "Load base64-encoded KEK from environment"
+  - Set `ENCRYPTION_KEK=<base64-encoded-key>`
+  - Configure `encryption.key_encryption_key: ${ENCRYPTION_KEK}` (resolves to base64 key)
   - Verify application initializes successfully
   - **Status**: ✅ PASSING - `encryption_vault_raw_test.go` L318-334
 
-- [x] T055 [US4] E2E Test - Scenario 4.2: "Use environment variable KEK for wrapping/unwrapping"
-  - Encrypt token with env var KEK
+- [x] T055 [US4] E2E Test - Scenario 4.2: "Use base64 KEK for wrapping/unwrapping"
+  - Encrypt token with base64 KEK
   - Verify DEK wrapped successfully
   - Decrypt token succeeds
   - **Status**: ✅ PASSING - `encryption_vault_raw_test.go` L337-356
 
 - [x] T056 [US4] E2E Test - Scenario 4.3: "Persistence across application restart"
-  - Create session with env var KEK (encryption)
+  - Create session with base64 KEK (encryption)
   - Stop application
   - Start application with same `ENCRYPTION_KEK`
   - Retrieve session (decryption) succeeds with same token
@@ -547,22 +548,23 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### US4 Unit Tests
 
-- [ ] T057 [P] [US4] Unit test: Environment variable interpolation
-  - Verify config system resolves `${ENCRYPTION_KEK}` to environment value
-  - Verify error if environment variable not set
+- [ ] T057 [P] [US4] Unit test: Configuration environment variable interpolation
+  - Verify config system resolves `${ENCRYPTION_KEK}` to environment variable value
+  - Verify error if environment variable not set or base64-invalid
 
-- [ ] T058 [P] [US4] Unit test: Env var KEK wrapped in memguard
-  - Load KEK from environment
+- [ ] T058 [P] [US4] Unit test: Base64 KEK validation and memguard
+  - Load base64-encoded KEK
+  - Verify base64 decoding succeeds
   - Verify memguard buffer initialized
   - Verify memory locking applied
 
 ### US4 Integration Tests
 
-- [ ] T059 [P] [US4] Integration test: Full dev workflow
-  - Export `ENCRYPTION_KEK=<base64>`
+- [ ] T059 [P] [US4] Integration test: Full dev workflow with base64 KEK
+  - Export `ENCRYPTION_KEK=<base64-encoded-key>`
   - Run application locally
   - Create/retrieve sessions
-  - Verify encryption/decryption with env var KEK
+  - Verify encryption/decryption with base64 KEK
 
 ---
 

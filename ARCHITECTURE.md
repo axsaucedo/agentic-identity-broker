@@ -445,12 +445,12 @@ Token Decryption Flow:
    - Configuration: `encryption.key_encryption_key: "arn:aws:kms:region:account:key/key-id"`
    - No plaintext KEK in application memory (AWS SDK handles)
 
-2. **Development (Environment Variable)**:
-   - KEK injected via `${ENCRYPTION_KEK}` reference
-   - Base64-encoded AES-256 key from environment variable
+2. **Development (Base64-Encoded Key)**:
+   - KEK provided as base64-encoded AES-256 key (typically from environment variable)
    - Raw AES keyring (no AWS KMS dependency)
-   - Configuration: `encryption.key_encryption_key: "${ENCRYPTION_KEK}"`
-   - Environment variable wrapped in memguard buffer
+   - Configuration: `encryption.key_encryption_key: "${ENCRYPTION_KEK}"` (resolves to base64 key)
+   - Base64 key decoded and wrapped in memguard buffer at initialization
+   - Environment variable interpolation allows flexible key injection
 
 **Service Integration**:
 

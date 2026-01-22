@@ -48,15 +48,16 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 		testStorage, err = storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
 
-		// Setup environment variable KEK for all tests
+		// Setup base64-encoded KEK for all tests
 		// Using a deterministic 32-byte base64-encoded key (256-bit AES key)
+		// Note: Environment variable interpolation (${VAR_NAME}) is handled by the config loader
+		// The adapter receives the actual base64 key value directly
 		testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-		Expect(os.Setenv("TEST_ENCRYPTION_KEK", testKEK)).ToNot(HaveOccurred())
 
 		// Create encryption adapter directly from production code
-		// This tests the actual aws.NewAWSEncryptionAdapter implementation
-		adapter, _, err = awsadapter.NewAWSEncryption("${TEST_ENCRYPTION_KEK}", "", 0)
-		Expect(err).ToNot(HaveOccurred(), "encryption adapter should initialize with environment variable KEK")
+		// This tests the actual aws.NewAWSEncryption implementation
+		adapter, _, err = awsadapter.NewAWSEncryption(testKEK, "", 0)
+		Expect(err).ToNot(HaveOccurred(), "encryption adapter should initialize with base64-encoded KEK")
 	})
 
 	AfterEach(func() {
@@ -64,8 +65,6 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 		if testStorage != nil {
 			_ = storageFactory.CloseStorage(testStorage)
 		}
-		// Unset environment variable
-		_ = os.Unsetenv("TEST_ENCRYPTION_KEK")
 		// AWS SDK and memguard handle memory cleanup of sensitive data
 	})
 
@@ -314,22 +313,21 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 	})
 
 	Context("User Story 4: Environment Variable KEK Injection for Development", func() {
-		// Scenario 4.1: Load KEK material from ENCRYPTION_KEK environment variable via interpolation
-		It("loads KEK material from ENCRYPTION_KEK environment variable via interpolation", func() {
+		// Scenario 4.1: Load KEK material from base64-encoded key (typically via environment variable)
+		It("loads KEK material from base64-encoded key", func() {
 			// GIVEN the encryption configuration is set to: encryption.key_encryption_key: ${ENCRYPTION_KEK}
-			// and ENCRYPTION_KEK environment variable is set before application startup
-			testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-			Expect(os.Getenv("TEST_ENCRYPTION_KEK")).To(Equal(testKEK), "environment variable should be set")
+			// and the config loader interpolates ${ENCRYPTION_KEK} to the actual base64 key value
+			// The adapter receives the base64-encoded key directly (interpolation handled by config system)
 
-			// WHEN the application starts (adapter initialized with ${TEST_ENCRYPTION_KEK} reference)
+			// WHEN the application starts (adapter initialized with base64 key directly)
 			// (already done in BeforeEach)
 
-			// THEN KEK material is loaded from the environment variable via interpolation
+			// THEN KEK material is used for encryption
 			plainToken := "test-token"
 			encryptionContext := map[string]string{"service_id": "dev"}
 
 			ciphertext, err := adapter.Encrypt(ctx, []byte(plainToken), encryptionContext)
-			Expect(err).ToNot(HaveOccurred(), "encryption with env var KEK should succeed")
+			Expect(err).ToNot(HaveOccurred(), "encryption with base64 KEK should succeed")
 			Expect(ciphertext).NotTo(Equal([]byte(plainToken)), "token should be encrypted")
 		})
 
@@ -367,9 +365,11 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 			// Store the ciphertext for later verification (simulating persistence)
 			storedCiphertext := ciphertext
 
-			// WHEN the application restarts with the same ENCRYPTION_KEK value
+			// WHEN the application restarts with the same base64 KEK value
 			// Create a new adapter instance (simulating application restart)
-			newAdapter, _, err := awsadapter.NewAWSEncryption("${TEST_ENCRYPTION_KEK}", "", 0)
+			// Use the same base64-encoded key that was used in BeforeEach
+			sameKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+			newAdapter, _, err := awsadapter.NewAWSEncryption(sameKEK, "", 0)
 			Expect(err).ToNot(HaveOccurred(), "new adapter should initialize with same KEK")
 
 			// THEN the same KEK can still decrypt previously encrypted tokens

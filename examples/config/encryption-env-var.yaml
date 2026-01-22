@@ -3,29 +3,34 @@
 # This configuration demonstrates envelope encryption using an environment variable as the Key Encryption Key (KEK).
 # Recommended for development, testing, and CI/CD environments where AWS KMS is not available or desired.
 
-# Encryption configuration using environment variable KEK
+# Encryption configuration using base64-encoded key in environment variable
 encryption:
-  # Environment variable reference for the Key Encryption Key
-  # The ${ENCRYPTION_KEK} will be substituted with the value from the ENCRYPTION_KEK environment variable
+  # Base64-encoded Key Encryption Key from environment variable
+  # The application expects this to be a base64-encoded 256-bit (32-byte) AES key
+  # Set via IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY environment variable
   # This enables secure key management without hardcoding secrets in configuration files
   key_encryption_key: "${ENCRYPTION_KEK}"
 
   # Note: DynamoDB branch key caching is only used with AWS KMS ARN configuration
   # Environment variable KEK uses in-memory Raw AES keyring (no DynamoDB caching)
-  # The following parameters are ignored when using environment variable KEK:
+  # The following parameters are ignored when using base64 key:
   # - dynamodb_table_name
   # - branch_key_ttl
 
 # Environment variable setup:
 #
+# The ENCRYPTION_KEK environment variable MUST contain a base64-encoded 256-bit (32-byte) AES key
+#
 # Linux/macOS:
-# export ENCRYPTION_KEK="base64-encoded-32-byte-key"
+# export ENCRYPTION_KEK="generated-base64-key-here"
+# export IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY="${ENCRYPTION_KEK}"
 #
 # Windows:
-# set ENCRYPTION_KEK=base64-encoded-32-byte-key
+# set ENCRYPTION_KEK=generated-base64-key-here
+# set IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY=%ENCRYPTION_KEK%
 #
 # Docker:
-# docker run -e ENCRYPTION_KEK="base64-encoded-32-byte-key" your-image
+# docker run -e ENCRYPTION_KEK="generated-base64-key-here" -e IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY='${ENCRYPTION_KEK}' your-image
 #
 # Kubernetes Secret:
 # apiVersion: v1
@@ -33,18 +38,21 @@ encryption:
 # metadata:
 #   name: identity-broker-secrets
 # data:
-#   ENCRYPTION_KEK: YmFzZTY0LWVuY29kZWQtMzItYnl0ZS1rZXk=  # base64 encoded
+#   ENCRYPTION_KEK: <base64-encoded-32-byte-key>  # base64(base64 key)
 
-# Generate a secure 32-byte key:
+# Generate a secure 32-byte base64-encoded key:
 #
-# Using OpenSSL:
+# Using OpenSSL (outputs base64-encoded 32 bytes):
 # openssl rand -base64 32
 #
 # Using Go:
-# go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt"; "os"); func main() { key := make([]byte, 32); rand.Read(key); fmt.Println(base64.StdEncoding.EncodeToString(key)) }'
+# go run -c 'package main; import ("crypto/rand"; "encoding/base64"; "fmt"); func main() { key := make([]byte, 32); rand.Read(key); fmt.Println(base64.StdEncoding.EncodeToString(key)) }'
 #
 # Using Python:
 # python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
+#
+# Example (DO NOT USE IN PRODUCTION - this is just an example):
+# export ENCRYPTION_KEK="aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890AB=="
 
 # Development-friendly logging configuration
 log:
@@ -88,7 +96,8 @@ third_party_oauth2:
 #   identity-broker:
 #     image: identity-broker:latest
 #     environment:
-#       - ENCRYPTION_KEK=YmFzZTY0LWVuY29kZWQtMzItYnl0ZS1rZXk=
+#       # ENCRYPTION_KEK: base64-encoded 32-byte key (store securely, not in compose file)
+#       # IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY: ${ENCRYPTION_KEK}
 #       - GO_ENV=development
 #     ports:
 #       - "8000:8000"
@@ -96,10 +105,15 @@ third_party_oauth2:
 #     volumes:
 #       - ./config:/app/config
 #     command: ["--config", "/app/config/encryption-env-var.yaml"]
+#
+# Usage:
+# export ENCRYPTION_KEK=$(openssl rand -base64 32)
+# docker-compose up
 
 # CI/CD Pipeline example (GitHub Actions):
 # env:
 #   ENCRYPTION_KEK: ${{ secrets.ENCRYPTION_KEK }}
+#   IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEK }}
 #
 # Where ENCRYPTION_KEK is stored as a repository secret with a base64-encoded 32-byte key
 
