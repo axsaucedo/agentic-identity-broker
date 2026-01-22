@@ -51,7 +51,7 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 		// Setup environment variable KEK for all tests
 		// Using a deterministic 32-byte base64-encoded key (256-bit AES key)
 		testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-		os.Setenv("TEST_ENCRYPTION_KEK", testKEK)
+		Expect(os.Setenv("TEST_ENCRYPTION_KEK", testKEK)).ToNot(HaveOccurred())
 
 		// Create encryption adapter directly from production code
 		// This tests the actual aws.NewAWSEncryptionAdapter implementation
@@ -65,7 +65,7 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 			_ = storageFactory.CloseStorage(testStorage)
 		}
 		// Unset environment variable
-		os.Unsetenv("TEST_ENCRYPTION_KEK")
+		_ = os.Unsetenv("TEST_ENCRYPTION_KEK")
 		// AWS SDK and memguard handle memory cleanup of sensitive data
 	})
 
