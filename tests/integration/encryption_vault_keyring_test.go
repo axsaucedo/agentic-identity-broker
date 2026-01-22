@@ -17,8 +17,10 @@ func TestLocalStackKMSEncryptDecryptRoundtrip(t *testing.T) {
 
 	// Start LocalStack container with KMS and DynamoDB
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	// Configure AWS SDK to use LocalStack endpoint
 	ls.SetupLocalStackEnvironment()
@@ -75,8 +77,10 @@ func TestLocalStackContextMismatchDetection(t *testing.T) {
 
 	// Start LocalStack
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	// Configure AWS SDK to use LocalStack endpoint
 	ls.SetupLocalStackEnvironment()
@@ -113,7 +117,7 @@ func TestLocalStackContextMismatchDetection(t *testing.T) {
 	}
 
 	// Verify decrypted is nil/empty
-	if decrypted != nil && len(decrypted) > 0 {
+	if len(decrypted) > 0 {
 		t.Fatal("decrypted should be empty on context mismatch")
 	}
 
@@ -130,8 +134,10 @@ func TestLocalStackUniqueEncryptionPerCall(t *testing.T) {
 
 	// Start LocalStack
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	// Configure AWS SDK to use LocalStack endpoint
 	ls.SetupLocalStackEnvironment()
@@ -191,8 +197,10 @@ func TestLocalStackTamperedCiphertextDetection(t *testing.T) {
 
 	// Start LocalStack
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	// Configure AWS SDK to use LocalStack endpoint
 	ls.SetupLocalStackEnvironment()
@@ -232,7 +240,7 @@ func TestLocalStackTamperedCiphertextDetection(t *testing.T) {
 	}
 
 	// Verify decrypted is nil/empty
-	if decrypted != nil && len(decrypted) > 0 {
+	if len(decrypted) > 0 {
 		t.Fatal("decrypted should be empty for tampered ciphertext")
 	}
 
@@ -249,8 +257,10 @@ func TestLocalStackMultipleServices(t *testing.T) {
 
 	// Start LocalStack
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	// Configure AWS SDK to use LocalStack endpoint
 	ls.SetupLocalStackEnvironment()
@@ -304,7 +314,7 @@ func TestLocalStackMultipleServices(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected decryption to fail when oauth2 token used with github context")
 	}
-	if decrypted != nil && len(decrypted) > 0 {
+	if len(decrypted) > 0 {
 		t.Fatal("decrypted should be nil when context mismatch occurs")
 	}
 
@@ -313,7 +323,7 @@ func TestLocalStackMultipleServices(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected decryption to fail when github token used with oauth2 context")
 	}
-	if decrypted != nil && len(decrypted) > 0 {
+	if len(decrypted) > 0 {
 		t.Fatal("decrypted should be nil when context mismatch occurs")
 	}
 }
@@ -327,8 +337,10 @@ func TestHierarchicalKeyringInitialization(t *testing.T) {
 
 	// Start LocalStack
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -373,8 +385,10 @@ func TestBranchKeyProvisioningAndCaching(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -416,8 +430,10 @@ func TestBranchKeyRetrievalFromCache(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -456,8 +472,10 @@ func TestDynamoDBInteraction(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -497,8 +515,10 @@ func TestBranchKeySupplierMapping(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -559,8 +579,10 @@ func TestContextBindingAtDEKLayer(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -607,8 +629,10 @@ func TestContextBindingAtKEKLayer(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -650,8 +674,10 @@ func TestContextBindingThroughBothLayers(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -699,8 +725,10 @@ func TestAADInclusionInEncryption(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -742,8 +770,10 @@ func TestContextMismatchFailureAtBothLayers(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -782,8 +812,10 @@ func TestLargeTokenEncryption(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -821,8 +853,10 @@ func TestEmptyPlaintextTokenEncryption(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -856,8 +890,10 @@ func TestPartialCiphertextTampering(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -914,8 +950,10 @@ func TestUnknownServiceContextDecryption(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -952,8 +990,10 @@ func TestContextMismatchErrorCascade(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -997,8 +1037,10 @@ func TestDEKSecureDeletion(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1037,8 +1079,10 @@ func TestPlaintextTokenMemoryManagement(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1076,8 +1120,10 @@ func TestErrorMessagesSanitization(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1113,10 +1159,9 @@ func TestErrorMessagesSanitization(t *testing.T) {
 	}
 
 	for _, pattern := range sensitivePatterns[:1] { // Just check plaintext
-		if len(pattern) > 0 && len(errorMsg) > 0 {
-			// It's ok if plaintext appears in error (it's a test value)
-			// Real test would use actual secrets
-		}
+		_ = pattern
+		// It's ok if plaintext appears in error (it's a test value)
+		// Real test would use actual secrets
 	}
 
 	// Error should be actionable
@@ -1130,8 +1175,10 @@ func TestMemoryLockingIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1169,8 +1216,10 @@ func TestBranchKeyIsolationPerService(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1222,8 +1271,10 @@ func TestDEKVarianceAcrossServices(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1263,8 +1314,10 @@ func TestCrossServiceDecryptionAttack(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1333,8 +1386,10 @@ func TestServiceContextInAAD(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1376,8 +1431,10 @@ func TestBranchKeyCacheForensics(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1426,8 +1483,10 @@ func TestKMSARNValidation(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1462,8 +1521,10 @@ func TestBranchKeyPrePopulationValidation(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1528,8 +1589,10 @@ func TestBranchKeyCacheHitRate(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1575,8 +1638,10 @@ func TestConcurrentServiceEncryption(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 
@@ -1625,8 +1690,10 @@ func TestEncryptionTransparencyInSessionRepository(t *testing.T) {
 	ctx := context.Background()
 
 	ls := bootstrap.StartLocalStack(ctx, t)
-	defer ls.Terminate(ctx)
-	defer ls.CleanupLocalStackEnvironment()
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
 
 	ls.SetupLocalStackEnvironment()
 

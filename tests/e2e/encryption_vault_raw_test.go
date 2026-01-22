@@ -62,7 +62,7 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 	AfterEach(func() {
 		// Cleanup resources
 		if testStorage != nil {
-			storageFactory.CloseStorage(testStorage)
+			_ = storageFactory.CloseStorage(testStorage)
 		}
 		// Unset environment variable
 		os.Unsetenv("TEST_ENCRYPTION_KEK")

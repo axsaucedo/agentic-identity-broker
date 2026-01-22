@@ -59,13 +59,13 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 
 	host, err := container.Host(ctx)
 	if err != nil {
-		container.Terminate(ctx)
+		_ = container.Terminate(ctx)
 		t.Fatalf("failed to get container host: %v", err)
 	}
 
 	port, err := container.MappedPort(ctx, "4566")
 	if err != nil {
-		container.Terminate(ctx)
+		_ = container.Terminate(ctx)
 		t.Fatalf("failed to get mapped port: %v", err)
 	}
 
@@ -77,7 +77,7 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 		Description: wrap("Test encryption key"),
 	})
 	if err != nil {
-		container.Terminate(ctx)
+		_ = container.Terminate(ctx)
 		t.Fatalf("failed to create KMS key: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 		// TTL can be configured separately via UpdateTimeToLive if needed
 	})
 	if err != nil {
-		container.Terminate(ctx)
+		_ = container.Terminate(ctx)
 		t.Fatalf("failed to create DynamoDB table: %v", err)
 	}
 
@@ -121,7 +121,7 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	// The hierarchical keyring requires these to exist
 	err = preBranchKeysForLocalStack(ctx, kmsClient, dynamoClient, keyID)
 	if err != nil {
-		container.Terminate(ctx)
+		_ = container.Terminate(ctx)
 		t.Fatalf("failed to pre-populate branch keys: %v", err)
 	}
 
@@ -219,10 +219,7 @@ func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dyna
 func awsConfigForLocalStack(ctx context.Context, endpoint string) aws.Config {
 	cfg, _ := config.LoadDefaultConfig(ctx,
 		config.WithRegion("eu-central-1"),
-		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-			func(service, region string, opts ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: endpoint}, nil
-			})),
+		config.WithBaseEndpoint(endpoint),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
 	)
 	return cfg

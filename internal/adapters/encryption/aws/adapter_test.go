@@ -215,7 +215,7 @@ func TestContextMismatchDetection(t *testing.T) {
 	}
 
 	// Verify: Decrypted is nil or empty
-	if decrypted != nil && len(decrypted) > 0 {
+	if len(decrypted) > 0 {
 		t.Fatal("decrypted should be empty/nil on context mismatch")
 	}
 }
@@ -387,7 +387,7 @@ func TestTamperedCiphertextDetection(t *testing.T) {
 	}
 
 	// Verify: Decrypted is nil
-	if decrypted != nil && len(decrypted) > 0 {
+	if len(decrypted) > 0 {
 		t.Fatal("decrypted should be empty for tampered ciphertext")
 	}
 }
@@ -412,11 +412,6 @@ func isIntegrityViolationError(err error) bool {
 func isDecryptionFailedError(err error) bool {
 	encErr, ok := err.(*encryption.EncryptionError)
 	return ok && encErr.Kind == encryption.ErrorKindDecryptionFailed
-}
-
-func isEncryptionFailedError(err error) bool {
-	encErr, ok := err.(*encryption.EncryptionError)
-	return ok && encErr.Kind == encryption.ErrorKindEncryptionFailed
 }
 
 // BenchmarkEncrypt benchmarks encryption performance
