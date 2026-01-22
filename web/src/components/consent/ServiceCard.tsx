@@ -9,7 +9,6 @@
  * - Scopes displayed as StatusIndicators with tooltip descriptions
  * - Expandable scope list for detailed view
  *
- * Refactored for Phase 8 (Simplified UI without edit mode).
  */
 
 import type { ThirdpartyService, DelegatedToken } from '../../types/consent';
