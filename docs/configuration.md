@@ -216,6 +216,19 @@ This section provides a comprehensive quick-reference table for all configuratio
 | `log.level` | enum | `info` | `debug`, `info`, `warn`, `error` | No | `IDENTITY_BROKER_LOG_LEVEL` | `--log-level` | Sets logging verbosity level. Use `debug` for troubleshooting, `info` for normal operation, `warn` for production. |
 | `log.format` | enum | `text` | `text`, `json` | No | `IDENTITY_BROKER_LOG_FORMAT` | `--log-format` | Sets log output format. Use `json` for production and log aggregation systems. |
 
+#### Encryption Configuration
+
+| Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
+|--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
+| `encryption.key_encryption_key` | string | - | AWS KMS ARN or `${ENV_VAR}` | Yes | `IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY` | N/A | Key Encryption Key (KEK) for OAuth token envelope encryption. Use AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development. Sensitive - redacted in logs. |
+
+**Encryption Configuration Notes:**
+- AWS KMS ARN format: `arn:aws:kms:eu-central-1:123456789012:key/key-id` or `arn:aws:kms:eu-central-1:123456789012:alias/alias-name`
+- Environment variable reference: `${ENCRYPTION_KEK}` must resolve to a base64-encoded 256-bit AES key
+- Application validates KMS key accessibility on startup (AWS KMS mode) or environment variable presence (env var mode)
+- Startup fails with clear error if KEK is unavailable or inaccessible
+- Tokens encrypted with old KEK remain decryptable after KEK rotation
+
 #### Server Configuration
 
 The Identity Broker runs two independent HTTP servers on separate ports:
@@ -480,6 +493,101 @@ log:
 ```
 
 **Recommendation**: Use `json` format in production for structured logging and log aggregation.
+
+### Encryption Configuration
+
+#### encryption.key_encryption_key
+
+**Description**: Specifies the Key Encryption Key (KEK) for envelope encryption of OAuth2 tokens at rest. Supports two modes: AWS KMS for production deployments, or environment variable injection for development.
+
+**Valid Formats**:
+- AWS KMS ARN: `arn:aws:kms:region:account:key/key-id` or `arn:aws:kms:region:account:alias/alias-name`
+- Environment variable reference: `${ENCRYPTION_KEK}` (resolves to base64-encoded AES-256 key)
+
+**Default**: None (required for token encryption; startup fails if not provided and encryption is enabled)
+
+**Environment Variable**: `IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY`
+
+**CLI Flag**: None (only configurable via YAML or environment)
+
+**Examples**:
+
+**Production (AWS KMS)**:
+```yaml
+# config.yaml - Production deployment
+encryption:
+  key_encryption_key: "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+```
+
+```bash
+# .env.production
+IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY=arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012
+```
+
+**Development (Environment Variable)**:
+```bash
+# .env.local - Development with environment variable KEK
+ENCRYPTION_KEK=$(base64 < /dev/urandom | head -c 44)
+IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY='${ENCRYPTION_KEK}'
+```
+
+```yaml
+# config.yaml - Development deployment
+encryption:
+  key_encryption_key: "${ENCRYPTION_KEK}"
+```
+
+**AWS KMS Setup Instructions**:
+
+1. Create a customer-managed key in AWS KMS:
+```bash
+aws kms create-key \
+  --description "Identity Broker OAuth Token Encryption Key" \
+  --region eu-central-1
+```
+
+2. Create an alias for easier reference:
+```bash
+aws kms create-alias \
+  --alias-name "alias/identity-broker-encryption" \
+  --target-key-id "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+```
+
+3. Grant IAM permissions to the Identity Broker service role:
+```bash
+aws kms create-grant \
+  --key-id "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012" \
+  --grantee-principal "arn:aws:iam::123456789012:role/IdentityBrokerRole" \
+  --operations "Encrypt" "Decrypt" "GenerateDataKey" "DescribeKey"
+```
+
+4. Reference the key in configuration:
+```yaml
+encryption:
+  key_encryption_key: "arn:aws:kms:eu-central-1:123456789012:alias/identity-broker-encryption"
+```
+
+**Startup Validation**:
+
+- **AWS KMS mode**: On startup, the application validates that the KMS key is accessible and the service has required permissions. Startup fails with clear error message if validation fails.
+- **Environment variable mode**: On startup, the application validates that the environment variable is set and contains valid base64-encoded key material. Startup fails if not.
+
+**Security Considerations**:
+
+- **AWS KMS**: KEK never leaves AWS KMS boundaries. The application only sees encrypted Data Encryption Keys (DEKs). All cryptographic operations happen server-side in KMS.
+- **Environment Variable**: KEK is loaded into application memory at startup and wrapped in memory-protected buffers (via memguard). Suitable for containerized/ephemeral deployments only.
+- **Rotation**: KMS keys can be rotated without application restart. Old tokens remain decryptable with rotated keys.
+- **Permissions**: Ensure service role has `kms:Decrypt` and `kms:GenerateDataKey` permissions. Overly broad permissions should be avoided.
+
+**Recommendations**:
+
+| Environment | Approach | Configuration |
+|---|---|---|
+| Production | AWS KMS | Use customer-managed key ARN or alias |
+| Staging | AWS KMS | Separate key or AWS KMS key per environment |
+| Development | Environment Variable | `${ENCRYPTION_KEK}` from .env.local |
+| CI/CD | Environment Variable | `${ENCRYPTION_KEK}` from CI/CD secrets |
+| Testing | Environment Variable | Random generated key per test |
 
 ## Security Best Practices
 

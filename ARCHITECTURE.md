@@ -400,6 +400,87 @@ Admin Server (Port 14000):
 - Validate API implementation compliance against documented spec
 - Reference for integration testing and contract validation
 
+#### 3.1.5. Encryption Vault for OAuth Tokens (Feature 012)
+
+**Purpose**: Secure at-rest encryption of OAuth2 tokens using envelope encryption with AWS Encryption SDK, protecting tokens from unauthorized access while maintaining developer transparency.
+
+**Architecture**: Port-adapter pattern implementing EncryptionPort interface with AWS KMS hierarchical keyring (production) and environment variable KEK injection (development).
+
+**Core Components**:
+
+- **EncryptionPort** (internal/ports/encryption.go): Domain interface defining Encrypt/Decrypt methods with encryption context parameter
+- **AWSAdapter** (internal/adapters/encryption/aws/): AWS Encryption SDK implementation with:
+  - Envelope encryption: DEK-per-token with KEK wrapping
+  - Context binding: Service isolation via encryption context AAD
+  - Support for AWS KMS ARN (production) and ${ENV_VAR} (development)
+  - Memory protection via AWS SDK baseline and memguard integration
+  - Hierarchical keyring with DynamoDB branch key caching (production)
+
+**Encryption Model**:
+
+```
+Token Encryption Flow:
+  1. Generate fresh DEK (Data Encryption Key) for this token
+  2. Encrypt token plaintext with DEK using AESGCMSIV
+  3. Bind encryption context (service_id) to DEK encryption as AAD
+  4. Wrap DEK with KEK (from AWS KMS or environment)
+  5. Bind same encryption context to KEK wrapping as AAD
+  6. Return serialized envelope: [wrapped_DEK || ciphertext || auth_tag]
+
+Token Decryption Flow:
+  1. Extract wrapped DEK, ciphertext, auth_tag from envelope
+  2. Provide encryption context (service_id) to decoder
+  3. Unwrap DEK with KEK, verifying context matches (context mismatch = fail-closed)
+  4. Decrypt ciphertext with DEK, verifying auth tag
+  5. Verify context at both DEK and KEK layers
+  6. Return plaintext token or error
+```
+
+**KEK Storage Mechanisms**:
+
+1. **Production (AWS KMS ARN)**:
+   - KEK reference via AWS KMS customer-managed key ARN
+   - Hierarchical keyring uses DynamoDB for branch key caching
+   - Reduces KMS API calls while maintaining security
+   - Configuration: `encryption.key_encryption_key: "arn:aws:kms:region:account:key/key-id"`
+   - No plaintext KEK in application memory (AWS SDK handles)
+
+2. **Development (Environment Variable)**:
+   - KEK injected via `${ENCRYPTION_KEK}` reference
+   - Base64-encoded AES-256 key from environment variable
+   - Raw AES keyring (no AWS KMS dependency)
+   - Configuration: `encryption.key_encryption_key: "${ENCRYPTION_KEK}"`
+   - Environment variable wrapped in memguard buffer
+
+**Service Integration**:
+
+- **OAuth2SessionService**: Transparently encrypts tokens on CreateSession, decrypts on retrieval
+- **UserSessionRepository**: Stores EncryptedAccessToken and EncryptedRefreshToken as BYTEA columns
+- No manual encryption steps required in calling code - encryption is transparent
+
+**Security Properties**:
+
+- **Context Binding**: Service-level isolation - tokens encrypted for service A cannot be used for service B (context verification at DEK and KEK layers)
+- **Fail-Closed**: No plaintext fallback on encryption/decryption failure (errors propagate)
+- **Authenticated Encryption**: AESGCMSIV provides both confidentiality and authenticity
+- **Fresh DEK Per Token**: Unique DEK for each token prevents cross-token analysis
+- **Memory Protection**: AWS SDK baseline + optional memguard for sensitive buffers
+- **Audit Logging**: All operations logged with error_kind, service_id, and operation type
+
+**Performance**:
+
+- Local encryption/decryption: <5ms per operation
+- AWS KMS operations: 50-200ms (depends on KMS latency + DynamoDB branch key caching)
+- Session operations: <100ms typical (includes token encryption overhead)
+- Branch key cache improves production performance by reducing KMS calls
+
+**Testing**:
+
+- E2E tests (24 scenarios) covering all acceptance criteria from spec
+- Unit tests for adapter error handling, context verification, DEK uniqueness
+- Integration tests with LocalStack KMS and real PostgreSQL storage
+- Backward compatibility tests for KEK rotation scenarios
+
 ## 4. Data Stores
 
 (List and describe the databases and other persistent storage solutions used.)

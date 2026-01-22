@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -216,8 +217,16 @@ func newAdapterWithEnvVarKEK(envVarName string) (*AWSAdapter, error) {
 // Context binding is enforced at both DEK and KEK layers.
 func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error) {
 	if a == nil || a.encryptionClient == nil {
+		slog.Error("encryption_failed",
+			"operation", "encrypt",
+			"error_kind", encryption.ErrorKindKEKUnavailable,
+			"reason", "adapter_not_initialized",
+		)
 		return nil, encryption.NewKEKUnavailableError("encryption adapter not properly initialized", nil)
 	}
+
+	// Extract service_id from context for logging (sanitized)
+	serviceID := encryptionContext["service_id"]
 
 	// Encrypt using AWS Encryption SDK
 	// The SDK handles:
@@ -232,20 +241,37 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 	}
 
 	result, err := a.encryptionClient.Encrypt(ctx, encryptInput)
+
 	if err != nil {
 		// Map AWS SDK errors to domain error types
 		if strings.Contains(err.Error(), "context") {
+			slog.Error("encryption_failed",
+				"operation", "encrypt",
+				"service_id", serviceID,
+				"error_kind", encryption.ErrorKindContextMismatch,
+			)
 			return nil, encryption.NewContextMismatchError(
 				fmt.Sprintf("context verification failed during encryption: %v", err),
 				err,
 			)
 		}
 		if strings.Contains(err.Error(), "integrity") || strings.Contains(err.Error(), "authentication") {
+			slog.Error("encryption_failed",
+				"operation", "encrypt",
+				"service_id", serviceID,
+				"error_kind", encryption.ErrorKindIntegrityViolation,
+			)
 			return nil, encryption.NewIntegrityViolationError(
 				fmt.Sprintf("integrity verification failed during encryption: %v", err),
 				err,
 			)
 		}
+
+		slog.Error("encryption_failed",
+			"operation", "encrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindEncryptionFailed,
+		)
 		return nil, encryption.NewEncryptionFailedError(
 			fmt.Sprintf("encryption failed: %v", err),
 			err,
@@ -253,11 +279,23 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 	}
 
 	if result == nil {
+		slog.Error("encryption_failed",
+			"operation", "encrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindEncryptionFailed,
+			"reason", "nil_result",
+		)
 		return nil, encryption.NewEncryptionFailedError("encryption returned nil result", nil)
 	}
 
 	// Ensure ciphertext is not empty
 	if len(result.Ciphertext) == 0 {
+		slog.Error("encryption_failed",
+			"operation", "encrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindEncryptionFailed,
+			"reason", "empty_ciphertext",
+		)
 		return nil, encryption.NewEncryptionFailedError("encryption produced empty ciphertext", nil)
 	}
 
@@ -271,11 +309,25 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 // - DEK unwrapping with KEK using same context
 func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]string) ([]byte, error) {
 	if a == nil || a.encryptionClient == nil {
+		slog.Error("decryption_failed",
+			"operation", "decrypt",
+			"error_kind", encryption.ErrorKindKEKUnavailable,
+			"reason", "adapter_not_initialized",
+		)
 		return nil, encryption.NewKEKUnavailableError("encryption adapter not properly initialized", nil)
 	}
 
+	// Extract service_id from context for logging (sanitized)
+	serviceID := encryptionContext["service_id"]
+
 	// Validate ciphertext is not empty
 	if len(ciphertext) == 0 {
+		slog.Error("decryption_failed",
+			"operation", "decrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindDecryptionFailed,
+			"reason", "empty_ciphertext",
+		)
 		return nil, encryption.NewDecryptionFailedError("ciphertext cannot be empty", nil)
 	}
 
@@ -295,17 +347,33 @@ func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionC
 	if err != nil {
 		// Map AWS SDK errors to domain error types
 		if strings.Contains(err.Error(), "context") {
+			slog.Error("decryption_failed",
+				"operation", "decrypt",
+				"service_id", serviceID,
+				"error_kind", encryption.ErrorKindContextMismatch,
+			)
 			return nil, encryption.NewContextMismatchError(
 				fmt.Sprintf("context verification failed during decryption: %v", err),
 				err,
 			)
 		}
 		if strings.Contains(err.Error(), "integrity") || strings.Contains(err.Error(), "authentication") {
+			slog.Error("decryption_failed",
+				"operation", "decrypt",
+				"service_id", serviceID,
+				"error_kind", encryption.ErrorKindIntegrityViolation,
+			)
 			return nil, encryption.NewIntegrityViolationError(
 				fmt.Sprintf("integrity verification failed during decryption: %v", err),
 				err,
 			)
 		}
+
+		slog.Error("decryption_failed",
+			"operation", "decrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindDecryptionFailed,
+		)
 		return nil, encryption.NewDecryptionFailedError(
 			fmt.Sprintf("decryption failed: %v", err),
 			err,
@@ -313,11 +381,23 @@ func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionC
 	}
 
 	if result == nil {
+		slog.Error("decryption_failed",
+			"operation", "decrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindDecryptionFailed,
+			"reason", "nil_result",
+		)
 		return nil, encryption.NewDecryptionFailedError("decryption returned nil result", nil)
 	}
 
 	// Ensure plaintext is not empty
 	if len(result.Plaintext) == 0 {
+		slog.Error("decryption_failed",
+			"operation", "decrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindDecryptionFailed,
+			"reason", "empty_plaintext",
+		)
 		return nil, encryption.NewDecryptionFailedError("decryption produced empty plaintext", nil)
 	}
 
