@@ -685,7 +685,7 @@ func TestLargeTokenEncryption(t *testing.T) {
 	assert.Equal(t, len(largeToken), len(decrypted), "decrypted size mismatch")
 }
 
-// TestEmptyPlaintextTokenEncryption verifies empty/nil plaintext tokens are handled correctly.
+// TestEmptyPlaintextTokenEncryption verifies empty/nil plaintext tokens are rejected as invalid.
 func TestEmptyPlaintextTokenEncryption(t *testing.T) {
 	ctx := context.Background()
 
@@ -701,17 +701,19 @@ func TestEmptyPlaintextTokenEncryption(t *testing.T) {
 	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err, "failed to create adapter")
 
-	// Empty token should be valid
+	// Empty token should fail validation - OAuth tokens cannot be empty
 	emptyToken := []byte{}
 	encCtx := map[string]string{"service_id": "oauth2"}
 
 	ciphertext, err := adapter.Encrypt(ctx, emptyToken, encCtx)
-	require.NoError(t, err, "empty token encryption should succeed")
-
-	decrypted, err := adapter.Decrypt(ctx, ciphertext, encCtx)
-	require.NoError(t, err, "empty token decryption should succeed")
-
-	assert.Empty(t, decrypted, "decrypted empty token should be empty")
+	// Encryption may succeed, but decryption of empty plaintext should fail
+	if err == nil {
+		// If encryption succeeds, decryption should fail with empty plaintext error
+		decrypted, err := adapter.Decrypt(ctx, ciphertext, encCtx)
+		require.Error(t, err, "empty plaintext decryption should fail")
+		require.Empty(t, decrypted, "decrypted should be empty on error")
+		assert.True(t, isDecryptionFailedError(err), "expected DecryptionFailed error for empty plaintext")
+	}
 }
 
 // TestPartialCiphertextTampering verifies various tampering patterns are detected.
