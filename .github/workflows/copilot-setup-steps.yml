@@ -45,14 +45,9 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
-      # Install ginkgo for E2E tests
-      - name: Install ginkgo
-        run: go install github.com/onsi/ginkgo/v2/ginkgo@latest
-
-      # Install golangci-lint
-      - name: Install golangci-lint
-        run: |
-          bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.8.0
+      # Install other tools
+      - name: "Install Tools via `just install-tools`"
+        run: just install-tools
 
       # Install web dependencies
       - name: Install web dependencies
