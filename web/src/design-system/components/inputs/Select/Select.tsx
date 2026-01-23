@@ -257,7 +257,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
         {/* Select button */}
         <div className="relative w-full">
           <Listbox
-            value={value}
+            value={value ?? undefined}
             onChange={handleSelect}
             disabled={disabled}
             multiple={multiselect}
@@ -285,20 +285,20 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             </Listbox.Button>
 
             {/* Options dropdown */}
-            <Transition
-              show={isOpen && !disabled}
-              enter="transition ease-out duration-100"
-              enterFrom="transform opacity-0 scale-95"
-              enterTo="transform opacity-100 scale-100"
-              leave="transition ease-in duration-75"
-              leaveFrom="transform opacity-100 scale-100"
-              leaveTo="transform opacity-0 scale-95"
-              className="relative"
-            >
-              <Listbox.Options
-                className={selectOptionsVariants({ size })}
-                static
+            <div className="relative">
+              <Transition
+                show={isOpen && !disabled}
+                enter="transition ease-out duration-100"
+                enterFrom="transform opacity-0 scale-95"
+                enterTo="transform opacity-100 scale-100"
+                leave="transition ease-in duration-75"
+                leaveFrom="transform opacity-100 scale-100"
+                leaveTo="transform opacity-0 scale-95"
               >
+                <Listbox.Options
+                  className={selectOptionsVariants({ size })}
+                  static
+                >
                 {/* Search input */}
                 {searchable && (
                   <div className="sticky top-0 bg-white border-b border-neutral-200 p-2">
@@ -357,7 +357,8 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
                   </div>
                 )}
               </Listbox.Options>
-            </Transition>
+              </Transition>
+            </div>
 
             {/* Close options when clicking outside */}
             {isOpen && (
