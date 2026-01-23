@@ -168,7 +168,7 @@ type SessionDecryptionFailed struct {
 
 **Location**: `.env` file (feature 002-flexible-configuration)
 
-**Parameter**: `encryption.key_encryption_key`
+**Parameter**: `encryption.key`
 
 **Resolution** (in AWS adapter initialization):
 1. Read value from config

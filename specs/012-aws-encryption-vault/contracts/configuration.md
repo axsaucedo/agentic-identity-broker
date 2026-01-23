@@ -8,7 +8,7 @@
 
 ## Configuration Field
 
-### `encryption.key_encryption_key`
+### `encryption.key`
 
 **Type**: String (required for feature 012 activation)
 
@@ -180,7 +180,7 @@ func (b *AppBuilder) validateEncryption(ctx context.Context) error {
     keyMaterial := b.config.EncryptionKeyEncryptionKey
 
     if keyMaterial == "" {
-        return fmt.Errorf("encryption.key_encryption_key not configured (required for feature 012)")
+        return fmt.Errorf("encryption.key not configured (required for feature 012)")
     }
 
     // Attempt to create adapter (triggers KEK validation)
@@ -233,7 +233,7 @@ func (b *AppBuilder) validateEncryption(ctx context.Context) error {
 ```
 [ERROR] Encryption vault initialization failed
         reason=kek_not_configured
-        error=encryption.key_encryption_key not set
+        error=encryption.key not set
         action=Set ENCRYPTION_KEK environment variable or configure AWS KMS ARN
 ```
 
@@ -316,7 +316,7 @@ encryption:
 
 | Rule | Condition | Error Message |
 |------|-----------|---------------|
-| Required | `encryption.key_encryption_key` not set | "encryption.key_encryption_key not configured" |
+| Required | `encryption.key` not set | "encryption.key not configured" |
 | Format | Not ARN or valid base64 | "invalid key material encoding" |
 | Key Length (env var) | Not 256-bit (32 bytes) after decoding | "key material must be 256-bit (32 bytes), got X bytes" |
 | KMS Access (AWS KMS) | Cannot reach AWS KMS endpoint | "KEK unavailable: connection failed" |

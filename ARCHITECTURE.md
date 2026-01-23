@@ -442,13 +442,13 @@ Token Decryption Flow:
    - KEK reference via AWS KMS customer-managed key ARN
    - Hierarchical keyring uses DynamoDB for branch key caching
    - Reduces KMS API calls while maintaining security
-   - Configuration: `encryption.key_encryption_key: "arn:aws:kms:region:account:key/key-id"`
+   - Configuration: `encryption.key: "arn:aws:kms:region:account:key/key-id"`
    - No plaintext KEK in application memory (AWS SDK handles)
 
 2. **Development (Base64-Encoded Key)**:
    - KEK provided as base64-encoded AES-256 key (typically from environment variable)
    - Raw AES keyring (no AWS KMS dependency)
-   - Configuration: `encryption.key_encryption_key: "${ENCRYPTION_KEK}"` (resolves to base64 key)
+   - Configuration: `encryption.key: "${ENCRYPTION_KEK}"` (resolves to base64 key)
    - Base64 key decoded and wrapped in memguard buffer at initialization
    - Environment variable interpolation allows flexible key injection
 

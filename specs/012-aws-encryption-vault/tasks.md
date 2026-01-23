@@ -44,7 +44,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Phase 2b: Configuration Design (Principle VII)
 
-- [x] T007 Verify configuration field defined: `encryption.key_encryption_key` supports AWS KMS ARN or base64-encoded AES key (populated from environment variable if needed)
+- [x] T007 Verify configuration field defined: `encryption.key` supports AWS KMS ARN or base64-encoded AES key (populated from environment variable if needed)
 - [x] T008 Add configuration examples to [examples/config/](../../examples/config/): `encryption-aws-kms.yaml` (production with KMS ARN) and `encryption-env-var.yaml` (development with base64-encoded key from environment variable)
 
 ### Phase 2c: API Design (Principles IV, X)
@@ -183,7 +183,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 ### Configuration Integration
 
 - [x] T021 [P] Verify configuration system integration:
-  - Confirm `encryption.key_encryption_key` field exists in config schema
+  - Confirm `encryption.key` field exists in config schema
   - Confirm environment variable interpolation resolves at runtime (e.g., `${ENCRYPTION_KEK}` → base64 key)
   - Write test: configuration loads correctly from `.env` file with base64-encoded key
 
@@ -529,7 +529,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 - [x] T054 [US4] E2E Test - Scenario 4.1: "Load base64-encoded KEK from environment"
   - Set `ENCRYPTION_KEK=<base64-encoded-key>`
-  - Configure `encryption.key_encryption_key: ${ENCRYPTION_KEK}` (resolves to base64 key)
+  - Configure `encryption.key: ${ENCRYPTION_KEK}` (resolves to base64 key)
   - Verify application initializes successfully
   - **Status**: ✅ PASSING - `encryption_vault_raw_test.go` L318-334
 
@@ -737,7 +737,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - **Status**: ✅ COMPLETE - Added section 3.1.5 documenting full encryption architecture
 
 - [x] T082 [P] Update [docs/configuration.md](../../docs/configuration.md):
-  - Document `encryption.key_encryption_key` configuration ✅
+  - Document `encryption.key` configuration ✅
   - Show AWS KMS production example ✅
   - Show environment variable development example ✅
   - Document startup validation ✅
@@ -859,7 +859,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 ### Configuration (Principle VII)
 
 - [ ] T099 [P] Verify configuration integration:
-  - `encryption.key_encryption_key` field used (no custom config)
+  - `encryption.key` field used (no custom config)
   - `${ENCRYPTION_KEK}` interpolation works
   - AWS KMS ARN format detected and handled
   - Startup validation enforced (fail-fast if KEK unavailable)

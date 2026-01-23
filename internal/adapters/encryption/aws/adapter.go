@@ -48,7 +48,7 @@ type AWSAdapter struct {
 //
 // Environment variable interpolation is handled by the config loader before this function is called.
 // Configuration example with environment variable:
-//   - YAML: encryption.key_encryption_key: "${ENCRYPTION_KEK}"
+//   - YAML: encryption.key: "${ENCRYPTION_KEK}"
 //   - Config loader expands ${ENCRYPTION_KEK} → reads ENCRYPTION_KEK environment variable
 //   - This function receives: the actual base64 key value (not the ${...} reference)
 //

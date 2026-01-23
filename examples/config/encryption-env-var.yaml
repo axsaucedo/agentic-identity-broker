@@ -7,7 +7,7 @@
 encryption:
   # Base64-encoded Key Encryption Key from environment variable
   # The application expects this to be a base64-encoded 256-bit (32-byte) AES key
-  # Set via IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY environment variable
+  # Set via IDENTITY_BROKER_ENCRYPTION_KEY environment variable
   # This enables secure key management without hardcoding secrets in configuration files
   key_encryption_key: "${ENCRYPTION_KEK}"
 
@@ -23,14 +23,14 @@ encryption:
 #
 # Linux/macOS:
 # export ENCRYPTION_KEK="generated-base64-key-here"
-# export IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY="${ENCRYPTION_KEK}"
+# export IDENTITY_BROKER_ENCRYPTION_KEY="${ENCRYPTION_KEK}"
 #
 # Windows:
 # set ENCRYPTION_KEK=generated-base64-key-here
-# set IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY=%ENCRYPTION_KEK%
+# set IDENTITY_BROKER_ENCRYPTION_KEY=%ENCRYPTION_KEK%
 #
 # Docker:
-# docker run -e ENCRYPTION_KEK="generated-base64-key-here" -e IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY='${ENCRYPTION_KEK}' your-image
+# docker run -e ENCRYPTION_KEK="generated-base64-key-here" -e IDENTITY_BROKER_ENCRYPTION_KEY='${ENCRYPTION_KEK}' your-image
 #
 # Kubernetes Secret:
 # apiVersion: v1
@@ -97,7 +97,7 @@ third_party_oauth2:
 #     image: identity-broker:latest
 #     environment:
 #       # ENCRYPTION_KEK: base64-encoded 32-byte key (store securely, not in compose file)
-#       # IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY: ${ENCRYPTION_KEK}
+#       # IDENTITY_BROKER_ENCRYPTION_KEY: ${ENCRYPTION_KEK}
 #       - GO_ENV=development
 #     ports:
 #       - "8000:8000"
@@ -113,7 +113,7 @@ third_party_oauth2:
 # CI/CD Pipeline example (GitHub Actions):
 # env:
 #   ENCRYPTION_KEK: ${{ secrets.ENCRYPTION_KEK }}
-#   IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEK }}
+#   IDENTITY_BROKER_ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEK }}
 #
 # Where ENCRYPTION_KEK is stored as a repository secret with a base64-encoded 32-byte key
 

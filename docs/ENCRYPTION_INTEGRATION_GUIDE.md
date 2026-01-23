@@ -150,7 +150,7 @@ ENCRYPTION_KEK=$(go run -c 'package main; import ("crypto/rand"; "encoding/base6
 ```bash
 # .env.local
 export ENCRYPTION_KEK="base64-encoded-32-byte-key"
-IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY='${ENCRYPTION_KEK}'
+IDENTITY_BROKER_ENCRYPTION_KEY='${ENCRYPTION_KEK}'
 ```
 
 ```yaml

@@ -237,7 +237,7 @@ How to support `${ENCRYPTION_KEK}` environment variable injection for dev while 
 ### Findings
 
 **Configuration System** (leverages feature 002-flexible-configuration):
-- Single field: `encryption.key_encryption_key`
+- Single field: `encryption.key`
 - Supports AWS KMS ARN format for production
 - Supports `${ENCRYPTION_KEK}` env var reference for development
 - Configuration loader resolves at startup

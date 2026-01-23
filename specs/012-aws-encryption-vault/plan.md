@@ -36,8 +36,8 @@ Implement application-layer envelope encryption for OAuth tokens stored in the s
 
 - [x] **Domain Model**: UserSession (existing) extended with encryption; EncryptionContext VO (service_id only); EncryptionPort interface
 - [x] **Domain Concepts**: Add "envelope encryption", "DEK", "KEK", "EncryptionContext", "EncryptionPort", "AAD" to ARCHITECTURE.md Glossary
-- [x] **Configuration Design**: Single `encryption.key_encryption_key` field with environment variable interpolation support (AWS KMS ARN or base64-encoded AES key)
-- [x] **Config Examples**: `encryption.key_encryption_key: arn:aws:kms:eu-central-1:123456789012:key/abcd` (prod with KMS) or `${ENCRYPTION_KEK}` resolving to base64 key (dev)
+- [x] **Configuration Design**: Single `encryption.key` field with environment variable interpolation support (AWS KMS ARN or base64-encoded AES key)
+- [x] **Config Examples**: `encryption.key: arn:aws:kms:eu-central-1:123456789012:key/abcd` (prod with KMS) or `${ENCRYPTION_KEK}` resolving to base64 key (dev)
 - [x] **API Design**: EncryptionPort interface (Encrypt/Decrypt) specified; internal port/adapter (no HTTP API)
 - [x] **Database Design**: No migrations required (encrypted_access_token BYTEA, encrypted_refresh_token BYTEA, encryption_context JSONB columns already exist)
 - [ ] **E2E Acceptance Tests**: Write tests for all 24 acceptance scenarios BEFORE implementation (red phase)

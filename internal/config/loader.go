@@ -140,7 +140,7 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("third_party_oauth2.pkce_verifier_length", "IDENTITY_BROKER_PKCE_VERIFIER_LENGTH")
 
 	// Bind encryption configuration to environment variables
-	_ = l.v.BindEnv("encryption.key_encryption_key", "IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY")
+	_ = l.v.BindEnv("encryption.key", "IDENTITY_BROKER_ENCRYPTION_KEY")
 	_ = l.v.BindEnv("encryption.dynamodb_table_name", "IDENTITY_BROKER_ENCRYPTION_DYNAMODB_TABLE_NAME")
 	_ = l.v.BindEnv("encryption.branch_key_ttl", "IDENTITY_BROKER_ENCRYPTION_BRANCH_KEY_TTL")
 

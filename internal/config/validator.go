@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -40,6 +41,11 @@ func Validate(cfg *ports.Config) error {
 
 	// Validate OAuth2 Authorization Server configuration (if provided)
 	if err := validateOAuth2AuthServerConfig(&cfg.OAuth2AuthServer); err != nil {
+		return err
+	}
+
+	// Validate encryption configuration
+	if err := validateEncryptionConfig(&cfg.Encryption); err != nil {
 		return err
 	}
 
@@ -298,6 +304,71 @@ func formatValidationError(field string, value string, expected string, err erro
 		Source:   "", // Will be filled in by caller if known
 		Err:      err,
 	}
+}
+
+// validateEncryptionConfig validates the encryption configuration.
+// KeyEncryptionKey is required and must be either an AWS KMS ARN or base64-encoded AES256 key.
+func validateEncryptionConfig(cfg *ports.EncryptionConfig) error {
+	// KeyEncryptionKey is required
+	if cfg.KeyEncryptionKey == "" {
+		return formatValidationError(
+			"encryption.key",
+			"",
+			"AWS KMS ARN or base64-encoded AES256 key",
+			nil,
+		)
+	}
+
+	// Validate KeyEncryptionKey format
+	if err := validateKeyEncryptionKeyFormat(cfg.KeyEncryptionKey); err != nil {
+		return formatValidationError(
+			"encryption.key",
+			maskSensitiveValue(cfg.KeyEncryptionKey),
+			"valid AWS KMS ARN or base64-encoded AES256 key",
+			err,
+		)
+	}
+
+	return nil
+}
+
+// validateKeyEncryptionKeyFormat validates the format of the Key Encryption Key.
+// Supports AWS KMS ARN format (arn:aws:kms:...) or base64-encoded 32-byte AES256 key.
+func validateKeyEncryptionKeyFormat(kek string) error {
+	if kek == "" {
+		return fmt.Errorf("empty key encryption key")
+	}
+
+	// Check if it's an AWS KMS ARN
+	if strings.HasPrefix(kek, "arn:aws:kms:") {
+		// Basic validation: ARN should have the format arn:aws:kms:region:account-id:key/key-id
+		parts := strings.Split(kek, ":")
+		if len(parts) < 6 {
+			return fmt.Errorf("invalid AWS KMS ARN format: expected at least 6 colon-separated parts")
+		}
+		return nil
+	}
+
+	// Try to decode as base64 and validate it's 32 bytes (256 bits for AES256)
+	keyBytes, err := base64.StdEncoding.DecodeString(kek)
+	if err != nil {
+		return fmt.Errorf("must be either an AWS KMS ARN (arn:aws:kms:...) or valid base64-encoded key: %w", err)
+	}
+
+	if len(keyBytes) != 32 {
+		return fmt.Errorf("base64-decoded key must be exactly 32 bytes for AES256, got %d bytes", len(keyBytes))
+	}
+
+	return nil
+}
+
+// maskSensitiveValue masks sensitive values for display in error messages.
+// Shows only the first 10 and last 5 characters for readability while maintaining some specificity.
+func maskSensitiveValue(value string) string {
+	if len(value) <= 15 {
+		return "***" // Too short to safely display any part
+	}
+	return value[:10] + "..." + value[len(value)-5:]
 }
 
 // isValidURL checks if a string is a valid HTTP or HTTPS URL.

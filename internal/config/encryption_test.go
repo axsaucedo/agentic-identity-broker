@@ -1,9 +1,10 @@
 package config
 
 import (
-	"encoding/base64"
 	"testing"
+	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -101,9 +102,7 @@ func TestEncryptionConfigFieldTypes(t *testing.T) {
 	// Test assignment of different valid formats
 	testValues := []string{
 		"arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
-		"${ENCRYPTION_KEK}",
-		"${IDENTITY_BROKER_ENCRYPTION_KEK}",
-		base64.StdEncoding.EncodeToString([]byte("test-key-32-bytes-for-testing!!")),
+		generateBase64EncodedString(32),
 	}
 
 	for i, testValue := range testValues {
@@ -111,5 +110,174 @@ func TestEncryptionConfigFieldTypes(t *testing.T) {
 		if config.KeyEncryptionKey != testValue {
 			t.Errorf("Test %d: Failed to assign value %q to KeyEncryptionKey", i, testValue)
 		}
+	}
+}
+
+// TestValidateEncryptionConfigMissingKey verifies validation fails when KeyEncryptionKey is empty
+func TestValidateEncryptionConfigMissingKey(t *testing.T) {
+	cfg := &ports.Config{
+		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:  createValidServerConfig(),
+		Storage: createValidStorageConfig(),
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
+			JWESigningKey: generateBase64EncodedString(32),
+		},
+		Encryption: ports.EncryptionConfig{
+			KeyEncryptionKey: "", // Missing required field
+		},
+	}
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Error("Expected validation error for missing KeyEncryptionKey, got nil")
+	}
+
+	// Verify error mentions the field
+	if _, ok := err.(*config.ConfigError); !ok {
+		t.Errorf("Expected ConfigError, got %T", err)
+	}
+}
+
+// TestValidateEncryptionConfigValidAWSKMSARN verifies validation passes for valid AWS KMS ARN
+func TestValidateEncryptionConfigValidAWSKMSARN(t *testing.T) {
+	cfg := &ports.Config{
+		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:  createValidServerConfig(),
+		Storage: createValidStorageConfig(),
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
+			JWESigningKey: generateBase64EncodedString(32),
+		},
+		Encryption: ports.EncryptionConfig{
+			KeyEncryptionKey: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+		},
+	}
+
+	err := Validate(cfg)
+	if err != nil {
+		t.Errorf("Expected validation to pass for valid AWS KMS ARN, got error: %v", err)
+	}
+}
+
+// TestValidateEncryptionConfigValidBase64Key verifies validation passes for valid base64-encoded 32-byte key
+func TestValidateEncryptionConfigValidBase64Key(t *testing.T) {
+	cfg := &ports.Config{
+		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:  createValidServerConfig(),
+		Storage: createValidStorageConfig(),
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
+			JWESigningKey: generateBase64EncodedString(32),
+		},
+		Encryption: ports.EncryptionConfig{
+			KeyEncryptionKey: generateBase64EncodedString(32),
+		},
+	}
+
+	err := Validate(cfg)
+	if err != nil {
+		t.Errorf("Expected validation to pass for valid base64-encoded 32-byte key, got error: %v", err)
+	}
+}
+
+// TestValidateEncryptionConfigInvalidBase64 verifies validation fails for invalid base64
+func TestValidateEncryptionConfigInvalidBase64(t *testing.T) {
+	cfg := &ports.Config{
+		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:  createValidServerConfig(),
+		Storage: createValidStorageConfig(),
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
+			JWESigningKey: generateBase64EncodedString(32),
+		},
+		Encryption: ports.EncryptionConfig{
+			KeyEncryptionKey: "not-valid-base64-!!!@#$", // Invalid base64 and not an ARN
+		},
+	}
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Error("Expected validation error for invalid base64 key, got nil")
+	}
+}
+
+// TestValidateEncryptionConfigWrongKeyLength verifies validation fails for non-32-byte key
+func TestValidateEncryptionConfigWrongKeyLength(t *testing.T) {
+
+	// Create a 16-byte key (not 32-byte)
+	invalidKey := generateBase64EncodedString(16)
+
+	cfg := &ports.Config{
+		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:  createValidServerConfig(),
+		Storage: createValidStorageConfig(),
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
+			JWESigningKey: generateBase64EncodedString(32),
+		},
+		Encryption: ports.EncryptionConfig{
+			KeyEncryptionKey: invalidKey,
+		},
+	}
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Error("Expected validation error for 16-byte key (not 32-byte), got nil")
+	}
+}
+
+// TestValidateEncryptionConfigInvalidARNFormat verifies validation fails for malformed ARN
+func TestValidateEncryptionConfigInvalidARNFormat(t *testing.T) {
+	cfg := &ports.Config{
+		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server:  createValidServerConfig(),
+		Storage: createValidStorageConfig(),
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
+			JWESigningKey: generateBase64EncodedString(32),
+		},
+		Encryption: ports.EncryptionConfig{
+			KeyEncryptionKey: "arn:aws:kms:incomplete", // Incomplete ARN
+		},
+	}
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Error("Expected validation error for malformed ARN, got nil")
+	}
+}
+
+// Helper function to create valid ServerConfig
+func createValidServerConfig() ports.ServerConfig {
+	return ports.ServerConfig{
+		EndUser: ports.ServerInstanceConfig{
+			Port:      8000,
+			Bind:      "::",
+			PublicURL: "http://localhost:8000",
+			Authentication: ports.AuthenticationConfig{
+				Preauth: ports.PreauthConfig{
+					PrincipalHeaderName: "X-Remote-User",
+				},
+			},
+		},
+		Admin: ports.ServerInstanceConfig{
+			Port:      14000,
+			Bind:      "::",
+			PublicURL: "http://localhost:14000",
+			Authentication: ports.AuthenticationConfig{
+				Preauth: ports.PreauthConfig{
+					PrincipalHeaderName: "X-Remote-User",
+				},
+			},
+		},
+		Shutdown: ports.ShutdownConfig{
+			Timeout: 30 * time.Duration(1e9),
+		},
+	}
+}
+
+// Helper function to create valid StorageConfig
+func createValidStorageConfig() ports.StorageConfig {
+	return ports.StorageConfig{
+		Backend: "memory",
+		Timeouts: ports.StorageTimeouts{
+			Read:  5 * time.Duration(1e9),
+			Write: 10 * time.Duration(1e9),
+		},
 	}
 }

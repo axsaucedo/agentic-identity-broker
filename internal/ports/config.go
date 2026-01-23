@@ -282,7 +282,7 @@ type EncryptionConfig struct {
 	// KeyEncryptionKey specifies the Key Encryption Key (KEK) for envelope encryption.
 	// Supports two formats:
 	//   1. AWS KMS ARN: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
-	//   2. Environment variable reference: "${ENCRYPTION_KEK}" (for development/testing)
+	//   2. Base64-encoded AES256 key: Can be injected via environment variable like "${ENCRYPTION_KEK}"
 	//
 	// The KEK is used to encrypt/decrypt Data Encryption Keys (DEKs) in the envelope encryption pattern.
 	// Each user session generates a unique DEK that encrypts OAuth2 tokens, then the DEK is encrypted
@@ -295,13 +295,13 @@ type EncryptionConfig struct {
 	// - Fine-grained IAM access control
 	// - Multi-region replication support
 	//
-	// Environment variable format is intended for:
+	// Base64-encoded key format is intended for:
 	// - Development and testing environments
 	// - Local debugging without AWS dependencies
 	// - CI/CD pipelines with injected secrets
 	//
 	// SECURITY: This field contains sensitive key material and will be redacted in logs.
-	KeyEncryptionKey string `mapstructure:"key_encryption_key" validate:"required"`
+	KeyEncryptionKey string `mapstructure:"key" validate:"required"`
 
 	// DynamoDBTableName specifies the DynamoDB table for caching branch keys in the AWS KMS hierarchical keyring.
 	// The hierarchical keyring uses this table to cache branch keys, reducing the number of KMS API calls.

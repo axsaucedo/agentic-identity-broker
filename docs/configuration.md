@@ -220,7 +220,7 @@ This section provides a comprehensive quick-reference table for all configuratio
 
 | Option | Type | Default Value | Valid Values | Required? | Environment Variable | CLI Flag | Description |
 |--------|------|---------------|--------------|-----------|----------------------|----------|-------------|
-| `encryption.key_encryption_key` | string | - | AWS KMS ARN or `${ENV_VAR}` | Yes | `IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY` | N/A | Key Encryption Key (KEK) for OAuth token envelope encryption. Use AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development. Sensitive - redacted in logs. |
+| `encryption.key` | string | - | AWS KMS ARN or `${ENV_VAR}` | Yes | `IDENTITY_BROKER_ENCRYPTION_KEY` | N/A | Key Encryption Key (KEK) for OAuth token envelope encryption. Use AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development. Sensitive - redacted in logs. |
 
 **Encryption Configuration Notes:**
 - AWS KMS ARN format: `arn:aws:kms:eu-central-1:123456789012:key/key-id` or `arn:aws:kms:eu-central-1:123456789012:alias/alias-name`
@@ -496,7 +496,7 @@ log:
 
 ### Encryption Configuration
 
-#### encryption.key_encryption_key
+#### encryption.key
 
 **Description**: Specifies the Key Encryption Key (KEK) for envelope encryption of OAuth2 tokens at rest. Supports two modes: AWS KMS for production deployments, or environment variable injection for development.
 
@@ -506,7 +506,7 @@ log:
 
 **Default**: None (required for token encryption; startup fails if not provided and encryption is enabled)
 
-**Environment Variable**: `IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY`
+**Environment Variable**: `IDENTITY_BROKER_ENCRYPTION_KEY`
 
 **CLI Flag**: None (only configurable via YAML or environment)
 
@@ -516,19 +516,19 @@ log:
 ```yaml
 # config.yaml - Production deployment
 encryption:
-  key_encryption_key: "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+  key: "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
 ```
 
 ```bash
 # .env.production
-IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY=arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012
+IDENTITY_BROKER_ENCRYPTION_KEY=arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012
 ```
 
 **Development (Base64-Encoded Key from Environment Variable)**:
 ```bash
 # .env.local - Development with base64-encoded key in environment variable
 ENCRYPTION_KEK=$(openssl rand -base64 32)
-IDENTITY_BROKER_ENCRYPTION_KEY_ENCRYPTION_KEY="${ENCRYPTION_KEK}"
+IDENTITY_BROKER_ENCRYPTION_KEY="${ENCRYPTION_KEK}"
 ```
 
 ```yaml

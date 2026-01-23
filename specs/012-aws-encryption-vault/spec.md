@@ -63,11 +63,11 @@ A developer in a local development or test environment needs to inject KEK mater
 
 **Why this priority**: Supporting environment variable KEK injection is essential for development flexibility. Developers and test environments cannot always access AWS services, so environment variable support via existing `${env_var}` interpolation enables full-stack development without cloud dependencies.
 
-**Independent Test**: Can be fully tested by setting ENCRYPTION_KEK environment variable, configuring `encryption.key_encryption_key: ${ENCRYPTION_KEK}`, encrypting/decrypting tokens with context, and verifying tokens persist correctly across application restarts.
+**Independent Test**: Can be fully tested by setting ENCRYPTION_KEK environment variable, configuring `encryption.key: ${ENCRYPTION_KEK}`, encrypting/decrypting tokens with context, and verifying tokens persist correctly across application restarts.
 
 **Acceptance Scenarios**:
 
-1. **Given** the encryption configuration is set to `encryption.key_encryption_key: ${ENCRYPTION_KEK}` and ENCRYPTION_KEK environment variable is set before application startup, **When** the application starts, **Then** KEK material is loaded from the environment variable via interpolation
+1. **Given** the encryption configuration is set to `encryption.key: ${ENCRYPTION_KEK}` and ENCRYPTION_KEK environment variable is set before application startup, **When** the application starts, **Then** KEK material is loaded from the environment variable via interpolation
 2. **Given** KEK material is provided via environment variable, **When** tokens are encrypted and decrypted, **Then** the environment variable KEK is used correctly for both DEK wrapping and unwrapping
 3. **Given** a token is encrypted and decrypted with environment variable KEK and context, **When** the application restarts with the same ENCRYPTION_KEK value, **Then** the same KEK can still decrypt previously encrypted tokens with the same context
 
@@ -153,7 +153,7 @@ A reliability engineer needs the system to handle edge cases gracefully: large t
 - **FR-005**: System MUST wrap the DEK using the KEK with context verification and store the wrapped DEK alongside the encrypted token
 - **FR-006**: System MUST decrypt tokens by first unwrapping the DEK using the KEK (verifying context), then using the DEK to decrypt the token (verifying context)
 - **FR-007**: System MUST reject token decryption if context verification fails at either the DEK layer or the KEK layer
-- **FR-008**: System MUST support configurable KEK storage via single `encryption.key_encryption_key` field: AWS KMS ARN for production or `${ENCRYPTION_KEK}` for environment variable injection
+- **FR-008**: System MUST support configurable KEK storage via single `encryption.key` field: AWS KMS ARN for production or `${ENCRYPTION_KEK}` for environment variable injection
 - **FR-009**: System MUST automatically decrypt OAuth tokens when retrieving sessions, performing DEK unwrapping and token decryption transparently with context verification
 - **FR-010**: System MUST encode encrypted tokens in base64 for safe storage in database columns
 - **FR-011**: System MUST validate KEK is accessible before the application starts (fail-fast on startup if KEK unavailable)
@@ -194,7 +194,7 @@ A reliability engineer needs the system to handle edge cases gracefully: large t
 
 The system uses a single unified configuration parameter that supports both AWS KMS and environment variable KEK storage via the existing `${env_var}` interpolation:
 
-- **`encryption.key_encryption_key`**: Single field accepting either an AWS KMS ARN or `${ENCRYPTION_KEK}` for environment variable interpolation
+- **`encryption.key`**: Single field accepting either an AWS KMS ARN or `${ENCRYPTION_KEK}` for environment variable interpolation
   - **AWS KMS (production)**: `arn:aws:kms:region:account-id:key/key-id` or `arn:aws:kms:region:account-id:alias/alias-name`
   - **Environment variable (development/containers)**: `${ENCRYPTION_KEK}` - resolves to the ENCRYPTION_KEK environment variable at runtime
 
@@ -311,7 +311,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 - Q: Is backward compatibility across KEK key rotations required? → A: Yes, support backward compatibility with old KEK versions
 - Q: Mandate memguard library for memory protection or remain agnostic? → A: Mandate memguard library
 - Q: EncryptionContext fields optimization? → A: Reduce to service_id only (removes redundancy with principal, session_id, purpose)
-- Q: Configuration design for KEK storage (separate backends vs. unified field)? → A: Single `encryption.key_encryption_key` field with `${env_var}` interpolation (leverages existing config system, AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development)
+- Q: Configuration design for KEK storage (separate backends vs. unified field)? → A: Single `encryption.key` field with `${env_var}` interpolation (leverages existing config system, AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development)
 - Q: Update all context references from 4-field to service_id only for consistency? → A: Yes, update all user stories, functional requirements, and success criteria to reflect service_id-only context
 
 ### Session 2026-01-16

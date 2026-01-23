@@ -315,7 +315,7 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 	Context("User Story 4: Environment Variable KEK Injection for Development", func() {
 		// Scenario 4.1: Load KEK material from base64-encoded key (typically via environment variable)
 		It("loads KEK material from base64-encoded key", func() {
-			// GIVEN the encryption configuration is set to: encryption.key_encryption_key: ${ENCRYPTION_KEK}
+			// GIVEN the encryption configuration is set to: encryption.key: ${ENCRYPTION_KEK}
 			// and the config loader interpolates ${ENCRYPTION_KEK} to the actual base64 key value
 			// The adapter receives the base64-encoded key directly (interpolation handled by config system)
 
