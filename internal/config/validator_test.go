@@ -49,6 +49,9 @@ func validTestConfig() *ports.Config {
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
 		},
+		Encryption: ports.EncryptionConfig{
+			KeyEncryptionKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+		},
 	}
 }
 
