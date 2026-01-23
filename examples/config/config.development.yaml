@@ -49,6 +49,14 @@ storage:
     read: 5s
     write: 10s
 
+encryption:
+  # Key encryption key for securing sensitive data
+  # Can be either:
+  # 1. AWS KMS ARN: arn:aws:kms:region:account-id:key/key-id
+  # 2. Base64-encoded 32-byte AES-256 key
+  # In development, use a test key (32 bytes base64-encoded)
+  key: ${IDENTITY_BROKER_ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+
 # Future sections for expanded configuration:
 # database:
 #   connection_string: postgresql://user:password@localhost:5432/identity_broker_dev

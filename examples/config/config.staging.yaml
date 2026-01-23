@@ -50,6 +50,14 @@ storage:
     read: 5s
     write: 10s
 
+encryption:
+  # Key encryption key for securing sensitive data
+  # Can be either:
+  # 1. AWS KMS ARN: arn:aws:kms:region:account-id:key/key-id
+  # 2. Base64-encoded 32-byte AES-256 key
+  # MUST be provided via environment variable in production
+  key: ${IDENTITY_BROKER_ENCRYPTION_KEY}
+
 # Future sections for expanded configuration:
 # database:
 #   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}

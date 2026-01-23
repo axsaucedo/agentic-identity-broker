@@ -17,6 +17,9 @@ import (
 // testJWESigningKey is a valid test JWE key (32 bytes base64 encoded)
 var testJWESigningKey = base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 
+// testEncryptionKey is a valid test encryption key (32 bytes base64 encoded)
+var testEncryptionKey = base64.StdEncoding.EncodeToString([]byte("abcdef0123456789abcdef0123456789"))
+
 // TestConfigurationPrecedence tests that configuration sources are applied in correct precedence order.
 // Order: CLI flags > Environment variables > YAML > Defaults
 func TestConfigurationPrecedence(t *testing.T) {
@@ -30,14 +33,23 @@ func TestConfigurationPrecedence(t *testing.T) {
 		expectedLevel string
 	}{
 		{
-			name:          "defaults only",
+			name: "defaults only",
+			yamlContent: fmt.Sprintf(`
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+encryption:
+  key: %s
+`, testEncryptionKey),
 			expectedPort:  8000,
 			expectedBind:  "::",
 			expectedLevel: "info",
 		},
 		{
 			name: "yaml overrides defaults",
-			yamlContent: `
+			yamlContent: fmt.Sprintf(`
 log:
   level: debug
   format: text
@@ -45,19 +57,28 @@ server:
   enduser:
     port: 9000
     bind: "127.0.0.1"
+    public_url: http://localhost:9000
   admin:
     port: 14000
     bind: "::"
+    public_url: http://localhost:14000
   shutdown:
     timeout: 30s
-`,
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+encryption:
+  key: %s
+`, testEncryptionKey),
 			expectedPort:  9000,
 			expectedBind:  "127.0.0.1",
 			expectedLevel: "debug",
 		},
 		{
 			name: "env overrides yaml",
-			yamlContent: `
+			yamlContent: fmt.Sprintf(`
 log:
   level: debug
   format: text
@@ -65,12 +86,21 @@ server:
   enduser:
     port: 9000
     bind: "127.0.0.1"
+    public_url: http://localhost:9000
   admin:
     port: 14000
     bind: "::"
+    public_url: http://localhost:14000
   shutdown:
     timeout: 30s
-`,
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+encryption:
+  key: %s
+`, testEncryptionKey),
 			envVars: map[string]string{
 				"IDENTITY_BROKER_SERVER_ENDUSER_PORT": "9500",
 				"IDENTITY_BROKER_LOG_LEVEL":           "warn",
@@ -81,7 +111,7 @@ server:
 		},
 		{
 			name: "cli overrides all",
-			yamlContent: `
+			yamlContent: fmt.Sprintf(`
 log:
   level: debug
   format: text
@@ -89,12 +119,21 @@ server:
   enduser:
     port: 9000
     bind: "127.0.0.1"
+    public_url: http://localhost:9000
   admin:
     port: 14000
     bind: "::"
+    public_url: http://localhost:14000
   shutdown:
     timeout: 30s
-`,
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+encryption:
+  key: %s
+`, testEncryptionKey),
 			envVars: map[string]string{
 				"IDENTITY_BROKER_SERVER_ENDUSER_PORT": "9500",
 				"IDENTITY_BROKER_LOG_LEVEL":           "warn",
@@ -124,8 +163,9 @@ server:
 			t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_BIND", "")
 			t.Setenv("IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT", "")
 
-			// Set mandatory JWESigningKey for all tests
+			// Set mandatory JWESigningKey and encryption key for all tests
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
+			t.Setenv("IDENTITY_BROKER_ENCRYPTION_KEY", testEncryptionKey)
 
 			// Create YAML config file if content is provided
 			var configPath string
@@ -241,8 +281,9 @@ func TestConfigurationFromExamples(t *testing.T) {
 			// Set config path in environment
 			t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
 
-			// Set mandatory JWESigningKey
+			// Set mandatory JWESigningKey and encryption key
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
+			t.Setenv("IDENTITY_BROKER_ENCRYPTION_KEY", testEncryptionKey)
 
 			// Create loader
 			loader := config.NewLoader()
