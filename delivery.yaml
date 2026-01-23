@@ -8,7 +8,7 @@ pipeline:
     type: script
     vm_config:
       type: linux
-      image: cdp-runtime/go-1.24
+      image: cdp-runtime/go-1.25
     commands:
       - desc: "Install pre-requisites"
         cmd: |
@@ -35,7 +35,7 @@ pipeline:
         branch: main
     vm_config:
       type: linux
-      image: cdp-runtime/go-1.24
+      image: cdp-runtime/go-1.25
     cache:
       paths:
         # pkg cache for Go modules and Go build cache

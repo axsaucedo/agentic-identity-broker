@@ -1,8 +1,6 @@
 module github.com/agentic-identity-broker/agentic-identity-broker
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.25.6
 
 require (
 	github.com/go-chi/chi/v5 v5.2.4
