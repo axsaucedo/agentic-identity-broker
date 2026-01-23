@@ -4,7 +4,7 @@ This repository uses spec-kit for specification driven development.
 
 Specifications can be found in `specs/NNN-<short name>/*` in the shape of markdown files. In each such folder, the `spec.md` contains the WHAT of a feature and the `plan.md` the how of how it was implemented. 
 
-*MANDORY*: The constitution in `.specify/memory/constituation.md` is BINDING and must be user for any change in the Project. 
+*MANDATORY*: The constitution in `.specify/memory/constitution.md` is BINDING and must be used for any change in the Project. 
 
 ## Architecture
 
