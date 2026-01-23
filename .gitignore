@@ -63,3 +63,6 @@ test-results
 tmp
 
 .worktrees
+
+tests/e2e/frontend/coverage/screenshots
+

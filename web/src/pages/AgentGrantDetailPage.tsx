@@ -21,7 +21,6 @@ import { PageTransition } from '@components/ui/PageTransition';
 import { Skeleton } from '@components/ui/Skeleton';
 import { InlineError } from '@components/ui/InlineError';
 import { Button } from '@components/ui/Button';
-import { Switch } from '@components/ui/Switch';
 import { useToast } from '@components/ui/Toast';
 import { Breadcrumb } from '@design-system/components/navigation/Breadcrumb';
 import { Card } from '@design-system/components/data-display/Card';
@@ -49,9 +48,6 @@ export function AgentGrantDetailPage() {
   const searchParams = new URLSearchParams(location.search);
   const redirectUri = searchParams.get('redirect_uri') || undefined;
 
-  // Edit mode removed in Phase 8 (US5): Simplified UI without edit mode toggle
-  // All actions are now always visible, removing the need for edit mode
-  const isEditMode = false; // Fixed to false - edit mode is always off
 
   // Validate agentId parameter
   if (!agentId) {
@@ -151,7 +147,7 @@ export function AgentGrantDetailPage() {
     return errors.length === 0;
   };
 
-  // Handle form submission (removed in Phase 8 - edit mode is no longer available)
+  // Handle form submission
   const handleSubmit = async () => {
     console.log('[AgentGrantDetailPage] handleSubmit - delegatedTokens:', delegatedTokens);
     console.log('[AgentGrantDetailPage] redirectUri:', redirectUri);
@@ -196,7 +192,7 @@ export function AgentGrantDetailPage() {
     }
   };
 
-  // Handle cancel (removed in Phase 8 - edit mode is no longer available)
+  // Handle cancel
   const handleCancel = () => {
     setHasChanges(false);
     setValidationErrors([]);
@@ -263,8 +259,6 @@ export function AgentGrantDetailPage() {
     showToast('Service removed from delegation', 'success');
   }, [delegatedTokens, showToast]);
 
-  // Edit mode toggle removed in Phase 8 (US5)
-  // All service connection actions are now always visible
 
   // Update hasUnmetMandatoryRequirements whenever agent or services change
   useEffect(() => {
@@ -396,12 +390,10 @@ export function AgentGrantDetailPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold text-trust-deep">{agent.displayName}</h1>
+                  <h1 className="text-2xl font-bold text-trust-deep" data-testid="agent-name-heading">{agent.displayName}</h1>
                   <p className="mt-2 text-slate-600">{agent.description}</p>
                 </div>
 
-                {/* Edit mode toggle removed in Phase 8 (US5) */}
-                {/* All service actions are now always visible */}
               </div>
 
               {/* Agent links */}
@@ -519,13 +511,11 @@ export function AgentGrantDetailPage() {
           <InlineError error={submitError} onRetry={handleSubmit} />
         )}
 
-        {/* Grant validity control (only in edit mode) */}
-        {isEditMode && (
-          <div className="card p-6">
-            <h3 className="text-lg font-semibold text-trust-deep mb-4">Grant Validity</h3>
-            <GrantValidityControl value={validityState} onChange={handleValidityChange} />
-          </div>
-        )}
+        {/* Grant validity control */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold text-trust-deep mb-4">Grant Validity</h3>
+          <GrantValidityControl value={validityState} onChange={handleValidityChange} />
+        </div>
 
         {/* Services section - Flattened layout with mandatory services first */}
         <div className="space-y-4">

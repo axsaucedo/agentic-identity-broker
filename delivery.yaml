@@ -8,7 +8,7 @@ pipeline:
     type: script
     vm_config:
       type: linux
-      image: cdp-runtime/go-1.24
+      image: cdp-runtime/go-1.25
     commands:
       - desc: "Install pre-requisites"
         cmd: |
@@ -16,7 +16,7 @@ pipeline:
           apt-get --yes install just npm curl
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get --yes install nodejs
-          go install github.com/jstemmer/go-junit-report/v2@latest
+          just install-tools
           just web-ci
       - desc: "Run quality checks"
         cmd: |
@@ -35,7 +35,7 @@ pipeline:
         branch: main
     vm_config:
       type: linux
-      image: cdp-runtime/go-1.24
+      image: cdp-runtime/go-1.25
     cache:
       paths:
         # pkg cache for Go modules and Go build cache

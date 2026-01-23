@@ -14,7 +14,7 @@ Integration tests require either Docker or Podman to run.
 docker ps
 
 # Run integration tests
-go test -tags=integration -v ./test/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/...
 
 # Or using justfile
 just test-integration
@@ -28,7 +28,7 @@ Podman is fully supported as an alternative to Docker, including on macOS.
 ```bash
 # Podman socket should be available automatically
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
-go test -tags=integration -v ./test/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/...
 ```
 
 **On macOS with Podman machine:**
@@ -43,7 +43,7 @@ podman machine start
 export DOCKER_HOST='unix:///var/folders/42/xfyh9ksn6sndqbtl0ybbtr700000gn/T/podman/podman-machine-default-api.sock'
 
 # Run tests
-go test -tags=integration -v ./test/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/...
 
 # Or with justfile
 just test-integration
@@ -55,7 +55,7 @@ just test-integration
 
 ### Structure
 ```
-test/integration/storage/
+tests/integration/storage/
 ├── README.md                 # This file
 ├── lifecycle_test.go        # Memory adapter lifecycle tests (no build tag)
 └── postgres_test.go         # PostgreSQL adapter tests (integration build tag)
@@ -64,7 +64,7 @@ test/integration/storage/
 ### Memory Adapter Tests (No Build Tag)
 Run with standard `go test`:
 ```bash
-go test -v ./test/integration/storage/...
+go test -v ./tests/integration/storage/...
 ```
 
 Tests:
@@ -77,7 +77,7 @@ Tests:
 ### PostgreSQL Adapter Tests (With Integration Build Tag)
 Requires container runtime (Docker or Podman):
 ```bash
-go test -tags=integration -v ./test/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/...
 ```
 
 Tests:
@@ -123,7 +123,7 @@ podman machine start
 
 # Export and retry tests
 export DOCKER_HOST='unix:///<your-socket-path>'
-go test -tags=integration -v ./test/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/...
 ```
 
 **On Linux with rootless Podman:**
@@ -133,7 +133,7 @@ ls -l $XDG_RUNTIME_DIR/podman/podman.sock
 
 # Set DOCKER_HOST if needed
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
-go test -tags=integration -v ./test/integration/storage/...
+go test -tags=integration -v ./tests/integration/storage/...
 ```
 
 ### Container image not available
@@ -145,7 +145,7 @@ podman images | grep postgres
 podman pull postgres:15-alpine
 
 # Run tests with verbose output
-TESTCONTAINERS_LOGS=true go test -tags=integration -v ./test/integration/storage/...
+TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storage/...
 ```
 
 ### Tests hang or timeout
@@ -157,7 +157,7 @@ podman ps -a | grep postgres
 podman rm -f $(podman ps -aq --filter ancestor=postgres:15-alpine)
 
 # Run tests with debug output
-TESTCONTAINERS_LOGS=true go test -tags=integration -v ./test/integration/storage/...
+TESTCONTAINERS_LOGS=true go test -tags=integration -v ./tests/integration/storage/...
 ```
 
 ## CI/CD Integration
@@ -173,7 +173,7 @@ TESTCONTAINERS_LOGS=true go test -tags=integration -v ./test/integration/storage
     sleep 2
 
     # Run tests
-    go test -tags=integration -v ./test/integration/storage/...
+    go test -tags=integration -v ./tests/integration/storage/...
 ```
 
 ### GitLab CI Example
@@ -186,7 +186,7 @@ integration-tests:
     - export DOCKER_HOST=unix:///run/podman/podman.sock
     - podman system service --time=0 unix:///run/podman/podman.sock &
     - sleep 2
-    - go test -tags=integration -v ./test/integration/storage/...
+    - go test -tags=integration -v ./tests/integration/storage/...
 ```
 
 ## Performance Notes

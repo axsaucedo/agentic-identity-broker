@@ -16,6 +16,12 @@ jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
 
+    # Set the permissions to the lowest permissions possible needed for your steps.
+    # Copilot will be given its own token for its operations.
+    permissions:
+      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
+      contents: read
+
     steps:
       # Checkout repository
       - name: Checkout repository
@@ -39,14 +45,9 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
-      # Install ginkgo for E2E tests
-      - name: Install ginkgo
-        run: go install github.com/onsi/ginkgo/v2/ginkgo@latest
-
-      # Install golangci-lint
-      - name: Install golangci-lint
-        run: |
-          bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.8.0
+      # Install other tools
+      - name: "Install Tools via `just install-tools`"
+        run: just install-tools
 
       # Install web dependencies
       - name: Install web dependencies

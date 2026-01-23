@@ -1268,18 +1268,24 @@ var _ = Describe("Agent Permission Requirements", func() {
 				_ = resp.Body.Close()
 			}()
 
-			// Then: Backend issues HTTP redirect (302/303) to specified redirect_uri
-			Expect(resp.StatusCode).To(Or(Equal(http.StatusFound), Equal(http.StatusSeeOther)))
+			// Then: Backend returns 201 Created with redirect_url in response body
+			// (changed from HTTP 303 redirect to avoid CORS issues with cross-origin redirects)
+			Expect(resp.StatusCode).To(Equal(http.StatusCreated))
 
-			// Verify Location header contains the redirect_uri
-			location := resp.Header.Get("Location")
-			Expect(location).ToNot(BeEmpty())
-			Expect(location).To(ContainSubstring("/callback"))
+			// Verify response body contains redirect_url
+			var respBody map[string]interface{}
+			err = json.NewDecoder(resp.Body).Decode(&respBody)
+			Expect(err).ToNot(HaveOccurred())
+
+			redirectUrl, ok := respBody["redirect_url"].(string)
+			Expect(ok).To(BeTrue(), "redirect_url should be present in response body")
+			Expect(redirectUrl).ToNot(BeEmpty())
+			Expect(redirectUrl).To(ContainSubstring("/callback"))
 		})
 
 		// Scenario 2: spec.md User Story 6, Scenario 2
-		// Spec: Location header contains the redirect_uri
-		It("should include redirect_uri in Location header when redirecting", func() {
+		// Spec: Response body contains redirect_url (changed from Location header to avoid CORS)
+		It("should include redirect_uri in response body when redirecting", func() {
 			// Given: User approves consent with specific redirect_uri
 			payload := map[string]interface{}{
 				"delegated_oauth2_tokens": []map[string]interface{}{
@@ -1306,10 +1312,16 @@ var _ = Describe("Agent Permission Requirements", func() {
 				_ = resp.Body.Close()
 			}()
 
-			// Then: Location header contains the redirect_uri
-			Expect(resp.StatusCode).To(Or(Equal(http.StatusFound), Equal(http.StatusSeeOther)))
-			location := resp.Header.Get("Location")
-			Expect(location).To(ContainSubstring("/oauth2/callback"))
+			// Then: Response body contains redirect_url with the redirect_uri
+			Expect(resp.StatusCode).To(Equal(http.StatusCreated))
+
+			var respBody map[string]interface{}
+			err = json.NewDecoder(resp.Body).Decode(&respBody)
+			Expect(err).ToNot(HaveOccurred())
+
+			redirectUrl, ok := respBody["redirect_url"].(string)
+			Expect(ok).To(BeTrue(), "redirect_url should be present in response body")
+			Expect(redirectUrl).To(ContainSubstring("/oauth2/callback"))
 		})
 
 		// Scenario 3: spec.md User Story 6, Scenario 3
