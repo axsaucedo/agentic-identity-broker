@@ -1,6 +1,6 @@
 ---
 applyTo: "tests/e2e/**"
-excludeAgent: ["coding-agent"]
+excludeAgent: "coding-agent"
 ---
 
 # E2E Test Code Review Guidelines
