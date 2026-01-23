@@ -48,25 +48,3 @@ func (m *AWSBranchKeyManager) Create(ctx context.Context, serviceID string) (str
 
 	return provisioned, nil
 }
-
-// Get retrieves a branch key ID for the given service.
-// Implements BranchKeyRepository.Get()
-// Returns error if branch key does not exist or query fails.
-func (m *AWSBranchKeyManager) Get(ctx context.Context, serviceID string) (string, error) {
-	if m == nil || m.keyStore == nil {
-		return "", encryption.NewKEKUnavailableError("branch key manager not properly initialized", nil)
-	}
-
-	if serviceID == "" {
-		return "", encryption.NewKEKUnavailableError("service_id cannot be empty", nil)
-	}
-
-	branchKeyID := GetBranchKeyID(serviceID)
-
-	// Query DynamoDB via KeyStore.GetKey() or similar
-	// If key exists, return branchKeyID; if not found, return error; if error, return error
-	// TODO: Implement actual query using KeyStore or DynamoDB client
-	// For now: placeholder that returns the expected branch key ID
-	// (assumes key exists since it was created by Create())
-	return branchKeyID, nil
-}

@@ -29,11 +29,6 @@ type BranchKeyRepository interface {
 	// Returns the generated branch key ID or error if provisioning fails.
 	// ATOMIC: Should fail immediately if KMS/DynamoDB operations fail - no partial state.
 	Create(ctx context.Context, serviceID string) (string, error)
-
-	// Get retrieves a branch key ID for the given service.
-	// Returns the branch key ID if found, error if not found or query fails.
-	// Returns error if branch key does not exist.
-	Get(ctx context.Context, serviceID string) (string, error)
 }
 
 // BranchKeyManager is an alias for BranchKeyRepository, consolidating branch key lifecycle management.
