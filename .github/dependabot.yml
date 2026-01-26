@@ -14,30 +14,12 @@ updates:
       - "dependabot"
       - "go"
       - "backend"
-      - "minor"
-    # Group dependencies by functional area for better review control
     groups:
-      core-infrastructure:
+      go-dependencies:
         patterns:
-          - "github.com/go-chi/*"
-          - "github.com/jackc/*"
-          - "github.com/jmoiron/sqlx"
-          - "github.com/spf13/*"
-      security-critical:
-        patterns:
-          - "golang.org/x/crypto"
-          - "golang.org/x/sys"
-      testing-and-containers:
-        patterns:
-          - "github.com/stretchr/testify"
-          - "github.com/testcontainers/*"
-      utilities:
-        patterns:
-          - "github.com/google/uuid"
-          - "github.com/joho/godotenv"
-          - "golang.org/x/sync"
+          - "*"
     allow:
-      - dependency-type: "all"
+      - dependency-type: "direct"
     open-pull-requests-limit: 5
     pull-request-branch-name:
       separator: "/"
@@ -59,43 +41,12 @@ updates:
       - "dependabot"
       - "npm"
       - "frontend"
-      - "minor"
-    # Group npm dependencies by functional area
     groups:
-      react-core:
+      frontend-dependencies:
         patterns:
-          - "react"
-          - "react-dom"
-          - "react-router*"
-      build-tools:
-        patterns:
-          - "vite"
-          - "typescript"
-          - "@vitejs/*"
-      testing:
-        patterns:
-          - "vitest"
-          - "@testing-library/*"
-          - "jsdom"
-      storybook:
-        patterns:
-          - "storybook"
-          - "@storybook/*"
-      styling:
-        patterns:
-          - "tailwind*"
-          - "postcss"
-          - "@tailwindcss/*"
-      utilities:
-        patterns:
-          - "axios"
-          - "class-variance-authority"
-          - "clsx"
-          - "date-fns"
-          - "framer-motion"
-          - "tailwind-merge"
+          - "*"
     allow:
-      - dependency-type: "all"
+      - dependency-type: "direct"
     open-pull-requests-limit: 5
     pull-request-branch-name:
       separator: "/"
@@ -117,24 +68,12 @@ updates:
       - "dependabot"
       - "npm"
       - "documentation"
-      - "minor"
-    # Group docusaurus and documentation dependencies
     groups:
-      docusaurus-core:
+      documentation-dependencies:
         patterns:
-          - "@docusaurus/*"
-          - "docusaurus*"
-      react-documentation:
-        patterns:
-          - "react"
-          - "react-dom"
-      documentation-tools:
-        patterns:
-          - "markdownlint*"
-          - "prism*"
-          - "@mdx-js/*"
+          - "*"
     allow:
-      - dependency-type: "all"
+      - dependency-type: "direct"
     open-pull-requests-limit: 5
     pull-request-branch-name:
       separator: "/"
