@@ -19,11 +19,11 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
-    "axios": "^1.6.0",
+    "axios": "^1.13.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "date-fns": "^4.1.0",
-    "framer-motion": "^12.27.0",
+    "framer-motion": "^12.29.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.12.0",
