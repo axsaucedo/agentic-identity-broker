@@ -47,8 +47,8 @@
 - [x] Context fields explicit - Exactly four fields: principal, service_id, session_id, purpose (API-003)
 - [x] Context verification at both layers - DEK decryption and KEK unwrapping both verify context (FR-006, FR-007)
 - [x] Context mismatch causes failure - Context verification failures cause immediate decryption failure (SR-007, SR-027)
-- [x] Fresh DEK per token - Unique DEK generated for each token (FR-002, SR-002)
-- [x] DEK not reused - No DEK sharing across tokens (FR-002)
+- [x] Fresh DEK per service_id - DEKs generated for each service_id context with service-specific branch keys (FR-002, SR-002)
+- [x] DEK wrapped with service branch key - DEKs wrapped using service-specific branch keys cached per service_id (FR-005)
 
 ## KEK Storage Mechanisms
 

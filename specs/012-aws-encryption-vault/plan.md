@@ -22,7 +22,7 @@ Implement application-layer envelope encryption for OAuth tokens stored in the s
 **Project Type**: Single Go backend (extending agentic-identity-broker)
 **Performance Goals**: Encrypt/decrypt typical session <100ms (excluding AWS KMS latency)
 **Constraints**:
-- DEK-per-session optimization (single KMS call vs. two)
+- DEK per service_id with branch key caching optimization (reduces KMS calls per service)
 - service_id-only context binding (optimized from 4-field)
 - Backward compatibility on KEK rotation required
 - Fail-closed security (no plaintext fallback)
@@ -97,7 +97,7 @@ tests/e2e/
 └── encryption_vault_test.go        # E2E acceptance tests (24 scenarios across 7 user stories)
 
 adrs/
-└── NNNN-envelope-encryption-design.md  # ADR: DEK per session, service_id context, AWS Encryption SDK
+└── NNNN-envelope-encryption-design.md  # ADR: DEK per service_id, branch key caching, AWS Encryption SDK
 ```
 
 **Structure Decision**: Single Go backend extending agentic-identity-broker. Encryption layer implements hexagonal architecture: EncryptionPort interface abstraction with AWS SDK adapter implementation. Storage adapters (memory, postgres) transparently handle encryption/decryption via injected port.
@@ -128,7 +128,7 @@ adrs/
 |------------|---|--|
 | US1: Envelope Encryption | 4 | DEK with context binding, KEK wrapping with context, context verification failure, fail-closed behavior |
 | US2: Secure KEK Storage | 4 | AWS KMS storage, KMS operations logged, access control, key rotation backward compatibility |
-| US3: DEK Generation | 3 | Fresh DEK per session, unique DEK across sessions, DEK memory zeroization |
+| US3: DEK Generation | 3 | Fresh DEK per service_id, service-specific branch key wrapping, DEK memory zeroization |
 | US4: Env Var KEK Injection | 3 | Load KEK from ${ENCRYPTION_KEK}, use KEK for wrapping/unwrapping, persist across app restart |
 | US5: Transparent Encryption | 3 | Repository Create() encrypts automatically, Get() decrypts automatically, no manual steps |
 | US6: Cross-Service Prevention | 3 | Decrypt same service succeeds, different service_id fails both layers, ciphertext reuse fails |

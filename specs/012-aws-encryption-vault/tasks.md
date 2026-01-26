@@ -40,7 +40,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 - [x] T004 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary: add "envelope encryption", "DEK", "KEK", "EncryptionContext", "EncryptionPort", "AAD", "memguard", "AESGCMSIV"
 - [x] T005 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Domain section: document UserSession aggregate, EncryptionContext value object, EncryptionPort interface
-- [x] T006 Create ADR: `adrs/NNN-envelope-encryption-design.md` documenting: (1) DEK-per-session rationale, (2) service_id-only context binding, (3) AWS Encryption SDK choice, (4) memguard integration
+- [x] T006 Create ADR: `adrs/NNN-envelope-encryption-design.md` documenting: (1) DEK per service_id with branch key caching rationale, (2) service_id-only context binding, (3) AWS Encryption SDK choice, (4) memguard integration
 
 ### Phase 2b: Configuration Design (Principle VII)
 
@@ -66,7 +66,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - **Test Scenarios Mapped** (24 total):
     - US1 (4 scenarios): DEK with context binding, KEK wrapping with context, context verification failure, fail-closed
     - US2 (4 scenarios): AWS KMS storage, operations logged, access control, key rotation backward compat
-    - US3 (3 scenarios): Fresh DEK per session, unique DEK across sessions, DEK memory zeroization
+    - US3 (3 scenarios): Fresh DEK per service_id, DEK isolation across services, DEK memory zeroization
     - US4 (3 scenarios): Load KEK from `${ENCRYPTION_KEK}`, use KEK for wrap/unwrap, persist across restart
     - US5 (3 scenarios): Repository Create() encrypts, Get() decrypts, no manual steps
     - US6 (3 scenarios): Same service succeeds, different service_id fails both layers, ciphertext reuse fails
@@ -479,13 +479,13 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ## Phase 6: User Story 3 - DEK Generation & Context Binding (P1)
 
-**Acceptance Criteria**: Fresh DEK per session, cryptographically secure randomness (min 256 bits), context bound at DEK layer, DEKs securely erased from memory
+**Acceptance Criteria**: Fresh DEK per service_id context, cryptographically secure randomness (min 256 bits), service-specific branch key wrapping, DEKs securely erased from memory
 
 ### US3 E2E Tests (3 scenarios)
 
-- [x] T048 [US3] E2E Test - Scenario 3.1: "Fresh DEK per session"
-  - Create multiple sessions with different contexts
-  - Verify each session has unique DEK (different wrapped DEK values)
+- [x] T048 [US3] E2E Test - Scenario 3.1: "Fresh DEK per service_id"
+  - Create multiple sessions with different service_id contexts
+  - Verify each service_id has DEKs wrapped with service-specific branch key
   - **Status**: ✅ PASSING - `encryption_vault_raw_test.go` L237-264
 
 - [x] T049 [US3] E2E Test - Scenario 3.2: "Unique DEK isolation"
@@ -493,7 +493,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - Encrypt session for service B with DEK-B
   - Verify DEK-A cannot decrypt session B (context mismatch)
   - **Status**: ✅ PASSING - `encryption_vault_raw_test.go` L267-290
-  - **Note**: DEK architecture (per-session vs per-service) is delegated to AWS Encryption SDK context binding mechanism. Context verification at both DEK and KEK layers ensures isolation automatically.
+  - **Note**: DEK architecture (per service_id with branch key caching) is implemented via AWS Encryption SDK hierarchical keyring and BranchKeyIdSupplier. Context verification at both DEK and KEK layers ensures service-level isolation automatically.
 
 - [x] T050 [US3] E2E Test - Scenario 3.3: "DEK memory zeroization"
   - Track memory after DEK generation
@@ -822,7 +822,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 - [ ] T093 [P] Verify ADR created and accepted:
   - Check [adrs/NNN-envelope-encryption-design.md](../../adrs/) exists
-  - Verify ADR documents: DEK-per-session, context binding, AWS SDK choice, memguard integration
+  - Verify ADR documents: DEK per service_id with branch key caching, context binding, AWS SDK choice, memguard integration
   - Mark ADR as "Accepted"
 
 - [ ] T094 [P] Verify [ARCHITECTURE.md](../../ARCHITECTURE.md) updated:

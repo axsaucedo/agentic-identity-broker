@@ -169,7 +169,7 @@ encryptionContext := map[string]string{
 - **Three-layer architecture**:
   1. **KEK**: Stored in AWS KMS (never in plaintext in application)
   2. **Branch Key**: Cached locally for TTL period (~15 minutes, reduces KMS calls)
-  3. **DEK**: Generated from Branch Key per session (one-time use)
+  3. **DEK**: Generated from Branch Key per service_id context (fresh per encryption operation)
 - **Performance**:
   - First call per service_id: ~50-200ms (KMS roundtrip)
   - Subsequent calls during TTL: ~1-5ms (local cache hit)

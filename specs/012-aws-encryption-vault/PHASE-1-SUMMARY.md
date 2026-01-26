@@ -82,7 +82,7 @@ return session to caller
 
 **Three-Layer Architecture**:
 ```
-KEK (AWS KMS) → Branch Key (cached, memguard-protected) → DEK (per-session)
+KEK (AWS KMS) → Branch Key (cached per-service_id, memguard-protected) → DEK (per service_id context)
 ```
 
 ### 3. Context Binding: service_id Only
@@ -157,7 +157,7 @@ encryption:
 | Requirement | Implementation | Status |
 |-------------|-----------------|--------|
 | Envelope encryption (DEK + KEK) | AWS Encryption SDK AESGCMSIV | ✅ |
-| Fresh DEK per session | AWS SDK generates per operation | ✅ |
+| Fresh DEK per service_id | AWS SDK generates per operation, wrapped with service branch key | ✅ |
 | Context binding (AAD) | service_id bound at DEK and KEK layers | ✅ |
 | Authenticated encryption | AESGCMSIV provides integrity verification | ✅ |
 | KEK security | AWS KMS (prod) or memguard (dev) | ✅ |
@@ -244,7 +244,7 @@ type EncryptionError struct {
 |------------|-----------|-----------|
 | US1: Envelope Encryption | 4 | DEK context binding, KEK wrapping, fail-closed |
 | US2: Secure KEK Storage | 4 | AWS KMS, logging, access control, rotation |
-| US3: DEK Generation | 3 | Fresh per session, unique, memory protection |
+| US3: DEK Generation | 3 | Fresh per service_id, service-specific branch key wrapping, memory protection |
 | US4: Env Var KEK | 3 | Load from env var, use for wrap/unwrap, persist |
 | US5: Transparent Encryption | 3 | Repository Create/Get automatic encryption |
 | US6: Cross-Service Prevention | 3 | Same service succeeds, different fails, reuse fails |

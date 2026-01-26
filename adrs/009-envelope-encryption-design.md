@@ -22,19 +22,20 @@ Previous analysis in [ADR 008: Encryption Context Optimization](008-encryption-c
 
 ## Decision
 
-We will implement **envelope encryption with DEK-per-session** using **AWS KMS** as the primary key management solution, with **context binding** for service isolation.
+We will implement **envelope encryption with DEK per service_id context** using **AWS KMS Hierarchical Keyring with Branch Key caching** as the primary key management solution, with **context binding** for service isolation.
 
 ### Core Architecture
 
-1. **Data Encryption Key (DEK) per Session**
-   - Each UserSession generates a unique AES-256 DEK
-   - DEK encrypts all tokens (access_token, refresh_token) for that session
-   - DEK is encrypted with the Key Encryption Key (KEK) and stored alongside ciphertext
+1. **Three-Layer Key Hierarchy**
+   - **KEK** (Key Encryption Key): Stored in AWS KMS, never in plaintext in application
+   - **Branch Key** (per service_id): Derived from KEK, cached locally for TTL period (~15 minutes)
+   - **DEK** (Data Encryption Key): Generated per encryption operation, wrapped using service-specific branch key
 
-2. **AWS KMS as KEK Provider**
+2. **AWS KMS Hierarchical Keyring with Branch Key Caching**
    - Customer-managed KMS key (CMK) serves as the Key Encryption Key
-   - DEK wrapped/unwrapped via AWS KMS GenerateDataKey/Decrypt APIs
-   - Single KMS call per session lifecycle (not per token operation)
+   - Hierarchical keyring uses DynamoDB to cache branch keys per service_id (reduces KMS calls)
+   - First call per service_id: ~50-200ms (KMS roundtrip to generate branch key)
+   - Subsequent calls during TTL: ~1-5ms (cache hit, no KMS call needed)
 
 3. **Service-ID Context Binding**
    - EncryptionContext contains `{"service_id": "oauth2"}` as Additional Authenticated Data (AAD)
@@ -50,18 +51,26 @@ We will implement **envelope encryption with DEK-per-session** using **AWS KMS**
 
 ## Rationale
 
-### 1. DEK-per-Session Efficiency
+### 1. DEK per Service_ID with Branch Key Caching
 
-**Chosen**: One DEK per UserSession, single KMS call per session lifecycle
+**Chosen**: Branch keys cached per service_id context, fresh DEK per encryption operation
 
-**Alternative Considered**: Per-token KMS calls
-**Rejected Because**: 2x KMS calls per token operation (encrypt access_token, encrypt refresh_token) creates 200ms+ latency and scales poorly with concurrent sessions
+**Alternative Considered 1**: Per-token direct KMS calls
+**Rejected Because**: 2x KMS calls per session (access_token, refresh_token) creates 200ms+ latency and scales poorly with concurrent sessions
+
+**Alternative Considered 2**: Per-session DEK (single KMS call per session)
+**Rejected Because**: Cannot reuse branch keys across sessions; misses performance optimization of branch key caching
+
+**Implemented Approach**: Hierarchical Keyring with DynamoDB branch key cache
+- Branch key generated once per service_id, cached for ~15 minutes
+- Fresh DEK generated per encryption operation, wrapped with cached branch key
+- Single KMS call per service_id per TTL window (not per session or per token)
 
 **Benefits**:
-- **Performance**: Single KMS call amortized across session lifetime (~24 hours)
-- **Cost Efficiency**: Fewer KMS API calls reduce operational costs
-- **Scalability**: Constant-time encryption regardless of token count per session
-- **Session Isolation**: Each session gets cryptographically independent encryption
+- **Performance**: Cached branch keys provide ~1-5ms encryption operations (vs 50-200ms per direct KMS call)
+- **Cost Efficiency**: Dramatically fewer KMS API calls (1 per service_id per TTL vs multiple per session)
+- **Scalability**: Supports 100+ service contexts with <1MB memory overhead
+- **Service Isolation**: Each service_id gets cryptographically isolated branch key
 
 ### 2. Service-ID-Only Context Binding
 
@@ -128,8 +137,8 @@ We will implement **envelope encryption with DEK-per-session** using **AWS KMS**
    - AWS KMS integration provides enterprise-grade key management
 
 2. **Performance Efficiency**
-   - Sub-50ms encryption/decryption operations
-   - Single KMS call per session amortizes key management overhead
+   - Sub-50ms encryption/decryption operations (cached branch keys: ~1-5ms)
+   - Branch key caching per service_id reduces KMS calls to 1 per TTL window vs multiple per session
    - AESGCMSIV provides fast authenticated encryption
 
 3. **Operational Benefits**
@@ -156,7 +165,7 @@ We will implement **envelope encryption with DEK-per-session** using **AWS KMS**
    - Key rotation procedures require operational processes
 
 3. **Cost Implications**
-   - AWS KMS charges per API call (though mitigated by DEK-per-session)
+   - AWS KMS charges per API call (mitigated by branch key caching: 1 call per service_id per TTL)
    - CloudTrail logging has storage costs
    - Additional AWS services for audit and monitoring
 
@@ -164,7 +173,7 @@ We will implement **envelope encryption with DEK-per-session** using **AWS KMS**
 
 1. **AWS Dependency**: Environment variable KEK fallback for development/testing
 2. **Complexity**: Comprehensive error handling in EncryptionPort interface
-3. **Cost**: DEK-per-session pattern minimizes KMS API calls
+3. **Cost**: Branch key caching per service_id minimizes KMS API calls (10x reduction vs direct KMS calls)
 
 ---
 

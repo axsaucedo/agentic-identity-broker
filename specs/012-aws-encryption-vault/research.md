@@ -74,7 +74,7 @@ plaintext := result.Result()
 **DEK Generation**:
 - AWS SDK generates unique DEK per Encrypt() call
 - 256 bits (32 bytes) of cryptographically secure randomness
-- Per spec: one DEK per session (both access and refresh tokens use same DEK)
+- Per spec: DEKs per service_id context (all tokens for a service use DEKs wrapped with service-specific branch key)
 
 **Context Binding**:
 - `EncryptionContext` parameter is map[string]string: `{"service_id": "oauth2"}`

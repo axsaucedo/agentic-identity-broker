@@ -17,8 +17,8 @@ A platform operator deploying the system to production needs to encrypt sensitiv
 
 **Acceptance Scenarios**:
 
-1. **Given** a session with OAuth tokens and associated service_id context is stored, **When** tokens are saved to the sessions table, **Then** each token is encrypted using a DEK bound to its service context, the DEK is encrypted using a KEK with the same service context, and both the token ciphertext and wrapped DEK are stored
-2. **Given** encrypted tokens and wrapped DEKs in the sessions table, **When** a session is retrieved and tokens are requested, **Then** the KEK is used to unwrap the DEK (verifying context), the DEK is used to decrypt the token (verifying context), and the plaintext token is returned
+1. **Given** a session with OAuth tokens and associated service_id context is stored, **When** tokens are saved to the sessions table, **Then** each token is encrypted using a DEK bound to its service context, the DEK is wrapped using the service-specific branch key (derived from KEK) with the same service context, and both the token ciphertext and wrapped DEK are stored
+2. **Given** encrypted tokens and wrapped DEKs in the sessions table, **When** a session is retrieved and tokens are requested, **Then** the service-specific branch key (cached from KEK for the service_id) is used to unwrap the DEK (verifying context), the DEK is used to decrypt the token (verifying context), and the plaintext token is returned
 3. **Given** an attacker gains direct database access and reads encrypted tokens with wrapped DEKs, **When** they attempt to use the encrypted tokens with different context, **Then** the tokens are invalid because context verification fails at both DEK and KEK layers
 4. **Given** a session is loaded from the database, **When** context verification fails at any layer, **Then** the application fails securely and does not fall back to plaintext tokens
 
@@ -43,17 +43,17 @@ A security team needs the Key Encryption Key (KEK) to be securely stored using i
 
 ### User Story 3 - DEK Generation and Context Binding (Priority: P1)
 
-A security architect needs Data Encryption Keys (DEK) to be generated securely and bound to the token's service context. Each session (containing access and refresh tokens) should use a single fresh DEK generated with cryptographically secure randomness, with the service_id context cryptographically bound during DEK encryption. DEKs should be unique per session and tightly coupled with their encrypted tokens and service context. All tokens within a session (access_token and refresh_token) share the same DEK, optimized for a single KMS wrap operation.
+A security architect needs Data Encryption Keys (DEK) to be generated securely and bound to the token's service context. Each session generates fresh DEKs with cryptographically secure randomness, with the service_id context cryptographically bound during DEK encryption and wrapping. DEKs should be unique per service_id and tightly coupled with their encrypted tokens and service context. All tokens within a session (access_token and refresh_token) use DEKs wrapped with the same service-specific branch key, optimized for service-level key management.
 
-**Why this priority**: DEK security and context binding are crucial for envelope encryption. Generating fresh, random DEKs per session with context binding ensures that tokens cannot be reused in different contexts, and compromise of one session's DEK doesn't affect other sessions.
+**Why this priority**: DEK security and context binding are crucial for envelope encryption. Generating fresh, random DEKs per service_id context with cryptographic binding ensures that tokens cannot be reused in different contexts, and compromise of one service's DEKs doesn't affect other services.
 
-**Independent Test**: Can be fully tested by encrypting multiple sessions with different contexts, verifying that each session has a unique DEK, and confirming that tokens encrypted in one context cannot be decrypted with different context values.
+**Independent Test**: Can be fully tested by encrypting multiple sessions for different service_id contexts, verifying that each service_id has DEKs wrapped with its service-specific branch key, and confirming that tokens encrypted in one service context cannot be decrypted with different service_id context values.
 
 **Acceptance Scenarios**:
 
-1. **Given** multiple sessions are encrypted with different contexts, **When** each session is created, **Then** a fresh DEK is generated for the session with cryptographically secure randomness, and the context is bound to the DEK encryption
-2. **Given** two sessions with different contexts (principal/service/session_id), **When** both are stored, **Then** each session has a unique DEK with its context bound, and attempting to decrypt one session's DEK with another's context fails
-3. **Given** DEKs are generated for session encryption, **When** all operations complete, **Then** DEKs used for encryption are securely erased from memory and never appear in logs
+1. **Given** multiple sessions are created for different service_id contexts, **When** each session is encrypted, **Then** a fresh DEK is generated per encryption operation with cryptographically secure randomness, the DEK is wrapped with the service-specific branch key, and the context is bound at both DEK and branch key layers
+2. **Given** two sessions with different service_id contexts (oauth2 vs github), **When** both are stored, **Then** each service_id has DEKs wrapped with its own service-specific branch key, and attempting to decrypt one service's DEK with another's service_id context fails at both DEK and KEK verification layers
+3. **Given** DEKs are generated for service_id context encryption, **When** all encryption operations complete, **Then** DEKs and branch keys used for encryption are securely erased from memory and never appear in logs
 
 ---
 
@@ -101,7 +101,7 @@ A platform operator managing multiple OAuth2 services (GitHub, Google, custom OA
 
 **Acceptance Scenarios**:
 
-1. **Given** an application managing sessions for services "oauth2", "github", and "google", **When** sessions are created for each service with unique tokens and encryption context, **Then** each session has a unique DEK wrapped with its own service_id context (no shared DEK across services)
+1. **Given** an application managing sessions for services "oauth2", "github", and "google", **When** sessions are created for each service, **Then** each service_id has DEKs wrapped with its own service-specific branch key, providing cryptographic isolation between services (no shared branch key or DEK material across services)
 2. **Given** ciphertext from service "oauth2" stored in database, **When** decryption is attempted with service_id "github", **Then** decryption fails at both DEK verification layer (AAD mismatch) AND KEK unwrap layer (context mismatch), preventing cross-service reuse
 3. **Given** an attacker with database access extracts encrypted tokens and wrapped DEKs from service "oauth2" and attempts to decrypt them as service "github" tokens, **When** they call the application's decryption endpoint with wrong service_id context, **Then** both cryptographic layers reject the ciphertext with ErrorKindContextMismatch, and the attack is prevented with clear audit log entry
 
@@ -146,8 +146,8 @@ A reliability engineer needs the system to handle edge cases gracefully: large t
 
 ### Functional Requirements
 
-- **FR-001**: System MUST use envelope encryption to encrypt OAuth tokens: a unique Data Encryption Key (DEK) encrypts the token with context binding, and the DEK is wrapped (encrypted) by a Key Encryption Key (KEK) with the same context
-- **FR-002**: System MUST generate a fresh DEK for each session with cryptographically secure randomness (minimum 256 bits entropy)
+- **FR-001**: System MUST use hierarchical envelope encryption: a fresh Data Encryption Key (DEK) encrypts each token with context binding (service_id), the DEK is wrapped using a Branch Key derived per service_id from AWS KMS, and the KEK is managed by AWS KMS with DynamoDB branch key caching
+- **FR-002**: System MUST generate a fresh DEK for each encryption operation per service_id context with cryptographically secure randomness (minimum 256 bits entropy), wrapped using the service-specific branch key
 - **FR-003**: System MUST bind encryption context (service_id) to the DEK encryption as authenticated additional data
 - **FR-004**: System MUST bind the same encryption context to the KEK wrapping operation (DEK wrapping with authenticated encryption)
 - **FR-005**: System MUST wrap the DEK using the KEK with context verification and store the wrapped DEK alongside the encrypted token
@@ -216,7 +216,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 #### Cryptographic Requirements
 
 - **SR-001**: Encryption MUST use envelope encryption with two key layers: DEK for token encryption and KEK for DEK wrapping
-- **SR-002**: DEK MUST be unique for each token, generated with cryptographically secure randomness (minimum 256 bits entropy)
+- **SR-002**: DEK MUST be unique per service_id context, generated with cryptographically secure randomness (minimum 256 bits entropy), wrapped using the service-specific branch key
 - **SR-003**: Encryption MUST use authenticated encryption (AEAD ciphers) ensuring both confidentiality and integrity of tokens
 - **SR-004**: Encryption MUST use AWS Encryption SDK with AESGCMSIV (Encrypt-then-MAC with counter mode) for authenticated encryption
 - **SR-005**: DEK encryption MUST bind encryption context (service_id) as authenticated additional data (AAD)
@@ -275,7 +275,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 ### Measurable Outcomes
 
 - **SC-001**: Envelope encryption is implemented—100% of OAuth tokens are encrypted using DEK + wrapped KEK with context binding, 0% plaintext
-- **SC-002**: DEK generation is cryptographically secure—each token has a unique DEK generated with minimum 256 bits entropy
+- **SC-002**: DEK generation is cryptographically secure—each service_id context has DEKs generated with minimum 256 bits entropy, wrapped using service-specific branch keys
 - **SC-003**: Context binding is enforced—encryption context (service_id) is bound to both DEK encryption and KEK wrapping
 - **SC-004**: Context verification prevents cross-context reuse—tokens encrypted in one context cannot be decrypted in a different context
 - **SC-005**: KEK security follows industry best practices—KEKs are securely stored (externalized or locally with 0600 permissions), never in plaintext
@@ -317,7 +317,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 ### Session 2026-01-16
 
 - Q: Runtime KMS Failure Handling → A: Delegate to AWS SDK retry behavior. If KMS becomes unavailable during token decryption, the AWS SDK will handle transient retries according to its configured policy. If retries exhaust, the operation fails with the SDK error. No custom retry logic needed.
-- Q: DEK-Per-Session Trade-off → A: One DEK per session. Sessions contain only access_token and refresh_token (no id_token). Both tokens share one DEK per session, optimized to single KMS call per session wrap operation.
+- Q: DEK-Per-Service Trade-off → A: DEKs are generated per service_id context. Sessions contain only access_token and refresh_token (no id_token). All tokens for a given service use DEKs wrapped with the same service-specific branch key, optimized to reduce KMS calls per service.
 - Q: Observability & Audit Logging Format → A: Use structured JSON logging following existing project logging patterns. Canonical fields: operation, service_id, success, token_type, timestamp, error_kind. No plaintext tokens or keys. Align with current agentic-identity-broker logging conventions.
 - Q: Backward Compatibility Scope for KEK Rotation → A: AWS KMS handles rotation natively with key versioning. Environment variable KEK (development-only) does not require rotation support; production must use AWS KMS for key rotation and backward compatibility.
 - Q: Performance Target Interpretation → A: Separate performance budgets. Local encrypt/decrypt ops (DEK generation, wrapping, memguard): <50ms. KMS latency: variable (AWS SLA ~99.99%). Total p99 latency goal: <300ms. KMS latency is operator/deployment concern.
