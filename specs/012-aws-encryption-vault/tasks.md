@@ -27,7 +27,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 🔒 [MANDATORY] **Core project setup**—common to all features
 
 - [x] T001 Create feature directory structure at `specs/012-aws-encryption-vault/` (if not exists)
-- [x] T002 Initialize Go module dependencies: add `github.com/aws/aws-encryption-sdk-go/v3`, `github.com/aws/aws-cryptographic-material-providers-go`, `github.com/aws/aws-sdk-go-v2/service/kms`, `github.com/awnumar/memguard` to `go.mod`
+- [x] T002 Initialize Go module dependencies: add `github.com/aws/aws-encryption-sdk-go/v3`, `github.com/aws/aws-cryptographic-material-providers-go`, `github.com/aws/aws-sdk-go-v2/service/kms` to `go.mod`
 - [x] T003 Verify design documents complete: spec.md, plan.md, data-model.md, quickstart.md, contracts/ directory
 
 ---
@@ -38,9 +38,9 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Phase 2a: Domain Model & Glossary (Principles II, V)
 
-- [x] T004 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary: add "envelope encryption", "DEK", "KEK", "EncryptionContext", "EncryptionPort", "AAD", "memguard", "AESGCMSIV"
+- [x] T004 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Glossary: add "envelope encryption", "DEK", "KEK", "EncryptionContext", "EncryptionPort", "AAD", "AESGCMSIV"
 - [x] T005 Update [ARCHITECTURE.md](../../ARCHITECTURE.md) Domain section: document UserSession aggregate, EncryptionContext value object, EncryptionPort interface
-- [x] T006 Create ADR: `adrs/NNN-envelope-encryption-design.md` documenting: (1) DEK per service_id with branch key caching rationale, (2) service_id-only context binding, (3) AWS Encryption SDK choice, (4) memguard integration
+- [x] T006 Create ADR: `adrs/NNN-envelope-encryption-design.md` documenting: (1) DEK per service_id with branch key caching rationale, (2) service_id-only context binding, (3) AWS Encryption SDK choice, (4) memory protection deferred to future feature
 
 ### Phase 2b: Configuration Design (Principle VII)
 
@@ -218,16 +218,16 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
     - Use DEK to decrypt ciphertext (verifying auth tag)
     - Return plaintext token
     - Handle errors: detect context mismatch, integrity violations
-  - **Memory Protection** (memguard):
-    - Wrap input plaintext in memguard buffer
+  - **Memory Protection**:
+    - Memory protection deferred to future memory hardening feature
     - Zero DEK after use (AWS SDK handles internally)
-    - Support memguard for local key material (env var backend)
+    - Support secure handling for local key material (env var backend)
 
 - [x] T024 [P] Create custom keyring for base64-encoded KEK support:
   - Implement AWS Encryption SDK keyring interface
   - Load base64-encoded KEK (provided directly as parameter)
   - Validate base64 encoding and key length (32 bytes)
-  - Wrap KEK in memguard buffer (memory locking, core dump exclusion)
+  - Memory protection deferred to future memory hardening feature
   - Implement GenerateDataKey and DecryptDataKey methods
   - Use same context binding as AWS KMS keyring
 
@@ -453,7 +453,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 - [ ] T044 [P] [US2] Unit test: Base64-encoded KEK loaded securely
   - Load base64-encoded KEK from parameter
-  - Verify KEK is decoded and loaded into memguard buffer
+  - Verify KEK is decoded and loaded securely
   - Verify base64 validation passes for valid keys and fails for invalid
 
 - [ ] T045 [P] [US2] Unit test: Plaintext KEK never logged
@@ -498,7 +498,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 - [x] T050 [US3] E2E Test - Scenario 3.3: "DEK memory zeroization"
   - Track memory after DEK generation
   - Verify DEK buffers are zeroed post-operation
-  - Verify mlock/core dump exclusion if available
+  - Verify memory protection if available
   - **Status**: ✅ PASSING - `encryption_vault_raw_test.go` L293-313 + `encryption_vault_keyring_test.go` L839-870
 
 ### US3 Unit Tests
@@ -552,11 +552,11 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - Verify config system resolves `${ENCRYPTION_KEK}` to environment variable value
   - Verify error if environment variable not set or base64-invalid
 
-- [ ] T058 [P] [US4] Unit test: Base64 KEK validation and memguard
+- [ ] T058 [P] [US4] Unit test: Base64 KEK validation
   - Load base64-encoded KEK
   - Verify base64 decoding succeeds
-  - Verify memguard buffer initialized
-  - Verify memory locking applied
+  - Verify secure key material handling
+  - Memory protection deferred to future feature
 
 ### US4 Integration Tests
 
@@ -731,7 +731,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - **Status**: ✅ DEFERRED - Metrics instrumentation using OpenTelemetry will be implemented in a future feature specification (Phase 12: Observability & Monitoring)
 
 - [x] T081 [P] Update [ARCHITECTURE.md](../../ARCHITECTURE.md):
-  - Add "Encryption Vault" section documenting: envelope encryption, DEK/KEK architecture, context binding, memguard integration ✅
+  - Add "Encryption Vault" section documenting: envelope encryption, DEK/KEK architecture, context binding ✅
   - Update glossary with new terms ✅ (already present from earlier phases)
   - Add port/adapter diagram ✅
   - **Status**: ✅ COMPLETE - Added section 3.1.5 documenting full encryption architecture
@@ -745,13 +745,12 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Security & Memory Protection
 
-- [x] T083 Verify memguard integration across all sensitive buffers:
-  - Plaintext tokens wrapped in memguard during encryption
+- [x] T083 Verify memory protection for all sensitive buffers:
+  - Memory protection deferred to future memory hardening feature
   - DEK buffers zeroed post-operation
-  - KEK buffers memory-locked (if local key material)
-  - Core dump exclusion enabled for sensitive buffers
-  - **Status**: ✅ DEFERRED - Will be covered in future feature specification (Phase 12: Polish & Hardening)
-  - **Note**: AWS Encryption SDK provides baseline memory protection; advanced memguard integration (buffer locking, core dump exclusion) deferred to future spec refinement
+  - KEK buffers handled securely (if local key material)
+  - **Status**: ✅ DEFERRED - Will be covered in future feature specification (Phase 12: Memory Hardening)
+  - **Note**: AWS Encryption SDK provides baseline memory protection; advanced memory hardening (buffer locking, core dump exclusion) deferred to future spec
 
 - [x] T084 [P] Audit logging compliance:
   - Verify 100% of encryption operations logged ✅ (13 error log statements in adapter)
@@ -772,7 +771,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 - [x] T086 [P] Load testing (if applicable):
   - Test 100+ concurrent session encryptions
   - Verify latency stable under load
-  - Verify no memory leaks (memguard cleanup)
+  - Verify no memory leaks (proper cleanup)
   - **Status**: ✅ NOT NECESSARY - Load testing will be performed as part of production deployment validation; MVP release does not require stress testing
 
 ### Documentation & Examples
@@ -822,7 +821,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 - [ ] T093 [P] Verify ADR created and accepted:
   - Check [adrs/NNN-envelope-encryption-design.md](../../adrs/) exists
-  - Verify ADR documents: DEK per service_id with branch key caching, context binding, AWS SDK choice, memguard integration
+  - Verify ADR documents: DEK per service_id with branch key caching, context binding, AWS SDK choice, memory protection deferred
   - Mark ADR as "Accepted"
 
 - [ ] T094 [P] Verify [ARCHITECTURE.md](../../ARCHITECTURE.md) updated:
@@ -836,7 +835,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - No plaintext fallback on encryption/decryption failure
   - Fail-closed behavior enforced
   - No custom cryptography (AWS SDK only)
-  - Memguard integration verified
+  - Memory protection deferred to future feature
 
 - [ ] T096 [P] Verify no sensitive data leakage:
   - Search codebase for plaintext token logging (grep: forbidden patterns)
@@ -994,7 +993,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 |------|-----------|
 | Custom cryptography bugs | Use AWS Encryption SDK (official, battle-tested) |
 | Context binding not enforced | AWS SDK handles AAD verification natively; tests verify both layers fail on mismatch |
-| Memory leaks of plaintext/DEK | Memguard integration with explicit zeroing; memory tests verify cleanup |
+| Memory leaks of plaintext/DEK | Explicit zeroing where possible; memory tests verify cleanup; advanced protection deferred |
 | KEK unavailability breaks service | Startup validation (fail-fast); clear error messages; operator alerts on KMS failure |
 | Database schema mismatches | No migrations needed; columns (encrypted_*_token BYTEA, encryption_context JSONB) already exist |
 | Decryption of untrusted ciphertext | AESGCMSIV authentication tag verification built into AWS SDK; tampered data detected |
@@ -1016,7 +1015,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 - [ ] [ARCHITECTURE.md](../../ARCHITECTURE.md) updated with glossary and design
 - [ ] Examples and documentation complete
 - [ ] Performance targets met (<5ms local, <100ms with KMS latency)
-- [ ] Memory protection: AWS SDK baseline; advanced hardening deferred (Task T083) ✅ Delegated to future feature spec
+- [ ] Memory protection: AWS SDK baseline; advanced hardening deferred (Task T083) ✅ Delegated to future memory hardening feature spec
 - [ ] Builder wiring complete (no circular dependencies)
 - [ ] Routing functions thin (no service instantiation)
 - [ ] PQC scope clarified: delegated to AWS Encryption SDK (Tasks T072-T078) ✅

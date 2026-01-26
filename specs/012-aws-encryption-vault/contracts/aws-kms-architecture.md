@@ -37,7 +37,7 @@ This document clarifies the tradeoffs and recommends an approach for the encrypt
 │  Branch Key (Cached)                                     │
 │  - Intermediate key derived from KEK                      │
 │  - Cached locally for performance (TTL: 15 minutes)      │
-│  - Protected by memguard (MLOCK, DONTDUMP)              │
+│  - Memory protection deferred to future memory hardening feature │
 │  - One per unique service_id (encryption context)        │
 │  - ~200 bytes per key                                     │
 └────────────────────┬──────────────────────────────────────┘
@@ -71,7 +71,7 @@ This document clarifies the tradeoffs and recommends an approach for the encrypt
    - Application calls AWS KMS: "Generate a Branch Key for service_id=oauth2"
    - AWS KMS returns Branch Key (32 bytes)
    - Branch Key cached locally with 15-minute TTL
-   - Branch Key wrapped in memguard enclave (protected memory)
+   - Branch Key memory protection deferred to future feature
 
 3. **Subsequent Encryptions (during TTL)**:
    - No KMS call needed
@@ -101,7 +101,7 @@ This document clarifies the tradeoffs and recommends an approach for the encrypt
 - KEK never in plaintext in application
 - KMS provides audit logging (CloudTrail)
 - Branch Key TTL limits breach window
-- Memguard protects cached Branch Keys from memory dumps
+- Memory protection deferred to future memory hardening feature
 - Context binding prevents cross-service key reuse
 
 **Attack Surface**:
@@ -113,46 +113,17 @@ This document clarifies the tradeoffs and recommends an approach for the encrypt
 
 **Mitigation Strategies**:
 1. **Shorter TTL** (15 minutes vs. 1 hour default) limits breach window
-2. **Memguard protection** makes memory extraction harder
-3. **MLOCK** prevents swapping to disk
-4. **Core dump exclusion** prevents post-mortem forensics
-5. **Regular key rotation** in AWS KMS invalidates old Branch Keys
-6. **Monitoring** alerts on unusual KMS activity or cache patterns
+2. **Memory protection** deferred to future memory hardening feature
+3. **Regular key rotation** in AWS KMS invalidates old Branch Keys
+4. **Monitoring** alerts on unusual KMS activity or cache patterns
 
-### Memory Protection with Memguard
+### Memory Protection
 
-```go
-// Pseudocode: How memguard protects Branch Keys
-
-type ProtectedBranchKeyCache struct {
-    cache map[string]*memguard.Enclave
-    mu    sync.RWMutex
-}
-
-func (c *ProtectedBranchKeyCache) Get(serviceID string) (*memguard.Enclave, bool) {
-    c.mu.RLock()
-    defer c.mu.RUnlock()
-
-    enclave, ok := c.cache[serviceID]
-    return enclave, ok
-}
-
-func (c *ProtectedBranchKeyCache) Put(serviceID string, branchKey []byte, ttl time.Duration) {
-    c.mu.Lock()
-    defer c.mu.Unlock()
-
-    // Move Branch Key into protected memory enclave
-    enclave := memguard.NewEnclave(branchKey)
-
-    // Schedule cleanup at TTL expiration
-    go func() {
-        <-time.After(ttl)
-        enclave.Destroy() // Zero and unlock memory
-    }()
-
-    c.cache[serviceID] = enclave
-}
-```
+Branch key memory protection is deferred to a future memory hardening feature specification that will address:
+- Memory locking to prevent swapping to disk
+- Core dump exclusion to prevent post-mortem forensics
+- Secure buffer zeroing after use
+- Protected memory enclaves for sensitive key material
 
 ### Configuration Example
 
@@ -163,7 +134,6 @@ encryption:
   kms:
     branch_key_ttl: 15m           # Recommended: 15 minutes (vs. default 1 hour)
     cache_limit_entries: 100      # Support 100 concurrent service contexts
-    memory_protection: true        # Enable memguard integration
 ```
 
 ---
@@ -226,14 +196,14 @@ encryption:
 1. **Performance Requirements**: OAuth tokens need <100ms response times; direct KMS calls violate SLA
 2. **Throughput**: Session management requires fast, responsive encryption
 3. **Cost**: KMS costs become prohibitive with direct calls (~10x more expensive)
-4. **Security/Availability Tradeoff**: 15-minute TTL with memguard protection provides reasonable security while maintaining usability
+4. **Security/Availability Tradeoff**: 15-minute TTL provides reasonable security while maintaining usability
 5. **Operational**: Branch Keys are per-service_id, making per-service rotation granular and manageable
 
 ### Implementation Guidance
 
 **Phase 1 (MVP)**:
 - Use default Hierarchical Keyring configuration (1-hour TTL)
-- Implement memguard protection for Branch Keys
+- Memory protection deferred to future memory hardening feature
 - Establish baseline performance metrics
 
 **Phase 2 (Hardening)**:
@@ -255,7 +225,6 @@ encryption:
   kms:
     branch_key_ttl: 15m           # Shorter TTL for enhanced security
     cache_limit_entries: 100      # Adequate for typical deployments
-    memory_protection: true        # Always enable memguard
 ```
 
 ---
@@ -275,14 +244,14 @@ encryption:
 **A**: For pure memory security, yes. But it's better overall:
 - 50-200ms latency for every operation is unacceptable for OAuth
 - 10x KMS cost increase is prohibitive at scale
-- 15-minute TTL + memguard provides acceptable risk profile
+- 15-minute TTL provides acceptable risk profile
 - Availability improves (tolerates temporary KMS outages)
 
-### Q: How does memguard help if AWS SDK doesn't use it?
+### Q: How is memory protection handled?
 
-**A**: Memguard protects at the application boundary:
-1. **Branch Key storage**: Wrap cached keys in memguard enclaves
-2. **Token processing**: Protect plaintext tokens during encrypt/decrypt
+**A**: Memory protection is deferred to a future memory hardening feature that will address:
+1. **Branch Key storage**: Protected memory for cached keys
+2. **Token processing**: Secure handling of plaintext tokens during encrypt/decrypt
 3. **Core dump exclusion**: Prevent keys from appearing in core dumps
 4. **Memory locking**: Prevent sensitive pages from swapping to disk
 
@@ -293,7 +262,6 @@ encryption:
 encryption:
   kms:
     branch_key_ttl: 5m             # Very short cache window
-    memory_protection: true         # Enable memguard
     high_security_mode: true       # Direct KMS for sensitive operations
 ```
 
@@ -302,10 +270,8 @@ encryption:
 ## Implementation Checklist
 
 - [ ] Configure AWS Encryption SDK Hierarchical Keyring with 15-minute TTL
-- [ ] Implement memguard protection for Branch Key cache
 - [ ] Add monitoring for cache hit rates and KMS latency
 - [ ] Test Branch Key TTL expiration and refresh
-- [ ] Verify memory protection (MLOCK, DONTDUMP)
 - [ ] Establish backup/recovery for failed KMS operations
 - [ ] Document configuration and operational procedures
 - [ ] Plan for key rotation policy and testing

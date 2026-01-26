@@ -575,7 +575,7 @@ encryption:
 **Security Considerations**:
 
 - **AWS KMS**: KEK never leaves AWS KMS boundaries. The application only sees encrypted Data Encryption Keys (DEKs). All cryptographic operations happen server-side in KMS.
-- **Environment Variable**: KEK is loaded into application memory at startup and wrapped in memory-protected buffers (via memguard). Suitable for containerized/ephemeral deployments only.
+- **Environment Variable**: KEK is loaded into application memory at startup.
 - **Rotation**: KMS keys can be rotated without application restart. Old tokens remain decryptable with rotated keys.
 - **Permissions**: Ensure service role has `kms:Decrypt` and `kms:GenerateDataKey` permissions. Overly broad permissions should be avoided.
 

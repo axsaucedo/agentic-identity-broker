@@ -292,9 +292,8 @@ encryption:
 ### Environment Variable
 
 **Key Material in Memory**:
-- Raw key material loaded into memguard buffer at startup
-- Buffer locked in memory (MADV_MLOCK)
-- Excluded from core dumps (MADV_DONTDUMP)
+- Raw key material handled securely at startup
+- Memory protection deferred to future memory hardening feature
 - Zeroed on application shutdown
 
 **Risks**:

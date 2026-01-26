@@ -10,7 +10,6 @@ Phase 1 design for the AWS Encryption Vault feature is complete. All design arti
 
 - **Service-layer encryption** (not storage-adapter encryption)
 - **Hierarchical Keyring with Branch Key caching** (15-minute TTL recommended)
-- **Memguard protection** for cached keys and token transit
 - **Fail-closed security** with no plaintext fallback
 - **Context binding** (service_id only) for cross-service prevention
 
@@ -37,7 +36,6 @@ Phase 1 design for the AWS Encryption Vault feature is complete. All design arti
 | [error-contract.md](./contracts/error-contract.md) | Error types, error handling patterns, HTTP mapping | ✅ Complete (v1.0) |
 | [domain-events.md](./contracts/domain-events.md) | Domain events (SessionEncrypted, SessionDecrypted, failures) | ✅ Complete (v1.0) |
 | [aws-kms-architecture.md](./contracts/aws-kms-architecture.md) | AWS KMS architectural decision (Hierarchical Keyring vs. Direct KMS) | ✅ Complete (v1.0) |
-| [memguard-integration.md](./contracts/memguard-integration.md) | Implementation guide for memguard + AWS Encryption SDK integration | ✅ Complete (v1.0) |
 
 ---
 
@@ -71,18 +69,18 @@ return session to caller
 
 ### 2. Hierarchical Keyring with Branch Key Caching
 
-**Decision**: Use AWS Encryption SDK's Hierarchical Keyring with memguard-protected Branch Key cache (15-minute TTL recommended).
+**Decision**: Use AWS Encryption SDK's Hierarchical Keyring with Branch Key cache (15-minute TTL recommended).
 
 **Rationale**:
 - Performance: ~1-5ms cached operations vs. 50-200ms per direct KMS call
 - Cost: 10x cheaper (~$0.03 vs. $0.30 per 10K operations)
 - Availability: Tolerates temporary KMS outages (within TTL window)
-- Security: 15-minute TTL + memguard protection balances usability vs. security
+- Security: 15-minute TTL with service-level isolation balances usability vs. security
 - Scalability: Supports 100+ service contexts with <1MB memory overhead
 
 **Three-Layer Architecture**:
 ```
-KEK (AWS KMS) → Branch Key (cached per-service_id, memguard-protected) → DEK (per service_id context)
+KEK (AWS KMS) → Branch Key (cached per-service_id) → DEK (per service_id context)
 ```
 
 ### 3. Context Binding: service_id Only
@@ -97,20 +95,9 @@ KEK (AWS KMS) → Branch Key (cached per-service_id, memguard-protected) → DEK
 
 **Result**: Tokens encrypted for service_id="oauth2" cannot be decrypted with service_id="github".
 
-### 4. Memguard Protection Strategy
+### 4. Memory Protection (Deferred)
 
-**Decision**: Protect cached Branch Keys, plaintext tokens in transit, and DEKs using memguard.
-
-**Protection Guarantees**:
-- Branch Keys in cache: MLOCK (prevent swap), DONTDUMP (exclude from core dumps)
-- Plaintext tokens: Wrapped in memguard enclaves during encrypt/decrypt
-- Memory zeroing: Explicit cryptographic-grade zeroing on cleanup
-
-**AWS SDK Integration**:
-- Custom `CryptographicMaterialsCache` implementation
-- Put: Move Branch Keys into memguard enclaves with TTL
-- Get: Return LockedBuffer for AWS SDK operations
-- Automatic cleanup: Enclave destruction on TTL expiration
+Memory protection strategies (buffer zeroing, memory locking, core dump exclusion) are deferred to a future feature specification focused specifically on memory safety hardening.
 
 ### 5. Fail-Closed Security
 
@@ -160,10 +147,10 @@ encryption:
 | Fresh DEK per service_id | AWS SDK generates per operation, wrapped with service branch key | ✅ |
 | Context binding (AAD) | service_id bound at DEK and KEK layers | ✅ |
 | Authenticated encryption | AESGCMSIV provides integrity verification | ✅ |
-| KEK security | AWS KMS (prod) or memguard (dev) | ✅ |
+| KEK security | AWS KMS (prod) or base64-encoded key (dev) | ✅ |
 | KEK rotation support | Backward compatibility via version byte | ✅ |
-| Memory protection | Memguard for Branch Keys, tokens, DEKs | ✅ |
-| Core dump exclusion | MADV_DONTDUMP via memguard | ✅ |
+| Memory protection | Deferred to future memory hardening spec | 🔄 |
+| Core dump exclusion | Deferred to future memory hardening spec | 🔄 |
 | No plaintext logging | Sanitized logging documented | ✅ |
 | Fail-closed behavior | No fallback on any encryption/decryption failure | ✅ |
 
@@ -221,7 +208,6 @@ encryption:
   kms:
     branch_key_ttl: 15m        # Recommended for OAuth
     cache_limit_entries: 100   # Concurrent service contexts
-    memory_protection: true     # Enable memguard
 ```
 
 ### Error Interface
@@ -271,7 +257,7 @@ All design preconditions verified:
 - [x] API design (EncryptionPort, service-layer ownership)
 - [x] Database design (BYTEA and JSONB columns exist)
 - [x] Security-first (fail-closed, memory protection, context verification)
-- [x] Library-first (AWS Encryption SDK, memguard, no custom crypto)
+- [x] Library-first (AWS Encryption SDK, AWS KMS, no custom crypto)
 - [x] Hexagonal architecture (EncryptionPort interface, AWS adapter, storage adapters)
 - [x] Persistence patterns (existing UserSession aggregate, transparent encryption)
 
@@ -293,7 +279,6 @@ All design preconditions verified:
 
 ### Phase 2c: Implementation
 - AWS Encryption SDK adapter with Hierarchical Keyring
-- Memguard-protected custom cache implementation
 - Service-layer encryption/decryption in OAuth2SessionService
 - Configuration system integration
 - Domain event publishing
@@ -318,7 +303,6 @@ All design preconditions verified:
 | **Key Architecture** | Hierarchical Keyring + Branch Key Caching | Performance + cost vs. security |
 | **Branch Key TTL** | 15 minutes (recommended) | Balance between security window and KMS availability |
 | **Context Fields** | service_id only | Optimizes KMS operations, provides service isolation |
-| **Memory Protection** | Memguard for Branch Keys and token transit | Prevents core dumps, swap, and memory pressure eviction |
 | **Error Handling** | Fail-closed, no fallback | Security-first, no degradation |
 | **Configuration** | Single field with auto-detection | Simplifies ops, leverages existing config system |
 
@@ -329,7 +313,7 @@ All design preconditions verified:
 ### For Implementation Teams
 - Start with [quickstart.md](./quickstart.md) - Developer integration patterns
 - Reference [encryption-port.md](./contracts/encryption-port.md) - Interface specification
-- Study [memguard-integration.md](./contracts/memguard-integration.md) - Production implementation
+- Reference [aws-kms-architecture.md](./contracts/aws-kms-architecture.md) - AWS KMS architecture
 
 ### For Security Review
 - Review [aws-kms-architecture.md](./contracts/aws-kms-architecture.md) - Architecture decision
@@ -363,7 +347,6 @@ All design preconditions verified:
 - [x] error-contract.md (error types and handling)
 - [x] domain-events.md (domain events)
 - [x] aws-kms-architecture.md (KMS architecture decision)
-- [x] memguard-integration.md (memguard implementation)
 
 **Missing (Phase 2)**:
 - [ ] tests/e2e/encryption_vault_test.go (24 acceptance tests)

@@ -108,13 +108,13 @@ encryptionContext := map[string]string{
 
 ## Implementation Requirements
 
-### Memory Protection (via memguard)
+### Memory Protection
 
 1. **DEK Handling** (AWS Encryption SDK managed):
    - DEK is generated internally by AWS Encryption SDK
    - Not directly controllable by adapter, but AWS SDK uses secure random generation
    - After DEK wrapping (encryption) and unwrapping (decryption), DEK is discarded
-   - Adapter can wrap plaintext token input/output in memguard buffers
+   - Adapter handles plaintext token input/output securely
 
 2. **KEK and Branch Key Handling** (depends on backend):
 
@@ -122,30 +122,28 @@ encryptionContext := map[string]string{
    - KEK never exists as plaintext in application (stored only as ARN/key ID)
    - AWS KMS handles all KEK material server-side
    - **Branch Key** (intermediate cache): Generated from KEK, cached locally for TTL period
-   - Memguard protects Branch Key cache in application memory:
-     - Wrap cached Branch Keys in memguard enclaves
-     - Lock Branch Key pages in memory (MADV_MLOCK)
-     - Exclude Branch Keys from core dumps (MADV_DONTDUMP)
+   - Branch Key memory protection deferred to future memory hardening feature:
+     - Secure handling of cached Branch Keys
+     - Memory protection for sensitive key material
      - Zero Branch Keys when cache evicts (TTL expiration or memory pressure)
    - TTL configuration balances security vs. performance (recommend 15 minutes)
-   - Note: AWS SDK's internal key derivation during wrapping/unwrapping not directly controlled by memguard; AWS SDK handles this securely
+   - Note: AWS SDK handles key material securely during wrapping/unwrapping operations
 
    **Direct KMS Calls (Alternative, Higher Security)**:
    - No Branch Key caching; no keys cached in memory between operations
    - Key material only exists during wrap/unwrap operations
-   - Minimal memguard needed (AWS SDK handles operation-local key protection)
+   - AWS SDK handles operation-local key protection
    - Higher latency (50-200ms per operation) but lower memory attack surface
 
    **Environment Variable Backend** (local key material):
-   - Load base64-encoded KEK material from environment into memguard buffer at adapter initialization
-   - Lock KEK buffer in memory (MADV_MLOCK)
-   - Exclude KEK buffer from core dumps (MADV_DONTDUMP)
+   - Load base64-encoded KEK material from environment at adapter initialization
+   - Memory protection deferred to future memory hardening feature
    - Pass to AWS SDK's keyring initialization (AWS SDK handles it from there)
-   - KEK buffer persists for adapter lifetime; only zeroed on adapter shutdown
-   - Note: AWS SDK's internal handling of the key material is not directly controlled by memguard after initialization
+   - KEK material persists for adapter lifetime; zeroed on adapter shutdown
+   - Note: AWS SDK handles key material securely after initialization
 
 3. **Plaintext Handling**:
-   - Wrap plaintext token input in memguard buffer before passing to encryption port
+   - Secure handling of plaintext tokens deferred to future memory hardening feature
    - Zero plaintext after encryption completes
    - Calling code responsible for zeroing decrypted plaintext after use
    - Adapter does not manage caller's token buffers
@@ -177,7 +175,6 @@ encryptionContext := map[string]string{
   - ~200 bytes per cached Branch Key
   - Typical overhead: <1MB for 100+ service contexts
 - **Security**:
-  - Branch Key cached in protected memory with memguard
   - Configurable TTL (default 1 hour; recommend 15 minutes for higher security)
   - Context binding prevents cross-service key reuse
 - **Automatic key rotation**: Backward compatibility (version byte in wrapped DEK)
@@ -217,7 +214,7 @@ encryptionContext := map[string]string{
 **Production Adapter**: `internal/adapters/encryption/aws/adapter.go`
 - Implements EncryptionPort using AWS Encryption SDK
 - Supports both AWS KMS and environment variable KEK
-- Uses memguard for memory protection
+- Memory protection deferred to future memory hardening feature
 - Validates KEK accessibility at startup (fail-fast)
 
 **Testing Support**:

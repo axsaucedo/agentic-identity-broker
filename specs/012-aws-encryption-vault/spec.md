@@ -237,12 +237,10 @@ The system automatically detects the KEK type by checking if the value is an AWS
 
 #### Buffer and Memory Requirements
 
-- **SR-017**: Plaintext OAuth tokens MUST be zeroed from memory after use via secure buffer handling using memguard library (defer statements with secure cleanup)
-- **SR-018**: DEK material MUST be zeroed from memory after use (after DEK wrapping during encryption, after DEK unwrapping during decryption) using memguard
+- **SR-017**: Plaintext OAuth tokens MUST be securely cleared from memory after use via secure buffer handling (deferred to future feature spec: memory protection)
+- **SR-018**: DEK material MUST be cleared from memory after use (after DEK wrapping during encryption, after DEK unwrapping during decryption) (deferred to future feature spec: memory protection)
 - **SR-019**: Plaintext DEK MUST NOT persist in memory across multiple operations (single-use temporary buffers)
-- **SR-020**: KEK and DEK material MUST be protected against swapping to disk (memory locking via memguard) when possible
-- **SR-021**: Core dumps MUST NOT contain plaintext KEK or DEK material (core dump exclusion via memguard)
-- **SR-022**: All sensitive buffers (plaintext tokens, DEK, KEK) MUST be handled with memguard library providing secure cleanup, memory locking, and core dump exclusion
+- **SR-020**: KEK and DEK material handling MUST follow industry best practices for sensitive key material (deferred to future feature spec: memory protection)
 
 #### Operational Security Requirements
 
@@ -259,7 +257,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 
 ### Performance Requirements
 
-- **PR-001**: Local encrypt/decrypt operations (DEK generation, wrapping, memguard buffer cleanup) SHOULD complete in under 50ms, excluding AWS KMS latency. AWS KMS latency is variable (typically 50-200ms per AWS SLA ~99.99%). Target total p99 latency: <300ms (50ms local + 250ms KMS buffer)
+- **PR-001**: Local encrypt/decrypt operations (DEK generation, wrapping, context verification) SHOULD complete in under 50ms, excluding AWS KMS latency. AWS KMS latency is variable (typically 50-200ms per AWS SLA ~99.99%). Target total p99 latency: <300ms (50ms local + 250ms KMS buffer)
 - **PR-002**: Decryption of a typical session (both access and refresh tokens) using envelope encryption with context verification and local operations SHOULD complete in under 50ms, excluding KMS unwrap latency
 - **PR-003**: System MUST handle encryption and decryption operations without blocking the session repository under normal load
 - **PR-004**: KMS latency variability is an operator/deployment concern; local performance targets assume KMS availability within AWS SLA
@@ -297,7 +295,6 @@ The system automatically detects the KEK type by checking if the value is an AWS
 - AWS Encryption SDK supports authenticated encryption with AESGCMSIV and includes post-quantum cryptography support via Go 1.24+
 - Environment variable interpolation (`${env_var}`) is available in the configuration system for development/container KEK injection
 - Session repository from feature 005-session-management is available and can be extended with envelope encryption
-- memguard library is available for memory protection (buffer zeroing, memory locking, core dump exclusion)
 - Operators manage KEKs (AWS KMS keys or environment variables) according to organizational security policies and best practices
 - DEK context binding (service_id) is enforced as integral part of the encryption/decryption algorithm via AWS Encryption SDK, not as separate validation step
 - Configuration system properly handles sensitive values and prevents KEK exposure in logs via existing security practices
@@ -309,7 +306,6 @@ The system automatically detects the KEK type by checking if the value is an AWS
 - Q: Should OAuthTokenVault aggregate exist or should storage adapters call EncryptionPort directly? → A: Remove OAuthTokenVault, storage adapters call EncryptionPort directly
 - Q: Pre-commit to AWS Encryption SDK algorithms or keep algorithm-agnostic? → A: Pre-commit to AWS Encryption SDK (AESGCMSIV)
 - Q: Is backward compatibility across KEK key rotations required? → A: Yes, support backward compatibility with old KEK versions
-- Q: Mandate memguard library for memory protection or remain agnostic? → A: Mandate memguard library
 - Q: EncryptionContext fields optimization? → A: Reduce to service_id only (removes redundancy with principal, session_id, purpose)
 - Q: Configuration design for KEK storage (separate backends vs. unified field)? → A: Single `encryption.key` field with `${env_var}` interpolation (leverages existing config system, AWS KMS ARN for production or `${ENCRYPTION_KEK}` for development)
 - Q: Update all context references from 4-field to service_id only for consistency? → A: Yes, update all user stories, functional requirements, and success criteria to reflect service_id-only context
@@ -320,8 +316,7 @@ The system automatically detects the KEK type by checking if the value is an AWS
 - Q: DEK-Per-Service Trade-off → A: DEKs are generated per service_id context. Sessions contain only access_token and refresh_token (no id_token). All tokens for a given service use DEKs wrapped with the same service-specific branch key, optimized to reduce KMS calls per service.
 - Q: Observability & Audit Logging Format → A: Use structured JSON logging following existing project logging patterns. Canonical fields: operation, service_id, success, token_type, timestamp, error_kind. No plaintext tokens or keys. Align with current agentic-identity-broker logging conventions.
 - Q: Backward Compatibility Scope for KEK Rotation → A: AWS KMS handles rotation natively with key versioning. Environment variable KEK (development-only) does not require rotation support; production must use AWS KMS for key rotation and backward compatibility.
-- Q: Performance Target Interpretation → A: Separate performance budgets. Local encrypt/decrypt ops (DEK generation, wrapping, memguard): <50ms. KMS latency: variable (AWS SLA ~99.99%). Total p99 latency goal: <300ms. KMS latency is operator/deployment concern.
-- Q: Should EncryptionPort accept memguard.Enclave for early plaintext protection? → A: Defer architectural change to future spec refinement. Keep current EncryptionPort interface accepting []byte. This decision impacts abstraction boundaries and warrants dedicated architectural review post-Phase-4 acceptance tests. Current implementation prioritizes feature completion with planned hardening in Phase 11 (Polish & Hardening).
+- Q: Performance Target Interpretation → A: Separate performance budgets. Local encrypt/decrypt ops (DEK generation, wrapping, context verification): <50ms. KMS latency: variable (AWS SLA ~99.99%). Total p99 latency goal: <300ms. KMS latency is operator/deployment concern.
 
 ## Notes
 
@@ -329,7 +324,7 @@ This specification uses **Envelope Encryption** with two key layers and context 
 
 The KEK is securely stored following industry best practices: externalized in a centralized key management service (for production) with audit logging and access controls, or locally with restricted file permissions (for development). The system explicitly forbids plaintext fallback and requires fail-closed behavior if KEK access or context verification fails at any point. KEK key rotation is supported with backward compatibility—tokens encrypted with previous KEK versions remain decryptable after rotation.
 
-Encryption context consists of a single field: service_id (OAuth service identifier). This field binds each token to its service, providing defense-in-depth separation across services and optimizing key management operations. Memory protection uses the memguard library to protect plaintext tokens, DEKs, and KEKs through secure buffer handling, memory locking, and core dump exclusion.
+Encryption context consists of a single field: service_id (OAuth service identifier). This field binds each token to its service, providing defense-in-depth separation across services and optimizing key management operations. Memory protection for sensitive buffers is deferred to a future feature specification.
 
 Implementation uses AWS Encryption SDK with AESGCMSIV (Encrypt-then-MAC with counter mode) for authenticated encryption, providing battle-tested cryptographic implementation and future post-quantum cryptography support via Go 1.24+.
 

@@ -65,7 +65,6 @@ var _ = Describe("Encryption Vault for OAuth Tokens - Environment Variable KEK M
 		if testStorage != nil {
 			_ = storageFactory.CloseStorage(testStorage)
 		}
-		// AWS SDK and memguard handle memory cleanup of sensitive data
 	})
 
 	Context("User Story 1: Envelope Encryption", func() {

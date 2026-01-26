@@ -178,13 +178,13 @@ type SessionDecryptionFailed struct {
 
 ---
 
-## Memory Protection (memguard)
+## Memory Protection
 
-**Implementation**: Within EncryptionPort adapter (AWS SDK adapter)
-- DEK: Generated in memguard buffer, zeroed after use
-- KEK: Loaded into memguard buffer, zeroed after use
-- Plaintext tokens: Wrapped in memguard, zeroed after encryption
-- Core dumps: Marked with `MADV_DONTDUMP`
+**Implementation**: Memory protection deferred to future memory hardening feature
+- DEK: Generated securely, zeroed after use
+- KEK: Loaded securely, zeroed after use
+- Plaintext tokens: Handled securely, zeroed after encryption
+- Advanced memory protection features deferred to future specification
 
 ---
 

@@ -5,7 +5,7 @@
 
 ## Summary
 
-Implement application-layer envelope encryption for OAuth tokens stored in the sessions table using AWS Encryption SDK with AESGCMSIV authenticated encryption. Two-layer encryption: Data Encryption Keys (DEK) encrypt tokens with service_id context binding, Key Encryption Keys (KEK) wrap DEKs with same context. Support AWS KMS (production) and environment variable KEK injection (development). Implement transparent encryption/decryption in storage adapters via EncryptionPort interface. Use memguard for memory protection (buffer zeroing, memory locking, core dump exclusion). Enforce fail-closed behavior with no plaintext fallback.
+Implement application-layer envelope encryption for OAuth tokens stored in the sessions table using AWS Encryption SDK with AESGCMSIV authenticated encryption. Two-layer encryption: Data Encryption Keys (DEK) encrypt tokens with service_id context binding, Key Encryption Keys (KEK) wrap DEKs with same context. Support AWS KMS (production) and environment variable KEK injection (development). Implement transparent encryption/decryption in storage adapters via EncryptionPort interface. Memory protection deferred to future memory hardening feature. Enforce fail-closed behavior with no plaintext fallback.
 
 ## Technical Context
 
@@ -14,7 +14,6 @@ Implement application-layer envelope encryption for OAuth tokens stored in the s
 - `github.com/aws/aws-encryption-sdk/releases/go` - Official AWS Encryption SDK with AESGCMSIV authenticated encryption
 - `github.com/aws/aws-cryptographic-material-providers/releases/go` - Keyring management for KMS
 - `github.com/aws/aws-sdk-go-v2/service/kms` - AWS KMS client
-- `github.com/awnumar/memguard` - Memory protection (buffer zeroing, mlock, core dump exclusion)
 
 **Storage**: PostgreSQL 12+ (encrypted_access_token BYTEA, encrypted_refresh_token BYTEA, encryption_context JSONB)
 **Testing**: Ginkgo/Gomega BDD (existing infrastructure), testcontainers for PostgreSQL, memory protection tests
@@ -43,10 +42,10 @@ Implement application-layer envelope encryption for OAuth tokens stored in the s
 - [ ] **E2E Acceptance Tests**: Write tests for all 24 acceptance scenarios BEFORE implementation (red phase)
 - [ ] **E2E Test Mapping**: Each scenario maps 1:1 to It() block in tests/e2e/encryption_vault_test.go
 - [ ] **E2E Red Phase**: Verify tests fail initially
-- [x] **Security-First**: Fail-closed on any encryption failure; memory protection by default via memguard; context verification mandatory both layers
+- [x] **Security-First**: Fail-closed on any encryption failure; memory protection deferred to future feature; context verification mandatory both layers
 - [ ] **Architecture Docs**: Update ARCHITECTURE.md with encryption domain, glossary, port/adapter diagram
 - [ ] **ADRs**: Create ADR for envelope encryption design (two-layer DEK/KEK vs. alternatives)
-- [x] **Library-First Security**: AWS Encryption SDK (AESGCMSIV), memguard; no custom crypto
+- [x] **Library-First Security**: AWS Encryption SDK (AESGCMSIV); no custom crypto; memory protection deferred
 - [x] **Hexagonal Architecture**: EncryptionPort with AWS SDK adapter; storage adapters call port; DEK/KEK encapsulated
 - [x] **Persistence Patterns**: Uses existing UserSession aggregate and repository; transparent encryption in storage adapter
 
@@ -77,7 +76,7 @@ internal/
 │   │   ├── aws/
 │   │   │   ├── adapter.go          # AWS Encryption SDK adapter (AESGCMSIV)
 │   │   │   └── adapter_test.go     # AWS KMS integration tests
-│   │   └── context.go              # EncryptionContext utilities, memguard integration
+│   │   └── context.go              # EncryptionContext utilities
 │   └── storage/
 │       ├── memory/
 │       │   ├── adapter.go          # Updated with encryption integration
@@ -166,7 +165,7 @@ adrs/
 **Integration Tests**:
 - Location: `internal/adapters/storage/memory/adapter_test.go`, `internal/adapters/storage/postgres/adapter_test.go`
 - Coverage: Storage adapter encryption integration (session Create/Get with automatic encryption/decryption), memory protection behavior (DEK zeroization), AWS KMS integration (testcontainers for LocalStack or real AWS KMS in CI)
-- Strategy: Real PostgreSQL via testcontainers, memguard memory verification, AWS KMS mock/stub via LocalStack
+- Strategy: Real PostgreSQL via testcontainers, memory handling verification, AWS KMS mock/stub via LocalStack
 
 **Test Coverage Goals**:
 - Unit test coverage: Critical paths (happy path + error paths for encryption/decryption, context verification)

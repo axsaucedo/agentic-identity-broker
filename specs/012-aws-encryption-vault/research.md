@@ -18,7 +18,7 @@
 1. AWS Encryption SDK handles DEK generation, encryption, and wrapping lifecycle
 2. AWS KMS keyring for KEK management (wrapping/unwrapping DEK with context)
 3. SDK enforces context verification at both DEK and KEK layers
-4. Memguard integration for memory protection (plaintext tokens, DEKs)
+4. Memory protection deferred to future memory hardening feature
 5. Structured logging via project's existing slog with SecureLogger wrapper
 
 **Advantages**:
@@ -110,64 +110,41 @@ keyring := aws.NewKeyring(kmsClient, keyARN, encryptionContext)
 
 ---
 
-## Area 2: Memory Protection with Memguard
+## Area 2: Memory Protection
 
 ### Research Question
-How to protect sensitive data (plaintext tokens, DEKs) in memory using memguard?
+How to handle sensitive data (plaintext tokens, DEKs) in memory securely?
 
 ### Findings
 
-**Memguard Integration Pattern**:
-- Enclave: Long-lived protected buffer for keys (DEK, KEK)
-- LockedBuffer: Temporary protected buffer for plaintext tokens
-- Automatic secure zeroing via `defer enclave.Destroy()`
-- Memory locking (mlock) prevents page swapping to disk
-- Core dump exclusion via madvise(MADV_DONTDUMP) on Linux/macOS
+**Memory Protection Strategy**:
+Memory protection for sensitive data (plaintext tokens, DEKs, KEK material) is deferred to a future memory hardening feature specification that will address:
 
-**Usage Patterns**:
-```go
-import "github.com/awnumar/memguard"
+- Protected buffers for keys (DEK, KEK) and plaintext tokens
+- Automatic secure zeroing after use
+- Memory locking (mlock) to prevent page swapping to disk
+- Core dump exclusion to prevent post-mortem forensics
+- Platform-specific memory protection mechanisms
 
-// Protect plaintext token during encryption
-func encryptTokenWithMemguard(plaintext []byte, keyring keyring) error {
-    tokenEnclave := memguard.NewEnclave(plaintext)
-    defer tokenEnclave.Destroy()  // Automatic secure zeroing
-    
-    tokenBuffer := tokenEnclave.Open()
-    defer tokenBuffer.Destroy()
-    
-    // Pass protected buffer to SDK encryption
-    result, err := sdk.Encrypt(ctx, tokenBuffer.Bytes(), encCtx)
-    // DEK/wrapped materials handled by SDK internally
-    return err
-}
+**Current Approach**:
+- AWS Encryption SDK provides baseline memory protection during operations
+- Explicit zeroing of sensitive buffers where possible
+- Secure handling patterns for key material
+- Graceful operation without advanced memory protection features
 
-// Zero source plaintext immediately
-memguard.WipeBytes(original)
-```
-
-**Platform Support**:
-- Linux: Full support (mlock, madvise(MADV_DONTDUMP), madvise(MADV_CORE))
-- macOS: Full support (mlock, madvise variations)
-- Windows: VirtualLock with PAGE_NOACCESS
-- Container: Works with `--cap-add=IPC_LOCK`
-
-**Performance Overhead**:
-- Enclave creation: ~100-500μs (includes mlock syscall)
-- Negligible impact on <100ms per-operation targets
-- Optimization: Reuse keyrings for multiple operations
-
-**Testing Memory Protection**:
-- Verify buffers zeroed via heap inspection post-operation
-- Validate mlock success at startup with `memguard.CanMlock()`
-- Fallback for mlock failures: use explicit zeroing without locking
+**Future Memory Hardening Feature Will Address**:
+- Protected memory enclaves for sensitive data
+- Memory locking and core dump exclusion
+- Platform-specific memory protection (Linux, macOS, Windows)
+- Container compatibility and capability requirements
+- Performance optimization for memory protection operations
+- Testing and validation of memory protection behavior
 
 ### Best Practices
-- ✅ Always `defer enclave.Destroy()` immediately after creation
-- ✅ Zero plaintext source: `memguard.WipeBytes(original)`
-- ✅ Protect plaintext tokens during encryption
-- ✅ Graceful fallback if mlock unavailable (log warning, continue)
-- ✅ Test memory protection behavior in integration tests
+- ✅ Zero plaintext and key material after use where possible
+- ✅ Rely on AWS SDK baseline memory protection during operations
+- ✅ Plan for future memory hardening feature integration
+- ✅ Document memory protection requirements for future implementation
 
 ---
 
@@ -283,7 +260,7 @@ encryption:
 |------|----------|-----------|-----------------|
 | AWS Encryption SDK | Use official AWS SDK for Go | High | Official AWS implementation; no maintenance risk |
 | DEK/KEK Architecture | AWS SDK envelope, KMS keyring, context at both layers | High | SDK handles compliance; AWS native support |
-| Memory Protection | Memguard for buffer zeroing + mlock + core dump exclusion | High | Battle-tested; platform support verified |
+| Memory Protection | Deferred to future memory hardening feature | High | AWS SDK baseline protection; advanced features deferred |
 | Logging | Structured JSON with canonical schema; project's slog | High | Aligns with existing patterns; audit-ready |
 | Env Var KEK | Development-only via `${ENCRYPTION_KEK}` interpolation | High | Ephemeral dev environments don't need rotation |
 | Error Handling | AWS SDK retry delegation; fail-closed on context mismatch | High | Prevents custom retry bugs; security-first |
@@ -296,7 +273,7 @@ encryption:
 1. **Implement EncryptionPort interface** (Encrypt/Decrypt methods)
 2. **Create AWS KMS adapter** wrapping AWS Encryption SDK
 3. **Create custom keyring adapter** for environment variable KEK
-4. **Integrate memguard** for plaintext token protection
+4. **Memory protection** deferred to future memory hardening feature
 5. **Add SecureLogger wrapper** to project's slog
 6. **Write unit tests first** (TDD): encryption/decryption, context binding, error cases
 7. **Integration tests**: real AWS KMS via LocalStack testcontainers

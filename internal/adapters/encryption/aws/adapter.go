@@ -30,7 +30,6 @@ const (
 // Focuses solely on runtime encryption/decryption operations.
 // Supports envelope encryption with AWS KMS hierarchical keyring (production) and environment variable KEK injection (development).
 // The hierarchical keyring uses DynamoDB for caching branch keys, reducing KMS API calls and improving performance.
-// Provides memory protection via memguard for sensitive data.
 //
 // Branch key provisioning is handled separately by AWSBranchKeyManager to maintain clean separation of concerns.
 type AWSAdapter struct {

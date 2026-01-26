@@ -42,11 +42,6 @@ We will implement **envelope encryption with DEK per service_id context** using 
    - AESGCMSIV authenticated encryption prevents cross-service token usage
    - Cryptographic isolation between different third-party services
 
-4. **Memguard Memory Protection**
-   - DEKs and plaintext tokens stored in memguard-protected memory regions
-   - Memory locked in RAM (no swap), wiped on deallocation
-   - Protection against memory dumps and process inspection
-
 ---
 
 ## Rationale
@@ -107,22 +102,6 @@ We will implement **envelope encryption with DEK per service_id context** using 
 - **Automatic Key Rotation**: Support for automatic CMK rotation without application changes
 - **Audit Integration**: CloudTrail logging of all key usage for compliance
 - **Multi-Region Support**: Cross-region key replication for disaster recovery
-
-### 4. Memguard Integration Rationale
-
-**Chosen**: memguard.LockedBuffer for DEKs and plaintext tokens
-
-**Alternative Considered**: Standard Go byte slices
-**Rejected Because**:
-- Sensitive data could be swapped to disk
-- Memory dumps expose plaintext tokens
-- No automatic zeroing on garbage collection
-
-**Benefits**:
-- **Memory Isolation**: Sensitive data locked in non-swappable memory pages
-- **Automatic Cleanup**: Memory regions zeroed when no longer needed
-- **Process Protection**: Protection against memory inspection and core dumps
-- **Minimal Overhead**: ~1% performance impact for significant security improvement
 
 ---
 
@@ -200,7 +179,7 @@ All encryption failures are categorized per [specs/012-aws-encryption-vault/cont
 
 ### Security Considerations
 
-1. **Key Material Protection**: DEKs and tokens stored only in memguard-protected memory
+1. **Key Material Protection**: DEKs and tokens handled with secure buffer practices (memory protection details deferred to future feature spec)
 2. **Context Validation**: All decryption operations validate service_id context match
 3. **Fail-Closed**: Any encryption error results in operation failure, no fallback to plaintext
 4. **Audit Logging**: All key operations logged to CloudTrail for compliance

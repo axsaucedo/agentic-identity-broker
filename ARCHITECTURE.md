@@ -413,7 +413,7 @@ Admin Server (Port 14000):
   - Envelope encryption: DEK-per-token with KEK wrapping
   - Context binding: Service isolation via encryption context AAD
   - Support for AWS KMS ARN (production) and ${ENV_VAR} (development)
-  - Memory protection via AWS SDK baseline and memguard integration
+  - Memory protection via AWS SDK baseline
   - Hierarchical keyring with DynamoDB branch key caching (production)
 
 **Encryption Model**:
@@ -449,7 +449,6 @@ Token Decryption Flow:
    - KEK provided as base64-encoded AES-256 key (typically from environment variable)
    - Raw AES keyring (no AWS KMS dependency)
    - Configuration: `encryption.key: "${ENCRYPTION_KEK}"` (resolves to base64 key)
-   - Base64 key decoded and wrapped in memguard buffer at initialization
    - Environment variable interpolation allows flexible key injection
 
 **Service Integration**:
@@ -464,7 +463,6 @@ Token Decryption Flow:
 - **Fail-Closed**: No plaintext fallback on encryption/decryption failure (errors propagate)
 - **Authenticated Encryption**: AESGCMSIV provides both confidentiality and authenticity
 - **Fresh DEK Per Token**: Unique DEK for each token prevents cross-token analysis
-- **Memory Protection**: AWS SDK baseline + optional memguard for sensitive buffers
 - **Audit Logging**: All operations logged with error_kind, service_id, and operation type
 
 **Performance**:
@@ -615,8 +613,6 @@ Define any project-specific terms or acronyms.)
 **EncryptionPort**: Hexagonal architecture interface for encryption operations. Abstracts the domain from specific encryption implementations (AWS KMS, envelope encryption, etc.), allowing testability and implementation flexibility while ensuring consistent encryption behavior.
 
 **AAD**: Additional Authenticated Data. Data that is authenticated but not encrypted as part of AEAD (Authenticated Encryption with Associated Data) schemes. Used in encryption context to prevent cross-context token usage.
-
-**Memguard**: Go library providing secure memory management for sensitive data. Creates memory regions that are locked in RAM (preventing swap to disk), wiped on deallocation, and protected from memory dumps for storing DEKs and plaintext tokens.
 
 **AESGCMSIV**: AES in Galois/Counter Mode with Synthetic Initialization Vector. A misuse-resistant authenticated encryption mode that provides both confidentiality and authenticity. Used for DEK-based token encryption with deterministic nonce generation.
 
