@@ -333,13 +333,6 @@ type EncryptionConfig struct {
 	//   - "24h" - 24 hours
 	BranchKeyTTL string `mapstructure:"branch_key_ttl"`
 
-	// KeyStoreLogicalName specifies a logical identifier for the KeyStore instance.
-	// Used for audit logging and operational visibility.
-	// Example values: "IdentityBrokerProd", "IdentityBrokerStaging", "IdentityBrokerDev"
-	//
-	// Defaults to "IdentityBrokerEncryptionVault" if not specified.
-	KeyStoreLogicalName string `mapstructure:"keystore_logical_name"`
-
 	// KeyringType specifies the type of keyring to use for encryption.
 	// Valid values: "hierarchical" (recommended), "kms", "raw"
 	//

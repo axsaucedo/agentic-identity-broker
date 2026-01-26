@@ -216,12 +216,6 @@ func (b *Builder) Build() (*App, error) {
 			}
 		}
 
-		// Apply KeyStoreLogicalName default if not specified
-		keyStoreLogicalName := b.config.Encryption.KeyStoreLogicalName
-		if keyStoreLogicalName == "" {
-			keyStoreLogicalName = "IdentityBrokerEncryptionVault"
-		}
-
 		// Phase 3: Validate keyring type if specified
 		keyringType := b.config.Encryption.KeyringType
 		if keyringType == "" {
@@ -250,7 +244,6 @@ func (b *Builder) Build() (*App, error) {
 
 		// Log initialization with all configuration details
 		b.logger.Info("AWS Encryption SDK adapter initialized",
-			"keystore_logical_name", keyStoreLogicalName,
 			"keyring_type", keyringType,
 			"dynamodb_table", b.config.Encryption.DynamoDBTableName,
 			"dynamodb_region", b.config.Encryption.DynamoDBRegion,
