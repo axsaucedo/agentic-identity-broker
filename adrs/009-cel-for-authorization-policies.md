@@ -214,7 +214,7 @@ func (e *CELEvaluator) ExtractAgentClientID(
 ### Why Not Alternatives?
 
 1. **JSON Path** (rejected): Insufficient expressiveness for authorization logic (cannot evaluate boolean conditions)
-2. **Rego/OPA** (rejected): Adds external dependency (requires separate OPA service or library), project prefers library-based approach with CEL foundation
+2. **Rego/OPA** (rejected for now): More complex to integrate, either as a library or as a seperate process but more flexible as it allows bringing context data. 
 3. **Lua Scripting** (rejected): Less standardized than CEL, higher security surface (can access arbitrary libraries), not designed for sandboxed policy evaluation
 4. **Custom Boolean Language** (rejected): Violates Principle II (Architecture Documentation) - non-standard, increases maintenance burden
 5. **No Expression Support** (rejected): Defeats the requirement for configurable, flexible authorization (must change code for each new policy)
