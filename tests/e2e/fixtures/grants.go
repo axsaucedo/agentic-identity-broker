@@ -8,7 +8,7 @@ import (
 )
 
 // ActiveGrant returns a user grant that is currently active (not expired).
-// Principal, AgentID, and ServiceID must be provided by caller.
+// Principal, agentID, and serviceID must be provided by caller.
 // ValidUntil is set to 1 hour in the future.
 func ActiveGrant(principal, agentID, serviceID string, scopes []string) *storage.UserGrant {
 	now := time.Now()
@@ -31,7 +31,7 @@ func ActiveGrant(principal, agentID, serviceID string, scopes []string) *storage
 }
 
 // ExpiredGrant returns a user grant that has already expired.
-// Principal, AgentID, and ServiceID must be provided by caller.
+// Principal, agentID, and serviceID must be provided by caller.
 // ValidUntil is set to 1 hour in the past.
 func ExpiredGrant(principal, agentID, serviceID string, scopes []string) *storage.UserGrant {
 	now := time.Now()

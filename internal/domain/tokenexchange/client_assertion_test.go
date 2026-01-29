@@ -9,7 +9,7 @@ import (
 func TestClientAssertion_ValidMinimal(t *testing.T) {
 	now := time.Now()
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),
@@ -27,7 +27,7 @@ func TestClientAssertion_ValidMinimal(t *testing.T) {
 func TestClientAssertion_ValidWithScopes(t *testing.T) {
 	now := time.Now()
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"token-exchange-broker", "https://auth.example.com"},
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),
@@ -50,12 +50,12 @@ func TestClientAssertion_ValidWithCustomClaims(t *testing.T) {
 	now := time.Now()
 	customClaims := map[string]interface{}{
 		"custom_field": "custom_value",
-		"role":         "gateway",
+		"role":         "privileged_client",
 		"environment":  "production",
 	}
 
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),
@@ -99,7 +99,7 @@ func TestClientAssertion_InvalidEmptySubject(t *testing.T) {
 func TestClientAssertion_InvalidEmptyAudiences(t *testing.T) {
 	now := time.Now()
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{}, // empty audiences
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),
@@ -121,7 +121,7 @@ func TestClientAssertion_InvalidEmptyAudiences(t *testing.T) {
 func TestClientAssertion_InvalidZeroExpiresAt(t *testing.T) {
 	now := time.Now()
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		0, // zero expiresAt
 		now.Unix(),
@@ -143,7 +143,7 @@ func TestClientAssertion_InvalidZeroExpiresAt(t *testing.T) {
 func TestClientAssertion_InvalidZeroIssuedAt(t *testing.T) {
 	now := time.Now()
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		now.Add(1*time.Hour).Unix(),
 		0, // zero issuedAt
@@ -165,7 +165,7 @@ func TestClientAssertion_InvalidZeroIssuedAt(t *testing.T) {
 func TestClientAssertion_HasAudience(t *testing.T) {
 	now := time.Now()
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com", "token-exchange-broker"},
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),
@@ -249,7 +249,7 @@ func TestClientAssertion_IsExpired(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assertion := NewClientAssertion(
-				"gateway-1",
+				"privileged-client-1",
 				[]string{"https://auth.example.com"},
 				tt.expiresAt.Unix(),
 				tt.checkTime.Unix(),
@@ -275,7 +275,7 @@ func TestClientAssertion_GetCustomClaim(t *testing.T) {
 	}
 
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),
@@ -324,7 +324,7 @@ func TestClientAssertion_HasCustomClaim(t *testing.T) {
 	}
 
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),
@@ -353,7 +353,7 @@ func TestClientAssertion_GetAllClaims(t *testing.T) {
 	issuedAt := now.Unix()
 
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com", "token-exchange"},
 		expiresAt,
 		issuedAt,
@@ -365,8 +365,8 @@ func TestClientAssertion_GetAllClaims(t *testing.T) {
 	claims := assertion.GetAllClaims()
 
 	// Check standard claims
-	if claims["sub"] != "gateway-1" {
-		t.Errorf("claims['sub'] = %v, want 'gateway-1'", claims["sub"])
+	if claims["sub"] != "privileged-client-1" {
+		t.Errorf("claims['sub'] = %v, want 'privileged-client-1'", claims["sub"])
 	}
 
 	if aud, ok := claims["aud"].([]string); !ok || len(aud) != 2 || aud[0] != "https://auth.example.com" {
@@ -401,7 +401,7 @@ func TestClientAssertion_String(t *testing.T) {
 	expiresAt := now.Add(1 * time.Hour).Unix()
 
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		expiresAt,
 		now.Unix(),
@@ -418,8 +418,8 @@ func TestClientAssertion_String(t *testing.T) {
 	if !containsSubstring(str, "ClientAssertion") {
 		t.Errorf("String() should contain 'ClientAssertion'")
 	}
-	if !containsSubstring(str, "gateway-1") {
-		t.Errorf("String() should contain gateway subject")
+	if !containsSubstring(str, "privileged-client-1") {
+		t.Errorf("String() should contain privileged client subject")
 	}
 	if !containsSubstring(str, "https://upstream.example.com") {
 		t.Errorf("String() should contain issuer")
@@ -436,11 +436,11 @@ func TestClientAssertion_String(t *testing.T) {
 func TestClientAssertion_GetAssertion(t *testing.T) {
 	now := time.Now()
 	customClaims := map[string]interface{}{
-		"role": "gateway",
+		"role": "privileged_client",
 	}
 
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),
@@ -452,10 +452,10 @@ func TestClientAssertion_GetAssertion(t *testing.T) {
 	celContext := assertion.GetAssertion()
 
 	// Should have same content as GetAllClaims
-	if celContext["sub"] != "gateway-1" {
+	if celContext["sub"] != "privileged-client-1" {
 		t.Errorf("CEL context missing subject")
 	}
-	if celContext["role"] != "gateway" {
+	if celContext["role"] != "privileged_client" {
 		t.Errorf("CEL context missing custom claim")
 	}
 }
@@ -467,7 +467,7 @@ func TestClientAssertion_GetterMethods(t *testing.T) {
 	issuedAt := now.Unix()
 
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"aud1", "aud2"},
 		expiresAt,
 		issuedAt,
@@ -476,8 +476,8 @@ func TestClientAssertion_GetterMethods(t *testing.T) {
 		nil,
 	)
 
-	if assertion.GetSubject() != "gateway-1" {
-		t.Errorf("GetSubject() = %q, want 'gateway-1'", assertion.GetSubject())
+	if assertion.GetSubject() != "privileged-client-1" {
+		t.Errorf("GetSubject() = %q, want 'privileged-client-1'", assertion.GetSubject())
 	}
 
 	if len(assertion.GetAudiences()) != 2 {
@@ -505,7 +505,7 @@ func TestClientAssertion_GetterMethods(t *testing.T) {
 func TestClientAssertion_NilCustomClaims(t *testing.T) {
 	now := time.Now()
 	assertion := NewClientAssertion(
-		"gateway-1",
+		"privileged-client-1",
 		[]string{"https://auth.example.com"},
 		now.Add(1*time.Hour).Unix(),
 		now.Unix(),

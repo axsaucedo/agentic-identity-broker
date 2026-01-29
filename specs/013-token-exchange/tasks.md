@@ -45,7 +45,7 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 **Constitution Reference**: Principles II (Architecture Documentation), V (Domain-Driven Design & Glossary Management)
 
 - [x] T005 Document domain model entities (TokenExchangeRequest, TokenExchangeResponse, ClientAssertion, SubjectToken, ResourceURI) in specs/013-token-exchange/data-model.md (data-model.md, 702 lines)
-- [x] T005a [P] Add domain terms to ARCHITECTURE.md Glossary: TokenExchangeRequest, TokenExchangeResponse, ClientAssertion, SubjectToken, ResourceURI, Gateway, CEL Authorization - COMPLETE (ARCHITECTURE.md lines 587-599)
+- [x] T005a [P] Add domain terms to ARCHITECTURE.md Glossary: TokenExchangeRequest, TokenExchangeResponse, ClientAssertion, SubjectToken, ResourceURI, Privileged Client, CEL Authorization - COMPLETE (ARCHITECTURE.md lines 587-599)
 - [x] T005b Document domain events (TokenExchangeSucceeded, TokenExchangeFailed, TokenRefreshed) in data-model.md - COMPLETE (data-model.md lines 349-403)
 - [x] T005c Document invariants: JWT validation mandatory, UserGrant verification required, resource URI normalization rules - COMPLETE (data-model.md lines 643-683)
 
@@ -195,11 +195,11 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 
 ---
 
-## Phase 5: User Story 1 - Gateway Exchanges Token for Third-Party Token (Priority: P1) 🎯 MVP
+## Phase 5: User Story 1 - Privileged Client Exchanges Token for Third-Party Token (Priority: P1) 🎯 MVP
 
-**Goal**: Gateway sends token exchange request, system validates tokens, verifies grant, returns third-party token
+**Goal**: Privileged client (e.g., API gateway, reverse proxy) sends token exchange request, system validates tokens, verifies grant, returns third-party token
 
-**Independent Test**: Full token exchange flow - gateway with valid subject_token and client_assertion receives third-party access_token in RFC 8693 response format
+**Independent Test**: Full token exchange flow - privileged client with valid subject_token and client_assertion receives third-party access_token in RFC 8693 response format
 
 ### Implementation for User Story 1
 
@@ -251,7 +251,7 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 
 #### Audit Logging
 
-- [x] T055 [US1] Log TokenExchangeSucceeded events (principal, service_id, agent_client_id, gateway_id, resource, timestamp) (oauth2_token.go, lines 137-140, InfoContext logging)
+- [x] T055 [US1] Log TokenExchangeSucceeded events (principal, service_id, agent_client_id, privileged_client_id, resource, timestamp) (oauth2_token.go, lines 137-140, InfoContext logging)
 - [x] T056 [US1] Log TokenExchangeFailed events (error_code, error_description, available identifiers) - IMPLEMENTED (error logging in oauth2_token.go)
 - [x] T057 [US1] Log TokenRefreshed events when automatic refresh occurs - IMPLEMENTED (refresh logic complete)
 - [x] T058 [US1] Ensure token values (access_token, refresh_token) never appear in logs (oauth2_token.go, no token values in log statement)
@@ -280,11 +280,11 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 
 ---
 
-## Phase 7: User Story 4 - Gateway Authorization via CEL (Priority: P2)
+## Phase 7: User Story 4 - Privileged Client Authorization via CEL (Priority: P2)
 
-**Goal**: System evaluates CEL expression to authorize gateways beyond basic JWT validation
+**Goal**: System evaluates CEL expression to authorize privileged clients (e.g., API gateways, reverse proxies) beyond basic JWT validation
 
-**Independent Test**: CEL expression "client_assertion.iss == 'trusted-issuer'" allows matching gateways, denies others
+**Independent Test**: CEL expression "client_assertion.iss == 'trusted-issuer'" allows matching privileged clients, denies others
 
 ### Implementation for User Story 4
 
@@ -491,7 +491,7 @@ After MVP (P1 complete):
 
 | User Story | Priority | Task Count |
 |------------|----------|------------|
-| US1 - Gateway Token Exchange | P1 | 32 |
+| US1 - Privileged Client Token Exchange | P1 | 32 |
 | US2 - Resource Discovery | P1 | 6 |
 | US3 - Grant Verification | P1 | 7 |
 | US4 - CEL Authorization | P2 | 9 |

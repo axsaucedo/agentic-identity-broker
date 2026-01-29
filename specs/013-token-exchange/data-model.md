@@ -11,7 +11,7 @@ This document defines the domain model entities, value objects, and their relati
 │                           Token Exchange Flow                                │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Gateway                                                                     │
+│  Privileged Client                                                           │
 │     │                                                                        │
 │     │ POST /oauth2/token                                                     │
 │     │ (client_assertion, subject_token, resource)                           │
@@ -96,7 +96,7 @@ type TokenExchangeRequest struct {
     
     // Client authentication (RFC 7523 JWT Bearer)
     ClientAssertionType string // Must be "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-    ClientAssertion     string // Gateway's JWT credential
+    ClientAssertion     string // Privileged client's JWT credential
     
     // Optional parameters
     Scope               string // Space-delimited requested scopes
@@ -176,7 +176,7 @@ func NewTokenExchangeResponse(accessToken, tokenType string, expiresIn *int64) *
 
 ### ClientAssertion
 
-Validated client_assertion JWT with extracted claims. Represents the **gateway** identity.
+Validated client_assertion JWT with extracted claims. Represents the **privileged client** identity (e.g., API gateway, reverse proxy).
 
 ```go
 // internal/domain/tokenexchange/client_assertion.go
@@ -185,12 +185,12 @@ package tokenexchange
 import "time"
 
 // ClientAssertion represents a validated client_assertion JWT.
-// The client_assertion identifies the GATEWAY making the token exchange request.
+// The client_assertion identifies the PRIVILEGED CLIENT (e.g., API gateway, reverse proxy) making the token exchange request.
 // Immutable after validation.
 type ClientAssertion struct {
     // Standard JWT claims
     Issuer    string    // iss - must match upstream OAuth2 issuer
-    Subject   string    // sub - gateway identifier (used for audit logging)
+    Subject   string    // sub - privileged client identifier (used for audit logging)
     Audience  []string  // aud - must include broker's identifier
     ExpiresAt time.Time // exp
     IssuedAt  time.Time // iat
@@ -199,8 +199,8 @@ type ClientAssertion struct {
     Claims map[string]interface{}
 }
 
-// GatewayID returns the gateway identifier for audit logging.
-func (c *ClientAssertion) GatewayID() string {
+// PrivilegedClientID returns the privileged client identifier for audit logging.
+func (c *ClientAssertion) PrivilegedClientID() string {
     return c.Subject
 }
 
@@ -358,12 +358,12 @@ import "time"
 
 // TokenExchangeSucceeded is emitted when a token exchange succeeds.
 type TokenExchangeSucceeded struct {
-    Timestamp     time.Time
-    Principal     string // User principal (full, for audit)
-    ServiceID     string // Target service ID
-    AgentClientID string // Agent requesting access (from subject_token)
-    GatewayID     string // Gateway ID (from client_assertion sub)
-    Resource      string // Requested resource URI
+    Timestamp           time.Time
+    Principal           string // User principal (full, for audit)
+    ServiceID           string // Target service ID
+    AgentClientID       string // Agent requesting access (from subject_token)
+    PrivilegedClientID  string // Privileged client ID (from client_assertion sub)
+    Resource            string // Requested resource URI
 }
 ```
 
@@ -374,13 +374,13 @@ Fired when token exchange fails.
 ```go
 // TokenExchangeFailed is emitted when a token exchange fails.
 type TokenExchangeFailed struct {
-    Timestamp       time.Time
-    Principal       string // User principal if available
-    AgentClientID   string // Agent ID if available
-    GatewayID       string // Gateway ID if available
-    Resource        string // Requested resource
-    ErrorCode       string // RFC 8693 error code
-    ErrorDescription string
+    Timestamp          time.Time
+    Principal          string // User principal if available
+    AgentClientID      string // Agent ID if available
+    PrivilegedClientID string // Privileged client ID if available
+    Resource           string // Requested resource
+    ErrorCode          string // RFC 8693 error code
+    ErrorDescription   string
 }
 ```
 
@@ -468,7 +468,7 @@ type TokenExchangeConfig struct {
     // ClaimExtraction configures how claims are extracted from subject_token
     ClaimExtraction ClaimExtractionConfig `mapstructure:"claim_extraction"`
     
-    // Authorization configures gateway authorization rules
+    // Authorization configures privileged client authorization rules
     Authorization AuthorizationConfig `mapstructure:"authorization"`
     
     // Refresh configures automatic token refresh behavior
@@ -486,7 +486,7 @@ type ClaimExtractionConfig struct {
     AgentClientIDExpression string `mapstructure:"agent_client_id_expression"`
 }
 
-// AuthorizationConfig configures gateway authorization.
+// AuthorizationConfig configures privileged client authorization.
 type AuthorizationConfig struct {
     // Type is the authorization method: "cel" or "opa" (opa reserved for future)
     Type string `mapstructure:"type"`
@@ -499,7 +499,7 @@ type AuthorizationConfig struct {
 type CELAuthorizationConfig struct {
     // Expression is the CEL expression evaluated for authorization.
     // Must return boolean.
-    // Default: "true" (allow all valid gateways)
+    // Default: "true" (allow all valid privileged clients)
     Expression string `mapstructure:"expression"`
 }
 
@@ -565,13 +565,13 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
         return nil, err
     }
     
-    // 2. Validate and extract client_assertion (gateway identity)
+    // 2. Validate and extract client_assertion (privileged client identity)
     clientAssertion, err := s.validateClientAssertion(ctx, req.ClientAssertion)
     if err != nil {
         return nil, err // invalid_client
     }
     
-    // 3. Evaluate CEL authorization (gateway authorization)
+    // 3. Evaluate CEL authorization (privileged client authorization)
     if err := s.evaluateAuthorization(ctx, clientAssertion, req); err != nil {
         return nil, err // access_denied
     }
@@ -600,7 +600,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
     }
     
     // 8. Log success event
-    s.logSuccess(ctx, subjectToken.Principal, subjectToken.AgentClientID, clientAssertion.GatewayID(), service.ID, req.Resource)
+    s.logSuccess(ctx, subjectToken.Principal, subjectToken.AgentClientID, clientAssertion.PrivilegedClientID(), service.ID, req.Resource)
     
     // 9. Return RFC 8693 response
     return NewTokenExchangeResponse(accessToken, tokenType, expiresIn), nil
@@ -694,9 +694,9 @@ These invariants MUST be maintained at all times and are enforced through valida
 |------|------------|
 | **TokenExchangeRequest** | RFC 8693 token exchange request containing grant_type, subject_token, client_assertion, and resource parameters. Parsed from form-urlencoded POST body. |
 | **TokenExchangeResponse** | RFC 8693 compliant response containing access_token, token_type, issued_token_type, and optional expires_in. |
-| **ClientAssertion** | JWT authenticating the gateway making the token exchange request. Contains gateway identifier in 'sub' claim. Validated against upstream OAuth2 server's JWKS. |
+| **ClientAssertion** | JWT authenticating the privileged client (e.g., API gateway, reverse proxy) making the token exchange request. Contains privileged client identifier in 'sub' claim. Validated against upstream OAuth2 server's JWKS. |
 | **SubjectToken** | JWT containing both user principal and agent identifier. Principal extracted via configurable CEL (default: sub). Agent extracted via configurable CEL (default: azp). |
 | **ResourceURI** | URI identifying the target resource/service for token exchange. Normalized (trailing slashes removed) before storage and comparison. Matched against service protected_resources. |
-| **Gateway** | API gateway or reverse proxy that initiates token exchange on behalf of agents. Authenticates using client_assertion JWT. |
-| **CEL Authorization** | Common Expression Language policy evaluation for gateway authorization. Expression evaluated against client_assertion claims and request context. |
+| **Privileged Client** | Entity (e.g., API gateway, reverse proxy) that initiates token exchange on behalf of agents. Authenticates using client_assertion JWT. |
+| **CEL Authorization** | Common Expression Language policy evaluation for privileged client authorization. Expression evaluated against client_assertion claims and request context. |
 | **Protected Resources** | Array of normalized resource URIs on ThirdpartyOAuth2Service that identify which resources map to that service for token exchange. |

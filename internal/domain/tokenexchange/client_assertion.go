@@ -10,12 +10,12 @@ import (
 // It is an immutable value object containing the claims extracted from a client_assertion JWT.
 //
 // Per RFC 7523 and RFC 8693:
-// - The client_assertion is a JWT signed by the gateway/client
-// - Contains claims identifying the gateway and authorizing it for token exchange
+// - The client_assertion is a JWT signed by the privileged client
+// - Contains claims identifying the privileged client and authorizing it for token exchange
 // - Is validated via JWKS signature verification (per SR-001, SR-006)
 //
 // Domain invariants:
-// - Subject (sub) must not be empty (identifies the gateway)
+// - Subject (sub) must not be empty (identifies the privileged client)
 // - Audiences must contain at least one value
 // - ExpiresAt should be in the future (not expired)
 // - Token string itself is never stored (per SR-005, only claims)
@@ -23,9 +23,9 @@ import (
 // Security note: No token string is stored to prevent accidental exposure in logs/responses.
 // The validation happens during JWT parsing; this object only holds the validated claims.
 type ClientAssertion struct {
-	// Subject is the 'sub' claim identifying the gateway/client.
-	// REQUIRED - identifies which gateway made the token exchange request.
-	// Format typically: gateway identifier, service account, client_id, etc.
+	// Subject is the 'sub' claim identifying the privileged client.
+	// REQUIRED - identifies which privileged client made the token exchange request.
+	// Format typically: privileged client identifier, service account, client_id, etc.
 	Subject string
 
 	// Audiences is the 'aud' claim as a slice of audience values.
@@ -89,7 +89,7 @@ func NewClientAssertion(
 // Returns error if required fields are empty or invalid.
 //
 // Validation rules:
-// 1. Subject must not be empty (gateway identifier required)
+// 1. Subject must not be empty (privileged client identifier required)
 // 2. Audiences must not be empty (at least one audience must be present)
 // 3. ExpiresAt should be greater than zero
 // 4. IssuedAt should be greater than zero
@@ -194,7 +194,7 @@ func (ca *ClientAssertion) GetAssertion() map[string]interface{} {
 	return ca.GetAllClaims()
 }
 
-// GetSubject returns the subject (gateway identifier).
+// GetSubject returns the subject (privileged client identifier).
 func (ca *ClientAssertion) GetSubject() string {
 	return ca.Subject
 }

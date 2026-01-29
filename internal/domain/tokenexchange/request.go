@@ -12,7 +12,7 @@ import (
 // - grant_type: REQUIRED - must be "urn:ietf:params:oauth:grant-type:token-exchange"
 // - subject_token: REQUIRED - the token being exchanged
 // - subject_token_type: OPTIONAL - type of subject_token (defaults to AccessTokenType)
-// - client_assertion: REQUIRED - JWT authenticating the client/gateway
+// - client_assertion: REQUIRED - JWT authenticating the privileged client
 // - client_assertion_type: OPTIONAL - type of client_assertion (defaults to JWTBearerType)
 // - resource: REQUIRED per FR-008 - the target resource/service for the exchange
 // - scope: OPTIONAL - requested scope (space-separated list)
@@ -51,7 +51,7 @@ type TokenExchangeRequest struct {
 	// Immutable after creation.
 	SubjectTokenType string
 
-	// ClientAssertion is the JWT authenticating the gateway/client.
+	// ClientAssertion is the JWT authenticating the privileged client.
 	// REQUIRED per FR-008. Must not be empty.
 	// This is a raw JWT string (not yet validated).
 	// Immutable after creation.

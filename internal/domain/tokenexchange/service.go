@@ -25,7 +25,7 @@ import (
 // 2. Validate subject_token JWT signature and claims
 // 3. Validate client_assertion JWT signature and claims
 // 4. Extract user principal and agent client ID from tokens
-// 5. Authorize gateway via CEL expression evaluation
+// 5. Authorize privileged client via CEL expression evaluation
 // 6. Lookup target service by resource URI
 // 7. Verify user has granted agent access to service
 // 8. Retrieve stored third-party tokens for user
@@ -133,7 +133,7 @@ func NewTokenExchangeService(
 // 3. Validate client_assertion JWT (signature, issuer, audience, expiration)
 // 4. Extract principal from subject_token via CEL
 // 5. Extract agent_client_id from subject_token via CEL
-// 6. Authorize gateway via CEL expression evaluation
+// 6. Authorize privileged client via CEL expression evaluation
 // 7. Normalize resource URI (remove trailing slashes)
 // 8. Lookup service by resource URI
 // 9. Verify user has granted agent access to service (BEFORE session check per T078)
@@ -196,7 +196,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 		return nil, err
 	}
 
-	// Step 6: Authorize gateway via CEL expression evaluation
+	// Step 6: Authorize privileged client via CEL expression evaluation
 	clientAssertionClaims := jwtToClaims(clientAssertionJWT)
 	requestContext := &CELRequestContext{
 		Resource:      req.Resource,
@@ -205,12 +205,12 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 		Principal:     principal,
 		AgentClientID: agentClientID,
 	}
-	authorized, err := s.celEvaluator.AuthorizeGateway(clientAssertionClaims, subjectTokenClaims, *requestContext)
+	authorized, err := s.celEvaluator.AuthorizePrivilegedClient(clientAssertionClaims, subjectTokenClaims, *requestContext)
 	if err != nil {
 		return nil, err
 	}
 	if !authorized {
-		return nil, NewAccessDeniedError("gateway authorization failed")
+		return nil, NewAccessDeniedError("privileged client authorization failed")
 	}
 
 	// Step 7: Normalize resource URI

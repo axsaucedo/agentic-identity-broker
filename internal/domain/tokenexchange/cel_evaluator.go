@@ -19,21 +19,21 @@ type CELEvaluatorConfig struct {
 	// AgentClientIDExpression is a CEL expression for extracting agent client ID from subject_token
 	AgentClientIDExpression string
 
-	// AuthorizationExpression is a CEL expression for gateway authorization
+	// AuthorizationExpression is a CEL expression for privileged client authorization
 	AuthorizationExpression string
 
 	// EvaluationTimeout is the maximum time allowed for CEL expression evaluation
 	EvaluationTimeout time.Duration
 }
 
-// CELEvaluator evaluates CEL expressions for claim extraction and gateway authorization.
+// CELEvaluator evaluates CEL expressions for claim extraction and privileged client authorization.
 // Expressions are compiled at startup (fail-fast on syntax errors) and evaluated with
 // timeouts to prevent blocking token exchange flows.
 //
 // The evaluator provides methods for:
 // - Extracting principal (user identifier) from subject_token using configurable expressions
 // - Extracting agent_client_id from subject_token using configurable expressions
-// - Evaluating authorization policies to determine if a gateway is permitted access
+// - Evaluating authorization policies to determine if a privileged client is permitted access
 //
 // All expression evaluation is sandboxed (no system access) and includes timeout enforcement
 // per SC-005 (100ms default).
@@ -49,7 +49,7 @@ type CELEvaluator struct {
 	// Compiled at startup, evaluated at runtime
 	agentClientIDProgram cel.Program
 
-	// authorizationProgram is the compiled CEL program for gateway authorization
+	// authorizationProgram is the compiled CEL program for privileged client authorization
 	// Compiled at startup, evaluated at runtime
 	authorizationProgram cel.Program
 
@@ -286,11 +286,11 @@ func (e *CELEvaluator) ExtractAgentClientID(subjectTokenClaims map[string]interf
 	return agentClientID, nil
 }
 
-// AuthorizeGateway evaluates the authorization expression to determine if a gateway
+// AuthorizePrivilegedClient evaluates the authorization expression to determine if a privileged client
 // is permitted to perform token exchange.
 //
 // The expression receives:
-// - client_assertion: validated gateway client assertion JWT claims
+// - client_assertion: validated privileged client assertion JWT claims
 // - subject_token: validated user subject token JWT claims
 // - request: token exchange request context (resource, grant_type, scope)
 //
@@ -298,8 +298,8 @@ func (e *CELEvaluator) ExtractAgentClientID(subjectTokenClaims map[string]interf
 // Returns AccessDeniedError if authorization evaluates to false.
 // Returns ServerError if evaluation fails or times out (per SC-005 100ms timeout).
 //
-// Per T073, this implements CEL-based gateway authorization policies.
-func (e *CELEvaluator) AuthorizeGateway(
+// Per T073, this implements CEL-based privileged client authorization policies.
+func (e *CELEvaluator) AuthorizePrivilegedClient(
 	clientAssertionClaims map[string]interface{},
 	subjectTokenClaims map[string]interface{},
 	request CELRequestContext,
@@ -349,7 +349,7 @@ func (e *CELEvaluator) AuthorizeGateway(
 
 	// If authorization fails, return access_denied
 	if !authorized {
-		return false, NewAccessDeniedError("gateway authorization denied by CEL policy")
+		return false, NewAccessDeniedError("privileged client authorization denied by CEL policy")
 	}
 
 	return true, nil

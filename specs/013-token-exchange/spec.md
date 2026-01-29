@@ -9,13 +9,13 @@
 
 ### Session 2026-01-16
 
-- Q: Who initiates the token exchange request? → A: A gateway (e.g., API gateway, reverse proxy) triggers the token exchange on behalf of agents, not agents directly
+- Q: Who initiates the token exchange request? → A: A privileged client (e.g., API gateway, reverse proxy) triggers the token exchange on behalf of agents, not agents directly
 - Q: Which endpoint handles token exchange? → A: The existing `/oauth2/token` endpoint, detecting token exchange via grant_type parameter
 - Q: What authorization checks are required beyond session existence? → A: System must verify user has granted the specific service to the specific agent (UserGrant check)
 - Q: What is the naming for resource URIs on services? → A: `protected_resources` (not expected_resources)
 - Q: What token_type value should be returned in RFC 8693 response? → A: Return the stored token_type from the third-party service's original token response (pass-through)
 - Q: What level of detail for principal in audit logs? → A: Log full principal in plaintext (enables full audit trail and incident investigation)
-- Q: How are gateway and agent identities represented in tokens? → A: client_assertion identifies the gateway only; subject_token contains both user principal ('sub' claim) and agent identifier (configurable claim mapping to agent's client_id)
+- Q: How are privileged client and agent identities represented in tokens? → A: client_assertion identifies the privileged client only; subject_token contains both user principal ('sub' claim) and agent identifier (configurable claim mapping to agent's client_id)
 - Q: How are principal and agent claims extracted from subject_token? → A: Both extractions are configurable via CEL expressions (e.g., `subject_token.sub` for principal, `subject_token.azp` or custom claim for agent_client_id)
 - Q: Should token_exchange feature be toggleable? → A: No, token exchange is always enabled; no configuration toggle needed
 - Q: How should upstream OAuth2 config be handled? → A: Reuse existing root-level upstream_oauth2 configuration directly (no duplication in token_exchange section)
@@ -33,22 +33,22 @@
   - Test file naming: tests/e2e/token_exchange_test.go
 -->
 
-### User Story 1 - Gateway Exchanges Upstream Token for Third-Party Token (Priority: P1)
+### User Story 1 - Privileged Client Exchanges Upstream Token for Third-Party Token (Priority: P1)
 
-A gateway (API gateway or reverse proxy) needs to exchange a token issued by the Upstream OAuth2 Server for a third-party OAuth2 token stored in the token vault. The gateway authenticates itself using client_assertion (JWT) and presents a subject_token (JWT) that contains both the user principal ('sub' claim) and the agent identifier (configurable claim, e.g., 'azp' or custom claim mapping to agent's client_id). The system validates both tokens, extracts user and agent identifiers via configurable CEL expressions, verifies the user has granted the agent access to the target service, looks up the third-party service by the resource parameter, retrieves the user's stored third-party token from the vault, and returns it to the gateway.
+A privileged client (API gateway or reverse proxy) needs to exchange a token issued by the Upstream OAuth2 Server for a third-party OAuth2 token stored in the token vault. The privileged client authenticates itself using client_assertion (JWT) and presents a subject_token (JWT) that contains both the user principal ('sub' claim) and the agent identifier (configurable claim, e.g., 'azp' or custom claim mapping to agent's client_id). The system validates both tokens, extracts user and agent identifiers via configurable CEL expressions, verifies the user has granted the agent access to the target service, looks up the third-party service by the resource parameter, retrieves the user's stored third-party token from the vault, and returns it to the privileged client.
 
-**Why this priority**: This is the core capability that enables gateways to obtain delegated third-party tokens for agents. Without this, agents cannot access third-party services on behalf of users.
+**Why this priority**: This is the core capability that enables privileged clients to obtain delegated third-party tokens for agents. Without this, agents cannot access third-party services on behalf of users.
 
-**Independent Test**: Gateway sends token exchange request with valid subject_token (containing user's sub claim and agent's client_id in configurable claim) and client_assertion (identifying gateway) to `/oauth2/token`, system validates tokens, extracts principal and agent_client_id via CEL, verifies user grant exists for agent+service, looks up service by resource URI, retrieves stored third-party token, and returns the token in RFC 8693 response format.
+**Independent Test**: Privileged client sends token exchange request with valid subject_token (containing user's sub claim and agent's client_id in configurable claim) and client_assertion (identifying privileged client) to `/oauth2/token`, system validates tokens, extracts principal and agent_client_id via CEL, verifies user grant exists for agent+service, looks up service by resource URI, retrieves stored third-party token, and returns the token in RFC 8693 response format.
 
 **Acceptance Scenarios**:
 
-1. **Given** a gateway with valid client_assertion JWT (identifying the gateway) and subject_token JWT (containing user principal and agent identifier) both issued by Upstream OAuth2 Server, **When** gateway sends POST to `/oauth2/token` with grant_type=urn:ietf:params:oauth:grant-type:token-exchange, **Then** system detects token exchange request and processes it
+1. **Given** a privileged client with valid client_assertion JWT (identifying the privileged client) and subject_token JWT (containing user principal and agent identifier) both issued by Upstream OAuth2 Server, **When** privileged client sends POST to `/oauth2/token` with grant_type=urn:ietf:params:oauth:grant-type:token-exchange, **Then** system detects token exchange request and processes it
 2. **Given** valid token exchange request with resource parameter, **When** system processes request, **Then** system looks up ThirdpartyOAuth2Service by matching resource URI against configured protected_resources
 3. **Given** service is found, user has active session with stored tokens, and user has granted the agent access to this service, **When** system retrieves tokens, **Then** system returns the third-party access_token in RFC 8693 response format with token_type and issued_token_type fields
 4. **Given** stored third-party access_token has expired but refresh_token is valid, **When** system processes exchange, **Then** system automatically refreshes the token using the refresh_token, stores the new token, and returns the fresh access_token
-5. **Given** gateway sends request without valid client_assertion, **When** system validates request, **Then** system returns 401 Unauthorized with error=invalid_client
-6. **Given** gateway sends request with invalid or expired subject_token, **When** system validates request, **Then** system returns 400 Bad Request with error=invalid_request and error_description explaining the issue
+5. **Given** privileged client sends request without valid client_assertion, **When** system validates request, **Then** system returns 401 Unauthorized with error=invalid_client
+6. **Given** privileged client sends request with invalid or expired subject_token, **When** system validates request, **Then** system returns 400 Bad Request with error=invalid_request and error_description explaining the issue
 
 ---
 
@@ -58,7 +58,7 @@ The system needs to determine which third-party service to exchange tokens for b
 
 **Why this priority**: This is essential for the token exchange to work - the system must know which service's token to return. Without resource-based lookup, the endpoint cannot route requests.
 
-**Independent Test**: Administrator configures service with protected_resources URIs via admin API, gateway sends token exchange request with matching resource parameter, system correctly identifies the target service.
+**Independent Test**: Administrator configures service with protected_resources URIs via admin API, privileged client sends token exchange request with matching resource parameter, system correctly identifies the target service.
 
 **Acceptance Scenarios**:
 
@@ -76,24 +76,24 @@ The system must verify that the user (identified by subject_token 'sub' claim) h
 
 **Why this priority**: This is a critical security control. Without grant verification, any agent could potentially access any user's third-party tokens, violating the consent model.
 
-**Independent Test**: User has granted Agent A access to GitHub but not Agent B. Agent A's gateway can exchange for GitHub tokens. Agent B's gateway receives access_denied error.
+**Independent Test**: User has granted Agent A access to GitHub but not Agent B. Agent A's privileged client can exchange for GitHub tokens. Agent B's privileged client receives access_denied error.
 
 **Acceptance Scenarios**:
 
-1. **Given** user has an active UserGrant for the agent and target service, **When** gateway requests token exchange, **Then** system proceeds with token retrieval
-2. **Given** user has NOT granted the agent access to the target service, **When** gateway requests token exchange, **Then** system returns 403 Forbidden with error=access_denied and error_description="User has not granted this agent access to the requested service"
-3. **Given** user's grant for the agent+service has been revoked, **When** gateway requests token exchange, **Then** system returns 403 Forbidden with error=access_denied
-4. **Given** user's grant exists but has expired, **When** gateway requests token exchange, **Then** system returns 403 Forbidden with error=access_denied and error_description="User grant has expired"
+1. **Given** user has an active UserGrant for the agent and target service, **When** privileged client requests token exchange, **Then** system proceeds with token retrieval
+2. **Given** user has NOT granted the agent access to the target service, **When** privileged client requests token exchange, **Then** system returns 403 Forbidden with error=access_denied and error_description="User has not granted this agent access to the requested service"
+3. **Given** user's grant for the agent+service has been revoked, **When** privileged client requests token exchange, **Then** system returns 403 Forbidden with error=access_denied
+4. **Given** user's grant exists but has expired, **When** privileged client requests token exchange, **Then** system returns 403 Forbidden with error=access_denied and error_description="User grant has expired"
 
 ---
 
-### User Story 4 - Gateway Authorization via CEL (Priority: P2)
+### User Story 4 - Privileged Client Authorization via CEL (Priority: P2)
 
-Administrators need to configure authorization rules that validate client_assertion JWTs beyond basic signature verification. The system uses Common Expression Language (CEL) to express authorization policies that determine whether a gateway is authorized to perform token exchange. Note: The client_assertion identifies the gateway; the agent is identified via claims in the subject_token.
+Administrators need to configure authorization rules that validate client_assertion JWTs beyond basic signature verification. The system uses Common Expression Language (CEL) to express authorization policies that determine whether a privileged client is authorized to perform token exchange. Note: The client_assertion identifies the privileged client; the agent is identified via claims in the subject_token.
 
-**Why this priority**: This provides fine-grained access control for which gateways can exchange tokens. It depends on P1 (basic exchange must work) and adds security controls.
+**Why this priority**: This provides fine-grained access control for which privileged clients can exchange tokens. It depends on P1 (basic exchange must work) and adds security controls.
 
-**Independent Test**: Administrator configures CEL authorization expression, gateway sends token exchange request, system evaluates CEL expression against client_assertion claims, and request is allowed or denied based on expression result.
+**Independent Test**: Administrator configures CEL authorization expression, privileged client sends token exchange request, system evaluates CEL expression against client_assertion claims, and request is allowed or denied based on expression result.
 
 **Acceptance Scenarios**:
 
@@ -108,17 +108,17 @@ Administrators need to configure authorization rules that validate client_assert
 
 ### User Story 5 - No Valid Session Returns Appropriate Error (Priority: P2)
 
-When a user has not established a session with a third-party service (no tokens in vault), or their session has expired (both access and refresh tokens expired), the system must return an appropriate error that gateways/agents can handle programmatically to trigger re-authentication flows.
+When a user has not established a session with a third-party service (no tokens in vault), or their session has expired (both access and refresh tokens expired), the system must return an appropriate error that privileged clients/agents can handle programmatically to trigger re-authentication flows.
 
 **Why this priority**: This enables agents to detect when users need to re-authenticate with third-party services. It depends on P1 (basic exchange) and provides essential error handling.
 
-**Independent Test**: Gateway requests token exchange for a user who has no session with the target service, system returns error indicating no valid session exists.
+**Independent Test**: Privileged client requests token exchange for a user who has no session with the target service, system returns error indicating no valid session exists.
 
 **Acceptance Scenarios**:
 
-1. **Given** user has no stored session for the target service, **When** gateway requests token exchange, **Then** system returns 400 Bad Request with error=invalid_grant and error_description="User has no active session with the requested service"
-2. **Given** user's stored tokens have all expired (both access and refresh), **When** gateway requests token exchange, **Then** system returns 400 Bad Request with error=invalid_grant and error_description="User session has expired, re-authentication required"
-3. **Given** error response is returned, **When** gateway receives response, **Then** response includes sufficient information for agent to redirect user to appropriate re-authentication flow
+1. **Given** user has no stored session for the target service, **When** privileged client requests token exchange, **Then** system returns 400 Bad Request with error=invalid_grant and error_description="User has no active session with the requested service"
+2. **Given** user's stored tokens have all expired (both access and refresh), **When** privileged client requests token exchange, **Then** system returns 400 Bad Request with error=invalid_grant and error_description="User session has expired, re-authentication required"
+3. **Given** error response is returned, **When** privileged client receives response, **Then** response includes sufficient information for agent to redirect user to appropriate re-authentication flow
 
 ---
 
@@ -163,8 +163,8 @@ Administrators need to configure which resource URIs map to which third-party se
 - **FR-004**: System MUST validate subject_token parameter is a valid JWT issued by the Upstream OAuth2 Server
 - **FR-005**: System MUST extract user principal from subject_token using a configurable CEL expression (default: `subject_token.sub`)
 - **FR-005a**: System MUST extract agent_client_id from subject_token using a configurable CEL expression (default: `subject_token.azp`)
-- **FR-006**: System MUST validate client_assertion parameter is a valid JWT issued by the Upstream OAuth2 Server; the client_assertion identifies the **gateway** (not the agent)
-- **FR-006a**: System MUST extract gateway identifier from client_assertion 'sub' claim for authorization evaluation and audit logging
+- **FR-006**: System MUST validate client_assertion parameter is a valid JWT issued by the Upstream OAuth2 Server; the client_assertion identifies the **privileged client** (not the agent)
+- **FR-006a**: System MUST extract privileged client identifier from client_assertion 'sub' claim for authorization evaluation and audit logging
 - **FR-007**: System MUST validate client_assertion_type equals `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
 - **FR-008**: System MUST require resource parameter to identify target third-party service
 - **FR-008a**: System MUST validate that multiple resource parameters (if provided) all map to same service; if resources map to different services, return error=invalid_target with error_description "Multiple resources must map to the same service"
@@ -176,7 +176,7 @@ Administrators need to configure which resource URIs map to which third-party se
 - **FR-014**: System MUST automatically refresh expired access_tokens if refresh_token is available and valid
 - **FR-014a**: When token refresh fails with invalid_grant from third-party service, system MUST return error=invalid_grant with error_description indicating re-authentication required
 - **FR-015**: System MUST return appropriate RFC 8693 error responses (invalid_request, invalid_client, invalid_grant, invalid_target, access_denied)
-- **FR-016**: System MUST support CEL-based authorization for client_assertion (gateway) validation
+- **FR-016**: System MUST support CEL-based authorization for client_assertion (privileged client) validation
 - **FR-017**: System MUST validate all CEL expressions at startup (authorization and claim extraction) and fail fast on syntax errors
 
 ### Admin API Requirements
@@ -194,7 +194,7 @@ Administrators need to configure which resource URIs map to which third-party se
 - **token_exchange.claim_extraction.principal_expression**: (string) CEL expression to extract user principal from subject_token. Default: `subject_token.sub`
 - **token_exchange.claim_extraction.agent_client_id_expression**: (string) CEL expression to extract agent identifier from subject_token. Default: `subject_token.azp`
 - **token_exchange.authorization.type**: (string) Authorization method: "cel" or "opa" (OPA reserved for future). Default: "cel"
-- **token_exchange.authorization.cel.expression**: (string) CEL expression for gateway authorization. Default: "true" (allow all valid gateways)
+- **token_exchange.authorization.cel.expression**: (string) CEL expression for privileged client authorization. Default: "true" (allow all valid privileged clients)
 - **token_exchange.refresh.enabled**: (boolean) Enable automatic token refresh. Default: true
 
 **Upstream OAuth2 Configuration**: Token exchange reuses the existing root-level `upstream_oauth2` configuration (issuer, jwks_uri, audience). JWKS caching is configured via:
@@ -224,7 +224,7 @@ token_exchange:
   authorization:
     type: cel
     cel:
-      # CEL expression for gateway authorization (client_assertion identifies gateway)
+      # CEL expression for privileged client authorization (client_assertion identifies privileged client)
       expression: |
         client_assertion.iss == "https://upstream-oauth2.example.com" &&
         "token-exchange" in client_assertion.scope
@@ -265,9 +265,9 @@ Per Constitution Principle IV and X, API design precedes implementation:
 
 **Actors**:
 
-- **Gateway**: An API gateway or reverse proxy that intercepts agent requests and triggers token exchange on behalf of agents. The gateway authenticates using client_assertion JWT.
+- **Privileged Client**: An API gateway or reverse proxy that intercepts agent requests and triggers token exchange on behalf of agents. The privileged client authenticates using client_assertion JWT.
 
-- **Agent**: An AI agent that needs access to third-party services. The agent does not directly call the token exchange endpoint; instead, the gateway acts on its behalf.
+- **Agent**: An AI agent that needs access to third-party services. The agent does not directly call the token exchange endpoint; instead, the privileged client acts on its behalf.
 
 - **User**: The end-user (principal) whose third-party tokens are being exchanged. Identified by subject_token 'sub' claim.
 
@@ -279,7 +279,7 @@ Per Constitution Principle IV and X, API design precedes implementation:
 
 **Value Objects**:
 
-- **ClientAssertion**: Validated client_assertion JWT with extracted claims (iss, sub, aud, exp, custom claims). Identifies the **gateway** making the token exchange request. The gateway's identity is used for authorization and audit logging. Immutable after validation.
+- **ClientAssertion**: Validated client_assertion JWT with extracted claims (iss, sub, aud, exp, custom claims). Identifies the **privileged client** making the token exchange request. The privileged client's identity is used for authorization and audit logging. Immutable after validation.
 
 - **SubjectToken**: Validated subject_token JWT containing both the user principal and agent identifier. The principal (extracted via configurable CEL, default: `sub` claim) identifies the user. The agent_client_id (extracted via configurable CEL, default: `azp` claim) identifies which agent is requesting access. Both values are extracted using configurable CEL expressions. Immutable after validation.
 
@@ -287,9 +287,9 @@ Per Constitution Principle IV and X, API design precedes implementation:
 
 **Domain Events**:
 
-- **TokenExchangeSucceeded**: Fired when token exchange completes successfully. Contains principal, service_id, agent_client_id (extracted from subject_token), gateway_id (from client_assertion sub), timestamp.
+- **TokenExchangeSucceeded**: Fired when token exchange completes successfully. Contains principal, service_id, agent_client_id (extracted from subject_token), privileged_client_id (from client_assertion sub), timestamp.
 
-- **TokenExchangeFailed**: Fired when token exchange fails. Contains principal (if available), error_code, error_description, agent_client_id (if available), gateway_id (if available), timestamp.
+- **TokenExchangeFailed**: Fired when token exchange fails. Contains principal (if available), error_code, error_description, agent_client_id (if available), privileged_client_id (if available), timestamp.
 
 - **TokenRefreshed**: Fired when automatic token refresh occurs during exchange. Contains principal, service_id, timestamp.
 
@@ -307,7 +307,7 @@ Per Constitution Principle IV and X, API design precedes implementation:
 
 ### Measurable Outcomes
 
-- **SC-001**: Gateways can successfully exchange Upstream OAuth2 tokens for third-party tokens in under 500ms (excluding token refresh scenarios)
+- **SC-001**: Privileged clients can successfully exchange Upstream OAuth2 tokens for third-party tokens in under 500ms (excluding token refresh scenarios)
 - **SC-002**: Token exchange requests with automatic refresh complete in under 2 seconds
 - **SC-003**: System correctly rejects 100% of invalid token exchange requests with appropriate RFC 8693 error codes
 - **SC-004**: Administrators can configure protected_resources on services via admin API without system restart
@@ -322,10 +322,10 @@ Per Constitution Principle IV and X, API design precedes implementation:
 - Both subject_token and client_assertion JWTs use RS256 or ES256 algorithms with keys available via JWKS endpoint
 - The Upstream OAuth2 Server's JWKS endpoint is reliably available
 - Third-party services store refresh_tokens alongside access_tokens (established in 008-thirdparty-oauth2-sessions)
-- Gateways are pre-registered and can obtain valid client_assertion JWTs from the Upstream OAuth2 Server
-- Resource URIs are globally unique and consistently used by gateways (no ambiguity in resource-to-service mapping)
+- Privileged clients are pre-registered and can obtain valid client_assertion JWTs from the Upstream OAuth2 Server
+- Resource URIs are globally unique and consistently used by privileged clients (no ambiguity in resource-to-service mapping)
 - The subject_token contains both the user principal (typically `sub` claim) and agent identifier (typically `azp` claim), both extractable via configurable CEL expressions
-- The client_assertion `sub` claim contains the gateway identifier for authorization and audit purposes
+- The client_assertion `sub` claim contains the privileged client identifier for authorization and audit purposes
 - An existing `/oauth2/token` endpoint exists or will be created to handle multiple grant types
 
 ## Out of Scope
@@ -336,4 +336,4 @@ Per Constitution Principle IV and X, API design precedes implementation:
 - Token revocation propagation to third-party services
 - Multi-tenant configurations with different upstream OAuth2 servers
 - Non-token-exchange grant types on `/oauth2/token` (proxy passthrough behavior)
-- Rate limiting per gateway (deferred to future iteration)
+- Rate limiting per privileged client (deferred to future iteration)

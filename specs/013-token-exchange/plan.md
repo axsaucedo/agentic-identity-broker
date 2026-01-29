@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement RFC 8693 OAuth 2.0 Token Exchange via the existing `/oauth2/token` endpoint, enabling gateways to exchange tokens issued by the Upstream OAuth2 Server for third-party OAuth2 tokens stored in the token vault. The implementation uses:
+Implement RFC 8693 OAuth 2.0 Token Exchange via the existing `/oauth2/token` endpoint, enabling privileged clients (e.g., API gateways, reverse proxies) to exchange tokens issued by the Upstream OAuth2 Server for third-party OAuth2 tokens stored in the token vault. The implementation uses:
 - **lestrrat-go/jwx/v3** for JWT validation and JWKS handling (already in codebase)
 - **google/cel-go** for CEL-based authorization and claim extraction expressions
 - **Dedicated JWKS adapter** for abstracted JWKS fetching with built-in caching support
@@ -60,8 +60,9 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](../.
 
 - [x] **Domain Model**: Have entities, aggregates, value objects been identified and documented?
   - TokenExchangeRequest, TokenExchangeResponse, ClientAssertion, SubjectToken, ResourceURI (see spec.md Domain Model section)
+  - ClientAssertion represents privileged client identity (e.g., API gateway, reverse proxy)
 - [x] **Domain Concepts**: Will new domain terms be added to ARCHITECTURE.md Glossary?
-  - TokenExchangeRequest, TokenExchangeResponse, ClientAssertion, SubjectToken, ResourceURI, Gateway, CEL Authorization
+  - TokenExchangeRequest, TokenExchangeResponse, ClientAssertion, SubjectToken, ResourceURI, Privileged Client, CEL Authorization
 - [x] **Configuration Design**: Have all config requirements been identified with YAML examples?
   - token_exchange.claim_extraction.*, token_exchange.authorization.cel.expression, token_exchange.refresh.enabled
   - Reuses existing upstream_oauth2 config for issuer/jwks_uri
@@ -88,6 +89,7 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](../.
 - [x] **Security-First**: Are security features enabled by default? No bypasses or optional security?
   - JWT validation mandatory, CEL authorization enabled by default (expression defaults to "true")
   - UserGrant verification cannot be bypassed
+  - Privileged client authentication via client_assertion JWT required
 - [x] **Architecture Docs**: Will ARCHITECTURE.md be updated if this touches architecture?
   - Add JWKS Adapter subsection, TokenExchangeService, CEL authorization docs
 - [x] **ADRs**: Does this require an ADR in adrs/ for major decisions?
@@ -213,12 +215,12 @@ examples/config/
 
 | Spec Scenario | User Story | E2E Test Description |
 |---------------|------------|----------------------|
-| US1-S1 | Gateway Token Exchange | `It("should detect token exchange via grant_type parameter")` |
-| US1-S2 | Gateway Token Exchange | `It("should look up service by resource URI in protected_resources")` |
-| US1-S3 | Gateway Token Exchange | `It("should return RFC 8693 response with access_token and token_type")` |
-| US1-S4 | Gateway Token Exchange | `It("should auto-refresh expired token if refresh_token valid")` |
-| US1-S5 | Gateway Token Exchange | `It("should return 401 invalid_client without valid client_assertion")` |
-| US1-S6 | Gateway Token Exchange | `It("should return 400 invalid_request with invalid subject_token")` |
+| US1-S1 | Privileged Client Token Exchange | `It("should detect token exchange via grant_type parameter")` |
+| US1-S2 | Privileged Client Token Exchange | `It("should look up service by resource URI in protected_resources")` |
+| US1-S3 | Privileged Client Token Exchange | `It("should return RFC 8693 response with access_token and token_type")` |
+| US1-S4 | Privileged Client Token Exchange | `It("should auto-refresh expired token if refresh_token valid")` |
+| US1-S5 | Privileged Client Token Exchange | `It("should return 401 invalid_client without valid client_assertion")` |
+| US1-S6 | Privileged Client Token Exchange | `It("should return 400 invalid_request with invalid subject_token")` |
 | US2-S1 | Resource Discovery | `It("should store protected_resources via admin API")` |
 | US2-S2 | Resource Discovery | `It("should normalize resource URI removing trailing slashes")` |
 | US2-S3 | Resource Discovery | `It("should return tokens for matching service only")` |
@@ -264,6 +266,7 @@ examples/config/
   - Pre-seeded services with protected_resources
   - Pre-seeded user sessions with tokens
   - Pre-seeded user grants for agent+service
+  - Registered privileged clients (agents) that can perform token exchange
 
 **Helper Utilities**:
 - **New matchers**: `matchers/rfc8693_matchers.go` for RFC 8693 response validation
@@ -304,3 +307,4 @@ examples/config/
 | JWT validation in domain | Acceptable | Uses library (lestrrat), no HTTP calls, pure computation |
 | CEL in domain | Acceptable | Pure computation, sandboxed, no external dependencies |
 | New domain package | `tokenexchange` separate from `oauth2session` | Different concerns: exchange vs session lifecycle |
+| Privileged client terminology | Replaces "gateway" in implementation | More accurate: includes API gateways, reverse proxies, and similar entities |

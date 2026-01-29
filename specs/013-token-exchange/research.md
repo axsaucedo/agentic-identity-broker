@@ -195,7 +195,7 @@ func (e *CELEvaluator) EvaluateAuthorization(ctx context.Context, input AuthzInp
 | Variable | Type | Description |
 |----------|------|-------------|
 | `client_assertion.iss` | string | JWT issuer |
-| `client_assertion.sub` | string | Gateway identifier |
+| `client_assertion.sub` | string | Privileged client identifier (e.g., API gateway, reverse proxy) |
 | `client_assertion.aud` | string/list | Audience(s) |
 | `client_assertion.exp` | int | Expiration timestamp |
 | `client_assertion.iat` | int | Issued at timestamp |
@@ -210,11 +210,11 @@ func (e *CELEvaluator) EvaluateAuthorization(ctx context.Context, input AuthzInp
 
 **Authorization**:
 ```cel
-# Only allow gateways from trusted issuer with token-exchange scope
+# Only allow privileged clients from trusted issuer with token-exchange scope
 client_assertion.iss == "https://upstream.example.com" && 
 "token-exchange" in client_assertion.scope.split(" ")
 
-# Allow any valid gateway (default)
+# Allow any valid privileged client (default)
 true
 ```
 
@@ -261,8 +261,8 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 | `subject_token` | JWT | Token to exchange (contains principal + agent_client_id) |
 | `subject_token_type` | `urn:ietf:params:oauth:token-type:access_token` | Type of subject_token |
 | `resource` | URI | Target service (matches protected_resources) |
-| `client_assertion_type` | `urn:ietf:params:oauth:client-assertion-type:jwt-bearer` | Gateway auth method |
-| `client_assertion` | JWT | Gateway authentication |
+| `client_assertion_type` | `urn:ietf:params:oauth:client-assertion-type:jwt-bearer` | Privileged client auth method |
+| `client_assertion` | JWT | Privileged client authentication |
 
 ### Response Format (Section 2.2)
 
@@ -283,7 +283,7 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 | `invalid_client` | 401 | Invalid/missing client_assertion |
 | `invalid_grant` | 400 | No session, tokens expired (both access + refresh) |
 | `invalid_target` | 400 | No service matches resource, ambiguous resource |
-| `access_denied` | 403 | No user grant, grant revoked/expired, CEL denied |
+| `access_denied` | 403 | No user grant, grant revoked/expired, CEL denied privileged client |
 
 ---
 
@@ -454,8 +454,8 @@ token_exchange:
   authorization:
     type: cel  # "cel" or "opa" (opa reserved for future)
     cel:
-      # CEL expression for gateway authorization
-      # Default: true (allow all valid gateways)
+      # CEL expression for privileged client authorization
+      # Default: true (allow all valid privileged clients)
       expression: |
         client_assertion.iss == "https://auth.example.com" &&
         "token-exchange" in client_assertion.scope.split(" ")
@@ -491,3 +491,4 @@ Note: `lestrrat-go/jwx/v3` already in go.mod (v3.0.12).
 | CEL Location | Domain layer | Pure computation, no external deps |
 | URI Normalization | Remove trailing slash | Consistent matching |
 | Error Codes | RFC 8693 Section 5.2 | Standards compliance |
+| Terminology | Privileged client | More accurate than "gateway" for entities like API gateways, reverse proxies |

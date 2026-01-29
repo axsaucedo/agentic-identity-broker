@@ -26,7 +26,7 @@ import (
 type TokenExchangeResponse struct {
 	// AccessToken is the requested access token for the target resource.
 	// REQUIRED in RFC 8693 response.
-	// This is the token the gateway/agent will use to access the resource.
+	// This is the token the privileged client/agent will use to access the resource.
 	// Must not be empty.
 	AccessToken string `json:"access_token"`
 

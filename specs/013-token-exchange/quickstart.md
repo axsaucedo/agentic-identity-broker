@@ -84,8 +84,8 @@ type SubjectToken struct {
 
 // ClientAssertion represents validated claims from client_assertion JWT
 type ClientAssertion struct {
-    GatewayID string                 // Agent ID from 'sub' claim
-    Claims    map[string]interface{} // All claims for CEL evaluation
+    PrivilegedClientID string                 // Privileged client ID (e.g., API gateway, reverse proxy) from 'sub' claim
+    Claims             map[string]interface{} // All claims for CEL evaluation
 }
 ```
 
@@ -226,7 +226,7 @@ var _ = Describe("Token Exchange (RFC 8693)", Ordered, func() {
             })
         })
         
-        When("gateway (agent) not registered", func() {
+        When("privileged client (agent) not registered", func() {
             It("returns error with code 'invalid_client'", func() {
                 Skip("Implementation pending")
             })
@@ -446,7 +446,7 @@ type CELEvaluator struct {
 // NewCELEvaluator creates a new evaluator with the given expression
 func NewCELEvaluator(expression string, timeout time.Duration) (*CELEvaluator, error) {
     env, err := cel.NewEnv(
-        cel.Variable("gateway", cel.MapType(cel.StringType, cel.DynType)),
+        cel.Variable("privileged_client", cel.MapType(cel.StringType, cel.DynType)),
         cel.Variable("user", cel.MapType(cel.StringType, cel.DynType)),
         cel.Variable("resource", cel.StringType),
         cel.Variable("scope", cel.ListType(cel.StringType)),
@@ -578,8 +578,8 @@ func (s *Service) Exchange(ctx context.Context, req TokenExchangeRequest) (*Toke
         return nil, &OAuth2Error{Code: "unsupported_grant_type"}
     }
     
-    // 2. Validate client_assertion (gateway identity)
-    gateway, err := s.validateClientAssertion(ctx, req.ClientAssertion, req.ClientAssertionType)
+    // 2. Validate client_assertion (privileged client identity)
+    privilegedClient, err := s.validateClientAssertion(ctx, req.ClientAssertion, req.ClientAssertionType)
     if err != nil {
         return nil, err
     }
@@ -605,10 +605,10 @@ func (s *Service) Exchange(ctx context.Context, req TokenExchangeRequest) (*Toke
     // 6. CEL authorization check
     if s.celEvaluator != nil {
         allowed, err := s.celEvaluator.Evaluate(ctx, map[string]interface{}{
-            "gateway":  gateway.Claims,
-            "user":     subject.Claims,
-            "resource": req.Resource,
-            "scope":    parseScopes(req.Scope),
+            "privileged_client": privilegedClient.Claims,
+            "user":              subject.Claims,
+            "resource":          req.Resource,
+            "scope":             parseScopes(req.Scope),
         })
         if err != nil {
             return nil, &OAuth2Error{Code: "server_error", Description: err.Error()}
@@ -680,7 +680,7 @@ oauth2_auth_server:
     max_clock_skew_seconds: 60
     cel:
       authorization_expression: |
-        gateway.id in ["gateway-1", "gateway-2"] &&
+        privileged_client.id in ["privileged-client-1", "privileged-client-2"] &&
         user.email.endsWith("@example.com")
       timeout_ms: 100
 ```
@@ -691,7 +691,7 @@ oauth2_auth_server:
 
 | Error Code | Likely Cause | Solution |
 |------------|--------------|----------|
-| `invalid_client` | Bad client_assertion | Check JWT signature, gateway registration |
+| `invalid_client` | Bad client_assertion | Check JWT signature, privileged client registration |
 | `invalid_request` | Bad subject_token | Check issuer in trusted list, token not expired |
 | `invalid_target` | No grant or unknown resource | User needs to authorize service |
 | `invalid_scope` | Scope exceeds grant | Request subset of granted scopes |

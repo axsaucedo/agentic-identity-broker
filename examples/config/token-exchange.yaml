@@ -1,5 +1,5 @@
 # RFC 8693 OAuth 2.0 Token Exchange Configuration Example
-# This configuration enables the identity broker to exchange tokens on behalf of gateways,
+# This configuration enables the identity broker to exchange tokens on behalf of privileged clients,
 # allowing agents to access third-party OAuth2 services using user credentials previously
 # authenticated with the upstream OAuth2 server.
 
@@ -25,7 +25,7 @@ token_exchange:
     #   - "subject_token.claims.agent_id"        # Custom: use nested claim
     agent_client_id_expression: "subject_token.azp"
 
-  # Authorization configures gateway authorization rules
+  # Authorization configures privileged client authorization rules
   authorization:
     # type specifies the authorization method to use
     # Options:
@@ -37,7 +37,7 @@ token_exchange:
     cel:
       # expression is a CEL boolean expression evaluated for each request
       # Expression context includes:
-      #   - client_assertion: validated client assertion JWT claims (gateway identity)
+      #   - client_assertion: validated client assertion JWT claims (privileged client identity)
       #   - subject_token: validated subject token JWT claims (user identity)
       #   - request: request context with resource, grant_type, scope
       #
@@ -45,13 +45,13 @@ token_exchange:
       #   - true: authorization succeeds, proceed with token exchange
       #   - false: authorization fails, return 403 access_denied error
       #
-      # Default: "true" (allow all valid gateways with valid JWTs)
+      # Default: "true" (allow all valid privileged clients with valid JWTs)
       #
       # Examples:
       #   - 'true'                                                        # Allow all
-      #   - 'client_assertion.iss == "https://trusted-gateway.example.com"'  # Only trusted issuer
-      #   - 'client_assertion.sub in ["gateway-1", "gateway-2"]'        # Whitelist specific gateways
-      #   - 'client_assertion.claims.tier == "production"'              # Only production gateways
+      #   - 'client_assertion.iss == "https://trusted-privileged-client.example.com"'  # Only trusted issuer
+      #   - 'client_assertion.sub in ["privileged-client-1", "privileged-client-2"]'        # Whitelist specific privileged clients
+      #   - 'client_assertion.claims.tier == "production"'              # Only production privileged clients
       #   - 'has(client_assertion.claims.org_id) && client_assertion.claims.org_id == subject_token.claims.org_id'  # Same org
       #   - '"admin" in subject_token.claims.roles'                     # Only admin users
       expression: 'true'
@@ -99,10 +99,10 @@ token_exchange:
 #   authorization:
 #     type: "cel"
 #     cel:
-#       # Only allow token exchange from specific trusted gateway
+#       # Only allow token exchange from specific trusted privileged client
 #       # and only if the user has admin role
 #       expression: |
-#         client_assertion.sub == "trusted-gateway-prod" &&
+#         client_assertion.sub == "trusted-privileged-client-prod" &&
 #         "admin" in subject_token.claims.roles
 #   refresh:
 #     enabled: true

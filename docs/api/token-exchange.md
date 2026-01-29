@@ -1,6 +1,6 @@
 # RFC 8693 OAuth 2.0 Token Exchange
 
-RFC 8693 Token Exchange enables gateways and reverse proxies to exchange tokens issued by the Upstream OAuth2 Server for third-party OAuth2 tokens stored in the identity broker's token vault. This enables agents to access third-party services on behalf of users with user-controlled consent.
+RFC 8693 Token Exchange enables privileged clients (API gateways and reverse proxies) to exchange tokens issued by the Upstream OAuth2 Server for third-party OAuth2 tokens stored in the identity broker's token vault. This enables agents to access third-party services on behalf of users with user-controlled consent.
 
 ## Overview
 
@@ -17,17 +17,17 @@ Token exchange integrates seamlessly with the existing `/oauth2/token` endpoint.
 **Subject Token** (`subject_token`)
 - JWT issued by the Upstream OAuth2 Server
 - Contains user's principal (`sub` claim) and agent identifier (configurable claim, e.g., `azp`)
-- Gateway presents this token to request exchange
+- Privileged client presents this token to request exchange
 
 **Client Assertion** (`client_assertion`)
-- JWT identifying the gateway/reverse proxy
+- JWT identifying the privileged client (API gateway or reverse proxy)
 - Issued by the Upstream OAuth2 Server
-- Gateway authenticates using this JWT
+- Privileged client authenticates using this JWT
 
 **Third-Party Token**
 - OAuth2 access token stored in the identity broker's token vault
 - Issued by a third-party OAuth2 service (e.g., GitHub, Google)
-- Returned to gateway upon successful exchange
+- Returned to privileged client upon successful exchange
 
 ### Resource Parameter
 
@@ -155,7 +155,7 @@ Returned when request is malformed or missing required parameters.
 
 #### 401 Unauthorized - Invalid Client
 
-Returned when client_assertion (gateway identity) cannot be verified.
+Returned when client_assertion (privileged client identity) cannot be verified.
 
 ```json
 {
@@ -257,7 +257,7 @@ token_exchange:
   authorization:
     type: cel
     cel:
-      expression: "client_assertion.iss == 'trusted-gateway' || client_assertion.aud.contains('broker')"
+      expression: "client_assertion.iss == 'trusted-privileged-client' || client_assertion.aud.contains('broker')"
 
   refresh:
     enabled: true
@@ -272,7 +272,7 @@ token_exchange:
 | `token_exchange.claim_extraction.principal_expression` | string | `subject_token.sub` | CEL expression to extract user principal from subject_token |
 | `token_exchange.claim_extraction.agent_client_id_expression` | string | `subject_token.azp` | CEL expression to extract agent client ID from subject_token |
 | `token_exchange.authorization.type` | string | `cel` | Authorization evaluation strategy (currently only `cel` supported) |
-| `token_exchange.authorization.cel.expression` | string | `true` | CEL expression for gateway authorization (evaluates against client_assertion claims) |
+| `token_exchange.authorization.cel.expression` | string | `true` | CEL expression for privileged client authorization (evaluates against client_assertion claims) |
 | `token_exchange.refresh.enabled` | boolean | `true` | Enable automatic refresh when third-party token expired |
 
 ### CEL Expression Context
@@ -282,11 +282,11 @@ When evaluating CEL expressions, the following variables are available:
 **For Authorization Expression:**
 ```
 client_assertion              // JWT claims from client_assertion as map
-  .sub                        // Gateway subject
-  .iss                        // Gateway issuer
-  .aud                        // Gateway audience (array)
-  .exp                        // Gateway token expiration
-  .iat                        // Gateway token issued at
+  .sub                        // Privileged client subject
+  .iss                        // Privileged client issuer
+  .aud                        // Privileged client audience (array)
+  .exp                        // Privileged client token expiration
+  .iat                        // Privileged client token issued at
   .<custom-claim>             // Any custom claims in JWT
 
 request                       // Token exchange request context
@@ -309,7 +309,7 @@ subject_token                 // JWT claims from subject_token as map
 
 ### Example Expressions
 
-**Allow any gateway (default):**
+**Allow any privileged client (default):**
 ```yaml
 token_exchange:
   authorization:
@@ -317,7 +317,7 @@ token_exchange:
       expression: "true"
 ```
 
-**Only allow specific gateway issuer:**
+**Only allow specific privileged client issuer:**
 ```yaml
 token_exchange:
   authorization:
@@ -325,7 +325,7 @@ token_exchange:
       expression: "client_assertion.iss == 'api-gateway.example.com'"
 ```
 
-**Allow multiple trusted gateways:**
+**Allow multiple trusted privileged clients:**
 ```yaml
 token_exchange:
   authorization:

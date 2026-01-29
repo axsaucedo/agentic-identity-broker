@@ -172,13 +172,13 @@ func TestExtractAgentClientIDDefaultExpression(t *testing.T) {
 	require.NoError(t, err)
 
 	claims := map[string]interface{}{
-		"azp": "gateway-1",
+		"azp": "agent-app-1",
 	}
 
 	agentID, err := evaluator.ExtractAgentClientID(claims)
 
 	require.NoError(t, err)
-	assert.Equal(t, "gateway-1", agentID)
+	assert.Equal(t, "agent-app-1", agentID)
 }
 
 // TestExtractAgentClientIDCustomExpression tests agent_client_id extraction with custom expression.
@@ -189,13 +189,13 @@ func TestExtractAgentClientIDCustomExpression(t *testing.T) {
 	require.NoError(t, err)
 
 	claims := map[string]interface{}{
-		"client_id": "app-gateway",
+		"client_id": "app-agent",
 	}
 
 	agentID, err := evaluator.ExtractAgentClientID(claims)
 
 	require.NoError(t, err)
-	assert.Equal(t, "app-gateway", agentID)
+	assert.Equal(t, "app-agent", agentID)
 }
 
 // TestExtractAgentClientIDMissingClaim tests error when claim is missing.
@@ -215,14 +215,14 @@ func TestExtractAgentClientIDMissingClaim(t *testing.T) {
 	assert.True(t, IsTokenExchangeError(err))
 }
 
-// TestAuthorizeGatewayDefaultExpression tests gateway authorization with default allow-all expression.
-func TestAuthorizeGatewayDefaultExpression(t *testing.T) {
+// TestAuthorizePrivilegedClientDefaultExpression tests privileged client authorization with default allow-all expression.
+func TestAuthorizePrivilegedClientDefaultExpression(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
 	clientAssertion := map[string]interface{}{
-		"sub": "gateway-1",
+		"sub": "privileged-client-1",
 		"iss": "https://auth.example.com",
 	}
 	subjectToken := map[string]interface{}{
@@ -233,24 +233,24 @@ func TestAuthorizeGatewayDefaultExpression(t *testing.T) {
 		GrantType:     TokenExchangeGrantType,
 		Scope:         "read",
 		Principal:     "user123",
-		AgentClientID: "gateway-1",
+		AgentClientID: "agent-app-1",
 	}
 
-	authorized, err := evaluator.AuthorizeGateway(clientAssertion, subjectToken, request)
+	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
 
 	require.NoError(t, err)
 	assert.True(t, authorized)
 }
 
-// TestAuthorizeGatewayCustomExpressionAllow tests gateway authorization with custom allow expression.
-func TestAuthorizeGatewayCustomExpressionAllow(t *testing.T) {
+// TestAuthorizePrivilegedClientCustomExpressionAllow tests privileged client authorization with custom allow expression.
+func TestAuthorizePrivilegedClientCustomExpressionAllow(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `client_assertion.iss == "https://trusted.example.com"`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
 	clientAssertion := map[string]interface{}{
-		"sub": "gateway-1",
+		"sub": "privileged-client-1",
 		"iss": "https://trusted.example.com",
 	}
 	subjectToken := map[string]interface{}{
@@ -260,24 +260,24 @@ func TestAuthorizeGatewayCustomExpressionAllow(t *testing.T) {
 		Resource:      "https://api.example.com",
 		GrantType:     TokenExchangeGrantType,
 		Principal:     "user123",
-		AgentClientID: "gateway-1",
+		AgentClientID: "agent-app-1",
 	}
 
-	authorized, err := evaluator.AuthorizeGateway(clientAssertion, subjectToken, request)
+	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
 
 	require.NoError(t, err)
 	assert.True(t, authorized)
 }
 
-// TestAuthorizeGatewayCustomExpressionDeny tests gateway authorization with custom deny expression.
-func TestAuthorizeGatewayCustomExpressionDeny(t *testing.T) {
+// TestAuthorizePrivilegedClientCustomExpressionDeny tests privileged client authorization with custom deny expression.
+func TestAuthorizePrivilegedClientCustomExpressionDeny(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `client_assertion.iss == "https://trusted.example.com"`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
 	clientAssertion := map[string]interface{}{
-		"sub": "gateway-1",
+		"sub": "privileged-client-1",
 		"iss": "https://untrusted.example.com", // Doesn't match trusted issuer
 	}
 	subjectToken := map[string]interface{}{
@@ -287,10 +287,10 @@ func TestAuthorizeGatewayCustomExpressionDeny(t *testing.T) {
 		Resource:      "https://api.example.com",
 		GrantType:     TokenExchangeGrantType,
 		Principal:     "user123",
-		AgentClientID: "gateway-1",
+		AgentClientID: "agent-app-1",
 	}
 
-	authorized, err := evaluator.AuthorizeGateway(clientAssertion, subjectToken, request)
+	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
 
 	assert.Error(t, err)
 	assert.False(t, authorized)
@@ -299,18 +299,18 @@ func TestAuthorizeGatewayCustomExpressionDeny(t *testing.T) {
 	assert.Equal(t, "access_denied", tokExErr.Code())
 }
 
-// TestAuthorizeGatewayComplexExpression tests authorization with complex multi-condition expression.
-func TestAuthorizeGatewayComplexExpression(t *testing.T) {
+// TestAuthorizePrivilegedClientComplexExpression tests authorization with complex multi-condition expression.
+func TestAuthorizePrivilegedClientComplexExpression(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `
-		client_assertion.sub == "trusted-gateway" &&
+		client_assertion.sub == "trusted-privileged-client" &&
 		"admin" in subject_token.roles
 	`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
 	clientAssertion := map[string]interface{}{
-		"sub": "trusted-gateway",
+		"sub": "trusted-privileged-client",
 	}
 	subjectToken := map[string]interface{}{
 		"sub":   "user123",
@@ -320,27 +320,27 @@ func TestAuthorizeGatewayComplexExpression(t *testing.T) {
 		Resource:      "https://api.example.com",
 		GrantType:     TokenExchangeGrantType,
 		Principal:     "user123",
-		AgentClientID: "trusted-gateway",
+		AgentClientID: "trusted-privileged-client",
 	}
 
-	authorized, err := evaluator.AuthorizeGateway(clientAssertion, subjectToken, request)
+	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
 
 	require.NoError(t, err)
 	assert.True(t, authorized)
 }
 
-// TestAuthorizeGatewayComplexExpressionFailsAdminCheck tests complex expression with failed admin check.
-func TestAuthorizeGatewayComplexExpressionFailsAdminCheck(t *testing.T) {
+// TestAuthorizePrivilegedClientComplexExpressionFailsAdminCheck tests complex expression with failed admin check.
+func TestAuthorizePrivilegedClientComplexExpressionFailsAdminCheck(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `
-		client_assertion.sub == "trusted-gateway" &&
+		client_assertion.sub == "trusted-privileged-client" &&
 		"admin" in subject_token.roles
 	`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
 	clientAssertion := map[string]interface{}{
-		"sub": "trusted-gateway",
+		"sub": "trusted-privileged-client",
 	}
 	subjectToken := map[string]interface{}{
 		"sub":   "user123",
@@ -350,18 +350,18 @@ func TestAuthorizeGatewayComplexExpressionFailsAdminCheck(t *testing.T) {
 		Resource:      "https://api.example.com",
 		GrantType:     TokenExchangeGrantType,
 		Principal:     "user123",
-		AgentClientID: "trusted-gateway",
+		AgentClientID: "trusted-privileged-client",
 	}
 
-	authorized, err := evaluator.AuthorizeGateway(clientAssertion, subjectToken, request)
+	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
 
 	assert.Error(t, err)
 	assert.False(t, authorized)
 	assert.True(t, IsTokenExchangeError(err))
 }
 
-// TestAuthorizeGatewayWithTimeout tests authorization evaluation with timeout.
-func TestAuthorizeGatewayWithTimeout(t *testing.T) {
+// TestAuthorizePrivilegedClientWithTimeout tests authorization evaluation with timeout.
+func TestAuthorizePrivilegedClientWithTimeout(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	config.EvaluationTimeout = 1 * time.Millisecond // Very short timeout
 	config.AuthorizationExpression = "true"
@@ -369,7 +369,7 @@ func TestAuthorizeGatewayWithTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	clientAssertion := map[string]interface{}{
-		"sub": "gateway-1",
+		"sub": "privileged-client-1",
 	}
 	subjectToken := map[string]interface{}{
 		"sub": "user123",
@@ -378,12 +378,12 @@ func TestAuthorizeGatewayWithTimeout(t *testing.T) {
 		Resource:      "https://api.example.com",
 		GrantType:     TokenExchangeGrantType,
 		Principal:     "user123",
-		AgentClientID: "gateway-1",
+		AgentClientID: "agent-app-1",
 	}
 
 	// Even a simple true expression might timeout with 1ms limit
 	// But true should be fast enough - this is a relaxed test
-	authorized, err := evaluator.AuthorizeGateway(clientAssertion, subjectToken, request)
+	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
 
 	// Either succeeds quickly or times out - both are valid outcomes
 	if err != nil {
@@ -423,7 +423,7 @@ func TestExtractAgentClientIDWithComplexNestedClaims(t *testing.T) {
 	claims := map[string]interface{}{
 		"agent": map[string]interface{}{
 			"client_id": "agent-789",
-			"name":      "Gateway Agent",
+			"name":      "Privileged Client Agent",
 		},
 	}
 
@@ -433,15 +433,15 @@ func TestExtractAgentClientIDWithComplexNestedClaims(t *testing.T) {
 	assert.Equal(t, "agent-789", agentID)
 }
 
-// TestAuthorizeGatewayWithRequestContext tests authorization with request context variables.
-func TestAuthorizeGatewayWithRequestContext(t *testing.T) {
+// TestAuthorizePrivilegedClientWithRequestContext tests authorization with request context variables.
+func TestAuthorizePrivilegedClientWithRequestContext(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `request.resource == "https://api.example.com"`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
 	clientAssertion := map[string]interface{}{
-		"sub": "gateway-1",
+		"sub": "privileged-client-1",
 	}
 	subjectToken := map[string]interface{}{
 		"sub": "user123",
@@ -450,24 +450,24 @@ func TestAuthorizeGatewayWithRequestContext(t *testing.T) {
 		Resource:      "https://api.example.com",
 		GrantType:     TokenExchangeGrantType,
 		Principal:     "user123",
-		AgentClientID: "gateway-1",
+		AgentClientID: "agent-app-1",
 	}
 
-	authorized, err := evaluator.AuthorizeGateway(clientAssertion, subjectToken, request)
+	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
 
 	require.NoError(t, err)
 	assert.True(t, authorized)
 }
 
-// TestAuthorizeGatewayWithRequestContextMismatch tests authorization with mismatched request context.
-func TestAuthorizeGatewayWithRequestContextMismatch(t *testing.T) {
+// TestAuthorizePrivilegedClientWithRequestContextMismatch tests authorization with mismatched request context.
+func TestAuthorizePrivilegedClientWithRequestContextMismatch(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `request.resource == "https://api.example.com"`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
 	clientAssertion := map[string]interface{}{
-		"sub": "gateway-1",
+		"sub": "privileged-client-1",
 	}
 	subjectToken := map[string]interface{}{
 		"sub": "user123",
@@ -476,10 +476,10 @@ func TestAuthorizeGatewayWithRequestContextMismatch(t *testing.T) {
 		Resource:      "https://other-api.example.com", // Different resource
 		GrantType:     TokenExchangeGrantType,
 		Principal:     "user123",
-		AgentClientID: "gateway-1",
+		AgentClientID: "agent-app-1",
 	}
 
-	authorized, err := evaluator.AuthorizeGateway(clientAssertion, subjectToken, request)
+	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
 
 	assert.Error(t, err)
 	assert.False(t, authorized)
