@@ -27,35 +27,38 @@ func testConfig() *ports.Config {
 	}
 }
 
-// MockServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ServiceRepository
-type MockServiceRepository struct {
+// MockAuthProvider is a mock implementation of services.AuthProvider
+type MockAuthProvider struct {
 	mock.Mock
 }
 
-func (m *MockServiceRepository) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (m *MockAuthProvider) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) (*storage.ThirdpartyOAuth2Service, error) {
 	args := m.Called(ctx, service)
-	return args.Error(0)
-}
-
-func (m *MockServiceRepository) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
-	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
 }
 
-func (m *MockServiceRepository) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (m *MockAuthProvider) Get(ctx context.Context, clientID string) (*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx, clientID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
+func (m *MockAuthProvider) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
 	args := m.Called(ctx, service)
 	return args.Error(0)
 }
 
-func (m *MockServiceRepository) Delete(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
+func (m *MockAuthProvider) Delete(ctx context.Context, clientID string) error {
+	args := m.Called(ctx, clientID)
 	return args.Error(0)
 }
 
-func (m *MockServiceRepository) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockAuthProvider) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -63,39 +66,12 @@ func (m *MockServiceRepository) List(ctx context.Context) ([]*storage.Thirdparty
 	return args.Get(0).([]*storage.ThirdpartyOAuth2Service), args.Error(1)
 }
 
-func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
-	args := m.Called(ctx, serviceID)
-	return args.Int(0), args.Error(1)
-}
-
-// MockBranchKeyRepository is a mock implementation of ports.BranchKeyManager
-type MockBranchKeyRepository struct {
-	mock.Mock
-}
-
-func (m *MockBranchKeyRepository) Create(ctx context.Context, serviceID string) (string, error) {
-	args := m.Called(ctx, serviceID)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockBranchKeyRepository) Get(ctx context.Context, serviceID string) (string, error) {
-	args := m.Called(ctx, serviceID)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockBranchKeyRepository) ResolveBranchKeyID(serviceID string) (string, error) {
-	args := m.Called(serviceID)
-	return args.String(0), args.Error(1)
-}
-
 func TestServicesHandler_CreateService(t *testing.T) {
 	logger := slog.Default()
 
 	t.Run("successful creation without discovery", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
 		reqBody := ServiceRequest{
 			DisplayName:  "GitHub",
@@ -115,9 +91,31 @@ func TestServicesHandler_CreateService(t *testing.T) {
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(s *storage.ThirdpartyOAuth2Service) bool {
+		// Create expected service to return from mock
+		expectedService := &storage.ThirdpartyOAuth2Service{
+			ID:           "generated-id",
+			DisplayName:  "GitHub",
+			ClientID:     "github-client-id",
+			ClientSecret: "github-client-secret",
+			IssuerURI:    "https://github.com",
+			Discovery: storage.DiscoveryConfig{
+				EnableDiscovery: false,
+			},
+			Endpoints: storage.OAuth2Endpoints{
+				TokenEndpoint:     "https://github.com/login/oauth/access_token",
+				AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+			},
+			Scopes: []storage.OAuthScope{
+				{ScopeValue: "repo", Description: "Repository access"},
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		// Mock AuthProvider.Create to return the service
+		mockAuthProvider.On("Create", mock.Anything, mock.MatchedBy(func(s *storage.ThirdpartyOAuth2Service) bool {
 			return s.DisplayName == "GitHub" && s.ClientID == "github-client-id" && !s.Discovery.EnableDiscovery
-		})).Return(nil)
+		})).Return(expectedService, nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
@@ -138,14 +136,12 @@ func TestServicesHandler_CreateService(t *testing.T) {
 		assert.False(t, resp.Discovery.EnableDiscovery)
 		assert.Len(t, resp.Scopes, 1)
 
-		mockRepo.AssertExpectations(t)
+		mockAuthProvider.AssertExpectations(t)
 	})
 
 	t.Run("invalid request body", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
@@ -162,10 +158,8 @@ func TestServicesHandler_CreateService(t *testing.T) {
 	})
 
 	t.Run("validation error", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
 		reqBody := ServiceRequest{
 			DisplayName: "", // Invalid: empty display name
@@ -173,7 +167,7 @@ func TestServicesHandler_CreateService(t *testing.T) {
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		mockRepo.On("Create", mock.Anything, mock.Anything).Return(
+		mockAuthProvider.On("Create", mock.Anything, mock.Anything).Return(nil,
 			storage.NewStorageError("CreateService", storage.ErrorKindValidation, nil, "validation failed"))
 
 		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader(bodyBytes))
@@ -195,10 +189,8 @@ func TestServicesHandler_GetService(t *testing.T) {
 	logger := slog.Default()
 
 	t.Run("successful get", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
 		service := &storage.ThirdpartyOAuth2Service{
 			ID:           "service-123",
@@ -220,7 +212,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 
-		mockRepo.On("Get", mock.Anything, "service-123").Return(service, nil)
+		mockAuthProvider.On("Get", mock.Anything, "service-123").Return(service, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/service-123", nil)
 		w := httptest.NewRecorder()
@@ -243,12 +235,10 @@ func TestServicesHandler_GetService(t *testing.T) {
 	})
 
 	t.Run("service not found", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
-		mockRepo.On("Get", mock.Anything, "nonexistent").Return(nil,
+		mockAuthProvider.On("Get", mock.Anything, "nonexistent").Return(nil,
 			storage.NewStorageError("GetService", storage.ErrorKindNotFound, nil, "service not found"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/nonexistent", nil)
@@ -273,10 +263,8 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 	logger := slog.Default()
 
 	t.Run("successful update", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
 		existing := &storage.ThirdpartyOAuth2Service{
 			ID:           "service-123",
@@ -306,8 +294,8 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		mockRepo.On("Get", mock.Anything, "service-123").Return(existing, nil)
-		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(s *storage.ThirdpartyOAuth2Service) bool {
+		mockAuthProvider.On("Get", mock.Anything, "service-123").Return(existing, nil)
+		mockAuthProvider.On("Update", mock.Anything, mock.MatchedBy(func(s *storage.ThirdpartyOAuth2Service) bool {
 			return s.ID == "service-123" && s.DisplayName == "GitHub Updated"
 		})).Return(nil)
 
@@ -329,7 +317,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		assert.Equal(t, "GitHub Updated", resp.DisplayName)
 		assert.Equal(t, "REDACTED", resp.ClientSecret)
 
-		mockRepo.AssertExpectations(t)
+		mockAuthProvider.AssertExpectations(t)
 	})
 }
 
@@ -337,12 +325,10 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 	logger := slog.Default()
 
 	t.Run("successful deletion", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
-		mockRepo.On("Delete", mock.Anything, "service-123").Return(nil)
+		mockAuthProvider.On("Delete", mock.Anything, "service-123").Return(nil)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/service-123", nil)
 		w := httptest.NewRecorder()
@@ -354,16 +340,14 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		handler.DeleteService(w, req)
 
 		assert.Equal(t, http.StatusNoContent, w.Code)
-		mockRepo.AssertExpectations(t)
+		mockAuthProvider.AssertExpectations(t)
 	})
 
 	t.Run("deletion blocked by grants", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
-		mockRepo.On("Delete", mock.Anything, "service-123").Return(
+		mockAuthProvider.On("Delete", mock.Anything, "service-123").Return(
 			storage.NewStorageError("DeleteService", storage.ErrorKindConflict, nil, "cannot delete service: 5 grants reference it"))
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/service-123", nil)
@@ -383,16 +367,14 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		assert.Equal(t, "conflict", resp.Error)
 		assert.Contains(t, resp.Message, "5 grants reference it")
 
-		mockRepo.AssertExpectations(t)
+		mockAuthProvider.AssertExpectations(t)
 	})
 
 	t.Run("service not found", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
-		mockRepo.On("Delete", mock.Anything, "nonexistent").Return(
+		mockAuthProvider.On("Delete", mock.Anything, "nonexistent").Return(
 			storage.NewStorageError("DeleteService", storage.ErrorKindNotFound, nil, "service not found"))
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/nonexistent", nil)
@@ -406,7 +388,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
 
-		mockRepo.AssertExpectations(t)
+		mockAuthProvider.AssertExpectations(t)
 	})
 }
 
@@ -414,10 +396,8 @@ func TestServicesHandler_ListServices(t *testing.T) {
 	logger := slog.Default()
 
 	t.Run("successful list", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
 		services := []*storage.ThirdpartyOAuth2Service{
 			{
@@ -446,7 +426,7 @@ func TestServicesHandler_ListServices(t *testing.T) {
 			},
 		}
 
-		mockRepo.On("List", mock.Anything).Return(services, nil)
+		mockAuthProvider.On("List", mock.Anything).Return(services, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients", nil)
 		w := httptest.NewRecorder()
@@ -464,16 +444,14 @@ func TestServicesHandler_ListServices(t *testing.T) {
 		assert.Equal(t, "REDACTED", resp[0].ClientSecret)
 		assert.Equal(t, "REDACTED", resp[1].ClientSecret)
 
-		mockRepo.AssertExpectations(t)
+		mockAuthProvider.AssertExpectations(t)
 	})
 
 	t.Run("empty list", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
-		mockRepo.On("List", mock.Anything).Return([]*storage.ThirdpartyOAuth2Service{}, nil)
+		mockAuthProvider.On("List", mock.Anything).Return([]*storage.ThirdpartyOAuth2Service{}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients", nil)
 		w := httptest.NewRecorder()
@@ -487,7 +465,7 @@ func TestServicesHandler_ListServices(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, resp, 0)
 
-		mockRepo.AssertExpectations(t)
+		mockAuthProvider.AssertExpectations(t)
 	})
 }
 
@@ -495,10 +473,8 @@ func TestServicesHandler_SecretRedaction(t *testing.T) {
 	logger := slog.Default()
 
 	t.Run("secret redacted in all responses", func(t *testing.T) {
-		mockRepo := new(MockServiceRepository)
-		mockBranchKeyRepo := new(MockBranchKeyRepository)
-		mockBranchKeyRepo.On("Create", mock.Anything, mock.Anything).Return("service_test_branch_key", nil)
-		handler := NewServicesHandler(mockRepo, mockBranchKeyRepo, testConfig(), logger)
+		mockAuthProvider := new(MockAuthProvider)
+		handler := NewServicesHandler(mockAuthProvider, testConfig(), logger)
 
 		service := &storage.ThirdpartyOAuth2Service{
 			ID:           "service-123",
@@ -514,7 +490,7 @@ func TestServicesHandler_SecretRedaction(t *testing.T) {
 		}
 
 		// Test Get endpoint
-		mockRepo.On("Get", mock.Anything, "service-123").Return(service, nil)
+		mockAuthProvider.On("Get", mock.Anything, "service-123").Return(service, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/service-123", nil)
 		w := httptest.NewRecorder()

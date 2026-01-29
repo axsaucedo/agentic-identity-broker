@@ -22,6 +22,7 @@ import (
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -37,6 +38,7 @@ type App struct {
 
 	// Domain services
 	ConsentService       *consentservice.Service
+	AuthProvider         *services.AuthProvider
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
 
@@ -151,6 +153,15 @@ func (b *Builder) Build() (*App, error) {
 		)
 	}
 
+	// Create auth provider service if services repository available
+	if b.storage.Services() != nil {
+		app.AuthProvider = services.NewAuthProvider(
+			b.storage.Services(),
+			b.branchKeyManager, // May be nil if no encryption backend configured
+			b.logger,
+		)
+	}
+
 	// Create OAuth2 service if configuration available
 	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
 		app.OAuth2Service = oauth2service.NewService(
@@ -254,7 +265,7 @@ func (b *Builder) Build() (*App, error) {
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
 		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
-		Services: admin.NewServicesHandler(b.storage.Services(), app.BranchKeyManager, b.config, b.logger),
+		Services: admin.NewServicesHandler(app.AuthProvider, b.config, b.logger),
 	}
 
 	// Create HTTP client for token endpoint with configured timeout
