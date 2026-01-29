@@ -259,7 +259,8 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 
 	// T062a: Check grant is active (not expired)
 	// T065: Return 403 access_denied with expiration info in error_description if expired
-	if grant.ValidUntil != nil && grant.ValidUntil.Before(time.Now().UTC()) {
+	// Use UserGrant.IsActive() method for grant validation
+	if !grant.IsActive() {
 		expiredMsg := fmt.Sprintf(
 			"user grant expired at %s (principal: %s, agent: %s)",
 			grant.ValidUntil.Format(time.RFC3339),
@@ -312,9 +313,9 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 
 	// Step 11: Check if tokens are fully expired
 	// T076: Return invalid_grant when both access_token and refresh_token are expired
-	now := time.Now().UTC()
-	accessTokenExpired := sessionObj.AccessTokenExpiresAt == nil || sessionObj.AccessTokenExpiresAt.Before(now)
-	refreshTokenExpired := sessionObj.RefreshTokenExpiresAt == nil || sessionObj.RefreshTokenExpiresAt.Before(now)
+	// Use UserSession methods for token validation
+	accessTokenExpired := !sessionObj.HasValidAccessToken()
+	refreshTokenExpired := !sessionObj.CanRefresh()
 
 	if accessTokenExpired && refreshTokenExpired {
 		// Both tokens are expired - user needs to re-authenticate
@@ -331,6 +332,9 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	// Step 12: Refresh expired tokens if refresh_token available
 	// If access_token has expired but refresh_token is valid, attempt refresh
 	if accessTokenExpired && !refreshTokenExpired {
+		// Get current time for timestamp calculations
+		now := time.Now().UTC()
+
 		// Decrypt the refresh token first so we can use it in the refresh request
 		encContext := map[string]string{
 			"principal":  principal,
@@ -402,6 +406,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	// Step 13: Build and return RFC 8693 response
 	// Use stored token's type and expiration time
 	// Calculate expires_in from access token expiration time
+	now := time.Now().UTC()
 	expiresIn := int64(0)
 	if sessionObj.AccessTokenExpiresAt != nil {
 		if sessionObj.AccessTokenExpiresAt.After(now) {

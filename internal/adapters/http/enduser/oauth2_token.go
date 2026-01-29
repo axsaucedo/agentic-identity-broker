@@ -25,13 +25,6 @@ type OAuth2TokenHandler struct {
 
 // ServeHTTP implements http.Handler for the token endpoint
 func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.Logger != nil {
-		h.Logger.Info("OAuth2TokenHandler.ServeHTTP called",
-			"method", r.Method,
-			"path", r.URL.Path,
-		)
-	}
-
 	// Verify request method
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -85,21 +78,12 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For other grant types, proxy to upstream (standard OAuth2 flow)
-	if h.Logger != nil {
-		h.Logger.Info("Proxying to upstream", "grant_type", grantType)
-	}
 	h.proxyToUpstream(w, r, string(body))
 }
 
 // handleTokenExchange processes RFC 8693 token exchange requests
 // Implements complete token exchange flow: validation, authorization, token retrieval
 func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.Request, formData url.Values) {
-	if h.Logger != nil {
-		h.Logger.Info("handleTokenExchange invoked",
-			"token_exchange_service_nil", h.TokenExchange == nil,
-		)
-	}
-
 	// Validate service is available (should have been validated in builder, but defensive check)
 	if h.TokenExchange == nil {
 		if h.Logger != nil {
@@ -169,12 +153,18 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 	// Response includes: access_token, token_type, issued_token_type, expires_in
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"access_token":      response.AccessToken,
 		"token_type":        response.TokenType,
 		"issued_token_type": response.IssuedTokenType,
 		"expires_in":        response.ExpiresIn,
-	})
+	}); err != nil {
+		// Response headers already sent, can only log the encoding error
+		if h.Logger != nil {
+			h.Logger.Error("failed to encode token exchange response", "error", err)
+		}
+		return
+	}
 
 	// Audit log successful token exchange (optional, for operational observability)
 	// Per SR-058: caller is responsible for audit logging (done here for successful flows)
@@ -196,20 +186,30 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 	if tokenExchangeErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
 		// RFC 8693 error: use error code and description from domain
 		w.WriteHeader(tokenExchangeErr.HTTPStatus())
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		if err := json.NewEncoder(w).Encode(map[string]string{
 			"error":             tokenExchangeErr.Code(),
 			"error_description": tokenExchangeErr.Description(),
-		})
+		}); err != nil {
+			// Response headers already sent, can only log the encoding error
+			if h.Logger != nil {
+				h.Logger.Error("failed to encode token exchange error response", "error", err)
+			}
+		}
 		return
 	}
 
 	// Unexpected error: return generic server_error
 	// Per Constitution Principle I (Security-First): don't expose implementation details
 	w.WriteHeader(http.StatusInternalServerError)
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"error":             "server_error",
 		"error_description": "internal server error during token exchange",
-	})
+	}); err != nil {
+		// Response headers already sent, can only log the encoding error
+		if h.Logger != nil {
+			h.Logger.Error("failed to encode generic error response", "error", err)
+		}
+	}
 }
 
 // proxyToUpstream forwards requests to upstream OAuth2 server (for non-token-exchange flows)

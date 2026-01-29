@@ -13,27 +13,8 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/lib/pq"
 )
-
-// parsePostgresArray parses a PostgreSQL TEXT[] array string into a []string.
-// PostgreSQL represents arrays as strings like "{value1,value2}" or "{}" for empty arrays.
-func parsePostgresArray(arrayStr string) []string {
-	if arrayStr == "" || arrayStr == "{}" {
-		return nil
-	}
-
-	// Remove the leading { and trailing }
-	arrayStr = strings.TrimPrefix(arrayStr, "{")
-	arrayStr = strings.TrimSuffix(arrayStr, "}")
-
-	if arrayStr == "" {
-		return nil
-	}
-
-	// Split by comma
-	values := strings.Split(arrayStr, ",")
-	return values
-}
 
 // ThirdpartyServiceRepository implements ports.ThirdpartyOAuth2ServiceRepository using PostgreSQL.
 type ThirdpartyServiceRepository struct {
@@ -201,10 +182,9 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 	`
 
 	var (
-		service                 storage.ThirdpartyOAuth2Service
-		encryptedSecret         []byte
-		scopesJSON              []byte
-		protectedResourcesArray string
+		service         storage.ThirdpartyOAuth2Service
+		encryptedSecret []byte
+		scopesJSON      []byte
 	)
 
 	err := r.adapter.db.QueryRowContext(queryCtx, query, id).Scan(
@@ -218,7 +198,7 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 		&service.Endpoints.TokenEndpoint,
 		&service.Endpoints.AuthorizeEndpoint,
 		&scopesJSON,
-		&protectedResourcesArray,
+		pq.Array(&service.ProtectedResources),
 		&service.CreatedAt,
 		&service.UpdatedAt,
 	)
@@ -258,8 +238,7 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 		)
 	}
 
-	// Parse protected_resources array from PostgreSQL format
-	service.ProtectedResources = parsePostgresArray(protectedResourcesArray)
+	// protected_resources array already scanned using pq.Array()
 
 	// Decrypt client secret
 	encryptionContext := map[string]string{
@@ -522,7 +501,6 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 			service                 storage.ThirdpartyOAuth2Service
 			encryptedSecret         []byte
 			scopesJSON              []byte
-			protectedResourcesArray string
 		)
 
 		err := rows.Scan(
@@ -536,7 +514,7 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 			&service.Endpoints.TokenEndpoint,
 			&service.Endpoints.AuthorizeEndpoint,
 			&scopesJSON,
-			&protectedResourcesArray,
+			pq.Array(&service.ProtectedResources),
 			&service.CreatedAt,
 			&service.UpdatedAt,
 		)
@@ -561,8 +539,7 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 			)
 		}
 
-		// Parse protected_resources array from PostgreSQL format
-		service.ProtectedResources = parsePostgresArray(protectedResourcesArray)
+		// protected_resources array already scanned using pq.Array()
 
 		// Decrypt client secret
 		encryptionContext := map[string]string{
@@ -709,7 +686,6 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 			service                 storage.ThirdpartyOAuth2Service
 			encryptedSecret         []byte
 			scopesJSON              []byte
-			protectedResourcesArray string
 		)
 
 		err := rows.Scan(
@@ -723,7 +699,7 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 			&service.Endpoints.TokenEndpoint,
 			&service.Endpoints.AuthorizeEndpoint,
 			&scopesJSON,
-			&protectedResourcesArray,
+			pq.Array(&service.ProtectedResources),
 			&service.CreatedAt,
 			&service.UpdatedAt,
 		)
@@ -748,8 +724,7 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 			)
 		}
 
-		// Parse protected_resources array from PostgreSQL format
-		service.ProtectedResources = parsePostgresArray(protectedResourcesArray)
+		// protected_resources array already scanned using pq.Array()
 
 		// Decrypt client secret
 		encryptionContext := map[string]string{

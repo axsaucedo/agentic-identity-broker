@@ -308,20 +308,11 @@ func (e *CELEvaluator) AuthorizePrivilegedClient(
 	ctx, cancel := context.WithTimeout(context.Background(), e.evaluationTimeout)
 	defer cancel()
 
-	// Convert request to map for CEL evaluation
-	requestMap := map[string]interface{}{
-		"resource":        request.Resource,
-		"grant_type":      request.GrantType,
-		"scope":           request.Scope,
-		"principal":       request.Principal,
-		"agent_client_id": request.AgentClientID,
-	}
-
-	// Prepare variables for evaluation
+	// Prepare variables for evaluation using typed context conversion
 	variables := map[string]interface{}{
 		"client_assertion":      clientAssertionClaims,
 		CELSubjectTokenVariable: subjectTokenClaims,
-		"request":               requestMap,
+		"request":               request.ToMap(), // Use typed conversion method
 	}
 
 	// Evaluate the expression
@@ -409,4 +400,16 @@ type CELRequestContext struct {
 
 	// AgentClientID is the agent identifier extracted from subject_token
 	AgentClientID string
+}
+
+// ToMap converts CELRequestContext to a map for CEL evaluation.
+// This provides a typed and documented way to prepare request context for CEL expressions.
+func (r CELRequestContext) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"resource":        r.Resource,
+		"grant_type":      r.GrantType,
+		"scope":           r.Scope,
+		"principal":       r.Principal,
+		"agent_client_id": r.AgentClientID,
+	}
 }

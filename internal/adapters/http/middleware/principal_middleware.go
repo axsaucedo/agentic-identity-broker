@@ -34,10 +34,6 @@ func RequirePrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *s
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.Debug("RequirePrincipalMiddleware processing request",
-				"path", r.URL.Path,
-				"method", r.Method)
-
 			// Extract the principal from the configured header
 			principalValue := r.Header.Get(headerName)
 

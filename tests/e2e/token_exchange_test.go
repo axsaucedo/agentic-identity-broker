@@ -44,7 +44,8 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		storageFactory *bootstrap.StorageFactory
 		logger         *slog.Logger
 		testStorage    *storageadapter.Adapter
-		testServer     *bootstrap.TestServer
+		enduserServer  *bootstrap.TestServer
+		adminServer    *bootstrap.TestServer
 		mockUpstream   *helpers.MockUpstreamOAuth2Server
 		config         *ports.Config
 		principal      string
@@ -79,8 +80,12 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		app, err := serverFactory.BuildApp(testStorage)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Create HTTP test server
-		testServer, err = bootstrap.NewTestServer(app, logger)
+		// Create separate HTTP test servers for end-user and admin endpoints
+		// This matches production architecture where they are on different ports/servers
+		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
+		Expect(err).NotTo(HaveOccurred())
+
+		adminServer, err = bootstrap.NewAdminTestServer(app, logger)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Create test fixtures
@@ -127,8 +132,11 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 
 	// Cleanup: Close resources after each test
 	AfterEach(func() {
-		if testServer != nil {
-			testServer.Close()
+		if enduserServer != nil {
+			enduserServer.Close()
+		}
+		if adminServer != nil {
+			adminServer.Close()
 		}
 		if mockUpstream != nil {
 			mockUpstream.Close()
@@ -156,7 +164,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Client sends POST request to token endpoint with token exchange grant_type
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -182,7 +190,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange request includes resource parameter
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -207,7 +215,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Client sends token exchange request
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -243,7 +251,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange request is made for resource with expired token
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -269,7 +277,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Client sends token exchange with invalid client_assertion
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -296,7 +304,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Client sends token exchange with invalid subject_token
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -325,7 +333,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// When: Admin creates service via POST /api/services with protected_resources
-			resp, err := testServer.AuthenticatedPOST("/api/services", principal, "application/json", strings.NewReader(string(body)))
+			resp, err := adminServer.AuthenticatedPOST("/api/services", principal, "application/json", strings.NewReader(string(body)))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -349,7 +357,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange request uses resource URI with trailing slash
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -372,7 +380,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange requests GitHub resource
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -399,7 +407,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange requests unmapped resource
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -450,7 +458,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange requests ambiguous resource
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -482,7 +490,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange is requested with active grant
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -514,7 +522,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange requested without grant
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -556,7 +564,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange requested with revoked grant
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -597,7 +605,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange requested with expired grant
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -629,7 +637,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange request is made with CEL policy configured
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -659,7 +667,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange request is evaluated by CEL policy (result: true)
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -687,7 +695,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange request is made with invalid client_assertion signature
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -737,7 +745,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: CEL policy evaluates using client_assertion claims
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -762,7 +770,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: CEL policy evaluates using request context (resource, principal, etc.)
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -818,7 +826,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange requested without session
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -849,7 +857,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange requested with expired tokens
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -896,7 +904,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			}
 
 			// When: Token exchange fails with invalid_grant (no session exists)
-			resp, err := testServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+			resp, err := enduserServer.PublicPOST("/oauth2/token", "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -941,7 +949,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// When: Admin creates service with protected_resources array via POST /api/services
-			resp, err := testServer.AuthenticatedPOST("/api/services", principal, "application/json", strings.NewReader(string(body)))
+			resp, err := adminServer.AuthenticatedPOST("/api/services", principal, "application/json", strings.NewReader(string(body)))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -982,7 +990,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// When: Admin updates service with new protected_resources via PUT
-			resp, err := testServer.DirectRequest("PUT", "/api/services/github-service", principal, map[string]string{"Content-Type": "application/json"}, strings.NewReader(string(body)))
+			resp, err := adminServer.DirectRequest("PUT", "/api/services/github-service", principal, map[string]string{"Content-Type": "application/json"}, strings.NewReader(string(body)))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -1022,7 +1030,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// When: Admin tries to create service with invalid URIs
-			resp, err := testServer.AuthenticatedPOST("/api/services", principal, "application/json", strings.NewReader(string(body)))
+			resp, err := adminServer.AuthenticatedPOST("/api/services", principal, "application/json", strings.NewReader(string(body)))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -1062,7 +1070,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// When: Admin tries to create service with duplicate resource URI
-			resp, err := testServer.AuthenticatedPOST("/api/services", principal, "application/json", strings.NewReader(string(body)))
+			resp, err := adminServer.AuthenticatedPOST("/api/services", principal, "application/json", strings.NewReader(string(body)))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -1079,7 +1087,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		It("[US6-S5] should include protected_resources in GET /api/services/{id} response", func() {
 			// Given: Service exists with protected_resources stored (GitHub service from BeforeEach)
 			// When: Admin retrieves service details via GET /api/services/{id}
-			resp, err := testServer.AuthenticatedGET("/api/services/github-service", principal)
+			resp, err := adminServer.AuthenticatedGET("/api/services/github-service", principal)
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 

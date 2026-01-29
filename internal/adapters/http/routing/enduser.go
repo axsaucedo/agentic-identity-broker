@@ -86,11 +86,6 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 
 	// Register OAuth2 authorization server endpoints (optional, public routes)
 	if h.OAuth2Authorize != nil && h.OAuth2Token != nil && h.OAuth2Metadata != nil {
-		cfg.Logger.Info("Registering OAuth2 endpoints",
-			"authorize_handler_nil", h.OAuth2Authorize == nil,
-			"token_handler_nil", h.OAuth2Token == nil,
-			"metadata_handler_nil", h.OAuth2Metadata == nil)
-
 		// T025: Authorization endpoint with audit middleware and principal requirement
 		// GET /oauth2/authorize
 		r.With(
