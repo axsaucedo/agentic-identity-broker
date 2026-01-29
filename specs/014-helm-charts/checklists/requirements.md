@@ -34,5 +34,5 @@
 - All validation items passed
 - Specification is ready for `/speckit.clarify` or `/speckit.plan`
 - The spec covers 8 user stories prioritized P1-P3 with comprehensive acceptance scenarios
-- Security requirements properly address separation of DDL/DML permissions
+- Security requirements properly address separation of migration/broker permissions
 - Configuration parameters are well-documented with sensible defaults

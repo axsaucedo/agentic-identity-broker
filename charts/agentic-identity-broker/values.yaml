@@ -1,0 +1,353 @@
+# Default values for agentic-identity-broker
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# -- Number of broker pod replicas
+replicaCount: 1
+
+# Image configuration
+image:
+  # -- Container image repository
+  repository: agentic-identity-broker
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Image tag (defaults to chart appVersion if not set)
+  tag: ""
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full resource name
+fullnameOverride: ""
+
+# ServiceAccount configuration
+serviceAccount:
+  # -- Create a ServiceAccount
+  create: true
+  # -- Annotations for the ServiceAccount
+  annotations: {}
+  # -- ServiceAccount name (generated if not set)
+  name: ""
+
+# -- Pod annotations
+podAnnotations: {}
+
+# Pod Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container Security Context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Service configuration
+service:
+  # -- Service type (ClusterIP, NodePort, LoadBalancer)
+  type: ClusterIP
+  # Port configuration
+  ports:
+    # -- End-user API port
+    enduser: 8000
+    # -- Admin API port
+    admin: 14000
+
+# Ingress configuration for end-user API
+ingress:
+  # End-user API Ingress
+  enduser:
+    # -- Enable Ingress for end-user API
+    enabled: false
+    # -- Ingress class name (e.g., nginx, skipper)
+    className: ""
+    # -- Ingress annotations
+    # @default -- `{}`
+    annotations: {}
+      # cert-manager.io/cluster-issuer: letsencrypt-prod
+      # zalando.org/skipper-filter: ratelimit(50, "1m")
+    # -- Ingress hosts configuration
+    hosts:
+      - host: broker.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    # -- TLS configuration
+    tls: []
+    #  - secretName: broker-tls
+    #    hosts:
+    #      - broker.example.com
+
+  # Admin API Ingress
+  admin:
+    # -- Enable Ingress for admin API
+    enabled: false
+    # -- Ingress class name
+    className: ""
+    # -- Ingress annotations (consider IP whitelisting for admin API)
+    annotations: {}
+      # nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
+    # -- Ingress hosts configuration
+    hosts:
+      - host: broker-admin.internal.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    # -- TLS configuration
+    tls: []
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Autoscaling configuration (optional)
+autoscaling:
+  # -- Enable HorizontalPodAutoscaler
+  enabled: false
+  # -- Minimum replicas
+  minReplicas: 1
+  # -- Maximum replicas
+  maxReplicas: 10
+  # -- Target CPU utilization percentage
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# PodDisruptionBudget configuration (optional)
+podDisruptionBudget:
+  # -- Enable PodDisruptionBudget
+  enabled: false
+  # -- Minimum available pods
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# -- Node selector for pod assignment
+nodeSelector: {}
+
+# -- Tolerations for pod assignment
+tolerations: []
+
+# -- Affinity rules for pod assignment
+affinity: {}
+
+# Storage configuration
+storage:
+  # -- Storage type: "memory" or "postgres"
+  # memory = in-memory storage (ephemeral, for evaluation only)
+  # postgres = PostgreSQL database (persistent)
+  type: memory
+
+# PostgreSQL configuration
+postgresql:
+  # External PostgreSQL configuration
+  # Use this for existing PostgreSQL instances
+  external:
+    # -- Enable external PostgreSQL
+    enabled: false
+    # -- PostgreSQL host
+    host: postgres.database.svc.cluster.local
+    # -- PostgreSQL port
+    port: 5432
+    # -- Database name
+    database: broker
+    # -- SSL mode (disable, require, verify-ca, verify-full)
+    sslMode: require
+
+    # Migration user credentials (schema permissions)
+    # -- Kubernetes Secret name containing migration user credentials
+    migrationSecretName: broker-db-migration
+    # -- Secret keys for migration credentials
+    migrationSecretKeys:
+      # -- Username key in secret
+      username: username
+      # -- Password key in secret
+      password: password
+
+    # Broker user credentials (runtime data access)
+    # -- Kubernetes Secret name containing broker user credentials
+    brokerSecretName: broker-db
+    # -- Secret keys for broker credentials
+    brokerSecretKeys:
+      # -- Username key in secret
+      username: username
+      # -- Password key in secret
+      password: password
+
+  # Zalando PostgreSQL Operator configuration
+  # Use this to provision PostgreSQL via Zalando operator
+  operator:
+    # -- Enable Zalando PostgreSQL Operator integration
+    enabled: false
+    # -- Team ID (required by Zalando operator)
+    teamId: ""
+    # -- PostgreSQL version
+    version: "15"
+    # -- Number of PostgreSQL instances (cluster size)
+    numberOfInstances: 2
+    # -- Database name
+    database: broker
+
+    # Volume configuration
+    volume:
+      # -- Persistent volume size
+      size: 10Gi
+      # -- Storage class (optional, uses cluster default if not set)
+      storageClass: ""
+
+    # Resource configuration for PostgreSQL pods
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # User configuration
+    # Note: Zalando operator uses PostgreSQL role attributes, not SQL permissions
+    users:
+      # Migration user (schema modification permissions)
+      migration:
+        # -- Migration user name (must be RFC 1123 compliant: lowercase, alphanumeric, hyphens only)
+        name: broker-migration
+        # -- Migration user role attributes (superuser for schema changes)
+        permissions:
+          - superuser
+          - createdb
+      # Broker user (runtime data access)
+      broker:
+        # -- Broker user name (must be RFC 1123 compliant: lowercase, alphanumeric, hyphens only)
+        name: broker
+        # -- Broker user role attributes (login + ownership via databases config)
+        permissions:
+          - login
+
+# Migration Job configuration
+migration:
+  # -- Run database migrations (automatically enabled when storage.type=postgres)
+  enabled: true
+
+  # Migration image configuration (separate from broker image for security)
+  image:
+    # -- Migration container image repository
+    repository: agentic-identity-broker-migrate
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+    # -- Image tag (defaults to chart appVersion if not set)
+    tag: ""
+
+  # Helm hook configuration
+  # -- Hook weight (controls execution order, negative runs earlier)
+  hookWeight: -5
+
+  # Job configuration
+  # -- Job backoff limit (retry attempts)
+  # Higher value needed for Zalando operator as PostgreSQL takes time to initialize
+  backoffLimit: 10
+  # -- TTL for completed/failed jobs (cleanup delay in seconds)
+  ttlSecondsAfterFinished: 300
+
+  # Resource limits for migration Job
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Broker application configuration
+broker:
+  # Logging
+  log:
+    # -- Log level (debug, info, warn, error)
+    level: info
+    # -- Log format (json, text)
+    format: json
+
+  # Server configuration
+  server:
+    # End-user server
+    enduser:
+      # -- End-user server port (must match service.ports.enduser)
+      port: 8000
+      # -- Bind address
+      bind: "::"
+      # -- Public URL for end-user API (required for OAuth2 metadata)
+      publicUrl: ""
+      # Authentication
+      authentication:
+        preauth:
+          # -- Header name containing authenticated principal
+          principalHeaderName: X-Remote-User
+
+    # Admin server
+    admin:
+      # -- Admin server port (must match service.ports.admin)
+      port: 14000
+      # -- Bind address
+      bind: "::"
+      # -- Public URL for admin API
+      publicUrl: ""
+      # Authentication
+      authentication:
+        preauth:
+          # -- Header name containing authenticated principal
+          principalHeaderName: X-Remote-User
+
+    # Graceful shutdown
+    shutdown:
+      # -- Graceful shutdown timeout
+      timeout: 30s
+
+  # OAuth2 configuration
+  thirdPartyOauth2:
+    # -- JWE signing key for state tokens (required, load from secret)
+    # Must be 32 bytes, base64 encoded
+    # Set via environment variable or Kubernetes Secret
+    jweSigningKey: ""
+
+  # OAuth2 Authorization Server configuration
+  oauth2AuthorizationServer:
+    # -- Upstream OAuth2 issuer URI
+    upstreamIssuerUri: ""
+    # -- Upstream authorize endpoint
+    upstreamAuthorizeEndpoint: ""
+    # -- Upstream token endpoint
+    upstreamTokenEndpoint: ""
+    # -- Public base URL of the broker
+    publicBaseUrl: ""
+    # -- Supported OAuth2 response types
+    supportedResponseTypes:
+      - code
+    # -- Supported OAuth2 grant types
+    supportedGrantTypes:
+      - authorization_code
+      - refresh_token
+    # -- Upstream request timeout (seconds)
+    upstreamTimeoutSeconds: 10
+    # -- Operation mode (proxy or authorization_server)
+    mode: proxy
+
+  # Security configuration
+  security:
+    # -- Skip HTTPS validation for third-party services (dev/test only!)
+    skipThirdpartyHttpsValidation: false
+
+  # -- Additional broker configuration (merged into config.yaml)
+  extraConfig: {}

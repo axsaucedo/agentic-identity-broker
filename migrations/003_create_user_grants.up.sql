@@ -18,8 +18,10 @@ CREATE TABLE IF NOT EXISTS user_grants (
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_grants_principal ON user_grants(principal);
 CREATE INDEX IF NOT EXISTS idx_grants_agent ON user_grants(agent_id);
+-- Partial index on active grants (without NOW() to avoid IMMUTABLE requirement)
+-- Application logic should filter expired grants at query time
 CREATE INDEX IF NOT EXISTS idx_grants_active ON user_grants(principal, agent_id)
-    WHERE valid_until IS NULL OR valid_until > NOW();
+    WHERE valid_until IS NULL;
 CREATE INDEX IF NOT EXISTS idx_grants_tokens ON user_grants USING GIN(delegated_oauth2_tokens);
 
 -- Add comments describing the table

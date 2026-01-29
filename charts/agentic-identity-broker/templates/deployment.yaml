@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentic-identity-broker.fullname" . }}
+  labels:
+    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "agentic-identity-broker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "agentic-identity-broker.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "agentic-identity-broker.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: enduser
+          containerPort: {{ .Values.service.ports.enduser }}
+          protocol: TCP
+        - name: admin
+          containerPort: {{ .Values.service.ports.admin }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: enduser
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: enduser
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        env:
+        # JWE signing key for state tokens
+        {{- if .Values.broker.thirdPartyOauth2.jweSigningKey }}
+        - name: IDENTITY_BROKER_JWE_SIGNING_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.fullname" . }}-jwe-key
+              key: signing-key
+        {{- end }}
+        {{- if eq .Values.storage.type "postgres" }}
+        # PostgreSQL connection parameters
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.brokerSecretName" . }}
+              key: {{ .Values.postgresql.external.brokerSecretKeys.username | default "username" }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.brokerSecretName" . }}
+              key: {{ .Values.postgresql.external.brokerSecretKeys.password | default "password" }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /app/config.yaml
+          subPath: config.yaml
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "agentic-identity-broker.fullname" . }}-config
+      - name: tmp
+        emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

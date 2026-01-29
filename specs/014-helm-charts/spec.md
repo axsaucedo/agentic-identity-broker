@@ -9,8 +9,8 @@
 
 ### Session 2026-01-28
 
-- Q: Who creates the two PostgreSQL users (DDL/DML) when using Zalando operator? → A: Zalando operator creates both users automatically via `postgresql.users` configuration
-- Q: How are DDL/DML users provided for external PostgreSQL? → A: Two separate existing secrets (one for DDL user, one for DML user)
+- Q: Who creates the two PostgreSQL users (migration/broker) when using Zalando operator? → A: Zalando operator creates both users automatically via `postgresql.users` configuration
+- Q: How are migration/broker users provided for external PostgreSQL? → A: Two separate existing secrets (one for migration user, one for broker user)
 - Q: How should migration Job be triggered relative to broker Deployment? → A: Helm pre-install/pre-upgrade hook (Job runs before Deployment created/updated)
 - Q: How should Skipper ingress controller be supported? → A: Document common Skipper annotations in values.yaml examples (operators copy/customize)
 - Q: How should the dual-port broker (8000 end-user, 14000 admin) be exposed? → A: Single Service exposing both ports with different names, plus two separate Ingress resources
@@ -29,8 +29,9 @@ As a platform operator, I want to deploy the Agentic Identity Broker to my Kuber
 **Acceptance Scenarios**:
 
 1. **Given** a Kubernetes cluster with Helm installed, **When** the operator runs `helm install broker ./charts/agentic-identity-broker`, **Then** the broker Deployment, Service, and ConfigMap are created and the broker pod becomes ready within 2 minutes.
-2. **Given** a successful Helm installation with defaults, **When** the operator accesses the broker Service endpoint, **Then** the broker responds with a healthy status.
-3. **Given** a Helm installation, **When** the operator runs `helm upgrade` with modified values, **Then** the broker is updated with the new configuration without manual intervention.
+2. **Given** a successful Helm installation with defaults, **When** the operator queries the Service spec, **Then** the Service exposes port 8000 (named "http") and port 14000 (named "admin").
+3. **Given** a successful Helm installation with defaults, **When** the operator accesses the broker Service endpoint, **Then** the broker responds with a healthy status.
+4. **Given** a Helm installation, **When** the operator runs `helm upgrade` with modified values, **Then** the broker is updated with the new configuration without manual intervention.
 
 ---
 
@@ -84,7 +85,7 @@ As a platform operator evaluating the broker, I want to deploy without PostgreSQ
 
 ### User Story 5 - Deploy with External PostgreSQL (Priority: P3)
 
-As a platform operator with an existing PostgreSQL instance, I want to configure the broker to use my external database with separate DDL and DML users, so that I can integrate with my existing database infrastructure while maintaining proper privilege separation.
+As a platform operator with an existing PostgreSQL instance, I want to configure the broker to use my external database with separate migration and broker users, so that I can integrate with my existing database infrastructure while maintaining proper privilege separation.
 
 **Why this priority**: Common enterprise scenario where databases are managed separately. Important for production but not required for initial deployment testing.
 
@@ -93,15 +94,15 @@ As a platform operator with an existing PostgreSQL instance, I want to configure
 **Acceptance Scenarios**:
 
 1. **Given** Helm values with `storage.type: postgres` and external database connection details, **When** the chart is installed, **Then** the broker connects to the external PostgreSQL instance.
-2. **Given** Helm values with `postgresql.external.ddlSecretName` specified, **When** the chart is installed, **Then** the migration Job uses credentials from that secret for DDL operations.
-3. **Given** Helm values with `postgresql.external.dmlSecretName` specified, **When** the chart is installed, **Then** the broker uses credentials from that secret for DML operations.
-4. **Given** Helm values specifying existing secret names for both DDL and DML credentials, **When** the chart is installed, **Then** no new secrets are created and the existing secrets are mounted to the respective workloads.
+2. **Given** Helm values with `postgresql.external.migrationSecretName` specified, **When** the chart is installed, **Then** the migration Job uses credentials from that secret for schema operations.
+3. **Given** Helm values with `postgresql.external.brokerSecretName` specified, **When** the chart is installed, **Then** the broker uses credentials from that secret for runtime operations.
+4. **Given** Helm values specifying existing secret names for both migration and broker credentials, **When** the chart is installed, **Then** no new secrets are created and the existing secrets are mounted to the respective workloads.
 
 ---
 
 ### User Story 6 - Deploy with Zalando PostgreSQL Operator (Priority: P3)
 
-As a platform operator using the Zalando PostgreSQL Operator, I want the Helm chart to create a `postgresql` custom resource with both DDL and DML users configured, so that the operator provisions and manages the database with proper privilege separation.
+As a platform operator using the Zalando PostgreSQL Operator, I want the Helm chart to create a `postgresql` custom resource with both migration and broker users configured, so that the operator provisions and manages the database with proper privilege separation.
 
 **Why this priority**: Provides a complete, self-contained deployment option for teams using the Zalando operator. Reduces operational burden for database and user management.
 
@@ -110,12 +111,12 @@ As a platform operator using the Zalando PostgreSQL Operator, I want the Helm ch
 **Acceptance Scenarios**:
 
 1. **Given** Helm values with `postgresql.operator.enabled: true`, **When** the chart is installed, **Then** a `postgresql` custom resource is created for the Zalando operator.
-2. **Given** the `postgresql` CR, **When** it is created, **Then** it includes both DDL and DML users in the `users` configuration (e.g., `broker_ddl` and `broker_dml`).
+2. **Given** the `postgresql` CR, **When** it is created, **Then** it includes both migration and broker users in the `users` configuration (e.g., `broker-migration` and `broker`).
 3. **Given** a deployed Zalando-managed PostgreSQL, **When** the PostgreSQL operator provisions the database, **Then** it creates secrets following the naming convention `<username>.<team>-<db>.credentials.postgresql.acid.zalan.do`.
-4. **Given** the operator-created secrets, **When** the migration Job starts, **Then** it mounts the DDL user secret and injects credentials via environment variables (e.g., `POSTGRES_USER`, `POSTGRES_PASSWORD`).
-5. **Given** the operator-created secrets, **When** the broker Deployment starts, **Then** it mounts the DML user secret and injects credentials via environment variables.
+4. **Given** the operator-created secrets, **When** the migration Job starts, **Then** it mounts the migration user secret and injects credentials via environment variables (e.g., `POSTGRES_USER`, `POSTGRES_PASSWORD`).
+5. **Given** the operator-created secrets, **When** the broker Deployment starts, **Then** it mounts the broker user secret and injects credentials via environment variables.
 6. **Given** Helm values with custom PostgreSQL sizing (storage, replicas), **When** the chart is installed, **Then** the `postgresql` CR reflects the specified sizing parameters.
-7. **Given** custom user names via `postgresql.operator.users.ddl` and `postgresql.operator.users.dml`, **When** the chart is installed, **Then** the PostgreSQL CR and workload configurations use the specified user names and derive the correct secret names.
+7. **Given** custom user names via `postgresql.operator.users.migration` and `postgresql.operator.users.broker`, **When** the chart is installed, **Then** the PostgreSQL CR and workload configurations use the specified user names and derive the correct secret names.
 
 ---
 
@@ -123,18 +124,18 @@ As a platform operator using the Zalando PostgreSQL Operator, I want the Helm ch
 
 As a platform operator following security best practices, I want database migrations to run as a separate Kubernetes Job with elevated permissions via Helm hooks, while the broker itself runs with minimal database permissions.
 
-**Why this priority**: Critical for security—separating DDL (schema changes) from DML (data operations) follows the principle of least privilege. Using Helm hooks ensures migrations complete before broker deployment.
+**Why this priority**: Critical for security—separating schema changes (migrations) from data operations (runtime) follows the principle of least privilege. Using Helm hooks ensures migrations complete before broker deployment.
 
-**Independent Test**: Can be tested by verifying the migration Job runs as a pre-install/pre-upgrade hook, uses DDL credentials, completes before broker pods start, and the broker pod uses only DML credentials.
+**Independent Test**: Can be tested by verifying the migration Job runs as a pre-install/pre-upgrade hook, uses migration credentials, completes before broker pods start, and the broker pod uses only broker credentials.
 
 **Acceptance Scenarios**:
 
 1. **Given** a Helm installation with PostgreSQL configured, **When** the chart is installed, **Then** a Kubernetes Job with Helm `pre-install` hook runs golang-migrate before the broker Deployment is created.
-2. **Given** the migration Job, **When** it executes, **Then** it uses the DDL user credentials from the configured secret (with CREATE, ALTER, DROP permissions).
-3. **Given** the broker Deployment, **When** it starts, **Then** it uses the DML user credentials from the configured secret (with only SELECT, INSERT, UPDATE, DELETE permissions).
+2. **Given** the migration Job, **When** it executes, **Then** it uses the migration user credentials from the configured secret (with CREATE, ALTER, DROP permissions).
+3. **Given** the broker Deployment, **When** it starts, **Then** it uses the broker user credentials from the configured secret (with only SELECT, INSERT, UPDATE, DELETE permissions).
 4. **Given** a Helm upgrade, **When** the upgrade runs, **Then** the migration Job executes as a `pre-upgrade` hook, applying any new migrations before updating the broker pods.
-5. **Given** the migration Job fails, **When** the Helm installation/upgrade is attempted, **Then** Helm aborts the release and the broker Deployment is not created/updated.
-6. **Given** the Zalando PostgreSQL Operator is used, **When** the chart is installed, **Then** both DDL and DML users are created via `postgresql.users` configuration in the PostgreSQL CR.
+5. **Given** the migration Job fails, **When** the Helm installation/upgrade is attempted, **Then** Helm aborts the release, the broker Deployment is not created/updated, and the failed Job pod remains for debugging (no automatic deletion).
+6. **Given** the Zalando PostgreSQL Operator is used, **When** the chart is installed, **Then** both migration and broker users are created via `postgresql.users` configuration in the PostgreSQL CR.
 
 ---
 
@@ -174,22 +175,24 @@ As a platform operator, I want to configure CPU and memory resource limits for t
 - **FR-004**: Helm chart MUST create a ConfigMap for broker configuration.
 - **FR-005**: Helm chart MUST support creating two optional Ingress resources (one for end-user API, one for admin API) with independent host/path/TLS configuration.
 - **FR-006**: Helm chart MUST support in-memory storage mode (no PostgreSQL required).
-- **FR-007**: Helm chart MUST support external PostgreSQL connection configuration with two separate secrets (DDL user for migrations, DML user for broker).
+- **FR-007**: Helm chart MUST support external PostgreSQL connection configuration with two separate secrets (migration user for migrations, broker user for runtime).
 - **FR-008**: Helm chart MUST support creating a Zalando PostgreSQL Operator `postgresql` custom resource with two users defined via `postgresql.users` configuration.
 - **FR-009**: Helm chart MUST create a Kubernetes Job for database migrations using golang-migrate when PostgreSQL is enabled.
 - **FR-010**: Migration Job MUST run as a Helm pre-install/pre-upgrade hook, completing before broker Deployment is created or updated.
-- **FR-011**: Migration Job MUST use database credentials with DDL permissions (CREATE, ALTER, DROP, etc.).
-- **FR-012**: Broker Deployment MUST use database credentials with only DML permissions (SELECT, INSERT, UPDATE, DELETE).
+- **FR-011**: Migration Job MUST use database credentials with schema permissions (CREATE, ALTER, DROP, etc.).
+- **FR-012**: Broker Deployment MUST use database credentials with only data permissions (SELECT, INSERT, UPDATE, DELETE).
 - **FR-013**: Docker image MUST include golang-migrate tool and existing migrations from `/migrations/` directory.
 - **FR-014**: Helm chart MUST support generating static Kubernetes manifests via `helm template`.
 - **FR-015**: Helm chart MUST follow Helm best practices (proper labels, annotations, helper templates).
 - **FR-016**: Helm chart MUST include a `values.yaml` with sensible defaults and comprehensive documentation.
-- **FR-017**: Helm chart MUST support specifying existing secrets for sensitive values (separate DDL and DML database credentials).
+- **FR-017**: Helm chart MUST support specifying existing secrets for sensitive values (separate migration and broker database credentials).
 - **FR-018**: Helm chart MUST support custom annotations and labels on all created resources.
 - **FR-019**: System MUST use the same Docker image for both broker and migration Job (different entrypoint/command).
 - **FR-020**: Ingress configuration MUST support className and custom annotations, with documented examples for Skipper ingress controller.
-- **FR-021**: Database credentials MUST be injected via environment variables from Kubernetes Secrets (e.g., `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_DATABASE`).
-- **FR-022**: When using Zalando PostgreSQL Operator, Helm chart MUST automatically derive and reference the operator-created secret names following the convention `<username>.<team>-<db>.credentials.postgresql.acid.zalan.do`.
+- **FR-021**: Database credentials MUST be injected via environment variables from Kubernetes Secrets: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.
+- **FR-022**: When using Zalando PostgreSQL Operator, Helm chart MUST automatically derive and reference the operator-created secret names following the convention `<username>.<teamId>-<database>.credentials.postgresql.acid.zalan.do` (example: `broker.broker-broker.credentials.postgresql.acid.zalan.do` for user "broker" with teamId "broker" and database "broker").
+- **FR-023**: For external PostgreSQL deployments, operators MUST manually create both migration and broker database users before Helm installation and provide credentials via two separate Kubernetes Secrets (referenced by `postgresql.external.migrationSecretName` and `postgresql.external.brokerSecretName`).
+- **FR-024**: When migration Job fails, Helm MUST abort the release without creating or updating the broker Deployment; failed Job pods MUST remain available for debugging (helm hook-delete-policy MUST NOT delete on failure).
 
 ### Configuration Requirements
 
@@ -219,14 +222,14 @@ As a platform operator, I want to configure CPU and memory resource limits for t
 | `postgresql.external.host` | string | External PostgreSQL host | `""` |
 | `postgresql.external.port` | integer | External PostgreSQL port | `5432` |
 | `postgresql.external.database` | string | Database name | `broker` |
-| `postgresql.external.ddlSecretName` | string | Existing secret for DDL user credentials | `""` |
-| `postgresql.external.dmlSecretName` | string | Existing secret for DML user credentials | `""` |
+| `postgresql.external.migrationSecretName` | string | Existing secret for migration user credentials | `""` |
+| `postgresql.external.brokerSecretName` | string | Existing secret for broker user credentials | `""` |
 | `postgresql.operator.enabled` | boolean | Create Zalando PostgreSQL CR | `false` |
 | `postgresql.operator.teamId` | string | Zalando operator team ID | `broker` |
 | `postgresql.operator.numberOfInstances` | integer | PostgreSQL replicas | `1` |
 | `postgresql.operator.volume.size` | string | PostgreSQL storage size | `10Gi` |
-| `postgresql.operator.users.ddl` | string | DDL user name for migrations | `broker_ddl` |
-| `postgresql.operator.users.dml` | string | DML user name for broker | `broker_dml` |
+| `postgresql.operator.users.migration` | string | Migration user name for schema changes | `broker-migration` |
+| `postgresql.operator.users.broker` | string | Broker user name for runtime | `broker` |
 | `migrations.enabled` | boolean | Run database migrations | `true` (when storage.type=postgres) |
 | `migrations.backoffLimit` | integer | Job retry limit | `3` |
 | `resources.requests.cpu` | string | CPU request | `100m` |
@@ -315,9 +318,9 @@ postgresql:
     host: postgres.database.svc.cluster.local
     port: 5432
     database: broker
-    # Separate secrets for DDL and DML users
-    ddlSecretName: broker-db-ddl-credentials  # Must contain 'username' and 'password' keys
-    dmlSecretName: broker-db-dml-credentials  # Must contain 'username' and 'password' keys
+    # Separate secrets for migration and broker users
+    migrationSecretName: broker-db-migration-credentials  # Must contain 'username' and 'password' keys
+    brokerSecretName: broker-db-credentials  # Must contain 'username' and 'password' keys
   
   # Option 2: Zalando PostgreSQL Operator (auto-provisions users)
   operator:
@@ -328,8 +331,8 @@ postgresql:
       size: 20Gi
       storageClass: standard
     users:
-      ddl: broker_ddl  # User with DDL permissions for migrations
-      dml: broker_dml  # User with DML permissions for broker
+      migration: broker-migration  # User with schema permissions for migrations
+      broker: broker  # User with data permissions for runtime
 
 # Database migrations (using golang-migrate, runs as Helm pre-install/pre-upgrade hook)
 migrations:
@@ -351,7 +354,7 @@ resources:
 ### Security Requirements
 
 - **SR-001**: Database credentials MUST be stored in Kubernetes Secrets, never in ConfigMaps or plain values.
-- **SR-002**: Migration Job credentials (DDL) and broker credentials (DML) MUST be separate database users.
+- **SR-002**: Migration Job credentials and broker credentials MUST be separate database users.
 - **SR-003**: Helm chart MUST support referencing existing secrets to avoid storing credentials in values files.
 - **SR-004**: Default Security Context MUST run containers as non-root user.
 - **SR-005**: Helm chart MUST support Pod Security Standards (restricted profile compatibility).
@@ -360,11 +363,11 @@ resources:
 ### Key Entities
 
 - **Helm Chart**: The packaged Kubernetes deployment templates with configurable values.
-- **Migration Job**: A Kubernetes Job (Helm pre-install/pre-upgrade hook) that runs golang-migrate with DDL permissions.
-- **Broker Deployment**: The main application Deployment with DML-only database permissions.
+- **Migration Job**: A Kubernetes Job (Helm pre-install/pre-upgrade hook) that runs golang-migrate with schema permissions.
+- **Broker Deployment**: The main application Deployment with data-only database permissions.
 - **PostgreSQL CR**: A Zalando PostgreSQL Operator custom resource for managed database provisioning with dual users.
-- **DDL User**: Database user with schema modification permissions (CREATE, ALTER, DROP) used exclusively by migration Job.
-- **DML User**: Database user with data manipulation permissions only (SELECT, INSERT, UPDATE, DELETE) used by broker runtime.
+- **Migration User**: Database user with schema modification permissions (CREATE, ALTER, DROP) used exclusively by migration Job.
+- **Broker User**: Database user with data manipulation permissions only (SELECT, INSERT, UPDATE, DELETE) used by broker runtime.
 
 ## Success Criteria *(mandatory)*
 
@@ -373,7 +376,7 @@ resources:
 - **SC-001**: Operators can deploy a functional broker to Kubernetes in under 5 minutes using Helm with default values.
 - **SC-002**: Generated static manifests produce identical deployments to Helm installations with the same values.
 - **SC-003**: Database migrations complete before broker pods accept traffic, ensuring schema consistency.
-- **SC-004**: Broker operates with minimum database permissions (DML only) in PostgreSQL deployments.
+- **SC-004**: Broker operates with minimum database permissions (data operations only) in PostgreSQL deployments.
 - **SC-005**: Chart passes `helm lint` validation with no errors or warnings.
 - **SC-006**: All chart templates render successfully with `helm template` for all documented configuration combinations.
 - **SC-007**: Documentation enables first-time users to deploy the broker without prior Helm expertise.
