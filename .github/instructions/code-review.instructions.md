@@ -1,6 +1,6 @@
 ---
 applyTo: "**"
-excludeAgent: ["coding-agent"]
+excludeAgent: "coding-agent"
 ---
 
 When reviewing code, focus on:
