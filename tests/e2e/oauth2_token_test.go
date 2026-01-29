@@ -56,7 +56,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// Create test server wrapping production app
-		testServer, err = bootstrap.NewTestServer(app, logger)
+		testServer, err = bootstrap.NewEndUserTestServer(app, logger)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
