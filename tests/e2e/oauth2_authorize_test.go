@@ -56,7 +56,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create test server from app
-		server, err = bootstrap.NewTestServer(appInstance, logger)
+		server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 		Expect(err).ToNot(HaveOccurred())
 	})
 

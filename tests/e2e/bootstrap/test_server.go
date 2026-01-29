@@ -47,45 +47,126 @@ type TestServerConfig struct {
 	Logger *slog.Logger
 }
 
-// NewTestServer creates a test server from a production app.
-// This wraps httptest.Server with production routes and a test-friendly interface.
+// ServerType indicates what type of routes the test server should serve.
+type ServerType int
+
+const (
+	// ServerTypeEndUser serves end-user routes (OAuth2, consent UI, etc.).
+	ServerTypeEndUser ServerType = iota
+	// ServerTypeAdmin serves admin routes (agent/service management).
+	ServerTypeAdmin
+
+	// DevEndUserPort is the fixed port used for end-user servers in dev mode.
+	// This matches the Vite proxy configuration for local development.
+	DevEndUserPort = 8000
+)
+
+// TestServerOption configures a TestServer.
+type TestServerOption func(*testServerOptions)
+
+// testServerOptions holds configuration for building a TestServer.
+type testServerOptions struct {
+	serverType ServerType
+	port       int  // 0 for random port, non-zero for fixed port
+	fixedPort  bool // true to use fixed port
+}
+
+// validate checks that the options are internally consistent.
+func (o *testServerOptions) validate() error {
+	if o.fixedPort && o.port == 0 {
+		return fmt.Errorf("fixedPort is true but port is 0: specify a port number")
+	}
+	if !o.fixedPort && o.port != 0 {
+		return fmt.Errorf("fixedPort is false but port is %d: use WithFixedPort() to set a fixed port", o.port)
+	}
+	return nil
+}
+
+// WithServerType sets the server type (EndUser or Admin).
+func WithServerType(st ServerType) TestServerOption {
+	return func(o *testServerOptions) {
+		o.serverType = st
+	}
+}
+
+// WithRandomPort configures the server to use a random port (default).
+func WithRandomPort() TestServerOption {
+	return func(o *testServerOptions) {
+		o.port = 0
+		o.fixedPort = false
+	}
+}
+
+// WithFixedPort configures the server to use a specific port.
+// Use this for development mode where the Vite proxy expects port 8000.
+func WithFixedPort(port int) TestServerOption {
+	return func(o *testServerOptions) {
+		o.port = port
+		o.fixedPort = true
+	}
+}
+
+// WithDevMode configures the server for development mode.
+// For end-user servers, this uses fixed port 8000 (for Vite proxy).
+// For admin servers, this uses a random port.
+func WithDevMode() TestServerOption {
+	return func(o *testServerOptions) {
+		// Only use fixed port for end-user server in dev mode
+		if o.serverType == ServerTypeEndUser {
+			o.port = DevEndUserPort
+			o.fixedPort = true
+		} else {
+			o.port = 0
+			o.fixedPort = false
+		}
+	}
+}
+
+// NewTestServerV2 creates a test server with the specified options.
+// This replaces NewTestServer() and provides separate end-user and admin servers.
 //
-// CRITICAL: This function creates the httptest server which listens on a random port.
-// However, if the app.Config.Server.EndUser.PublicURL is already set (e.g., from a test fixture),
-// that value is preserved and used by the OAuth2 services. The app was already initialized with
-// this PublicURL during app.Builder.Build(), so services have copies of that URL internally.
+// Example usage:
 //
-// If you need the test server to use its actual listening address in OAuth2 metadata/redirects,
-// you MUST use NewTestServerWithURLUpdate() instead, which rebuilds the app with the correct URL.
+//	// End-user server with random port
+//	server, err := NewTestServerV2(app, logger, WithServerType(ServerTypeEndUser))
+//
+//	// Admin server with random port
+//	server, err := NewTestServerV2(app, logger, WithServerType(ServerTypeAdmin))
+//
+//	// End-user server for dev mode (fixed port 8000)
+//	if os.Getenv("E2E_FRONTEND_MODE") == "dev" {
+//		server, err := NewTestServerV2(app, logger, WithServerType(ServerTypeEndUser), WithDevMode())
+//	}
 //
 // Parameters:
 //   - app: Fully-wired application from app.Builder.Build()
 //   - logger: Structured logger
+//   - opts: Configuration options
 //
 // Returns:
 //   - *TestServer: Ready to make authenticated requests
 //   - error: If server setup fails
-//
-// Postconditions:
-//   - Server is created and listening (httptest.Server starts automatically)
-//   - Call Close() to shut down (typically in defer)
-//
-// Example:
-//
-//	server, err := NewTestServer(app, logger)
-//	require.NoError(t, err)
-//	defer server.Close()
-//	// server is ready to make authenticated requests
-//
-// NOTE: If the app's PublicURL needs to match the test server's actual address,
-// use NewTestServerWithURLUpdate() instead.
-func NewTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
+func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption) (*TestServer, error) {
 	if app == nil {
 		return nil, fmt.Errorf("app is required")
 	}
-
 	if logger == nil {
 		return nil, fmt.Errorf("logger is required")
+	}
+
+	// Apply options
+	options := &testServerOptions{
+		serverType: ServerTypeEndUser, // Default to end-user
+		port:       0,                 // Default to random port
+		fixedPort:  false,
+	}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	// Validate options
+	if err := options.validate(); err != nil {
+		return nil, fmt.Errorf("invalid options: %w", err)
 	}
 
 	// Create chi router with production middleware setup
@@ -109,73 +190,58 @@ func NewTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
 		_, _ = w.Write([]byte(`{"status":"healthy"}`))
 	})
 
-	// Register production routes using production routing setup
-	// This ensures proper middleware application: some routes are public (metadata, token),
-	// while others require authentication (authorize, consent API)
-	// However, we need to customize SPA mounting for test environment
+	// Register routes based on server type
+	switch options.serverType {
+	case ServerTypeEndUser:
+		// Register production end-user routes
+		// Temporarily disable SPA in production routing
+		spaSaved := app.EnduserHandlers.SPA
+		app.EnduserHandlers.SPA = nil
 
-	// Temporarily disable SPA in production routing by setting it to nil
-	spaSaved := app.EnduserHandlers.SPA
-	app.EnduserHandlers.SPA = nil
-
-	routing.SetupEnduserRoutes(router, app.EnduserHandlers, routing.EnduserRouteConfig{
-		Authentication: app.Config.Server.EndUser.Authentication,
-		Logger:         logger,
-	})
-
-	// Register admin routes for agent and service management
-	// Admin routes are under /api/agents and /api/services
-	// In production, these would be on a separate port, but for E2E testing we combine them
-	if app.AdminHandlers != nil {
-		// Agent management routes (under /api)
-		router.Route("/api/agents", func(r chi.Router) {
-			r.Post("/", app.AdminHandlers.Agents.CreateAgent)             // POST /api/agents
-			r.Get("/", app.AdminHandlers.Agents.ListAgents)               // GET /api/agents
-			r.Get("/{agent-id}", app.AdminHandlers.Agents.GetAgent)       // GET /api/agents/:agent-id
-			r.Put("/{agent-id}", app.AdminHandlers.Agents.UpdateAgent)    // PUT /api/agents/:agent-id
-			r.Delete("/{agent-id}", app.AdminHandlers.Agents.DeleteAgent) // DELETE /api/agents/:agent-id
+		routing.SetupEnduserRoutes(router, app.EnduserHandlers, routing.EnduserRouteConfig{
+			Authentication: app.Config.Server.EndUser.Authentication,
+			Logger:         logger,
 		})
 
-		// Services management routes (under /api)
-		router.Route("/api/services", func(r chi.Router) {
-			r.Post("/", app.AdminHandlers.Services.CreateService)               // POST /api/services
-			r.Get("/", app.AdminHandlers.Services.ListServices)                 // GET /api/services
-			r.Get("/{service-id}", app.AdminHandlers.Services.GetService)       // GET /api/services/:service-id
-			r.Put("/{service-id}", app.AdminHandlers.Services.UpdateService)    // PUT /api/services/:service-id
-			r.Delete("/{service-id}", app.AdminHandlers.Services.DeleteService) // DELETE /api/services/:service-id
-		})
+		// Mount SPA handler at root (/*) as catch-all for History API fallback
+		if spaSaved != nil {
+			router.Handle("/*", spaSaved)
+		}
+
+	case ServerTypeAdmin:
+		// Register production admin routes
+		if app.AdminHandlers == nil {
+			return nil, fmt.Errorf("admin handlers not available: ensure app was built with admin handlers enabled")
+		}
+		routing.SetupAdminRoutes(router, app.AdminHandlers)
+
+	default:
+		return nil, fmt.Errorf("unknown server type: %d", options.serverType)
 	}
 
-	// Mount SPA handler at root (/*) as catch-all for History API fallback.
-	// Chi router evaluates routes in order:
-	// - /api/* routes match first (explicit paths from SetupEnduserRoutes)
-	// - /api/agents/* and /api/services/* routes match next (explicit admin paths)
-	// - /* matches everything else, serving the SPA for client-side routing
-	// This ensures the SPA doesn't intercept API requests.
-	if spaSaved != nil {
-		router.Handle("/*", spaSaved)
-	}
-
-	// Create httptest server with production router
-	// For dev mode with Vite proxy, use fixed port 8000 (Vite proxy hardcoded to this port)
-	// For built mode, use random port for test isolation
+	// Create httptest server with appropriate port configuration
 	var server *httptest.Server
-	if os.Getenv("E2E_FRONTEND_MODE") == "dev" {
-		// Dev mode: Use fixed port 8000 to match Vite proxy configuration
-		listener, err := net.Listen("tcp", "127.0.0.1:8000")
+	if options.fixedPort {
+		// Fixed port mode (for dev mode with Vite proxy)
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", options.port))
 		if err != nil {
-			return nil, fmt.Errorf("failed to listen on port 8000 (ensure no other service is running): %w", err)
+			return nil, fmt.Errorf("failed to listen on port %d: %w", options.port, err)
 		}
 		server = &httptest.Server{
 			Listener: listener,
 			Config:   &http.Server{Handler: router},
 		}
 		server.Start()
-		logger.Info("Test server listening on fixed port 8000 for dev mode", "url", server.URL)
+		logger.Info("Test server listening on fixed port",
+			"port", options.port,
+			"url", server.URL,
+			"type", serverTypeName(options.serverType))
 	} else {
-		// Built mode: Use random port for test isolation
+		// Random port mode (default for test isolation)
 		server = httptest.NewServer(router)
-		logger.Info("Test server listening on random port for built mode", "url", server.URL)
+		logger.Info("Test server listening on random port",
+			"url", server.URL,
+			"type", serverTypeName(options.serverType))
 	}
 
 	return &TestServer{
@@ -183,6 +249,55 @@ func NewTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
 		server: server,
 		logger: logger,
 	}, nil
+}
+
+// serverTypeName returns a human-readable name for the server type.
+func serverTypeName(st ServerType) string {
+	switch st {
+	case ServerTypeEndUser:
+		return "end-user"
+	case ServerTypeAdmin:
+		return "admin"
+	default:
+		return "unknown"
+	}
+}
+
+// NewEndUserTestServer creates an end-user test server.
+// This is a convenience function that wraps NewTestServerV2 with ServerTypeEndUser.
+//
+// The server will use:
+//   - Fixed port 8000 if E2E_FRONTEND_MODE=dev (for Vite proxy)
+//   - Random port otherwise (for test isolation)
+//
+// Example:
+//
+//	server, err := NewEndUserTestServer(app, logger)
+//	require.NoError(t, err)
+//	defer server.Close()
+func NewEndUserTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
+	opts := []TestServerOption{WithServerType(ServerTypeEndUser)}
+
+	// In dev mode, use fixed port for Vite proxy
+	if os.Getenv("E2E_FRONTEND_MODE") == "dev" {
+		opts = append(opts, WithDevMode())
+	}
+
+	return NewTestServerV2(app, logger, opts...)
+}
+
+// NewAdminTestServer creates an admin test server.
+// This is a convenience function that wraps NewTestServerV2 with ServerTypeAdmin.
+//
+// The server always uses a random port for test isolation.
+//
+// Example:
+//
+//	server, err := NewAdminTestServer(app, logger)
+//	require.NoError(t, err)
+//	defer server.Close()
+func NewAdminTestServer(app *app.App, logger *slog.Logger) (*TestServer, error) {
+	return NewTestServerV2(app, logger, WithServerType(ServerTypeAdmin))
 }
 
 // Close gracefully shuts down the server.
