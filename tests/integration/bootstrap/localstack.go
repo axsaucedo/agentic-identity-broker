@@ -210,8 +210,9 @@ func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dyna
 	}
 
 	// Create branch keys for each test service using centralized ID generation
+	branchKeyIdProvider := &awsencryption.BranchKeyIdSupplier{}
 	for _, service := range testServices {
-		branchKeyID := awsencryption.GetBranchKeyID(service)
+		branchKeyID := branchKeyIdProvider.GenerateBranchKeyId(service)
 		encryptionCtx := map[string]string{
 			"service_id": service,
 		}

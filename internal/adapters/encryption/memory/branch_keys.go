@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-// InMemoryBranchKeyRepository implements ports.BranchKeyManager for testing and development.
+// InMemoryBranchKeyRepository implements BranchKeyRepository and BranchKeyIdProvider interfaces for testing and development.
 // It tracks provisioned branch keys in memory using a concurrent-safe map.
 // Used when keyring type is not hierarchical or during testing when real DynamoDB access is not available.
 type InMemoryBranchKeyRepository struct {
@@ -32,7 +32,7 @@ func (r *InMemoryBranchKeyRepository) Create(ctx context.Context, serviceID stri
 		return "", fmt.Errorf("service_id cannot be empty")
 	}
 
-	branchKeyID := getBranchKeyId(serviceID)
+	branchKeyID := r.GenerateBranchKeyId(serviceID)
 	r.provisioned[branchKeyID] = true
 	return branchKeyID, nil
 }
@@ -47,13 +47,36 @@ func (r *InMemoryBranchKeyRepository) Get(ctx context.Context, serviceID string)
 		return "", fmt.Errorf("service_id cannot be empty")
 	}
 
-	branchKeyID := getBranchKeyId(serviceID)
+	branchKeyID := r.GenerateBranchKeyId(serviceID)
 	if r.provisioned[branchKeyID] {
 		return branchKeyID, nil
 	}
 	return "", fmt.Errorf("branch key not found for service_id: %s", serviceID)
 }
 
-func getBranchKeyId(serviceID string) string {
+// GenerateBranchKeyId generates a deterministic branch key ID from a service ID.
+// Format: service_{service_id}_branch_key
+// Example: service_oauth2_branch_key, service_github_branch_key
+func (r *InMemoryBranchKeyRepository) GenerateBranchKeyId(serviceID string) string {
 	return fmt.Sprintf("service_%s_branch_key", serviceID)
+}
+
+// ExtractServiceIdFromBranchKey extracts the service ID from a branch key ID.
+// This is the inverse operation of GenerateBranchKeyId.
+// Format: service_{service_id}_branch_key -> service_id
+// Example: service_oauth2_branch_key -> oauth2
+// Returns empty string if parsing fails.
+func (r *InMemoryBranchKeyRepository) ExtractServiceIdFromBranchKey(branchKeyID string) string {
+	const prefix = "service_"
+	const suffix = "_branch_key"
+
+	// Validate format and extract service ID
+	if len(branchKeyID) > len(prefix)+len(suffix) &&
+		branchKeyID[:len(prefix)] == prefix &&
+		branchKeyID[len(branchKeyID)-len(suffix):] == suffix {
+		return branchKeyID[len(prefix) : len(branchKeyID)-len(suffix)]
+	}
+
+	// Return empty string if parsing fails
+	return ""
 }

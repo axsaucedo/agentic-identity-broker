@@ -31,6 +31,23 @@ type BranchKeyRepository interface {
 	Create(ctx context.Context, serviceID string) (string, error)
 }
 
+// BranchKeyIdProvider defines the interface for generating and parsing branch key IDs.
+// This abstraction eliminates duplicate branch key ID logic across different encryption adapters.
+// Both AWS and Memory implementations use the same deterministic ID format: service_{service_id}_branch_key
+type BranchKeyIdProvider interface {
+	// GenerateBranchKeyId generates a deterministic branch key ID from a service ID.
+	// Format: service_{service_id}_branch_key
+	// Example: service_oauth2_branch_key, service_github_branch_key
+	GenerateBranchKeyId(serviceID string) string
+
+	// ExtractServiceIdFromBranchKey extracts the service ID from a branch key ID.
+	// This is the inverse operation of GenerateBranchKeyId.
+	// Format: service_{service_id}_branch_key -> service_id
+	// Example: service_oauth2_branch_key -> oauth2
+	// Returns empty string if parsing fails.
+	ExtractServiceIdFromBranchKey(branchKeyID string) string
+}
+
 // BranchKeyManager is an alias for BranchKeyRepository, consolidating branch key lifecycle management.
 // This provides a unified interface for branch key provisioning during service creation.
 //
