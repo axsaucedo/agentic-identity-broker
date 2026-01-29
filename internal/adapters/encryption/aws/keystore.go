@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/branchkey"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 )
 
@@ -119,11 +120,11 @@ func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (st
 
 	// AWS Encryption SDK KeyStore requires encryption context when using custom branch key identifiers
 	// Extract service_id from branch key ID using the centralized parser
-	serviceID := ExtractServiceIDFromBranchKeyID(branchKeyID)
-	if serviceID == "" {
+	serviceID, err := branchkey.ExtractServiceID(branchKeyID)
+	if err != nil {
 		return "", encryption.NewKEKUnavailableError(
 			fmt.Sprintf("invalid branch key ID format: %s", branchKeyID),
-			nil,
+			err,
 		)
 	}
 

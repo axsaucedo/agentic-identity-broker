@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/branchkey"
 )
 
 // InMemoryBranchKeyRepository implements BranchKeyRepository and BranchKeyIdProvider interfaces for testing and development.
@@ -58,7 +60,7 @@ func (r *InMemoryBranchKeyRepository) Get(ctx context.Context, serviceID string)
 // Format: service_{service_id}_branch_key
 // Example: service_oauth2_branch_key, service_github_branch_key
 func (r *InMemoryBranchKeyRepository) GenerateBranchKeyId(serviceID string) string {
-	return fmt.Sprintf("service_%s_branch_key", serviceID)
+	return branchkey.GenerateBranchKeyId(serviceID)
 }
 
 // ExtractServiceIdFromBranchKey extracts the service ID from a branch key ID.
@@ -67,16 +69,9 @@ func (r *InMemoryBranchKeyRepository) GenerateBranchKeyId(serviceID string) stri
 // Example: service_oauth2_branch_key -> oauth2
 // Returns empty string if parsing fails.
 func (r *InMemoryBranchKeyRepository) ExtractServiceIdFromBranchKey(branchKeyID string) string {
-	const prefix = "service_"
-	const suffix = "_branch_key"
-
-	// Validate format and extract service ID
-	if len(branchKeyID) > len(prefix)+len(suffix) &&
-		branchKeyID[:len(prefix)] == prefix &&
-		branchKeyID[len(branchKeyID)-len(suffix):] == suffix {
-		return branchKeyID[len(prefix) : len(branchKeyID)-len(suffix)]
+	serviceID, err := branchkey.ExtractServiceID(branchKeyID)
+	if err != nil {
+		return "" // Interface contract: return empty string on parsing failure
 	}
-
-	// Return empty string if parsing fails
-	return ""
+	return serviceID
 }

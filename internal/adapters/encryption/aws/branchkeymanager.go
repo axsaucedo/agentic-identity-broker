@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/branchkey"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 )
 
@@ -10,7 +11,7 @@ import (
 // Handles branch key provisioning for services in DynamoDB via the AWS Encryption SDK KeyStore.
 //
 // Architecture:
-// - Create: Provisions a new branch key for a service using GetBranchKeyID() and KeyStore
+// - Create: Provisions a new branch key for a service using branchkey package for ID generation
 // - Get: Retrieves branch key ID (uses same deterministic ID generation)
 // - ID resolution at runtime: Delegated to BranchKeyIdSupplier for encryption/decryption
 type AWSBranchKeyManager struct {
@@ -37,8 +38,8 @@ func (m *AWSBranchKeyManager) Create(ctx context.Context, serviceID string) (str
 		return "", encryption.NewKEKUnavailableError("service_id cannot be empty", nil)
 	}
 
-	// 2. Generate deterministic branch key ID (using helper to match supplier logic)
-	branchKeyID := GetBranchKeyID(serviceID)
+	// 2. Generate deterministic branch key ID (same format used at runtime)
+	branchKeyID := branchkey.GenerateBranchKeyId(serviceID)
 
 	// 3. Provision in DynamoDB via KeyStore
 	provisioned, err := m.keyStore.CreateBranchKey(ctx, branchKeyID)
