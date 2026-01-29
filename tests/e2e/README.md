@@ -26,7 +26,9 @@ This directory contains comprehensive end-to-end (E2E) tests for the Agentic Ide
 
 **Components**:
 - `test_server.go` - Wraps httptest.Server with authenticated request methods
-  - `NewTestServer()` - Creates server from app.App
+  - `NewEndUserTestServer()` - Creates end-user server (OAuth2, consent routes)
+  - `NewAdminTestServer()` - Creates admin server (agent/service management routes)
+  - `NewTestServerV2()` - Flexible server creation with options pattern
   - `AuthenticatedGET/POST()` - Makes requests with X-Remote-User injection
   - `PublicGET()` - Makes unauthenticated requests
   - `DirectRequest()` - Advanced request control
@@ -45,6 +47,12 @@ This directory contains comprehensive end-to-end (E2E) tests for the Agentic Ide
 - httptest.Server for HTTP layer testing
 - In-memory storage for fast tests without database
 - Dependency injection for app configuration
+- **Separate servers for end-user and admin routes** - Tests now use distinct server instances matching production architecture:
+  - End-user server: OAuth2 endpoints, consent UI, public APIs
+  - Admin server: Agent and service management APIs
+  - Use `NewEndUserTestServer()` for OAuth2/consent tests
+  - Use `NewAdminTestServer()` for agent/service management tests
+  - Use both servers in tests that need both route types (see `agent_permission_requirements_test.go`)
 - See `test_server.go` for detailed flow documentation
 
 ### Layer 2: Fixtures (`fixtures/`)
@@ -943,7 +951,12 @@ var _ = Describe("OAuth2 Device Authorization Flow", func() {
 
         serverFactory := bootstrap.NewServerFactory(config, logger)
         appInstance, _ := serverFactory.BuildApp(testStorage)
-        server, _ = bootstrap.NewTestServer(appInstance, logger)
+        
+        // Use appropriate server type based on routes needed
+        // For end-user routes (OAuth2, consent):
+        server, _ = bootstrap.NewEndUserTestServer(appInstance, logger)
+        // For admin routes (agent/service management):
+        // adminServer, _ = bootstrap.NewAdminTestServer(appInstance, logger)
     })
 
     AfterEach(func() {
@@ -1387,7 +1400,8 @@ Describe("OAuth2 Edge Cases", func() {
         built, err := factory.BuildApp(storage)
         Expect(err).ToNot(HaveOccurred())
 
-        server, err = bootstrap.NewTestServer(built, logger)
+        // Use appropriate server type for your test
+        server, err = bootstrap.NewEndUserTestServer(built, logger)
         Expect(err).ToNot(HaveOccurred())
 
         // Create and store test agent
@@ -1434,7 +1448,8 @@ Describe("OAuth2 Edge Cases", func() {
 
         factory := bootstrap.NewServerFactory(config, logger)
         appInstance, _ := factory.BuildApp(testStorage)
-        server, _ = bootstrap.NewTestServer(appInstance, logger)
+        // Use appropriate server type for your test
+        server, _ = bootstrap.NewEndUserTestServer(appInstance, logger)
     })
 
     AfterEach(func() {
@@ -2002,7 +2017,8 @@ Describe("OAuth2 token exchange", func() {
     BeforeEach(func() {
         // Given: Setup preconditions (in BeforeEach, not It block!)
         testStorage, _ = storageFactory.NewTestStorage()
-        server, _ = bootstrap.NewTestServer(appInstance, logger)
+        // Use appropriate server type for your test
+        server, _ = bootstrap.NewEndUserTestServer(appInstance, logger)
 
         agent = fixtures.ValidAgent()
         testStorage.Agents().Create(ctx, agent)

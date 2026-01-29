@@ -212,7 +212,8 @@ var _ = BeforeEach(func() {
 	Expect(err).NotTo(HaveOccurred(), "Failed to build app instance")
 
 	// Step 4: Create fresh test server
-	server, err := bootstrap.NewTestServer(appInstance, suiteCtx.Logger)
+	// Frontend tests use end-user routes (OAuth2, consent UI)
+	server, err := bootstrap.NewEndUserTestServer(appInstance, suiteCtx.Logger)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create test server")
 
 	// Step 5: Determine frontend URL based on mode
