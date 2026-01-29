@@ -277,112 +277,70 @@ type SecurityConfig struct {
 }
 
 // EncryptionConfig contains configuration for encryption operations.
-// Used by the EncryptionPort to configure envelope encryption with AWS KMS or environment variables.
+// Uses backend-explicit design to enforce exactly one encryption backend.
+// This makes illegal states unrepresentable at the type level.
 type EncryptionConfig struct {
-	// KeyEncryptionKey specifies the Key Encryption Key (KEK) for envelope encryption.
-	// Supports two formats:
-	//   1. AWS KMS ARN: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
-	//   2. Base64-encoded AES256 key: Can be injected via environment variable like "${ENCRYPTION_KEK}"
-	//
-	// The KEK is used to encrypt/decrypt Data Encryption Keys (DEKs) in the envelope encryption pattern.
-	// Each user session generates a unique DEK that encrypts OAuth2 tokens, then the DEK is encrypted
-	// with this KEK and stored alongside the encrypted tokens.
-	//
-	// AWS KMS format provides enterprise-grade key management with:
-	// - Hardware Security Module (HSM) protection
-	// - Automatic key rotation capabilities
-	// - CloudTrail audit logging
-	// - Fine-grained IAM access control
-	// - Multi-region replication support
-	//
-	// Base64-encoded key format is intended for:
-	// - Development and testing environments
-	// - Local debugging without AWS dependencies
-	// - CI/CD pipelines with injected secrets
-	//
-	// SECURITY: This field contains sensitive key material and will be redacted in logs.
-	KeyEncryptionKey string `mapstructure:"key" validate:"required"`
+	// AWSKMS contains AWS KMS backend configuration.
+	// When set, the system uses AWS KMS with hierarchical keyring for envelope encryption.
+	// Exactly one of AWSKMS or Memory must be non-nil.
+	AWSKMS *AWSKMSConfig `mapstructure:"aws_kms"`
 
-	// DynamoDBTableName specifies the DynamoDB table for caching branch keys in the AWS KMS hierarchical keyring.
-	// The hierarchical keyring uses this table to cache branch keys, reducing the number of KMS API calls.
-	// Each branch key is cached with a TTL for automatic expiration.
+	// Memory contains in-memory backend configuration.
+	// When set, the system uses raw AES keyring with environment variable KEK.
+	// Exactly one of AWSKMS or Memory must be non-nil.
+	Memory *MemoryConfig `mapstructure:"memory"`
+}
+
+// AWSKMSConfig contains AWS KMS specific configuration for envelope encryption.
+// Used when EncryptionConfig.AWSKMS is non-nil.
+type AWSKMSConfig struct {
+	// KeyARN specifies the AWS KMS Customer-Managed Key (CMK) ARN.
+	// Format: "arn:aws:kms:region:account-id:key/key-id" or "arn:aws:kms:region:account-id:alias/alias-name"
+	// REQUIRED when AWS KMS backend is selected.
 	//
-	// Required for AWS KMS hierarchical keyring deployments.
+	// Examples:
+	//   - "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+	//   - "arn:aws:kms:us-east-1:123456789012:alias/my-encryption-key"
+	KeyARN string `mapstructure:"key_arn" validate:"required_if_backend"`
+
+	// DynamoDBTableName specifies the DynamoDB table for caching branch keys.
+	// The hierarchical keyring uses this table to cache branch keys, reducing KMS API calls.
 	// Defaults to "IdentityBrokerEncryptionBranchKeys" if not specified.
 	//
-	// The table must have the following schema:
+	// Required table schema:
 	// - Partition key: "BranchKeyId" (String)
 	// - Sort key: "TimeToLive" (Number, for TTL-based auto-deletion)
-	//
-	// AWS will automatically delete expired items when TTL expires.
 	DynamoDBTableName string `mapstructure:"dynamodb_table_name"`
 
 	// BranchKeyTTL specifies the Time-To-Live for cached branch keys in DynamoDB.
-	// Branch keys are cached in DynamoDB to reduce KMS API calls in high-throughput scenarios.
-	// After this duration, cached branch keys expire and new ones are generated from KMS.
-	//
-	// Valid range: 1 minute to 24 hours. Defaults to 1 hour if not specified.
-	// Shorter TTL values provide better key rotation but increase KMS API calls.
-	// Longer TTL values reduce KMS API calls but delay key rotation.
-	//
+	// Valid range: 1 minute to 24 hours. Defaults to "1h" if not specified.
 	// Format: duration string (e.g., "1h", "30m", "3600s")
-	// Examples:
-	//   - "30m" - 30 minutes
-	//   - "1h" - 1 hour
-	//   - "4h" - 4 hours
-	//   - "24h" - 24 hours
 	BranchKeyTTL string `mapstructure:"branch_key_ttl"`
 
-	// KeyringType specifies the type of keyring to use for encryption.
-	// Valid values: "hierarchical" (recommended), "kms", "raw"
-	//
-	// - "hierarchical": AWS KMS hierarchical keyring with DynamoDB caching (recommended for production)
-	//   Uses branch keys cached in DynamoDB to reduce KMS API calls.
-	//   Provides best performance and cost efficiency.
-	//
-	// - "kms": Direct AWS KMS keyring without caching
-	//   Every encryption/decryption operation calls KMS directly.
-	//   Higher API costs but simpler deployment.
-	//
-	// - "raw": Raw AES keyring for environment variable KEK
-	//   Used only for development/testing with ${ENCRYPTION_KEK} format.
-	//
-	// Defaults to "hierarchical" if not specified.
-	KeyringType string `mapstructure:"keyring_type"`
-
 	// DynamoDBRegion specifies the AWS region for DynamoDB operations.
-	// Only used with hierarchical keyring type.
-	//
-	// If not specified, uses the default AWS region from AWS SDK configuration:
-	// - AWS_REGION environment variable
-	// - AWS_DEFAULT_REGION environment variable
-	// - ~/.aws/config default region
-	// - EC2 instance metadata (if running on EC2)
-	//
+	// If not specified, uses default AWS SDK region resolution.
 	// Examples: "us-east-1", "eu-west-1", "ap-southeast-1"
 	DynamoDBRegion string `mapstructure:"dynamodb_region"`
 
-	// DynamoDBReadTimeout specifies the timeout for DynamoDB read operations.
-	// Only used with hierarchical keyring type.
-	//
-	// Format: duration string (e.g., "5s", "1000ms")
-	// Valid range: 1 second to 5 minutes. Defaults to 5 seconds if not specified.
-	//
-	// Examples:
-	//   - "1s" - 1 second
-	//   - "5s" - 5 seconds
-	//   - "30s" - 30 seconds
+	// DynamoDBReadTimeout specifies timeout for DynamoDB read operations.
+	// Format: duration string. Valid range: 1s to 5m. Defaults to "5s".
 	DynamoDBReadTimeout string `mapstructure:"dynamodb_read_timeout"`
 
-	// DynamoDBWriteTimeout specifies the timeout for DynamoDB write operations.
-	// Only used with hierarchical keyring type.
-	//
-	// Format: duration string (e.g., "5s", "1000ms")
-	// Valid range: 1 second to 5 minutes. Defaults to 5 seconds if not specified.
-	//
-	// Examples:
-	//   - "1s" - 1 second
-	//   - "5s" - 5 seconds
-	//   - "30s" - 30 seconds
+	// DynamoDBWriteTimeout specifies timeout for DynamoDB write operations.
+	// Format: duration string. Valid range: 1s to 5m. Defaults to "5s".
 	DynamoDBWriteTimeout string `mapstructure:"dynamodb_write_timeout"`
+}
+
+// MemoryConfig contains in-memory backend configuration for envelope encryption.
+// Used when EncryptionConfig.Memory is non-nil.
+type MemoryConfig struct {
+	// RawKey specifies the base64-encoded AES-256 key for envelope encryption.
+	// Must be exactly 32 bytes (256 bits) when decoded.
+	// REQUIRED when Memory backend is selected.
+	//
+	// Generate with: openssl rand -base64 32
+	// Environment variable injection supported: "${ENCRYPTION_KEK}"
+	//
+	// SECURITY: This field contains sensitive key material and will be redacted in logs.
+	RawKey string `mapstructure:"raw_key" validate:"required_if_backend"`
 }

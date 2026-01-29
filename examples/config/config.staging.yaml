@@ -51,12 +51,16 @@ storage:
     write: 10s
 
 encryption:
-  # Key encryption key for securing sensitive data
-  # Can be either:
-  # 1. AWS KMS ARN: arn:aws:kms:region:account-id:key/key-id
-  # 2. Base64-encoded 32-byte AES-256 key
-  # MUST be provided via environment variable in production
-  key: ${IDENTITY_BROKER_ENCRYPTION_KEY}
+  # Memory backend for staging (suitable for testing)
+  memory:
+    # Base64-encoded 32-byte AES-256 key
+    # MUST be provided via environment variable for security
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
+
+  # For AWS KMS backend (alternative for staging):
+  # aws_kms:
+  #   key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
+  #   dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys-Staging"
 
 # Future sections for expanded configuration:
 # database:

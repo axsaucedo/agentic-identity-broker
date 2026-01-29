@@ -165,7 +165,7 @@ encryption:
 
 			// Set mandatory JWESigningKey and encryption key for all tests
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
-			t.Setenv("IDENTITY_BROKER_ENCRYPTION_KEY", testEncryptionKey)
+			t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", testEncryptionKey)
 
 			// Create YAML config file if content is provided
 			var configPath string
@@ -283,7 +283,15 @@ func TestConfigurationFromExamples(t *testing.T) {
 
 			// Set mandatory JWESigningKey and encryption key
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
-			t.Setenv("IDENTITY_BROKER_ENCRYPTION_KEY", testEncryptionKey)
+
+			// Set encryption backend environment variables based on config type
+			if tt.name == "production config" {
+				// Production config expects AWS KMS backend
+				t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/test-key-id")
+			} else {
+				// Development and staging configs use Memory backend
+				t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", testEncryptionKey)
+			}
 
 			// Create loader
 			loader := config.NewLoader()

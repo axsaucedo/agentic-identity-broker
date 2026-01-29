@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 const (
@@ -413,4 +414,108 @@ func verifyKMSKeyAccessible(ctx context.Context, client *kms.Client, keyArn stri
 		)
 	}
 	return nil
+}
+
+// NewEncryptionAdapter creates an encryption adapter based on the configuration backend.
+// This factory function implements the backend-explicit configuration design.
+// Returns adapter, branch key manager, and error if configuration is invalid or adapter creation fails.
+func NewEncryptionAdapter(config *ports.EncryptionConfig) (*AWSAdapter, ports.BranchKeyManager, error) {
+	if config == nil {
+		return nil, nil, encryption.NewKEKUnavailableError("encryption configuration is required", nil)
+	}
+
+	// Count configured backends to ensure exactly one is set
+	backendCount := 0
+	if config.AWSKMS != nil {
+		backendCount++
+	}
+	if config.Memory != nil {
+		backendCount++
+	}
+
+	// Validate exactly one backend is configured
+	if backendCount == 0 {
+		return nil, nil, encryption.NewKEKUnavailableError(
+			"exactly one encryption backend must be configured (aws_kms or memory)",
+			nil,
+		)
+	}
+	if backendCount > 1 {
+		return nil, nil, encryption.NewKEKUnavailableError(
+			"exactly one encryption backend must be configured, not both aws_kms and memory",
+			nil,
+		)
+	}
+
+	// Create adapter based on configured backend
+	if config.AWSKMS != nil {
+		return createAWSKMSAdapter(config.AWSKMS)
+	}
+
+	if config.Memory != nil {
+		return createMemoryAdapter(config.Memory)
+	}
+
+	// Should never reach here due to validation above
+	return nil, nil, encryption.NewKEKUnavailableError("no valid backend configuration found", nil)
+}
+
+// createAWSKMSAdapter creates an adapter for AWS KMS backend
+func createAWSKMSAdapter(config *ports.AWSKMSConfig) (*AWSAdapter, ports.BranchKeyManager, error) {
+	// Apply defaults for optional fields
+	dynamoDBTableName := config.DynamoDBTableName
+	if dynamoDBTableName == "" {
+		dynamoDBTableName = "IdentityBrokerEncryptionBranchKeys"
+	}
+
+	// Parse optional duration fields with defaults
+	var branchKeyTTL time.Duration
+	branchKeyTTLStr := config.BranchKeyTTL
+	if branchKeyTTLStr == "" {
+		branchKeyTTLStr = "1h" // Default
+	}
+
+	if branchKeyTTLStr != "" {
+		ttl, err := time.ParseDuration(branchKeyTTLStr)
+		if err != nil {
+			return nil, nil, encryption.NewKEKUnavailableError(
+				fmt.Sprintf("invalid branch_key_ttl duration: %v", err),
+				err,
+			)
+		}
+		branchKeyTTL = ttl
+	}
+
+	// Create adapter using existing function
+	adapter, manager, err := NewAWSEncryption(
+		config.KeyARN,
+		dynamoDBTableName,
+		branchKeyTTL,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Handle interface nil pointer issue: if manager is a nil pointer, return nil interface
+	if manager == nil {
+		return adapter, nil, nil
+	}
+
+	return adapter, manager, nil
+}
+
+// createMemoryAdapter creates an adapter for Memory backend
+func createMemoryAdapter(config *ports.MemoryConfig) (*AWSAdapter, ports.BranchKeyManager, error) {
+	// Create adapter using existing function with base64 key
+	adapter, manager, err := NewAWSEncryption(config.RawKey, "", 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Handle interface nil pointer issue: if manager is a nil pointer, return nil interface
+	if manager == nil {
+		return adapter, nil, nil
+	}
+
+	return adapter, manager, nil
 }

@@ -71,13 +71,21 @@ storage:
     write: 10s
 
 encryption:
-  # Key encryption key for securing sensitive data
-  # REQUIRED: Must be set via environment variable
-  # Can be either:
-  # 1. AWS KMS ARN: arn:aws:kms:region:account-id:key/key-id (recommended)
-  # 2. Base64-encoded 32-byte AES-256 key
-  # SECURITY: Never commit actual keys to version control
-  key: ${IDENTITY_BROKER_ENCRYPTION_KEY}
+  # AWS KMS backend for production (recommended for security)
+  aws_kms:
+    # AWS KMS Customer-Managed Key ARN (REQUIRED)
+    # SECURITY: Must be set via environment variable, never hardcoded
+    key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
+    # DynamoDB table for branch key caching
+    dynamodb_table_name: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME:IdentityBrokerEncryptionBranchKeys}
+    # Branch key TTL (default: 1h)
+    branch_key_ttl: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL:1h}
+
+  # Alternative: Memory backend (not recommended for production)
+  # memory:
+  #   # Base64-encoded 32-byte AES-256 key
+  #   # SECURITY: Must be set via environment variable, never hardcoded
+  #   raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
 
 # Future sections for expanded configuration:
 # database:

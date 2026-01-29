@@ -195,61 +195,33 @@ func (b *Builder) Build() (*App, error) {
 	if b.encryption != nil {
 		// Builder override takes precedence (for testing)
 		encryptor = b.encryption
-	} else if b.config.Encryption.KeyEncryptionKey != "" {
-		// Production/Staging: Initialize AWS Encryption SDK adapter with configured KEK
-		// Supports both AWS KMS ARN and environment variable injection
-		// This follows a 6-phase initialization flow:
-		//   1. Parse configuration values
-		//   2. Apply configuration defaults
-		//   3. Validate configuration
-		//   4. Create KeyStore with AWS clients
-		//   5. Create BranchKeySupplier
-		//   6. Create hierarchical keyring
-
-		// Phase 1-2: Parse and apply defaults for BranchKeyTTL
-		branchKeyTTL := time.Duration(0)
-		if b.config.Encryption.BranchKeyTTL != "" {
-			var err error
-			branchKeyTTL, err = time.ParseDuration(b.config.Encryption.BranchKeyTTL)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse encryption.branch_key_ttl %q: %w", b.config.Encryption.BranchKeyTTL, err)
-			}
-		}
-
-		// Phase 3: Validate keyring type if specified
-		keyringType := b.config.Encryption.KeyringType
-		if keyringType == "" {
-			keyringType = "hierarchical" // default
-		}
-		if keyringType != "hierarchical" && keyringType != "raw" {
-			return nil, fmt.Errorf("invalid encryption.keyring_type %q: must be 'hierarchical' or 'raw'", keyringType)
-		}
-
-		// Phase 4-6: Create AWS encryption adapter with branch key manager
-		adapter, branchKeyManager, err := awsencryption.NewAWSEncryption(
-			b.config.Encryption.KeyEncryptionKey,
-			b.config.Encryption.DynamoDBTableName,
-			branchKeyTTL,
-		)
+	} else if b.config.Encryption.AWSKMS != nil || b.config.Encryption.Memory != nil {
+		// Production/Development: Use new backend-explicit configuration factory
+		// The factory handles backend detection and validation automatically
+		adapter, branchKeyManager, err := awsencryption.NewEncryptionAdapter(&b.config.Encryption)
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize AWS encryption adapter: %w", err)
+			return nil, fmt.Errorf("failed to initialize encryption adapter: %w", err)
 		}
 		encryptor = adapter
 
-		// Wire BranchKeyManager from AWS adapter if not already set
-		if b.branchKeyManager == nil && branchKeyManager != nil {
+		// Wire branch key manager if available (for all backends except no-op)
+		if branchKeyManager != nil && b.branchKeyManager == nil {
 			b.branchKeyManager = branchKeyManager
-			b.logger.Info("BranchKeyManager wired from AWS encryption adapter")
 		}
 
-		// Log initialization with all configuration details
-		b.logger.Info("AWS Encryption SDK adapter initialized",
-			"keyring_type", keyringType,
-			"dynamodb_table", b.config.Encryption.DynamoDBTableName,
-			"dynamodb_region", b.config.Encryption.DynamoDBRegion,
-			"branch_key_ttl", branchKeyTTL,
-			"dynamodb_read_timeout", b.config.Encryption.DynamoDBReadTimeout,
-			"dynamodb_write_timeout", b.config.Encryption.DynamoDBWriteTimeout)
+		// Log initialization with backend information
+		if b.config.Encryption.AWSKMS != nil {
+			b.logger.Info("AWS KMS encryption adapter initialized",
+				"dynamodb_table", b.config.Encryption.AWSKMS.DynamoDBTableName,
+				"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
+				"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
+				"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
+				"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
+				"branch_key_manager_wired", branchKeyManager != nil)
+		} else if b.config.Encryption.Memory != nil {
+			b.logger.Info("Memory encryption adapter initialized",
+				"branch_key_manager_wired", branchKeyManager != nil)
+		}
 	} else {
 		encryptor = noop.NewNoOpEncryption()
 		b.logger.Info("No-op encryption enabled (development mode)")

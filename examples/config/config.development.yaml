@@ -50,12 +50,14 @@ storage:
     write: 10s
 
 encryption:
-  # Key encryption key for securing sensitive data
-  # Can be either:
-  # 1. AWS KMS ARN: arn:aws:kms:region:account-id:key/key-id
-  # 2. Base64-encoded 32-byte AES-256 key
-  # In development, use a test key (32 bytes base64-encoded)
-  key: ${IDENTITY_BROKER_ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+  # Memory backend for development (uses base64-encoded AES-256 key)
+  memory:
+    # Base64-encoded 32-byte AES-256 key (can be set via environment variable)
+    # Default fallback key provided for development convenience
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+
+  # AWS KMS backend not used in development
+  # aws_kms: null
 
 # Future sections for expanded configuration:
 # database:

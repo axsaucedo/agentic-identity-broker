@@ -306,57 +306,118 @@ func formatValidationError(field string, value string, expected string, err erro
 	}
 }
 
-// validateEncryptionConfig validates the encryption configuration.
-// KeyEncryptionKey is required and must be either an AWS KMS ARN or base64-encoded AES256 key.
+// validateEncryptionConfig validates the new backend-explicit encryption configuration.
+// Ensures exactly one backend (AWS KMS or Memory) is configured.
 func validateEncryptionConfig(cfg *ports.EncryptionConfig) error {
-	// KeyEncryptionKey is required
-	if cfg.KeyEncryptionKey == "" {
+	// Count configured backends
+	backendCount := 0
+	if cfg.AWSKMS != nil {
+		backendCount++
+	}
+	if cfg.Memory != nil {
+		backendCount++
+	}
+
+	// Ensure exactly one backend is configured
+	if backendCount == 0 {
 		return formatValidationError(
-			"encryption.key",
-			"",
-			"AWS KMS ARN or base64-encoded AES256 key",
+			"encryption",
+			"neither backend configured",
+			"exactly one backend (aws_kms or memory) must be configured",
+			nil,
+		)
+	}
+	if backendCount > 1 {
+		return formatValidationError(
+			"encryption",
+			"multiple backends configured",
+			"exactly one backend (aws_kms or memory) must be configured, not both",
 			nil,
 		)
 	}
 
-	// Validate KeyEncryptionKey format
-	if err := validateKeyEncryptionKeyFormat(cfg.KeyEncryptionKey); err != nil {
+	// Validate backend-specific configuration
+	if cfg.AWSKMS != nil {
+		if err := validateAWSKMSConfig(cfg.AWSKMS); err != nil {
+			return err
+		}
+	}
+	if cfg.Memory != nil {
+		if err := validateMemoryConfig(cfg.Memory); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateAWSKMSConfig validates AWS KMS backend configuration.
+func validateAWSKMSConfig(cfg *ports.AWSKMSConfig) error {
+	// KeyARN is required
+	if cfg.KeyARN == "" {
 		return formatValidationError(
-			"encryption.key",
-			maskSensitiveValue(cfg.KeyEncryptionKey),
-			"valid AWS KMS ARN or base64-encoded AES256 key",
-			err,
+			"encryption.aws_kms.key_arn",
+			"",
+			"AWS KMS ARN (arn:aws:kms:region:account:key/key-id)",
+			nil,
+		)
+	}
+
+	// Validate KeyARN format
+	if !strings.HasPrefix(cfg.KeyARN, "arn:aws:kms:") {
+		return formatValidationError(
+			"encryption.aws_kms.key_arn",
+			maskSensitiveValue(cfg.KeyARN),
+			"valid AWS KMS ARN format (arn:aws:kms:region:account:key/key-id)",
+			nil,
+		)
+	}
+
+	// Basic ARN structure validation
+	parts := strings.Split(cfg.KeyARN, ":")
+	if len(parts) < 6 {
+		return formatValidationError(
+			"encryption.aws_kms.key_arn",
+			maskSensitiveValue(cfg.KeyARN),
+			"valid AWS KMS ARN with at least 6 colon-separated parts",
+			nil,
 		)
 	}
 
 	return nil
 }
 
-// validateKeyEncryptionKeyFormat validates the format of the Key Encryption Key.
-// Supports AWS KMS ARN format (arn:aws:kms:...) or base64-encoded 32-byte AES256 key.
-func validateKeyEncryptionKeyFormat(kek string) error {
-	if kek == "" {
-		return fmt.Errorf("empty key encryption key")
+// validateMemoryConfig validates Memory backend configuration.
+func validateMemoryConfig(cfg *ports.MemoryConfig) error {
+	// RawKey is required
+	if cfg.RawKey == "" {
+		return formatValidationError(
+			"encryption.memory.raw_key",
+			"",
+			"base64-encoded 32-byte AES-256 key",
+			nil,
+		)
 	}
 
-	// Check if it's an AWS KMS ARN
-	if strings.HasPrefix(kek, "arn:aws:kms:") {
-		// Basic validation: ARN should have the format arn:aws:kms:region:account-id:key/key-id
-		parts := strings.Split(kek, ":")
-		if len(parts) < 6 {
-			return fmt.Errorf("invalid AWS KMS ARN format: expected at least 6 colon-separated parts")
-		}
-		return nil
-	}
-
-	// Try to decode as base64 and validate it's 32 bytes (256 bits for AES256)
-	keyBytes, err := base64.StdEncoding.DecodeString(kek)
+	// Validate base64 encoding
+	keyBytes, err := base64.StdEncoding.DecodeString(cfg.RawKey)
 	if err != nil {
-		return fmt.Errorf("must be either an AWS KMS ARN (arn:aws:kms:...) or valid base64-encoded key: %w", err)
+		return formatValidationError(
+			"encryption.memory.raw_key",
+			maskSensitiveValue(cfg.RawKey),
+			"valid base64-encoded string",
+			err,
+		)
 	}
 
+	// Validate key length (must be exactly 32 bytes for AES-256)
 	if len(keyBytes) != 32 {
-		return fmt.Errorf("base64-decoded key must be exactly 32 bytes for AES256, got %d bytes", len(keyBytes))
+		return formatValidationError(
+			"encryption.memory.raw_key",
+			fmt.Sprintf("%d bytes", len(keyBytes)),
+			"exactly 32 bytes when decoded (AES-256)",
+			nil,
+		)
 	}
 
 	return nil

@@ -5,17 +5,20 @@
 
 # Encryption configuration using base64-encoded key in environment variable
 encryption:
-  # Base64-encoded Key Encryption Key from environment variable
-  # The application expects this to be a base64-encoded 256-bit (32-byte) AES key
-  # Set via IDENTITY_BROKER_ENCRYPTION_KEY environment variable
-  # This enables secure key management without hardcoding secrets in configuration files
-  key_encryption_key: "${ENCRYPTION_KEK}"
+  # Memory backend configuration
+  memory:
+    # Base64-encoded Key Encryption Key from environment variable (REQUIRED)
+    # The application expects this to be a base64-encoded 256-bit (32-byte) AES key
+    # Set via IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY environment variable
+    # This enables secure key management without hardcoding secrets in configuration files
+    raw_key: "${ENCRYPTION_KEK}"
 
-  # Note: DynamoDB branch key caching is only used with AWS KMS ARN configuration
-  # Environment variable KEK uses in-memory Raw AES keyring (no DynamoDB caching)
-  # The following parameters are ignored when using base64 key:
-  # - dynamodb_table_name
-  # - branch_key_ttl
+  # AWS KMS backend is NOT configured (exactly one backend must be specified)
+  # aws_kms: null
+
+  # Note: DynamoDB branch key caching is only used with AWS KMS backend configuration
+  # Memory backend uses in-memory Raw AES keyring (no DynamoDB caching)
+  # DynamoDB parameters are ignored when using Memory backend
 
 # Environment variable setup:
 #
@@ -23,14 +26,14 @@ encryption:
 #
 # Linux/macOS:
 # export ENCRYPTION_KEK="generated-base64-key-here"
-# export IDENTITY_BROKER_ENCRYPTION_KEY="${ENCRYPTION_KEK}"
+# export IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY="${ENCRYPTION_KEK}"
 #
 # Windows:
 # set ENCRYPTION_KEK=generated-base64-key-here
-# set IDENTITY_BROKER_ENCRYPTION_KEY=%ENCRYPTION_KEK%
+# set IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY=%ENCRYPTION_KEK%
 #
 # Docker:
-# docker run -e ENCRYPTION_KEK="generated-base64-key-here" -e IDENTITY_BROKER_ENCRYPTION_KEY='${ENCRYPTION_KEK}' your-image
+# docker run -e ENCRYPTION_KEK="generated-base64-key-here" -e IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY='${ENCRYPTION_KEK}' your-image
 #
 # Kubernetes Secret:
 # apiVersion: v1
@@ -97,7 +100,7 @@ third_party_oauth2:
 #     image: identity-broker:latest
 #     environment:
 #       # ENCRYPTION_KEK: base64-encoded 32-byte key (store securely, not in compose file)
-#       # IDENTITY_BROKER_ENCRYPTION_KEY: ${ENCRYPTION_KEK}
+#       # IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY: ${ENCRYPTION_KEK}
 #       - GO_ENV=development
 #     ports:
 #       - "8000:8000"
@@ -113,7 +116,7 @@ third_party_oauth2:
 # CI/CD Pipeline example (GitHub Actions):
 # env:
 #   ENCRYPTION_KEK: ${{ secrets.ENCRYPTION_KEK }}
-#   IDENTITY_BROKER_ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEK }}
+#   IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY: ${{ secrets.ENCRYPTION_KEK }}
 #
 # Where ENCRYPTION_KEK is stored as a repository secret with a base64-encoded 32-byte key
 

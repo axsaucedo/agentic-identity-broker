@@ -50,7 +50,9 @@ func validTestConfig() *ports.Config {
 			JWESigningKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
 		},
 		Encryption: ports.EncryptionConfig{
-			KeyEncryptionKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+			Memory: &ports.MemoryConfig{
+				RawKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+			},
 		},
 	}
 }

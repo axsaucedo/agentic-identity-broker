@@ -6,36 +6,54 @@
 
 # Encryption configuration for production environments using AWS KMS hierarchical keyring
 encryption:
-  # AWS KMS Customer-Managed Key (CMK) ARN
-  # Replace with your actual KMS key ARN from the AWS Console or CLI
-  # Format: arn:aws:kms:<region>:<account-id>:key/<key-id>
-  #
-  # Benefits of AWS KMS:
-  # - Hardware Security Module (HSM) protection
-  # - Automatic key rotation (configurable)
-  # - CloudTrail audit logging of all key operations
-  # - Fine-grained IAM access control
-  # - Multi-region replication for high availability
-  # - Compliance certifications (FIPS 140-2, Common Criteria)
-  key_encryption_key: "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+  # AWS KMS backend configuration
+  aws_kms:
+    # AWS KMS Customer-Managed Key (CMK) ARN (REQUIRED)
+    # Replace with your actual KMS key ARN from the AWS Console or CLI
+    # Format: arn:aws:kms:<region>:<account-id>:key/<key-id>
+    #
+    # Benefits of AWS KMS:
+    # - Hardware Security Module (HSM) protection
+    # - Automatic key rotation (configurable)
+    # - CloudTrail audit logging of all key operations
+    # - Fine-grained IAM access control
+    # - Multi-region replication for high availability
+    # - Compliance certifications (FIPS 140-2, Common Criteria)
+    key_arn: "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
 
-  # DynamoDB table name for caching branch keys (optional)
-  # The hierarchical keyring caches branch keys in DynamoDB to reduce KMS API calls and improve performance
-  # Default: "IdentityBrokerEncryptionBranchKeys"
-  # Required schema:
-  #   - Partition key: "BranchKeyId" (String)
-  #   - Sort key: "TimeToLive" (Number, for TTL-based auto-deletion)
-  # AWS will automatically delete expired items when TTL expires
-  dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys"
+    # DynamoDB table name for caching branch keys (optional)
+    # The hierarchical keyring caches branch keys in DynamoDB to reduce KMS API calls and improve performance
+    # Default: "IdentityBrokerEncryptionBranchKeys"
+    # Required schema:
+    #   - Partition key: "BranchKeyId" (String)
+    #   - Sort key: "TimeToLive" (Number, for TTL-based auto-deletion)
+    # AWS will automatically delete expired items when TTL expires
+    dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys"
 
-  # Branch key Time-To-Live (TTL) in DynamoDB (optional)
-  # Cached branch keys expire after this duration, forcing new generation from KMS
-  # Valid range: 1 minute to 24 hours
-  # Default: "1h"
-  # Shorter TTL = better key rotation but more KMS calls
-  # Longer TTL = fewer KMS calls but delayed key rotation
-  # Examples: "30m", "1h", "4h", "24h"
-  branch_key_ttl: "1h"
+    # Branch key Time-To-Live (TTL) in DynamoDB (optional)
+    # Cached branch keys expire after this duration, forcing new generation from KMS
+    # Valid range: 1 minute to 24 hours
+    # Default: "1h"
+    # Shorter TTL = better key rotation but more KMS calls
+    # Longer TTL = fewer KMS calls but delayed key rotation
+    # Examples: "30m", "1h", "4h", "24h"
+    branch_key_ttl: "1h"
+
+    # AWS region for DynamoDB operations (optional)
+    # If not specified, uses the default AWS region from AWS SDK configuration
+    # Examples: "us-east-1", "eu-west-1", "ap-southeast-1"
+    # dynamodb_region: "eu-central-1"
+
+    # Timeout for DynamoDB read operations (optional)
+    # Default: "5s"
+    # dynamodb_read_timeout: "5s"
+
+    # Timeout for DynamoDB write operations (optional)
+    # Default: "5s"
+    # dynamodb_write_timeout: "5s"
+
+  # Memory backend is NOT configured (exactly one backend must be specified)
+  # memory: null
 
 # Required AWS IAM permissions for the identity broker service:
 # {
