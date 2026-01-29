@@ -38,7 +38,7 @@ type App struct {
 
 	// Domain services
 	ConsentService       *consentservice.Service
-	AuthProvider         *services.AuthProvider
+	AuthProvider         *services.ThirdpartyOAuth2ServiceProvider
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
 

@@ -10,26 +10,35 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// AuthProvider orchestrates third-party OAuth2 service management with branch key provisioning.
+// AuthProvider defines the interface for OAuth2 service management.
+type AuthProvider interface {
+	Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) (*storage.ThirdpartyOAuth2Service, error)
+	Get(ctx context.Context, clientID string) (*storage.ThirdpartyOAuth2Service, error)
+	Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
+	Delete(ctx context.Context, clientID string) error
+	List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error)
+}
+
+// ThirdpartyOAuth2ServiceProvider orchestrates third-party OAuth2 service management with branch key provisioning.
 // This domain service encapsulates the business logic: "when creating an OAuth2 service, provision its branch key".
 // It follows the established pattern from ConsentService, maintaining clean hexagonal boundaries.
-type AuthProvider struct {
+type ThirdpartyOAuth2ServiceProvider struct {
 	serviceRepository ports.ThirdpartyOAuth2ServiceRepository
 	branchKeyManager  ports.BranchKeyManager
 	logger            *slog.Logger
 }
 
-// NewAuthProvider creates a new AuthProvider domain service.
+// NewAuthProvider creates a new ThirdpartyOAuth2ServiceProvider domain service.
 // branchKeyManager may be nil if no encryption backend is configured.
 func NewAuthProvider(
 	serviceRepository ports.ThirdpartyOAuth2ServiceRepository,
 	branchKeyManager ports.BranchKeyManager,
 	logger *slog.Logger,
-) *AuthProvider {
+) *ThirdpartyOAuth2ServiceProvider {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &AuthProvider{
+	return &ThirdpartyOAuth2ServiceProvider{
 		serviceRepository: serviceRepository,
 		branchKeyManager:  branchKeyManager,
 		logger:            logger,
@@ -39,7 +48,7 @@ func NewAuthProvider(
 // Create creates a new OAuth2 service and provisions its branch key atomically.
 // This orchestrates the business logic: provision branch key before creating service (fail-fast on error).
 // Returns the created service or error if branch key provisioning or service creation fails.
-func (ap *AuthProvider) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) (*storage.ThirdpartyOAuth2Service, error) {
+func (ap *ThirdpartyOAuth2ServiceProvider) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) (*storage.ThirdpartyOAuth2Service, error) {
 	// Provision branch key before creating service (fail-fast for encryption setup)
 	if ap.branchKeyManager != nil {
 		ap.logger.Info("provisioning branch key for service", "service_id", service.ID)
@@ -65,21 +74,21 @@ func (ap *AuthProvider) Create(ctx context.Context, service *storage.ThirdpartyO
 }
 
 // Get retrieves a service by ID, delegating to the repository.
-func (ap *AuthProvider) Get(ctx context.Context, clientID string) (*storage.ThirdpartyOAuth2Service, error) {
+func (ap *ThirdpartyOAuth2ServiceProvider) Get(ctx context.Context, clientID string) (*storage.ThirdpartyOAuth2Service, error) {
 	return ap.serviceRepository.Get(ctx, clientID)
 }
 
 // Update updates an existing service, delegating to the repository.
-func (ap *AuthProvider) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (ap *ThirdpartyOAuth2ServiceProvider) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
 	return ap.serviceRepository.Update(ctx, service)
 }
 
 // Delete deletes a service by ID, delegating to the repository.
-func (ap *AuthProvider) Delete(ctx context.Context, clientID string) error {
+func (ap *ThirdpartyOAuth2ServiceProvider) Delete(ctx context.Context, clientID string) error {
 	return ap.serviceRepository.Delete(ctx, clientID)
 }
 
 // List retrieves all services, delegating to the repository.
-func (ap *AuthProvider) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+func (ap *ThirdpartyOAuth2ServiceProvider) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
 	return ap.serviceRepository.List(ctx)
 }
