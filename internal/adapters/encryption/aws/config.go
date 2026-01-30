@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -197,158 +196,17 @@ func validateRoleARN(roleARN string) error {
 	return nil
 }
 
-// validateSecuritySettings performs runtime security validation to prevent dangerous configurations.
-// This prevents insecure settings that could compromise encryption in production environments.
+// validateSecuritySettings performs basic security validation for configuration warnings.
 func validateSecuritySettings(cfg *ports.AWSKMSConfig) error {
 	if cfg == nil {
 		return nil
 	}
 
-	// SSL VERIFICATION MUST BE ENABLED IN PRODUCTION
+	// Warn about disabled SSL verification
 	if cfg.DisableSSL {
-		// Check for production indicators
-		isProduction := detectProductionEnvironment()
-
-		if isProduction {
-			return encryption.NewKEKUnavailableError(
-				"CRITICAL SECURITY ERROR: disable_ssl is set to true but production environment detected. "+
-					"SSL verification MUST be enabled in production to prevent man-in-the-middle attacks. "+
-					"disable_ssl should ONLY be used for LocalStack testing. "+
-					"To enable production mode, unset disable_ssl or set it to false.",
-				nil,
-			)
-		}
-
-		// Even in non-production, log a strong warning
 		fmt.Fprintf(os.Stderr, "WARNING: SSL verification is DISABLED (disable_ssl: true). "+
 			"This is DANGEROUS in production and should only be used for LocalStack testing.\n")
 	}
 
-	// CUSTOM ENDPOINTS REQUIRE CAUTION
-	if cfg.KMSEndpoint != "" || cfg.DynamoDBEndpoint != "" {
-		if detectProductionEnvironment() && (cfg.KMSEndpoint == "" || !isSecureEndpoint(cfg.KMSEndpoint)) {
-			return encryption.NewKEKUnavailableError(
-				"Production environment detected with incomplete endpoint configuration. "+
-					"When using custom endpoints in production, all endpoints must use HTTPS and be explicitly configured.",
-				nil,
-			)
-		}
-	}
-
-	// STATIC CREDENTIALS ARE DANGEROUS IN PRODUCTION
-	if cfg.AccessKeyID != "" || cfg.SecretAccessKey != "" {
-		if detectProductionEnvironment() {
-			return encryption.NewKEKUnavailableError(
-				"CRITICAL SECURITY ERROR: Static credentials detected in production environment. "+
-					"Production deployments MUST use IAM roles (assume_role_arn) or AWS profiles instead of static credentials. "+
-					"Static credentials should ONLY be used for testing/development. "+
-					"For production, configure assume_role_arn with appropriate IAM permissions.",
-				nil,
-			)
-		}
-	}
-
 	return nil
-}
-
-// detectProductionEnvironment attempts to detect if the application is running in a production environment
-// based on multiple indicators. Uses conservative defaults - when in doubt, assumes production.
-func detectProductionEnvironment() bool {
-	// Check common production environment indicators
-	env := os.Getenv("ENVIRONMENT")
-	if env != "" {
-		env = strings.ToLower(strings.TrimSpace(env))
-		if env == "production" || env == "prod" || env == "prd" {
-			return true
-		}
-	}
-
-	// Check if running with explicit production indicators
-	nodeEnv := os.Getenv("NODE_ENV")
-	if nodeEnv != "" {
-		nodeEnv = strings.ToLower(strings.TrimSpace(nodeEnv))
-		if nodeEnv == "production" || nodeEnv == "prod" {
-			return true
-		}
-	}
-
-	// Check for Identity Broker specific environment variable
-	brokerEnv := os.Getenv("IDENTITY_BROKER_ENV")
-	if brokerEnv != "" {
-		brokerEnv = strings.ToLower(strings.TrimSpace(brokerEnv))
-		if brokerEnv == "production" || brokerEnv == "prod" || brokerEnv == "prd" {
-			return true
-		}
-	}
-
-	// Check for Kubernetes/container production indicators
-	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
-		// Running in Kubernetes - likely production unless explicitly opted out
-		if os.Getenv("ALLOW_INSECURE_CONFIG") != "true" {
-			return true
-		}
-	}
-
-	// Check for container environment (Docker, systemd-nspawn, etc.)
-	// If running in container without explicit development marker, assume production
-	if isRunningInContainer() {
-		if os.Getenv("DEVELOPMENT_MODE") != "true" && os.Getenv("ALLOW_INSECURE_CONFIG") != "true" {
-			return true
-		}
-	}
-
-	// Detect test environment indicators
-	if isTestEnvironment() {
-		return false
-	}
-
-	// Default to non-production (development) for safety
-	// Only production if explicitly marked or detected
-	return false
-}
-
-// isRunningInContainer detects if the application is running inside a container
-func isRunningInContainer() bool {
-	// Docker container detection
-	if _, err := os.Stat("/.dockerenv"); err == nil {
-		return true
-	}
-
-	// Check for cgroup-based container detection (works for Docker, Podman, containerd, etc.)
-	cgroupContent, err := os.ReadFile("/proc/self/cgroup")
-	if err == nil {
-		cgroupStr := string(cgroupContent)
-		if strings.Contains(cgroupStr, "/docker") ||
-			strings.Contains(cgroupStr, "/lxc") ||
-			strings.Contains(cgroupStr, "/podman") ||
-			strings.Contains(cgroupStr, "kubelet") {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isTestEnvironment detects if running under test
-func isTestEnvironment() bool {
-	// Go test sets testing.Testing() or GOTEST environment variable
-	if os.Getenv("GOTEST") != "" {
-		return true
-	}
-
-	// Check for explicit test mode markers
-	if os.Getenv("DEVELOPMENT_MODE") == "true" {
-		return true
-	}
-
-	if os.Getenv("ALLOW_INSECURE_CONFIG") == "true" {
-		return true
-	}
-
-	return false
-}
-
-// isSecureEndpoint checks if an endpoint URL uses HTTPS
-func isSecureEndpoint(endpoint string) bool {
-	return strings.HasPrefix(endpoint, "https://")
 }
