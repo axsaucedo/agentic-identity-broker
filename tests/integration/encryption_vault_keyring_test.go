@@ -37,10 +37,7 @@ func TestLocalStackKMSEncryptDecryptRoundtrip(t *testing.T) {
 
 	// Test encryption/decryption roundtrip
 	plaintext := []byte("test-oauth2-token-from-localstack")
-	encryptionContext := map[string]string{
-		"service_id": "oauth2",
-		"principal":  "user@example.com",
-	}
+	encryptionContext := map[string]string{"service_id": "oauth2"}
 
 	// Encrypt
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encryptionContext)
@@ -358,7 +355,7 @@ func TestBranchKeyRetrievalFromCache(t *testing.T) {
 	// Multiple encryptions with same service should use cached branch key
 	// (verification would require instrumentation of KMS calls in real scenario)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		plaintext := []byte("token-" + string(rune(i)))
 		ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 		require.NoError(t, err, "encryption iteration %d failed", i)
@@ -966,7 +963,7 @@ func TestMemoryLockingIntegration(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	// Multiple encrypt/decrypt operations to stress memory protection
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		plaintext := []byte("memory-lock-test-" + string(rune(i)))
 		encCtx := map[string]string{"service_id": "oauth2"}
 
@@ -1365,7 +1362,7 @@ func TestConcurrentServiceEncryption(t *testing.T) {
 	errors := make([]error, 0)
 
 	for _, svc := range services {
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			plaintext := []byte("concurrent-test-" + svc + "-" + string(rune(i)))
 			encCtx := map[string]string{"service_id": svc}
 

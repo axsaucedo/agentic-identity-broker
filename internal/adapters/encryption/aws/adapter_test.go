@@ -437,7 +437,7 @@ func BenchmarkEncrypt(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := adapter.Encrypt(ctx, plaintext, encryptionContext)
 		if err != nil {
 			b.Fatalf("encryption failed: %v", err)
@@ -472,7 +472,7 @@ func BenchmarkDecrypt(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := adapter.Decrypt(ctx, ciphertext, encryptionContext)
 		if err != nil {
 			b.Fatalf("decryption failed: %v", err)
@@ -589,10 +589,7 @@ func TestHierarchicalKeyringWithEnvVarFallback(t *testing.T) {
 	// Test that encryption/decryption still works with env var KEK
 	ctx := context.Background()
 	plaintext := []byte("test-oauth2-token")
-	encryptionContext := map[string]string{
-		"service_id": "oauth2",
-		"principal":  "user@example.com",
-	}
+	encryptionContext := map[string]string{"service_id": "oauth2"}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encryptionContext)
 	if err != nil {

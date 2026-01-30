@@ -69,7 +69,6 @@ func TestKeyStoreConfig(t *testing.T) {
 // TestKeyStoreConfigDefaults tests that defaults are applied
 func TestKeyStoreConfigDefaults(t *testing.T) {
 	config := KeyStoreConfig{
-		KMSKeyARN:         "",
 		DynamoDBTableName: "",
 		BranchKeyTTL:      0,
 	}
@@ -200,9 +199,7 @@ func TestBranchKeyTTLConfiguration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := KeyStoreConfig{
-				KMSKeyARN:         "arn:aws:kms:us-west-2:123456789012:key/test",
-				DynamoDBTableName: DefaultBranchKeyTableName,
-				BranchKeyTTL:      tt.ttl,
+				BranchKeyTTL: tt.ttl,
 			}
 
 			// Verify TTL is properly set or defaults apply

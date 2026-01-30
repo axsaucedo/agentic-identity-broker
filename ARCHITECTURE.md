@@ -608,7 +608,7 @@ Define any project-specific terms or acronyms.)
 
 **KEK**: Key Encryption Key. A key used to encrypt/wrap the DEK. In AWS implementation, this is an AWS KMS customer-managed key (CMK) referenced by ARN. The KEK never leaves the secure boundary and is managed by AWS KMS.
 
-**EncryptionContext**: Additional authenticated data (AAD) bound to ciphertext during encryption but not encrypted itself. Used to provide cryptographic isolation between different services or tenants. Implemented as a map[string]string containing service_id and other binding metadata.
+**EncryptionContext**: Additional authenticated data (AAD) bound to ciphertext during encryption but not encrypted itself. Used to provide cryptographic isolation between different services. Implemented as a map[string]string containing only the service_id field for performance optimization (ADR 008).
 
 **EncryptionPort**: Hexagonal architecture interface for encryption operations. Abstracts the domain from specific encryption implementations (AWS KMS, envelope encryption, etc.), allowing testability and implementation flexibility while ensuring consistent encryption behavior.
 

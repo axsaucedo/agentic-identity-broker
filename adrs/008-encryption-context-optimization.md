@@ -1,6 +1,6 @@
 # ADR 008: EncryptionContext Optimization - Service ID Only
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-01-16
 **Feature**: 012-aws-encryption-vault  
 **Supercedes**: None  
