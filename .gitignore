@@ -64,5 +64,4 @@ tmp
 
 .worktrees
 
-tests/e2e/frontend/coverage/screenshots
-
+tests/e2e/frontend/coverage/

@@ -50,6 +50,18 @@ storage:
     read: 5s
     write: 10s
 
+encryption:
+  # Memory backend for staging (suitable for testing)
+  memory:
+    # Base64-encoded 32-byte AES-256 key
+    # MUST be provided via environment variable for security
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
+
+  # For AWS KMS backend (alternative for staging):
+  # aws_kms:
+  #   key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
+  #   dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys-Staging"
+
 # Future sections for expanded configuration:
 # database:
 #   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}
