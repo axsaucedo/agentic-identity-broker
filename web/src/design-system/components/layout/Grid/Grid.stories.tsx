@@ -272,11 +272,7 @@ export const Responsive: Story = {
           <li>Desktop (lg: 1024px+): 4 columns</li>
         </ul>
 
-        <Grid
-          columns={1}
-          gap="md"
-          className="sm:grid-cols-2 lg:grid-cols-4"
-        >
+        <Grid columns={1} gap="md" className="sm:grid-cols-2 lg:grid-cols-4">
           <GridItem variant="highlight">Responsive 1</GridItem>
           <GridItem variant="highlight">Responsive 2</GridItem>
           <GridItem variant="highlight">Responsive 3</GridItem>
@@ -296,19 +292,18 @@ export const Responsive: Story = {
           1 column on mobile, 2 on tablet, 3 on desktop:
         </p>
 
-        <Grid
-          columns={1}
-          gap="lg"
-          className="sm:grid-cols-2 md:grid-cols-3"
-        >
+        <Grid columns={1} gap="lg" className="sm:grid-cols-2 md:grid-cols-3">
           <GridItem variant="accent" tall>
-            Card 1<br />Mobile First
+            Card 1<br />
+            Mobile First
           </GridItem>
           <GridItem variant="accent" tall>
-            Card 2<br />Mobile First
+            Card 2<br />
+            Mobile First
           </GridItem>
           <GridItem variant="accent" tall>
-            Card 3<br />Mobile First
+            Card 3<br />
+            Mobile First
           </GridItem>
         </Grid>
       </div>
@@ -329,7 +324,8 @@ export const AutoFit: Story = {
           Auto-Fit Grid
         </h2>
         <p className="text-secondary-600 mb-4">
-          Columns automatically fit based on container width. Minimum 200px, maximum 1fr.
+          Columns automatically fit based on container width. Minimum 200px,
+          maximum 1fr.
         </p>
         <p className="text-sm text-secondary-500 mb-6">
           Try resizing to see columns adjust without media queries.
@@ -386,11 +382,7 @@ export const CardGrid: Story = {
           Responsive card grid showcasing product features
         </p>
 
-        <Grid
-          columns={1}
-          gap="lg"
-          className="sm:grid-cols-2 lg:grid-cols-3"
-        >
+        <Grid columns={1} gap="lg" className="sm:grid-cols-2 lg:grid-cols-3">
           <DemoCard
             title="Secure Authentication"
             description="Industry-standard OAuth 2.0 and OpenID Connect protocols with enterprise-grade security."
@@ -427,14 +419,38 @@ export const CardGrid: Story = {
         </p>
 
         <Grid columns={4} gap="sm">
-          <DemoCard title="Feature 1" description="Quick overview of capability" />
-          <DemoCard title="Feature 2" description="Quick overview of capability" />
-          <DemoCard title="Feature 3" description="Quick overview of capability" />
-          <DemoCard title="Feature 4" description="Quick overview of capability" />
-          <DemoCard title="Feature 5" description="Quick overview of capability" />
-          <DemoCard title="Feature 6" description="Quick overview of capability" />
-          <DemoCard title="Feature 7" description="Quick overview of capability" />
-          <DemoCard title="Feature 8" description="Quick overview of capability" />
+          <DemoCard
+            title="Feature 1"
+            description="Quick overview of capability"
+          />
+          <DemoCard
+            title="Feature 2"
+            description="Quick overview of capability"
+          />
+          <DemoCard
+            title="Feature 3"
+            description="Quick overview of capability"
+          />
+          <DemoCard
+            title="Feature 4"
+            description="Quick overview of capability"
+          />
+          <DemoCard
+            title="Feature 5"
+            description="Quick overview of capability"
+          />
+          <DemoCard
+            title="Feature 6"
+            description="Quick overview of capability"
+          />
+          <DemoCard
+            title="Feature 7"
+            description="Quick overview of capability"
+          />
+          <DemoCard
+            title="Feature 8"
+            description="Quick overview of capability"
+          />
         </Grid>
       </div>
     </div>
@@ -511,9 +527,12 @@ export const Accessibility: Story = {
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-trust-deep">Logical Reading Order</h3>
+              <h3 className="font-semibold text-trust-deep">
+                Logical Reading Order
+              </h3>
               <p className="text-sm text-secondary-600">
-                Content flows naturally left-to-right, top-to-bottom for screen readers
+                Content flows naturally left-to-right, top-to-bottom for screen
+                readers
               </p>
             </div>
           </div>
@@ -523,9 +542,12 @@ export const Accessibility: Story = {
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-trust-deep">Touch-Friendly Spacing</h3>
+              <h3 className="font-semibold text-trust-deep">
+                Touch-Friendly Spacing
+              </h3>
               <p className="text-sm text-secondary-600">
-                Gap options ensure adequate spacing for touch targets (minimum 44x44px)
+                Gap options ensure adequate spacing for touch targets (minimum
+                44x44px)
               </p>
             </div>
           </div>
@@ -535,7 +557,9 @@ export const Accessibility: Story = {
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-trust-deep">Fully Responsive</h3>
+              <h3 className="font-semibold text-trust-deep">
+                Fully Responsive
+              </h3>
               <p className="text-sm text-secondary-600">
                 Adapts gracefully across all viewport sizes and zoom levels
               </p>
@@ -547,7 +571,9 @@ export const Accessibility: Story = {
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-trust-deep">Keyboard Navigation</h3>
+              <h3 className="font-semibold text-trust-deep">
+                Keyboard Navigation
+              </h3>
               <p className="text-sm text-secondary-600">
                 Interactive grid children fully support keyboard navigation
               </p>
@@ -559,9 +585,12 @@ export const Accessibility: Story = {
               ✓
             </div>
             <div>
-              <h3 className="font-semibold text-trust-deep">No Motion Dependencies</h3>
+              <h3 className="font-semibold text-trust-deep">
+                No Motion Dependencies
+              </h3>
               <p className="text-sm text-secondary-600">
-                Pure layout component with no animations (respects prefers-reduced-motion)
+                Pure layout component with no animations (respects
+                prefers-reduced-motion)
               </p>
             </div>
           </div>

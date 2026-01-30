@@ -23,19 +23,24 @@ const buttonVariants = cva(
     variants: {
       variant: {
         // Primary: Deep navy (trust) - most important actions
-        primary: 'bg-trust-deep text-white border-transparent hover:bg-trust-hover focus:ring-trust shadow-md hover:shadow-lg hover:-translate-y-px',
+        primary:
+          'bg-trust-deep text-white border-transparent hover:bg-trust-hover focus:ring-trust shadow-md hover:shadow-lg hover:-translate-y-px',
 
         // Secondary: Success green - secondary actions
-        secondary: 'bg-success-primary text-white border-transparent hover:bg-success-hover focus:ring-success-primary shadow-md hover:shadow-lg hover:-translate-y-px',
+        secondary:
+          'bg-success-primary text-white border-transparent hover:bg-success-hover focus:ring-success-primary shadow-md hover:shadow-lg hover:-translate-y-px',
 
         // Outline: White bg with trust border - tertiary actions
-        outline: 'bg-white text-trust-deep border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400 focus:ring-trust shadow-sm',
+        outline:
+          'bg-white text-trust-deep border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400 focus:ring-trust shadow-sm',
 
         // Ghost: Transparent bg - subtle actions
-        ghost: 'bg-transparent text-trust-deep hover:bg-neutral-100 focus:ring-trust',
+        ghost:
+          'bg-transparent text-trust-deep hover:bg-neutral-100 focus:ring-trust',
 
         // Danger: Error red - destructive actions
-        danger: 'bg-error-primary text-white border-transparent hover:bg-error-hover focus:ring-error-primary shadow-md hover:shadow-lg hover:-translate-y-px',
+        danger:
+          'bg-error-primary text-white border-transparent hover:bg-error-hover focus:ring-error-primary shadow-md hover:shadow-lg hover:-translate-y-px',
       },
       size: {
         sm: 'px-3 py-1.5 text-sm h-9',
@@ -53,11 +58,12 @@ const buttonVariants = cva(
       size: 'md',
       fullWidth: false,
     },
-  }
+  },
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends
+    React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   /** Whether button is in loading state */
   isLoading?: boolean;
@@ -101,7 +107,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       type = 'button',
       ...props
     },
-    ref
+    ref,
   ) => {
     const isDisabled = disabled || isLoading;
 
@@ -153,7 +159,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         )}
       </button>
     );
-  }
+  },
 );
 
 Button.displayName = 'Button';

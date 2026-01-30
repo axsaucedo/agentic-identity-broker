@@ -198,8 +198,14 @@ export const Collapsed: Story = {
             { label: 'Teams', href: '/orgs/acme/teams' },
             { label: 'Engineering', href: '/orgs/acme/teams/eng' },
             { label: 'Backend', href: '/orgs/acme/teams/eng/backend' },
-            { label: 'Services', href: '/orgs/acme/teams/eng/backend/services' },
-            { label: 'Auth', href: '/orgs/acme/teams/eng/backend/services/auth' },
+            {
+              label: 'Services',
+              href: '/orgs/acme/teams/eng/backend/services',
+            },
+            {
+              label: 'Auth',
+              href: '/orgs/acme/teams/eng/backend/services/auth',
+            },
             {
               label: 'Config',
               href: '/orgs/acme/teams/eng/backend/services/auth/config',
@@ -388,7 +394,11 @@ export const RealWorldExamples: Story = {
         <Breadcrumb
           items={[
             { label: 'Dashboard', href: '/admin', icon: <HomeIcon /> },
-            { label: 'Settings', href: '/admin/settings', icon: <SettingsIcon /> },
+            {
+              label: 'Settings',
+              href: '/admin/settings',
+              icon: <SettingsIcon />,
+            },
             { label: 'Security', href: '/admin/settings/security' },
             { label: 'Two-Factor Authentication' },
           ]}
@@ -417,9 +427,21 @@ export const RealWorldExamples: Story = {
         <Breadcrumb
           items={[
             { label: 'My Files', href: '/files', icon: <FolderIcon /> },
-            { label: 'Documents', href: '/files/documents', icon: <FolderIcon /> },
-            { label: 'Projects', href: '/files/documents/projects', icon: <FolderIcon /> },
-            { label: '2024', href: '/files/documents/projects/2024', icon: <FolderIcon /> },
+            {
+              label: 'Documents',
+              href: '/files/documents',
+              icon: <FolderIcon />,
+            },
+            {
+              label: 'Projects',
+              href: '/files/documents/projects',
+              icon: <FolderIcon />,
+            },
+            {
+              label: '2024',
+              href: '/files/documents/projects/2024',
+              icon: <FolderIcon />,
+            },
             { label: 'proposal.pdf', icon: <DocumentIcon /> },
           ]}
           maxItems={4}
@@ -473,8 +495,8 @@ export const Accessibility: Story = {
           Semantic HTML Structure
         </p>
         <p className="text-sm text-neutral-600 mb-4">
-          Uses proper nav, ol, and li elements for screen reader navigation.
-          The last item is marked with aria-current="page".
+          Uses proper nav, ol, and li elements for screen reader navigation. The
+          last item is marked with aria-current="page".
         </p>
         <Breadcrumb
           items={[

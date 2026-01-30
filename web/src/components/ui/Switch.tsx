@@ -6,4 +6,8 @@
  * import { Switch } from '@design-system/components/inputs/Switch';
  */
 
-export { Switch, type SwitchProps, Switch as default } from '@design-system/components/inputs/Switch';
+export {
+  Switch,
+  type SwitchProps,
+  Switch as default,
+} from '@design-system/components/inputs/Switch';

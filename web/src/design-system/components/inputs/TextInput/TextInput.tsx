@@ -29,9 +29,12 @@ const inputVariants = cva(
         lg: 'px-4 py-3 text-lg h-12',
       },
       variant: {
-        default: 'border-neutral-300 text-neutral-900 placeholder-neutral-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
-        error: 'border-error-primary bg-error-light/20 text-neutral-900 placeholder-neutral-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
-        success: 'border-success-primary bg-success-light/20 text-neutral-900 placeholder-neutral-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
+        default:
+          'border-neutral-300 text-neutral-900 placeholder-neutral-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
+        error:
+          'border-error-primary bg-error-light/20 text-neutral-900 placeholder-neutral-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
+        success:
+          'border-success-primary bg-success-light/20 text-neutral-900 placeholder-neutral-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
       },
     },
     compoundVariants: [
@@ -48,11 +51,12 @@ const inputVariants = cva(
       size: 'md',
       variant: 'default',
     },
-  }
+  },
 );
 
 export interface TextInputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'>,
+  extends
+    Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'>,
     VariantProps<typeof inputVariants> {
   /** Label text displayed above input */
   label?: string;
@@ -132,17 +136,23 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
       onChange,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Determine variant based on error/success state
-    const variant = errorMessage ? 'error' : successMessage ? 'success' : 'default';
+    const variant = errorMessage
+      ? 'error'
+      : successMessage
+        ? 'success'
+        : 'default';
 
     // Character count
     const charCount = typeof value === 'string' ? value.length : 0;
-    const displayCharCount = showCharCount && maxLength ? `${charCount}/${maxLength}` : null;
+    const displayCharCount =
+      showCharCount && maxLength ? `${charCount}/${maxLength}` : null;
 
     // Icon sizing based on input size
-    const iconSize = size === 'sm' ? 'w-4 h-4' : size === 'lg' ? 'w-5 h-5' : 'w-4.5 h-4.5';
+    const iconSize =
+      size === 'sm' ? 'w-4 h-4' : size === 'lg' ? 'w-5 h-5' : 'w-4.5 h-4.5';
 
     return (
       <div ref={ref} className="w-full">
@@ -162,7 +172,10 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
           {/* Icon before */}
           {iconBefore && (
             <span
-              className={cn('absolute left-3 text-neutral-500 pointer-events-none flex items-center', iconSize)}
+              className={cn(
+                'absolute left-3 text-neutral-500 pointer-events-none flex items-center',
+                iconSize,
+              )}
               aria-hidden="true"
             >
               {iconBefore}
@@ -181,7 +194,7 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
               iconBefore && 'pl-10',
               iconAfter && 'pr-10',
               disabled && 'bg-neutral-50 cursor-not-allowed opacity-60',
-              className
+              className,
             )}
             {...props}
           />
@@ -189,7 +202,10 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
           {/* Icon after */}
           {iconAfter && (
             <span
-              className={cn('absolute right-3 text-neutral-500 pointer-events-none flex items-center', iconSize)}
+              className={cn(
+                'absolute right-3 text-neutral-500 pointer-events-none flex items-center',
+                iconSize,
+              )}
               aria-hidden="true"
             >
               {iconAfter}
@@ -202,7 +218,7 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
               className={cn(
                 'absolute right-3 flex items-center',
                 errorMessage ? 'text-error-primary' : 'text-success-primary',
-                iconSize
+                iconSize,
               )}
               aria-hidden="true"
             >
@@ -230,10 +246,14 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
         {/* Helper text, error message, or character count */}
         <div className="mt-1.5 flex items-center justify-between">
           {errorMessage && (
-            <span className="text-xs text-error-primary font-medium">{errorMessage}</span>
+            <span className="text-xs text-error-primary font-medium">
+              {errorMessage}
+            </span>
           )}
           {successMessage && !errorMessage && (
-            <span className="text-xs text-success-primary font-medium">{successMessage}</span>
+            <span className="text-xs text-success-primary font-medium">
+              {successMessage}
+            </span>
           )}
           {helperText && !errorMessage && !successMessage && (
             <span className="text-xs text-neutral-600">{helperText}</span>
@@ -241,17 +261,21 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
 
           {/* Character count on right */}
           {displayCharCount && (
-            <span className={cn(
-              'text-xs ml-auto',
-              charCount > maxLength! * 0.8 ? 'text-warning-primary' : 'text-neutral-500'
-            )}>
+            <span
+              className={cn(
+                'text-xs ml-auto',
+                charCount > maxLength! * 0.8
+                  ? 'text-warning-primary'
+                  : 'text-neutral-500',
+              )}
+            >
               {displayCharCount}
             </span>
           )}
         </div>
       </div>
     );
-  }
+  },
 );
 
 TextInput.displayName = 'TextInput';

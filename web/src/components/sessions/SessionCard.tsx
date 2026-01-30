@@ -64,7 +64,8 @@ export const SessionCard: React.FC<SessionCardProps> = ({
     // Check if expiring soon (within 7 days)
     if (session.refresh_token_expires_at) {
       const expiresAt = new Date(session.refresh_token_expires_at);
-      const daysUntilExpiry = (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      const daysUntilExpiry =
+        (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
       if (daysUntilExpiry < 7) {
         return { status: 'Expiring Soon', variant: 'warning' as const };
       }
@@ -93,18 +94,31 @@ export const SessionCard: React.FC<SessionCardProps> = ({
             {session.service_display_name}
           </h3>
         </div>
-        {!session.is_expired && (
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => onTerminate(session.service_id)}
-            isLoading={loading}
-            disabled={loading}
-            className="flex-shrink-0"
-          >
-            Terminate
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {onViewDetails && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onViewDetails(session.service_id)}
+              disabled={loading}
+              className="flex-shrink-0"
+            >
+              View Details
+            </Button>
+          )}
+          {!session.is_expired && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => onTerminate(session.service_id)}
+              isLoading={loading}
+              disabled={loading}
+              className="flex-shrink-0"
+            >
+              Terminate
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Status */}

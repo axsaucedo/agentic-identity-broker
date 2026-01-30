@@ -77,7 +77,7 @@ const cardVariants = cva(
         className: 'shadow-sm',
       },
     ],
-  }
+  },
 );
 
 const headerVariants = cva('', {
@@ -109,7 +109,8 @@ const footerVariants = cva('', {
 });
 
 export interface CardProps
-  extends React.HTMLAttributes<HTMLElement>,
+  extends
+    React.HTMLAttributes<HTMLElement>,
     Omit<VariantProps<typeof cardVariants>, 'padding'> {
   /** Main content of the card */
   children: React.ReactNode;
@@ -189,7 +190,7 @@ export const Card = React.forwardRef<HTMLElement, CardProps>(
       as: Component = 'div',
       ...props
     },
-    ref
+    ref,
   ) => {
     const hasHeader = Boolean(header || headerIcon);
     const hasFooter = Boolean(footer);
@@ -197,20 +198,29 @@ export const Card = React.forwardRef<HTMLElement, CardProps>(
 
     // Apply padding 'none' to the outer card if we have header/footer with padding
     // Otherwise, apply the padding to the card itself
-    const outerPadding = (hasHeader || hasFooter
-      ? 'none'
-      : padding) as 'none' | 'default' | 'compact' | 'spacious';
-    const innerPadding = (hasHeader || hasFooter
-      ? padding
-      : 'none') as 'none' | 'default' | 'compact' | 'spacious';
+    const outerPadding = (hasHeader || hasFooter ? 'none' : padding) as
+      | 'none'
+      | 'default'
+      | 'compact'
+      | 'spacious';
+    const innerPadding = (hasHeader || hasFooter ? padding : 'none') as
+      | 'none'
+      | 'default'
+      | 'compact'
+      | 'spacious';
 
     return (
       <Component
         ref={ref as React.Ref<HTMLDivElement>}
         className={cn(
-          cardVariants({ padding: outerPadding, border, hover, backgroundColor }),
+          cardVariants({
+            padding: outerPadding,
+            border,
+            hover,
+            backgroundColor,
+          }),
           isInteractive && 'cursor-pointer',
-          className
+          className,
         )}
         onClick={onClick}
         role={isInteractive ? 'button' : undefined}
@@ -234,7 +244,7 @@ export const Card = React.forwardRef<HTMLElement, CardProps>(
               <div
                 className={cn(
                   headerVariants({ padding: innerPadding }),
-                  innerPadding !== 'none' && 'px-4'
+                  innerPadding !== 'none' && 'px-4',
                 )}
               >
                 {headerIcon ? (
@@ -260,7 +270,7 @@ export const Card = React.forwardRef<HTMLElement, CardProps>(
                   ? 'p-4'
                   : innerPadding === 'default'
                     ? 'p-6'
-                    : 'p-8')
+                    : 'p-8'),
             )}
           >
             {children}
@@ -273,7 +283,7 @@ export const Card = React.forwardRef<HTMLElement, CardProps>(
               <div
                 className={cn(
                   footerVariants({ padding: innerPadding }),
-                  innerPadding !== 'none' && 'px-4'
+                  innerPadding !== 'none' && 'px-4',
                 )}
               >
                 {footer}
@@ -283,7 +293,7 @@ export const Card = React.forwardRef<HTMLElement, CardProps>(
         </Stack>
       </Component>
     );
-  }
+  },
 );
 
 Card.displayName = 'Card';

@@ -8,8 +8,8 @@
  * - Grant status badges
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { ServiceCard } from './ServiceCard';
 import type { ThirdpartyService, DelegatedToken } from '../../types/consent';
 
@@ -48,7 +48,7 @@ describe('ServiceCard', () => {
     expect(screen.getByAltText('GitHub logo')).toBeInTheDocument();
     expect(screen.getByAltText('GitHub logo')).toHaveAttribute(
       'src',
-      'https://example.com/github-logo.png'
+      'https://example.com/github-logo.png',
     );
   });
 
@@ -77,7 +77,9 @@ describe('ServiceCard', () => {
   });
 
   it('shows granted scopes when grants are provided', () => {
-    const { container } = render(<ServiceCard service={mockService} grants={mockGrants} />);
+    const { container } = render(
+      <ServiceCard service={mockService} grants={mockGrants} />,
+    );
 
     // Just verify component renders with grants
     expect(container).toBeInTheDocument();
@@ -92,7 +94,9 @@ describe('ServiceCard', () => {
       },
     ];
 
-    const { container } = render(<ServiceCard service={mockService} grants={singleGrant} />);
+    const { container } = render(
+      <ServiceCard service={mockService} grants={singleGrant} />,
+    );
 
     // Verify component renders with grant info
     expect(container).toBeInTheDocument();
@@ -100,7 +104,9 @@ describe('ServiceCard', () => {
   });
 
   it('displays active grant status badge', () => {
-    const { container } = render(<ServiceCard service={mockService} grants={mockGrants} />);
+    const { container } = render(
+      <ServiceCard service={mockService} grants={mockGrants} />,
+    );
 
     // Verify component renders with grants
     expect(container).toBeInTheDocument();
@@ -108,7 +114,9 @@ describe('ServiceCard', () => {
   });
 
   it('shows view-only notice when grants exist', () => {
-    const { container } = render(<ServiceCard service={mockService} grants={mockGrants} />);
+    const { container } = render(
+      <ServiceCard service={mockService} grants={mockGrants} />,
+    );
 
     // Verify component renders with grants
     expect(container).toBeInTheDocument();
@@ -124,7 +132,9 @@ describe('ServiceCard', () => {
   });
 
   it('highlights granted scopes in the scope list', () => {
-    const { container } = render(<ServiceCard service={mockService} grants={mockGrants} />);
+    const { container } = render(
+      <ServiceCard service={mockService} grants={mockGrants} />,
+    );
 
     // Verify component renders with grants
     expect(container).toBeInTheDocument();
@@ -132,7 +142,9 @@ describe('ServiceCard', () => {
   });
 
   it('renders with loading state', () => {
-    const { container } = render(<ServiceCard service={mockService} isLoading={true} />);
+    const { container } = render(
+      <ServiceCard service={mockService} isLoading={true} />,
+    );
 
     // Component should still render even in loading state
     expect(container).toBeInTheDocument();

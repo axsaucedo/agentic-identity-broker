@@ -134,8 +134,9 @@ export class GlobalErrorBoundary extends Component<Props, State> {
             {/* Content Section */}
             <div className="px-8 py-8">
               <p className="text-neutral-700 text-lg mb-6 leading-relaxed">
-                We're sorry for the inconvenience. An unexpected error occurred while
-                rendering this page. Our team has been notified and we'll look into it.
+                We&apos;re sorry for the inconvenience. An unexpected error
+                occurred while rendering this page. Our team has been notified
+                and we&apos;ll look into it.
               </p>
 
               {/* Error Details (Development Only) */}
@@ -166,16 +167,17 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                         {this.state.error.toString()}
                       </pre>
                     </div>
-                    {this.state.errorInfo && this.state.errorInfo.componentStack && (
-                      <div>
-                        <p className="text-xs font-semibold text-neutral-600 mb-1">
-                          Component Stack:
-                        </p>
-                        <pre className="text-xs font-mono text-neutral-700 whitespace-pre-wrap break-words bg-neutral-100 p-3 rounded border border-neutral-300 max-h-64 overflow-y-auto">
-                          {this.state.errorInfo.componentStack}
-                        </pre>
-                      </div>
-                    )}
+                    {this.state.errorInfo &&
+                      this.state.errorInfo.componentStack && (
+                        <div>
+                          <p className="text-xs font-semibold text-neutral-600 mb-1">
+                            Component Stack:
+                          </p>
+                          <pre className="text-xs font-mono text-neutral-700 whitespace-pre-wrap break-words bg-neutral-100 p-3 rounded border border-neutral-300 max-h-64 overflow-y-auto">
+                            {this.state.errorInfo.componentStack}
+                          </pre>
+                        </div>
+                      )}
                   </div>
                 </details>
               )}

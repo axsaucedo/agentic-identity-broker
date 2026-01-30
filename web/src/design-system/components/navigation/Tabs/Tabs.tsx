@@ -15,9 +15,9 @@
  * - WCAG 2.1 AA compliant
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Tab } from '@headlessui/react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 export interface TabItem {
@@ -31,42 +31,41 @@ export interface TabItem {
   icon?: React.ReactNode;
 }
 
-const tabListVariants = cva(
-  'flex gap-1',
-  {
-    variants: {
-      variant: {
-        underline: 'border-b border-neutral-200',
-        pill: 'bg-neutral-100 rounded-lg p-1',
-        button: 'gap-2',
-      },
-      orientation: {
-        horizontal: 'flex-row',
-        vertical: 'flex-col',
-      },
+const tabListVariants = cva('flex gap-1', {
+  variants: {
+    variant: {
+      underline: 'border-b border-neutral-200',
+      pill: 'bg-neutral-100 rounded-lg p-1',
+      button: 'gap-2',
     },
-    compoundVariants: [
-      {
-        variant: 'underline',
-        orientation: 'vertical',
-        className: 'border-b-0 border-r border-neutral-200',
-      },
-    ],
-    defaultVariants: {
+    orientation: {
+      horizontal: 'flex-row',
+      vertical: 'flex-col',
+    },
+  },
+  compoundVariants: [
+    {
       variant: 'underline',
-      orientation: 'horizontal',
+      orientation: 'vertical',
+      className: 'border-b-0 border-r border-neutral-200',
     },
-  }
-);
+  ],
+  defaultVariants: {
+    variant: 'underline',
+    orientation: 'horizontal',
+  },
+});
 
 const tabButtonVariants = cva(
   'relative inline-flex items-center justify-center gap-2 font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-trust-hover disabled:opacity-50 disabled:cursor-not-allowed',
   {
     variants: {
       variant: {
-        underline: 'border-b-2 border-transparent hover:text-trust hover:border-neutral-300',
+        underline:
+          'border-b-2 border-transparent hover:text-trust hover:border-neutral-300',
         pill: 'rounded-md hover:bg-white/60',
-        button: 'border border-neutral-300 rounded-md hover:border-neutral-400 hover:bg-neutral-50',
+        button:
+          'border border-neutral-300 rounded-md hover:border-neutral-400 hover:bg-neutral-50',
       },
       size: {
         sm: 'px-3 py-1.5 text-sm',
@@ -109,7 +108,8 @@ const tabButtonVariants = cva(
       {
         variant: 'button',
         selected: true,
-        className: 'bg-trust-hover text-white border-trust-hover shadow-sm font-semibold hover:bg-trust',
+        className:
+          'bg-trust-hover text-white border-trust-hover shadow-sm font-semibold hover:bg-trust',
       },
       {
         variant: 'button',
@@ -129,7 +129,7 @@ const tabButtonVariants = cva(
       orientation: 'horizontal',
       selected: false,
     },
-  }
+  },
 );
 
 const tabPanelVariants = cva(
@@ -167,11 +167,13 @@ const tabPanelVariants = cva(
       size: 'md',
       orientation: 'horizontal',
     },
-  }
+  },
 );
 
-export interface TabsProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
+export interface TabsProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  'onChange'
+> {
   /** Array of tab items */
   tabs: TabItem[];
   /** Tab panel content - must match tabs array length */
@@ -232,7 +234,7 @@ export const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Convert children to array
     const childArray = React.Children.toArray(children);
@@ -240,7 +242,7 @@ export const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
     // Ensure children count matches tabs count
     if (childArray.length !== tabs.length) {
       console.warn(
-        `Tabs: Number of children (${childArray.length}) does not match number of tabs (${tabs.length})`
+        `Tabs: Number of children (${childArray.length}) does not match number of tabs (${tabs.length})`,
       );
     }
 
@@ -270,7 +272,7 @@ export const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
         className={cn(
           'w-full',
           orientation === 'vertical' && 'flex',
-          className
+          className,
         )}
         {...props}
       >
@@ -280,9 +282,7 @@ export const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
           onChange={handleChange}
           vertical={orientation === 'vertical'}
         >
-          <Tab.List
-            className={tabListVariants({ variant, orientation })}
-          >
+          <Tab.List className={tabListVariants({ variant, orientation })}>
             {tabs.map((tab) => (
               <Tab
                 key={tab.id}
@@ -291,33 +291,27 @@ export const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
                   tabButtonVariants({ variant, size, orientation, selected })
                 }
               >
-                {({ selected }) => (
-                  <>
-                    {tab.icon && (
-                      <span
-                        className={cn(
-                          'flex-shrink-0',
-                          size === 'sm' && 'w-4 h-4',
-                          size === 'md' && 'w-5 h-5',
-                          size === 'lg' && 'w-6 h-6'
-                        )}
-                        aria-hidden="true"
-                      >
-                        {tab.icon}
-                      </span>
-                    )}
-                    <span>{tab.label}</span>
-                  </>
-                )}
+                <>
+                  {tab.icon && (
+                    <span
+                      className={cn(
+                        'flex-shrink-0',
+                        size === 'sm' && 'w-4 h-4',
+                        size === 'md' && 'w-5 h-5',
+                        size === 'lg' && 'w-6 h-6',
+                      )}
+                      aria-hidden="true"
+                    >
+                      {tab.icon}
+                    </span>
+                  )}
+                  <span>{tab.label}</span>
+                </>
               </Tab>
             ))}
           </Tab.List>
 
-          <Tab.Panels
-            className={cn(
-              orientation === 'vertical' && 'flex-1'
-            )}
-          >
+          <Tab.Panels className={cn(orientation === 'vertical' && 'flex-1')}>
             {childArray.map((child, index) => (
               <Tab.Panel
                 key={tabs[index]?.id || index}
@@ -330,7 +324,7 @@ export const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
         </Tab.Group>
       </div>
     );
-  }
+  },
 );
 
 Tabs.displayName = 'Tabs';

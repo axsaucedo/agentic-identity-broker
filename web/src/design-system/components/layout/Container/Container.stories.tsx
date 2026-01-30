@@ -52,7 +52,13 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // Helper component for visualizing container boundaries
-const ContainerDemo = ({ children, label }: { children: React.ReactNode; label?: string }) => (
+const ContainerDemo = ({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label?: string;
+}) => (
   <div className="bg-cream min-h-[200px] py-8">
     {label && (
       <div className="text-center mb-4">
@@ -75,8 +81,9 @@ const SampleContent = () => (
       Sample Content
     </h2>
     <p className="text-base text-secondary-600 leading-relaxed mb-4">
-      This is sample content to demonstrate the container behavior. The container
-      constrains the maximum width and can optionally center content horizontally.
+      This is sample content to demonstrate the container behavior. The
+      container constrains the maximum width and can optionally center content
+      horizontally.
     </p>
     <p className="text-base text-secondary-600 leading-relaxed">
       Containers are essential for creating readable layouts and maintaining
@@ -232,17 +239,19 @@ export const Nested: Story = {
           </p>
         </div>
 
-        <Container size="md" padding="md" className="bg-white rounded-lg shadow-md-premium border border-slate">
+        <Container
+          size="md"
+          padding="md"
+          className="bg-white rounded-lg shadow-md-premium border border-slate"
+        >
           <h2 className="text-xl font-display font-semibold text-trust-deep mb-3">
             Nested Inner Container
           </h2>
           <p className="text-secondary-600 mb-3">
-            This inner container has a medium width constraint (768px),
-            creating a narrower reading area within the wider page.
+            This inner container has a medium width constraint (768px), creating
+            a narrower reading area within the wider page.
           </p>
-          <p className="text-secondary-600">
-            This pattern is useful for:
-          </p>
+          <p className="text-secondary-600">This pattern is useful for:</p>
           <ul className="list-disc list-inside text-secondary-600 mt-2 space-y-1">
             <li>Long-form articles within wide layouts</li>
             <li>Forms within dashboard pages</li>
@@ -315,9 +324,15 @@ export const RealWorldExamples: Story = {
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-display font-bold">Application Name</h1>
             <nav className="flex gap-4 text-sm">
-              <a href="#" className="hover:text-neutral-200">Home</a>
-              <a href="#" className="hover:text-neutral-200">About</a>
-              <a href="#" className="hover:text-neutral-200">Contact</a>
+              <a href="#" className="hover:text-neutral-200">
+                Home
+              </a>
+              <a href="#" className="hover:text-neutral-200">
+                About
+              </a>
+              <a href="#" className="hover:text-neutral-200">
+                Contact
+              </a>
             </nav>
           </div>
         </Container>
@@ -352,7 +367,8 @@ export const RealWorldExamples: Story = {
             </p>
             <p className="text-secondary-600 leading-relaxed">
               The medium container (768px) naturally creates comfortable line
-              lengths for reading, reducing eye strain and improving comprehension.
+              lengths for reading, reducing eye strain and improving
+              comprehension.
             </p>
           </article>
         </Container>
@@ -407,7 +423,11 @@ export const Playground: Story = {
 export const Accessibility: Story = {
   render: () => (
     <div className="bg-cream p-8">
-      <Container size="md" padding="md" className="bg-white rounded-lg shadow-md-premium">
+      <Container
+        size="md"
+        padding="md"
+        className="bg-white rounded-lg shadow-md-premium"
+      >
         <div className="space-y-6">
           <div>
             <h2 className="text-xl font-display font-semibold text-trust-deep mb-3">
@@ -436,7 +456,9 @@ export const Accessibility: Story = {
                 ✓
               </div>
               <div>
-                <h3 className="font-semibold text-trust-deep">Responsive Design</h3>
+                <h3 className="font-semibold text-trust-deep">
+                  Responsive Design
+                </h3>
                 <p className="text-sm text-secondary-600">
                   Adapts to all screen sizes, from mobile to ultra-wide
                 </p>
@@ -448,7 +470,9 @@ export const Accessibility: Story = {
                 ✓
               </div>
               <div>
-                <h3 className="font-semibold text-trust-deep">Touch-Friendly</h3>
+                <h3 className="font-semibold text-trust-deep">
+                  Touch-Friendly
+                </h3>
                 <p className="text-sm text-secondary-600">
                   Padding options ensure content doesn't touch viewport edges
                 </p>
@@ -460,9 +484,12 @@ export const Accessibility: Story = {
                 ✓
               </div>
               <div>
-                <h3 className="font-semibold text-trust-deep">No Motion Dependencies</h3>
+                <h3 className="font-semibold text-trust-deep">
+                  No Motion Dependencies
+                </h3>
                 <p className="text-sm text-secondary-600">
-                  Pure layout component with no animations (respects prefers-reduced-motion)
+                  Pure layout component with no animations (respects
+                  prefers-reduced-motion)
                 </p>
               </div>
             </div>

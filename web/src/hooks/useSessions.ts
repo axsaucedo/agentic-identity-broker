@@ -84,8 +84,15 @@ export function useSessions(): UseSessionsReturn {
       let errorMessage = 'Failed to load OAuth2 sessions';
 
       if (err && typeof err === 'object') {
-        if ('response' in err && err.response && typeof err.response === 'object') {
-          const response = err.response as { status?: number; data?: { message?: string } };
+        if (
+          'response' in err &&
+          err.response &&
+          typeof err.response === 'object'
+        ) {
+          const response = err.response as {
+            status?: number;
+            data?: { message?: string };
+          };
 
           if (response.status === 404) {
             errorMessage = 'No sessions found';
@@ -115,18 +122,11 @@ export function useSessions(): UseSessionsReturn {
 
   // Fetch data on mount
   useEffect(() => {
-    let isMounted = true;
-
     // Execute fetch
     fetchData().catch(() => {
       // Error handling is done in fetchData
       // This catch is to prevent unhandled promise rejection
     });
-
-    // Cleanup function
-    return () => {
-      isMounted = false;
-    };
   }, [fetchData]);
 
   return {

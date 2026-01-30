@@ -16,7 +16,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 export interface SelectOption {
@@ -54,7 +54,7 @@ const selectButtonVariants = cva(
       variant: 'default',
       open: false,
     },
-  }
+  },
 );
 
 const selectOptionsVariants = cva(
@@ -70,7 +70,7 @@ const selectOptionsVariants = cva(
     defaultVariants: {
       size: 'md',
     },
-  }
+  },
 );
 
 const selectOptionVariants = cva(
@@ -90,11 +90,13 @@ const selectOptionVariants = cva(
       selected: false,
       disabled: false,
     },
-  }
+  },
 );
 
-export interface SelectProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
+export interface SelectProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  'onChange'
+> {
   /** Array of options or grouped options */
   options: (SelectOption | SelectOptionGroup)[];
   /** Selected value(s) */
@@ -124,7 +126,9 @@ export interface SelectProps
   /** Custom option renderer */
   renderOption?: (option: SelectOption, isSelected: boolean) => React.ReactNode;
   /** Custom label renderer */
-  renderLabel?: (value: string | number | (string | number)[] | null) => React.ReactNode;
+  renderLabel?: (
+    value: string | number | (string | number)[] | null,
+  ) => React.ReactNode;
   /** Unique identifier */
   id?: string;
 }
@@ -169,26 +173,23 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
     // Flatten options to handle both grouped and flat options
-    const flatOptions = useMemo(() => {
-      return options.flatMap((opt: any) => {
-        if ('options' in opt) {
-          return opt.options;
-        }
-        return opt;
-      });
+    const flatOptions = useMemo<SelectOption[]>(() => {
+      return options.flatMap((opt) =>
+        'options' in opt ? opt.options : [opt],
+      );
     }, [options]);
 
     // Filter options based on search term
     const filteredOptions = useMemo(() => {
       if (!searchTerm) return flatOptions;
       return flatOptions.filter((opt) =>
-        opt.label.toLowerCase().includes(searchTerm.toLowerCase())
+        opt.label.toLowerCase().includes(searchTerm.toLowerCase()),
       );
     }, [flatOptions, searchTerm]);
 
@@ -214,10 +215,16 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
     }, [value, flatOptions, multiselect, placeholder, renderLabel]);
 
     // Determine variant based on error/success state
-    const variant = errorMessage ? 'error' : successMessage ? 'success' : 'default';
+    const variant = errorMessage
+      ? 'error'
+      : successMessage
+        ? 'success'
+        : 'default';
 
     // Handle option selection
-    const handleSelect = (optionValue: string | number | (string | number)[]) => {
+    const handleSelect = (
+      optionValue: string | number | (string | number)[],
+    ) => {
       if (multiselect) {
         // In multiple mode, Headless UI passes the entire updated array
         if (Array.isArray(optionValue)) {
@@ -239,7 +246,11 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
     };
 
     return (
-      <div ref={ref} className={cn('flex flex-col gap-1.5', className)} {...props}>
+      <div
+        ref={ref}
+        className={cn('flex flex-col gap-1.5', className)}
+        {...props}
+      >
         {/* Label */}
         {label && (
           <label
@@ -247,7 +258,8 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
             className={cn(
               'text-sm font-medium',
               disabled ? 'text-neutral-500' : 'text-neutral-900',
-              required && "after:content-['*'] after:ml-1 after:text-error-primary"
+              required &&
+                "after:content-['*'] after:ml-1 after:text-error-primary",
             )}
           >
             {label}
@@ -273,14 +285,19 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
               <svg
                 className={cn(
                   'w-5 h-5 transition-transform flex-shrink-0',
-                  isOpen && 'rotate-180'
+                  isOpen && 'rotate-180',
                 )}
                 fill="none"
                 viewBox="0 0 20 20"
                 stroke="currentColor"
                 aria-hidden="true"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8l3 3 3-3m-3 3V4" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M7 8l3 3 3-3m-3 3V4"
+                />
               </svg>
             </Listbox.Button>
 
@@ -299,71 +316,77 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
                   className={selectOptionsVariants({ size })}
                   static
                 >
-                {/* Search input */}
-                {searchable && (
-                  <div className="sticky top-0 bg-white border-b border-neutral-200 p-2">
-                    <input
-                      type="text"
-                      placeholder="Search..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-neutral-300 rounded focus:outline-none focus:border-trust-deep"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                )}
+                  {/* Search input */}
+                  {searchable && (
+                    <div className="sticky top-0 bg-white border-b border-neutral-200 p-2">
+                      <input
+                        type="text"
+                        placeholder="Search..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full px-2 py-1 text-sm border border-neutral-300 rounded focus:outline-none focus:border-trust-deep"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  )}
 
-                {/* Options list */}
-                {filteredOptions.length > 0 ? (
-                  filteredOptions.map((option) => {
-                    const isSelected = multiselect
-                      ? Array.isArray(value) && value.includes(option.value)
-                      : value === option.value;
+                  {/* Options list */}
+                  {filteredOptions.length > 0 ? (
+                    filteredOptions.map((option) => {
+                      const isSelected = multiselect
+                        ? Array.isArray(value) && value.includes(option.value)
+                        : value === option.value;
 
-                    return (
-                      <Listbox.Option
-                        key={option.value}
-                        value={option.value}
-                        disabled={option.disabled}
-                        as="div"
-                        className={selectOptionVariants({
-                          selected: isSelected,
-                          disabled: option.disabled,
-                        })}
-                      >
-                        {renderOption ? (
-                          renderOption(option, isSelected)
-                        ) : (
-                          <>
-                            <span>{option.label}</span>
-                            {isSelected && (
-                              <svg
-                                className="w-5 h-5 flex-shrink-0"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                                aria-hidden="true"
-                              >
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                          </>
-                        )}
-                      </Listbox.Option>
-                    );
-                  })
-                ) : (
-                  <div className="px-3 py-2 text-sm text-neutral-500">
-                    No options found
-                  </div>
-                )}
-              </Listbox.Options>
+                      return (
+                        <Listbox.Option
+                          key={option.value}
+                          value={option.value}
+                          disabled={option.disabled}
+                          as="div"
+                          className={selectOptionVariants({
+                            selected: isSelected,
+                            disabled: option.disabled,
+                          })}
+                        >
+                          {renderOption ? (
+                            renderOption(option, isSelected)
+                          ) : (
+                            <>
+                              <span>{option.label}</span>
+                              {isSelected && (
+                                <svg
+                                  className="w-5 h-5 flex-shrink-0"
+                                  fill="currentColor"
+                                  viewBox="0 0 20 20"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              )}
+                            </>
+                          )}
+                        </Listbox.Option>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-neutral-500">
+                      No options found
+                    </div>
+                  )}
+                </Listbox.Options>
               </Transition>
             </div>
 
             {/* Close options when clicking outside */}
             {isOpen && (
-              <div
+              <button
+                type="button"
                 className="fixed inset-0 z-40"
+                aria-label="Close options"
                 onClick={() => {
                   setIsOpen(false);
                   setSearchTerm('');
@@ -376,7 +399,9 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
         {/* Helper text / Error / Success message */}
         <div className="flex items-center gap-1.5 min-h-5">
           {errorMessage && (
-            <p className="text-xs text-error-primary font-medium">{errorMessage}</p>
+            <p className="text-xs text-error-primary font-medium">
+              {errorMessage}
+            </p>
           )}
           {successMessage && !errorMessage && (
             <p className="text-xs text-success-primary font-medium">
@@ -389,7 +414,7 @@ export const Select = React.forwardRef<HTMLDivElement, SelectProps>(
         </div>
       </div>
     );
-  }
+  },
 );
 
 Select.displayName = 'Select';

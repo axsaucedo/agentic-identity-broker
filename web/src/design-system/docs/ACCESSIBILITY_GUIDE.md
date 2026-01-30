@@ -5,6 +5,7 @@ The Refined Trust Architecture design system is built with accessibility at its 
 ## Overview
 
 All design system components meet **WCAG 2.1 Level AA** accessibility standards, which include:
+
 - Perceivable: Information and UI are visible/perceivable to all
 - Operable: All functionality accessible via keyboard
 - Understandable: Text is clear and UI is intuitive
@@ -95,12 +96,12 @@ All interactive components support full keyboard navigation:
 
 All colors meet WCAG AA contrast requirements:
 
-| Use Case | Ratio | Status |
-|----------|-------|--------|
-| Text on background | 4.5:1 | ✓ Meets |
-| Large text (18pt+) | 3:1 | ✓ Meets |
-| UI components | 3:1 | ✓ Meets |
-| Disabled state | N/A | ✓ Exception |
+| Use Case           | Ratio | Status      |
+| ------------------ | ----- | ----------- |
+| Text on background | 4.5:1 | ✓ Meets     |
+| Large text (18pt+) | 3:1   | ✓ Meets     |
+| UI components      | 3:1   | ✓ Meets     |
+| Disabled state     | N/A   | ✓ Exception |
 
 ## Component Accessibility
 
@@ -174,11 +175,7 @@ All colors meet WCAG AA contrast requirements:
 
 ```tsx
 // ✓ Good - Proper modal structure
-<Modal
-  isOpen={true}
-  title="Confirm Deletion"
-  onClose={handleClose}
->
+<Modal isOpen={true} title="Confirm Deletion" onClose={handleClose}>
   <p>Are you sure?</p>
   <Button variant="danger">Delete</Button>
   <Button onClick={handleClose}>Cancel</Button>
@@ -227,8 +224,8 @@ All colors meet WCAG AA contrast requirements:
     {
       id: 'item1',
       title: 'What is a delegation?',
-      content: <AnswerContent />
-    }
+      content: <AnswerContent />,
+    },
   ]}
 />
 
@@ -256,6 +253,7 @@ Home/End     → Jump to start/end
 ```
 
 Ensure:
+
 - All interactive elements are reachable via keyboard
 - Focus is always visible
 - Tab order is logical (left-to-right, top-to-bottom)
@@ -344,6 +342,7 @@ cy.checkA11y();
 ### Issue: "Inputs don't have labels"
 
 **Fix:**
+
 ```tsx
 // ✗ Before
 <TextInput placeholder="Email" />
@@ -356,6 +355,7 @@ cy.checkA11y();
 ### Issue: "Buttons don't have text"
 
 **Fix:**
+
 ```tsx
 // ✗ Before
 <button className="icon-only"><TrashIcon /></button>
@@ -367,6 +367,7 @@ cy.checkA11y();
 ### Issue: "Images lack alt text"
 
 **Fix:**
+
 ```tsx
 // ✗ Before
 <img src="profile.jpg" />
@@ -378,6 +379,7 @@ cy.checkA11y();
 ### Issue: "Links unclear"
 
 **Fix:**
+
 ```tsx
 // ✗ Before
 <a href="/permissions">Click here to manage permissions</a>
@@ -389,6 +391,7 @@ cy.checkA11y();
 ### Issue: "Focus not visible"
 
 **Fix:**
+
 ```tsx
 // ✗ Before (no focus indicator)
 button { outline: none; }
@@ -468,12 +471,14 @@ button:focus {
 ## Resources
 
 ### External References
+
 - [WCAG 2.1 Guidelines](https://www.w3.org/WAI/WCAG21/quickref/)
 - [WAI-ARIA Authoring Practices](https://www.w3.org/WAI/ARIA/apg/)
 - [WebAIM](https://webaim.org/)
 - [Deque axe DevTools](https://www.deque.com/axe/devtools/)
 
 ### Tools
+
 - Chrome DevTools Accessibility Inspector
 - NVDA Screen Reader (free)
 - JAWS Screen Reader

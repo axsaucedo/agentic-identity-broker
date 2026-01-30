@@ -101,7 +101,9 @@ export const Avatar: Story = {
   render: () => (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h3 className="text-sm font-semibold text-neutral-900 mb-3">Avatar Sizes</h3>
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
+          Avatar Sizes
+        </h3>
         <div className="flex items-center gap-4">
           <Skeleton variant="circle" width="32px" height="32px" />
           <Skeleton variant="circle" width="40px" height="40px" />
@@ -281,7 +283,9 @@ export const Shapes: Story = {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-neutral-900 mb-3">Rectangle</h3>
+        <h3 className="text-sm font-semibold text-neutral-900 mb-3">
+          Rectangle
+        </h3>
         <Skeleton variant="rectangle" width="100%" height="120px" />
       </div>
 

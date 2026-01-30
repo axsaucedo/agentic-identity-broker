@@ -23,6 +23,7 @@ The animation timing system uses four tiers based on the perceived distance or i
 **Easing**: `cubic-bezier(0.4, 0, 0.2, 1)` (ease-in-out, slightly snappy)
 
 **Use Cases**:
+
 - Hover color transitions on buttons and links
 - Focus ring appearance
 - Icon rotation (chevron opens/closes)
@@ -30,6 +31,7 @@ The animation timing system uses four tiers based on the perceived distance or i
 - Opacity changes (subtle elements fading in/out)
 
 **Example**:
+
 ```css
 button {
   transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -45,6 +47,7 @@ button:hover {
 **Easing**: `cubic-bezier(0.34, 1.56, 0.64, 1)` (spring easing—slightly bouncy)
 
 **Use Cases**:
+
 - Button state changes (press/release)
 - Dropdown open/close
 - Toggle switches
@@ -52,6 +55,7 @@ button:hover {
 - Small overlays (tooltips appearing)
 
 **Example**:
+
 ```css
 .button-group {
   transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -67,6 +71,7 @@ button:hover {
 **Easing**: `cubic-bezier(0.34, 1.56, 0.64, 1)` (spring easing)
 
 **Use Cases**:
+
 - Card elevation changes on hover
 - Modal overlay fade-in
 - Component animations (accordion expand/collapse)
@@ -75,6 +80,7 @@ button:hover {
 - Loading state transitions
 
 **Example**:
+
 ```css
 .card {
   transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -91,6 +97,7 @@ button:hover {
 **Easing**: `cubic-bezier(0.34, 1.56, 0.64, 1)` (spring easing)
 
 **Use Cases**:
+
 - Page transitions / route changes
 - Full-page loading states
 - Large content switches (multi-step forms)
@@ -98,6 +105,7 @@ button:hover {
 - Complex state changes
 
 **Example**:
+
 ```css
 .page {
   animation: slideIn 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -128,6 +136,7 @@ cubic-bezier(0.34, 1.56, 0.64, 1)
 This is the "Refined Trust" easing function. It provides a subtle spring feeling—starting smoothly but with a slight bounce at the end. This creates a friendly, responsive feel without being playful.
 
 **Visual characteristics**:
+
 - Smooth acceleration in the beginning
 - Slight overshoot at the end (~56% overshoot)
 - Creates a sense of "life" and responsiveness
@@ -142,6 +151,7 @@ cubic-bezier(0.4, 0, 0.2, 1)
 A smooth, balanced easing that's neutral and professional.
 
 **Visual characteristics**:
+
 - Even acceleration and deceleration
 - No overshoot—controlled
 - Used for: color transitions, small elements, hover states
@@ -175,13 +185,17 @@ button:active {
 
 ```css
 .card {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 1);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
   transform: translateY(0);
   transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .card:hover {
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 1);
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
   transform: translateY(-2px);
 }
 ```
@@ -243,12 +257,7 @@ button:active {
 
 ```css
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    #f5f1ed 25%,
-    #e8e3de 50%,
-    #f5f1ed 75%
-  );
+  background: linear-gradient(90deg, #f5f1ed 25%, #e8e3de 50%, #f5f1ed 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -341,7 +350,9 @@ Users who prefer reduced motion should still see state changes—just instantly:
 Alternatively, use conditional animations in React:
 
 ```tsx
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const prefersReducedMotion = window.matchMedia(
+  '(prefers-reduced-motion: reduce)',
+).matches;
 
 const cardStyle = prefersReducedMotion
   ? {} // No animation
@@ -413,15 +424,15 @@ export const Button = ({ children }) => (
 
 ## Animation Timing Reference Chart
 
-| Interaction | Duration | Easing | Example |
-|-------------|----------|--------|---------|
-| Hover color | 150ms | ease-in-out | Link color change |
-| Button press | 200ms | spring | Button press/release |
-| Dropdown open | 200ms | spring | Menu appears |
-| Card hover | 300ms | spring | Card elevation |
-| Modal enter | 300ms | spring | Dialog appears |
-| Page transition | 500ms | spring | Route change |
-| Disabled → enabled | 150ms | ease-in-out | Form input state |
+| Interaction        | Duration | Easing      | Example              |
+| ------------------ | -------- | ----------- | -------------------- |
+| Hover color        | 150ms    | ease-in-out | Link color change    |
+| Button press       | 200ms    | spring      | Button press/release |
+| Dropdown open      | 200ms    | spring      | Menu appears         |
+| Card hover         | 300ms    | spring      | Card elevation       |
+| Modal enter        | 300ms    | spring      | Dialog appears       |
+| Page transition    | 500ms    | spring      | Route change         |
+| Disabled → enabled | 150ms    | ease-in-out | Form input state     |
 
 ---
 

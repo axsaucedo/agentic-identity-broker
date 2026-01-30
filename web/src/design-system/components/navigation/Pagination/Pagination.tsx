@@ -15,7 +15,7 @@
  */
 
 import React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const paginationVariants = cva(
@@ -32,7 +32,7 @@ const paginationVariants = cva(
     defaultVariants: {
       size: 'md',
     },
-  }
+  },
 );
 
 const pageButtonVariants = cva(
@@ -45,7 +45,8 @@ const pageButtonVariants = cva(
         lg: 'min-w-[3rem] h-12 px-4 text-lg',
       },
       variant: {
-        default: 'bg-white text-trust-deep border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400',
+        default:
+          'bg-white text-trust-deep border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400',
         active: 'bg-trust-deep text-white border-transparent shadow-md',
         ghost: 'bg-transparent text-trust-deep hover:bg-neutral-100',
       },
@@ -54,11 +55,13 @@ const pageButtonVariants = cva(
       size: 'md',
       variant: 'default',
     },
-  }
+  },
 );
 
-export interface PaginationProps
-  extends Omit<React.ComponentPropsWithoutRef<'nav'>, 'onChange'> {
+export interface PaginationProps extends Omit<
+  React.ComponentPropsWithoutRef<'nav'>,
+  'onChange'
+> {
   /** Current active page (1-indexed) */
   currentPage: number;
   /** Total number of pages */
@@ -84,7 +87,7 @@ export interface PaginationProps
 function generatePageNumbers(
   currentPage: number,
   totalPages: number,
-  maxVisible: number
+  maxVisible: number,
 ): (number | 'ellipsis')[] {
   if (totalPages <= maxVisible) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -176,7 +179,7 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     const isFirstPage = currentPage === 1;
     const isLastPage = currentPage === totalPages;
@@ -203,7 +206,10 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
       }
     };
 
-    const pages = variant === 'full' ? generatePageNumbers(currentPage, totalPages, maxVisible) : [];
+    const pages =
+      variant === 'full'
+        ? generatePageNumbers(currentPage, totalPages, maxVisible)
+        : [];
 
     return (
       <nav
@@ -220,14 +226,17 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
             onClick={handlePrevious}
             disabled={isFirstPage || disabled || hasSinglePage}
             aria-label="Go to previous page"
-            className={pageButtonVariants({ size: resolvedSize, variant: 'default' })}
+            className={pageButtonVariants({
+              size: resolvedSize,
+              variant: 'default',
+            })}
           >
             <svg
               className={cn(
                 'shrink-0',
                 resolvedSize === 'sm' && 'w-4 h-4',
                 resolvedSize === 'md' && 'w-5 h-5',
-                resolvedSize === 'lg' && 'w-6 h-6'
+                resolvedSize === 'lg' && 'w-6 h-6',
               )}
               fill="none"
               stroke="currentColor"
@@ -244,44 +253,45 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
           </button>
 
           {/* Page numbers (full mode only) */}
-          {variant === 'full' && pages.map((page, index) => {
-            if (page === 'ellipsis') {
+          {variant === 'full' &&
+            pages.map((page, index) => {
+              if (page === 'ellipsis') {
+                return (
+                  <span
+                    key={`ellipsis-${index}`}
+                    className={cn(
+                      'inline-flex items-center justify-center text-neutral-500',
+                      resolvedSize === 'sm' && 'w-8 text-sm',
+                      resolvedSize === 'md' && 'w-10 text-base',
+                      resolvedSize === 'lg' && 'w-12 text-lg',
+                    )}
+                    aria-hidden="true"
+                  >
+                    ...
+                  </span>
+                );
+              }
+
+              const pageNum = page as number;
+              const isActive = pageNum === currentPage;
+
               return (
-                <span
-                  key={`ellipsis-${index}`}
-                  className={cn(
-                    'inline-flex items-center justify-center text-neutral-500',
-                    resolvedSize === 'sm' && 'w-8 text-sm',
-                    resolvedSize === 'md' && 'w-10 text-base',
-                    resolvedSize === 'lg' && 'w-12 text-lg'
-                  )}
-                  aria-hidden="true"
+                <button
+                  key={pageNum}
+                  type="button"
+                  onClick={() => handlePageClick(pageNum)}
+                  disabled={disabled}
+                  aria-label={`Go to page ${pageNum}`}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={pageButtonVariants({
+                    size: resolvedSize,
+                    variant: isActive ? 'active' : 'default',
+                  })}
                 >
-                  ...
-                </span>
+                  {pageNum}
+                </button>
               );
-            }
-
-            const pageNum = page as number;
-            const isActive = pageNum === currentPage;
-
-            return (
-              <button
-                key={pageNum}
-                type="button"
-                onClick={() => handlePageClick(pageNum)}
-                disabled={disabled}
-                aria-label={`Go to page ${pageNum}`}
-                aria-current={isActive ? 'page' : undefined}
-                className={pageButtonVariants({
-                  size: resolvedSize,
-                  variant: isActive ? 'active' : 'default',
-                })}
-              >
-                {pageNum}
-              </button>
-            );
-          })}
+            })}
 
           {/* Next button */}
           <button
@@ -289,14 +299,17 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
             onClick={handleNext}
             disabled={isLastPage || disabled || hasSinglePage}
             aria-label="Go to next page"
-            className={pageButtonVariants({ size: resolvedSize, variant: 'default' })}
+            className={pageButtonVariants({
+              size: resolvedSize,
+              variant: 'default',
+            })}
           >
             <svg
               className={cn(
                 'shrink-0',
                 resolvedSize === 'sm' && 'w-4 h-4',
                 resolvedSize === 'md' && 'w-5 h-5',
-                resolvedSize === 'lg' && 'w-6 h-6'
+                resolvedSize === 'lg' && 'w-6 h-6',
               )}
               fill="none"
               stroke="currentColor"
@@ -320,7 +333,7 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
               'text-neutral-600',
               resolvedSize === 'sm' && 'text-xs',
               resolvedSize === 'md' && 'text-sm',
-              resolvedSize === 'lg' && 'text-base'
+              resolvedSize === 'lg' && 'text-base',
             )}
             aria-live="polite"
             aria-atomic="true"
@@ -330,7 +343,7 @@ export const Pagination = React.forwardRef<HTMLElement, PaginationProps>(
         )}
       </nav>
     );
-  }
+  },
 );
 
 Pagination.displayName = 'Pagination';

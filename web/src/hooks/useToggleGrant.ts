@@ -9,7 +9,11 @@
  */
 
 import { useState, useCallback } from 'react';
-import type { DelegatedToken, CreateOrUpdateGrantRequest, UserGrant } from '../types/consent';
+import type {
+  DelegatedToken,
+  CreateOrUpdateGrantRequest,
+  UserGrant,
+} from '../types/consent';
 import { consentApi } from '../services/api/consent';
 
 interface UseToggleGrantState {
@@ -27,7 +31,10 @@ interface UseToggleGrantReturn extends UseToggleGrantState {
   /** Update selected delegated tokens */
   setDelegatedTokens: (tokens: DelegatedToken[]) => void;
   /** Submit grant request */
-  submit: (validUntil?: string | null, redirectUri?: string) => Promise<UserGrant | null>;
+  submit: (
+    validUntil?: string | null,
+    redirectUri?: string,
+  ) => Promise<UserGrant | null>;
   /** Reset state */
   reset: () => void;
   /** Clear error */
@@ -67,7 +74,10 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
    * If redirectUri is provided and backend returns 303, navigates to the redirect URL.
    */
   const submit = useCallback(
-    async (validUntil?: string | null, redirectUri?: string): Promise<UserGrant | null> => {
+    async (
+      validUntil?: string | null,
+      redirectUri?: string,
+    ): Promise<UserGrant | null> => {
       // Set submitting state
       setState((prev) => ({
         ...prev,
@@ -79,7 +89,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
       try {
         // Prepare request payload - already in snake_case format
         const request: CreateOrUpdateGrantRequest = {
-          delegated_oauth2_tokens: state.delegatedTokens.map(token => ({
+          delegated_oauth2_tokens: state.delegatedTokens.map((token) => ({
             thirdparty_oauth2_service_id: token.thirdparty_oauth2_service_id,
             scopes: token.scopes,
           })),
@@ -87,7 +97,11 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
         };
 
         // Call API with optional redirectUri (FR-025)
-        const grant = await consentApi.createOrUpdateGrant(agentId, request, redirectUri);
+        const grant = await consentApi.createOrUpdateGrant(
+          agentId,
+          request,
+          redirectUri,
+        );
 
         // Update state with success
         setState((prev) => ({
@@ -103,7 +117,11 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
         let errorMessage = 'Failed to update grant';
 
         if (err && typeof err === 'object') {
-          if ('response' in err && err.response && typeof err.response === 'object') {
+          if (
+            'response' in err &&
+            err.response &&
+            typeof err.response === 'object'
+          ) {
             const response = err.response as {
               status?: number;
               data?: { message?: string; details?: Record<string, string[]> };
@@ -136,7 +154,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
         return null;
       }
     },
-    [agentId, state.delegatedTokens]
+    [agentId, state.delegatedTokens],
   );
 
   /**

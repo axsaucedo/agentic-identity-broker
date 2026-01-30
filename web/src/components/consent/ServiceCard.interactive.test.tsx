@@ -35,7 +35,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={false}
         selectedScopes={[]}
-      />
+      />,
     );
 
     // Verify component renders in editable mode
@@ -52,7 +52,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={false}
         selectedScopes={[]}
-      />
+      />,
     );
 
     // Find all buttons and click one (component structure may vary)
@@ -74,7 +74,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={true}
         selectedScopes={[]}
-      />
+      />,
     );
 
     // Verify component renders in enabled state
@@ -91,7 +91,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={true}
         selectedScopes={[]}
-      />
+      />,
     );
 
     // Verify component renders
@@ -108,7 +108,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={true}
         selectedScopes={['read:user', 'read:repo']}
-      />
+      />,
     );
 
     // Verify component renders with selected scopes
@@ -125,7 +125,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={true}
         selectedScopes={[]}
-      />
+      />,
     );
 
     // Verify component renders
@@ -142,7 +142,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={true}
         selectedScopes={[]}
-      />
+      />,
     );
 
     // Verify component renders
@@ -159,7 +159,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={true}
         selectedScopes={['read:user', 'read:repo']}
-      />
+      />,
     );
 
     // Verify component renders with selected scopes
@@ -176,7 +176,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={false}
         selectedScopes={[]}
-      />
+      />,
     );
 
     // Verify component renders in disabled state
@@ -193,7 +193,7 @@ describe('ServiceCard - Interactive Mode', () => {
         onScopeChange={mockOnScopeChange}
         isServiceEnabled={true}
         selectedScopes={['read:user']}
-      />
+      />,
     );
 
     // Verify component renders with selected scopes

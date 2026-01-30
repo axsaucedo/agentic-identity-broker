@@ -6,4 +6,8 @@
  * import { Button } from '@design-system/components/primitives/Button';
  */
 
-export { Button, type ButtonProps, Button as default } from '@design-system/components/primitives/Button';
+export {
+  Button,
+  type ButtonProps,
+  Button as default,
+} from '@design-system/components/primitives/Button';

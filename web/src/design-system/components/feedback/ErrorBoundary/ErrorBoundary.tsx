@@ -136,7 +136,7 @@ export class ErrorBoundary extends Component<
     if (process.env.NODE_ENV === 'development') {
       console.error(
         `[ErrorBoundary${boundaryName ? ` "${boundaryName}"` : ''}] Caught error:`,
-        error
+        error,
       );
       console.error('Error Info:', errorInfo);
     }
@@ -181,7 +181,7 @@ export class ErrorBoundary extends Component<
         aria-live="assertive"
         className={cn(
           'bg-error-light border border-error-primary/30 rounded-lg p-6',
-          'text-error-dark'
+          'text-error-dark',
         )}
       >
         {/* Header with icon and title */}
@@ -264,7 +264,7 @@ export class ErrorBoundary extends Component<
               'bg-error-primary text-white font-medium text-sm',
               'hover:bg-error-dark transition-colors duration-200',
               'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2',
-              'shadow-sm hover:shadow-md'
+              'shadow-sm hover:shadow-md',
             )}
           >
             <RefreshIcon />
@@ -280,7 +280,7 @@ export class ErrorBoundary extends Component<
                 'bg-white text-error-dark font-medium text-sm',
                 'border border-error-primary/30',
                 'hover:bg-error-light transition-colors duration-200',
-                'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2'
+                'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2',
               )}
             >
               Reload Page

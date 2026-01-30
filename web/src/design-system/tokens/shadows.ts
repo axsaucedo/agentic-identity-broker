@@ -12,7 +12,8 @@ export const shadows = {
 
   // Elevated card styling
   card: '0 2px 8px 0 rgb(0 0 0 / 0.04), inset 0 1px 0 0 rgb(255 255 255 / 1)',
-  'card-hover': '0 8px 20px -4px rgb(0 0 0 / 0.1), inset 0 1px 0 0 rgb(255 255 255 / 1)',
+  'card-hover':
+    '0 8px 20px -4px rgb(0 0 0 / 0.1), inset 0 1px 0 0 rgb(255 255 255 / 1)',
 
   // Standard elevation scale
   none: 'none',

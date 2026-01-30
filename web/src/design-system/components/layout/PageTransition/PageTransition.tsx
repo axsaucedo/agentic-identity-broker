@@ -60,7 +60,7 @@ export interface PageTransitionProps {
 const getTransitionClasses = (
   type: TransitionType,
   duration: number,
-  easing: string
+  easing: string,
 ) => {
   const durationClass = `duration-[${duration}ms]`;
   const easingStyle = { transitionTimingFunction: easing };
@@ -167,7 +167,10 @@ const getTransitionClasses = (
  * </PageTransition>
  * ```
  */
-export const PageTransition = React.forwardRef<HTMLDivElement, PageTransitionProps>(
+export const PageTransition = React.forwardRef<
+  HTMLDivElement,
+  PageTransitionProps
+>(
   (
     {
       children,
@@ -178,7 +181,7 @@ export const PageTransition = React.forwardRef<HTMLDivElement, PageTransitionPro
       exitDelay = 0,
       className,
     },
-    ref
+    ref,
   ) => {
     const [show, setShow] = useState(true);
     const [delayedShow, setDelayedShow] = useState(true);
@@ -237,7 +240,7 @@ export const PageTransition = React.forwardRef<HTMLDivElement, PageTransitionPro
         </div>
       </Transition>
     );
-  }
+  },
 );
 
 PageTransition.displayName = 'PageTransition';

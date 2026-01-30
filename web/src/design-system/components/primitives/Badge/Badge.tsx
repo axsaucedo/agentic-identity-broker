@@ -56,11 +56,12 @@ const badgeVariants = cva(
       size: 'md',
       shape: 'pill',
     },
-  }
+  },
 );
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLSpanElement>,
+  extends
+    React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {
   /** Icon to display before children */
   iconBefore?: React.ReactNode;
@@ -104,11 +105,13 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
       showDot = false,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Icon sizing based on badge size
-    const iconSize = size === 'sm' ? 'w-3 h-3' : size === 'lg' ? 'w-4 h-4' : 'w-3.5 h-3.5';
-    const dotSize = size === 'sm' ? 'w-1.5 h-1.5' : size === 'lg' ? 'w-2.5 h-2.5' : 'w-2 h-2';
+    const iconSize =
+      size === 'sm' ? 'w-3 h-3' : size === 'lg' ? 'w-4 h-4' : 'w-3.5 h-3.5';
+    const dotSize =
+      size === 'sm' ? 'w-1.5 h-1.5' : size === 'lg' ? 'w-2.5 h-2.5' : 'w-2 h-2';
 
     return (
       <span
@@ -126,7 +129,10 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
 
         {/* Icon before */}
         {iconBefore && (
-          <span className={cn('flex items-center', iconSize)} aria-hidden="true">
+          <span
+            className={cn('flex items-center', iconSize)}
+            aria-hidden="true"
+          >
             {iconBefore}
           </span>
         )}
@@ -136,13 +142,16 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
 
         {/* Icon after */}
         {iconAfter && (
-          <span className={cn('flex items-center', iconSize)} aria-hidden="true">
+          <span
+            className={cn('flex items-center', iconSize)}
+            aria-hidden="true"
+          >
             {iconAfter}
           </span>
         )}
       </span>
     );
-  }
+  },
 );
 
 Badge.displayName = 'Badge';

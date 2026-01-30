@@ -29,20 +29,24 @@ const dateInputVariants = cva(
         lg: 'px-4 py-3.5 text-lg h-13',
       },
       variant: {
-        default: 'border-neutral-300 text-neutral-900 placeholder-neutral-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
-        error: 'border-error-primary bg-error-light/20 text-neutral-900 placeholder-neutral-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
-        success: 'border-success-primary bg-success-light/20 text-neutral-900 placeholder-neutral-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
+        default:
+          'border-neutral-300 text-neutral-900 placeholder-neutral-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
+        error:
+          'border-error-primary bg-error-light/20 text-neutral-900 placeholder-neutral-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
+        success:
+          'border-success-primary bg-success-light/20 text-neutral-900 placeholder-neutral-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
       },
     },
     defaultVariants: {
       size: 'md',
       variant: 'default',
     },
-  }
+  },
 );
 
 export interface DatePickerProps
-  extends Omit<
+  extends
+    Omit<
       React.InputHTMLAttributes<HTMLInputElement>,
       'size' | 'type' | 'value' | 'onChange'
     >,
@@ -108,10 +112,14 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Determine variant based on error/success state
-    const variant = errorMessage ? 'error' : successMessage ? 'success' : 'default';
+    const variant = errorMessage
+      ? 'error'
+      : successMessage
+        ? 'success'
+        : 'default';
 
     // Format date for input (YYYY-MM-DD)
     const formatForInput = (date: Date | null): string => {
@@ -157,7 +165,8 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
     const inputValue = formatForInput(value);
     const minDateValue = minDate ? formatForInput(minDate) : undefined;
     const maxDateValue = maxDate ? formatForInput(maxDate) : undefined;
-    const generatedId = id || `date-picker-${Math.random().toString(36).substr(2, 9)}`;
+    const generatedId =
+      id || `date-picker-${Math.random().toString(36).substr(2, 9)}`;
 
     return (
       <div ref={ref} className="w-full">
@@ -184,7 +193,7 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
           className={cn(
             dateInputVariants({ size, variant }),
             disabled && 'bg-neutral-50 cursor-not-allowed opacity-60',
-            className
+            className,
           )}
           aria-invalid={!!errorMessage}
           aria-describedby={
@@ -227,7 +236,7 @@ export const DatePicker = React.forwardRef<HTMLDivElement, DatePickerProps>(
         </div>
       </div>
     );
-  }
+  },
 );
 
 DatePicker.displayName = 'DatePicker';

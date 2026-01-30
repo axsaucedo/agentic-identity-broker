@@ -39,7 +39,8 @@ const meta = {
     },
     label: {
       control: 'text',
-      description: 'Optional text label to display in the center (horizontal only)',
+      description:
+        'Optional text label to display in the center (horizontal only)',
     },
     labelSpacing: {
       control: 'select',
@@ -123,17 +124,23 @@ export const LabelSpacing: Story = {
   render: () => (
     <div className="w-full max-w-md space-y-8">
       <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-neutral-700">Small Spacing</h4>
+        <h4 className="text-sm font-semibold text-neutral-700">
+          Small Spacing
+        </h4>
         <Divider label="Or" labelSpacing="sm" />
       </div>
 
       <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-neutral-700">Medium Spacing</h4>
+        <h4 className="text-sm font-semibold text-neutral-700">
+          Medium Spacing
+        </h4>
         <Divider label="Or" labelSpacing="md" />
       </div>
 
       <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-neutral-700">Large Spacing</h4>
+        <h4 className="text-sm font-semibold text-neutral-700">
+          Large Spacing
+        </h4>
         <Divider label="Or" labelSpacing="lg" />
       </div>
     </div>
@@ -174,7 +181,9 @@ export const UseCases: Story = {
           />
         </div>
         <div>
-          <label className="text-sm font-medium text-neutral-700">Password</label>
+          <label className="text-sm font-medium text-neutral-700">
+            Password
+          </label>
           <input
             type="password"
             className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
@@ -201,9 +210,12 @@ export const ContentSeparation: Story = {
     <div className="w-full max-w-lg p-6 space-y-6">
       {/* Section 1 */}
       <div>
-        <h3 className="text-lg font-semibold text-neutral-900 mb-2">Overview</h3>
+        <h3 className="text-lg font-semibold text-neutral-900 mb-2">
+          Overview
+        </h3>
         <p className="text-sm text-neutral-600">
-          This is the overview section with important information about your account.
+          This is the overview section with important information about your
+          account.
         </p>
       </div>
 
@@ -211,7 +223,9 @@ export const ContentSeparation: Story = {
 
       {/* Section 2 */}
       <div>
-        <h3 className="text-lg font-semibold text-neutral-900 mb-2">Settings</h3>
+        <h3 className="text-lg font-semibold text-neutral-900 mb-2">
+          Settings
+        </h3>
         <p className="text-sm text-neutral-600">
           Configure your preferences and notification settings here.
         </p>
@@ -221,7 +235,9 @@ export const ContentSeparation: Story = {
 
       {/* Section 3 */}
       <div>
-        <h3 className="text-lg font-semibold text-neutral-900 mb-2">Security</h3>
+        <h3 className="text-lg font-semibold text-neutral-900 mb-2">
+          Security
+        </h3>
         <p className="text-sm text-neutral-600">
           Manage your password and connected devices.
         </p>
@@ -251,7 +267,9 @@ export const Timeline: Story = {
           ✓
         </div>
         <div>
-          <h4 className="text-sm font-medium text-neutral-900">Step 1: Review</h4>
+          <h4 className="text-sm font-medium text-neutral-900">
+            Step 1: Review
+          </h4>
           <p className="text-xs text-neutral-600">Completed</p>
         </div>
       </div>
@@ -265,7 +283,9 @@ export const Timeline: Story = {
           2
         </div>
         <div>
-          <h4 className="text-sm font-medium text-neutral-900">Step 2: Approve</h4>
+          <h4 className="text-sm font-medium text-neutral-900">
+            Step 2: Approve
+          </h4>
           <p className="text-xs text-neutral-600">In progress</p>
         </div>
       </div>
@@ -279,7 +299,9 @@ export const Timeline: Story = {
           3
         </div>
         <div>
-          <h4 className="text-sm font-medium text-neutral-900">Step 3: Complete</h4>
+          <h4 className="text-sm font-medium text-neutral-900">
+            Step 3: Complete
+          </h4>
           <p className="text-xs text-neutral-600">Pending</p>
         </div>
       </div>

@@ -15,8 +15,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Popover } from '@headlessui/react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const tooltipVariants = cva(
@@ -42,7 +41,7 @@ const tooltipVariants = cva(
       theme: 'dark',
       position: 'top',
     },
-  }
+  },
 );
 
 const arrowVariants = cva('absolute w-2 h-2 rotate-45', {
@@ -131,7 +130,7 @@ export const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(
       disabled = false,
       ...props
     },
-    ref
+    ref,
   ) => {
     const [isVisible, setIsVisible] = useState(false);
     const [showTooltip, setShowTooltip] = useState(false);
@@ -179,8 +178,6 @@ export const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(
     const getTooltipPosition = () => {
       if (!triggerRef.current || !tooltipRef.current) return {};
 
-      const triggerRect = triggerRef.current.getBoundingClientRect();
-      const tooltipRect = tooltipRef.current.getBoundingClientRect();
       const gap = 8; // Gap between trigger and tooltip
 
       switch (position) {
@@ -247,7 +244,7 @@ export const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(
             className={cn(
               tooltipVariants({ theme, position }),
               showTooltip ? 'opacity-100' : 'opacity-0',
-              className
+              className,
             )}
             style={getTooltipPosition()}
           >
@@ -256,7 +253,7 @@ export const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(
               <div
                 className={cn(
                   arrowVariants({ theme, position }),
-                  arrowBorderVariants({ theme, position })
+                  arrowBorderVariants({ theme, position }),
                 )}
               />
             )}
@@ -267,7 +264,7 @@ export const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 Tooltip.displayName = 'Tooltip';

@@ -22,26 +22,51 @@ type Story = StoryObj<typeof meta>;
 // Sample icons for stories
 const HomeIcon = () => (
   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+    />
   </svg>
 );
 
 const UserIcon = () => (
   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+    />
   </svg>
 );
 
 const SettingsIcon = () => (
   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+    />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+    />
   </svg>
 );
 
 const ChartIcon = () => (
   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+    />
   </svg>
 );
 
@@ -141,7 +166,11 @@ export const DisabledTabs: Story = {
     ];
 
     return (
-      <Tabs tabs={tabsWithDisabled} defaultTab="active" className="w-full max-w-2xl">
+      <Tabs
+        tabs={tabsWithDisabled}
+        defaultTab="active"
+        className="w-full max-w-2xl"
+      >
         <div className="p-4 bg-success-light border border-success-light rounded">
           <p className="text-success-dark">Active tab content is accessible</p>
         </div>
@@ -175,15 +204,21 @@ export const Vertical: Story = {
         >
           <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
             <h4 className="font-semibold text-neutral-900 mb-2">Overview</h4>
-            <p className="text-neutral-700">Vertical layout with underline variant.</p>
+            <p className="text-neutral-700">
+              Vertical layout with underline variant.
+            </p>
           </div>
           <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
             <h4 className="font-semibold text-neutral-900 mb-2">Details</h4>
-            <p className="text-neutral-700">Detailed view in vertical orientation.</p>
+            <p className="text-neutral-700">
+              Detailed view in vertical orientation.
+            </p>
           </div>
           <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
             <h4 className="font-semibold text-neutral-900 mb-2">Settings</h4>
-            <p className="text-neutral-700">Settings panel in vertical layout.</p>
+            <p className="text-neutral-700">
+              Settings panel in vertical layout.
+            </p>
           </div>
         </Tabs>
       </div>
@@ -199,10 +234,14 @@ export const Vertical: Story = {
           variant="button"
           orientation="vertical"
         >
-          <div className="p-4 bg-neutral-50 rounded">Home dashboard content</div>
+          <div className="p-4 bg-neutral-50 rounded">
+            Home dashboard content
+          </div>
           <div className="p-4 bg-neutral-50 rounded">Profile information</div>
           <div className="p-4 bg-neutral-50 rounded">Analytics and reports</div>
-          <div className="p-4 bg-neutral-50 rounded">Settings and preferences</div>
+          <div className="p-4 bg-neutral-50 rounded">
+            Settings and preferences
+          </div>
         </Tabs>
       </div>
     </div>
@@ -218,9 +257,15 @@ export const Sizes: Story = {
           Small
         </h3>
         <Tabs tabs={basicTabs} defaultTab="overview" size="sm">
-          <div className="p-3 bg-neutral-50 rounded text-sm">Small tab content</div>
-          <div className="p-3 bg-neutral-50 rounded text-sm">Small tab content</div>
-          <div className="p-3 bg-neutral-50 rounded text-sm">Small tab content</div>
+          <div className="p-3 bg-neutral-50 rounded text-sm">
+            Small tab content
+          </div>
+          <div className="p-3 bg-neutral-50 rounded text-sm">
+            Small tab content
+          </div>
+          <div className="p-3 bg-neutral-50 rounded text-sm">
+            Small tab content
+          </div>
         </Tabs>
       </div>
 
@@ -242,9 +287,15 @@ export const Sizes: Story = {
           Large
         </h3>
         <Tabs tabs={basicTabs} defaultTab="overview" size="lg">
-          <div className="p-6 bg-neutral-50 rounded text-lg">Large tab content</div>
-          <div className="p-6 bg-neutral-50 rounded text-lg">Large tab content</div>
-          <div className="p-6 bg-neutral-50 rounded text-lg">Large tab content</div>
+          <div className="p-6 bg-neutral-50 rounded text-lg">
+            Large tab content
+          </div>
+          <div className="p-6 bg-neutral-50 rounded text-lg">
+            Large tab content
+          </div>
+          <div className="p-6 bg-neutral-50 rounded text-lg">
+            Large tab content
+          </div>
         </Tabs>
       </div>
     </div>
@@ -261,16 +312,22 @@ export const WithIcons: Story = {
         </h3>
         <Tabs tabs={iconTabs} defaultTab="home" variant="underline">
           <div className="p-4 bg-neutral-50 rounded">
-            <h4 className="font-semibold text-neutral-900 mb-2">Home Dashboard</h4>
+            <h4 className="font-semibold text-neutral-900 mb-2">
+              Home Dashboard
+            </h4>
             <p className="text-neutral-700">Welcome to your dashboard.</p>
           </div>
           <div className="p-4 bg-neutral-50 rounded">
-            <h4 className="font-semibold text-neutral-900 mb-2">User Profile</h4>
+            <h4 className="font-semibold text-neutral-900 mb-2">
+              User Profile
+            </h4>
             <p className="text-neutral-700">Manage your profile information.</p>
           </div>
           <div className="p-4 bg-neutral-50 rounded">
             <h4 className="font-semibold text-neutral-900 mb-2">Analytics</h4>
-            <p className="text-neutral-700">View your analytics and insights.</p>
+            <p className="text-neutral-700">
+              View your analytics and insights.
+            </p>
           </div>
           <div className="p-4 bg-neutral-50 rounded">
             <h4 className="font-semibold text-neutral-900 mb-2">Settings</h4>
@@ -285,10 +342,18 @@ export const WithIcons: Story = {
           Pill with Icons
         </h3>
         <Tabs tabs={iconTabs} defaultTab="home" variant="pill">
-          <div className="p-4 bg-neutral-50 rounded">Home content with icons</div>
-          <div className="p-4 bg-neutral-50 rounded">Profile content with icons</div>
-          <div className="p-4 bg-neutral-50 rounded">Analytics content with icons</div>
-          <div className="p-4 bg-neutral-50 rounded">Settings content with icons</div>
+          <div className="p-4 bg-neutral-50 rounded">
+            Home content with icons
+          </div>
+          <div className="p-4 bg-neutral-50 rounded">
+            Profile content with icons
+          </div>
+          <div className="p-4 bg-neutral-50 rounded">
+            Analytics content with icons
+          </div>
+          <div className="p-4 bg-neutral-50 rounded">
+            Settings content with icons
+          </div>
         </Tabs>
       </div>
     </div>
@@ -303,10 +368,14 @@ export const Controlled: Story = {
       <div className="w-full max-w-2xl space-y-4">
         <div className="p-4 bg-trust-light border border-neutral-200 rounded-lg">
           <p className="text-sm text-trust-deep mb-2">
-            <strong>Controlled mode:</strong> The parent component manages the active tab state.
+            <strong>Controlled mode:</strong> The parent component manages the
+            active tab state.
           </p>
           <p className="text-sm text-trust">
-            Current active tab: <code className="px-2 py-0.5 bg-trust-light rounded">{activeTab}</code>
+            Current active tab:{' '}
+            <code className="px-2 py-0.5 bg-trust-light rounded">
+              {activeTab}
+            </code>
           </p>
         </div>
 
@@ -317,7 +386,9 @@ export const Controlled: Story = {
           variant="pill"
         >
           <div className="p-6 bg-success-light border border-success-light rounded">
-            <h4 className="font-semibold text-success-dark mb-3">Granted Permissions</h4>
+            <h4 className="font-semibold text-success-dark mb-3">
+              Granted Permissions
+            </h4>
             <ul className="space-y-2 text-success-dark">
               <li>• Read access to documents</li>
               <li>• Edit personal profile</li>
@@ -325,7 +396,9 @@ export const Controlled: Story = {
             </ul>
           </div>
           <div className="p-6 bg-amber-50 border border-amber-200 rounded">
-            <h4 className="font-semibold text-amber-900 mb-3">Pending Approvals</h4>
+            <h4 className="font-semibold text-amber-900 mb-3">
+              Pending Approvals
+            </h4>
             <ul className="space-y-2 text-amber-800">
               <li>• Admin access - awaiting approval</li>
               <li>• Delete permissions - under review</li>
@@ -397,7 +470,9 @@ export const ConsentManagementExample: Story = {
           <div className="space-y-4">
             <div className="p-4 border border-neutral-200 rounded-lg">
               <div className="flex items-start justify-between mb-2">
-                <h4 className="font-semibold text-neutral-900">Healthcare Provider Access</h4>
+                <h4 className="font-semibold text-neutral-900">
+                  Healthcare Provider Access
+                </h4>
                 <span className="px-2 py-1 text-xs font-medium bg-success-light text-success-dark rounded">
                   Active
                 </span>
@@ -412,7 +487,9 @@ export const ConsentManagementExample: Story = {
             </div>
             <div className="p-4 border border-neutral-200 rounded-lg">
               <div className="flex items-start justify-between mb-2">
-                <h4 className="font-semibold text-neutral-900">Research Study Participation</h4>
+                <h4 className="font-semibold text-neutral-900">
+                  Research Study Participation
+                </h4>
                 <span className="px-2 py-1 text-xs font-medium bg-success-light text-success-dark rounded">
                   Active
                 </span>
@@ -431,31 +508,45 @@ export const ConsentManagementExample: Story = {
           <div className="space-y-3">
             <div className="p-3 bg-neutral-50 border border-neutral-200 rounded">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-neutral-900">Lab Results Access</span>
+                <span className="text-sm font-medium text-neutral-900">
+                  Lab Results Access
+                </span>
                 <span className="text-xs text-neutral-500">Revoked</span>
               </div>
-              <p className="text-xs text-neutral-600">Revoked on Jan 10, 2024</p>
+              <p className="text-xs text-neutral-600">
+                Revoked on Jan 10, 2024
+              </p>
             </div>
             <div className="p-3 bg-neutral-50 border border-neutral-200 rounded">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-neutral-900">Pharmacy Access</span>
+                <span className="text-sm font-medium text-neutral-900">
+                  Pharmacy Access
+                </span>
                 <span className="text-xs text-neutral-500">Expired</span>
               </div>
-              <p className="text-xs text-neutral-600">Expired on Dec 31, 2023</p>
+              <p className="text-xs text-neutral-600">
+                Expired on Dec 31, 2023
+              </p>
             </div>
             <div className="p-3 bg-neutral-50 border border-neutral-200 rounded">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-neutral-900">Insurance Verification</span>
+                <span className="text-sm font-medium text-neutral-900">
+                  Insurance Verification
+                </span>
                 <span className="text-xs text-neutral-500">Completed</span>
               </div>
-              <p className="text-xs text-neutral-600">Completed on Nov 15, 2023</p>
+              <p className="text-xs text-neutral-600">
+                Completed on Nov 15, 2023
+              </p>
             </div>
           </div>
 
           {/* Preferences */}
           <div className="space-y-4">
             <div className="p-4 border border-neutral-200 rounded-lg">
-              <h4 className="font-semibold text-neutral-900 mb-3">Default Consent Duration</h4>
+              <h4 className="font-semibold text-neutral-900 mb-3">
+                Default Consent Duration
+              </h4>
               <select className="w-full px-3 py-2 border border-neutral-300 rounded focus:outline-none focus:ring-2 focus:ring-trust-hover">
                 <option>30 days</option>
                 <option>90 days</option>
@@ -464,19 +555,27 @@ export const ConsentManagementExample: Story = {
               </select>
             </div>
             <div className="p-4 border border-neutral-200 rounded-lg">
-              <h4 className="font-semibold text-neutral-900 mb-3">Notification Preferences</h4>
+              <h4 className="font-semibold text-neutral-900 mb-3">
+                Notification Preferences
+              </h4>
               <div className="space-y-2">
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked className="rounded" />
-                  <span className="text-sm text-neutral-700">Email me when consent is requested</span>
+                  <span className="text-sm text-neutral-700">
+                    Email me when consent is requested
+                  </span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked className="rounded" />
-                  <span className="text-sm text-neutral-700">Notify before consent expires</span>
+                  <span className="text-sm text-neutral-700">
+                    Notify before consent expires
+                  </span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" className="rounded" />
-                  <span className="text-sm text-neutral-700">Weekly consent summary</span>
+                  <span className="text-sm text-neutral-700">
+                    Weekly consent summary
+                  </span>
                 </label>
               </div>
             </div>
@@ -499,16 +598,24 @@ export const Playground: Story = {
         className="w-full max-w-2xl"
       >
         <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
-          <h3 className="font-semibold text-neutral-900 mb-2">Overview Panel</h3>
-          <p className="text-neutral-700">This is the overview content panel.</p>
+          <h3 className="font-semibold text-neutral-900 mb-2">
+            Overview Panel
+          </h3>
+          <p className="text-neutral-700">
+            This is the overview content panel.
+          </p>
         </div>
         <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
           <h3 className="font-semibold text-neutral-900 mb-2">Details Panel</h3>
           <p className="text-neutral-700">This is the details content panel.</p>
         </div>
         <div className="p-4 bg-neutral-50 rounded border border-neutral-200">
-          <h3 className="font-semibold text-neutral-900 mb-2">Settings Panel</h3>
-          <p className="text-neutral-700">This is the settings content panel.</p>
+          <h3 className="font-semibold text-neutral-900 mb-2">
+            Settings Panel
+          </h3>
+          <p className="text-neutral-700">
+            This is the settings content panel.
+          </p>
         </div>
       </Tabs>
     );

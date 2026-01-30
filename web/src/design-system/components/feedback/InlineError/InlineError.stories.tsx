@@ -80,9 +80,7 @@ export const WithIcon: Story = {
 
     return (
       <div className="space-y-4 max-w-md">
-        <InlineError
-          message="Default error icon (X in circle)"
-        />
+        <InlineError message="Default error icon (X in circle)" />
         <InlineError
           message="Custom icon (info circle)"
           icon={<CustomIcon />}
@@ -103,7 +101,10 @@ export const FieldLevel: Story = {
     <div className="max-w-md space-y-6">
       {/* Valid field */}
       <div>
-        <label htmlFor="email-valid" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="email-valid"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Email Address (Valid)
         </label>
         <input
@@ -118,7 +119,10 @@ export const FieldLevel: Story = {
 
       {/* Invalid field with error */}
       <div>
-        <label htmlFor="email-invalid" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="email-invalid"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Email Address (Invalid)
         </label>
         <input
@@ -140,7 +144,10 @@ export const FieldLevel: Story = {
 
       {/* Required field with error */}
       <div>
-        <label htmlFor="password-empty" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="password-empty"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Password (Required)
         </label>
         <input
@@ -152,10 +159,7 @@ export const FieldLevel: Story = {
           aria-describedby="password-error"
         />
         <div id="password-error">
-          <InlineError
-            message="Password is required"
-            fieldLabel="Password"
-          />
+          <InlineError message="Password is required" fieldLabel="Password" />
         </div>
       </div>
     </div>
@@ -172,7 +176,10 @@ export const MultipleErrors: Story = {
   render: () => (
     <div className="max-w-md space-y-6">
       <div>
-        <label htmlFor="username" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="username"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Username
         </label>
         <input
@@ -198,7 +205,10 @@ export const MultipleErrors: Story = {
       </div>
 
       <div>
-        <label htmlFor="phone" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="phone"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Phone Number
         </label>
         <input
@@ -239,7 +249,10 @@ export const WithSuggestions: Story = {
   render: () => (
     <div className="max-w-md space-y-6">
       <div>
-        <label htmlFor="password-weak" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="password-weak"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Password
         </label>
         <input
@@ -266,7 +279,10 @@ export const WithSuggestions: Story = {
       </div>
 
       <div>
-        <label htmlFor="upload" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="upload"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Profile Photo
         </label>
         <input
@@ -307,7 +323,10 @@ export const WithLinks: Story = {
   render: () => (
     <div className="max-w-md space-y-6">
       <div>
-        <label htmlFor="email-taken" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="email-taken"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Email Address
         </label>
         <input
@@ -338,7 +357,10 @@ export const WithLinks: Story = {
       </div>
 
       <div>
-        <label htmlFor="code-invalid" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="code-invalid"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Verification Code
         </label>
         <input
@@ -382,7 +404,10 @@ export const WithFieldLabel: Story = {
   render: () => (
     <div className="max-w-md space-y-6">
       <div>
-        <label htmlFor="billing-zip" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="billing-zip"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Billing ZIP Code
         </label>
         <input
@@ -405,8 +430,9 @@ export const WithFieldLabel: Story = {
 
       <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
         <p className="text-sm text-neutral-700">
-          The <code>fieldLabel</code> prop adds screen reader context (hidden visually).
-          It helps screen reader users understand which field has an error.
+          The <code>fieldLabel</code> prop adds screen reader context (hidden
+          visually). It helps screen reader users understand which field has an
+          error.
         </p>
       </div>
     </div>
@@ -424,7 +450,10 @@ export const WithHelperText: Story = {
   render: () => (
     <div className="max-w-md space-y-6">
       <div>
-        <label htmlFor="amount" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="amount"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Transfer Amount
         </label>
         <input
@@ -446,7 +475,10 @@ export const WithHelperText: Story = {
       </div>
 
       <div>
-        <label htmlFor="domain" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="domain"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Custom Domain
         </label>
         <input
@@ -470,7 +502,8 @@ export const WithHelperText: Story = {
   ),
   args: {
     message: 'Transfer amount exceeds daily limit',
-    helperText: 'Your daily transfer limit is $10,000. Contact support to increase your limit.',
+    helperText:
+      'Your daily transfer limit is $10,000. Contact support to increase your limit.',
   },
 };
 
@@ -481,7 +514,10 @@ export const Sizes: Story = {
   render: () => (
     <div className="max-w-md space-y-6">
       <div>
-        <label htmlFor="field-sm" className="block text-xs font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="field-sm"
+          className="block text-xs font-medium text-neutral-700 mb-1"
+        >
           Small Field
         </label>
         <input
@@ -501,7 +537,10 @@ export const Sizes: Story = {
       </div>
 
       <div>
-        <label htmlFor="field-md" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="field-md"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Medium Field (Default)
         </label>
         <input
@@ -534,7 +573,10 @@ export const WithoutIcon: Story = {
   render: () => (
     <div className="max-w-md space-y-6">
       <div>
-        <label htmlFor="simple" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="simple"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Simple Field
         </label>
         <input
@@ -545,15 +587,15 @@ export const WithoutIcon: Story = {
           aria-describedby="simple-error"
         />
         <div id="simple-error">
-          <InlineError
-            message="This field is required"
-            hideIcon
-          />
+          <InlineError message="This field is required" hideIcon />
         </div>
       </div>
 
       <div>
-        <label htmlFor="minimal" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="minimal"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Minimal Error
         </label>
         <input
@@ -585,7 +627,10 @@ export const WithoutIcon: Story = {
 export const Playground: Story = {
   render: (args) => (
     <div className="max-w-md">
-      <label htmlFor="playground-field" className="block text-sm font-medium text-neutral-700 mb-1">
+      <label
+        htmlFor="playground-field"
+        className="block text-sm font-medium text-neutral-700 mb-1"
+      >
         Form Field
       </label>
       <input
@@ -624,7 +669,10 @@ export const RealWorldExamples: Story = {
         <div className="space-y-6">
           {/* Email validation */}
           <div>
-            <label htmlFor="consent-email" className="block text-sm font-medium text-neutral-700 mb-1">
+            <label
+              htmlFor="consent-email"
+              className="block text-sm font-medium text-neutral-700 mb-1"
+            >
               Email Address *
             </label>
             <input
@@ -639,7 +687,9 @@ export const RealWorldExamples: Story = {
             <div id="consent-email-error">
               <InlineError
                 message="Please enter a valid email address"
-                suggestions={['Email must contain @ and a domain (e.g., user@example.com)']}
+                suggestions={[
+                  'Email must contain @ and a domain (e.g., user@example.com)',
+                ]}
                 fieldLabel="Email Address"
               />
             </div>
@@ -647,7 +697,10 @@ export const RealWorldExamples: Story = {
 
           {/* Organization name */}
           <div>
-            <label htmlFor="org-name" className="block text-sm font-medium text-neutral-700 mb-1">
+            <label
+              htmlFor="org-name"
+              className="block text-sm font-medium text-neutral-700 mb-1"
+            >
               Organization Name *
             </label>
             <input
@@ -668,7 +721,10 @@ export const RealWorldExamples: Story = {
 
           {/* Data retention period */}
           <div>
-            <label htmlFor="retention" className="block text-sm font-medium text-neutral-700 mb-1">
+            <label
+              htmlFor="retention"
+              className="block text-sm font-medium text-neutral-700 mb-1"
+            >
               Data Retention Period (days) *
             </label>
             <input
@@ -736,19 +792,36 @@ export const Accessibility: Story = {
           Accessibility Features
         </h4>
         <ul className="text-sm text-neutral-700 space-y-1">
-          <li>• Uses <code>role="alert"</code> for immediate screen reader announcement</li>
-          <li>• Uses <code>aria-live="polite"</code> to avoid interrupting users</li>
-          <li>• Uses <code>aria-atomic="true"</code> for complete message reading</li>
-          <li>• Icons marked with <code>aria-hidden="true"</code></li>
-          <li>• Field association via <code>aria-describedby</code> and <code>aria-invalid</code></li>
-          <li>• Optional <code>fieldLabel</code> for screen reader context</li>
+          <li>
+            • Uses <code>role="alert"</code> for immediate screen reader
+            announcement
+          </li>
+          <li>
+            • Uses <code>aria-live="polite"</code> to avoid interrupting users
+          </li>
+          <li>
+            • Uses <code>aria-atomic="true"</code> for complete message reading
+          </li>
+          <li>
+            • Icons marked with <code>aria-hidden="true"</code>
+          </li>
+          <li>
+            • Field association via <code>aria-describedby</code> and{' '}
+            <code>aria-invalid</code>
+          </li>
+          <li>
+            • Optional <code>fieldLabel</code> for screen reader context
+          </li>
           <li>• Error text color meets WCAG 2.1 AA contrast requirements</li>
           <li>• Keyboard accessible when containing links/buttons</li>
         </ul>
       </div>
 
       <div>
-        <label htmlFor="accessible-field" className="block text-sm font-medium text-neutral-700 mb-1">
+        <label
+          htmlFor="accessible-field"
+          className="block text-sm font-medium text-neutral-700 mb-1"
+        >
           Accessible Form Field
         </label>
         <input

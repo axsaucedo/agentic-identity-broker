@@ -20,7 +20,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Disclosure, Transition } from '@headlessui/react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const accordionVariants = cva(
@@ -36,7 +36,7 @@ const accordionVariants = cva(
     defaultVariants: {
       size: 'md',
     },
-  }
+  },
 );
 
 const accordionItemVariants = cva(
@@ -62,7 +62,7 @@ const accordionItemVariants = cva(
       disabled: false,
       open: false,
     },
-  }
+  },
 );
 
 const accordionContentVariants = cva(
@@ -78,7 +78,7 @@ const accordionContentVariants = cva(
     defaultVariants: {
       size: 'md',
     },
-  }
+  },
 );
 
 const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -167,15 +167,8 @@ export interface AccordionProps {
  */
 export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
   (
-    {
-      items,
-      size = 'md',
-      exclusive = true,
-      defaultOpen,
-      onChange,
-      className,
-    },
-    ref
+    { items, size = 'md', exclusive = true, defaultOpen, onChange, className },
+    ref,
   ) => {
     // Track open items internally
     const [openItems, setOpenItems] = useState<Set<string>>(() => {
@@ -213,11 +206,11 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
     // Handle keyboard navigation
     const handleKeyDown = (
       event: React.KeyboardEvent,
-      currentIndex: number
+      currentIndex: number,
     ) => {
       const enabledItems = items.filter((item) => !item.disabled);
       const currentEnabledIndex = enabledItems.findIndex(
-        (item) => item === items[currentIndex]
+        (item) => item === items[currentIndex],
       );
 
       if (event.key === 'ArrowDown') {
@@ -225,7 +218,7 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
         const nextIndex = (currentEnabledIndex + 1) % enabledItems.length;
         const nextItem = enabledItems[nextIndex];
         const nextButton = document.querySelector(
-          `[data-accordion-button="${nextItem.id}"]`
+          `[data-accordion-button="${nextItem.id}"]`,
         ) as HTMLButtonElement;
         nextButton?.focus();
       } else if (event.key === 'ArrowUp') {
@@ -236,21 +229,21 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
             : currentEnabledIndex - 1;
         const prevItem = enabledItems[prevIndex];
         const prevButton = document.querySelector(
-          `[data-accordion-button="${prevItem.id}"]`
+          `[data-accordion-button="${prevItem.id}"]`,
         ) as HTMLButtonElement;
         prevButton?.focus();
       } else if (event.key === 'Home') {
         event.preventDefault();
         const firstItem = enabledItems[0];
         const firstButton = document.querySelector(
-          `[data-accordion-button="${firstItem.id}"]`
+          `[data-accordion-button="${firstItem.id}"]`,
         ) as HTMLButtonElement;
         firstButton?.focus();
       } else if (event.key === 'End') {
         event.preventDefault();
         const lastItem = enabledItems[enabledItems.length - 1];
         const lastButton = document.querySelector(
-          `[data-accordion-button="${lastItem.id}"]`
+          `[data-accordion-button="${lastItem.id}"]`,
         ) as HTMLButtonElement;
         lastButton?.focus();
       }
@@ -262,7 +255,7 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
           ref={ref}
           className={cn(
             'border border-neutral-200 rounded-lg p-8 text-center text-neutral-500',
-            className
+            className,
           )}
         >
           <p className="text-sm">No items to display</p>
@@ -277,7 +270,7 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
 
           return (
             <Disclosure key={item.id} as="div">
-              {({ open }) => {
+              {() => {
                 // Sync Disclosure open state with our controlled state
                 const isItemOpen = isOpen;
 
@@ -294,7 +287,7 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
                           size,
                           disabled: item.disabled,
                           open: isItemOpen,
-                        })
+                        }),
                       )}
                       aria-expanded={isItemOpen}
                       aria-controls={`accordion-content-${item.id}`}
@@ -322,7 +315,7 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
                       <ChevronDownIcon
                         className={cn(
                           'flex-shrink-0 text-neutral-400',
-                          isItemOpen && 'rotate-180'
+                          isItemOpen && 'rotate-180',
                         )}
                       />
                     </Disclosure.Button>
@@ -352,7 +345,7 @@ export const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
         })}
       </div>
     );
-  }
+  },
 );
 
 Accordion.displayName = 'Accordion';

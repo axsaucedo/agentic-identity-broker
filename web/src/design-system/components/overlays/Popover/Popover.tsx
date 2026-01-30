@@ -17,9 +17,9 @@
  * - WCAG 2.1 AA compliant with proper ARIA attributes
  */
 
-import React, { Fragment } from 'react';
+import React, { Fragment, useRef } from 'react';
 import { Popover as HeadlessPopover, Transition } from '@headlessui/react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const popoverPanelVariants = cva(
@@ -37,7 +37,7 @@ const popoverPanelVariants = cva(
     defaultVariants: {
       width: 'md',
     },
-  }
+  },
 );
 
 const positionVariants = cva('absolute z-50', {
@@ -54,19 +54,22 @@ const positionVariants = cva('absolute z-50', {
   },
 });
 
-const arrowVariants = cva('absolute w-3 h-3 bg-white border-neutral-200 rotate-45', {
-  variants: {
-    position: {
-      top: 'bottom-[-6px] left-1/2 -translate-x-1/2 border-b border-r',
-      right: 'left-[-6px] top-1/2 -translate-y-1/2 border-l border-b',
-      bottom: 'top-[-6px] left-1/2 -translate-x-1/2 border-t border-l',
-      left: 'right-[-6px] top-1/2 -translate-y-1/2 border-t border-r',
+const arrowVariants = cva(
+  'absolute w-3 h-3 bg-white border-neutral-200 rotate-45',
+  {
+    variants: {
+      position: {
+        top: 'bottom-[-6px] left-1/2 -translate-x-1/2 border-b border-r',
+        right: 'left-[-6px] top-1/2 -translate-y-1/2 border-l border-b',
+        bottom: 'top-[-6px] left-1/2 -translate-x-1/2 border-t border-l',
+        left: 'right-[-6px] top-1/2 -translate-y-1/2 border-t border-r',
+      },
+    },
+    defaultVariants: {
+      position: 'bottom',
     },
   },
-  defaultVariants: {
-    position: 'bottom',
-  },
-});
+);
 
 export interface PopoverProps {
   /** Element that triggers the popover */
@@ -142,18 +145,19 @@ export const Popover = React.forwardRef<HTMLDivElement, PopoverProps>(
       triggerClassName,
       ...props
     },
-    ref
+    ref,
   ) => {
     // If controlled mode, use HeadlessPopover.Group pattern
     // Otherwise, use uncontrolled mode
     const isControlled = isOpen !== undefined && onOpenChange !== undefined;
+    const lastOpenRef = useRef<boolean | null>(null);
 
     const PopoverContent = (
       <>
         <HeadlessPopover.Button
           className={cn(
             'inline-flex items-center focus:outline-none focus:ring-2 focus:ring-trust-deep focus:ring-offset-2 rounded-md',
-            triggerClassName
+            triggerClassName,
           )}
         >
           {trigger}
@@ -177,9 +181,7 @@ export const Popover = React.forwardRef<HTMLDivElement, PopoverProps>(
               {...props}
             >
               {/* Arrow indicator */}
-              {showArrow && (
-                <div className={cn(arrowVariants({ position }))} />
-              )}
+              {showArrow && <div className={cn(arrowVariants({ position }))} />}
 
               {/* Header */}
               {header && (
@@ -199,7 +201,7 @@ export const Popover = React.forwardRef<HTMLDivElement, PopoverProps>(
                 className={cn(
                   'px-5 py-4 text-sm text-neutral-700',
                   !header && 'pt-5',
-                  !footer && 'pb-5'
+                  !footer && 'pb-5',
                 )}
               >
                 {children}
@@ -223,11 +225,12 @@ export const Popover = React.forwardRef<HTMLDivElement, PopoverProps>(
         <HeadlessPopover className="relative inline-flex">
           {({ open }) => {
             // Sync controlled state with Headless UI internal state
-            React.useEffect(() => {
+            if (open !== lastOpenRef.current) {
+              lastOpenRef.current = open;
               if (open !== isOpen) {
                 onOpenChange(open);
               }
-            }, [open]);
+            }
 
             return PopoverContent;
           }}
@@ -241,7 +244,7 @@ export const Popover = React.forwardRef<HTMLDivElement, PopoverProps>(
         {PopoverContent}
       </HeadlessPopover>
     );
-  }
+  },
 );
 
 Popover.displayName = 'Popover';

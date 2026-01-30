@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useToggleGrant } from './useToggleGrant';
 import { consentApi } from '../services/api/consent';
 import type { UserGrant } from '../types/consent';
@@ -126,7 +126,9 @@ describe('useToggleGrant', () => {
         data: {
           message: 'Validation failed',
           details: {
-            'delegated_oauth2_tokens[0].scopes': ['At least one scope required'],
+            'delegated_oauth2_tokens[0].scopes': [
+              'At least one scope required',
+            ],
           },
         },
       },

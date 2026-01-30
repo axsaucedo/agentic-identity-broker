@@ -3,12 +3,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AgentGrantDetailPage } from './AgentGrantDetailPage';
 import { consentApi } from '../services/api/consent';
 import { ToastProvider } from '../components/ui/Toast';
-import type { AgentDetail, ThirdpartyService, UserGrant } from '../types/consent';
+import type {
+  AgentDetail,
+  ThirdpartyService,
+  UserGrant,
+} from '../types/consent';
 
 // Mock the API
 vi.mock('../services/api/consent', () => ({
@@ -76,7 +80,7 @@ describe('AgentGrantDetailPage - Integration', () => {
             <Route path="/agent/:agentId" element={<AgentGrantDetailPage />} />
           </Routes>
         </MemoryRouter>
-      </ToastProvider>
+      </ToastProvider>,
     );
   };
 
@@ -84,7 +88,9 @@ describe('AgentGrantDetailPage - Integration', () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Test Agent' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Test Agent' }),
+      ).toBeInTheDocument();
       expect(screen.getByText('A test agent')).toBeInTheDocument();
     });
   });
@@ -94,9 +100,11 @@ describe('AgentGrantDetailPage - Integration', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByRole('heading', { name: 'Test Agent' })).toBeInTheDocument();
+        expect(
+          screen.getByRole('heading', { name: 'Test Agent' }),
+        ).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   });
 
@@ -118,9 +126,11 @@ describe('AgentGrantDetailPage - Integration', () => {
     // Wait for page to load
     await waitFor(
       () => {
-        expect(screen.getByRole('heading', { name: 'Test Agent' })).toBeInTheDocument();
+        expect(
+          screen.getByRole('heading', { name: 'Test Agent' }),
+        ).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   });
 
@@ -138,9 +148,11 @@ describe('AgentGrantDetailPage - Integration', () => {
     // Wait for page to load
     await waitFor(
       () => {
-        expect(screen.getByRole('heading', { name: 'Test Agent' })).toBeInTheDocument();
+        expect(
+          screen.getByRole('heading', { name: 'Test Agent' }),
+        ).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   });
 
@@ -162,9 +174,11 @@ describe('AgentGrantDetailPage - Integration', () => {
     // Wait for initial load
     await waitFor(
       () => {
-        expect(screen.getByRole('heading', { name: 'Test Agent' })).toBeInTheDocument();
+        expect(
+          screen.getByRole('heading', { name: 'Test Agent' }),
+        ).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   });
 
@@ -174,9 +188,11 @@ describe('AgentGrantDetailPage - Integration', () => {
     // Wait for page to load
     await waitFor(
       () => {
-        expect(screen.getByRole('heading', { name: 'Test Agent' })).toBeInTheDocument();
+        expect(
+          screen.getByRole('heading', { name: 'Test Agent' }),
+        ).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   });
 
@@ -186,9 +202,11 @@ describe('AgentGrantDetailPage - Integration', () => {
     // Wait for page to load
     await waitFor(
       () => {
-        expect(screen.getByRole('heading', { name: 'Test Agent' })).toBeInTheDocument();
+        expect(
+          screen.getByRole('heading', { name: 'Test Agent' }),
+        ).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   });
 });

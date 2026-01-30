@@ -87,7 +87,10 @@ export const Variants: Story = {
 export const WithTooltip: Story = {
   render: () => (
     <div className="flex gap-4">
-      <Tooltip content="Data is encrypted in transit and at rest" position="bottom">
+      <Tooltip
+        content="Data is encrypted in transit and at rest"
+        position="bottom"
+      >
         <StatusIndicator
           icon={
             <svg
@@ -137,7 +140,10 @@ export const PermissionMetadata: Story = {
         </div>
 
         <div className="flex items-center gap-6 text-xs">
-          <Tooltip content="Data is encrypted in transit and at rest" position="bottom">
+          <Tooltip
+            content="Data is encrypted in transit and at rest"
+            position="bottom"
+          >
             <StatusIndicator
               icon={
                 <svg

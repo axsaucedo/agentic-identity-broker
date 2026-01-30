@@ -19,25 +19,27 @@ This document maps design system components to OAuth2 session management require
 **Design System Components Used**:
 
 ### Primary Container: Card
+
 **Import**: `@design-system/components/data-display/Card`
 
 ```tsx
 import { Card } from '@design-system/components/data-display/Card';
 
 <Card
-  padding="default"        // 24px padding (spacious feel)
-  border="subtle"          // Ring-based border
-  hover="lift"             // Elevation on hover (interactive feel)
-  backgroundColor="white"  // Default white background
+  padding="default" // 24px padding (spacious feel)
+  border="subtle" // Ring-based border
+  hover="lift" // Elevation on hover (interactive feel)
+  backgroundColor="white" // Default white background
   header={/* Service name + logo */}
   footer={/* Action buttons */}
-  divider={true}          // Divider between sections
+  divider={true} // Divider between sections
 >
   {/* Session metadata */}
-</Card>
+</Card>;
 ```
 
 **Props Used**:
+
 - `padding="default"` (24px) - Standard spacing for session cards
 - `border="subtle"` - Soft ring border for clean appearance
 - `hover="lift"` - Subtle elevation feedback when hovering over card
@@ -48,6 +50,7 @@ import { Card } from '@design-system/components/data-display/Card';
 ---
 
 ### Service Logo: Avatar
+
 **Import**: `@design-system/components/primitives/Avatar`
 
 ```tsx
@@ -56,12 +59,13 @@ import { Avatar } from '@design-system/components/primitives/Avatar';
 <Avatar
   src={service.logo_url}
   alt={`${service.display_name} logo`}
-  size="md"              // 40px size for service logos
+  size="md" // 40px size for service logos
   fallback={service.display_name[0]}
-/>
+/>;
 ```
 
 **Props Used**:
+
 - `src` - Service logo URL from API
 - `alt` - Accessible label for screen readers
 - `size="md"` (40px) - Appropriate size for card headers
@@ -70,6 +74,7 @@ import { Avatar } from '@design-system/components/primitives/Avatar';
 ---
 
 ### Status Badge: Badge
+
 **Import**: `@design-system/components/primitives/Badge`
 
 ```tsx
@@ -97,6 +102,7 @@ import { Badge } from '@design-system/components/primitives/Badge';
 ```
 
 **Props Used**:
+
 - `variant` - Semantic variant based on session status
   - `success` - Active, valid session
   - `warning` - Expiring within 7 days
@@ -109,6 +115,7 @@ import { Badge } from '@design-system/components/primitives/Badge';
 ---
 
 ### Metadata Display: StatusIndicator
+
 **Import**: `@design-system/components/data-display/StatusIndicator`
 
 ```tsx
@@ -137,6 +144,7 @@ import { StatusIndicator } from '@design-system/components/data-display/StatusIn
 ```
 
 **Props Used**:
+
 - `icon` - Icon component (16px size, from Lucide React or similar)
 - `label` - Text label for metadata
 - `variant` - Color variant (default for neutral metadata)
@@ -145,6 +153,7 @@ import { StatusIndicator } from '@design-system/components/data-display/StatusIn
 ---
 
 ### Action Buttons: Button
+
 **Import**: `@design-system/components/primitives/Button`
 
 ```tsx
@@ -181,6 +190,7 @@ import { Button } from '@design-system/components/primitives/Button';
 ```
 
 **Props Used**:
+
 - `variant` - Button variant based on action importance
   - `danger` - Destructive actions (terminate)
   - `outline` - Secondary actions (view details)
@@ -193,6 +203,7 @@ import { Button } from '@design-system/components/primitives/Button';
 ---
 
 ### Layout: Stack
+
 **Import**: `@design-system/components/layout/Stack`
 
 ```tsx
@@ -213,6 +224,7 @@ import { Stack } from '@design-system/components/layout/Stack';
 ```
 
 **Props Used**:
+
 - `gap` - Spacing between items (`xs`, `sm`, `md`, `lg`)
 - `direction` - Layout direction (`row`, `column`)
 - `justify` - Horizontal alignment (`start`, `center`, `end`, `between`)
@@ -227,6 +239,7 @@ import { Stack } from '@design-system/components/layout/Stack';
 **Design System Components Used**:
 
 ### Dialog Container: Modal
+
 **Import**: `@design-system/components/overlays/Modal`
 
 ```tsx
@@ -237,8 +250,8 @@ import { Modal } from '@design-system/components/overlays/Modal';
   onClose={handleClose}
   title="Terminate OAuth2 Session"
   icon={<AlertTriangleIcon className="text-warning-primary" />}
-  size="md"                // 600px width for confirmation dialogs
-  closeOnBackdropClick={false}  // Prevent accidental dismissal
+  size="md" // 600px width for confirmation dialogs
+  closeOnBackdropClick={false} // Prevent accidental dismissal
   footer={
     <div className="flex gap-3 justify-end">
       <Button variant="outline" onClick={handleClose}>
@@ -260,19 +273,19 @@ import { Modal } from '@design-system/components/overlays/Modal';
     </p>
     <ul className="list-disc list-inside space-y-2 text-neutral-600">
       {affectedAgents.map((agent) => (
-        <li key={agent.agent_id}>
-          {agent.agent_name || agent.agent_id}
-        </li>
+        <li key={agent.agent_id}>{agent.agent_name || agent.agent_id}</li>
       ))}
     </ul>
     <Alert variant="warning" size="sm">
-      This action cannot be undone. Affected agents will need to be re-authorized.
+      This action cannot be undone. Affected agents will need to be
+      re-authorized.
     </Alert>
   </Stack>
-</Modal>
+</Modal>;
 ```
 
 **Props Used**:
+
 - `isOpen` - Boolean state controlling modal visibility
 - `onClose` - Close handler (Cancel button or ESC key)
 - `title` - Modal header title
@@ -284,6 +297,7 @@ import { Modal } from '@design-system/components/overlays/Modal';
 ---
 
 ### Warning Alert: Alert
+
 **Import**: `@design-system/components/feedback/Alert`
 
 ```tsx
@@ -291,10 +305,11 @@ import { Alert } from '@design-system/components/feedback/Alert';
 
 <Alert variant="warning" size="sm">
   This action cannot be undone. Affected agents will need to be re-authorized.
-</Alert>
+</Alert>;
 ```
 
 **Props Used**:
+
 - `variant="warning"` - Warning color scheme (amber background)
 - `size="sm"` - Compact size for inline alerts
 
@@ -307,6 +322,7 @@ import { Alert } from '@design-system/components/feedback/Alert';
 **Design System Components Used**:
 
 ### Page Container: Container
+
 **Import**: `@design-system/components/layout/Container`
 
 ```tsx
@@ -314,16 +330,18 @@ import { Container } from '@design-system/components/layout/Container';
 
 <Container maxWidth="4xl" className="py-8">
   {/* Page content */}
-</Container>
+</Container>;
 ```
 
 **Props Used**:
+
 - `maxWidth="4xl"` (896px) - Maximum width for page content
 - `className="py-8"` - Vertical padding (32px)
 
 ---
 
 ### Grid Layout: Grid
+
 **Import**: `@design-system/components/layout/Grid`
 
 ```tsx
@@ -333,10 +351,11 @@ import { Grid } from '@design-system/components/layout/Grid';
   {sessions.map((session) => (
     <SessionCard key={session.service.id} session={session} />
   ))}
-</Grid>
+</Grid>;
 ```
 
 **Props Used**:
+
 - `cols={1}` - 1 column on mobile
 - `md={2}` - 2 columns on tablet
 - `lg={3}` - 3 columns on desktop
@@ -345,6 +364,7 @@ import { Grid } from '@design-system/components/layout/Grid';
 ---
 
 ### Empty State: EmptyState
+
 **Import**: `@design-system/components/feedback/EmptyState`
 
 ```tsx
@@ -359,10 +379,11 @@ import { EmptyState } from '@design-system/components/feedback/EmptyState';
       Establish Session
     </Button>
   }
-/>
+/>;
 ```
 
 **Props Used**:
+
 - `title` - Empty state heading
 - `description` - Explanatory text
 - `icon` - Icon illustration
@@ -371,6 +392,7 @@ import { EmptyState } from '@design-system/components/feedback/EmptyState';
 ---
 
 ### Loading State: Skeleton
+
 **Import**: `@design-system/components/feedback/Skeleton`
 
 ```tsx
@@ -382,10 +404,11 @@ import { Skeleton } from '@design-system/components/feedback/Skeleton';
     <Skeleton variant="text" width="40%" />
     <Skeleton variant="rectangular" height="80px" />
   </Stack>
-</Card>
+</Card>;
 ```
 
 **Props Used**:
+
 - `variant` - Skeleton type (`text`, `circular`, `rectangular`)
 - `width` - Width (percentage or px)
 - `height` - Height (required for `rectangular`)
@@ -397,23 +420,27 @@ import { Skeleton } from '@design-system/components/feedback/Skeleton';
 All design system components used comply with WCAG 2.1 AA:
 
 ### Keyboard Navigation
+
 - Card: Focusable when interactive (`clickable` or `onClick`)
 - Button: Full keyboard support (Tab, Enter, Space)
 - Modal: Focus trap, ESC to close
 - Badge: Semantic markup (no interactive role)
 
 ### Screen Readers
+
 - Card: Role and semantic HTML (`<article>`, `<section>`)
 - Button: Proper ARIA labels for icon-only buttons
 - Modal: ARIA attributes (role="dialog", aria-labelledby, aria-describedby)
 - StatusIndicator: Icon marked as `aria-hidden="true"`, text label read
 
 ### Color Contrast
+
 - All text colors meet 4.5:1 ratio (WCAG AA)
 - UI elements meet 3:1 ratio (WCAG AA)
 - Badge variants tested for contrast (success, warning, error all pass)
 
 ### Motion
+
 - All components respect `prefers-reduced-motion`
 - Card hover animation disabled if user prefers reduced motion
 - Modal entrance animation disabled if user prefers reduced motion
@@ -425,6 +452,7 @@ All design system components used comply with WCAG 2.1 AA:
 Refer to `web/src/design-system/oauth2-semantic-tokens.md` for detailed semantic token mappings for session statuses.
 
 **Quick Reference**:
+
 - **Active session**: `success-primary` (#059669)
 - **Expiring session**: `warning-primary` (#D97706)
 - **Expired session**: `error-primary` (#DC2626)
@@ -435,6 +463,7 @@ Refer to `web/src/design-system/oauth2-semantic-tokens.md` for detailed semantic
 ## Implementation Checklist
 
 ### US1: View Sessions (T038-T041)
+
 - [ ] SessionCard uses Card component with proper props
 - [ ] Status indicators use Badge component with correct variants
 - [ ] Metadata uses StatusIndicator with icons
@@ -445,6 +474,7 @@ Refer to `web/src/design-system/oauth2-semantic-tokens.md` for detailed semantic
 - [ ] Loading state uses Skeleton components
 
 ### US3: Terminate Session (T071-T072)
+
 - [ ] TerminationDialog uses Modal component
 - [ ] Warning alert uses Alert component
 - [ ] Affected agents list uses semantic HTML (<ul>)
@@ -452,6 +482,7 @@ Refer to `web/src/design-system/oauth2-semantic-tokens.md` for detailed semantic
 - [ ] Modal prevents backdrop click dismissal
 
 ### Design System Compliance
+
 - [ ] No custom CSS beyond design system tokens
 - [ ] All components imported from `@design-system/`
 - [ ] Semantic token usage consistent
@@ -589,13 +620,12 @@ export function TerminationDialog({ isOpen, onClose, session, onConfirm }) {
         </p>
         <ul className="list-disc list-inside space-y-2 text-neutral-600">
           {session.affected_agents.map((agent) => (
-            <li key={agent.agent_id}>
-              {agent.agent_name || agent.agent_id}
-            </li>
+            <li key={agent.agent_id}>{agent.agent_name || agent.agent_id}</li>
           ))}
         </ul>
         <Alert variant="warning" size="sm">
-          This action cannot be undone. Affected agents will need to be re-authorized.
+          This action cannot be undone. Affected agents will need to be
+          re-authorized.
         </Alert>
       </Stack>
     </Modal>

@@ -53,26 +53,15 @@ function DelegationListComponent({
   };
 
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-    >
-      <Grid
-        columns={1}
-        gap="lg"
-        className="md:grid-cols-2 lg:grid-cols-3"
-      >
+    <motion.div variants={containerVariants} initial="hidden" animate="visible">
+      <Grid columns={1} gap="lg" className="md:grid-cols-2 lg:grid-cols-3">
         {delegations.map((delegation) => {
           // Create stable callback for each card
           const handleClick = () => onDelegationClick(delegation.agentId);
 
           return (
             <motion.div key={delegation.agentId} variants={itemVariants}>
-              <DelegationCard
-                delegation={delegation}
-                onClick={handleClick}
-              />
+              <DelegationCard delegation={delegation} onClick={handleClick} />
             </motion.div>
           );
         })}
@@ -95,13 +84,15 @@ export const DelegationList = memo(
 
     // Check if delegation IDs changed
     for (let i = 0; i < prevProps.delegations.length; i++) {
-      if (prevProps.delegations[i].agentId !== nextProps.delegations[i].agentId) {
+      if (
+        prevProps.delegations[i].agentId !== nextProps.delegations[i].agentId
+      ) {
         return false;
       }
     }
 
     return true;
-  }
+  },
 );
 
 DelegationList.displayName = 'DelegationList';

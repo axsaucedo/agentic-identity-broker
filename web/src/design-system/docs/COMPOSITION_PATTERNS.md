@@ -14,9 +14,11 @@ import { Stack } from '@design-system/components/layout/Stack';
   <Stack gap="md" align="center">
     <h1 className="text-4xl font-bold text-trust-deep">Welcome</h1>
     <p className="text-lg text-secondary">Your message here</p>
-    <Button variant="primary" size="lg">Get Started</Button>
+    <Button variant="primary" size="lg">
+      Get Started
+    </Button>
   </Stack>
-</Container>
+</Container>;
 ```
 
 ### Two-Column Layout
@@ -70,7 +72,9 @@ import { Stack } from '@design-system/components/layout/Stack';
 ```tsx
 <Stack gap="lg" as="form" onSubmit={handleSubmit}>
   <Stack gap="sm">
-    <label htmlFor="name" className="font-medium">Name</label>
+    <label htmlFor="name" className="font-medium">
+      Name
+    </label>
     <TextInput
       id="name"
       type="text"
@@ -81,7 +85,9 @@ import { Stack } from '@design-system/components/layout/Stack';
   </Stack>
 
   <Stack gap="sm">
-    <label htmlFor="email" className="font-medium">Email</label>
+    <label htmlFor="email" className="font-medium">
+      Email
+    </label>
     <TextInput
       id="email"
       type="email"
@@ -93,8 +99,12 @@ import { Stack } from '@design-system/components/layout/Stack';
   </Stack>
 
   <Stack direction="row" gap="md">
-    <Button type="submit" variant="primary">Submit</Button>
-    <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+    <Button type="submit" variant="primary">
+      Submit
+    </Button>
+    <Button type="button" variant="secondary" onClick={onCancel}>
+      Cancel
+    </Button>
   </Stack>
 </Stack>
 ```
@@ -108,9 +118,13 @@ const [step, setStep] = useState(1);
 
 <PageTransition key={step} type="slideLeft" duration={300}>
   {step === 1 && <Step1Form onNext={() => setStep(2)} />}
-  {step === 2 && <Step2Form onNext={() => setStep(3)} onPrev={() => setStep(1)} />}
-  {step === 3 && <Step3Form onPrev={() => setStep(2)} onSubmit={handleSubmit} />}
-</PageTransition>
+  {step === 2 && (
+    <Step2Form onNext={() => setStep(3)} onPrev={() => setStep(1)} />
+  )}
+  {step === 3 && (
+    <Step3Form onPrev={() => setStep(2)} onSubmit={handleSubmit} />
+  )}
+</PageTransition>;
 ```
 
 ### Form with Validation
@@ -125,9 +139,7 @@ const [step, setStep] = useState(1);
     aria-describedby={errors.username ? 'username-error' : undefined}
   />
   {errors.username && (
-    <InlineError id="username-error">
-      {errors.username}
-    </InlineError>
+    <InlineError id="username-error">{errors.username}</InlineError>
   )}
 
   <Checkbox
@@ -136,11 +148,7 @@ const [step, setStep] = useState(1);
     checked={agree}
     onChange={(e) => setAgree(e.target.checked)}
   />
-  {!agree && (
-    <Alert variant="warning">
-      You must agree to continue
-    </Alert>
-  )}
+  {!agree && <Alert variant="warning">You must agree to continue</Alert>}
 </Stack>
 ```
 
@@ -162,14 +170,14 @@ const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     {
       key: 'status',
       header: 'Status',
-      accessor: (row) => <GrantStatusBadge status={row.status} />
+      accessor: (row) => <GrantStatusBadge status={row.status} />,
     },
     {
       key: 'date',
       header: 'Date',
       align: 'right',
-      accessor: (row) => format(row.date, 'MMM d, yyyy')
-    }
+      accessor: (row) => format(row.date, 'MMM d, yyyy'),
+    },
   ]}
   data={data}
   sortKey={sortKey}
@@ -182,7 +190,7 @@ const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
       setSortDir('asc');
     }
   }}
-/>
+/>;
 ```
 
 ### Card Grid with Hover Actions
@@ -247,9 +255,9 @@ import { Breadcrumb } from '@design-system/components/navigation/Breadcrumb';
     { label: 'Home', href: '/' },
     { label: 'Settings', href: '/settings' },
     { label: 'Delegations', href: '/settings/delegations' },
-    { label: 'Active Delegations' }
+    { label: 'Active Delegations' },
   ]}
-/>
+/>;
 ```
 
 ### Tabs for Content Switching
@@ -264,22 +272,22 @@ const [activeTab, setActiveTab] = useState('overview');
     {
       id: 'overview',
       label: 'Overview',
-      content: <OverviewPanel />
+      content: <OverviewPanel />,
     },
     {
       id: 'details',
       label: 'Details',
-      content: <DetailsPanel />
+      content: <DetailsPanel />,
     },
     {
       id: 'activity',
       label: 'Activity',
-      content: <ActivityPanel />
-    }
+      content: <ActivityPanel />,
+    },
   ]}
   activeTab={activeTab}
   onChange={setActiveTab}
-/>
+/>;
 ```
 
 ### Pagination for Large Lists
@@ -290,7 +298,7 @@ const [currentPage, setCurrentPage] = useState(1);
 const totalPages = Math.ceil(items.length / itemsPerPage);
 const paginatedItems = items.slice(
   (currentPage - 1) * itemsPerPage,
-  currentPage * itemsPerPage
+  currentPage * itemsPerPage,
 );
 
 <Stack gap="lg">
@@ -300,7 +308,7 @@ const paginatedItems = items.slice(
     totalPages={totalPages}
     onPageChange={setCurrentPage}
   />
-</Stack>
+</Stack>;
 ```
 
 ## Feedback Patterns
@@ -310,47 +318,44 @@ const paginatedItems = items.slice(
 ```tsx
 const [loading, setLoading] = useState(true);
 
-{loading ? (
-  <Skeleton count={5} />
-) : (
-  <ItemList items={items} />
-)}
+{
+  loading ? <Skeleton count={5} /> : <ItemList items={items} />;
+}
 ```
 
 ### Empty State
 
 ```tsx
-{items.length === 0 ? (
-  <EmptyState
-    icon={<SearchIcon />}
-    title="No results found"
-    description="Try adjusting your filters or search query"
-    action={<Button onClick={onReset}>Reset Filters</Button>}
-  />
-) : (
-  <ItemList items={items} />
-)}
+{
+  items.length === 0 ? (
+    <EmptyState
+      icon={<SearchIcon />}
+      title="No results found"
+      description="Try adjusting your filters or search query"
+      action={<Button onClick={onReset}>Reset Filters</Button>}
+    />
+  ) : (
+    <ItemList items={items} />
+  );
+}
 ```
 
 ### Error Handling
 
 ```tsx
-{error ? (
-  <Alert variant="error">
-    <h3 className="font-semibold">Something went wrong</h3>
-    <p>{error.message}</p>
-    <Button
-      variant="secondary"
-      size="sm"
-      onClick={onRetry}
-      className="mt-4"
-    >
-      Try Again
-    </Button>
-  </Alert>
-) : (
-  <Content />
-)}
+{
+  error ? (
+    <Alert variant="error">
+      <h3 className="font-semibold">Something went wrong</h3>
+      <p>{error.message}</p>
+      <Button variant="secondary" size="sm" onClick={onRetry} className="mt-4">
+        Try Again
+      </Button>
+    </Alert>
+  ) : (
+    <Content />
+  );
+}
 ```
 
 ### Toast Notifications
@@ -363,13 +368,15 @@ const showToast = (message, variant = 'success') => {
   setTimeout(() => setToast(null), 3000);
 };
 
-{toast && (
-  <Toast
-    message={toast.message}
-    variant={toast.variant}
-    onClose={() => setToast(null)}
-  />
-)}
+{
+  toast && (
+    <Toast
+      message={toast.message}
+      variant={toast.variant}
+      onClose={() => setToast(null)}
+    />
+  );
+}
 ```
 
 ## Permission & Consent Patterns
@@ -387,7 +394,7 @@ const [selectedScopes, setSelectedScopes] = useState([]);
   searchable={true}
   expandable={true}
   onSelectionChange={setSelectedScopes}
-/>
+/>;
 ```
 
 ### Grant Status Display
@@ -419,7 +426,7 @@ import { DelegationList } from '@/components/consent/DelegationList';
     delegations={delegations}
     onDelegationClick={(delegation) => navigate(`/delegation/${delegation.id}`)}
   />
-</Stack>
+</Stack>;
 ```
 
 ## Modal & Overlay Patterns
@@ -474,21 +481,21 @@ const [showConfirm, setShowConfirm] = useState(false);
       id: 'edit',
       label: 'Edit',
       icon: <EditIcon />,
-      onClick: () => navigate(`/edit/${id}`)
+      onClick: () => navigate(`/edit/${id}`),
     },
     {
       id: 'duplicate',
       label: 'Duplicate',
       icon: <CopyIcon />,
-      onClick: () => onDuplicate(id)
+      onClick: () => onDuplicate(id),
     },
     {
       id: 'delete',
       label: 'Delete',
       icon: <TrashIcon />,
       destructive: true,
-      onClick: () => setShowConfirm(true)
-    }
+      onClick: () => setShowConfirm(true),
+    },
   ]}
   align="right"
 />
@@ -508,13 +515,12 @@ const [showInfo, setShowInfo] = useState(false);
   <Stack gap="md" padding="md" maxWidth="300px">
     <h4 className="font-semibold text-trust-deep">About This Permission</h4>
     <p className="text-sm text-secondary">
-      This permission allows the application to access your email address and send emails on your behalf.
+      This permission allows the application to access your email address and
+      send emails on your behalf.
     </p>
-    <p className="text-xs text-tertiary">
-      Last used: Yesterday at 2:30 PM
-    </p>
+    <p className="text-xs text-tertiary">Last used: Yesterday at 2:30 PM</p>
   </Stack>
-</Popover>
+</Popover>;
 ```
 
 ## Accordion & Collapsible Patterns
@@ -530,16 +536,16 @@ import { Accordion } from '@design-system/components/advanced/Accordion';
       id: 'q1',
       title: 'What is a delegation?',
       description: 'Learn about delegations',
-      content: <FAQAnswerContent id="q1" />
+      content: <FAQAnswerContent id="q1" />,
     },
     {
       id: 'q2',
       title: 'How do I revoke a delegation?',
-      content: <FAQAnswerContent id="q2" />
-    }
+      content: <FAQAnswerContent id="q2" />,
+    },
   ]}
   exclusive={true}
-/>
+/>;
 ```
 
 ### Expandable Settings Sections
@@ -551,20 +557,20 @@ import { Accordion } from '@design-system/components/advanced/Accordion';
       id: 'security',
       title: 'Security Settings',
       icon: <ShieldIcon />,
-      content: <SecuritySettings />
+      content: <SecuritySettings />,
     },
     {
       id: 'privacy',
       title: 'Privacy Settings',
       icon: <LockIcon />,
-      content: <PrivacySettings />
+      content: <PrivacySettings />,
     },
     {
       id: 'notifications',
       title: 'Notification Settings',
       icon: <BellIcon />,
-      content: <NotificationSettings />
-    }
+      content: <NotificationSettings />,
+    },
   ]}
   exclusive={false}
 />
@@ -587,7 +593,7 @@ const totalSteps = 4;
     showValue={true}
   />
   <WizardStep step={step} onNext={() => setStep(step + 1)} />
-</Stack>
+</Stack>;
 ```
 
 ### Task Completion Progress
@@ -630,6 +636,7 @@ const totalSteps = 4;
 ## Summary
 
 Effective component composition:
+
 - Reduces custom code
 - Maintains visual consistency
 - Improves maintainability

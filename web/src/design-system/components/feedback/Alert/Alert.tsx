@@ -15,7 +15,7 @@
  */
 
 import React, { useState } from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const alertVariants = cva(
@@ -45,7 +45,7 @@ const alertVariants = cva(
       variant: 'info',
       banner: false,
     },
-  }
+  },
 );
 
 const iconColorVariants = cva('flex-shrink-0 w-5 h-5', {
@@ -62,8 +62,10 @@ const iconColorVariants = cva('flex-shrink-0 w-5 h-5', {
   },
 });
 
-export interface AlertProps
-  extends Omit<React.ComponentPropsWithoutRef<'div'>, 'title'> {
+export interface AlertProps extends Omit<
+  React.ComponentPropsWithoutRef<'div'>,
+  'title'
+> {
   /** Alert variant based on message severity */
   variant?: 'info' | 'success' | 'warning' | 'error';
   /** Optional icon to display (overrides default icon) */
@@ -209,7 +211,7 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
       children,
       ...props
     },
-    ref
+    ref,
   ) => {
     const [isVisible, setIsVisible] = useState(true);
     const [isExiting, setIsExiting] = useState(false);
@@ -255,7 +257,7 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         className={cn(
           alertVariants({ variant, banner }),
           isExiting && 'opacity-0 scale-95',
-          className
+          className,
         )}
         {...props}
       >
@@ -290,7 +292,7 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
               variant === 'warning' &&
                 'text-warning-primary hover:bg-warning-primary/10 focus:ring-warning-primary',
               variant === 'error' &&
-                'text-error-primary hover:bg-error-primary/10 focus:ring-error-primary'
+                'text-error-primary hover:bg-error-primary/10 focus:ring-error-primary',
             )}
           >
             {action.label}
@@ -312,7 +314,7 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
               variant === 'warning' &&
                 'text-warning-primary/70 hover:text-warning-primary hover:bg-warning-primary/10 focus:ring-warning-primary',
               variant === 'error' &&
-                'text-error-primary/70 hover:text-error-primary hover:bg-error-primary/10 focus:ring-error-primary'
+                'text-error-primary/70 hover:text-error-primary hover:bg-error-primary/10 focus:ring-error-primary',
             )}
           >
             <CloseIcon />
@@ -320,7 +322,7 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 Alert.displayName = 'Alert';

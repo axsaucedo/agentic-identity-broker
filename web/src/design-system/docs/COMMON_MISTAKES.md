@@ -16,6 +16,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: `text-primary` is an alias that points to `trust-deep`, but it's confusing because "primary" could mean "primary text color" (for body text). The semantic intent is unclear.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <h1 className="text-trust-deep">Dashboard</h1>
@@ -35,6 +36,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Headings should use brand colors (trust family) to establish authority and visual hierarchy. Neutral colors are for body text and supporting content.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <h2 className="text-trust-deep">Section Title</h2>  // Major sections
@@ -49,14 +51,13 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ```tsx
 // DON'T
-<div className="bg-gray-100 text-gray-700 border-gray-300">
-  Content
-</div>
+<div className="bg-gray-100 text-gray-700 border-gray-300">Content</div>
 ```
 
 **Why it's wrong**: Standard Tailwind grays have been replaced with warm neutrals throughout the design system. Gray classes don't exist in this system.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <div className="bg-neutral-100 text-neutral-700 border-neutral-300">
@@ -72,19 +73,16 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ```tsx
 // DON'T
-<button className="bg-navy-700 text-white">
-  Click Me
-</button>
+<button className="bg-navy-700 text-white">Click Me</button>
 ```
 
-**Why it's wrong**: Extended palettes (navy-50 through navy-900, emerald-*, amber-*) were removed. Only semantic tokens are available.
+**Why it's wrong**: Extended palettes (navy-50 through navy-900, emerald-_, amber-_) were removed. Only semantic tokens are available.
 
 **Correct solution**:
+
 ```tsx
 // DO
-<button className="bg-trust-deep text-white">
-  Click Me
-</button>
+<button className="bg-trust-deep text-white">Click Me</button>
 ```
 
 **Rule**: Use semantic tokens: `trust-deep`, `trust`, `success-primary`, `error-primary`, `warning-primary`, `neutral-*`.
@@ -104,6 +102,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Inconsistency makes code harder to maintain. Pick one pattern and stick with it.
 
 **Correct solution**:
+
 ```tsx
 // DO - use semantic aliases consistently
 <div>
@@ -134,6 +133,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Documentation uses "default" but common practice uses "md". This creates confusion about which is canonical.
 
 **Correct solution**:
+
 ```tsx
 // DO - stick with one convention
 <Card padding="default">
@@ -158,6 +158,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Cards need generous padding to create the "luxury" feel. Cramped spacing looks cheap and rushed.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <Card padding="default" className="space-y-4">
@@ -184,6 +185,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Elements crush together visually without vertical spacing, making the interface feel dense and hard to scan.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <div className="space-y-4">
@@ -203,14 +205,13 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ```tsx
 // DON'T
-<div className="transition-all duration-300 hover:w-64">
-  Expanding div
-</div>
+<div className="transition-all duration-300 hover:w-64">Expanding div</div>
 ```
 
 **Why it's wrong**: Animating layout properties (width, height, padding, margin) causes expensive reflows and janky animations.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <div className="transition-transform duration-300 hover:scale-105">
@@ -234,6 +235,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Card elevation changes need **300ms**, not 150ms. The duration hierarchy exists for a reason.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <Card className="transition-all duration-300 hover:shadow-lg">
@@ -242,6 +244,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 ```
 
 **Rule**:
+
 - 150ms → Color/opacity changes
 - 200ms → Button states
 - 300ms → Card elevation
@@ -253,14 +256,13 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ```tsx
 // DON'T
-<div className="animate-bounce">
-  Always bouncing
-</div>
+<div className="animate-bounce">Always bouncing</div>
 ```
 
 **Why it's wrong**: Users with vestibular disorders can experience nausea from animations. Accessibility is mandatory.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <div className="motion-safe:animate-bounce">
@@ -288,6 +290,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Multiple primary buttons create competing visual hierarchy. Users don't know which action is most important.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <div className="flex gap-3">
@@ -314,6 +317,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Combining primary and danger creates visual confusion. Both demand attention equally, making accidents likely.
 
 **Correct solution**:
+
 ```tsx
 // DO - separate dangerous actions
 <div className="space-y-6">
@@ -324,12 +328,8 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
   </div>
 
   <div className="pt-6 border-t border-neutral-200">
-    <p className="text-sm text-error-primary mb-2">
-      Danger zone
-    </p>
-    <Button variant="danger">
-      Delete Forever
-    </Button>
+    <p className="text-sm text-error-primary mb-2">Danger zone</p>
+    <Button variant="danger">Delete Forever</Button>
   </div>
 </div>
 ```
@@ -351,6 +351,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Modal size should match content complexity. Large modals for simple tasks waste screen space.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <Modal size="sm">
@@ -360,6 +361,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 ```
 
 **Rule**:
+
 - `sm` (400px) → Confirmations
 - `md` (600px) → Forms with 3-5 fields
 - `lg` (800px) → Complex forms/content
@@ -371,19 +373,16 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ```tsx
 // DON'T
-<Card className="border border-neutral-200">
-  Card without elevation
-</Card>
+<Card className="border border-neutral-200">Card without elevation</Card>
 ```
 
 **Why it's wrong**: The design system uses **shadow-based elevation**, not borders. Cards need shadows to "float" above the page.
 
 **Correct solution**:
+
 ```tsx
 // DO
-<Card className="shadow-sm hover:shadow-lg">
-  Card with proper elevation
-</Card>
+<Card className="shadow-sm hover:shadow-lg">Card with proper elevation</Card>
 ```
 
 **Rule**: Cards use `shadow-sm` at rest, `shadow-lg` on hover. Borders are optional and subtle.
@@ -402,12 +401,14 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: The design system specifies **Crimson Pro** for headings to create the "Refined Trust Architecture" aesthetic. System fonts lose brand identity.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <h1 className="font-display">Title</h1>
 ```
 
 **Rule**:
+
 - Headings → `font-display` (Crimson Pro)
 - Body → `font-sans` (Manrope)
 - Code → `font-mono` (JetBrains Mono)
@@ -424,6 +425,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Headings should use bold (700) or semibold (600). Medium (500) is too light for hierarchy.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <h2 className="font-bold">Section</h2>      // For h1, h2
@@ -438,14 +440,13 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ```tsx
 // DON'T
-<h1 className="text-4xl font-display">
-  Cramped Display Heading
-</h1>
+<h1 className="text-4xl font-display">Cramped Display Heading</h1>
 ```
 
 **Why it's wrong**: Crimson Pro needs tighter letter-spacing (-0.02em) for optimal readability at large sizes.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <h1 className="text-4xl font-display tracking-tight">
@@ -470,6 +471,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Colorblind users can't distinguish status by color alone. You need additional indicators.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <Badge variant="success">
@@ -490,14 +492,13 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ```tsx
 // DON'T
-<button className="bg-trust text-white">
-  No focus indicator
-</button>
+<button className="bg-trust text-white">No focus indicator</button>
 ```
 
 **Why it's wrong**: Keyboard users can't see which element has focus. Violates WCAG AA.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <button className="bg-trust text-white focus:ring-2 focus:ring-trust focus:ring-offset-2">
@@ -513,19 +514,16 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ```tsx
 // DON'T
-<p className="text-neutral-400 bg-white">
-  Low contrast text
-</p>
+<p className="text-neutral-400 bg-white">Low contrast text</p>
 ```
 
 **Why it's wrong**: `neutral-400` (#c4bdb3) on white doesn't meet WCAG AA (4.5:1 minimum for text).
 
 **Correct solution**:
+
 ```tsx
 // DO
-<p className="text-neutral-700 bg-white">
-  High contrast text
-</p>
+<p className="text-neutral-700 bg-white">High contrast text</p>
 ```
 
 **Rule**: Use `neutral-700` (#4a4137) or darker for body text. `neutral-600` (#6b6561) for secondary text. `neutral-400` only for placeholders/disabled states.
@@ -546,11 +544,10 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Inline styles bypass the design token system and make theming impossible. Can't be purged by Tailwind.
 
 **Correct solution**:
+
 ```tsx
 // DO
-<div className="bg-trust-deep text-white">
-  Token-based styling
-</div>
+<div className="bg-trust-deep text-white">Token-based styling</div>
 ```
 
 **Rule**: Always use utility classes. Use CSS variables (`var(--color-trust-deep)`) only when dynamic theming is required.
@@ -569,6 +566,7 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 **Why it's wrong**: Screen readers can't identify headings. Buttons aren't keyboard-accessible. Hurts SEO and accessibility.
 
 **Correct solution**:
+
 ```tsx
 // DO
 <h2 className="text-lg font-bold text-trust-deep">
@@ -585,18 +583,18 @@ Learn from frequent pitfalls in the Refined Trust Architecture design system. Ea
 
 ## Quick Reference: Most Common Mistakes
 
-| Mistake | Fix |
-|---------|-----|
-| Using `gray-*` | Use `neutral-*` instead |
-| Using `navy-700` | Use `trust-deep` or `trust` |
-| Using `text-primary` for headings | Use `text-trust-deep` explicitly |
-| Multiple primary buttons | One primary per section |
-| No spacing between elements | Use `space-y-4` for stacking |
-| Animating width/height | Animate `transform` instead |
-| Wrong font (not Crimson Pro) | Use `font-display` for headings |
-| Missing focus rings | Add `focus:ring-2` to interactive elements |
-| Low contrast text | Use `text-neutral-700` minimum |
-| Color-only status | Add icons to colors |
+| Mistake                           | Fix                                        |
+| --------------------------------- | ------------------------------------------ |
+| Using `gray-*`                    | Use `neutral-*` instead                    |
+| Using `navy-700`                  | Use `trust-deep` or `trust`                |
+| Using `text-primary` for headings | Use `text-trust-deep` explicitly           |
+| Multiple primary buttons          | One primary per section                    |
+| No spacing between elements       | Use `space-y-4` for stacking               |
+| Animating width/height            | Animate `transform` instead                |
+| Wrong font (not Crimson Pro)      | Use `font-display` for headings            |
+| Missing focus rings               | Add `focus:ring-2` to interactive elements |
+| Low contrast text                 | Use `text-neutral-700` minimum             |
+| Color-only status                 | Add icons to colors                        |
 
 ---
 

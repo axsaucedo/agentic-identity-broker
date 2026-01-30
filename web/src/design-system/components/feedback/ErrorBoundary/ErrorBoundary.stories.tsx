@@ -70,8 +70,8 @@ export const Default: Story = {
       <div className="space-y-4 max-w-2xl">
         <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
           <p className="text-sm text-neutral-700 mb-3">
-            Click the button below to trigger an error and see how the ErrorBoundary
-            catches it.
+            Click the button below to trigger an error and see how the
+            ErrorBoundary catches it.
           </p>
           <Button
             variant="danger"
@@ -104,7 +104,8 @@ export const WithCustomMessage: Story = {
       <div className="space-y-4 max-w-2xl">
         <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
           <p className="text-sm text-neutral-700 mb-3">
-            This error boundary has a custom name that appears in the error message.
+            This error boundary has a custom name that appears in the error
+            message.
           </p>
           <Button
             variant="danger"
@@ -183,9 +184,10 @@ export const Nested: Story = {
       <div className="space-y-4 max-w-3xl">
         <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
           <p className="text-sm text-neutral-700 mb-3">
-            Nested error boundaries allow you to isolate errors to specific parts of
-            your component tree. The inner boundary catches inner errors, while the
-            outer boundary only catches if the inner one fails.
+            Nested error boundaries allow you to isolate errors to specific
+            parts of your component tree. The inner boundary catches inner
+            errors, while the outer boundary only catches if the inner one
+            fails.
           </p>
           <div className="flex gap-2">
             <Button
@@ -327,7 +329,9 @@ export const WithFallbackUI: Story = {
         <p className="text-purple-700 mb-1 text-sm">
           Don't worry, it happens to the best of us.
         </p>
-        <p className="text-purple-600 text-xs mb-6 font-mono">{error.message}</p>
+        <p className="text-purple-600 text-xs mb-6 font-mono">
+          {error.message}
+        </p>
         <Button variant="primary" onClick={retry} size="md">
           Let's Try That Again
         </Button>
@@ -378,8 +382,8 @@ export const Playground: Story = {
       <div className="space-y-4 max-w-2xl">
         <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg">
           <p className="text-sm text-neutral-700 mb-3">
-            Use the controls below to customize the error boundary behavior. Click
-            the button to trigger an error and see it in action.
+            Use the controls below to customize the error boundary behavior.
+            Click the button to trigger an error and see it in action.
           </p>
           <div className="flex gap-2">
             <Button
@@ -478,8 +482,8 @@ export const RealWorldExamples: Story = {
                       Unable to Load Dashboard
                     </h4>
                     <p className="text-sm text-red-700 mb-4">
-                      We're having trouble connecting to our servers. Please check
-                      your connection and try again.
+                      We're having trouble connecting to our servers. Please
+                      check your connection and try again.
                     </p>
                     <Button variant="primary" onClick={retry} size="sm">
                       Retry Connection
@@ -581,8 +585,8 @@ export const WithErrorLogging: Story = {
             Error Logging Integration
           </h4>
           <p className="text-sm text-neutral-700 mb-3">
-            The onError callback allows you to integrate with error tracking services
-            like Sentry, LogRocket, or custom logging solutions.
+            The onError callback allows you to integrate with error tracking
+            services like Sentry, LogRocket, or custom logging solutions.
           </p>
           <Button
             variant="danger"
@@ -659,7 +663,9 @@ export const ResetOnPropsChange: Story = {
 
         <ErrorBoundary resetOnPropsChange showDetails={false}>
           <div className="p-4 bg-white border border-neutral-200 rounded-lg">
-            <h4 className="text-sm font-semibold mb-2">User Profile: {userId}</h4>
+            <h4 className="text-sm font-semibold mb-2">
+              User Profile: {userId}
+            </h4>
             <BuggyComponent shouldThrow={shouldThrow} />
           </div>
         </ErrorBoundary>
@@ -683,14 +689,17 @@ export const Accessibility: Story = {
         </h4>
         <ul className="text-sm text-neutral-700 space-y-1 list-disc list-inside">
           <li>
-            Uses <code>role="alert"</code> for immediate screen reader announcement
+            Uses <code>role="alert"</code> for immediate screen reader
+            announcement
           </li>
           <li>
             <code>aria-live="assertive"</code> ensures errors are announced
             immediately
           </li>
           <li>Buttons are fully keyboard accessible with focus indicators</li>
-          <li>Error icons are marked with <code>aria-hidden="true"</code></li>
+          <li>
+            Error icons are marked with <code>aria-hidden="true"</code>
+          </li>
           <li>Clear, semantic heading structure</li>
           <li>Collapsible sections use proper details/summary elements</li>
           <li>Color contrast meets WCAG 2.1 AA requirements</li>

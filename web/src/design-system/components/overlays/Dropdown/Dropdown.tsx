@@ -17,7 +17,7 @@
 
 import React from 'react';
 import { Menu, Transition } from '@headlessui/react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const dropdownVariants = cva(
@@ -39,7 +39,7 @@ const dropdownVariants = cva(
       size: 'md',
       align: 'left',
     },
-  }
+  },
 );
 
 const itemVariants = cva(
@@ -66,7 +66,7 @@ const itemVariants = cva(
       disabled: false,
       destructive: false,
     },
-  }
+  },
 );
 
 const CheckIcon = () => (
@@ -180,12 +180,14 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
       className,
       triggerClassName,
     },
-    ref
+    ref,
   ) => {
     // Group items by section
     const groupedItems = React.useMemo(() => {
       const groups: { section?: string; items: DropdownItem[] }[] = [];
-      let currentGroup: { section?: string; items: DropdownItem[] } = { items: [] };
+      let currentGroup: { section?: string; items: DropdownItem[] } = {
+        items: [],
+      };
 
       items.forEach((item, index) => {
         // Start new section if section property changes
@@ -224,7 +226,9 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
       <Menu as="div" className="relative inline-block text-left" ref={ref}>
         {({ open }) => (
           <>
-            <Menu.Button className={cn('inline-flex items-center', triggerClassName)}>
+            <Menu.Button
+              className={cn('inline-flex items-center', triggerClassName)}
+            >
               {typeof trigger === 'string' ? (
                 <span className="inline-flex items-center">
                   {trigger}
@@ -246,10 +250,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
               leaveTo="opacity-0 scale-95"
             >
               <Menu.Items
-                className={cn(
-                  dropdownVariants({ size, align }),
-                  className
-                )}
+                className={cn(dropdownVariants({ size, align }), className)}
               >
                 <div className="py-1">
                   {groupedItems.map((group, groupIndex) => (
@@ -263,10 +264,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
 
                       {/* Group items */}
                       {group.items.map((item) => (
-                        <Menu.Item
-                          key={item.id}
-                          disabled={item.disabled}
-                        >
+                        <Menu.Item key={item.id} disabled={item.disabled}>
                           {({ active }) => (
                             <button
                               type="button"
@@ -278,7 +276,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                                   destructive: item.destructive,
                                 }),
                                 active && !item.disabled && 'bg-trust-light',
-                                'w-full'
+                                'w-full',
                               )}
                               disabled={item.disabled}
                             >
@@ -301,10 +299,12 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
                                   {item.label}
                                 </div>
                                 {item.description && (
-                                  <div className={cn(
-                                    'mt-0.5 text-xs text-neutral-500 truncate',
-                                    item.destructive && 'text-red-500'
-                                  )}>
+                                  <div
+                                    className={cn(
+                                      'mt-0.5 text-xs text-neutral-500 truncate',
+                                      item.destructive && 'text-red-500',
+                                    )}
+                                  >
                                     {item.description}
                                   </div>
                                 )}
@@ -327,7 +327,7 @@ export const Dropdown = React.forwardRef<HTMLDivElement, DropdownProps>(
         )}
       </Menu>
     );
-  }
+  },
 );
 
 Dropdown.displayName = 'Dropdown';

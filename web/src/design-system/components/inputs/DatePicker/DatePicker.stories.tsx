@@ -14,7 +14,8 @@ const meta = {
     layout: 'centered',
     docs: {
       description: {
-        component: 'Date input with validation states, min/max date support, and semantic styling.',
+        component:
+          'Date input with validation states, min/max date support, and semantic styling.',
       },
     },
   },
@@ -27,13 +28,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   render: () => {
     const [date, setDate] = useState<Date | null>(null);
-    return (
-      <DatePicker
-        label="Select a date"
-        value={date}
-        onChange={setDate}
-      />
-    );
+    return <DatePicker label="Select a date" value={date} onChange={setDate} />;
   },
 };
 
@@ -46,7 +41,12 @@ export const Sizes: Story = {
     return (
       <div className="w-96 space-y-4">
         <DatePicker size="sm" label="Small" value={sm} onChange={setSm} />
-        <DatePicker size="md" label="Medium (default)" value={md} onChange={setMd} />
+        <DatePicker
+          size="md"
+          label="Medium (default)"
+          value={md}
+          onChange={setMd}
+        />
         <DatePicker size="lg" label="Large" value={lg} onChange={setLg} />
       </div>
     );
@@ -59,11 +59,7 @@ export const States: Story = {
 
     return (
       <div className="w-96 space-y-4">
-        <DatePicker
-          label="Default"
-          value={value}
-          onChange={setValue}
-        />
+        <DatePicker label="Default" value={value} onChange={setValue} />
         <DatePicker
           label="Error"
           value={new Date('2020-01-01')}
@@ -157,7 +153,9 @@ export const RealWorldUseCases: Story = {
 
     return (
       <div className="w-96 space-y-6 p-6 bg-white border border-neutral-200 rounded-lg">
-        <h3 className="text-sm font-semibold text-neutral-900">Grant Configuration</h3>
+        <h3 className="text-sm font-semibold text-neutral-900">
+          Grant Configuration
+        </h3>
 
         <DatePicker
           label="Grant expiration date"
@@ -170,7 +168,12 @@ export const RealWorldUseCases: Story = {
 
         <div className="text-xs text-neutral-600">
           {expiryDate ? (
-            <p>Grant expires on: <span className="font-medium">{expiryDate.toLocaleDateString()}</span></p>
+            <p>
+              Grant expires on:{' '}
+              <span className="font-medium">
+                {expiryDate.toLocaleDateString()}
+              </span>
+            </p>
           ) : (
             <p>No expiration date selected</p>
           )}

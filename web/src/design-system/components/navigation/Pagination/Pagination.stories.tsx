@@ -182,7 +182,9 @@ export const Ellipsis: Story = {
         </div>
 
         <div className="text-sm text-neutral-600 space-y-2">
-          <p className="font-medium">Try these pages to see ellipsis behavior:</p>
+          <p className="font-medium">
+            Try these pages to see ellipsis behavior:
+          </p>
           <div className="flex gap-2">
             <button
               onClick={() => setCurrentPage(1)}
@@ -485,8 +487,8 @@ export const Accessibility: Story = {
             Keyboard Navigation
           </p>
           <p className="text-sm text-neutral-600 mb-4">
-            Press Tab to focus buttons, Enter or Space to activate. Current
-            page is announced as "current page" to screen readers.
+            Press Tab to focus buttons, Enter or Space to activate. Current page
+            is announced as "current page" to screen readers.
           </p>
           <Pagination
             currentPage={currentPage}

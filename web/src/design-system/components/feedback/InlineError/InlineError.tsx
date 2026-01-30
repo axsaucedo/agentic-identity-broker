@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const inlineErrorVariants = cva(
@@ -30,7 +30,7 @@ const inlineErrorVariants = cva(
     defaultVariants: {
       size: 'md',
     },
-  }
+  },
 );
 
 const iconVariants = cva('flex-shrink-0 text-error-primary', {
@@ -45,8 +45,10 @@ const iconVariants = cva('flex-shrink-0 text-error-primary', {
   },
 });
 
-export interface InlineErrorProps
-  extends Omit<React.ComponentPropsWithoutRef<'div'>, 'children'> {
+export interface InlineErrorProps extends Omit<
+  React.ComponentPropsWithoutRef<'div'>,
+  'children'
+> {
   /** Error message text */
   message: string;
   /** Optional custom error icon (overrides default) */
@@ -83,24 +85,6 @@ const ErrorIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// Alert triangle icon (alternative for warnings)
-const AlertIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={cn('w-4 h-4', className)}
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-    aria-hidden="true"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-    />
-  </svg>
-);
-
 /**
  * InlineError component for displaying field-level validation errors.
  * Typically positioned below form inputs to provide immediate feedback.
@@ -133,7 +117,7 @@ export const InlineError = React.forwardRef<HTMLDivElement, InlineErrorProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Determine which icon to show
     const displayIcon = icon || <ErrorIcon />;
@@ -155,14 +139,9 @@ export const InlineError = React.forwardRef<HTMLDivElement, InlineErrorProps>(
         {hasMultipleErrors ? (
           <ul className="space-y-1">
             {errorMessages.map((error, index) => (
-              <li
-                key={index}
-                className={inlineErrorVariants({ size })}
-              >
+              <li key={index} className={inlineErrorVariants({ size })}>
                 {!hideIcon && (
-                  <span className={iconVariants({ size })}>
-                    {displayIcon}
-                  </span>
+                  <span className={iconVariants({ size })}>{displayIcon}</span>
                 )}
                 <span className="flex-1">{error}</span>
               </li>
@@ -171,9 +150,7 @@ export const InlineError = React.forwardRef<HTMLDivElement, InlineErrorProps>(
         ) : (
           <div className={inlineErrorVariants({ size })}>
             {!hideIcon && (
-              <span className={iconVariants({ size })}>
-                {displayIcon}
-              </span>
+              <span className={iconVariants({ size })}>{displayIcon}</span>
             )}
             <span className="flex-1">{message}</span>
           </div>
@@ -181,10 +158,12 @@ export const InlineError = React.forwardRef<HTMLDivElement, InlineErrorProps>(
 
         {/* Suggestions (if provided) */}
         {suggestions && suggestions.length > 0 && (
-          <div className={cn(
-            'ml-6 text-xs text-error-dark/80 space-y-0.5',
-            size === 'sm' && 'ml-5'
-          )}>
+          <div
+            className={cn(
+              'ml-6 text-xs text-error-dark/80 space-y-0.5',
+              size === 'sm' && 'ml-5',
+            )}
+          >
             {suggestions.map((suggestion, index) => (
               <div key={index} className="flex items-start gap-1.5">
                 <span className="text-error-primary mt-0.5">•</span>
@@ -196,23 +175,23 @@ export const InlineError = React.forwardRef<HTMLDivElement, InlineErrorProps>(
 
         {/* Helper text (if provided) */}
         {helperText && (
-          <div className={cn(
-            'ml-6 text-xs text-error-dark/70 italic',
-            size === 'sm' && 'ml-5'
-          )}>
+          <div
+            className={cn(
+              'ml-6 text-xs text-error-dark/70 italic',
+              size === 'sm' && 'ml-5',
+            )}
+          >
             {helperText}
           </div>
         )}
 
         {/* Field label context (if provided) */}
         {fieldLabel && (
-          <span className="sr-only">
-            Error for field: {fieldLabel}
-          </span>
+          <span className="sr-only">Error for field: {fieldLabel}</span>
         )}
       </div>
     );
-  }
+  },
 );
 
 InlineError.displayName = 'InlineError';

@@ -37,11 +37,12 @@ const statusIndicatorVariants = cva(
       variant: 'default',
       interactive: false,
     },
-  }
+  },
 );
 
 export interface StatusIndicatorProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends
+    React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof statusIndicatorVariants> {
   /** Icon to display before the text */
   icon?: React.ReactNode;
@@ -66,7 +67,10 @@ export interface StatusIndicatorProps
  * <StatusIndicator label="Active" variant="success" />
  * ```
  */
-export const StatusIndicator = React.forwardRef<HTMLDivElement, StatusIndicatorProps>(
+export const StatusIndicator = React.forwardRef<
+  HTMLDivElement,
+  StatusIndicatorProps
+>(
   (
     {
       icon,
@@ -76,7 +80,7 @@ export const StatusIndicator = React.forwardRef<HTMLDivElement, StatusIndicatorP
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Generate data-testid for scope indicators for E2E testing
     // Pattern: scope-indicator-{scope-value}
@@ -88,12 +92,18 @@ export const StatusIndicator = React.forwardRef<HTMLDivElement, StatusIndicatorP
         role="img"
         aria-label={label}
         data-testid={testId}
-        className={cn(statusIndicatorVariants({ variant, interactive }), className)}
+        className={cn(
+          statusIndicatorVariants({ variant, interactive }),
+          className,
+        )}
         {...props}
       >
         {/* Icon */}
         {icon && (
-          <span className="inline-flex flex-shrink-0 w-4 h-4" aria-hidden="true">
+          <span
+            className="inline-flex flex-shrink-0 w-4 h-4"
+            aria-hidden="true"
+          >
             {icon}
           </span>
         )}
@@ -102,7 +112,7 @@ export const StatusIndicator = React.forwardRef<HTMLDivElement, StatusIndicatorP
         <span>{label}</span>
       </div>
     );
-  }
+  },
 );
 
 StatusIndicator.displayName = 'StatusIndicator';

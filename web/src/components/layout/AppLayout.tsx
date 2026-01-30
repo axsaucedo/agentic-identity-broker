@@ -14,7 +14,7 @@ import { AppLayout as DesignSystemAppLayout } from '@design-system/components/la
 
 interface AppLayoutProps {
   children: ReactNode;
-  header?: React.ComponentType<any> | null;
+  header?: React.ComponentType<Record<string, never>> | null;
 }
 
 /**
@@ -31,7 +31,9 @@ function Header() {
   ];
 
   const isActiveLink = (href: string) => {
-    return location.pathname === href || (location.pathname === '/' && href === '/');
+    return (
+      location.pathname === href || (location.pathname === '/' && href === '/')
+    );
   };
 
   return (
@@ -127,9 +129,7 @@ export function AppLayout({ children, header }: AppLayoutProps) {
         className="bg-transparent"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="animate-fade-in-up">
-            {children}
-          </div>
+          <div className="animate-fade-in-up">{children}</div>
         </div>
       </DesignSystemAppLayout>
     </div>

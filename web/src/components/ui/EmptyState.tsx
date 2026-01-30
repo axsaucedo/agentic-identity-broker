@@ -28,7 +28,12 @@ interface EmptyStateProps {
  * EmptyState displays a user-friendly message when there's no content to show.
  * Commonly used for empty lists, search results, etc.
  */
-export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+export function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: EmptyStateProps) {
   return (
     <div className="card p-12 text-center">
       {/* Icon/Illustration */}
@@ -55,7 +60,9 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
       <h3 className="mt-4 text-lg font-semibold text-neutral-900">{title}</h3>
 
       {/* Description */}
-      <p className="mt-2 text-sm text-neutral-600 max-w-md mx-auto">{description}</p>
+      <p className="mt-2 text-sm text-neutral-600 max-w-md mx-auto">
+        {description}
+      </p>
 
       {/* Optional action button */}
       {action && (

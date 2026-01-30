@@ -17,7 +17,7 @@
  */
 
 import React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const breadcrumbVariants = cva(
@@ -34,7 +34,7 @@ const breadcrumbVariants = cva(
     defaultVariants: {
       size: 'md',
     },
-  }
+  },
 );
 
 const breadcrumbItemVariants = cva(
@@ -56,7 +56,7 @@ const breadcrumbItemVariants = cva(
       size: 'md',
       isCurrent: false,
     },
-  }
+  },
 );
 
 const breadcrumbLinkVariants = cva(
@@ -71,24 +71,21 @@ const breadcrumbLinkVariants = cva(
     defaultVariants: {
       disabled: false,
     },
-  }
+  },
 );
 
-const breadcrumbSeparatorVariants = cva(
-  'text-neutral-400 select-none',
-  {
-    variants: {
-      size: {
-        sm: 'text-xs',
-        md: 'text-sm',
-        lg: 'text-base',
-      },
+const breadcrumbSeparatorVariants = cva('text-neutral-400 select-none', {
+  variants: {
+    size: {
+      sm: 'text-xs',
+      md: 'text-sm',
+      lg: 'text-base',
     },
-    defaultVariants: {
-      size: 'md',
-    },
-  }
-);
+  },
+  defaultVariants: {
+    size: 'md',
+  },
+});
 
 export interface BreadcrumbItem {
   /** Display label for the breadcrumb item */
@@ -184,7 +181,7 @@ export const Breadcrumb = React.forwardRef<HTMLElement, BreadcrumbProps>(
       'aria-label': ariaLabel = 'Breadcrumb',
       ...props
     },
-    ref
+    ref,
   ) => {
     // Process items for truncation
     const processedItems = React.useMemo(() => {
@@ -214,7 +211,7 @@ export const Breadcrumb = React.forwardRef<HTMLElement, BreadcrumbProps>(
         className={cn(
           'w-3 h-3',
           size === 'sm' && 'w-2.5 h-2.5',
-          size === 'lg' && 'w-3.5 h-3.5'
+          size === 'lg' && 'w-3.5 h-3.5',
         )}
       />
     );
@@ -248,7 +245,7 @@ export const Breadcrumb = React.forwardRef<HTMLElement, BreadcrumbProps>(
                       'inline-flex items-center',
                       size === 'sm' && 'gap-1',
                       size === 'md' && 'gap-1.5',
-                      size === 'lg' && 'gap-2'
+                      size === 'lg' && 'gap-2',
                     )}
                     aria-current={isCurrent ? 'page' : undefined}
                     aria-disabled={item.disabled}
@@ -270,7 +267,7 @@ export const Breadcrumb = React.forwardRef<HTMLElement, BreadcrumbProps>(
                       size === 'sm' && 'gap-1',
                       size === 'md' && 'gap-1.5',
                       size === 'lg' && 'gap-2',
-                      item.disabled && 'opacity-50 cursor-not-allowed'
+                      item.disabled && 'opacity-50 cursor-not-allowed',
                     )}
                     aria-current={isCurrent ? 'page' : undefined}
                     aria-disabled={item.disabled}
@@ -294,7 +291,7 @@ export const Breadcrumb = React.forwardRef<HTMLElement, BreadcrumbProps>(
                       breadcrumbSeparatorVariants({ size }),
                       'mx-1',
                       size === 'sm' && 'mx-0.5',
-                      size === 'lg' && 'mx-2'
+                      size === 'lg' && 'mx-2',
                     )}
                     aria-hidden="true"
                   >
@@ -307,7 +304,7 @@ export const Breadcrumb = React.forwardRef<HTMLElement, BreadcrumbProps>(
         </ol>
       </nav>
     );
-  }
+  },
 );
 
 Breadcrumb.displayName = 'Breadcrumb';

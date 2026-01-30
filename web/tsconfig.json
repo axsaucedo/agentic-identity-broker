@@ -12,10 +12,7 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
@@ -31,6 +28,6 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "build", "**/*.test.ts", "**/*.test.tsx", "**/*.stories.tsx", "**/*.stories.ts"],
+  "exclude": ["node_modules", "dist", "build"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

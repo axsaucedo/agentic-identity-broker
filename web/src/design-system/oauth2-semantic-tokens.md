@@ -9,6 +9,7 @@
 ## Purpose
 
 This document defines semantic token usage for OAuth2 session status indicators, ensuring:
+
 - Consistent visual language across all session UI components
 - Accessible color contrast ratios (WCAG 2.1 AA compliance)
 - Clear semantic meaning for session states
@@ -20,13 +21,13 @@ This document defines semantic token usage for OAuth2 session status indicators,
 
 OAuth2 sessions have the following status states:
 
-| Status | Meaning | Visual Treatment |
-|--------|---------|------------------|
-| **Active** | Valid session with unexpired tokens | Success colors (green) |
-| **Expiring Soon** | Session expires within 7 days | Warning colors (amber) |
-| **Expired** | Session tokens have expired | Error colors (red) |
-| **No Session** | User has not established a session | Neutral colors (warm gray) |
-| **Encrypted** | Tokens are encrypted at rest (metadata) | Default colors (neutral) |
+| Status            | Meaning                                 | Visual Treatment           |
+| ----------------- | --------------------------------------- | -------------------------- |
+| **Active**        | Valid session with unexpired tokens     | Success colors (green)     |
+| **Expiring Soon** | Session expires within 7 days           | Warning colors (amber)     |
+| **Expired**       | Session tokens have expired             | Error colors (red)         |
+| **No Session**    | User has not established a session      | Neutral colors (warm gray) |
+| **Encrypted**     | Tokens are encrypted at rest (metadata) | Default colors (neutral)   |
 
 ---
 
@@ -41,6 +42,7 @@ OAuth2 sessions have the following status states:
 **Contrast Ratio**: 4.89:1 on white background (WCAG AA Pass)
 
 **Usage Examples**:
+
 ```tsx
 // Badge component
 <Badge variant="success" size="sm" shape="pill">
@@ -62,6 +64,7 @@ OAuth2 sessions have the following status states:
 ```
 
 **Design System Classes**:
+
 - Text: `text-success-primary`
 - Background: `bg-success-primary`
 - Border: `border-success-primary`
@@ -79,6 +82,7 @@ OAuth2 sessions have the following status states:
 **Contrast Ratio**: 5.12:1 on white background (WCAG AA Pass)
 
 **Usage Examples**:
+
 ```tsx
 // Badge component with dot indicator
 <Badge variant="warning" size="sm" shape="pill" showDot>
@@ -100,6 +104,7 @@ OAuth2 sessions have the following status states:
 ```
 
 **Design System Classes**:
+
 - Text: `text-warning-primary`
 - Background: `bg-warning-primary`
 - Border: `border-warning-primary`
@@ -120,6 +125,7 @@ OAuth2 sessions have the following status states:
 **Contrast Ratio**: 5.89:1 on white background (WCAG AA Pass)
 
 **Usage Examples**:
+
 ```tsx
 // Badge component
 <Badge variant="error" size="sm" shape="pill">
@@ -141,6 +147,7 @@ OAuth2 sessions have the following status states:
 ```
 
 **Design System Classes**:
+
 - Text: `text-error-primary`
 - Background: `bg-error-primary`
 - Border: `border-error-primary`
@@ -159,6 +166,7 @@ OAuth2 sessions have the following status states:
 **Contrast Ratio**: 1.42:1 on white background (Use for borders/backgrounds only, NOT text)
 
 **Usage Examples**:
+
 ```tsx
 // Badge component (neutral variant uses neutral-300 background)
 <Badge variant="neutral" size="sm" shape="pill">
@@ -175,6 +183,7 @@ OAuth2 sessions have the following status states:
 ```
 
 **Design System Classes**:
+
 - Background: `bg-neutral-300` (#ddd8d1)
 - Border: `border-neutral-300`
 - Text (accessible): `text-neutral-600` (#6b6561) - 4.76:1 contrast ratio
@@ -193,6 +202,7 @@ OAuth2 sessions have the following status states:
 **Contrast Ratio**: 3.14:1 on white background (WCAG AA Pass for large text)
 
 **Usage Examples**:
+
 ```tsx
 // StatusIndicator component (default variant)
 <StatusIndicator
@@ -208,6 +218,7 @@ OAuth2 sessions have the following status states:
 ```
 
 **Design System Classes**:
+
 - Text: `text-neutral-500` (12px or larger)
 - Icon: `text-neutral-500`
 
@@ -217,14 +228,14 @@ OAuth2 sessions have the following status states:
 
 ## Color Palette Summary
 
-| Status | Token Name | Hex Value | On White (Contrast) | WCAG AA Pass |
-|--------|------------|-----------|---------------------|--------------|
-| Active | `success-primary` | `#059669` | 4.89:1 | Yes |
-| Expiring | `warning-primary` | `#D97706` | 5.12:1 | Yes |
-| Expired | `error-primary` | `#DC2626` | 5.89:1 | Yes |
-| No Session (bg) | `neutral-300` | `#ddd8d1` | 1.42:1 | No (borders only) |
-| No Session (text) | `neutral-600` | `#6b6561` | 4.76:1 | Yes |
-| Metadata | `neutral-500` | `#9a9591` | 3.14:1 | Yes (large text) |
+| Status            | Token Name        | Hex Value | On White (Contrast) | WCAG AA Pass      |
+| ----------------- | ----------------- | --------- | ------------------- | ----------------- |
+| Active            | `success-primary` | `#059669` | 4.89:1              | Yes               |
+| Expiring          | `warning-primary` | `#D97706` | 5.12:1              | Yes               |
+| Expired           | `error-primary`   | `#DC2626` | 5.89:1              | Yes               |
+| No Session (bg)   | `neutral-300`     | `#ddd8d1` | 1.42:1              | No (borders only) |
+| No Session (text) | `neutral-600`     | `#6b6561` | 4.76:1              | Yes               |
+| Metadata          | `neutral-500`     | `#9a9591` | 3.14:1              | Yes (large text)  |
 
 ---
 
@@ -293,18 +304,10 @@ StatusIndicator component applies text colors only (no backgrounds):
 >
   <Stack gap="sm" direction="column">
     {/* Encryption metadata (default) */}
-    <StatusIndicator
-      icon={<LockIcon />}
-      label="Encrypted"
-      variant="default"
-    />
+    <StatusIndicator icon={<LockIcon />} label="Encrypted" variant="default" />
 
     {/* Agent count metadata (default) */}
-    <StatusIndicator
-      icon={<UsersIcon />}
-      label="3 agents"
-      variant="default"
-    />
+    <StatusIndicator icon={<UsersIcon />} label="3 agents" variant="default" />
 
     {/* Timestamp metadata (default) */}
     <StatusIndicator
@@ -317,6 +320,7 @@ StatusIndicator component applies text colors only (no backgrounds):
 ```
 
 **Token Usage**:
+
 - Primary status (header): `success-primary` (Badge)
 - Metadata items: `neutral-500` (StatusIndicator default)
 
@@ -329,7 +333,9 @@ StatusIndicator component applies text colors only (no backgrounds):
   header={
     <Stack direction="row" align="center" justify="between">
       <h3>Google Drive</h3>
-      <Badge variant="warning" showDot>Expiring Soon</Badge>
+      <Badge variant="warning" showDot>
+        Expiring Soon
+      </Badge>
     </Stack>
   }
 >
@@ -339,16 +345,13 @@ StatusIndicator component applies text colors only (no backgrounds):
       label="Expires in 3 days"
       variant="warning"
     />
-    <StatusIndicator
-      icon={<UsersIcon />}
-      label="5 agents"
-      variant="default"
-    />
+    <StatusIndicator icon={<UsersIcon />} label="5 agents" variant="default" />
   </Stack>
 </Card>
 ```
 
 **Token Usage**:
+
 - Primary status (header): `warning-primary` (Badge with dot)
 - Expiration metadata: `warning-primary` (StatusIndicator)
 - Agent count: `neutral-500` (StatusIndicator default)
@@ -369,11 +372,14 @@ StatusIndicator component applies text colors only (no backgrounds):
   <Alert variant="error" size="sm">
     Session expired. Re-authenticate to restore access.
   </Alert>
-  <Button variant="primary" size="sm">Re-authenticate</Button>
+  <Button variant="primary" size="sm">
+    Re-authenticate
+  </Button>
 </Card>
 ```
 
 **Token Usage**:
+
 - Primary status (header): `error-primary` (Badge)
 - Alert: `error-light` background, `error-primary` border (Alert component)
 
@@ -384,38 +390,43 @@ StatusIndicator component applies text colors only (no backgrounds):
 ### WCAG 2.1 AA Requirements
 
 **Text Contrast (4.5:1 minimum)**:
+
 - `success-primary` (#059669): 4.89:1 - Pass
 - `warning-primary` (#D97706): 5.12:1 - Pass
 - `error-primary` (#DC2626): 5.89:1 - Pass
 - `neutral-600` (#6b6561): 4.76:1 - Pass
 
 **UI Component Contrast (3:1 minimum)**:
+
 - Badge backgrounds: All meet 3:1 for non-text UI elements
 - StatusIndicator icons: 3:1+ when using semantic variants
 
 ### Color + Text Pattern
 
 Never rely on color alone. Always combine color with:
+
 1. **Text labels**: "Active", "Expired", "Expiring Soon"
 2. **Icons**: CheckCircle, XCircle, AlertTriangle
 3. **Dot indicators**: `showDot` prop on Badge for additional visual signal
 
 **Example** (Good):
+
 ```tsx
 <Badge variant="success" showDot>
   Active
 </Badge>
 ```
+
 - Color: Green (success-primary)
 - Text: "Active" label
 - Visual: Dot indicator
 
 **Example** (Bad):
+
 ```tsx
-<Badge variant="success">
-  {/* No text label */}
-</Badge>
+<Badge variant="success">{/* No text label */}</Badge>
 ```
+
 - Color only (fails WCAG)
 
 ---
@@ -425,6 +436,7 @@ Never rely on color alone. Always combine color with:
 Currently, the design system uses a light theme. When dark mode is implemented:
 
 **Expected Token Adjustments**:
+
 - `success-primary`: Shift to `success-light` (#d1fae5) for better contrast on dark
 - `warning-primary`: May need lighter variant for dark backgrounds
 - `error-primary`: Shift to `error-light` (#fee2e2) for dark backgrounds
@@ -437,6 +449,7 @@ Currently, the design system uses a light theme. When dark mode is implemented:
 ## Testing Checklist
 
 ### Contrast Ratio Testing
+
 - [ ] Verify success-primary on white: 4.5:1+ (Text)
 - [ ] Verify warning-primary on white: 4.5:1+ (Text)
 - [ ] Verify error-primary on white: 4.5:1+ (Text)
@@ -444,12 +457,14 @@ Currently, the design system uses a light theme. When dark mode is implemented:
 - [ ] Verify Badge backgrounds: 3:1+ (UI elements)
 
 ### Color Blindness Testing
+
 - [ ] Test with Protanopia (red-blind) simulation
 - [ ] Test with Deuteranopia (green-blind) simulation
 - [ ] Test with Tritanopia (blue-blind) simulation
 - [ ] Verify text labels + icons provide redundant cues
 
 ### Screen Reader Testing
+
 - [ ] Badge content read aloud correctly
 - [ ] StatusIndicator labels read (icons marked aria-hidden)
 - [ ] Status changes announced dynamically
@@ -468,11 +483,19 @@ import { LockIcon, UsersIcon, ClockIcon } from 'lucide-react';
 
 function getSessionStatusBadge(session) {
   if (!session) {
-    return <Badge variant="neutral" size="sm" shape="pill">No Session</Badge>;
+    return (
+      <Badge variant="neutral" size="sm" shape="pill">
+        No Session
+      </Badge>
+    );
   }
 
   if (session.is_expired) {
-    return <Badge variant="error" size="sm" shape="pill">Expired</Badge>;
+    return (
+      <Badge variant="error" size="sm" shape="pill">
+        Expired
+      </Badge>
+    );
   }
 
   if (session.expires_within_days <= 7) {
@@ -483,7 +506,11 @@ function getSessionStatusBadge(session) {
     );
   }
 
-  return <Badge variant="success" size="sm" shape="pill">Active</Badge>;
+  return (
+    <Badge variant="success" size="sm" shape="pill">
+      Active
+    </Badge>
+  );
 }
 
 export function SessionCard({ service, session }) {
@@ -539,6 +566,7 @@ export function SessionCard({ service, session }) {
 ```
 
 **Token Usage in Example**:
+
 - Active session: `success-primary` (Badge)
 - Expiring session: `warning-primary` (Badge) + dot indicator
 - Expired session: `error-primary` (Badge)

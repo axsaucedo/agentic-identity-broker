@@ -23,7 +23,9 @@ import { ToastProvider } from '@components/ui/Toast';
 // This creates separate bundles for each route, reducing initial load time
 const ConsentOverviewPage = lazy(() => import('./pages/ConsentOverviewPage'));
 const AgentGrantDetailPage = lazy(() => import('./pages/AgentGrantDetailPage'));
-const ThirdPartySessionsPage = lazy(() => import('./pages/ThirdPartySessionsPage'));
+const ThirdPartySessionsPage = lazy(
+  () => import('./pages/ThirdPartySessionsPage'),
+);
 const ErrorPage = lazy(() => import('./pages/ErrorPage'));
 
 /**
@@ -48,8 +50,14 @@ function App() {
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route path="/" element={<ConsentOverviewPage />} />
-              <Route path="/agent/:agentId" element={<AgentGrantDetailPage />} />
-              <Route path="/oauth2/sessions" element={<ThirdPartySessionsPage />} />
+              <Route
+                path="/agent/:agentId"
+                element={<AgentGrantDetailPage />}
+              />
+              <Route
+                path="/oauth2/sessions"
+                element={<ThirdPartySessionsPage />}
+              />
               <Route path="*" element={<ErrorPage />} />
             </Routes>
           </Suspense>

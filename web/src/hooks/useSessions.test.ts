@@ -33,7 +33,9 @@ const mockSessions: SessionSummary[] = [
     initiated_at: new Date('2024-01-01T12:00:00Z').toISOString(),
     is_expired: false,
     access_token_expired: false,
-    refresh_token_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    refresh_token_expires_at: new Date(
+      Date.now() + 30 * 24 * 60 * 60 * 1000,
+    ).toISOString(),
     dependent_agent_count: 2,
     is_encrypted: true,
   },
@@ -46,7 +48,9 @@ const mockSessions: SessionSummary[] = [
     initiated_at: new Date('2024-02-01T12:00:00Z').toISOString(),
     is_expired: false,
     access_token_expired: false,
-    refresh_token_expires_at: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+    refresh_token_expires_at: new Date(
+      Date.now() + 15 * 24 * 60 * 60 * 1000,
+    ).toISOString(),
     dependent_agent_count: 1,
     is_encrypted: true,
   },
@@ -100,7 +104,9 @@ describe('useSessions', () => {
   describe('Error Handling', () => {
     it('handles API errors gracefully', async () => {
       const errorMessage = 'Network error';
-      vi.mocked(sessionsApi.listSessions).mockRejectedValueOnce(new Error(errorMessage));
+      vi.mocked(sessionsApi.listSessions).mockRejectedValueOnce(
+        new Error(errorMessage),
+      );
 
       const { result } = renderHook(() => useSessions());
 
@@ -149,7 +155,9 @@ describe('useSessions', () => {
     });
 
     it('handles unknown errors with default message', async () => {
-      vi.mocked(sessionsApi.listSessions).mockRejectedValueOnce('Unknown error');
+      vi.mocked(sessionsApi.listSessions).mockRejectedValueOnce(
+        'Unknown error',
+      );
 
       const { result } = renderHook(() => useSessions());
 
@@ -221,7 +229,7 @@ describe('useSessions', () => {
           () =>
             new Promise((resolve) => {
               setTimeout(() => resolve(mockSessions), 100);
-            })
+            }),
         );
 
       const { result } = renderHook(() => useSessions());
@@ -254,7 +262,7 @@ describe('useSessions', () => {
         () =>
           new Promise((resolve) => {
             setTimeout(() => resolve(mockSessions), 1000);
-          })
+          }),
       );
 
       const { result } = renderHook(() => useSessions());
@@ -278,7 +286,7 @@ describe('useSessions', () => {
 
     it('clears loading state after error', async () => {
       vi.mocked(sessionsApi.listSessions).mockRejectedValueOnce(
-        new Error('Network error')
+        new Error('Network error'),
       );
 
       const { result } = renderHook(() => useSessions());
@@ -329,7 +337,7 @@ describe('useSession', () => {
       () =>
         new Promise((resolve) => {
           setTimeout(() => resolve(mockSessions), 1000);
-        })
+        }),
     );
 
     const { result } = renderHook(() => useSession('google'));

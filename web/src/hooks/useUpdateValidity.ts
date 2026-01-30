@@ -7,7 +7,7 @@
  * - Reset functionality
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { UserGrant, GrantValidityState } from '../types/consent';
 
 interface UseUpdateValidityReturn {
@@ -29,17 +29,21 @@ interface UseUpdateValidityReturn {
  * @param grant - Optional existing grant to initialize from
  * @returns Validity state and control methods
  */
-export function useUpdateValidity(grant: UserGrant | null = null): UseUpdateValidityReturn {
+export function useUpdateValidity(
+  grant: UserGrant | null = null,
+): UseUpdateValidityReturn {
   // Initialize from existing grant if provided
-  const initialState: GrantValidityState = grant?.valid_until
-    ? {
-        noExpiration: false,
-        expiresAt: new Date(grant.valid_until),
-      }
-    : {
-        noExpiration: true,
-        expiresAt: undefined,
-      };
+  const initialState = useMemo<GrantValidityState>(() => {
+    return grant?.valid_until
+      ? {
+          noExpiration: false,
+          expiresAt: new Date(grant.valid_until),
+        }
+      : {
+          noExpiration: true,
+          expiresAt: undefined,
+        };
+  }, [grant]);
 
   const [validityState, setValidityStateInternal] =
     useState<GrantValidityState>(initialState);

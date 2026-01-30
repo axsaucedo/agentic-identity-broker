@@ -359,8 +359,12 @@ export const KeyboardFocus: Story = {
           Keyboard Accessibility
         </h4>
         <p className="text-sm text-neutral-700 mb-3">
-          Press <kbd className="px-2 py-1 bg-white border border-neutral-300 rounded text-xs font-mono">Tab</kbd> to navigate
-          between elements. Tooltips appear on focus for keyboard users.
+          Press{' '}
+          <kbd className="px-2 py-1 bg-white border border-neutral-300 rounded text-xs font-mono">
+            Tab
+          </kbd>{' '}
+          to navigate between elements. Tooltips appear on focus for keyboard
+          users.
         </p>
       </div>
 
@@ -377,16 +381,17 @@ export const KeyboardFocus: Story = {
           </button>
         </Tooltip>
 
-        <Tooltip content="Third tooltip with light theme" position="top" theme="light">
+        <Tooltip
+          content="Third tooltip with light theme"
+          position="top"
+          theme="light"
+        >
           <button className="px-4 py-2 bg-white border border-neutral-300 text-neutral-900 rounded-md hover:bg-neutral-50 focus:ring-2 focus:ring-trust focus:ring-offset-2 transition-colors">
             Tab to focus #3
           </button>
         </Tooltip>
 
-        <Tooltip
-          content="Works with links too"
-          position="bottom"
-        >
+        <Tooltip content="Works with links too" position="bottom">
           <a
             href="#"
             className="inline-flex items-center px-4 py-2 text-trust hover:text-trust-deep underline focus:ring-2 focus:ring-trust focus:ring-offset-2 rounded transition-colors"
@@ -518,14 +523,20 @@ export const RealWorldExamples: Story = {
             </div>
 
             <div className="flex items-center gap-6 text-xs">
-              <Tooltip content="Data is encrypted in transit and at rest" position="bottom">
+              <Tooltip
+                content="Data is encrypted in transit and at rest"
+                position="bottom"
+              >
                 <StatusIndicator
                   icon={<LockIcon />}
                   label="Encrypted"
                   interactive
                 />
               </Tooltip>
-              <Tooltip content="Consent expires on Jan 15, 2026" position="bottom">
+              <Tooltip
+                content="Consent expires on Jan 15, 2026"
+                position="bottom"
+              >
                 <StatusIndicator label="Valid for 30 days" interactive />
               </Tooltip>
               <Tooltip content="Last accessed 2 hours ago" position="bottom">
@@ -561,7 +572,10 @@ export const RealWorldExamples: Story = {
                     </svg>
                   </Tooltip>
                 </div>
-                <Tooltip content="Click to enable marketing emails" position="left">
+                <Tooltip
+                  content="Click to enable marketing emails"
+                  position="left"
+                >
                   <Switch
                     checked={marketingEnabled}
                     onChange={setMarketingEnabled}
@@ -621,19 +635,13 @@ export const RealWorldExamples: Story = {
 export const Disabled: Story = {
   render: () => (
     <div className="flex gap-8 items-center justify-center p-12">
-      <Tooltip
-        content="This tooltip is enabled"
-        disabled={false}
-      >
+      <Tooltip content="This tooltip is enabled" disabled={false}>
         <button className="px-4 py-2 bg-trust-hover text-white rounded-md hover:bg-trust transition-colors">
           Enabled Tooltip
         </button>
       </Tooltip>
 
-      <Tooltip
-        content="This tooltip won't show"
-        disabled={true}
-      >
+      <Tooltip content="This tooltip won't show" disabled={true}>
         <button className="px-4 py-2 bg-neutral-400 text-white rounded-md cursor-not-allowed">
           Disabled Tooltip
         </button>
@@ -658,8 +666,12 @@ export const Accessibility: Story = {
           Accessibility Features
         </h4>
         <ul className="text-sm text-neutral-700 space-y-1">
-          <li>• Uses <code>role="tooltip"</code> for screen readers</li>
-          <li>• Trigger has <code>aria-describedby</code> pointing to tooltip</li>
+          <li>
+            • Uses <code>role="tooltip"</code> for screen readers
+          </li>
+          <li>
+            • Trigger has <code>aria-describedby</code> pointing to tooltip
+          </li>
           <li>• Shows on both hover and keyboard focus (Tab key)</li>
           <li>• Configurable delay prevents accidental triggers</li>
           <li>• High contrast themes meet WCAG AA standards</li>

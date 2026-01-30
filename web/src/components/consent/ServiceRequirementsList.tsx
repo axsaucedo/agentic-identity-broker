@@ -48,13 +48,13 @@ export interface ServiceRequirementsListProps {
  * Mandatory services are shown first, followed by optional services.
  * Used in Phase 6: User Story 3 - Consent Screen Displays Service Requirements.
  */
-export const ServiceRequirementsList: React.FC<ServiceRequirementsListProps> = ({
-  requirements,
-  onLogin,
-  onDisconnect,
-}) => {
+export const ServiceRequirementsList: React.FC<
+  ServiceRequirementsListProps
+> = ({ requirements, onLogin, onDisconnect }) => {
   // Separate requirements into mandatory and optional (FR-018)
-  const mandatory = requirements.filter((r) => r.requirementType === 'mandatory');
+  const mandatory = requirements.filter(
+    (r) => r.requirementType === 'mandatory',
+  );
   const optional = requirements.filter((r) => r.requirementType === 'optional');
 
   // Empty state

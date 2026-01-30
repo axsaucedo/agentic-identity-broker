@@ -45,11 +45,17 @@ const countryOptions: SelectOption[] = [
 ];
 
 // Helper for single-select stories to properly type the onChange
-const handleSingleChange = (setter: (value: string | number | null) => void) => (value: string | number | (string | number)[] | null) => {
-  if (typeof value === 'string' || typeof value === 'number' || value === null) {
-    setter(value);
-  }
-};
+const handleSingleChange =
+  (setter: (value: string | number | null) => void) =>
+  (value: string | number | (string | number)[] | null) => {
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      value === null
+    ) {
+      setter(value);
+    }
+  };
 
 export const Default: Story = {
   render: () => {
@@ -259,7 +265,11 @@ export const CustomRendering: Story = {
     );
   },
   args: {
-    options: [{ value: 'us', label: 'United States' }, { value: 'ca', label: 'Canada' }, { value: 'mx', label: 'Mexico' }],
+    options: [
+      { value: 'us', label: 'United States' },
+      { value: 'ca', label: 'Canada' },
+      { value: 'mx', label: 'Mexico' },
+    ],
     value: null,
     onChange: () => {},
   },
@@ -308,7 +318,10 @@ export const GroupedOptions: Story = {
     );
   },
   args: {
-    options: [{ value: 'us', label: 'United States' }, { value: 'ca', label: 'Canada' }],
+    options: [
+      { value: 'us', label: 'United States' },
+      { value: 'ca', label: 'Canada' },
+    ],
     value: null,
     onChange: () => {},
   },
@@ -355,7 +368,10 @@ export const WithHelperText: Story = {
     );
   },
   args: {
-    options: [{ value: 'read', label: 'Read' }, { value: 'edit', label: 'Edit' }],
+    options: [
+      { value: 'read', label: 'Read' },
+      { value: 'edit', label: 'Edit' },
+    ],
     value: null,
     onChange: () => {},
   },
@@ -364,7 +380,9 @@ export const WithHelperText: Story = {
 export const RealWorldUseCases: Story = {
   render: () => {
     const [duration, setDuration] = useState<string | number | null>('7days');
-    const [permission, setPermission] = useState<string | number | null>('viewer');
+    const [permission, setPermission] = useState<string | number | null>(
+      'viewer',
+    );
 
     const durationOptions: SelectOption[] = [
       { value: '24hours', label: '24 hours - Limited time access' },
@@ -415,7 +433,10 @@ export const RealWorldUseCases: Story = {
     );
   },
   args: {
-    options: [{ value: '7days', label: '7 days - One week duration' }, { value: '30days', label: '30 days - One month access' }],
+    options: [
+      { value: '7days', label: '7 days - One week duration' },
+      { value: '30days', label: '30 days - One month access' },
+    ],
     value: '7days',
     onChange: () => {},
   },
@@ -423,7 +444,9 @@ export const RealWorldUseCases: Story = {
 
 export const Playground: Story = {
   render: (args: any) => {
-    const [selected, setSelected] = useState<string | number | (string | number)[] | null>(null);
+    const [selected, setSelected] = useState<
+      string | number | (string | number)[] | null
+    >(null);
 
     return (
       <Select
@@ -476,7 +499,9 @@ export const Accessibility: Story = {
         />
 
         <div className="mt-6 p-3 bg-neutral-50 rounded border border-neutral-200">
-          <p className="text-sm font-medium text-neutral-900">Accessibility notes:</p>
+          <p className="text-sm font-medium text-neutral-900">
+            Accessibility notes:
+          </p>
           <ul className="text-xs text-neutral-700 space-y-1 mt-2">
             <li>• Use Tab to navigate to the select</li>
             <li>• Press Space or Enter to open options</li>
@@ -505,7 +530,10 @@ export const Accessibility: Story = {
     },
   },
   args: {
-    options: [{ value: 'viewer', label: 'Viewer' }, { value: 'editor', label: 'Editor' }],
+    options: [
+      { value: 'viewer', label: 'Viewer' },
+      { value: 'editor', label: 'Editor' },
+    ],
     value: null,
     onChange: () => {},
   },
@@ -526,8 +554,9 @@ export const LoadingState: Story = {
           helperText="In a real app, these would be fetched from an API"
         />
         <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
-          <strong>Note:</strong> Loading states are typically handled by your application layer.
-          You can set <code>disabled</code> and show a loading state externally while fetching options.
+          <strong>Note:</strong> Loading states are typically handled by your
+          application layer. You can set <code>disabled</code> and show a
+          loading state externally while fetching options.
         </div>
       </div>
     );

@@ -8,8 +8,12 @@
  * - Supports both editable and view-only modes
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import type { ThirdpartyService, UserGrant, DelegatedToken } from '../../types/consent';
+import React, { useState, useEffect } from 'react';
+import type {
+  ThirdpartyService,
+  UserGrant,
+  DelegatedToken,
+} from '../../types/consent';
 import { ServiceCard } from './ServiceCard';
 
 interface ServiceGrantListProps {
@@ -36,7 +40,9 @@ export function ServiceGrantList({
   onGrantsChange,
 }: ServiceGrantListProps) {
   // Track state for each service
-  const [serviceStates, setServiceStates] = useState<Map<string, ServiceState>>(new Map());
+  const [serviceStates, setServiceStates] = useState<Map<string, ServiceState>>(
+    new Map(),
+  );
 
   // Initialize service states from existing grants
   useEffect(() => {
@@ -49,7 +55,9 @@ export function ServiceGrantList({
 
     // Initialize state for each service
     services.forEach((service) => {
-      const existingToken = allDelegatedTokens.find((t) => t.thirdparty_oauth2_service_id === service.serviceId);
+      const existingToken = allDelegatedTokens.find(
+        (t) => t.thirdparty_oauth2_service_id === service.serviceId,
+      );
 
       initialStates.set(service.serviceId, {
         isEnabled: !!existingToken,
@@ -59,41 +67,6 @@ export function ServiceGrantList({
 
     setServiceStates(initialStates);
   }, [services, grants]);
-
-  // Handle service toggle
-  const handleServiceToggle = useCallback(
-    (serviceId: string, enabled: boolean) => {
-      setServiceStates((prev) => {
-        const newStates = new Map(prev);
-        const currentState = newStates.get(serviceId) || { isEnabled: false, selectedScopes: [] };
-
-        newStates.set(serviceId, {
-          ...currentState,
-          isEnabled: enabled,
-          // Clear scopes when disabling
-          selectedScopes: enabled ? currentState.selectedScopes : [],
-        });
-
-        return newStates;
-      });
-    },
-    []
-  );
-
-  // Handle scope selection change
-  const handleScopeChange = useCallback((serviceId: string, scopes: string[]) => {
-    setServiceStates((prev) => {
-      const newStates = new Map(prev);
-      const currentState = newStates.get(serviceId) || { isEnabled: false, selectedScopes: [] };
-
-      newStates.set(serviceId, {
-        ...currentState,
-        selectedScopes: scopes,
-      });
-
-      return newStates;
-    });
-  }, []);
 
   // Notify parent of changes when service states change
   useEffect(() => {
@@ -116,17 +89,15 @@ export function ServiceGrantList({
   const getGrantsForService = (serviceId: string): DelegatedToken[] => {
     return grants
       .flatMap((grant) => grant.delegated_oauth2_tokens || [])
-      .filter((token) => token != null && token.thirdparty_oauth2_service_id === serviceId);
+      .filter(
+        (token) =>
+          token != null && token.thirdparty_oauth2_service_id === serviceId,
+      );
   };
 
   return (
     <div className="space-y-4">
       {services.map((service) => {
-        const serviceState = serviceStates.get(service.serviceId) || {
-          isEnabled: false,
-          selectedScopes: [],
-        };
-
         return (
           <ServiceCard
             key={service.serviceId}

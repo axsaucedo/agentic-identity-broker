@@ -56,13 +56,10 @@ export const Default: Story = {
     return (
       <>
         <Button onClick={() => setIsOpen(true)}>Open Modal</Button>
-        <Modal
-          {...args}
-          isOpen={isOpen}
-          onClose={() => setIsOpen(false)}
-        >
+        <Modal {...args} isOpen={isOpen} onClose={() => setIsOpen(false)}>
           <p className="text-neutral-700">
-            This is a basic modal with a title and content. Click the X button or press ESC to close.
+            This is a basic modal with a title and content. Click the X button
+            or press ESC to close.
           </p>
         </Modal>
       </>
@@ -92,10 +89,7 @@ export const WithFooterActions: Story = {
           title="Confirm Your Action"
           footer={
             <div className="flex gap-3 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setIsOpen(false)}
-              >
+              <Button variant="outline" onClick={() => setIsOpen(false)}>
                 Cancel
               </Button>
               <Button
@@ -111,11 +105,13 @@ export const WithFooterActions: Story = {
           }
         >
           <p className="text-neutral-700">
-            Modals with footer actions are the most common use case. The footer is
-            styled with a gray background to separate it from the main content.
+            Modals with footer actions are the most common use case. The footer
+            is styled with a gray background to separate it from the main
+            content.
           </p>
           <p className="text-neutral-600 mt-3 text-sm">
-            Primary actions should be on the right, with cancel/secondary actions on the left.
+            Primary actions should be on the right, with cancel/secondary
+            actions on the left.
           </p>
         </Modal>
       </>
@@ -152,7 +148,8 @@ export const Sizes: Story = {
           }
         >
           <p className="text-neutral-700">
-            Small modals (400px max-width) are perfect for simple confirmations and short messages.
+            Small modals (400px max-width) are perfect for simple confirmations
+            and short messages.
           </p>
         </Modal>
 
@@ -168,7 +165,8 @@ export const Sizes: Story = {
           }
         >
           <p className="text-neutral-700">
-            Medium modals (600px max-width) are the default size, suitable for most forms and content.
+            Medium modals (600px max-width) are the default size, suitable for
+            most forms and content.
           </p>
         </Modal>
 
@@ -184,12 +182,16 @@ export const Sizes: Story = {
           }
         >
           <p className="text-neutral-700">
-            Large modals (800px max-width) are ideal for complex forms, detailed content, or data tables.
+            Large modals (800px max-width) are ideal for complex forms, detailed
+            content, or data tables.
           </p>
           <div className="mt-4 p-4 bg-neutral-50 rounded-lg border border-neutral-200">
-            <h4 className="font-semibold text-neutral-900 mb-2">Additional Content</h4>
+            <h4 className="font-semibold text-neutral-900 mb-2">
+              Additional Content
+            </h4>
             <p className="text-neutral-600 text-sm">
-              Large modals provide more space for complex layouts and multiple sections.
+              Large modals provide more space for complex layouts and multiple
+              sections.
             </p>
           </div>
         </Modal>
@@ -211,9 +213,9 @@ export const ScrollableContent: Story = {
 
     const longContent = Array.from({ length: 20 }, (_, i) => (
       <p key={i} className="text-neutral-700 mb-3">
-        This is paragraph {i + 1} of long content. When content exceeds the viewport height,
-        the modal body becomes scrollable while the header and footer remain fixed. This
-        ensures important actions are always visible.
+        This is paragraph {i + 1} of long content. When content exceeds the
+        viewport height, the modal body becomes scrollable while the header and
+        footer remain fixed. This ensures important actions are always visible.
       </p>
     ));
 
@@ -245,7 +247,8 @@ export const ScrollableContent: Story = {
         >
           <div className="prose prose-sm max-w-none">
             <p className="text-neutral-700 font-medium mb-4">
-              Please read and accept the following terms and conditions to continue.
+              Please read and accept the following terms and conditions to
+              continue.
             </p>
             {longContent}
           </div>
@@ -295,7 +298,8 @@ export const CenteredLayout: Story = {
               Action Successful
             </h3>
             <p className="text-neutral-600">
-              Your changes have been saved successfully. All updates are now live.
+              Your changes have been saved successfully. All updates are now
+              live.
             </p>
           </div>
         </Modal>
@@ -372,7 +376,8 @@ export const Confirmation: Story = {
           }
         >
           <p className="text-neutral-700">
-            Are you sure you want to delete this item? This action cannot be undone.
+            Are you sure you want to delete this item? This action cannot be
+            undone.
           </p>
           <div className="mt-4 p-3 bg-error-light border border-error-primary/20 rounded-md">
             <p className="text-sm text-error-dark font-medium">
@@ -542,7 +547,8 @@ export const BackdropInteraction: Story = {
           closeOnBackdropClick={true}
         >
           <p className="text-neutral-700 mb-3">
-            This modal can be dismissed by clicking the backdrop (dark area outside the modal).
+            This modal can be dismissed by clicking the backdrop (dark area
+            outside the modal).
           </p>
           <p className="text-sm text-neutral-600">
             Try clicking outside this box or pressing ESC.
@@ -557,18 +563,18 @@ export const BackdropInteraction: Story = {
           closeOnBackdropClick={false}
           footer={
             <div className="flex justify-end">
-              <Button onClick={() => setNonDismissible(false)}>
-                Close
-              </Button>
+              <Button onClick={() => setNonDismissible(false)}>Close</Button>
             </div>
           }
         >
           <p className="text-neutral-700 mb-3">
-            This modal cannot be dismissed by clicking the backdrop. You must use the close button or press ESC.
+            This modal cannot be dismissed by clicking the backdrop. You must
+            use the close button or press ESC.
           </p>
           <div className="p-3 bg-warning-light border border-warning-primary/20 rounded-md">
             <p className="text-sm text-warning-dark">
-              Use this for critical actions that require explicit user acknowledgment.
+              Use this for critical actions that require explicit user
+              acknowledgment.
             </p>
           </div>
         </Modal>
@@ -611,7 +617,8 @@ export const Playground: Story = {
           {args.children || (
             <div>
               <p className="text-neutral-700 mb-3">
-                Use the controls below to customize this modal's appearance and behavior.
+                Use the controls below to customize this modal's appearance and
+                behavior.
               </p>
               <ul className="list-disc list-inside text-sm text-neutral-600 space-y-1">
                 <li>Change the size (sm, md, lg)</li>
@@ -694,7 +701,8 @@ export const ConsentManagementExamples: Story = {
         >
           <div className="space-y-4">
             <p className="text-neutral-700">
-              <strong>Analytics Dashboard</strong> is requesting access to the following data:
+              <strong>Analytics Dashboard</strong> is requesting access to the
+              following data:
             </p>
             <ul className="list-disc list-inside text-neutral-700 space-y-2 pl-2">
               <li>Basic profile information (name, email)</li>
@@ -703,7 +711,8 @@ export const ConsentManagementExamples: Story = {
             </ul>
             <div className="p-4 bg-info-light border border-info-primary/20 rounded-md">
               <p className="text-sm text-info-dark">
-                This permission will be valid for 30 days and can be revoked at any time.
+                This permission will be valid for 30 days and can be revoked at
+                any time.
               </p>
             </div>
           </div>
@@ -749,10 +758,12 @@ export const ConsentManagementExamples: Story = {
           }
         >
           <p className="text-neutral-700 mb-3">
-            Are you sure you want to revoke consent for <strong>Marketing Platform</strong>?
+            Are you sure you want to revoke consent for{' '}
+            <strong>Marketing Platform</strong>?
           </p>
           <p className="text-sm text-neutral-600">
-            This application will immediately lose access to your data and may stop functioning properly.
+            This application will immediately lose access to your data and may
+            stop functioning properly.
           </p>
         </Modal>
 
@@ -771,12 +782,16 @@ export const ConsentManagementExamples: Story = {
         >
           <div className="space-y-6">
             <div>
-              <h4 className="text-sm font-semibold text-neutral-900 mb-2">Application</h4>
+              <h4 className="text-sm font-semibold text-neutral-900 mb-2">
+                Application
+              </h4>
               <p className="text-neutral-700">Analytics Dashboard v2.1</p>
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-neutral-900 mb-2">Granted Permissions</h4>
+              <h4 className="text-sm font-semibold text-neutral-900 mb-2">
+                Granted Permissions
+              </h4>
               <ul className="list-disc list-inside text-neutral-700 space-y-1">
                 <li>Read basic profile information</li>
                 <li>Access usage statistics</li>
@@ -785,29 +800,46 @@ export const ConsentManagementExamples: Story = {
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-neutral-900 mb-2">Consent Timeline</h4>
+              <h4 className="text-sm font-semibold text-neutral-900 mb-2">
+                Consent Timeline
+              </h4>
               <div className="space-y-3">
                 <div className="flex items-start gap-3 p-3 bg-neutral-50 rounded-md">
-                  <div className="text-xs text-neutral-500 mt-0.5">Dec 1, 2025</div>
+                  <div className="text-xs text-neutral-500 mt-0.5">
+                    Dec 1, 2025
+                  </div>
                   <div className="flex-1">
-                    <p className="text-sm text-neutral-900 font-medium">Consent Granted</p>
-                    <p className="text-xs text-neutral-600">Initial access granted for 30 days</p>
+                    <p className="text-sm text-neutral-900 font-medium">
+                      Consent Granted
+                    </p>
+                    <p className="text-xs text-neutral-600">
+                      Initial access granted for 30 days
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-3 bg-neutral-50 rounded-md">
-                  <div className="text-xs text-neutral-500 mt-0.5">Dec 15, 2025</div>
+                  <div className="text-xs text-neutral-500 mt-0.5">
+                    Dec 15, 2025
+                  </div>
                   <div className="flex-1">
-                    <p className="text-sm text-neutral-900 font-medium">Permissions Updated</p>
-                    <p className="text-xs text-neutral-600">Added access to activity logs</p>
+                    <p className="text-sm text-neutral-900 font-medium">
+                      Permissions Updated
+                    </p>
+                    <p className="text-xs text-neutral-600">
+                      Added access to activity logs
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="p-4 bg-warning-light border border-warning-primary/20 rounded-md">
-              <p className="text-sm text-warning-dark font-medium mb-1">Expires in 15 days</p>
+              <p className="text-sm text-warning-dark font-medium mb-1">
+                Expires in 15 days
+              </p>
               <p className="text-xs text-neutral-700">
-                This consent will expire on December 31, 2025. You will need to renew access after this date.
+                This consent will expire on December 31, 2025. You will need to
+                renew access after this date.
               </p>
             </div>
           </div>

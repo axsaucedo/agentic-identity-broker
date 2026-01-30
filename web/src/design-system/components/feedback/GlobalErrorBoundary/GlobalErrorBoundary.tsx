@@ -227,7 +227,9 @@ export class GlobalErrorBoundary extends Component<
     };
   }
 
-  static getDerivedStateFromError(error: Error): Partial<GlobalErrorBoundaryState> {
+  static getDerivedStateFromError(
+    error: Error,
+  ): Partial<GlobalErrorBoundaryState> {
     return {
       hasError: true,
       error,
@@ -247,7 +249,10 @@ export class GlobalErrorBoundary extends Component<
 
     // Log to console in development
     if (process.env.NODE_ENV === 'development') {
-      console.error('[GlobalErrorBoundary] Caught critical application error:', error);
+      console.error(
+        '[GlobalErrorBoundary] Caught critical application error:',
+        error,
+      );
       console.error('Error Info:', errorInfo);
     }
 
@@ -256,7 +261,10 @@ export class GlobalErrorBoundary extends Component<
       try {
         onError(error, errorInfo);
       } catch (handlerError) {
-        console.error('Error in GlobalErrorBoundary onError handler:', handlerError);
+        console.error(
+          'Error in GlobalErrorBoundary onError handler:',
+          handlerError,
+        );
       }
     }
   }
@@ -292,16 +300,21 @@ export class GlobalErrorBoundary extends Component<
 
     switch (errorCategory) {
       case 'network':
-        return 'We\'re having trouble connecting to our servers. This might be due to your internet connection or a temporary service outage.';
+        return "We're having trouble connecting to our servers. This might be due to your internet connection or a temporary service outage.";
       case 'permission':
-        return 'You don\'t have permission to access this resource. Please contact your administrator if you believe this is an error.';
+        return "You don't have permission to access this resource. Please contact your administrator if you believe this is an error.";
       default:
         return 'An unexpected error has occurred. We apologize for the inconvenience. Our team has been notified and is working to resolve the issue.';
     }
   }
 
   renderFooter(): ReactNode {
-    const { supportEmail, supportPhone, supportUrl, appName = 'Application' } = this.props;
+    const {
+      supportEmail,
+      supportPhone,
+      supportUrl,
+      appName = 'Application',
+    } = this.props;
 
     if (!supportEmail && !supportPhone && !supportUrl) {
       return null;
@@ -322,12 +335,14 @@ export class GlobalErrorBoundary extends Component<
                   'bg-white border border-error-primary/20',
                   'hover:border-error-primary/40 hover:bg-error-light/30',
                   'transition-colors duration-200',
-                  'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2'
+                  'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2',
                 )}
               >
                 <EmailIcon />
                 <div className="flex-1 min-w-0 text-left">
-                  <div className="text-xs text-error-dark/60 font-medium">Email Support</div>
+                  <div className="text-xs text-error-dark/60 font-medium">
+                    Email Support
+                  </div>
                   <div className="text-sm text-error-dark font-semibold truncate">
                     {supportEmail}
                   </div>
@@ -343,12 +358,14 @@ export class GlobalErrorBoundary extends Component<
                   'bg-white border border-error-primary/20',
                   'hover:border-error-primary/40 hover:bg-error-light/30',
                   'transition-colors duration-200',
-                  'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2'
+                  'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2',
                 )}
               >
                 <PhoneIcon />
                 <div className="flex-1 min-w-0 text-left">
-                  <div className="text-xs text-error-dark/60 font-medium">Call Support</div>
+                  <div className="text-xs text-error-dark/60 font-medium">
+                    Call Support
+                  </div>
                   <div className="text-sm text-error-dark font-semibold truncate">
                     {supportPhone}
                   </div>
@@ -366,12 +383,14 @@ export class GlobalErrorBoundary extends Component<
                   'bg-white border border-error-primary/20',
                   'hover:border-error-primary/40 hover:bg-error-light/30',
                   'transition-colors duration-200',
-                  'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2'
+                  'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2',
                 )}
               >
                 <DocumentIcon />
                 <div className="flex-1 min-w-0 text-left">
-                  <div className="text-xs text-error-dark/60 font-medium">Documentation</div>
+                  <div className="text-xs text-error-dark/60 font-medium">
+                    Documentation
+                  </div>
                   <div className="text-sm text-error-dark font-semibold truncate">
                     Help Center
                   </div>
@@ -381,7 +400,7 @@ export class GlobalErrorBoundary extends Component<
           </div>
 
           <p className="mt-6 text-xs text-error-dark/50 text-center">
-            {appName} Support Team - We're here to help 24/7
+            {appName} Support Team - We&apos;re here to help 24/7
           </p>
         </div>
       </footer>
@@ -401,7 +420,9 @@ export class GlobalErrorBoundary extends Component<
 
     const showReload = recoveryStrategies.includes('reload');
     const showNavigate = recoveryStrategies.includes('navigate');
-    const showGraceful = allowGracefulDegradation && recoveryStrategies.includes('contact-support');
+    const showGraceful =
+      allowGracefulDegradation &&
+      recoveryStrategies.includes('contact-support');
 
     return (
       <div
@@ -486,7 +507,7 @@ export class GlobalErrorBoundary extends Component<
                     'bg-error-primary text-white font-semibold text-base',
                     'hover:bg-error-dark transition-all duration-200',
                     'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2',
-                    'shadow-lg hover:shadow-xl hover:-translate-y-0.5'
+                    'shadow-lg hover:shadow-xl hover:-translate-y-0.5',
                   )}
                 >
                   <RefreshIcon />
@@ -504,7 +525,7 @@ export class GlobalErrorBoundary extends Component<
                     'border-2 border-error-primary/30',
                     'hover:bg-error-light hover:border-error-primary/50 transition-all duration-200',
                     'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2',
-                    'shadow-md hover:shadow-lg'
+                    'shadow-md hover:shadow-lg',
                   )}
                 >
                   <HomeIcon />
@@ -521,7 +542,7 @@ export class GlobalErrorBoundary extends Component<
                     'bg-white text-error-dark font-medium text-base',
                     'border border-error-primary/20',
                     'hover:bg-error-light/30 hover:border-error-primary/30 transition-all duration-200',
-                    'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2'
+                    'focus:outline-none focus:ring-2 focus:ring-error-primary focus:ring-offset-2',
                   )}
                 >
                   Continue with Limited Features
@@ -533,7 +554,8 @@ export class GlobalErrorBoundary extends Component<
             {showDetails && (
               <div className="mt-8 pt-6 border-t border-error-primary/20">
                 <p className="text-xs text-error-dark/50 text-center">
-                  <strong>Developer Mode:</strong> Detailed error information is shown because{' '}
+                  <strong>Developer Mode:</strong> Detailed error information is
+                  shown because{' '}
                   <code className="bg-error-dark/10 px-1.5 py-0.5 rounded font-mono">
                     showDetails
                   </code>{' '}

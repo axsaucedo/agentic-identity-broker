@@ -14,7 +14,11 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AgentGrantDetailPage } from './AgentGrantDetailPage';
 import { ToastProvider } from '../components/ui/Toast';
 import * as useAgentGrantsModule from '../hooks/useAgentGrants';
-import type { AgentDetail, ThirdpartyService, UserGrant } from '../types/consent';
+import type {
+  AgentDetail,
+  ThirdpartyService,
+  UserGrant,
+} from '../types/consent';
 
 // Mock the useAgentGrants hook
 vi.mock('../hooks/useAgentGrants');
@@ -103,7 +107,7 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Check for breadcrumb link
@@ -128,10 +132,12 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
-    expect(screen.getByText('Failed to load agent details')).toBeInTheDocument();
+    expect(
+      screen.getByText('Failed to load agent details'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Try again')).toBeInTheDocument();
   });
 
@@ -149,7 +155,7 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('Agent not found')).toBeInTheDocument();
@@ -168,17 +174,21 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Check agent name (using heading role for specificity)
-    expect(screen.getByRole('heading', { name: 'Research Assistant', level: 1 })).toBeInTheDocument();
-    expect(screen.getByText('AI agent that helps with research tasks')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Research Assistant', level: 1 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('AI agent that helps with research tasks'),
+    ).toBeInTheDocument();
 
     // Check agent logo
     expect(screen.getByAltText('Research Assistant logo')).toHaveAttribute(
       'src',
-      'https://example.com/agent-logo.png'
+      'https://example.com/agent-logo.png',
     );
   });
 
@@ -195,7 +205,7 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Check for links - use getAllByText for duplicate "Documentation"
@@ -206,7 +216,10 @@ describe('AgentGrantDetailPage', () => {
 
     // Verify link targets
     const governanceLink = screen.getByText('Governance').closest('a');
-    expect(governanceLink).toHaveAttribute('href', 'https://example.com/governance');
+    expect(governanceLink).toHaveAttribute(
+      'href',
+      'https://example.com/governance',
+    );
     expect(governanceLink).toHaveAttribute('target', '_blank');
   });
 
@@ -223,7 +236,7 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Check services section
@@ -248,11 +261,13 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     expect(screen.getByText('No services available')).toBeInTheDocument();
-    expect(screen.getByText('This agent has no services configured yet.')).toBeInTheDocument();
+    expect(
+      screen.getByText('This agent has no services configured yet.'),
+    ).toBeInTheDocument();
   });
 
   it('renders breadcrumb navigation', () => {
@@ -268,7 +283,7 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Check breadcrumb using navigation
@@ -293,7 +308,7 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // Check for fallback initial letter
@@ -313,7 +328,7 @@ describe('AgentGrantDetailPage', () => {
     render(
       <RouterWrapper>
         <AgentGrantDetailPage />
-      </RouterWrapper>
+      </RouterWrapper>,
     );
 
     // GitHub service should be displayed
@@ -342,7 +357,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // Verify no "Edit Mode" or "View Mode" toggle/switch
@@ -367,7 +382,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // Verify services are displayed
@@ -393,7 +408,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // Verify the page structure is not dependent on edit mode
@@ -426,7 +441,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // Services should be visible without entering any special mode
@@ -447,7 +462,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // Services should be visible without needing to toggle edit mode
@@ -475,11 +490,13 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // The page should render without error and show agent details
-      expect(screen.getByRole('heading', { name: 'Research Assistant', level: 1 })).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Research Assistant', level: 1 }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -489,7 +506,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       const { unmount: unmount1 } = render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
@@ -509,7 +526,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // Should still have no edit mode toggle
@@ -529,7 +546,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // Services and their associated actions should always be visible
@@ -553,7 +570,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       render(
         <RouterWrapper>
           <AgentGrantDetailPage />
-        </RouterWrapper>
+        </RouterWrapper>,
       );
 
       // Verify there is NO edit mode toggle at all

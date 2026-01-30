@@ -87,11 +87,12 @@ const stackVariants = cva(
       justify: 'start',
       wrap: false,
     },
-  }
+  },
 );
 
 export interface StackProps
-  extends React.ComponentPropsWithoutRef<'div'>,
+  extends
+    React.ComponentPropsWithoutRef<'div'>,
     VariantProps<typeof stackVariants> {
   /** Direction of stack - row (horizontal) or column (vertical) */
   direction?: 'row' | 'column';
@@ -155,31 +156,22 @@ export interface StackProps
  */
 export const Stack = React.forwardRef<HTMLDivElement, StackProps>(
   (
-    {
-      direction,
-      gap,
-      align,
-      justify,
-      wrap,
-      className,
-      children,
-      ...props
-    },
-    ref
+    { direction, gap, align, justify, wrap, className, children, ...props },
+    ref,
   ) => {
     return (
       <div
         ref={ref}
         className={cn(
           stackVariants({ direction, gap, align, justify, wrap }),
-          className
+          className,
         )}
         {...props}
       >
         {children}
       </div>
     );
-  }
+  },
 );
 
 Stack.displayName = 'Stack';
