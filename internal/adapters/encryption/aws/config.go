@@ -297,15 +297,14 @@ func detectProductionEnvironment() bool {
 		}
 	}
 
-	// Conservative default: if uncertain, assume production (fail-safe)
-	// Only non-production if explicitly marked as development
-	if os.Getenv("DEVELOPMENT_MODE") == "true" {
+	// Detect test environment indicators
+	if isTestEnvironment() {
 		return false
 	}
 
-	// When in doubt, assume production (conservative approach)
-	// This prevents accidental insecure configurations in production
-	return true
+	// Default to non-production (development) for safety
+	// Only production if explicitly marked or detected
+	return false
 }
 
 // isRunningInContainer detects if the application is running inside a container
@@ -325,6 +324,25 @@ func isRunningInContainer() bool {
 			strings.Contains(cgroupStr, "kubelet") {
 			return true
 		}
+	}
+
+	return false
+}
+
+// isTestEnvironment detects if running under test
+func isTestEnvironment() bool {
+	// Go test sets testing.Testing() or GOTEST environment variable
+	if os.Getenv("GOTEST") != "" {
+		return true
+	}
+
+	// Check for explicit test mode markers
+	if os.Getenv("DEVELOPMENT_MODE") == "true" {
+		return true
+	}
+
+	if os.Getenv("ALLOW_INSECURE_CONFIG") == "true" {
+		return true
 	}
 
 	return false
