@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -26,6 +28,7 @@ type OAuth2SessionService struct {
 	grantRepo   ports.UserGrantRepository // For dependent agents
 	agentRepo   ports.AgentRepository     // For agent display names
 	encryption  ports.EncryptionPort
+	httpClient  *http.Client // For upstream OAuth2 token endpoint calls
 	jweKey      jwk.Key
 	config      Config
 	logger      *slog.Logger
@@ -83,6 +86,7 @@ func NewOAuth2SessionService(
 	grantRepo ports.UserGrantRepository,
 	agentRepo ports.AgentRepository,
 	encryption ports.EncryptionPort,
+	httpClient *http.Client,
 	jweKey jwk.Key,
 	config Config,
 	logger *slog.Logger,
@@ -106,6 +110,7 @@ func NewOAuth2SessionService(
 		grantRepo:   grantRepo,
 		agentRepo:   agentRepo,
 		encryption:  encryption,
+		httpClient:  httpClient,
 		jweKey:      jweKey,
 		config:      config,
 		logger:      logger,
@@ -407,17 +412,25 @@ func (s *OAuth2SessionService) createSession(
 		return nil, fmt.Errorf("failed to query existing session: %w", err)
 	}
 
+	// Build encryption context for this session
+	// Note: sessionID will be assigned below, so we need to do this after determining ID
+	var encryptedAccess []byte
+	var encryptedRefresh []byte
+
+	encContext := map[string]string{
+		"service_id": serviceID,
+	}
+
 	// Encrypt access token
-	encryptedAccess, err := s.encryption.Encrypt(ctx, []byte(token.AccessToken), nil)
+	encryptedAccess, err = s.encryption.Encrypt(ctx, []byte(token.AccessToken), encContext)
 	if err != nil {
 		s.logger.Error("failed to encrypt access token", "err", err)
 		return nil, fmt.Errorf("failed to encrypt access token: %w", err)
 	}
 
 	// Encrypt refresh token if present
-	var encryptedRefresh []byte
 	if token.RefreshToken != "" {
-		encryptedRefresh, err = s.encryption.Encrypt(ctx, []byte(token.RefreshToken), nil)
+		encryptedRefresh, err = s.encryption.Encrypt(ctx, []byte(token.RefreshToken), encContext)
 		if err != nil {
 			s.logger.Error("failed to encrypt refresh token", "err", err)
 			return nil, fmt.Errorf("failed to encrypt refresh token: %w", err)
@@ -565,6 +578,245 @@ func (s *OAuth2SessionService) HandleCallback(
 		Session:     session,
 		RedirectURI: claims.RedirectURI,
 	}, nil
+}
+
+// RefreshAccessToken calls the upstream OAuth2 service's token endpoint to refresh an expired access token.
+// Uses the provided refresh token to obtain a new access token from the service.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - service: The ThirdpartyOAuth2Service configuration containing token endpoint and credentials
+//   - refreshToken: The valid refresh token from the stored session
+//
+// Returns:
+//   - *oauth2.Token with new access_token, optional refresh_token, and expiry
+//   - error if the refresh request fails (network error, invalid response, or upstream error)
+//
+// Per RFC 6749 Section 6, sends a POST request to the token endpoint with:
+//   - grant_type=refresh_token
+//   - refresh_token=<the provided refresh token>
+//   - client_id=<from service config>
+//   - client_secret=<from service config>
+func (s *OAuth2SessionService) RefreshAccessToken(
+	ctx context.Context,
+	service *storage.ThirdpartyOAuth2Service,
+	refreshToken string,
+) (*oauth2.Token, error) {
+	if service == nil {
+		return nil, fmt.Errorf("service cannot be nil")
+	}
+
+	if refreshToken == "" {
+		return nil, fmt.Errorf("refresh token cannot be empty")
+	}
+
+	// Prepare refresh token request per RFC 6749 Section 6
+	data := url.Values{}
+	data.Set("grant_type", "refresh_token")
+	data.Set("refresh_token", refreshToken)
+	data.Set("client_id", service.ClientID)
+	data.Set("client_secret", service.ClientSecret)
+
+	// Create POST request to token endpoint
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, service.Endpoints.TokenEndpoint, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create refresh token request: %w", err)
+	}
+
+	// Set standard OAuth2 headers
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	// Execute the request
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call upstream token endpoint for refresh: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Decode response
+	var tokenResp struct {
+		AccessToken  string `json:"access_token"`
+		TokenType    string `json:"token_type"`
+		ExpiresIn    int64  `json:"expires_in"`
+		RefreshToken string `json:"refresh_token,omitempty"`
+		Scope        string `json:"scope,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("failed to decode upstream token response: %w", err)
+	}
+
+	// Check for HTTP error status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("upstream token endpoint returned error status %d", resp.StatusCode)
+	}
+
+	// Validate required fields in response
+	if tokenResp.AccessToken == "" {
+		return nil, fmt.Errorf("upstream token response missing access_token")
+	}
+
+	// Determine token expiry
+	var expiry time.Time
+	if tokenResp.ExpiresIn > 0 {
+		expiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	}
+
+	// Build oauth2.Token
+	token := &oauth2.Token{
+		AccessToken:  tokenResp.AccessToken,
+		TokenType:    tokenResp.TokenType,
+		RefreshToken: tokenResp.RefreshToken,
+		Expiry:       expiry,
+	}
+
+	s.logger.Info("access token refreshed",
+		"service_id", service.ID,
+		"token_endpoint", service.Endpoints.TokenEndpoint)
+
+	return token, nil
+}
+
+// UpdateSessionTokens updates an existing session with refreshed tokens.
+// Encrypts tokens using encryption context binding and persists the updated session.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - principal: The user principal (for encryption context)
+//   - session: The UserSession to update (will be modified in-place)
+//   - newToken: The new oauth2.Token from refresh operation
+//
+// Returns:
+//   - error if encryption or persistence fails
+//
+// The session is modified in-place and persisted with upsert semantics.
+// Encryption context binds tokens to principal/service/session for additional security.
+func (s *OAuth2SessionService) UpdateSessionTokens(
+	ctx context.Context,
+	principal string,
+	session *storage.UserSession,
+	newToken *oauth2.Token,
+) error {
+	if session == nil {
+		return fmt.Errorf("session cannot be nil")
+	}
+
+	if newToken == nil {
+		return fmt.Errorf("new token cannot be nil")
+	}
+
+	// Build encryption context for this session
+	encContext := map[string]string{
+		"principal":  principal,
+		"service_id": session.ServiceID,
+		"session_id": session.ID,
+	}
+
+	// Encrypt new access token
+	encryptedAccess, err := s.encryption.Encrypt(ctx, []byte(newToken.AccessToken), encContext)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt refreshed access token: %w", err)
+	}
+
+	// Update session with new access token
+	session.EncryptedAccessToken = encryptedAccess
+
+	// Update access token expiration time
+	if !newToken.Expiry.IsZero() {
+		session.AccessTokenExpiresAt = &newToken.Expiry
+	} else {
+		// If no expiry provided, assume token doesn't expire
+		session.AccessTokenExpiresAt = nil
+	}
+
+	// Update refresh token if provided in response
+	if newToken.RefreshToken != "" {
+		encryptedRefresh, err := s.encryption.Encrypt(ctx, []byte(newToken.RefreshToken), encContext)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt new refresh token: %w", err)
+		}
+		session.EncryptedRefreshToken = encryptedRefresh
+	}
+
+	// Update timestamp
+	session.UpdatedAt = time.Now()
+
+	// Persist updated session (upsert semantics)
+	if err := s.sessionRepo.Create(ctx, session); err != nil {
+		return fmt.Errorf("failed to update session with refreshed tokens: %w", err)
+	}
+
+	s.logger.Info("session tokens updated",
+		"principal", principal,
+		"service_id", session.ServiceID,
+		"session_id", session.ID)
+
+	return nil
+}
+
+// DecryptAccessToken retrieves and decrypts the stored access token from a session.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - principal: The user principal (for encryption context)
+//   - session: The UserSession containing encrypted token
+//
+// Returns:
+//   - string: The decrypted access token value
+//   - error if decryption fails
+//
+// The encryption context uses principal/service/session for verification.
+func (s *OAuth2SessionService) DecryptAccessToken(
+	ctx context.Context,
+	principal string,
+	session *storage.UserSession,
+) (string, error) {
+	if session == nil {
+		return "", fmt.Errorf("session cannot be nil")
+	}
+
+	encContext := map[string]string{
+		"principal":  principal,
+		"service_id": session.ServiceID,
+		"session_id": session.ID,
+	}
+
+	accessToken, err := s.encryption.Decrypt(ctx, session.EncryptedAccessToken, encContext)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt access token: %w", err)
+	}
+
+	return string(accessToken), nil
+}
+
+// DecryptRefreshToken retrieves and decrypts the stored refresh token from a session.
+// Returns empty string (not error) if no refresh token stored.
+func (s *OAuth2SessionService) DecryptRefreshToken(
+	ctx context.Context,
+	principal string,
+	session *storage.UserSession,
+) (string, error) {
+	if session == nil {
+		return "", fmt.Errorf("session cannot be nil")
+	}
+
+	// Return empty if no refresh token stored
+	if len(session.EncryptedRefreshToken) == 0 {
+		return "", nil
+	}
+
+	encContext := map[string]string{
+		"principal":  principal,
+		"service_id": session.ServiceID,
+		"session_id": session.ID,
+	}
+
+	refreshToken, err := s.encryption.Decrypt(ctx, session.EncryptedRefreshToken, encContext)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt refresh token: %w", err)
+	}
+
+	return string(refreshToken), nil
 }
 
 // ListUserSessions returns all sessions for a principal with summary info.
@@ -749,4 +1001,201 @@ func (s *OAuth2SessionService) GetSessionWithAgents(
 		Session:         session,
 		DependentAgents: dependentAgents,
 	}, nil
+}
+
+// GetValidAccessToken retrieves a valid, non-expired access token for a user at a service.
+// This method transparently handles token refresh if the access token has expired but
+// a valid refresh token is available.
+//
+// Usage pattern for callers:
+//
+//	token, err := s.GetValidAccessToken(ctx, principal, serviceID)
+//	if err != nil {
+//	    // Handle error (session not found, all tokens expired, etc)
+//	}
+//	// Use token - it's guaranteed valid and non-expired
+//
+// Encapsulated logic:
+// 1. Fetch session from repository
+// 2. Check if access token is expired
+// 3. If expired, refresh using refresh token (if available)
+// 4. Update session with new tokens
+// 5. Decrypt and return valid access token
+//
+// Error cases:
+//   - ErrSessionNotFound: No session exists for principal+service (T075)
+//   - ErrSessionExpired: Both tokens expired, user must re-authenticate (T076)
+//   - ErrRefreshFailed: Upstream provider rejected refresh request
+//   - fmt.Errorf wraps: Other retrieval/decryption/storage errors
+//
+// Per SR-005 (Security Rule): Token values are never included in error messages.
+// Only metadata (service, expiration times) is included.
+func (s *OAuth2SessionService) GetValidAccessToken(
+	ctx context.Context,
+	principal string,
+	serviceID string,
+) (string, error) {
+	// Step 1: Fetch session from repository
+	// This is the ONLY repository access in this flow.
+	// All other operations use session aggregate methods.
+	session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, serviceID)
+	if err != nil {
+		if err == ports.ErrNotFound {
+			// T075: Session doesn't exist
+			return "", fmt.Errorf("%w: principal=%s, service=%s", ErrSessionNotFound, principal, serviceID)
+		}
+		// Other repository errors (connection, timeout, etc)
+		return "", fmt.Errorf("failed to retrieve session: %w", err)
+	}
+
+	// Defensive: ensure session is not nil (should not happen given err is nil)
+	if session == nil {
+		return "", fmt.Errorf("%w: session is nil (principal=%s, service=%s)", ErrSessionNotFound, principal, serviceID)
+	}
+
+	// Step 2: Check if access token has expired
+	if session.HasValidAccessToken() {
+		// Access token is still valid - just decrypt and return
+		accessToken, err := s.DecryptAccessToken(ctx, principal, session)
+		if err != nil {
+			return "", fmt.Errorf("failed to decrypt access token: %w", err)
+		}
+		return accessToken, nil
+	}
+
+	// Access token has expired - check if we can refresh
+
+	// Step 3: Check if refresh token is available and valid
+	if !session.CanRefresh() {
+		// T076: Both tokens are expired
+		return "", fmt.Errorf("%w: principal=%s, service=%s", ErrSessionExpired, principal, serviceID)
+	}
+
+	// Step 4: Fetch service details for refresh operation
+	service, err := s.serviceRepo.Get(ctx, serviceID)
+	if err != nil {
+		s.logger.Error("failed to fetch service for token refresh",
+			"principal", principal,
+			"service_id", serviceID,
+			"err", err)
+		return "", fmt.Errorf("failed to fetch service for token refresh: %w", err)
+	}
+
+	if service == nil {
+		return "", fmt.Errorf("service not found for refresh: service_id=%s", serviceID)
+	}
+
+	// Step 5: Decrypt refresh token
+	refreshToken, err := s.DecryptRefreshToken(ctx, principal, session)
+	if err != nil {
+		s.logger.Error("failed to decrypt refresh token",
+			"principal", principal,
+			"service_id", serviceID,
+			"err", err)
+		return "", fmt.Errorf("failed to decrypt refresh token: %w", err)
+	}
+
+	// Defensive: ensure refresh token is not empty
+	if refreshToken == "" {
+		return "", fmt.Errorf("refresh token is empty: principal=%s, service=%s", principal, serviceID)
+	}
+
+	// Step 6: Call upstream OAuth2 provider to refresh tokens
+	newToken, err := s.RefreshAccessToken(ctx, service, refreshToken)
+	if err != nil {
+		s.logger.Error("oauth2_refresh_failed",
+			"event", "session.oauth2.refresh_failed",
+			"principal", principal,
+			"service_id", serviceID,
+			"error", err.Error(),
+			"timestamp", time.Now().Unix())
+		return "", fmt.Errorf("%w: %v", ErrRefreshFailed, err)
+	}
+
+	if newToken == nil {
+		return "", fmt.Errorf("upstream provider returned nil token: principal=%s, service=%s", principal, serviceID)
+	}
+
+	// Step 7: Update session with new tokens from refresh
+	if err := s.UpdateSessionTokens(ctx, principal, session, newToken); err != nil {
+		s.logger.Error("failed to update session with refreshed tokens",
+			"principal", principal,
+			"service_id", serviceID,
+			"err", err)
+		return "", fmt.Errorf("failed to update session with refreshed tokens: %w", err)
+	}
+
+	// Audit log: Token refresh succeeded
+	s.logger.Info("oauth2_token_refreshed",
+		"event", "session.oauth2.token_refreshed",
+		"principal", principal,
+		"service_id", serviceID,
+		"timestamp", time.Now().Unix())
+
+	// Step 8: Decrypt and return the new access token
+	accessToken, err := s.DecryptAccessToken(ctx, principal, session)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt refreshed access token: %w", err)
+	}
+
+	return accessToken, nil
+}
+
+// GetSessionWithValidToken retrieves session metadata plus a valid access token.
+// This is useful when the caller needs to build a response that includes session
+// metadata (scope, token_type, expires_in, etc) along with the token itself.
+//
+// Internally uses GetValidAccessToken to ensure token is valid (with auto-refresh).
+//
+// Usage pattern for RFC 8693 token exchange response:
+//
+//	session, token, err := s.GetSessionWithValidToken(ctx, principal, serviceID)
+//	if err != nil {
+//	    // Handle error
+//	}
+//	// Build response using both:
+//	response.AccessToken = token
+//	response.Scope = strings.Join(session.Scope, " ")
+//	response.ExpiresIn = calculateExpiresIn(session)
+//
+// Returns:
+//   - session: Current session state (may have been updated by refresh)
+//   - token: Valid, non-expired access token
+//   - error: Same error cases as GetValidAccessToken
+//
+// Note: The session returned here may have been modified by refresh operation.
+// The session's AccessTokenExpiresAt and UpdatedAt fields reflect the latest state.
+func (s *OAuth2SessionService) GetSessionWithValidToken(
+	ctx context.Context,
+	principal string,
+	serviceID string,
+) (*storage.UserSession, string, error) {
+	// Step 1: Get valid token (this handles all refresh logic transparently)
+	token, err := s.GetValidAccessToken(ctx, principal, serviceID)
+	if err != nil {
+		// Return error as-is; no additional wrapping needed
+		return nil, "", err
+	}
+
+	// Step 2: Re-fetch session to get updated metadata
+	// This is necessary because GetValidAccessToken may have refreshed the token,
+	// updating session.AccessTokenExpiresAt and session.UpdatedAt
+	session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, serviceID)
+	if err != nil {
+		s.logger.Error("failed to fetch session metadata after token retrieval",
+			"principal", principal,
+			"service_id", serviceID,
+			"err", err)
+		return nil, "", fmt.Errorf("failed to fetch session metadata: %w", err)
+	}
+
+	if session == nil {
+		// This should not happen since GetValidAccessToken just succeeded
+		s.logger.Error("session became nil after successful token retrieval",
+			"principal", principal,
+			"service_id", serviceID)
+		return nil, "", fmt.Errorf("session disappeared after token retrieval: principal=%s, service=%s", principal, serviceID)
+	}
+
+	return session, token, nil
 }

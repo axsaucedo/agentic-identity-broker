@@ -3,6 +3,7 @@ package oauth2session_test
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"testing"
 	"time"
 
@@ -317,6 +318,7 @@ func setupTestService(t *testing.T) *oauth2session.OAuth2SessionService {
 		grantRepo,
 		agentRepo,
 		nil, // encryption not needed for state token tests (uses JWE)
+		&http.Client{},
 		key,
 		config,
 		slog.Default(),

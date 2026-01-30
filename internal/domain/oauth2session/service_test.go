@@ -1032,6 +1032,7 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.Th
 		grantRepo,
 		agentRepo,
 		encryption,
+		&http.Client{},
 		key,
 		config,
 		slog.Default(),
@@ -1396,6 +1397,7 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 		grantRepo,
 		agentRepo,
 		encryption,
+		&http.Client{},
 		key,
 		config,
 		logger, // Capture logs

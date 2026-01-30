@@ -188,22 +188,23 @@ func (b *Builder) Build() (*App, error) {
 		encryptor = noop.NewNoOpEncryption()
 	}
 
+	// Create HTTP client for token endpoint with configured timeout
+	// Created early to support both OAuth2SessionService and TokenExchangeService
+	upstreamClient := &http.Client{
+		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
+	}
+
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(
 		b.storage.Services(),
 		b.storage.UserSessions(),
 		b.storage.UserGrants(),
 		b.storage.Agents(),
 		encryptor,
+		upstreamClient,
 		jweKey,
 		cfg,
 		b.logger,
 	)
-
-	// Create HTTP client for token endpoint with configured timeout
-	// Created early to support both OAuth2SessionService and TokenExchangeService
-	upstreamClient := &http.Client{
-		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
-	}
 
 	// Create token exchange service if token exchange configuration is available
 	// Per Constitution Principle VII (Configuration-Driven Design): only create if configured
@@ -247,14 +248,13 @@ func (b *Builder) Build() (*App, error) {
 
 		// Create token exchange service
 		// Per Constitution Principle VI: service depends on ports (repository interfaces)
+		// SessionRepository is no longer needed - token lifecycle is managed through OAuth2SessionService
 		tokenExchangeService, err := tokenexchange.NewTokenExchangeService(
 			jwtValidator,
 			celEvaluator,
 			b.storage.Services(),
-			b.storage.UserGrants(),
-			b.storage.UserSessions(),
-			encryptor,
-			upstreamClient,
+			app.OAuth2SessionService,
+			app.ConsentService,
 			&b.config.TokenExchange,
 		)
 		if err != nil {

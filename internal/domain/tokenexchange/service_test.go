@@ -2,16 +2,99 @@ package tokenexchange
 
 import (
 	"context"
-	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
+
+// newMockConsentService creates a consent.Service with mock repositories for testing
+func newMockConsentService() *consent.Service {
+	return consent.NewService(
+		&MockAgentRepository{},
+		&MockServiceRepository{},
+		&MockGrantRepository{
+			grant: &storagedomain.UserGrant{
+				ID:         "test-grant-id",
+				Principal:  "test-principal",
+				AgentID:    "test-agent-id",
+				ValidUntil: func() *time.Time { t := time.Now().Add(24 * time.Hour); return &t }(),
+				CreatedAt:  time.Now(),
+				UpdatedAt:  time.Now(),
+			},
+		},
+	)
+}
+
+// MockAgentRepository mocks the AgentRepository for consent service testing
+type MockAgentRepository struct{}
+
+func (m *MockAgentRepository) Get(ctx context.Context, id string) (*storagedomain.Agent, error) {
+	return nil, nil
+}
+
+func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string) (*storagedomain.Agent, error) {
+	return nil, nil
+}
+
+func (m *MockAgentRepository) Create(ctx context.Context, agent *storagedomain.Agent) error {
+	return nil
+}
+
+func (m *MockAgentRepository) Update(ctx context.Context, agent *storagedomain.Agent) error {
+	return nil
+}
+
+func (m *MockAgentRepository) Delete(ctx context.Context, id string) error {
+	return nil
+}
+
+func (m *MockAgentRepository) List(ctx context.Context) ([]*storagedomain.Agent, error) {
+	return nil, nil
+}
+
+// MockOAuth2SessionService mocks the OAuth2SessionService for testing
+type MockOAuth2SessionService struct {
+	RefreshAccessTokenFn  func(ctx context.Context, service *storagedomain.ThirdpartyOAuth2Service, refreshToken string) (*oauth2.Token, error)
+	UpdateSessionTokensFn func(ctx context.Context, principal string, session *storagedomain.UserSession, newToken *oauth2.Token) error
+	DecryptAccessTokenFn  func(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error)
+	DecryptRefreshTokenFn func(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error)
+}
+
+func (m *MockOAuth2SessionService) RefreshAccessToken(ctx context.Context, service *storagedomain.ThirdpartyOAuth2Service, refreshToken string) (*oauth2.Token, error) {
+	if m.RefreshAccessTokenFn != nil {
+		return m.RefreshAccessTokenFn(ctx, service, refreshToken)
+	}
+	return nil, nil
+}
+
+func (m *MockOAuth2SessionService) UpdateSessionTokens(ctx context.Context, principal string, session *storagedomain.UserSession, newToken *oauth2.Token) error {
+	if m.UpdateSessionTokensFn != nil {
+		return m.UpdateSessionTokensFn(ctx, principal, session, newToken)
+	}
+	return nil
+}
+
+func (m *MockOAuth2SessionService) DecryptAccessToken(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error) {
+	if m.DecryptAccessTokenFn != nil {
+		return m.DecryptAccessTokenFn(ctx, principal, session)
+	}
+	return "", nil
+}
+
+func (m *MockOAuth2SessionService) DecryptRefreshToken(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error) {
+	if m.DecryptRefreshTokenFn != nil {
+		return m.DecryptRefreshTokenFn(ctx, principal, session)
+	}
+	return "", nil
+}
 
 // MockTokenExchangeRepository mocks are defined at the end of this file
 type MockServiceRepository struct {
@@ -165,32 +248,45 @@ func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal s
 	return nil, nil
 }
 
-// TestNewTokenExchangeService tests service creation with various parameter combinations
-func TestNewTokenExchangeService(t *testing.T) {
-	httpClient := &http.Client{}
+// NewTokenExchangeServiceForTest creates a TokenExchangeService for testing
+func NewTokenExchangeServiceForTest(
+	jwtValidator *JWTValidator,
+	celEvaluator *CELEvaluator,
+	serviceRepo ports.ThirdpartyOAuth2ServiceRepository,
+	oauth2SessionService *oauth2session.OAuth2SessionService,
+	consentService *consent.Service,
+	config *ports.TokenExchangeConfig,
+) (*TokenExchangeService, error) {
+	return NewTokenExchangeService(
+		jwtValidator,
+		celEvaluator,
+		serviceRepo,
+		oauth2SessionService,
+		consentService,
+		config,
+	)
+}
 
+// TestNewTokenExchangeService tests service creation with various parameter combinations
+func TestNewTokenExchangeServiceForTest(t *testing.T) {
 	tests := []struct {
-		name          string
-		jwtValidator  *JWTValidator
-		celEvaluator  *CELEvaluator
-		serviceRepo   ports.ThirdpartyOAuth2ServiceRepository
-		grantRepo     ports.UserGrantRepository
-		sessionRepo   ports.UserSessionRepository
-		encryption    ports.EncryptionPort
-		httpClient    *http.Client
-		config        *ports.TokenExchangeConfig
-		expectError   bool
-		errorContains string
+		name                 string
+		jwtValidator         *JWTValidator
+		celEvaluator         *CELEvaluator
+		serviceRepo          ports.ThirdpartyOAuth2ServiceRepository
+		oauth2SessionService *oauth2session.OAuth2SessionService
+		consentService       *consent.Service
+		config               *ports.TokenExchangeConfig
+		expectError          bool
+		errorContains        string
 	}{
 		{
-			name:         "valid parameters",
-			jwtValidator: &JWTValidator{},
-			celEvaluator: &CELEvaluator{},
-			serviceRepo:  &MockServiceRepository{},
-			grantRepo:    &MockGrantRepository{},
-			sessionRepo:  &MockSessionRepository{},
-			encryption:   &MockEncryption{},
-			httpClient:   httpClient,
+			name:                 "valid parameters - creates service without error",
+			jwtValidator:         &JWTValidator{},
+			celEvaluator:         &CELEvaluator{},
+			serviceRepo:          &MockServiceRepository{},
+			oauth2SessionService: &oauth2session.OAuth2SessionService{},
+			consentService:       &consent.Service{},
 			config: &ports.TokenExchangeConfig{
 				ClaimExtraction: ports.ClaimExtractionConfig{
 					PrincipalExpression:     "subject_token.sub",
@@ -206,102 +302,69 @@ func TestNewTokenExchangeService(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:          "nil jwtValidator",
+			name:          "nil jwtValidator returns error",
 			jwtValidator:  nil,
 			expectError:   true,
 			errorContains: "jwtValidator",
 		},
 		{
-			name:          "nil celEvaluator",
-			jwtValidator:  &JWTValidator{},
-			celEvaluator:  nil,
-			encryption:    &MockEncryption{},
-			httpClient:    httpClient,
-			expectError:   true,
-			errorContains: "celEvaluator",
+			name:                 "nil celEvaluator returns error",
+			jwtValidator:         &JWTValidator{},
+			celEvaluator:         nil,
+			oauth2SessionService: &oauth2session.OAuth2SessionService{},
+			expectError:          true,
+			errorContains:        "celEvaluator",
 		},
 		{
-			name:          "nil serviceRepository",
-			jwtValidator:  &JWTValidator{},
-			celEvaluator:  &CELEvaluator{},
-			serviceRepo:   nil,
-			encryption:    &MockEncryption{},
-			httpClient:    httpClient,
-			expectError:   true,
-			errorContains: "serviceRepository",
+			name:                 "nil serviceRepository returns error",
+			jwtValidator:         &JWTValidator{},
+			celEvaluator:         &CELEvaluator{},
+			serviceRepo:          nil,
+			oauth2SessionService: &oauth2session.OAuth2SessionService{},
+			expectError:          true,
+			errorContains:        "serviceRepository",
 		},
 		{
-			name:          "nil grantRepository",
-			jwtValidator:  &JWTValidator{},
-			celEvaluator:  &CELEvaluator{},
-			serviceRepo:   &MockServiceRepository{},
-			grantRepo:     nil,
-			encryption:    &MockEncryption{},
-			httpClient:    httpClient,
-			expectError:   true,
-			errorContains: "grantRepository",
+			name:                 "nil oauth2SessionService returns error",
+			jwtValidator:         &JWTValidator{},
+			celEvaluator:         &CELEvaluator{},
+			serviceRepo:          &MockServiceRepository{},
+			oauth2SessionService: nil,
+			consentService:       &consent.Service{},
+			expectError:          true,
+			errorContains:        "oauth2SessionService",
 		},
 		{
-			name:          "nil sessionRepository",
-			jwtValidator:  &JWTValidator{},
-			celEvaluator:  &CELEvaluator{},
-			serviceRepo:   &MockServiceRepository{},
-			grantRepo:     &MockGrantRepository{},
-			sessionRepo:   nil,
-			encryption:    &MockEncryption{},
-			httpClient:    httpClient,
-			expectError:   true,
-			errorContains: "sessionRepository",
+			name:                 "nil consentService returns error",
+			jwtValidator:         &JWTValidator{},
+			celEvaluator:         &CELEvaluator{},
+			serviceRepo:          &MockServiceRepository{},
+			oauth2SessionService: &oauth2session.OAuth2SessionService{},
+			consentService:       nil,
+			expectError:          true,
+			errorContains:        "consentService",
 		},
 		{
-			name:          "nil encryption",
-			jwtValidator:  &JWTValidator{},
-			celEvaluator:  &CELEvaluator{},
-			serviceRepo:   &MockServiceRepository{},
-			grantRepo:     &MockGrantRepository{},
-			sessionRepo:   &MockSessionRepository{},
-			encryption:    nil,
-			httpClient:    httpClient,
-			expectError:   true,
-			errorContains: "encryptionPort",
-		},
-		{
-			name:          "nil httpClient",
-			jwtValidator:  &JWTValidator{},
-			celEvaluator:  &CELEvaluator{},
-			serviceRepo:   &MockServiceRepository{},
-			grantRepo:     &MockGrantRepository{},
-			sessionRepo:   &MockSessionRepository{},
-			encryption:    &MockEncryption{},
-			httpClient:    nil,
-			expectError:   true,
-			errorContains: "httpClient",
-		},
-		{
-			name:          "nil config",
-			jwtValidator:  &JWTValidator{},
-			celEvaluator:  &CELEvaluator{},
-			serviceRepo:   &MockServiceRepository{},
-			grantRepo:     &MockGrantRepository{},
-			sessionRepo:   &MockSessionRepository{},
-			encryption:    &MockEncryption{},
-			httpClient:    httpClient,
-			config:        nil,
-			expectError:   true,
-			errorContains: "config",
+			name:                 "nil config returns error",
+			jwtValidator:         &JWTValidator{},
+			celEvaluator:         &CELEvaluator{},
+			serviceRepo:          &MockServiceRepository{},
+			oauth2SessionService: &oauth2session.OAuth2SessionService{},
+			consentService:       &consent.Service{},
+			config:               nil,
+			expectError:          true,
+			errorContains:        "config",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service, err := NewTokenExchangeService(
+			service, err := NewTokenExchangeServiceForTest(
 				tt.jwtValidator,
 				tt.celEvaluator,
 				tt.serviceRepo,
-				tt.grantRepo,
-				tt.sessionRepo,
-				tt.encryption,
-				tt.httpClient,
+				tt.oauth2SessionService,
+				tt.consentService,
 				tt.config,
 			)
 
@@ -335,14 +398,12 @@ func TestExchange_InvalidRequest(t *testing.T) {
 		},
 	}
 
-	service, err := NewTokenExchangeService(
+	service, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
 		&MockServiceRepository{},
-		&MockGrantRepository{},
-		&MockSessionRepository{},
-		&MockEncryption{},
-		&http.Client{},
+		&oauth2session.OAuth2SessionService{},
+		newMockConsentService(),
 		config,
 	)
 	require.NoError(t, err)
@@ -423,14 +484,12 @@ func TestExchange_GrantExpiration(t *testing.T) {
 
 // TestCalculateExpiresIn tests expiration time calculation
 func TestCalculateExpiresIn(t *testing.T) {
-	service, err := NewTokenExchangeService(
+	service, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
 		&MockServiceRepository{},
-		&MockGrantRepository{},
-		&MockSessionRepository{},
-		&MockEncryption{},
-		&http.Client{},
+		&oauth2session.OAuth2SessionService{},
+		newMockConsentService(),
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)
@@ -484,14 +543,12 @@ func TestCalculateExpiresIn(t *testing.T) {
 // NOTE: buildRequestContext is not currently exposed on TokenExchangeService
 // This test remains as documentation for the pattern once the method is public
 func TestBuildRequestContext(t *testing.T) {
-	_, err := NewTokenExchangeService(
+	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
 		&MockServiceRepository{},
-		&MockGrantRepository{},
-		&MockSessionRepository{},
-		&MockEncryption{},
-		&http.Client{},
+		&oauth2session.OAuth2SessionService{},
+		newMockConsentService(),
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)
@@ -524,14 +581,12 @@ func TestGrantVerification_MissingGrant(t *testing.T) {
 		err:   ports.ErrNotFound,
 	}
 
-	_, err := NewTokenExchangeService(
+	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
 		&MockServiceRepository{},
-		mockGrant,
-		&MockSessionRepository{},
-		&MockEncryption{},
-		&http.Client{},
+		&oauth2session.OAuth2SessionService{},
+		newMockConsentService(),
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)
@@ -568,14 +623,12 @@ func TestGrantVerification_ExpiredGrant(t *testing.T) {
 		err:   nil,
 	}
 
-	_, err := NewTokenExchangeService(
+	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
 		&MockServiceRepository{},
-		mockGrant,
-		&MockSessionRepository{},
-		&MockEncryption{},
-		&http.Client{},
+		&oauth2session.OAuth2SessionService{},
+		newMockConsentService(),
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)
@@ -613,14 +666,12 @@ func TestGrantVerification_ActiveGrant(t *testing.T) {
 		err:   nil,
 	}
 
-	_, err := NewTokenExchangeService(
+	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
 		&MockServiceRepository{},
-		mockGrant,
-		&MockSessionRepository{},
-		&MockEncryption{},
-		&http.Client{},
+		&oauth2session.OAuth2SessionService{},
+		newMockConsentService(),
 		&ports.TokenExchangeConfig{},
 	)
 	require.NoError(t, err)

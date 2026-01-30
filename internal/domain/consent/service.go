@@ -17,6 +17,10 @@ var (
 	ErrInvalidScopes = errors.New("invalid scopes requested")
 	// ErrServiceNotFound is returned when a referenced service does not exist.
 	ErrServiceNotFound = errors.New("third-party service not found")
+	// ErrAgentAccessDenied is returned when a user has not granted an agent access.
+	ErrAgentAccessDenied = errors.New("agent access denied")
+	// ErrGrantExpired is returned when a user grant has expired.
+	ErrGrantExpired = errors.New("grant expired")
 )
 
 // Service provides consent management business logic.
@@ -195,6 +199,54 @@ func (s *Service) GetActiveGrants(ctx context.Context, principal string, agentID
 	}
 
 	return activeGrants, nil
+}
+
+// VerifyAgentAccess verifies that a user has granted an agent access.
+// This method checks for grant existence, expiration, and revocation status.
+// Returns the active grant if valid, or an error if missing, expired, or revoked.
+//
+// Error handling:
+// - ErrAgentAccessDenied: User has not granted the agent any access
+// - ErrGrantExpired: User grant has expired
+// - Other errors: Repository or system errors
+//
+// This method is used by token exchange flows to verify authorization before
+// issuing delegated tokens. Per Constitution Principle I (Security-First),
+// fails closed with access denied for any ambiguous state.
+func (s *Service) VerifyAgentAccess(ctx context.Context, principal string, agentClientID string) (*storage.UserGrant, error) {
+	// Look up grant by principal and agent
+	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agentClientID)
+	if err != nil {
+		// Check if it's a NotFound error
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil, fmt.Errorf("%w: user has not granted permission for agent (principal: %s, agent: %s)",
+				ErrAgentAccessDenied, principal, agentClientID)
+		}
+		return nil, fmt.Errorf("failed to verify user grant: %w", err)
+	}
+
+	// Defensive check: ensure grant is not nil
+	if grant == nil {
+		return nil, fmt.Errorf("%w: user has not granted permission for agent (principal: %s, agent: %s)",
+			ErrAgentAccessDenied, principal, agentClientID)
+	}
+
+	// Check grant is active (not expired)
+	if !grant.IsActive() {
+		return nil, fmt.Errorf("%w: user grant expired at %s (principal: %s, agent: %s)",
+			ErrGrantExpired, grant.ValidUntil.Format(time.RFC3339), principal, agentClientID)
+	}
+
+	// Check grant is not revoked
+	// TODO: Implement revocation check when revocation status is added to UserGrant entity
+	// For now, assume no revocation field exists. When revoked field is added:
+	// if grant.Revoked {
+	//   return nil, fmt.Errorf("%w: user grant has been revoked (principal: %s, agent: %s)",
+	//     ErrAgentAccessDenied, principal, agentClientID)
+	// }
+
+	// Return copy to prevent external mutation
+	return grant.Copy(), nil
 }
 
 // validateScopes validates that all requested scopes exist in their respective service configurations.

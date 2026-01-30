@@ -3,16 +3,15 @@ package tokenexchange
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwt"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -45,17 +44,11 @@ type TokenExchangeService struct {
 	// serviceRepository provides service discovery by protected resources
 	serviceRepository ports.ThirdpartyOAuth2ServiceRepository
 
-	// grantRepository verifies user has authorized agent access to service
-	grantRepository ports.UserGrantRepository
+	// oauth2SessionService handles OAuth2 session lifecycle including token refresh
+	oauth2SessionService *oauth2session.OAuth2SessionService
 
-	// sessionRepository retrieves stored tokens for user
-	sessionRepository ports.UserSessionRepository
-
-	// encryptionPort decrypts stored encrypted tokens
-	encryptionPort ports.EncryptionPort
-
-	// httpClient makes HTTP requests to upstream OAuth2 services for token refresh
-	httpClient *http.Client
+	// consentService verifies user has granted agent access
+	consentService *consent.Service
 
 	// config provides token exchange configuration
 	config *ports.TokenExchangeConfig
@@ -68,10 +61,8 @@ type TokenExchangeService struct {
 //   - jwtValidator: Validates JWT signatures and claims
 //   - celEvaluator: Extracts claims and evaluates authorization policies
 //   - serviceRepository: Looks up services by protected resource
-//   - grantRepository: Verifies user grants
-//   - sessionRepository: Retrieves stored tokens
-//   - encryptionPort: Decrypts stored tokens
-//   - httpClient: Makes HTTP requests to upstream OAuth2 services for token refresh
+//   - oauth2SessionService: Handles OAuth2 session lifecycle including token refresh
+//   - consentService: Verifies user grants and agent access
 //   - config: Token exchange configuration
 //
 // Returns error if any dependency is nil.
@@ -79,10 +70,8 @@ func NewTokenExchangeService(
 	jwtValidator *JWTValidator,
 	celEvaluator *CELEvaluator,
 	serviceRepository ports.ThirdpartyOAuth2ServiceRepository,
-	grantRepository ports.UserGrantRepository,
-	sessionRepository ports.UserSessionRepository,
-	encryptionPort ports.EncryptionPort,
-	httpClient *http.Client,
+	oauth2SessionService *oauth2session.OAuth2SessionService,
+	consentService *consent.Service,
 	config *ports.TokenExchangeConfig,
 ) (*TokenExchangeService, error) {
 	if jwtValidator == nil {
@@ -94,31 +83,23 @@ func NewTokenExchangeService(
 	if serviceRepository == nil {
 		return nil, fmt.Errorf("serviceRepository cannot be nil")
 	}
-	if grantRepository == nil {
-		return nil, fmt.Errorf("grantRepository cannot be nil")
+	if oauth2SessionService == nil {
+		return nil, fmt.Errorf("oauth2SessionService cannot be nil")
 	}
-	if sessionRepository == nil {
-		return nil, fmt.Errorf("sessionRepository cannot be nil")
-	}
-	if encryptionPort == nil {
-		return nil, fmt.Errorf("encryptionPort cannot be nil")
-	}
-	if httpClient == nil {
-		return nil, fmt.Errorf("httpClient cannot be nil")
+	if consentService == nil {
+		return nil, fmt.Errorf("consentService cannot be nil")
 	}
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
 	return &TokenExchangeService{
-		jwtValidator:      jwtValidator,
-		celEvaluator:      celEvaluator,
-		serviceRepository: serviceRepository,
-		grantRepository:   grantRepository,
-		sessionRepository: sessionRepository,
-		encryptionPort:    encryptionPort,
-		httpClient:        httpClient,
-		config:            config,
+		jwtValidator:         jwtValidator,
+		celEvaluator:         celEvaluator,
+		serviceRepository:    serviceRepository,
+		oauth2SessionService: oauth2SessionService,
+		consentService:       consentService,
+		config:               config,
 	}, nil
 }
 
@@ -233,61 +214,47 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	//
 	// T059: Agent client ID extracted from subject_token (already done in Step 5)
 	// T060: Look up Agent by agent_client_id (agent lookup deferred to future phase)
-	// T061: Query UserGrant by principal + agent_client_id
-	// T062: Check grant status: active, not revoked, not expired
-	// T063: Return 403 access_denied for missing grant
-	// T064: Return 403 access_denied for revoked grant
-	// T065: Return 403 access_denied for expired grant
-	grant, err := s.grantRepository.FindByPrincipalAndAgent(ctx, principal, agentClientID)
+	// T061-T065: Delegate grant verification to ConsentService
+	// ConsentService.VerifyAgentAccess checks:
+	// - T061: Query UserGrant by principal + agent_client_id
+	// - T062: Check grant status: active, not revoked, not expired
+	// - T063: Return error for missing grant
+	// - T064: Return error for revoked grant
+	// - T065: Return error for expired grant
+	_, err = s.consentService.VerifyAgentAccess(ctx, principal, agentClientID)
 	if err != nil {
-		// T063: NotFound error - user has not granted agent access to any service
-		// Per Constitution Principle I (Security-First), fail closed with access_denied
-		// Repository returns StorageError, so we need to check the Kind field
-		var storageErr *storagedomain.StorageError
-		if errors.As(err, &storageErr) && storageErr.Kind == storagedomain.ErrorKindNotFound {
-			errorMsg := fmt.Sprintf(
-				"user has not granted permission for agent (principal: %s, agent: %s)",
-				principal, agentClientID,
-			)
+		// Map ConsentService errors to TokenExchange errors
+		if errors.Is(err, consent.ErrAgentAccessDenied) {
+			// T063: User has not granted agent access
 			return nil, NewAccessDeniedErrorWithDetails(
 				"user has not granted permission for this agent to access the requested service",
-				errorMsg,
+				err.Error(),
 			)
 		}
+		if errors.Is(err, consent.ErrGrantExpired) {
+			// T065: User grant has expired
+			return nil, NewAccessDeniedErrorWithDetails(
+				"user grant has expired",
+				err.Error(),
+			)
+		}
+		// System/repository error
 		return nil, NewServerErrorWithCause("failed to verify user grant", err)
 	}
 
-	// T062a: Check grant is active (not expired)
-	// T065: Return 403 access_denied with expiration info in error_description if expired
-	// Use UserGrant.IsActive() method for grant validation
-	if !grant.IsActive() {
-		expiredMsg := fmt.Sprintf(
-			"user grant expired at %s (principal: %s, agent: %s)",
-			grant.ValidUntil.Format(time.RFC3339),
-			principal, agentClientID,
-		)
-		return nil, NewAccessDeniedErrorWithDetails(
-			fmt.Sprintf("user grant has expired (expired at %s)", grant.ValidUntil.Format(time.RFC3339)),
-			expiredMsg,
-		)
-	}
-
-	// T062b: Check grant is not revoked
-	// T064: Return 403 access_denied for revoked grant
-	// TODO (T064): Implement revocation check when revocation status is added to UserGrant entity
-	// For now, assume no revocation field exists. When revoked field is added:
-	// if grant.Revoked {
-	//   return nil, NewAccessDeniedErrorWithDetails(
-	//     "user grant has been revoked",
-	//     fmt.Sprintf("grant revoked (principal: %s, agent: %s)", principal, agentClientID),
-	//   )
-	// }
-
-	// Step 10: Retrieve user's session and stored tokens for service
-	// At this point, we know grant exists, so if session is missing, it's invalid_grant (T075)
-	sessionObj, err := s.sessionRepository.FindByPrincipalAndService(ctx, principal, service.ID)
+	// Step 10: Get valid access token (with transparent refresh if needed)
+	// This single call handles:
+	// - Fetching the session from storage
+	// - Checking if access token is expired
+	// - Automatically refreshing if refresh token is available
+	// - Decrypting and returning valid token
+	//
+	// Per T075: invalid_grant if session doesn't exist
+	// Per T076: invalid_grant if both tokens are expired
+	accessToken, err := s.oauth2SessionService.GetValidAccessToken(ctx, principal, service.ID)
 	if err != nil {
-		if err == ports.ErrNotFound {
+		// Map oauth2session errors to RFC 8693 token exchange errors
+		if errors.Is(err, oauth2session.ErrSessionNotFound) {
 			// T075: No session exists for this principal+service combination
 			// T077: Include service info and re-auth hint in error_description
 			description := fmt.Sprintf(
@@ -297,152 +264,41 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 			)
 			return nil, NewInvalidGrantError(description)
 		}
-		return nil, NewServerErrorWithCause("failed to retrieve user session", err)
+		if errors.Is(err, oauth2session.ErrSessionExpired) {
+			// T076: Both access and refresh tokens are expired
+			// T077: Include service info and re-auth hint in error_description
+			description := fmt.Sprintf(
+				"User session has expired. All tokens are no longer valid. Service: %s. Please re-authenticate to %s.",
+				service.ID,
+				service.DisplayName,
+			)
+			return nil, NewInvalidGrantError(description)
+		}
+		// Other errors (refresh failed, decryption failed, etc)
+		return nil, NewServerErrorWithCause("failed to get valid access token", err)
 	}
 
-	// Verify session exists and has valid tokens
-	if sessionObj == nil {
-		// T075: Session is nil even though no error occurred (defensive check)
-		description := fmt.Sprintf(
-			"User has no active session with the requested service. Service: %s. Please re-authenticate to %s.",
-			service.ID,
-			service.DisplayName,
-		)
-		return nil, NewInvalidGrantError(description)
+	// Step 11: Get session metadata for response construction
+	// Need scope, token_type, and expires_in for RFC 8693 response
+	sessionObj, _, err := s.oauth2SessionService.GetSessionWithValidToken(ctx, principal, service.ID)
+	if err != nil {
+		// This should not happen since GetValidAccessToken just succeeded
+		return nil, NewServerErrorWithCause("failed to get session metadata for response", err)
 	}
 
-	// Step 11: Check if tokens are fully expired
-	// T076: Return invalid_grant when both access_token and refresh_token are expired
-	// Use UserSession methods for token validation
-	accessTokenExpired := !sessionObj.HasValidAccessToken()
-	refreshTokenExpired := !sessionObj.CanRefresh()
-
-	if accessTokenExpired && refreshTokenExpired {
-		// Both tokens are expired - user needs to re-authenticate
-		// T076: Return 400 invalid_grant with re-auth hint
-		// T077: Include service info in error_description
-		description := fmt.Sprintf(
-			"User session has expired. All tokens are no longer valid. Service: %s. Please re-authenticate to %s.",
-			service.ID,
-			service.DisplayName,
-		)
-		return nil, NewInvalidGrantError(description)
-	}
-
-	// Step 12: Refresh expired tokens if refresh_token available
-	// If access_token has expired but refresh_token is valid, attempt refresh
-	if accessTokenExpired && !refreshTokenExpired {
-		// Get current time for timestamp calculations
-		now := time.Now().UTC()
-
-		// Decrypt the refresh token first so we can use it in the refresh request
-		encContext := map[string]string{
-			"principal":  principal,
-			"service_id": service.ID,
-			"session_id": sessionObj.ID,
-		}
-
-		// Decrypt refresh token for refresh request
-		decryptedRefresh, err := s.encryptionPort.Decrypt(ctx, sessionObj.EncryptedRefreshToken, encContext)
-		if err != nil {
-			return nil, NewServerErrorWithCause("failed to decrypt refresh token", err)
-		}
-		refreshTokenValue := string(decryptedRefresh)
-
-		// Call upstream OAuth2 token endpoint to refresh the token
-		newTokens, err := s.refreshAccessToken(ctx, service, refreshTokenValue)
-		if err != nil {
-			return nil, err
-		}
-
-		// Update session with new tokens
-		sessionObj.EncryptedAccessToken, err = s.encryptionPort.Encrypt(ctx, []byte(newTokens.AccessToken), encContext)
-		if err != nil {
-			return nil, NewServerErrorWithCause("failed to encrypt refreshed access token", err)
-		}
-
-		// Update access token expiration time (calculate from expires_in if available)
-		if newTokens.ExpiresIn > 0 {
-			newExpiresAt := now.Add(time.Duration(newTokens.ExpiresIn) * time.Second)
-			sessionObj.AccessTokenExpiresAt = &newExpiresAt
-		} else {
-			// If no expires_in provided, assume token doesn't expire
-			sessionObj.AccessTokenExpiresAt = nil
-		}
-
-		// Update refresh token if provided in response
-		if newTokens.RefreshToken != "" {
-			refreshTokenEncrypted, err := s.encryptionPort.Encrypt(ctx, []byte(newTokens.RefreshToken), encContext)
-			if err != nil {
-				return nil, NewServerErrorWithCause("failed to encrypt new refresh token", err)
-			}
-			sessionObj.EncryptedRefreshToken = refreshTokenEncrypted
-		}
-
-		// Update session in storage using Create with upsert semantics
-		sessionObj.UpdatedAt = now
-		if err := s.sessionRepository.Create(ctx, sessionObj); err != nil {
-			return nil, NewServerErrorWithCause("failed to update session with refreshed tokens", err)
-		}
-
-		// Use the new access token in response
-		expiresIn := int64(0)
-		if newTokens.ExpiresIn > 0 {
-			expiresIn = int64(newTokens.ExpiresIn)
-		}
-
-		response := NewTokenExchangeResponseFull(
-			newTokens.AccessToken,
-			sessionObj.TokenType,
-			AccessTokenType, // issued_token_type per RFC 8693
-			newTokens.RefreshToken,
-			strings.Join(sessionObj.Scope, " "),
-			expiresIn,
-		)
-
-		return response, nil
-	}
-
-	// Step 13: Build and return RFC 8693 response
-	// Use stored token's type and expiration time
-	// Calculate expires_in from access token expiration time
+	// Step 12: Build and return RFC 8693 response
+	// Calculate expires_in from session's current access token expiration
 	now := time.Now().UTC()
 	expiresIn := int64(0)
-	if sessionObj.AccessTokenExpiresAt != nil {
-		if sessionObj.AccessTokenExpiresAt.After(now) {
-			expiresIn = int64(sessionObj.AccessTokenExpiresAt.Sub(now).Seconds())
-		}
-	}
-
-	// Step 12: Decrypt stored encrypted tokens
-	// The session contains encrypted access and refresh tokens
-	encContext := map[string]string{
-		"principal":  principal,
-		"service_id": service.ID,
-		"session_id": sessionObj.ID,
-	}
-
-	// Decrypt access token
-	accessToken, err := s.encryptionPort.Decrypt(ctx, sessionObj.EncryptedAccessToken, encContext)
-	if err != nil {
-		return nil, NewServerErrorWithCause("failed to decrypt access token", err)
-	}
-
-	// Decrypt refresh token (may be nil or empty)
-	var refreshToken string
-	if len(sessionObj.EncryptedRefreshToken) > 0 {
-		decryptedRefresh, err := s.encryptionPort.Decrypt(ctx, sessionObj.EncryptedRefreshToken, encContext)
-		if err != nil {
-			return nil, NewServerErrorWithCause("failed to decrypt refresh token", err)
-		}
-		refreshToken = string(decryptedRefresh)
+	if sessionObj.AccessTokenExpiresAt != nil && sessionObj.AccessTokenExpiresAt.After(now) {
+		expiresIn = int64(sessionObj.AccessTokenExpiresAt.Sub(now).Seconds())
 	}
 
 	response := NewTokenExchangeResponseFull(
-		string(accessToken),
+		accessToken,
 		sessionObj.TokenType,
 		AccessTokenType, // issued_token_type per RFC 8693
-		refreshToken,
+		"",              // refresh token typically not returned in exchange response per RFC 8693
 		strings.Join(sessionObj.Scope, " "),
 		expiresIn,
 	)
@@ -469,88 +325,6 @@ func (s *TokenExchangeService) calculateExpiresIn(session *storagedomain.UserSes
 
 	// Calculate remaining seconds
 	return int64(expiresAt.Sub(now).Seconds())
-}
-
-// oauth2TokenResponse represents the response from an OAuth2 token endpoint refresh.
-// Per RFC 6749 Section 6, this is the standard token refresh response structure.
-type oauth2TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int64  `json:"expires_in"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	Scope        string `json:"scope,omitempty"`
-}
-
-// refreshAccessToken calls the upstream OAuth2 service's token endpoint to refresh an expired access token.
-// Uses the provided refresh token to obtain a new access token from the service.
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeout control
-//   - service: The ThirdpartyOAuth2Service configuration
-//   - refreshToken: The valid refresh token from the stored session
-//
-// Returns:
-//   - oauth2TokenResponse with new access_token and optional new refresh_token
-//   - error if the refresh request fails (network error, invalid response, or upstream error)
-//
-// Per RFC 6749 Section 6, sends a POST request to the token endpoint with:
-//   - grant_type=refresh_token
-//   - refresh_token=<the provided refresh token>
-//   - client_id=<from service config>
-//   - client_secret=<from service config>
-func (s *TokenExchangeService) refreshAccessToken(ctx context.Context, service *storagedomain.ThirdpartyOAuth2Service, refreshToken string) (*oauth2TokenResponse, error) {
-	if service == nil {
-		return nil, NewServerErrorWithCause("service cannot be nil", fmt.Errorf("service is required for token refresh"))
-	}
-
-	if refreshToken == "" {
-		return nil, NewServerErrorWithCause("refresh token cannot be empty", fmt.Errorf("refresh token is required"))
-	}
-
-	// Prepare refresh token request per RFC 6749 Section 6
-	data := url.Values{}
-	data.Set("grant_type", "refresh_token")
-	data.Set("refresh_token", refreshToken)
-	data.Set("client_id", service.ClientID)
-	data.Set("client_secret", service.ClientSecret)
-
-	// Create POST request to token endpoint
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, service.Endpoints.TokenEndpoint, strings.NewReader(data.Encode()))
-	if err != nil {
-		return nil, NewServerErrorWithCause("failed to create refresh token request", err)
-	}
-
-	// Set standard OAuth2 headers
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-
-	// Execute the request
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, NewServerErrorWithCause("failed to call upstream token endpoint for refresh", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	// Decode response
-	var tokenResp oauth2TokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return nil, NewServerErrorWithCause("failed to decode upstream token response", err)
-	}
-
-	// Check for HTTP error status
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, NewServerErrorWithCause(
-			fmt.Sprintf("upstream token endpoint returned error status %d", resp.StatusCode),
-			fmt.Errorf("token refresh failed"),
-		)
-	}
-
-	// Validate required fields in response
-	if tokenResp.AccessToken == "" {
-		return nil, NewServerErrorWithCause("upstream token response missing access_token", fmt.Errorf("invalid token response"))
-	}
-
-	return &tokenResp, nil
 }
 
 // jwtToClaims converts a JWT token to a claims map for CEL evaluation.

@@ -498,9 +498,9 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 
 	for rows.Next() {
 		var (
-			service                 storage.ThirdpartyOAuth2Service
-			encryptedSecret         []byte
-			scopesJSON              []byte
+			service         storage.ThirdpartyOAuth2Service
+			encryptedSecret []byte
+			scopesJSON      []byte
 		)
 
 		err := rows.Scan(
@@ -683,9 +683,9 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 
 	for rows.Next() {
 		var (
-			service                 storage.ThirdpartyOAuth2Service
-			encryptedSecret         []byte
-			scopesJSON              []byte
+			service         storage.ThirdpartyOAuth2Service
+			encryptedSecret []byte
+			scopesJSON      []byte
 		)
 
 		err := rows.Scan(
