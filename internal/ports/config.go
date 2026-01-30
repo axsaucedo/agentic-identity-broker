@@ -329,6 +329,49 @@ type AWSKMSConfig struct {
 	// DynamoDBWriteTimeout specifies timeout for DynamoDB write operations.
 	// Format: duration string. Valid range: 1s to 5m. Defaults to "5s".
 	DynamoDBWriteTimeout string `mapstructure:"dynamodb_write_timeout"`
+
+	// AWS SDK Configuration (optional - empty/falsy values use AWS SDK defaults)
+
+	// Region specifies the AWS region for KMS operations.
+	// If not specified, uses default AWS SDK region resolution.
+	// Examples: "us-east-1", "eu-west-1", "ap-southeast-1"
+	Region string `mapstructure:"region"`
+
+	// KMSEndpoint specifies a custom KMS endpoint URL.
+	// Used for testing with LocalStack or custom KMS implementations.
+	// Example: "http://localhost:4566" (LocalStack)
+	KMSEndpoint string `mapstructure:"kms_endpoint"`
+
+	// DynamoDBEndpoint specifies a custom DynamoDB endpoint URL.
+	// Used for testing with LocalStack or DynamoDB Local.
+	// Example: "http://localhost:4566" (LocalStack)
+	DynamoDBEndpoint string `mapstructure:"dynamodb_endpoint"`
+
+	// Profile specifies the AWS profile to use for credentials.
+	// Uses credentials from ~/.aws/credentials or ~/.aws/config.
+	// Examples: "default", "production", "development"
+	Profile string `mapstructure:"profile"`
+
+	// AccessKeyID specifies static AWS access key ID.
+	// Used for testing or environments without IAM role access.
+	// SECURITY: This field contains sensitive data and will be redacted in logs.
+	AccessKeyID string `mapstructure:"access_key_id"`
+
+	// SecretAccessKey specifies static AWS secret access key.
+	// Used with AccessKeyID for static credential authentication.
+	// SECURITY: This field contains sensitive data and will be redacted in logs.
+	SecretAccessKey string `mapstructure:"secret_access_key"`
+
+	// AssumeRoleARN specifies an IAM role ARN to assume for operations.
+	// Used in production environments for role-based access.
+	// Format: "arn:aws:iam::account-id:role/role-name"
+	// Example: "arn:aws:iam::123456789012:role/EncryptionRole"
+	AssumeRoleARN string `mapstructure:"assume_role_arn"`
+
+	// DisableSSL disables SSL verification for AWS API calls.
+	// WARNING: Only use for development/testing with LocalStack.
+	// NEVER enable this in production environments.
+	DisableSSL bool `mapstructure:"disable_ssl"`
 }
 
 // MemoryConfig contains in-memory backend configuration for envelope encryption.

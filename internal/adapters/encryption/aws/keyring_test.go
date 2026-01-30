@@ -2,8 +2,11 @@ package aws
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // TestKeyStoreConfig tests configuration validation
@@ -48,13 +51,15 @@ func TestKeyStoreConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := createKeyStore(context.Background(), tt.config, "TestKeyStore")
+			// Create minimal AWS config for test
+			awsConfig := &ports.AWSKMSConfig{KeyARN: tt.config.KMSKeyARN}
+			_, err := createKeyStore(context.Background(), tt.config, awsConfig, "TestKeyStore")
 
 			if tt.expectedError {
 				if err == nil {
 					t.Errorf("expected error, got nil")
 				}
-				if tt.errorContains != "" && !containsString(err.Error(), tt.errorContains) {
+				if tt.errorContains != "" && !strings.Contains(err.Error(), tt.errorContains) {
 					t.Errorf("error should contain %q, got: %v", tt.errorContains, err)
 				}
 			} else {
@@ -150,7 +155,9 @@ func TestKMSARNValidationInKeyStore(t *testing.T) {
 				BranchKeyTTL:      DefaultBranchKeyTTL,
 			}
 
-			_, err := createKeyStore(context.Background(), config, "TestKeyStore")
+			// Create minimal AWS config for test
+			awsConfig := &ports.AWSKMSConfig{KeyARN: config.KMSKeyARN}
+			_, err := createKeyStore(context.Background(), config, awsConfig, "TestKeyStore")
 
 			if !tt.shouldFail && err != nil {
 				t.Errorf("expected no error, got: %v", err)
@@ -160,7 +167,7 @@ func TestKMSARNValidationInKeyStore(t *testing.T) {
 				t.Errorf("expected error, got nil")
 			}
 
-			if tt.errorContains != "" && err != nil && !containsString(err.Error(), tt.errorContains) {
+			if tt.errorContains != "" && err != nil && !strings.Contains(err.Error(), tt.errorContains) {
 				t.Errorf("error should contain %q, got: %v", tt.errorContains, err)
 			}
 		})
@@ -226,7 +233,9 @@ func TestKeyStoreInitialization(t *testing.T) {
 	}
 
 	// Should fail on KMS key verification, not on configuration
-	_, err := createKeyStore(context.Background(), config, "TestKeyStore")
+	// Create minimal AWS config for test
+	awsConfig := &ports.AWSKMSConfig{KeyARN: config.KMSKeyARN}
+	_, err := createKeyStore(context.Background(), config, awsConfig, "TestKeyStore")
 	if err == nil {
 		t.Fatal("expected error due to invalid KMS key in test")
 	}
@@ -258,12 +267,3 @@ func TestDefaultConstants(t *testing.T) {
 }
 
 // Helper functions
-
-func containsString(haystack, needle string) bool {
-	for i := 0; i <= len(haystack)-len(needle); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
-}

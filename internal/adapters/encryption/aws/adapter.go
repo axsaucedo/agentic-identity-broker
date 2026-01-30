@@ -68,11 +68,13 @@ func NewAWSEncryption(keyMaterial, dynamoDBTableName string, branchKeyTTL time.D
 
 	// Scenario B: AWS KMS ARN for production (hierarchical keyring with DynamoDB caching)
 	if strings.HasPrefix(keyMaterial, "arn:aws:kms:") {
-		adapter, keyStore, err := newAdapterWithKMSARNAndKeyStore(keyMaterial, dynamoDBTableName, branchKeyTTL)
+		awsConfig := &ports.AWSKMSConfig{
+			KeyARN: keyMaterial,
+		}
+		adapter, keyStore, err := newAdapterWithKMSARNAndKeyStore(keyMaterial, dynamoDBTableName, branchKeyTTL, awsConfig)
 		if err != nil {
 			return nil, nil, err
 		}
-		// Create branch key manager from the KeyStore
 		manager := NewAWSBranchKeyManager(keyStore)
 		return adapter, manager, nil
 	}
@@ -91,8 +93,8 @@ func NewAWSEncryption(keyMaterial, dynamoDBTableName string, branchKeyTTL time.D
 // newAdapterWithKMSARNAndKeyStore creates an adapter using AWS KMS hierarchical keyring and returns the KeyStore.
 // The hierarchical keyring uses DynamoDB for caching branch keys, reducing KMS API calls.
 // This variant returns both the adapter and the KeyStore for branch key manager creation.
-// dynamoDBTableName and branchKeyTTL override defaults if provided (non-empty/non-zero).
-func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKeyTTL time.Duration) (*AWSAdapter, *KeyStore, error) {
+// awsCfg provides AWS SDK configuration including region, credentials, and endpoints.
+func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKeyTTL time.Duration, awsCfg *ports.AWSKMSConfig) (*AWSAdapter, *KeyStore, error) {
 	ctx := context.Background()
 
 	// Create KeyStore with configured or default values
@@ -112,7 +114,7 @@ func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKey
 		BranchKeyTTL:      ttl,
 	}
 
-	keyStore, err := createKeyStore(ctx, keyStoreCfg, "IdentityBrokerEncryptionVault")
+	keyStore, err := createKeyStore(ctx, keyStoreCfg, awsCfg, "IdentityBrokerEncryptionVault")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -486,19 +488,21 @@ func createAWSKMSAdapter(config *ports.AWSKMSConfig) (*AWSAdapter, ports.BranchK
 		branchKeyTTL = ttl
 	}
 
-	// Create adapter using existing function
-	adapter, manager, err := NewAWSEncryption(
+	// Create adapter using new configuration-aware function
+	adapter, keyStore, err := newAdapterWithKMSARNAndKeyStore(
 		config.KeyARN,
 		dynamoDBTableName,
 		branchKeyTTL,
+		config, // Pass full AWS configuration
 	)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Handle interface nil pointer issue: if manager is a nil pointer, return nil interface
-	if manager == nil {
-		return adapter, nil, nil
+	// Create branch key manager from the KeyStore
+	var manager ports.BranchKeyManager
+	if keyStore != nil {
+		manager = NewAWSBranchKeyManager(keyStore)
 	}
 
 	return adapter, manager, nil
