@@ -1,6 +1,7 @@
 package tokenexchange
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -396,21 +397,21 @@ func TestSubjectToken_String(t *testing.T) {
 	str := token.String()
 
 	// Should include non-sensitive metadata
-	if !containsSubstring(str, "SubjectToken") {
+	if !strings.Contains(str, "SubjectToken") {
 		t.Errorf("String() should contain 'SubjectToken'")
 	}
-	if !containsSubstring(str, "user@example.com") {
+	if !strings.Contains(str, "user@example.com") {
 		t.Errorf("String() should contain principal")
 	}
-	if !containsSubstring(str, "agent-123") {
+	if !strings.Contains(str, "agent-123") {
 		t.Errorf("String() should contain agent client ID")
 	}
-	if !containsSubstring(str, "https://upstream.example.com") {
+	if !strings.Contains(str, "https://upstream.example.com") {
 		t.Errorf("String() should contain issuer")
 	}
 
 	// Should not include sensitive data
-	if containsSubstring(str, "secret") {
+	if strings.Contains(str, "secret") {
 		t.Errorf("String() should not contain custom claims data")
 	}
 }

@@ -2,6 +2,7 @@ package tokenexchange
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -228,18 +229,18 @@ func TestTokenExchangeResponse_String(t *testing.T) {
 	str := resp.String()
 
 	// Verify tokens are NOT in the string representation
-	if containsSubstring(str, "ya29.a0AfH6SMBx") {
+	if strings.Contains(str, "ya29.a0AfH6SMBx") {
 		t.Errorf("String() contains access_token: %s", str)
 	}
-	if containsSubstring(str, "1//0gvVy") {
+	if strings.Contains(str, "1//0gvVy") {
 		t.Errorf("String() contains refresh_token: %s", str)
 	}
 
 	// Verify metadata IS in the string representation
-	if !containsSubstring(str, "TokenExchangeResponse") {
+	if !strings.Contains(str, "TokenExchangeResponse") {
 		t.Errorf("String() should contain 'TokenExchangeResponse'")
 	}
-	if !containsSubstring(str, BearerTokenType) {
+	if !strings.Contains(str, BearerTokenType) {
 		t.Errorf("String() should contain token_type")
 	}
 }

@@ -1,6 +1,7 @@
 package tokenexchange
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -415,19 +416,19 @@ func TestClientAssertion_String(t *testing.T) {
 	str := assertion.String()
 
 	// Should include non-sensitive metadata
-	if !containsSubstring(str, "ClientAssertion") {
+	if !strings.Contains(str, "ClientAssertion") {
 		t.Errorf("String() should contain 'ClientAssertion'")
 	}
-	if !containsSubstring(str, "privileged-client-1") {
+	if !strings.Contains(str, "privileged-client-1") {
 		t.Errorf("String() should contain privileged client subject")
 	}
-	if !containsSubstring(str, "https://upstream.example.com") {
+	if !strings.Contains(str, "https://upstream.example.com") {
 		t.Errorf("String() should contain issuer")
 	}
 
 	// Should NOT include sensitive data (scopes, custom claims)
 	// Actually, our implementation shows subject, so just check it's reasonable
-	if !containsSubstring(str, "audienceCount") {
+	if !strings.Contains(str, "audienceCount") {
 		t.Errorf("String() should indicate audience count")
 	}
 }

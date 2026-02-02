@@ -1,6 +1,7 @@
 package tokenexchange
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -294,18 +295,18 @@ func TestTokenExchangeRequest_String(t *testing.T) {
 	str := req.String()
 
 	// Verify tokens are NOT in the string representation
-	if contains(str, "eyJhbGc") {
+	if strings.Contains(str, "eyJhbGc") {
 		t.Errorf("String() contains subject_token: %s", str)
 	}
-	if contains(str, "eyJpc3M") {
+	if strings.Contains(str, "eyJpc3M") {
 		t.Errorf("String() contains client_assertion: %s", str)
 	}
 
 	// Verify expected fields ARE in the string representation
-	if !contains(str, "TokenExchangeRequest") {
+	if !strings.Contains(str, "TokenExchangeRequest") {
 		t.Errorf("String() should contain 'TokenExchangeRequest'")
 	}
-	if !contains(str, "https://api.example.com") {
+	if !strings.Contains(str, "https://api.example.com") {
 		t.Errorf("String() should contain resource")
 	}
 }
@@ -350,19 +351,4 @@ func TestTokenExchangeRequest_IsTokenExchangeRequest(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Helper function to check if string contains substring.
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && len(s) >= len(substr) && s != substr && (s == substr || (len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsSubstring(s, substr))))
-}
-
-// containsSubstring is a simple substring search.
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
