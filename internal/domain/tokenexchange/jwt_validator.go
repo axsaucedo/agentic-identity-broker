@@ -4,10 +4,10 @@ package tokenexchange
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
@@ -82,13 +82,12 @@ func NewJWTValidator(
 // ValidateSubjectToken validates a subject_token JWT from RFC 8693 token exchange request.
 //
 // Validation steps:
-// 1. Parse JWT structure (no signature check yet)
-// 2. Fetch JWKS from upstream server via JWKSProvider
-// 3. Find key by kid from token header
-// 4. Validate signature against key
-// 5. Verify issuer matches configured upstream_oauth2.issuer
-// 6. Verify audience includes broker identifier
-// 7. Verify token not expired (with configurable clock skew tolerance)
+// 1. Fetch JWKS from upstream server via JWKSProvider
+// 2. Parse JWT with comprehensive validation using library options:
+//   - Signature verification (validates structure and signature)
+//   - Issuer verification (matches configured upstream_oauth2.issuer)
+//   - Audience verification (includes broker identifier)
+//   - Expiration verification (with configurable clock skew tolerance)
 //
 // Per spec SR-006: Validation failure always denies the request.
 // Per spec SR-005: Error messages do NOT expose token content (only metadata like issuer).
@@ -104,45 +103,27 @@ func (v *JWTValidator) ValidateSubjectToken(ctx context.Context, tokenString str
 		return nil, NewInvalidGrantError("subject_token is empty or missing")
 	}
 
-	// Parse JWT without verification (just structure check)
-	if _, err := jwt.ParseString(tokenString, jwt.WithVerify(false)); err != nil {
-		return nil, NewInvalidRequestError("subject_token is malformed")
-	}
-
 	// Fetch JWKS and get the specific key
 	keyset, err := v.jwksProvider.GetKeySet(ctx)
 	if err != nil {
 		return nil, NewServerErrorWithCause("failed to fetch JWKS for token validation", err)
 	}
 
-	// Verify signature against JWKS
-	if err := v.VerifySignature(ctx, tokenString, keyset); err != nil {
-		return nil, err
-	}
-
-	// Re-parse with verification now that we know signature is valid
+	// Parse with comprehensive validation using library options
+	// This combines signature, issuer, audience, and expiration verification
+	clockSkew := time.Duration(v.clockSkewSeconds) * time.Second
 	token, err := jwt.ParseString(
 		tokenString,
 		jwt.WithVerify(true),
 		jwt.WithKeySet(keyset),
+		jwt.WithValidate(true),
+		jwt.WithIssuer(v.expectedIssuer),
+		jwt.WithAudience(v.brokerAudience),
+		jwt.WithAcceptableSkew(clockSkew),
 	)
 	if err != nil {
-		return nil, NewInvalidRequestError("subject_token signature verification failed")
-	}
-
-	// Verify issuer
-	if err := v.VerifyIssuer(token, v.expectedIssuer); err != nil {
-		return nil, err
-	}
-
-	// Verify audience
-	if err := v.VerifyAudience(token, v.brokerAudience); err != nil {
-		return nil, err
-	}
-
-	// Verify expiration with clock skew
-	if err := v.VerifyExpiration(token, time.Duration(v.clockSkewSeconds)*time.Second); err != nil {
-		return nil, err
+		// Map library errors to appropriate domain errors
+		return nil, v.mapParseError(err, "subject_token")
 	}
 
 	return token, nil
@@ -153,13 +134,12 @@ func (v *JWTValidator) ValidateSubjectToken(ctx context.Context, tokenString str
 // Similar to ValidateSubjectToken but used for client authentication (RFC 7523).
 //
 // Validation steps:
-// 1. Parse JWT structure
-// 2. Fetch JWKS from upstream server
-// 3. Find key by kid
-// 4. Validate signature against key
-// 5. Verify issuer matches configured upstream_oauth2.issuer
-// 6. Verify audience includes broker identifier
-// 7. Verify token not expired
+// 1. Fetch JWKS from upstream server
+// 2. Parse JWT with comprehensive validation using library options:
+//   - Signature verification (validates structure and signature)
+//   - Issuer verification (matches configured upstream_oauth2.issuer)
+//   - Audience verification (includes broker identifier)
+//   - Expiration verification (with configurable clock skew tolerance)
 //
 // Returns:
 //   - The parsed and validated JWT token on success
@@ -170,163 +150,87 @@ func (v *JWTValidator) ValidateClientAssertion(ctx context.Context, tokenString 
 		return nil, NewInvalidClientError("client_assertion is empty or missing")
 	}
 
-	// Parse JWT without verification (just structure check)
-	if _, err := jwt.ParseString(tokenString, jwt.WithVerify(false)); err != nil {
-		return nil, NewInvalidClientError("client_assertion is malformed")
-	}
-
 	// Fetch JWKS and get the specific key
 	keyset, err := v.jwksProvider.GetKeySet(ctx)
 	if err != nil {
 		return nil, NewServerErrorWithCause("failed to fetch JWKS for client_assertion validation", err)
 	}
 
-	// Verify signature against JWKS
-	if err := v.VerifySignature(ctx, tokenString, keyset); err != nil {
-		return nil, err
-	}
-
-	// Re-parse with verification
+	// Parse with comprehensive validation using library options
+	// This combines signature, issuer, audience, and expiration verification
+	clockSkew := time.Duration(v.clockSkewSeconds) * time.Second
 	token, err := jwt.ParseString(
 		tokenString,
 		jwt.WithVerify(true),
 		jwt.WithKeySet(keyset),
+		jwt.WithValidate(true),
+		jwt.WithIssuer(v.expectedIssuer),
+		jwt.WithAudience(v.brokerAudience),
+		jwt.WithAcceptableSkew(clockSkew),
 	)
 	if err != nil {
-		return nil, NewInvalidClientError("client_assertion signature verification failed")
-	}
-
-	// Verify issuer
-	if err := v.VerifyIssuer(token, v.expectedIssuer); err != nil {
-		return nil, NewInvalidClientError("client_assertion issuer validation failed")
-	}
-
-	// Verify audience
-	if err := v.VerifyAudience(token, v.brokerAudience); err != nil {
-		return nil, NewInvalidClientError("client_assertion audience validation failed")
-	}
-
-	// Verify expiration with clock skew
-	if err := v.VerifyExpiration(token, time.Duration(v.clockSkewSeconds)*time.Second); err != nil {
-		return nil, NewInvalidClientError("client_assertion has expired")
+		// Map library errors to appropriate domain errors for client assertions
+		return nil, v.mapClientAssertionParseError(err)
 	}
 
 	return token, nil
 }
 
-// VerifySignature validates a JWT signature against a JWKS key set.
+// mapParseError maps jwt.ParseString errors to appropriate domain errors for subject tokens.
 //
-// This method performs cryptographic signature verification using the lestrrat-go/jwx/v3 library.
-// The lestrrat-go/jwx library automatically finds the correct key by kid from the token header
-// and validates the signature against the key set.
+// The lestrrat-go/jwx library returns various error types for different validation failures.
+// This method maps them to the correct RFC 8693 error codes while preserving security.
 //
-// Per Principle III (Library-First Security): Uses only lestrrat-go/jwx/v3 for cryptography.
-//
-// Returns error (with "InvalidClient" code) if:
-//   - Token is not a valid JWT structure
-//   - kid not found in key set
-//   - Signature verification fails
-//   - No public key component found
-func (v *JWTValidator) VerifySignature(ctx context.Context, tokenString string, keyset interface{}) error {
-	// Parse JWS to validate structure
-	parsedJWS, err := jws.ParseString(tokenString)
-	if err != nil {
-		return NewInvalidClientError("token is not a valid JWT")
+// Per spec SR-005: Error messages do NOT expose token content (only metadata like issuer).
+func (v *JWTValidator) mapParseError(err error, tokenType string) error {
+	if err == nil {
+		return nil
 	}
 
-	if len(parsedJWS.Signatures()) == 0 {
-		return NewInvalidClientError("token has no signatures")
-	}
+	errMsg := err.Error()
 
-	// Use lestrrat-go to verify signature
-	// This performs the cryptographic verification using the JWKS
-	// The library automatically finds the key by kid from the token header
-	payload, err := jws.Verify([]byte(tokenString), jws.WithKeySet(keyset.(jwk.Set)))
-	if err != nil {
-		// Per spec SR-005: Don't expose token content in error message
-		return NewInvalidClientError("signature verification failed against JWKS")
+	// Check for common validation failures and map to appropriate errors
+	switch {
+	case strings.Contains(errMsg, "signature"):
+		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed")
+	case strings.Contains(errMsg, "issuer") || strings.Contains(errMsg, "iss"):
+		return NewInvalidGrantError(tokenType + " issuer validation failed")
+	case strings.Contains(errMsg, "audience") || strings.Contains(errMsg, "aud"):
+		return NewInvalidGrantError(tokenType + " audience validation failed")
+	case strings.Contains(errMsg, "exp") || strings.Contains(errMsg, "expired"):
+		return NewInvalidGrantError(tokenType + " has expired")
+	case strings.Contains(errMsg, "malformed") || strings.Contains(errMsg, "parse"):
+		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed")
+	default:
+		// Generic validation failure
+		return NewInvalidGrantError(tokenType + " validation failed")
 	}
-
-	// Ensure we got a payload (sanity check)
-	if len(payload) == 0 {
-		return NewInvalidClientError("signature verification failed: empty payload")
-	}
-
-	return nil
 }
 
-// VerifyIssuer checks that a token's issuer matches the expected value.
+// mapClientAssertionParseError maps jwt.ParseString errors to InvalidClientError for client assertions.
 //
-// The token's "iss" claim must exactly match the expectedIssuer.
-// This prevents accepting tokens from untrusted issuers.
-//
-// Returns error if issuer doesn't match (for subject_token: InvalidGrantError, for client_assertion: InvalidClientError).
-func (v *JWTValidator) VerifyIssuer(token jwt.Token, expectedIssuer string) error {
-	if token == nil {
-		return NewInvalidGrantError("token is nil")
+// Client assertion failures always result in InvalidClientError per RFC 7523.
+func (v *JWTValidator) mapClientAssertionParseError(err error) error {
+	if err == nil {
+		return nil
 	}
 
-	issuer, _ := token.Issuer()
-	if issuer != expectedIssuer {
-		// Per spec SR-005: Only include metadata (issuer value), not full token
-		return NewInvalidGrantError(fmt.Sprintf("issuer mismatch: expected '%s', got '%s'", expectedIssuer, issuer))
+	errMsg := err.Error()
+
+	// All client assertion validation failures map to InvalidClientError
+	switch {
+	case strings.Contains(errMsg, "signature"):
+		return NewInvalidClientError("client_assertion is malformed or signature verification failed")
+	case strings.Contains(errMsg, "issuer") || strings.Contains(errMsg, "iss"):
+		return NewInvalidClientError("client_assertion issuer validation failed")
+	case strings.Contains(errMsg, "audience") || strings.Contains(errMsg, "aud"):
+		return NewInvalidClientError("client_assertion audience validation failed")
+	case strings.Contains(errMsg, "exp") || strings.Contains(errMsg, "expired"):
+		return NewInvalidClientError("client_assertion has expired")
+	case strings.Contains(errMsg, "malformed") || strings.Contains(errMsg, "parse"):
+		return NewInvalidClientError("client_assertion is malformed or signature verification failed")
+	default:
+		// Generic validation failure
+		return NewInvalidClientError("client_assertion validation failed")
 	}
-
-	return nil
-}
-
-// VerifyAudience checks that a token's audience includes the broker identifier.
-//
-// The token's "aud" claim may be a single string or array of strings.
-// At least one entry must match brokerAudience.
-// This ensures the token was intended for this broker.
-//
-// Returns error if broker audience not found in token.
-func (v *JWTValidator) VerifyAudience(token jwt.Token, brokerAudience string) error {
-	if token == nil {
-		return NewInvalidGrantError("token is nil")
-	}
-
-	audiences, _ := token.Audience()
-	if len(audiences) == 0 {
-		return NewInvalidGrantError("token missing 'aud' (audience) claim")
-	}
-
-	// Check if broker audience is in the list
-	for _, aud := range audiences {
-		if aud == brokerAudience {
-			return nil
-		}
-	}
-
-	return NewInvalidGrantError(fmt.Sprintf("token audience does not include broker identifier '%s'", brokerAudience))
-}
-
-// VerifyExpiration checks that a token has not expired.
-//
-// The token's "exp" claim is compared against current time.
-// A clockSkew tolerance is applied to allow for minor time synchronization differences.
-// This prevents accepting tokens outside their validity period.
-//
-// Per spec FR-042: Clock skew tolerance is configurable, default 60 seconds, max 300 seconds.
-//
-// Returns error if token is expired (beyond the clock skew tolerance).
-func (v *JWTValidator) VerifyExpiration(token jwt.Token, clockSkew time.Duration) error {
-	if token == nil {
-		return NewInvalidGrantError("token is nil")
-	}
-
-	expiration, _ := token.Expiration()
-	if expiration.IsZero() {
-		return NewInvalidGrantError("token missing 'exp' (expiration) claim")
-	}
-
-	now := time.Now().UTC()
-	adjustedExpiration := expiration.Add(clockSkew)
-
-	if now.After(adjustedExpiration) {
-		return NewInvalidGrantError("token has expired")
-	}
-
-	return nil
 }
