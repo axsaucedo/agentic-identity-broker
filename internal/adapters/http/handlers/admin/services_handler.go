@@ -190,7 +190,7 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 	// Check for duplicate resource URIs across existing services (T022)
 	if len(service.ProtectedResources) > 0 {
 		for _, resource := range service.ProtectedResources {
-			existing, err := h.repo.FindByProtectedResource(ctx, resource)
+			existing, err := h.authProvider.FindByProtectedResource(ctx, resource)
 			if err == nil && existing != nil {
 				// Conflict: another service already has this resource URI
 				h.logger.Warn("duplicate protected resource",
@@ -341,7 +341,7 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	// Only check resources that are different from existing service's resources
 	if len(service.ProtectedResources) > 0 {
 		for _, resource := range service.ProtectedResources {
-			existing, err := h.repo.FindByProtectedResource(ctx, resource)
+			existing, err := h.authProvider.FindByProtectedResource(ctx, resource)
 			if err == nil && existing != nil && existing.ID != service.ID {
 				// Conflict: another service already has this resource URI
 				h.logger.Warn("duplicate protected resource",

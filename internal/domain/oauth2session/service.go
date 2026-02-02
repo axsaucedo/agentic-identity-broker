@@ -768,7 +768,6 @@ func (s *OAuth2SessionService) UpdateSessionTokens(
 // The encryption context uses principal/service/session for verification.
 func (s *OAuth2SessionService) DecryptAccessToken(
 	ctx context.Context,
-	principal string,
 	session *storage.UserSession,
 ) (string, error) {
 	if session == nil {
@@ -776,9 +775,7 @@ func (s *OAuth2SessionService) DecryptAccessToken(
 	}
 
 	encContext := map[string]string{
-		"principal":  principal,
 		"service_id": session.ServiceID,
-		"session_id": session.ID,
 	}
 
 	accessToken, err := s.encryption.Decrypt(ctx, session.EncryptedAccessToken, encContext)
@@ -793,7 +790,6 @@ func (s *OAuth2SessionService) DecryptAccessToken(
 // Returns empty string (not error) if no refresh token stored.
 func (s *OAuth2SessionService) DecryptRefreshToken(
 	ctx context.Context,
-	principal string,
 	session *storage.UserSession,
 ) (string, error) {
 	if session == nil {
@@ -806,9 +802,7 @@ func (s *OAuth2SessionService) DecryptRefreshToken(
 	}
 
 	encContext := map[string]string{
-		"principal":  principal,
 		"service_id": session.ServiceID,
-		"session_id": session.ID,
 	}
 
 	refreshToken, err := s.encryption.Decrypt(ctx, session.EncryptedRefreshToken, encContext)
@@ -1056,7 +1050,7 @@ func (s *OAuth2SessionService) GetValidAccessToken(
 	// Step 2: Check if access token has expired
 	if session.HasValidAccessToken() {
 		// Access token is still valid - just decrypt and return
-		accessToken, err := s.DecryptAccessToken(ctx, principal, session)
+		accessToken, err := s.DecryptAccessToken(ctx, session)
 		if err != nil {
 			return "", fmt.Errorf("failed to decrypt access token: %w", err)
 		}
@@ -1086,7 +1080,7 @@ func (s *OAuth2SessionService) GetValidAccessToken(
 	}
 
 	// Step 5: Decrypt refresh token
-	refreshToken, err := s.DecryptRefreshToken(ctx, principal, session)
+	refreshToken, err := s.DecryptRefreshToken(ctx, session)
 	if err != nil {
 		s.logger.Error("failed to decrypt refresh token",
 			"principal", principal,
@@ -1133,7 +1127,7 @@ func (s *OAuth2SessionService) GetValidAccessToken(
 		"timestamp", time.Now().Unix())
 
 	// Step 8: Decrypt and return the new access token
-	accessToken, err := s.DecryptAccessToken(ctx, principal, session)
+	accessToken, err := s.DecryptAccessToken(ctx, session)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt refreshed access token: %w", err)
 	}

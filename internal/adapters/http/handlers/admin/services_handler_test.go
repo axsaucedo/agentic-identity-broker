@@ -66,6 +66,50 @@ func (m *MockAuthProvider) List(ctx context.Context) ([]*storage.ThirdpartyOAuth
 	return args.Get(0).([]*storage.ThirdpartyOAuth2Service), args.Error(1)
 }
 
+func (m *MockAuthProvider) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx, resourceURI)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
+// MockServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ServiceRepository
+type MockServiceRepository struct {
+	mock.Mock
+}
+
+func (m *MockServiceRepository) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+	args := m.Called(ctx, service)
+	return args.Error(0)
+}
+
+func (m *MockServiceRepository) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
+func (m *MockServiceRepository) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+	args := m.Called(ctx, service)
+	return args.Error(0)
+}
+
+func (m *MockServiceRepository) Delete(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *MockServiceRepository) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
 func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
 	args := m.Called(ctx, serviceID)
 	return args.Int(0), args.Error(1)

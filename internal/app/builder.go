@@ -23,8 +23,8 @@ import (
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
+	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -274,6 +274,11 @@ func (b *Builder) Build() (*App, error) {
 	// Per Constitution Principle VII (Configuration-Driven Design): only create if configured
 	if b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
 		b.config.TokenExchange.Authorization.CEL.Expression != "" {
+		// Validate required dependencies
+		if app.ConsentService == nil {
+			return nil, fmt.Errorf("token exchange service requires consent service, but storage repositories (Agents, Services, UserGrants) are not available")
+		}
+
 		// Create CEL evaluator with configuration
 		celConfig := tokenexchange.CELEvaluatorConfig{
 			PrincipalExpression:     b.config.TokenExchange.ClaimExtraction.PrincipalExpression,

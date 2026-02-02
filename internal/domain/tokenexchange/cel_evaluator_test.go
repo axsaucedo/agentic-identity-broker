@@ -507,7 +507,7 @@ func TestNewCELEvaluatorWithCustomTimeout(t *testing.T) {
 }
 
 // Helper function to create a valid CELEvaluatorConfig for testing
-func validTokenExchangeConfig(t *testing.T) CELEvaluatorConfig {
+func validTokenExchangeConfig(_ *testing.T) CELEvaluatorConfig {
 	return CELEvaluatorConfig{
 		PrincipalExpression:     DefaultPrincipalExpression,
 		AgentClientIDExpression: DefaultAgentClientIDExpression,

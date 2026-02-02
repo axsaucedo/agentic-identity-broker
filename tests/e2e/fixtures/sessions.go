@@ -37,10 +37,7 @@ func GitHubSessionForPrincipal(principal string) *storage.UserSession {
 		RefreshTokenExpiresAt: &refreshTokenExpires,
 		Scope:                 []string{"repo", "user"},
 		EncryptionContext: storage.EncryptionContext{
-			Principal: principal,
 			ServiceID: "github-service",
-			SessionID: uuid.New().String(),
-			Purpose:   "oauth2_token",
 		},
 		InitiatedAt: now,
 		CreatedAt:   now,
@@ -66,10 +63,7 @@ func ExpiredGitHubSessionForPrincipal(principal string) *storage.UserSession {
 		RefreshTokenExpiresAt: &refreshTokenValid,
 		Scope:                 []string{"repo", "user"},
 		EncryptionContext: storage.EncryptionContext{
-			Principal: principal,
 			ServiceID: "github-service",
-			SessionID: uuid.New().String(),
-			Purpose:   "oauth2_token",
 		},
 		InitiatedAt: now.Add(-2 * time.Hour),
 		CreatedAt:   now.Add(-2 * time.Hour),
@@ -95,10 +89,7 @@ func FullyExpiredSessionForPrincipal(principal, serviceID string) *storage.UserS
 		RefreshTokenExpiresAt: &refreshTokenExpired,
 		Scope:                 []string{"read", "write"},
 		EncryptionContext: storage.EncryptionContext{
-			Principal: principal,
 			ServiceID: serviceID,
-			SessionID: uuid.New().String(),
-			Purpose:   "oauth2_token",
 		},
 		InitiatedAt: now.Add(-7 * 24 * time.Hour),
 		CreatedAt:   now.Add(-7 * 24 * time.Hour),
@@ -124,10 +115,7 @@ func SessionForService(principal, serviceID string) *storage.UserSession {
 		RefreshTokenExpiresAt: &refreshTokenExpires,
 		Scope:                 []string{"read", "write"},
 		EncryptionContext: storage.EncryptionContext{
-			Principal: principal,
 			ServiceID: serviceID,
-			SessionID: uuid.New().String(),
-			Purpose:   "oauth2_token",
 		},
 		InitiatedAt: now,
 		CreatedAt:   now,
@@ -152,10 +140,7 @@ func SessionWithoutRefreshToken(principal, serviceID string) *storage.UserSessio
 		RefreshTokenExpiresAt: nil, // No refresh token expiration
 		Scope:                 []string{"read"},
 		EncryptionContext: storage.EncryptionContext{
-			Principal: principal,
 			ServiceID: serviceID,
-			SessionID: uuid.New().String(),
-			Purpose:   "oauth2_token",
 		},
 		InitiatedAt: now,
 		CreatedAt:   now,
