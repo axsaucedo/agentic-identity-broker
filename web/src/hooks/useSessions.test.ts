@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useSessions, useSession } from './useSessions';
 import { sessionsApi } from '../services/api/sessions';
 import type { SessionSummary } from '../services/api/sessions';
@@ -185,7 +185,9 @@ describe('useSessions', () => {
       expect(result.current.sessions).toEqual(mockSessions);
 
       // Call refetch
-      await result.current.refetch();
+      await act(async () => {
+        await result.current.refetch();
+      });
 
       // Wait for refetch to complete
       await waitFor(() => {
@@ -210,7 +212,9 @@ describe('useSessions', () => {
       });
 
       // Call refetch
-      await result.current.refetch();
+      await act(async () => {
+        await result.current.refetch();
+      });
 
       // Wait for refetch to complete
       await waitFor(() => {
@@ -240,7 +244,11 @@ describe('useSessions', () => {
       });
 
       // Start refetch
-      const refetchPromise = result.current.refetch();
+      let refetchPromise: Promise<void>;
+
+      await act(async () => {
+        refetchPromise = result.current.refetch();
+      });
 
       // Should be loading immediately
       await waitFor(() => {
@@ -248,7 +256,9 @@ describe('useSessions', () => {
       });
 
       // Wait for refetch to complete
-      await refetchPromise;
+      await act(async () => {
+        await refetchPromise;
+      });
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);

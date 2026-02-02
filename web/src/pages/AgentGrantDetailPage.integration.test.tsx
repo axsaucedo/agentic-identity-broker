@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AgentGrantDetailPage } from './AgentGrantDetailPage';
-import { consentApi } from '../services/api/consent';
+import { consentApi } from '@services/api/consent';
 import { ToastProvider } from '../components/ui/Toast';
 import type {
   AgentDetail,
@@ -15,8 +15,10 @@ import type {
 } from '../types/consent';
 
 // Mock the API
-vi.mock('../services/api/consent', () => ({
+vi.mock('@services/api/consent', () => ({
   consentApi: {
+    getUserInfo: vi.fn(),
+    getAgentDelegations: vi.fn(),
     getAgentDetail: vi.fn(),
     getAgentGrants: vi.fn(),
     createOrUpdateGrant: vi.fn(),
@@ -64,6 +66,14 @@ describe('AgentGrantDetailPage - Integration', () => {
     vi.clearAllMocks();
 
     // Setup default mock responses
+    vi.mocked(consentApi.getUserInfo).mockResolvedValue({
+      principal: 'user@example.com',
+      displayName: 'Test User',
+      pictureUrl: 'https://example.com/avatar.png',
+    });
+
+    vi.mocked(consentApi.getAgentDelegations).mockResolvedValue([]);
+
     vi.mocked(consentApi.getAgentDetail).mockResolvedValue({
       agent: mockAgent,
       services: mockServices,

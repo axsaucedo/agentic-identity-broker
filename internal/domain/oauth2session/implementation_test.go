@@ -3,6 +3,7 @@ package oauth2session_test
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"testing"
 	"time"
@@ -47,6 +48,7 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 		grantRepo,
 		agentRepo,
 		encryption,
+		&http.Client{},
 		key,
 		config,
 		slog.Default(),

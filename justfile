@@ -144,6 +144,7 @@ run: build
 
 # Run with Air for hot-reload development (requires air to be installed)
 dev:
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh`
     @echo "Starting development server with hot reload..."
     @if command -v air > /dev/null; then \
         air; \

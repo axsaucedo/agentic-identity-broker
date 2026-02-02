@@ -1,11 +1,9 @@
-package config_test
+package config
 
 import (
 	"context"
-	"encoding/base64"
 	"testing"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,11 +11,11 @@ import (
 
 func TestConfigurationDefaults(t *testing.T) {
 	// Set valid JWESigningKey for all tests
-	validKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 
 	t.Run("default principal header name is set", func(t *testing.T) {
-		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", validKey)
-		loader := config.NewLoader()
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(32))
+		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
 
 		require.NoError(t, err)
@@ -27,11 +25,12 @@ func TestConfigurationDefaults(t *testing.T) {
 
 	t.Run("custom principal header name from environment variable", func(t *testing.T) {
 		// Set environment variable
-		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", validKey)
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Authenticated-User")
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Admin-User")
 
-		loader := config.NewLoader()
+		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
 
 		require.NoError(t, err)
@@ -40,8 +39,9 @@ func TestConfigurationDefaults(t *testing.T) {
 	})
 
 	t.Run("authentication configuration is not nil", func(t *testing.T) {
-		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", validKey)
-		loader := config.NewLoader()
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(32))
+		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
 
 		require.NoError(t, err)
@@ -75,15 +75,13 @@ func TestDefaultServerConfig(t *testing.T) {
 }
 
 func TestConfigurationPrecedence(t *testing.T) {
-	// Set valid JWESigningKey for all tests
-	validKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
-
 	t.Run("environment variable overrides default", func(t *testing.T) {
 		// Set environment variable to override default
-		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", validKey)
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Custom-Header")
 
-		loader := config.NewLoader()
+		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
 
 		require.NoError(t, err)
@@ -91,11 +89,12 @@ func TestConfigurationPrecedence(t *testing.T) {
 	})
 
 	t.Run("admin and enduser can have different headers", func(t *testing.T) {
-		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", validKey)
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(32))
 		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-User-Header")
 		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Admin-Header")
 
-		loader := config.NewLoader()
+		loader := NewLoader()
 		cfg, err := loader.GetConfig(context.Background())
 
 		require.NoError(t, err)
@@ -105,11 +104,11 @@ func TestConfigurationPrecedence(t *testing.T) {
 }
 
 func TestConfigurationSources(t *testing.T) {
-	// Set valid JWESigningKey
-	validKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
-	t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", validKey)
+	// Set valid JWESigningKey and KeyEncryptionKey
+	t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+	t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(32))
 
-	loader := config.NewLoader()
+	loader := NewLoader()
 	_, err := loader.GetConfig(context.Background())
 	require.NoError(t, err)
 

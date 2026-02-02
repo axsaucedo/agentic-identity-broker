@@ -14,6 +14,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AgentGrantDetailPage } from './AgentGrantDetailPage';
 import { ToastProvider } from '../components/ui/Toast';
 import * as useAgentGrantsModule from '../hooks/useAgentGrants';
+import * as useConsentModule from '../hooks/useConsent';
 import type {
   AgentDetail,
   ThirdpartyService,
@@ -22,6 +23,7 @@ import type {
 
 // Mock the useAgentGrants hook
 vi.mock('../hooks/useAgentGrants');
+vi.mock('../hooks/useConsent');
 
 // Mock router params
 vi.mock('react-router-dom', async () => {
@@ -92,6 +94,17 @@ const RouterWrapper = ({ children }: { children: React.ReactNode }) => (
 describe('AgentGrantDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(useConsentModule, 'useConsent').mockReturnValue({
+      delegations: [],
+      userInfo: {
+        principal: 'user@example.com',
+        displayName: 'Test User',
+        pictureUrl: 'https://example.com/avatar.png',
+      },
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
   });
 
   it('displays loading state with skeletons', () => {

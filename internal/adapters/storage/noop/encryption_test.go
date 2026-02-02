@@ -47,10 +47,7 @@ func TestNoOpEncryption_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	original := []byte("my-client-secret")
-	encryptionContext := map[string]string{
-		"service_id": "github",
-		"key_id":     "v1",
-	}
+	encryptionContext := map[string]string{"service_id": "github"}
 
 	// Encrypt
 	encrypted, err := enc.Encrypt(ctx, original, encryptionContext)

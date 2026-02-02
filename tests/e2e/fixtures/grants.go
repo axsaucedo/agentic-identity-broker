@@ -8,9 +8,9 @@ import (
 )
 
 // ActiveGrant returns a user grant that is currently active (not expired).
-// Principal and AgentID must be provided by caller.
+// Principal, agentID, and serviceID must be provided by caller.
 // ValidUntil is set to 1 hour in the future.
-func ActiveGrant(principal, agentID string) *storage.UserGrant {
+func ActiveGrant(principal, agentID, serviceID string, scopes []string) *storage.UserGrant {
 	now := time.Now()
 	validUntil := now.Add(1 * time.Hour)
 
@@ -21,8 +21,8 @@ func ActiveGrant(principal, agentID string) *storage.UserGrant {
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "github-service",
-				Scopes:                    []string{"repo", "user"},
+				ThirdpartyOAuth2ServiceID: serviceID,
+				Scopes:                    scopes,
 			},
 		},
 		CreatedAt: now,
@@ -31,9 +31,9 @@ func ActiveGrant(principal, agentID string) *storage.UserGrant {
 }
 
 // ExpiredGrant returns a user grant that has already expired.
-// Principal and AgentID must be provided by caller.
+// Principal, agentID, and serviceID must be provided by caller.
 // ValidUntil is set to 1 hour in the past.
-func ExpiredGrant(principal, agentID string) *storage.UserGrant {
+func ExpiredGrant(principal, agentID, serviceID string, scopes []string) *storage.UserGrant {
 	now := time.Now()
 	validUntil := now.Add(-1 * time.Hour)
 
@@ -44,8 +44,8 @@ func ExpiredGrant(principal, agentID string) *storage.UserGrant {
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "github-service",
-				Scopes:                    []string{"repo", "user"},
+				ThirdpartyOAuth2ServiceID: serviceID,
+				Scopes:                    scopes,
 			},
 		},
 		CreatedAt: now,
@@ -55,7 +55,7 @@ func ExpiredGrant(principal, agentID string) *storage.UserGrant {
 
 // GrantExpiringIn returns a user grant that expires in the specified duration.
 // Useful for testing edge cases like grants expiring soon.
-func GrantExpiringIn(principal, agentID string, duration time.Duration) *storage.UserGrant {
+func GrantExpiringIn(principal, agentID, serviceID string, scopes []string, duration time.Duration) *storage.UserGrant {
 	now := time.Now()
 	validUntil := now.Add(duration)
 
@@ -66,8 +66,8 @@ func GrantExpiringIn(principal, agentID string, duration time.Duration) *storage
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "github-service",
-				Scopes:                    []string{"repo", "user"},
+				ThirdpartyOAuth2ServiceID: serviceID,
+				Scopes:                    scopes,
 			},
 		},
 		CreatedAt: now,
@@ -77,7 +77,7 @@ func GrantExpiringIn(principal, agentID string, duration time.Duration) *storage
 
 // IndefiniteGrant returns a user grant that never expires (ValidUntil is nil).
 // Indefinite grants remain active until explicitly revoked.
-func IndefiniteGrant(principal, agentID string) *storage.UserGrant {
+func IndefiniteGrant(principal, agentID, serviceID string, scopes []string) *storage.UserGrant {
 	now := time.Now()
 
 	return &storage.UserGrant{
@@ -87,8 +87,8 @@ func IndefiniteGrant(principal, agentID string) *storage.UserGrant {
 		ValidUntil: nil, // No expiration
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "github-service",
-				Scopes:                    []string{"repo", "user"},
+				ThirdpartyOAuth2ServiceID: serviceID,
+				Scopes:                    scopes,
 			},
 		},
 		CreatedAt: now,

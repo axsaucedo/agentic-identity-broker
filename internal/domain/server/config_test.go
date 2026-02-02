@@ -1,6 +1,7 @@
 package server
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -323,7 +324,7 @@ func TestServerConfigValidation(t *testing.T) {
 					t.Errorf("ValidateServerConfig() expected error containing %q, got nil", tt.errMsg)
 					return
 				}
-				if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("ValidateServerConfig() error = %q, want error containing %q", err.Error(), tt.errMsg)
 				}
 			} else {
@@ -333,19 +334,4 @@ func TestServerConfigValidation(t *testing.T) {
 			}
 		})
 	}
-}
-
-// contains checks if a string contains a substring (case-insensitive check would be better but this is simple).
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && stringContains(s, substr)))
-}
-
-func stringContains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

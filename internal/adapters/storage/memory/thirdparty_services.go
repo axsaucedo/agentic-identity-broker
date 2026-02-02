@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/google/uuid"
 )
@@ -130,4 +131,58 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 func (r *ThirdpartyServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
 	// In-memory implementation does not track grants
 	return 0, nil
+}
+
+// FindByProtectedResource retrieves an OAuth2 service configuration by matching resource URI
+// against protected_resources field. Used for resource-based service discovery in token exchange.
+// The resourceURI parameter should be normalized before calling (trailing slashes removed).
+// Returns the service whose protected_resources contains the resourceURI (case-sensitive match).
+// Returns InvalidTargetError if no service matches or if multiple services match (misconfiguration).
+// Returns StorageError for context cancellation/timeout.
+func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Check context before starting search
+	select {
+	case <-ctx.Done():
+		return nil, storage.NewStorageError(
+			"FindByProtectedResource",
+			storage.ErrorKindTimeout,
+			ctx.Err(),
+			"context cancelled or timeout",
+		)
+	default:
+	}
+
+	if resourceURI == "" {
+		return nil, tokenexchange.NewInvalidTargetError("resource parameter cannot be empty")
+	}
+
+	var matchingService *storage.ThirdpartyOAuth2Service
+	matchCount := 0
+
+	// Search all services for matching protected_resources (case-sensitive comparison)
+	for _, service := range r.services {
+		for _, resource := range service.ProtectedResources {
+			if resource == resourceURI {
+				matchingService = service
+				matchCount++
+				break
+			}
+		}
+	}
+
+	// No match found
+	if matchCount == 0 {
+		return nil, tokenexchange.NewInvalidTargetError("no service configured for the requested resource")
+	}
+
+	// Multiple matches found (misconfiguration - ambiguous resource)
+	if matchCount > 1 {
+		return nil, tokenexchange.NewInvalidTargetError("multiple services configured for the same resource")
+	}
+
+	// Return deep copy to prevent external mutation
+	return matchingService.Copy(), nil
 }
