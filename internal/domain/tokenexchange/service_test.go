@@ -505,63 +505,6 @@ func TestExchange_GrantExpiration(t *testing.T) {
 	})
 }
 
-// TestCalculateExpiresIn tests expiration time calculation
-func TestCalculateExpiresIn(t *testing.T) {
-	service, err := NewTokenExchangeServiceForTest(
-		&JWTValidator{},
-		&CELEvaluator{},
-		&MockServiceRepository{},
-		&oauth2session.OAuth2SessionService{},
-		newMockConsentService(),
-		&ports.TokenExchangeConfig{},
-	)
-	require.NoError(t, err)
-
-	tests := []struct {
-		name            string
-		session         *storagedomain.UserSession
-		expectExpiresIn int64
-		expectZero      bool
-	}{
-		{
-			name:            "no expiration",
-			session:         &storagedomain.UserSession{AccessTokenExpiresAt: nil},
-			expectExpiresIn: 0,
-			expectZero:      true,
-		},
-		{
-			name: "future expiration (1 hour)",
-			session: &storagedomain.UserSession{
-				AccessTokenExpiresAt: ptrTime(time.Now().UTC().Add(1 * time.Hour)),
-			},
-			expectExpiresIn: 3600, // approximately
-			expectZero:      false,
-		},
-		{
-			name: "past expiration",
-			session: &storagedomain.UserSession{
-				AccessTokenExpiresAt: ptrTime(time.Now().UTC().Add(-1 * time.Hour)),
-			},
-			expectExpiresIn: 0,
-			expectZero:      true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			expiresIn := service.calculateExpiresIn(tt.session)
-
-			if tt.expectZero {
-				assert.Equal(t, int64(0), expiresIn)
-			} else {
-				// Allow 10 second variance for test execution time
-				assert.GreaterOrEqual(t, expiresIn, int64(3590))
-				assert.LessOrEqual(t, expiresIn, int64(3610))
-			}
-		})
-	}
-}
-
 // TestBuildRequestContext tests CEL request context construction
 // NOTE: buildRequestContext is not currently exposed on TokenExchangeService
 // This test remains as documentation for the pattern once the method is public
@@ -686,11 +629,6 @@ func TestGrantVerification_ActiveGrant(t *testing.T) {
 		// T062a: Grant is active (not expired)
 		assert.True(t, activeGrant.ValidUntil.After(time.Now().UTC()))
 	}
-}
-
-// Helper function to create a pointer to time
-func ptrTime(t time.Time) *time.Time {
-	return &t
 }
 
 // TestMockOAuth2SessionService_NewMethods tests the newly added mock methods

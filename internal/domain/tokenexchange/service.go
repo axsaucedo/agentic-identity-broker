@@ -12,7 +12,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -306,32 +305,11 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	return response, nil
 }
 
-// calculateExpiresIn calculates the time-to-live for an access token in seconds.
-// Returns 0 if the session has no expiration or the token has expired.
-// This value is included in the RFC 8693 token exchange response to indicate
-// how long the returned access token is valid.
-func (s *TokenExchangeService) calculateExpiresIn(session *storagedomain.UserSession) int64 {
-	if session == nil || session.AccessTokenExpiresAt == nil {
-		return 0
-	}
-
-	now := time.Now().UTC()
-	expiresAt := *session.AccessTokenExpiresAt
-
-	// If already expired, return 0
-	if expiresAt.Before(now) {
-		return 0
-	}
-
-	// Calculate remaining seconds
-	return int64(expiresAt.Sub(now).Seconds())
-}
-
 // jwtToClaims converts a JWT token to a claims map for CEL evaluation.
 // Extracts all claims from the token into a flat map suitable for CEL expressions.
 // Uses the lestrrat-go/jwx library API for token introspection via Keys() and Get().
-func jwtToClaims(token jwt.Token) map[string]interface{} {
-	claims := make(map[string]interface{})
+func jwtToClaims(token jwt.Token) map[string]any {
+	claims := make(map[string]any)
 
 	// Extract standard claims
 	if iss, _ := token.Issuer(); iss != "" {
@@ -366,7 +344,7 @@ func jwtToClaims(token jwt.Token) map[string]interface{} {
 		// Avoid overwriting standard claims that were already extracted
 		if _, exists := claims[key]; !exists {
 			// Try to get the claim value
-			var value interface{}
+			var value any
 			if err := token.Get(key, &value); err == nil {
 				claims[key] = value
 			}
