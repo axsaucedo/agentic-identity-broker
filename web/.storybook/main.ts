@@ -19,7 +19,7 @@ const config: StorybookConfig = {
     options: {},
   },
   docs: {
-    autodocs: 'tag',
+    defaultName: 'Documentation',
   },
   viteFinal: async (config) => {
     return mergeConfig(config, {

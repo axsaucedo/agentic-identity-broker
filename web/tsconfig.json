@@ -28,7 +28,7 @@
       "@assets/*": ["src/assets/*"],
       "@styles/*": ["src/styles/*"]
     },
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+    "types": ["node", "vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "build", "**/*.test.ts", "**/*.test.tsx", "**/*.stories.tsx", "**/*.stories.ts"],
