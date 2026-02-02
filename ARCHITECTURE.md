@@ -400,6 +400,85 @@ Admin Server (Port 14000):
 - Validate API implementation compliance against documented spec
 - Reference for integration testing and contract validation
 
+#### 3.1.5. Encryption Vault for OAuth Tokens (Feature 012)
+
+**Purpose**: Secure at-rest encryption of OAuth2 tokens using envelope encryption with AWS Encryption SDK, protecting tokens from unauthorized access while maintaining developer transparency.
+
+**Architecture**: Port-adapter pattern implementing EncryptionPort interface with AWS KMS hierarchical keyring (production) and environment variable KEK injection (development).
+
+**Core Components**:
+
+- **EncryptionPort** (internal/ports/encryption.go): Domain interface defining Encrypt/Decrypt methods with encryption context parameter
+- **AWSAdapter** (internal/adapters/encryption/aws/): AWS Encryption SDK implementation with:
+  - Envelope encryption: DEK-per-token with KEK wrapping
+  - Context binding: Service isolation via encryption context AAD
+  - Support for AWS KMS ARN (production) and ${ENV_VAR} (development)
+  - Memory protection via AWS SDK baseline
+  - Hierarchical keyring with DynamoDB branch key caching (production)
+
+**Encryption Model**:
+
+```
+Token Encryption Flow:
+  1. Generate fresh DEK (Data Encryption Key) for this token
+  2. Encrypt token plaintext with DEK using AESGCMSIV
+  3. Bind encryption context (service_id) to DEK encryption as AAD
+  4. Wrap DEK with KEK (from AWS KMS or environment)
+  5. Bind same encryption context to KEK wrapping as AAD
+  6. Return serialized envelope: [wrapped_DEK || ciphertext || auth_tag]
+
+Token Decryption Flow:
+  1. Extract wrapped DEK, ciphertext, auth_tag from envelope
+  2. Provide encryption context (service_id) to decoder
+  3. Unwrap DEK with KEK, verifying context matches (context mismatch = fail-closed)
+  4. Decrypt ciphertext with DEK, verifying auth tag
+  5. Verify context at both DEK and KEK layers
+  6. Return plaintext token or error
+```
+
+**KEK Storage Mechanisms**:
+
+1. **Production (AWS KMS ARN)**:
+   - KEK reference via AWS KMS customer-managed key ARN
+   - Hierarchical keyring uses DynamoDB for branch key caching
+   - Reduces KMS API calls while maintaining security
+   - Configuration: `encryption.key: "arn:aws:kms:region:account:key/key-id"`
+   - No plaintext KEK in application memory (AWS SDK handles)
+
+2. **Development (Base64-Encoded Key)**:
+   - KEK provided as base64-encoded AES-256 key (typically from environment variable)
+   - Raw AES keyring (no AWS KMS dependency)
+   - Configuration: `encryption.key: "${ENCRYPTION_KEK}"` (resolves to base64 key)
+   - Environment variable interpolation allows flexible key injection
+
+**Service Integration**:
+
+- **OAuth2SessionService**: Transparently encrypts tokens on CreateSession, decrypts on retrieval
+- **UserSessionRepository**: Stores EncryptedAccessToken and EncryptedRefreshToken as BYTEA columns
+- No manual encryption steps required in calling code - encryption is transparent
+
+**Security Properties**:
+
+- **Context Binding**: Service-level isolation - tokens encrypted for service A cannot be used for service B (context verification at DEK and KEK layers)
+- **Fail-Closed**: No plaintext fallback on encryption/decryption failure (errors propagate)
+- **Authenticated Encryption**: AESGCMSIV provides both confidentiality and authenticity
+- **Fresh DEK Per Token**: Unique DEK for each token prevents cross-token analysis
+- **Audit Logging**: All operations logged with error_kind, service_id, and operation type
+
+**Performance**:
+
+- Local encryption/decryption: <5ms per operation
+- AWS KMS operations: 50-200ms (depends on KMS latency + DynamoDB branch key caching)
+- Session operations: <100ms typical (includes token encryption overhead)
+- Branch key cache improves production performance by reducing KMS calls
+
+**Testing**:
+
+- E2E tests (24 scenarios) covering all acceptance criteria from spec
+- Unit tests for adapter error handling, context verification, DEK uniqueness
+- Integration tests with LocalStack KMS and real PostgreSQL storage
+- Backward compatibility tests for KEK rotation scenarios
+
 ## 4. Data Stores
 
 (List and describe the databases and other persistent storage solutions used.)
@@ -490,6 +569,10 @@ This section lists all architectural decisions made for this project. ADRs docum
 ### RFC 8693 Token Exchange
 - [ADR 008: Token Exchange JWKS Adapter Pattern](adrs/008-token-exchange-jwks-adapter-pattern.md) - HTTP abstraction for JWKS fetching and caching
 
+### Security & Encryption
+- [ADR 008: Encryption Context Optimization](adrs/008-encryption-context-optimization.md) - Service-ID-only context binding performance optimization
+- [ADR 009: Envelope Encryption Design](adrs/009-envelope-encryption-design.md) - DEK-per-session with AWS KMS and context binding
+
 ## 11. Project Identification
 
 Project Name: Agentic Identity Broker
@@ -519,6 +602,22 @@ Define any project-specific terms or acronyms.)
 **ConfigPort**: Hexagonal architecture port (interface) for accessing configuration. Domain logic depends on this interface, not concrete implementations.
 
 **Configuration Adapter**: Implementation of ConfigPort using Viper/Cobra/godotenv. Located in internal/config/ directory.
+
+### Encryption Domain
+
+**Envelope Encryption**: A cryptographic pattern where data is encrypted with a Data Encryption Key (DEK), then the DEK is encrypted with a Key Encryption Key (KEK). This enables secure storage with only a single KMS call per session while protecting token material with symmetric encryption.
+
+**DEK**: Data Encryption Key. A symmetric encryption key (AES-256) used to encrypt sensitive data like OAuth2 tokens. Generated randomly per session, never stored in plaintext, and always wrapped by the KEK before storage.
+
+**KEK**: Key Encryption Key. A key used to encrypt/wrap the DEK. In AWS implementation, this is an AWS KMS customer-managed key (CMK) referenced by ARN. The KEK never leaves the secure boundary and is managed by AWS KMS.
+
+**EncryptionContext**: Additional authenticated data (AAD) bound to ciphertext during encryption but not encrypted itself. Used to provide cryptographic isolation between different services. Implemented as a map[string]string containing only the service_id field for performance optimization (ADR 008).
+
+**EncryptionPort**: Hexagonal architecture interface for encryption operations. Abstracts the domain from specific encryption implementations (AWS KMS, envelope encryption, etc.), allowing testability and implementation flexibility while ensuring consistent encryption behavior.
+
+**AAD**: Additional Authenticated Data. Data that is authenticated but not encrypted as part of AEAD (Authenticated Encryption with Associated Data) schemes. Used in encryption context to prevent cross-context token usage.
+
+**AESGCMSIV**: AES in Galois/Counter Mode with Synthetic Initialization Vector. A misuse-resistant authenticated encryption mode that provides both confidentiality and authenticity. Used for DEK-based token encryption with deterministic nonce generation.
 
 ### Session Management Domain
 
@@ -565,6 +664,14 @@ Define any project-specific terms or acronyms.)
 **Cascade Delete**: When an agent is deleted, all user grants referencing that agent are automatically deleted (FR-020). This maintains referential integrity and prevents orphaned grants. Implemented at the repository layer.
 
 **Service Protection**: Business rule preventing deletion of an OAuth2 service if any active grants reference it (returns 409 Conflict). Ensures grants don't reference non-existent services. Requires revocation of all referencing grants before service deletion.
+
+### AWS Encryption Vault Domain Model
+
+**UserSession**: Domain aggregate representing the complete lifecycle of a user's session with a third-party OAuth2 provider. Contains encrypted access/refresh tokens, expiration metadata, and manages token encryption/decryption through the EncryptionPort. Enforces one session per (principal, service_id) with automatic token refresh and secure deletion.
+
+**EncryptionContext**: Domain value object containing metadata that cryptographically binds encrypted tokens to their usage context. Implemented as an immutable map[string]string with service_id as the primary binding field. Prevents cross-service token usage and provides audit trail for encryption operations.
+
+**EncryptionPort**: Port interface defining the boundary between domain logic and encryption adapters. Provides Encrypt/Decrypt methods with context parameter, enabling the domain to remain independent of specific encryption implementations (AWS KMS, local encryption, etc.). Implementations perform envelope encryption with DEK-per-session pattern and context binding validation.
 
 ### Third-Party OAuth2 Session Management
 

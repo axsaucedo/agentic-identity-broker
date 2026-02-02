@@ -139,9 +139,23 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("third_party_oauth2.state_token_ttl", "IDENTITY_BROKER_STATE_TOKEN_TTL")
 	_ = l.v.BindEnv("third_party_oauth2.pkce_verifier_length", "IDENTITY_BROKER_PKCE_VERIFIER_LENGTH")
 
+	// Bind encryption configuration to environment variables
+	// AWS KMS backend
+	_ = l.v.BindEnv("encryption.aws_kms.key_arn", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN")
+	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_table_name", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME")
+	_ = l.v.BindEnv("encryption.aws_kms.branch_key_ttl", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL")
+	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_region", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION")
+	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_read_timeout", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT")
+	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_write_timeout", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT")
+	// Memory backend
+	_ = l.v.BindEnv("encryption.memory.raw_key", "IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY")
+
 	// Set OAuth2 configuration defaults
 	l.v.SetDefault("third_party_oauth2.state_token_ttl", "10m")
 	l.v.SetDefault("third_party_oauth2.pkce_verifier_length", 32)
+
+	// Note: No encryption configuration defaults set here to avoid creating
+	// both backend structs. Defaults are handled in the adapter factory functions.
 
 	// Set security configuration defaults
 	l.v.SetDefault("security.skip_thirdparty_https_validation", false)

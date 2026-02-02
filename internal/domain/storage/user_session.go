@@ -28,11 +28,9 @@ type UserSession struct {
 
 // EncryptionContext holds metadata for token encryption/decryption.
 // This is stored in JSONB and included as AAD (Additional Authenticated Data).
+// Simplified to service_id-only for performance optimization (ADR 008).
 type EncryptionContext struct {
-	Principal string `json:"principal"`
-	ServiceID string `json:"service_id"`
-	SessionID string `json:"session_id"`
-	Purpose   string `json:"purpose"` // Always "oauth2_token"
+	ServiceID string `json:"service_id"` // OAuth service identifier
 }
 
 // Value implements driver.Valuer for EncryptionContext (JSONB serialization).
@@ -41,7 +39,7 @@ func (ec EncryptionContext) Value() (driver.Value, error) {
 }
 
 // Scan implements sql.Scanner for EncryptionContext (JSONB deserialization).
-func (ec *EncryptionContext) Scan(value interface{}) error {
+func (ec *EncryptionContext) Scan(value any) error {
 	if value == nil {
 		return nil
 	}

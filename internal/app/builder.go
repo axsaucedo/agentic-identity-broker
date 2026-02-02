@@ -10,6 +10,8 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	encmemory "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
@@ -22,6 +24,7 @@ import (
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -32,10 +35,12 @@ type App struct {
 	Config *ports.Config
 
 	// Repositories
-	Storage *storage.Adapter
+	Storage          *storage.Adapter
+	BranchKeyManager ports.BranchKeyManager
 
 	// Domain services
 	ConsentService       *consentservice.Service
+	AuthProvider         *services.ThirdpartyOAuth2ServiceProvider
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
 	TokenExchangeService *tokenexchange.TokenExchangeService
@@ -62,7 +67,8 @@ type Builder struct {
 	config                 *ports.Config
 	storage                *storage.Adapter
 	logger                 *slog.Logger
-	encryption             ports.EncryptionPort // Optional: custom encryption implementation
+	encryption             ports.EncryptionPort   // Optional: custom encryption implementation
+	branchKeyManager       ports.BranchKeyManager // Optional: custom branch key manager
 	staticWebResourcesPath string
 }
 
@@ -96,6 +102,14 @@ func (b *Builder) WithLogger(logger *slog.Logger) *Builder {
 // Use this to inject a production encryption adapter.
 func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
 	b.encryption = encryptor
+	return b
+}
+
+// WithBranchKeyManager sets a custom branch key manager for the builder.
+// If not set, defaults based on keyring type (AWS manager or in-memory).
+// Use this to inject a test or custom branch key manager.
+func (b *Builder) WithBranchKeyManager(mgr ports.BranchKeyManager) *Builder {
+	b.branchKeyManager = mgr
 	return b
 }
 
@@ -142,6 +156,15 @@ func (b *Builder) Build() (*App, error) {
 		)
 	}
 
+	// Create auth provider service if services repository available
+	if b.storage.Services() != nil {
+		app.AuthProvider = services.NewAuthProvider(
+			b.storage.Services(),
+			b.branchKeyManager, // May be nil if no encryption backend configured
+			b.logger,
+		)
+	}
+
 	// Create OAuth2 service if configuration available
 	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
 		app.OAuth2Service = oauth2service.NewService(
@@ -180,12 +203,53 @@ func (b *Builder) Build() (*App, error) {
 	// Constitution Principle VII: Configuration-Driven Design
 	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
 
-	// Use configured encryption or no-op for development
+	// Initialize encryption adapter based on configuration or builder override
+	// Constitution Principle VII: Configuration-Driven Design
 	var encryptor ports.EncryptionPort
 	if b.encryption != nil {
+		// Builder override takes precedence (for testing)
 		encryptor = b.encryption
+	} else if b.config.Encryption.AWSKMS != nil || b.config.Encryption.Memory != nil {
+		// Production/Development: Use new backend-explicit configuration factory
+		// The factory handles backend detection and validation automatically
+		adapter, branchKeyManager, err := awsencryption.NewEncryptionAdapter(&b.config.Encryption)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize encryption adapter: %w", err)
+		}
+		encryptor = adapter
+
+		// Wire branch key manager if available (for all backends except no-op)
+		if branchKeyManager != nil && b.branchKeyManager == nil {
+			b.branchKeyManager = branchKeyManager
+		}
+
+		// Log initialization with backend information
+		if b.config.Encryption.AWSKMS != nil {
+			b.logger.Info("AWS KMS encryption adapter initialized",
+				"dynamodb_table", b.config.Encryption.AWSKMS.DynamoDBTableName,
+				"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
+				"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
+				"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
+				"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
+				"branch_key_manager_wired", branchKeyManager != nil)
+		} else if b.config.Encryption.Memory != nil {
+			b.logger.Info("Memory encryption adapter initialized",
+				"branch_key_manager_wired", branchKeyManager != nil)
+		}
 	} else {
 		encryptor = noop.NewNoOpEncryption()
+		b.logger.Info("No-op encryption enabled (development mode)")
+
+		// Wire in-memory BranchKeyManager for development if not already set
+		if b.branchKeyManager == nil {
+			b.branchKeyManager = encmemory.NewInMemoryBranchKeyRepository()
+			b.logger.Info("BranchKeyManager wired from in-memory implementation (development mode)")
+		}
+	}
+
+	// Assign BranchKeyManager to app if wired
+	if b.branchKeyManager != nil {
+		app.BranchKeyManager = b.branchKeyManager
 	}
 
 	// Create HTTP client for token endpoint with configured timeout
@@ -269,7 +333,7 @@ func (b *Builder) Build() (*App, error) {
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
 		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
-		Services: admin.NewServicesHandler(b.storage.Services(), b.config, b.logger),
+		Services: admin.NewServicesHandler(app.AuthProvider, b.config, b.logger),
 	}
 
 	// Create agent detail handler with repository dependencies for service requirements (Phase 6)

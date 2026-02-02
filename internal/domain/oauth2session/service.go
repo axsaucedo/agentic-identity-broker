@@ -412,17 +412,17 @@ func (s *OAuth2SessionService) createSession(
 		return nil, fmt.Errorf("failed to query existing session: %w", err)
 	}
 
-	// Build encryption context for this session
-	// Note: sessionID will be assigned below, so we need to do this after determining ID
 	var encryptedAccess []byte
 	var encryptedRefresh []byte
 
-	encContext := map[string]string{
+	// Create encryption context for this session bound to service (cryptographic service isolation)
+	// This ensures tokens encrypted for one service cannot be decrypted with another service's context
+	encryptionContext := map[string]string{
 		"service_id": serviceID,
 	}
 
 	// Encrypt access token
-	encryptedAccess, err = s.encryption.Encrypt(ctx, []byte(token.AccessToken), encContext)
+	encryptedAccess, err = s.encryption.Encrypt(ctx, []byte(token.AccessToken), encryptionContext)
 	if err != nil {
 		s.logger.Error("failed to encrypt access token", "err", err)
 		return nil, fmt.Errorf("failed to encrypt access token: %w", err)
@@ -430,7 +430,7 @@ func (s *OAuth2SessionService) createSession(
 
 	// Encrypt refresh token if present
 	if token.RefreshToken != "" {
-		encryptedRefresh, err = s.encryption.Encrypt(ctx, []byte(token.RefreshToken), encContext)
+		encryptedRefresh, err = s.encryption.Encrypt(ctx, []byte(token.RefreshToken), encryptionContext)
 		if err != nil {
 			s.logger.Error("failed to encrypt refresh token", "err", err)
 			return nil, fmt.Errorf("failed to encrypt refresh token: %w", err)
