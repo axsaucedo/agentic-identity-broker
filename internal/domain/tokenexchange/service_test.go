@@ -64,8 +64,8 @@ func (m *MockAgentRepository) List(ctx context.Context) ([]*storagedomain.Agent,
 type MockOAuth2SessionService struct {
 	RefreshAccessTokenFn       func(ctx context.Context, service *storagedomain.ThirdpartyOAuth2Service, refreshToken string) (*oauth2.Token, error)
 	UpdateSessionTokensFn      func(ctx context.Context, principal string, session *storagedomain.UserSession, newToken *oauth2.Token) error
-	DecryptAccessTokenFn       func(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error)
-	DecryptRefreshTokenFn      func(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error)
+	DecryptAccessTokenFn       func(ctx context.Context, session *storagedomain.UserSession) (string, error)
+	DecryptRefreshTokenFn      func(ctx context.Context, session *storagedomain.UserSession) (string, error)
 	GetValidAccessTokenFn      func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error)
 	GetSessionWithValidTokenFn func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error)
 }
@@ -84,16 +84,16 @@ func (m *MockOAuth2SessionService) UpdateSessionTokens(ctx context.Context, prin
 	return nil
 }
 
-func (m *MockOAuth2SessionService) DecryptAccessToken(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error) {
+func (m *MockOAuth2SessionService) DecryptAccessToken(ctx context.Context, session *storagedomain.UserSession) (string, error) {
 	if m.DecryptAccessTokenFn != nil {
-		return m.DecryptAccessTokenFn(ctx, principal, session)
+		return m.DecryptAccessTokenFn(ctx, session)
 	}
 	return "", nil
 }
 
-func (m *MockOAuth2SessionService) DecryptRefreshToken(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error) {
+func (m *MockOAuth2SessionService) DecryptRefreshToken(ctx context.Context, session *storagedomain.UserSession) (string, error) {
 	if m.DecryptRefreshTokenFn != nil {
-		return m.DecryptRefreshTokenFn(ctx, principal, session)
+		return m.DecryptRefreshTokenFn(ctx, session)
 	}
 	return "", nil
 }

@@ -690,7 +690,7 @@ func (s *OAuth2SessionService) RefreshAccessToken(
 //   - error if encryption or persistence fails
 //
 // The session is modified in-place and persisted with upsert semantics.
-// Encryption context binds tokens to principal/service/session for additional security.
+// Encryption context binds tokens to service_id only per ADR 008 for performance optimization.
 func (s *OAuth2SessionService) UpdateSessionTokens(
 	ctx context.Context,
 	principal string,
@@ -705,11 +705,9 @@ func (s *OAuth2SessionService) UpdateSessionTokens(
 		return fmt.Errorf("new token cannot be nil")
 	}
 
-	// Build encryption context for this session
+	// Build encryption context for this session - uses service_id only per ADR 008
 	encContext := map[string]string{
-		"principal":  principal,
 		"service_id": session.ServiceID,
-		"session_id": session.ID,
 	}
 
 	// Encrypt new access token
