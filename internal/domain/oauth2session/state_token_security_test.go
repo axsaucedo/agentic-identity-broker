@@ -2,6 +2,7 @@ package oauth2session_test
 
 import (
 	"log/slog"
+	"net/http"
 	"testing"
 	"time"
 
@@ -247,6 +248,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 		grantRepo1,
 		agentRepo1,
 		nil,
+		&http.Client{},
 		key1,
 		config,
 		slog.Default(),
@@ -271,6 +273,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 		grantRepo2,
 		agentRepo2,
 		nil,
+		&http.Client{},
 		key2,
 		config,
 		slog.Default(),

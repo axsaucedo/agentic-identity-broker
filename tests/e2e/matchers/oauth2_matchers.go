@@ -3,7 +3,9 @@
 package matchers
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -465,7 +467,7 @@ func (m *queryParamsMatcher) NegatedFailureMessage(actual interface{}) string {
 }
 
 // HaveStatusCode is a simple matcher for HTTP status codes.
-// Provides clear error messages for status code assertions.
+// Provides clear error messages for status code assertions with human-readable status names.
 func HaveStatusCode(expectedStatus int) types.GomegaMatcher {
 	return &statusCodeMatcher{
 		expectedStatus: expectedStatus,
@@ -492,9 +494,173 @@ func (m *statusCodeMatcher) Match(actual interface{}) (success bool, err error) 
 }
 
 func (m *statusCodeMatcher) FailureMessage(actual interface{}) string {
-	return fmt.Sprintf("Expected HTTP status %d, got %d", m.expectedStatus, m.actualStatus)
+	return fmt.Sprintf("Expected HTTP status:\n  %d %s\nbut got:\n  %d %s",
+		m.expectedStatus, http.StatusText(m.expectedStatus),
+		m.actualStatus, http.StatusText(m.actualStatus))
 }
 
 func (m *statusCodeMatcher) NegatedFailureMessage(actual interface{}) string {
-	return fmt.Sprintf("Expected HTTP status not to be %d", m.expectedStatus)
+	return fmt.Sprintf("Expected HTTP status not to be %d %s", m.expectedStatus, http.StatusText(m.expectedStatus))
+}
+
+// HaveTokenExchangeSuccess is a Gomega matcher for RFC 8693 token exchange success responses.
+// Validates:
+// - Content-Type is application/json
+// - Response contains required RFC 8693 fields: access_token, token_type, issued_token_type
+// - Optionally validates specific field values
+// Note: This matcher does not check HTTP status code. Use HaveStatusCode(http.StatusOK) for that.
+func HaveTokenExchangeSuccess() *tokenExchangeSuccessMatcher {
+	return &tokenExchangeSuccessMatcher{
+		expectedFields: make(map[string]interface{}),
+	}
+}
+
+type tokenExchangeSuccessMatcher struct {
+	expectedFields map[string]interface{}
+	actualBody     map[string]interface{}
+	contentType    string
+	error          string
+}
+
+// WithAccessToken sets an expected access_token value.
+func (m *tokenExchangeSuccessMatcher) WithAccessToken(token string) *tokenExchangeSuccessMatcher {
+	m.expectedFields["access_token"] = token
+	return m
+}
+
+// WithTokenType sets an expected token_type value (default: "Bearer").
+func (m *tokenExchangeSuccessMatcher) WithTokenType(tokenType string) *tokenExchangeSuccessMatcher {
+	m.expectedFields["token_type"] = tokenType
+	return m
+}
+
+// WithIssuedTokenType sets an expected issued_token_type value.
+func (m *tokenExchangeSuccessMatcher) WithIssuedTokenType(issuedType string) *tokenExchangeSuccessMatcher {
+	m.expectedFields["issued_token_type"] = issuedType
+	return m
+}
+
+// WithExpiresIn sets an expected expires_in value (in seconds).
+// Allows ±1 second tolerance to account for timing variations in testing.
+func (m *tokenExchangeSuccessMatcher) WithExpiresIn(seconds int) *tokenExchangeSuccessMatcher {
+	m.expectedFields["expires_in"] = float64(seconds)
+	m.expectedFields["_expires_in_tolerance"] = true // Flag for special handling
+	return m
+}
+
+func (m *tokenExchangeSuccessMatcher) Match(actual interface{}) (success bool, err error) {
+	resp, ok := actual.(*http.Response)
+	if !ok {
+		return false, fmt.Errorf("HaveTokenExchangeSuccess matcher expects an *http.Response, got %T", actual)
+	}
+
+	if resp == nil {
+		m.error = "response is nil"
+		return false, nil
+	}
+
+	m.contentType = resp.Header.Get("Content-Type")
+
+	// Check Content-Type
+	if !strings.Contains(m.contentType, "application/json") {
+		m.error = fmt.Sprintf("expected Content-Type application/json, got %s", m.contentType)
+		return false, nil
+	}
+
+	// Parse JSON body
+	if resp.Body == nil {
+		m.error = "response body is nil"
+		return false, nil
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		m.error = fmt.Sprintf("failed to read response body: %v", err)
+		return false, nil
+	}
+
+	// Reset body for potential re-reading
+	resp.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		m.error = fmt.Sprintf("failed to parse JSON: %v", err)
+		return false, nil
+	}
+
+	m.actualBody = body
+
+	// Check required RFC 8693 fields
+	requiredFields := []string{"access_token", "token_type", "issued_token_type"}
+	for _, field := range requiredFields {
+		if _, exists := body[field]; !exists {
+			m.error = fmt.Sprintf("missing required RFC 8693 field: %s", field)
+			return false, nil
+		}
+	}
+
+	// Check expected field values if specified
+	for field, expectedValue := range m.expectedFields {
+		// Skip internal flags
+		if field == "_expires_in_tolerance" {
+			continue
+		}
+
+		actualValue, exists := body[field]
+		if !exists {
+			m.error = fmt.Sprintf("expected field %q not found in response", field)
+			return false, nil
+		}
+
+		// Special handling for expires_in with tolerance
+		if field == "expires_in" && m.expectedFields["_expires_in_tolerance"] == true {
+			expectedSeconds, ok := expectedValue.(float64)
+			if !ok {
+				m.error = fmt.Sprintf("expected expires_in to be numeric, got %T", expectedValue)
+				return false, nil
+			}
+			actualSeconds, ok := actualValue.(float64)
+			if !ok {
+				m.error = fmt.Sprintf("actual expires_in is not numeric: %v", actualValue)
+				return false, nil
+			}
+			// Allow ±1 second tolerance for timing variations
+			if actualSeconds < expectedSeconds-1 || actualSeconds > expectedSeconds+1 {
+				m.error = fmt.Sprintf("field %q mismatch: expected %v (±1s), got %v", field, expectedSeconds, actualSeconds)
+				return false, nil
+			}
+		} else if actualValue != expectedValue {
+			m.error = fmt.Sprintf("field %q mismatch: expected %v, got %v", field, expectedValue, actualValue)
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func (m *tokenExchangeSuccessMatcher) FailureMessage(actual interface{}) string {
+	msg := "Expected successful RFC 8693 token exchange response"
+	if m.contentType != "" {
+		msg += fmt.Sprintf("\nContent-Type: %s", m.contentType)
+	}
+	if m.error != "" {
+		msg += fmt.Sprintf("\nError: %s", m.error)
+	}
+	if len(m.actualBody) > 0 {
+		msg += "\nActual response body:"
+		for k, v := range m.actualBody {
+			msg += fmt.Sprintf("\n  %s: %v", k, v)
+		}
+	}
+	if len(m.expectedFields) > 0 {
+		msg += "\nExpected fields:"
+		for k, v := range m.expectedFields {
+			msg += fmt.Sprintf("\n  %s: %v", k, v)
+		}
+	}
+	return msg
+}
+
+func (m *tokenExchangeSuccessMatcher) NegatedFailureMessage(actual interface{}) string {
+	return "Expected response NOT to be a successful RFC 8693 token exchange"
 }

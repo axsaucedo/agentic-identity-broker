@@ -54,6 +54,14 @@ func (m *MockThirdpartyOAuth2ServiceRepository) CountGrantsReferencingService(ct
 	return args.Int(0), args.Error(1)
 }
 
+func (m *MockThirdpartyOAuth2ServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx, resourceURI)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
 // MockBranchKeyManager is a mock implementation of ports.BranchKeyManager
 type MockBranchKeyManager struct {
 	mock.Mock

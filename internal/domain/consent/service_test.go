@@ -141,6 +141,20 @@ func (m *mockServiceRepo) CountGrantsReferencingService(ctx context.Context, ser
 	return 0, nil
 }
 
+func (m *mockServiceRepo) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	for _, service := range m.services {
+		for _, resource := range service.ProtectedResources {
+			if resource == resourceURI {
+				return service.Copy(), nil
+			}
+		}
+	}
+	return nil, ports.ErrNotFound
+}
+
 type mockGrantRepo struct {
 	grants map[string]*storage.UserGrant
 	err    error

@@ -1570,6 +1570,7 @@ func createOAuth2SessionService(
 		grantRepo,
 		agentRepo,
 		encryption,
+		&http.Client{},
 		jweKey,
 		config,
 		slog.Default(),

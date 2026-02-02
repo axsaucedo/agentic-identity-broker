@@ -164,7 +164,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create active grant for default principal
-			grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID)
+			grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
 			err = testStorage.UserGrants().Create(context.Background(), grant)
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -215,7 +215,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create expired grant using test method that bypasses validation
-			expiredGrant := fixtures.ExpiredGrant(fixtures.DefaultPrincipal().String(), agent.ID)
+			expiredGrant := fixtures.ExpiredGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
 			memRepo, ok := testStorage.UserGrants().(*storagememory.UserGrantRepository)
 			if !ok {
 				Skip("Test requires memory storage for CreateTestGrant method")
@@ -278,7 +278,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create active grant
-			grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID)
+			grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
 			err = testStorage.UserGrants().Create(context.Background(), grant)
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -349,7 +349,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 
 		Context("and active grant exists (proxy to upstream)", func() {
 			BeforeEach(func() {
-				grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID)
+				grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
 				err := testStorage.UserGrants().Create(context.Background(), grant)
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -391,7 +391,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create grant only for default principal
-			grantDefault := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID)
+			grantDefault := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
 			err = testStorage.UserGrants().Create(context.Background(), grantDefault)
 			Expect(err).ToNot(HaveOccurred())
 

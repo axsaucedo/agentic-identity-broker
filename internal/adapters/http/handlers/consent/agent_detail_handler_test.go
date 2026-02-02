@@ -494,6 +494,10 @@ func (m *mockServiceRepository) CountGrantsReferencingService(ctx context.Contex
 	return 0, errors.New("not implemented")
 }
 
+func (m *mockServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	return nil, errors.New("not implemented")
+}
+
 // Tests for buildServiceRequirementsForUser method
 
 func TestBuildServiceRequirementsForUser_NoRequirements(t *testing.T) {

@@ -132,6 +132,42 @@ export IDENTITY_BROKER_JWE_SIGNING_KEY="$(openssl rand -base64 32)"
 **Security Note:** The JWE signing key MUST be kept secret. It protects OAuth2 state
 tokens during the authorization flow. Compromise allows state token forgery and CSRF attacks.
 
+### `token-exchange.yaml`
+
+RFC 8693 OAuth 2.0 Token Exchange configuration. Demonstrates:
+- CEL expressions for claim extraction from JWT tokens (principal and agent ID)
+- Gateway authorization rules using CEL expressions
+- Automatic token refresh configuration
+- Security-first design with mandatory JWT validation
+- Support for both minimal and complex authorization scenarios
+
+**Usage:**
+```bash
+# Include token_exchange section in your main configuration file
+./agentic-identity-broker --config ./examples/config/config.yaml
+
+# Where config.yaml includes token_exchange section:
+token_exchange:
+  claim_extraction:
+    principal_expression: "subject_token.sub"
+    agent_client_id_expression: "subject_token.azp"
+  authorization:
+    type: "cel"
+    cel:
+      expression: 'true'  # or more complex authorization rules
+  refresh:
+    enabled: true
+```
+
+**Key Features:**
+- RFC 8693 compliant token exchange endpoint
+- JWT validation against upstream OAuth2 JWKS (mandatory, no bypass)
+- CEL-based gateway authorization policies
+- Resource-based service discovery via protected_resources
+- Automatic token refresh with configurable behavior
+- Support for custom claim extraction expressions
+- Complete audit logging of token exchange events
+
 ### `oauth2-authorization-server.yaml`
 
 OAuth2 Authorization Server proxy configuration. Demonstrates:

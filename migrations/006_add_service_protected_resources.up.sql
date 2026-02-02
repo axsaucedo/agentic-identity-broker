@@ -1,0 +1,19 @@
+-- Add protected_resources column to thirdparty_oauth2_services table for RFC 8693 token exchange
+-- This allows services to specify which resource URIs they can provide tokens for
+
+-- Add protected_resources column as TEXT[] array with default empty array
+ALTER TABLE thirdparty_oauth2_services
+ADD COLUMN protected_resources TEXT[] DEFAULT '{}';
+
+-- Create GIN index for efficient array containment lookups
+-- The @> operator with GIN index enables efficient resource discovery queries
+CREATE INDEX idx_thirdparty_oauth2_services_protected_resources
+ON thirdparty_oauth2_services USING GIN (protected_resources);
+
+-- Add column comment for documentation
+COMMENT ON COLUMN thirdparty_oauth2_services.protected_resources IS
+'Array of normalized resource URIs that map to this service for RFC 8693 token exchange. URIs are normalized with trailing slashes removed for consistent matching. Used with @> operator for resource discovery queries.';
+
+-- Add index comment for documentation
+COMMENT ON INDEX idx_thirdparty_oauth2_services_protected_resources IS
+'GIN index enabling efficient resource URI lookups for token exchange. Supports @> containment operator for finding services by resource URI.';

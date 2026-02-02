@@ -61,7 +61,7 @@ var _ = Describe("Consent Flow", func() {
 		// Step 3: Create a grant linking the agent to the current user
 		// This makes the agent appear in the user's consent page with delegated services/scopes
 		principal := fixtures.DefaultPrincipal().String()
-		grant := fixtures.IndefiniteGrant(principal, testAgentID)
+		grant := fixtures.IndefiniteGrant(principal, testAgentID, "github-service", []string{"repo", "user"})
 		err = GetTestStorage().UserGrants().Create(ctx, grant)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create test grant")
 
