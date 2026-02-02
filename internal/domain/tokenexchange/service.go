@@ -241,16 +241,16 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 		return nil, NewServerErrorWithCause("failed to verify user grant", err)
 	}
 
-	// Step 10: Get valid access token (with transparent refresh if needed)
+	// Step 10: Get valid access token with session metadata (with transparent refresh if needed)
 	// This single call handles:
 	// - Fetching the session from storage
 	// - Checking if access token is expired
 	// - Automatically refreshing if refresh token is available
-	// - Decrypting and returning valid token
+	// - Decrypting and returning valid token along with session metadata
 	//
 	// Per T075: invalid_grant if session doesn't exist
 	// Per T076: invalid_grant if both tokens are expired
-	accessToken, err := s.oauth2SessionService.GetValidAccessToken(ctx, principal, service.ID)
+	sessionObj, accessToken, err := s.oauth2SessionService.GetValidAccessToken(ctx, principal, service.ID)
 	if err != nil {
 		// Map oauth2session errors to RFC 8693 token exchange errors
 		if errors.Is(err, oauth2session.ErrSessionNotFound) {
@@ -277,15 +277,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 		return nil, NewServerErrorWithCause("failed to get valid access token", err)
 	}
 
-	// Step 11: Get session metadata for response construction
-	// Need scope, token_type, and expires_in for RFC 8693 response
-	sessionObj, _, err := s.oauth2SessionService.GetSessionWithValidToken(ctx, principal, service.ID)
-	if err != nil {
-		// This should not happen since GetValidAccessToken just succeeded
-		return nil, NewServerErrorWithCause("failed to get session metadata for response", err)
-	}
-
-	// Step 12: Build and return RFC 8693 response
+	// Step 11: Build and return RFC 8693 response
 	// Calculate expires_in from session's current access token expiration
 	now := time.Now().UTC()
 	expiresIn := int64(0)

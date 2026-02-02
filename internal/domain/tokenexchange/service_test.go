@@ -66,7 +66,7 @@ type MockOAuth2SessionService struct {
 	UpdateSessionTokensFn      func(ctx context.Context, principal string, session *storagedomain.UserSession, newToken *oauth2.Token) error
 	DecryptAccessTokenFn       func(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error)
 	DecryptRefreshTokenFn      func(ctx context.Context, principal string, session *storagedomain.UserSession) (string, error)
-	GetValidAccessTokenFn      func(ctx context.Context, principal string, serviceID string) (string, error)
+	GetValidAccessTokenFn      func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error)
 	GetSessionWithValidTokenFn func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error)
 }
 
@@ -98,11 +98,19 @@ func (m *MockOAuth2SessionService) DecryptRefreshToken(ctx context.Context, prin
 	return "", nil
 }
 
-func (m *MockOAuth2SessionService) GetValidAccessToken(ctx context.Context, principal string, serviceID string) (string, error) {
+func (m *MockOAuth2SessionService) GetValidAccessToken(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error) {
 	if m.GetValidAccessTokenFn != nil {
 		return m.GetValidAccessTokenFn(ctx, principal, serviceID)
 	}
-	return "mock-access-token", nil
+	// Return a mock session and token
+	session := &storagedomain.UserSession{
+		ID:        "mock-session-id",
+		Principal: principal,
+		ServiceID: serviceID,
+		TokenType: "Bearer",
+		Scope:     []string{"read", "write"},
+	}
+	return session, "mock-access-token", nil
 }
 
 func (m *MockOAuth2SessionService) GetSessionWithValidToken(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error) {
@@ -637,18 +645,29 @@ func TestMockOAuth2SessionService_NewMethods(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("GetValidAccessToken with default behavior", func(t *testing.T) {
-		token, err := mock.GetValidAccessToken(ctx, "user@example.com", "service-123")
+		session, token, err := mock.GetValidAccessToken(ctx, "user@example.com", "service-123")
 		assert.NoError(t, err)
 		assert.Equal(t, "mock-access-token", token)
+		assert.NotNil(t, session)
+		assert.Equal(t, "user@example.com", session.Principal)
+		assert.Equal(t, "service-123", session.ServiceID)
 	})
 
 	t.Run("GetValidAccessToken with custom function", func(t *testing.T) {
-		mock.GetValidAccessTokenFn = func(ctx context.Context, principal string, serviceID string) (string, error) {
-			return "custom-token", nil
+		customSession := &storagedomain.UserSession{
+			ID:        "custom-session-id",
+			Principal: "user@example.com",
+			ServiceID: "service-123",
+			TokenType: "Custom",
+			Scope:     []string{"custom"},
 		}
-		token, err := mock.GetValidAccessToken(ctx, "user@example.com", "service-123")
+		mock.GetValidAccessTokenFn = func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error) {
+			return customSession, "custom-token", nil
+		}
+		session, token, err := mock.GetValidAccessToken(ctx, "user@example.com", "service-123")
 		assert.NoError(t, err)
 		assert.Equal(t, "custom-token", token)
+		assert.Equal(t, customSession, session)
 	})
 
 	t.Run("GetSessionWithValidToken with default behavior", func(t *testing.T) {
