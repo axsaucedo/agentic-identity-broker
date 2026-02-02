@@ -17,6 +17,7 @@ type AuthProvider interface {
 	Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
 	Delete(ctx context.Context, clientID string) error
 	List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error)
+	FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error)
 }
 
 // ThirdpartyOAuth2ServiceProvider orchestrates third-party OAuth2 service management with branch key provisioning.
@@ -91,4 +92,9 @@ func (ap *ThirdpartyOAuth2ServiceProvider) Delete(ctx context.Context, clientID 
 // List retrieves all services, delegating to the repository.
 func (ap *ThirdpartyOAuth2ServiceProvider) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
 	return ap.serviceRepository.List(ctx)
+}
+
+// FindByProtectedResource finds a service by protected resource URI, delegating to the repository.
+func (ap *ThirdpartyOAuth2ServiceProvider) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	return ap.serviceRepository.FindByProtectedResource(ctx, resourceURI)
 }

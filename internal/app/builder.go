@@ -17,12 +17,14 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwks"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
+	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -41,6 +43,7 @@ type App struct {
 	AuthProvider         *services.ThirdpartyOAuth2ServiceProvider
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
+	TokenExchangeService *tokenexchange.TokenExchangeService
 
 	// Handler groups for routing
 	AdminHandlers   *AdminHandlers
@@ -249,16 +252,86 @@ func (b *Builder) Build() (*App, error) {
 		app.BranchKeyManager = b.branchKeyManager
 	}
 
+	// Create HTTP client for token endpoint with configured timeout
+	// Created early to support both OAuth2SessionService and TokenExchangeService
+	upstreamClient := &http.Client{
+		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
+	}
+
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(
 		b.storage.Services(),
 		b.storage.UserSessions(),
 		b.storage.UserGrants(),
 		b.storage.Agents(),
 		encryptor,
+		upstreamClient,
 		jweKey,
 		cfg,
 		b.logger,
 	)
+
+	// Create token exchange service if token exchange configuration is available
+	// Per Constitution Principle VII (Configuration-Driven Design): only create if configured
+	if b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
+		b.config.TokenExchange.Authorization.CEL.Expression != "" {
+		// Validate required dependencies
+		if app.ConsentService == nil {
+			return nil, fmt.Errorf("token exchange service requires consent service, but storage repositories (Agents, Services, UserGrants) are not available")
+		}
+
+		// Create CEL evaluator with configuration
+		celConfig := tokenexchange.CELEvaluatorConfig{
+			PrincipalExpression:     b.config.TokenExchange.ClaimExtraction.PrincipalExpression,
+			AgentClientIDExpression: b.config.TokenExchange.ClaimExtraction.AgentClientIDExpression,
+			AuthorizationExpression: b.config.TokenExchange.Authorization.CEL.Expression,
+			EvaluationTimeout:       b.config.TokenExchange.Authorization.CEL.EvaluationTimeout,
+		}
+		celEvaluator, err := tokenexchange.NewCELEvaluator(celConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CEL evaluator for token exchange: %w", err)
+		}
+
+		// Create JWKS adapter for JWT validation
+		// Per spec FR-039: JWKS fetched from upstream OAuth2 server
+		jwksAdapter, err := jwks.NewJWKSAdapter(
+			b.config.OAuth2AuthServer.UpstreamIssuerURI+"/.well-known/jwks.json",
+			upstreamClient,
+			15*time.Minute, // min refresh interval
+			1*time.Hour,    // max refresh interval
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWKS adapter for token exchange: %w", err)
+		}
+
+		// Create JWT validator
+		// Per spec SR-001: Client assertion and subject_token JWTs validated against JWKS
+		jwtValidator, err := tokenexchange.NewJWTValidator(
+			jwksAdapter,
+			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			"token-exchange-broker", // Per spec: broker's own identifier in audience claim
+			60,                      // Per spec FR-042: 60 second clock skew tolerance
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWT validator for token exchange: %w", err)
+		}
+
+		// Create token exchange service
+		// Per Constitution Principle VI: service depends on ports (repository interfaces)
+		// SessionRepository is no longer needed - token lifecycle is managed through OAuth2SessionService
+		tokenExchangeService, err := tokenexchange.NewTokenExchangeService(
+			jwtValidator,
+			celEvaluator,
+			b.storage.Services(),
+			app.OAuth2SessionService,
+			app.ConsentService,
+			&b.config.TokenExchange,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create token exchange service: %w", err)
+		}
+
+		app.TokenExchangeService = tokenExchangeService
+	}
 
 	// Phase 2: Create handler instances
 
@@ -266,11 +339,6 @@ func (b *Builder) Build() (*App, error) {
 	app.AdminHandlers = &AdminHandlers{
 		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
 		Services: admin.NewServicesHandler(app.AuthProvider, b.config, b.logger),
-	}
-
-	// Create HTTP client for token endpoint with configured timeout
-	upstreamClient := &http.Client{
-		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
 	}
 
 	// Create agent detail handler with repository dependencies for service requirements (Phase 6)
@@ -293,6 +361,9 @@ func (b *Builder) Build() (*App, error) {
 		OAuth2Token: &enduser.OAuth2TokenHandler{
 			UpstreamTokenURL: b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
 			Client:           upstreamClient,
+			Services:         b.storage.Services(), // For RFC 8693 token exchange (resource lookup)
+			TokenExchange:    app.TokenExchangeService,
+			Logger:           b.logger,
 		},
 		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
 			Service: app.OAuth2Service,

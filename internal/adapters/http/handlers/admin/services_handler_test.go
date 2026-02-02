@@ -66,6 +66,63 @@ func (m *MockAuthProvider) List(ctx context.Context) ([]*storage.ThirdpartyOAuth
 	return args.Get(0).([]*storage.ThirdpartyOAuth2Service), args.Error(1)
 }
 
+func (m *MockAuthProvider) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx, resourceURI)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
+// MockServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ServiceRepository
+type MockServiceRepository struct {
+	mock.Mock
+}
+
+func (m *MockServiceRepository) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+	args := m.Called(ctx, service)
+	return args.Error(0)
+}
+
+func (m *MockServiceRepository) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
+func (m *MockServiceRepository) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+	args := m.Called(ctx, service)
+	return args.Error(0)
+}
+
+func (m *MockServiceRepository) Delete(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *MockServiceRepository) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
+func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
+	args := m.Called(ctx, serviceID)
+	return args.Int(0), args.Error(1)
+}
+
+func (m *MockServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	args := m.Called(ctx, resourceURI)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+}
+
 func TestServicesHandler_CreateService(t *testing.T) {
 	logger := slog.Default()
 
@@ -219,7 +276,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 
 		// Set up chi URL params
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)
@@ -245,7 +302,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "nonexistent")
+		rctx.URLParams.Add("service-id", "nonexistent")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)
@@ -304,7 +361,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.UpdateService(w, req)
@@ -334,7 +391,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -354,7 +411,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -381,7 +438,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "nonexistent")
+		rctx.URLParams.Add("service-id", "nonexistent")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -492,11 +549,11 @@ func TestServicesHandler_SecretRedaction(t *testing.T) {
 		// Test Get endpoint
 		mockAuthProvider.On("Get", mock.Anything, "service-123").Return(service, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/service-123", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/services/service-123", nil)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("client-id", "service-123")
+		rctx.URLParams.Add("service-id", "service-123")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)

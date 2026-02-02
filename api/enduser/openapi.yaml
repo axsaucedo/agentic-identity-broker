@@ -1165,6 +1165,142 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+  /oauth2/token:
+    post:
+      summary: Token Exchange (RFC 8693) or Authorization Code Exchange
+      description: |
+        Exchange a token for another token. This endpoint supports two grant types:
+
+        ### Authorization Code Grant (RFC 6749 - Existing)
+        Exchange an authorization code for an access token via the upstream OAuth2 server.
+        This is the standard OAuth2 authorization code flow used for initial user consent.
+
+        ### Token Exchange Grant (RFC 8693 - NEW)
+        Exchange a token issued by the Upstream OAuth2 Server for a third-party OAuth2 token
+        stored in the token vault.
+
+        The token exchange flow:
+        1. Gateway authenticates using client_assertion JWT (gateway identity)
+        2. System validates subject_token JWT (contains principal + agent identifier)
+        3. System evaluates CEL authorization policy
+        4. System looks up service by resource URI in protected_resources
+        5. System verifies user grant exists for agent+service
+        6. System retrieves (and optionally refreshes) stored third-party tokens
+        7. System returns RFC 8693 compliant response
+
+        **Authentication for Token Exchange:**
+        - client_assertion: Gateway JWT authenticated against upstream OAuth2 JWKS
+        - subject_token: User JWT containing principal and agent identifier
+        - Both validated to have correct issuer, audience, and expiration
+
+        **Resource Discovery:**
+        - resource parameter must match a protected_resource on ThirdpartyOAuth2Service
+        - URIs are normalized (trailing slashes removed) before matching
+        - Missing match returns 400 invalid_target error
+
+        **User Grant Verification:**
+        - User must have active (non-revoked, non-expired) grant to agent+service
+        - Missing grant returns 403 access_denied error
+      operationId: tokenExchange
+      tags:
+        - OAuth2 Token
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenExchangeRequest'
+            examples:
+              token_exchange:
+                summary: Token Exchange Request (RFC 8693)
+                value:
+                  grant_type: "urn:ietf:params:oauth:grant-type:token-exchange"
+                  subject_token: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  subject_token_type: "urn:ietf:params:oauth:token-type:access_token"
+                  resource: "https://api.github.com"
+                  client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                  client_assertion: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+              authorization_code:
+                summary: Authorization Code Exchange (RFC 6749)
+                value:
+                  grant_type: "authorization_code"
+                  code: "SplxlOBeZQQYbYS6WxSbIA"
+                  redirect_uri: "https://client.example.org/callback"
+                  client_id: "client-abc"
+                  client_secret: "secret-xyz"
+      responses:
+        '200':
+          description: Successful token exchange or authorization code exchange
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenExchangeResponse'
+              examples:
+                success:
+                  summary: Successful Token Exchange Response
+                  value:
+                    access_token: "ghu_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    token_type: "Bearer"
+                    issued_token_type: "urn:ietf:params:oauth:token-type:access_token"
+                    expires_in: 3600
+        '400':
+          description: Bad Request - Invalid parameters, invalid tokens, or no valid session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              examples:
+                invalid_request:
+                  summary: Invalid Request
+                  value:
+                    error: "invalid_request"
+                    error_description: "subject_token is required"
+                invalid_target:
+                  summary: Invalid Target Resource
+                  value:
+                    error: "invalid_target"
+                    error_description: "No service configured for the requested resource"
+                invalid_grant:
+                  summary: No Valid Session
+                  value:
+                    error: "invalid_grant"
+                    error_description: "User has no active session with the requested service"
+        '401':
+          description: Unauthorized - Invalid client authentication (client_assertion)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              examples:
+                invalid_client:
+                  summary: Invalid Client Assertion
+                  value:
+                    error: "invalid_client"
+                    error_description: "Invalid client_assertion signature"
+        '403':
+          description: Forbidden - User has not granted access or CEL authorization failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              examples:
+                access_denied:
+                  summary: Access Denied
+                  value:
+                    error: "access_denied"
+                    error_description: "User has not granted this agent access to the requested service"
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              examples:
+                server_error:
+                  summary: Server Error
+                  value:
+                    error: "server_error"
+                    error_description: "An unexpected error occurred"
 components:
   securitySchemes:
     SessionAuth:
@@ -2096,6 +2232,132 @@ components:
         message:
           type: string
           description: Human-readable error message
+    TokenExchangeRequest:
+      type: object
+      required:
+        - grant_type
+        - subject_token
+        - subject_token_type
+        - resource
+        - client_assertion_type
+        - client_assertion
+      properties:
+        grant_type:
+          type: string
+          enum:
+            - "urn:ietf:params:oauth:grant-type:token-exchange"
+            - "authorization_code"
+          description: |
+            The OAuth2 grant type:
+            - `urn:ietf:params:oauth:grant-type:token-exchange` for RFC 8693 token exchange
+            - `authorization_code` for standard OAuth2 authorization code flow (proxied)
+          example: "urn:ietf:params:oauth:grant-type:token-exchange"
+        subject_token:
+          type: string
+          description: |
+            JWT issued by the Upstream OAuth2 Server containing both:
+            - User principal (extracted via configurable CEL, default: 'sub' claim)
+            - Agent identifier (extracted via configurable CEL, default: 'azp' claim)
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        subject_token_type:
+          type: string
+          enum:
+            - "urn:ietf:params:oauth:token-type:access_token"
+          description: Type of the subject_token. Must be access_token type.
+          example: "urn:ietf:params:oauth:token-type:access_token"
+        resource:
+          type: string
+          format: uri
+          description: |
+            The target resource URI. Must match a protected_resource configured on
+            a ThirdpartyOAuth2Service. URI is normalized (trailing slashes removed)
+            before matching.
+          example: "https://api.github.com"
+        client_assertion_type:
+          type: string
+          enum:
+            - "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+          description: The client authentication method. Must be JWT bearer.
+          example: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+        client_assertion:
+          type: string
+          description: |
+            JWT authenticating the gateway making the request. Issued by the
+            Upstream OAuth2 Server. The 'sub' claim identifies the gateway for
+            audit logging.
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        scope:
+          type: string
+          description: Space-delimited scopes requested (optional).
+          example: "read:user repo"
+        audience:
+          type: string
+          description: Intended audience for the issued token (optional).
+          example: "https://api.github.com"
+    TokenExchangeResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - issued_token_type
+      properties:
+        access_token:
+          type: string
+          description: The third-party OAuth2 access token from the token vault.
+          example: "ghu_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        token_type:
+          type: string
+          description: |
+            Token type (e.g., "Bearer"). Passed through from the stored
+            third-party token response.
+          example: "Bearer"
+        issued_token_type:
+          type: string
+          description: URI indicating the type of issued token.
+          example: "urn:ietf:params:oauth:token-type:access_token"
+        expires_in:
+          type: integer
+          format: int64
+          description: |
+            Remaining lifetime in seconds of the access token. Only present
+            if the stored token has expiration information.
+          example: 3600
+        scope:
+          type: string
+          description: |
+            Scopes associated with the access token. Only present if
+            different from requested scope.
+          example: "read:user repo"
+        refresh_token:
+          type: string
+          description: |
+            Refresh token (typically not returned in token exchange as
+            tokens are managed by the broker).
+    OAuth2Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - invalid_client
+            - invalid_grant
+            - invalid_target
+            - access_denied
+            - server_error
+          description: RFC 8693 error code.
+          example: "access_denied"
+        error_description:
+          type: string
+          description: Human-readable error description.
+          example: "User has not granted this agent access to the requested service"
+        error_uri:
+          type: string
+          format: uri
+          description: URI pointing to human-readable error documentation.
+          example: "https://docs.example.com/errors/access_denied"
   responses:
     Unauthorized:
       description: 'Authentication required or session expired.

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 )
 
 func TestThirdpartyServiceRepository_Create(t *testing.T) {
@@ -491,4 +492,443 @@ func TestThirdpartyServiceRepository_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_Single(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+	ctx := context.Background()
+
+	// Create service with protected resources
+	service := &storage.ThirdpartyOAuth2Service{
+		ID:           "service-1",
+		DisplayName:  "GitHub",
+		ClientID:     "github-client",
+		ClientSecret: "github-secret",
+		IssuerURI:    "https://github.com",
+		Discovery: storage.DiscoveryConfig{
+			EnableDiscovery: false,
+		},
+		Endpoints: storage.OAuth2Endpoints{
+			TokenEndpoint:     "https://github.com/login/oauth/access_token",
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+		},
+		Scopes: []storage.OAuthScope{
+			{ScopeValue: "repo", Description: "Full repository access"},
+		},
+		ProtectedResources: []string{
+			"https://github.com/org/repo",
+			"https://github.com/user/project",
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, service)
+	if err != nil {
+		t.Fatalf("expected no error creating service, got: %v", err)
+	}
+
+	// Find by first resource
+	found, err := repo.FindByProtectedResource(ctx, "https://github.com/org/repo")
+	if err != nil {
+		t.Fatalf("expected no error finding service, got: %v", err)
+	}
+
+	if found.ID != "service-1" {
+		t.Errorf("expected service-1, got %s", found.ID)
+	}
+
+	// Find by second resource
+	found, err = repo.FindByProtectedResource(ctx, "https://github.com/user/project")
+	if err != nil {
+		t.Fatalf("expected no error finding service, got: %v", err)
+	}
+
+	if found.ID != "service-1" {
+		t.Errorf("expected service-1, got %s", found.ID)
+	}
+}
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_NotFound(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+	ctx := context.Background()
+
+	// Create service with protected resources
+	service := &storage.ThirdpartyOAuth2Service{
+		ID:           "service-1",
+		DisplayName:  "GitHub",
+		ClientID:     "github-client",
+		ClientSecret: "github-secret",
+		IssuerURI:    "https://github.com",
+		Discovery: storage.DiscoveryConfig{
+			EnableDiscovery: false,
+		},
+		Endpoints: storage.OAuth2Endpoints{
+			TokenEndpoint:     "https://github.com/login/oauth/access_token",
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+		},
+		Scopes: []storage.OAuthScope{
+			{ScopeValue: "repo", Description: "Full repository access"},
+		},
+		ProtectedResources: []string{
+			"https://github.com/org/repo",
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, service)
+	if err != nil {
+		t.Fatalf("expected no error creating service, got: %v", err)
+	}
+
+	// Try to find non-existent resource
+	_, err = repo.FindByProtectedResource(ctx, "https://example.com/resource")
+	if err == nil {
+		t.Fatal("expected error for non-existent resource")
+	}
+
+	// Verify it's an InvalidTargetError
+	txErr, ok := err.(*tokenexchange.TokenExchangeError)
+	if !ok {
+		t.Fatalf("expected TokenExchangeError, got %T: %v", err, err)
+	}
+
+	if txErr.Code() != "invalid_target" {
+		t.Errorf("expected invalid_target, got %s", txErr.Code())
+	}
+
+	if txErr.HTTPStatus() != 400 {
+		t.Errorf("expected status 400, got %d", txErr.HTTPStatus())
+	}
+}
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_Ambiguous(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+	ctx := context.Background()
+
+	// Create two services with overlapping resources
+	service1 := &storage.ThirdpartyOAuth2Service{
+		ID:           "service-1",
+		DisplayName:  "GitHub 1",
+		ClientID:     "github-client-1",
+		ClientSecret: "github-secret-1",
+		IssuerURI:    "https://github.com",
+		Discovery: storage.DiscoveryConfig{
+			EnableDiscovery: false,
+		},
+		Endpoints: storage.OAuth2Endpoints{
+			TokenEndpoint:     "https://github.com/login/oauth/access_token",
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+		},
+		Scopes: []storage.OAuthScope{
+			{ScopeValue: "repo", Description: "Full repository access"},
+		},
+		ProtectedResources: []string{
+			"https://github.com/org/repo",
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	service2 := &storage.ThirdpartyOAuth2Service{
+		ID:           "service-2",
+		DisplayName:  "GitHub 2",
+		ClientID:     "github-client-2",
+		ClientSecret: "github-secret-2",
+		IssuerURI:    "https://github.com",
+		Discovery: storage.DiscoveryConfig{
+			EnableDiscovery: false,
+		},
+		Endpoints: storage.OAuth2Endpoints{
+			TokenEndpoint:     "https://github.com/login/oauth/access_token",
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+		},
+		Scopes: []storage.OAuthScope{
+			{ScopeValue: "repo", Description: "Full repository access"},
+		},
+		ProtectedResources: []string{
+			"https://github.com/org/repo", // Same resource - conflict!
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, service1)
+	if err != nil {
+		t.Fatalf("expected no error creating service 1, got: %v", err)
+	}
+
+	err = repo.Create(ctx, service2)
+	if err != nil {
+		t.Fatalf("expected no error creating service 2, got: %v", err)
+	}
+
+	// Try to find ambiguous resource
+	_, err = repo.FindByProtectedResource(ctx, "https://github.com/org/repo")
+	if err == nil {
+		t.Fatal("expected error for ambiguous resource")
+	}
+
+	// Verify it's an InvalidTargetError
+	txErr, ok := err.(*tokenexchange.TokenExchangeError)
+	if !ok {
+		t.Fatalf("expected TokenExchangeError, got %T: %v", err, err)
+	}
+
+	if txErr.Code() != "invalid_target" {
+		t.Errorf("expected invalid_target, got %s", txErr.Code())
+	}
+
+	if txErr.HTTPStatus() != 400 {
+		t.Errorf("expected status 400, got %d", txErr.HTTPStatus())
+	}
+}
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_CaseSensitive(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+	ctx := context.Background()
+
+	// Create service
+	service := &storage.ThirdpartyOAuth2Service{
+		ID:           "service-1",
+		DisplayName:  "GitHub",
+		ClientID:     "github-client",
+		ClientSecret: "github-secret",
+		IssuerURI:    "https://github.com",
+		Discovery: storage.DiscoveryConfig{
+			EnableDiscovery: false,
+		},
+		Endpoints: storage.OAuth2Endpoints{
+			TokenEndpoint:     "https://github.com/login/oauth/access_token",
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+		},
+		Scopes: []storage.OAuthScope{
+			{ScopeValue: "repo", Description: "Full repository access"},
+		},
+		ProtectedResources: []string{
+			"https://github.com/org/Repo",
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, service)
+	if err != nil {
+		t.Fatalf("expected no error creating service, got: %v", err)
+	}
+
+	// Find with exact case
+	found, err := repo.FindByProtectedResource(ctx, "https://github.com/org/Repo")
+	if err != nil {
+		t.Fatalf("expected no error with exact case, got: %v", err)
+	}
+	if found.ID != "service-1" {
+		t.Errorf("expected to find service with exact case")
+	}
+
+	// Try to find with different case (should fail - case-sensitive)
+	_, err = repo.FindByProtectedResource(ctx, "https://github.com/org/repo")
+	if err == nil {
+		t.Fatal("expected error for different case")
+	}
+
+	txErr, ok := err.(*tokenexchange.TokenExchangeError)
+	if !ok {
+		t.Fatalf("expected TokenExchangeError, got %T", err)
+	}
+
+	if txErr.Code() != "invalid_target" {
+		t.Errorf("expected invalid_target, got %s", txErr.Code())
+	}
+}
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_Empty(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+	ctx := context.Background()
+
+	// Try to find with empty resource URI
+	_, err := repo.FindByProtectedResource(ctx, "")
+	if err == nil {
+		t.Fatal("expected error for empty resource URI")
+	}
+
+	txErr, ok := err.(*tokenexchange.TokenExchangeError)
+	if !ok {
+		t.Fatalf("expected TokenExchangeError, got %T", err)
+	}
+
+	if txErr.Code() != "invalid_target" {
+		t.Errorf("expected invalid_target, got %s", txErr.Code())
+	}
+}
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_ContextCancelled(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Try to find with cancelled context
+	_, err := repo.FindByProtectedResource(ctx, "https://github.com/org/repo")
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+
+	// Verify it's a StorageError for timeout
+	storageErr, ok := err.(*storage.StorageError)
+	if !ok {
+		t.Fatalf("expected StorageError, got %T: %v", err, err)
+	}
+
+	if storageErr.Kind != storage.ErrorKindTimeout {
+		t.Errorf("expected ErrorKindTimeout, got %s", storageErr.Kind)
+	}
+}
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_ThreadSafe(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+	ctx := context.Background()
+
+	// Create services with different resources
+	for i := 0; i < 3; i++ {
+		service := &storage.ThirdpartyOAuth2Service{
+			ID:           "service-" + string(rune(i+48)),
+			DisplayName:  "Service " + string(rune(i+48)),
+			ClientID:     "client-" + string(rune(i+48)),
+			ClientSecret: "secret",
+			IssuerURI:    "https://oauth.example.com",
+			Discovery: storage.DiscoveryConfig{
+				EnableDiscovery: false,
+			},
+			Endpoints: storage.OAuth2Endpoints{
+				TokenEndpoint:     "https://oauth.example.com/token",
+				AuthorizeEndpoint: "https://oauth.example.com/authorize",
+			},
+			Scopes: []storage.OAuthScope{
+				{ScopeValue: "read", Description: "Read access"},
+			},
+			ProtectedResources: []string{
+				"https://example.com/resource-" + string(rune(i+48)),
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		_ = repo.Create(ctx, service)
+	}
+
+	// Concurrent reads
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 10; j++ {
+			wg.Add(1)
+			go func(serviceNum int) {
+				defer wg.Done()
+				resource := "https://example.com/resource-" + string(rune(serviceNum+48))
+				found, err := repo.FindByProtectedResource(ctx, resource)
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if found == nil {
+					t.Error("expected to find service")
+				}
+			}(i)
+		}
+	}
+
+	wg.Wait()
+}
+
+func TestThirdpartyServiceRepository_FindByProtectedResource_WithNormalize(t *testing.T) {
+	repo := NewThirdpartyServiceRepository()
+	ctx := context.Background()
+
+	// Create service with protected resources (stored without trailing slashes)
+	service := &storage.ThirdpartyOAuth2Service{
+		ID:           "service-1",
+		DisplayName:  "API Service",
+		ClientID:     "api-client",
+		ClientSecret: "api-secret",
+		IssuerURI:    "https://api.example.com",
+		Discovery: storage.DiscoveryConfig{
+			EnableDiscovery: false,
+		},
+		Endpoints: storage.OAuth2Endpoints{
+			TokenEndpoint:     "https://api.example.com/oauth/token",
+			AuthorizeEndpoint: "https://api.example.com/oauth/authorize",
+		},
+		Scopes: []storage.OAuthScope{
+			{ScopeValue: "api", Description: "API access"},
+		},
+		ProtectedResources: []string{
+			"https://api.example.com",
+			"https://api.example.com/v2",
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, service)
+	if err != nil {
+		t.Fatalf("expected no error creating service, got: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		requestURI  string // URI that may have trailing slash
+		expectFound bool
+	}{
+		{
+			name:        "exact match without trailing slash",
+			requestURI:  "https://api.example.com",
+			expectFound: true,
+		},
+		{
+			name:        "match after normalizing trailing slash",
+			requestURI:  "https://api.example.com/",
+			expectFound: true,
+		},
+		{
+			name:        "path match without trailing slash",
+			requestURI:  "https://api.example.com/v2",
+			expectFound: true,
+		},
+		{
+			name:        "path match after normalizing trailing slash",
+			requestURI:  "https://api.example.com/v2/",
+			expectFound: true,
+		},
+		{
+			name:        "no match",
+			requestURI:  "https://api.example.com/v3",
+			expectFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Demonstrate the pattern: normalize before calling FindByProtectedResource
+			normalizedURI := tokenexchange.Normalize(tt.requestURI)
+			found, err := repo.FindByProtectedResource(ctx, normalizedURI)
+
+			if tt.expectFound {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+				if found == nil {
+					t.Error("expected to find service")
+				} else if found.ID != "service-1" {
+					t.Errorf("expected service-1, got %s", found.ID)
+				}
+			} else {
+				if err == nil {
+					t.Error("expected error for non-matching resource")
+				}
+				if found != nil {
+					t.Errorf("expected no service to be found")
+				}
+			}
+		})
+	}
 }

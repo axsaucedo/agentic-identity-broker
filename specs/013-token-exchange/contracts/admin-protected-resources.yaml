@@ -1,0 +1,364 @@
+# Admin API - Protected Resources Extension
+
+# This file documents the changes to the Admin API for managing protected_resources
+# on ThirdpartyOAuth2Service entities.
+
+openapi: 3.0.3
+info:
+  title: Admin API - Protected Resources Extension
+  description: |
+    Extension to the Admin API for managing protected_resources on ThirdpartyOAuth2Service.
+    
+    Protected resources are URIs that map to a service for RFC 8693 token exchange.
+    When a token exchange request specifies a `resource` parameter, the system looks up
+    which service has that resource in its protected_resources array.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:14000
+    description: Admin server (development)
+
+paths:
+  /api/services:
+    post:
+      summary: Create Third-Party OAuth2 Service
+      description: |
+        Creates a new third-party OAuth2 service configuration.
+        
+        **New field**: `protected_resources` - array of URIs that should map to this 
+        service for token exchange. URIs are normalized (trailing slashes removed) 
+        before storage.
+      operationId: createService
+      tags:
+        - Services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceRequest'
+            examples:
+              github_with_resources:
+                summary: GitHub with Protected Resources
+                value:
+                  display_name: "GitHub"
+                  client_id: "Iv1.xxxxxxxxxxxx"
+                  client_secret: "xxxxxxxxxxxxxxxxxxxx"
+                  issuer_uri: "https://github.com"
+                  discovery:
+                    enable_discovery: false
+                  endpoints:
+                    token_endpoint: "https://github.com/login/oauth/access_token"
+                    authorize_endpoint: "https://github.com/login/oauth/authorize"
+                  scopes:
+                    - scope_value: "repo"
+                      description: "Full control of private repositories"
+                    - scope_value: "user:email"
+                      description: "Access user email addresses"
+                  protected_resources:
+                    - "https://api.github.com"
+                    - "https://github.com/api/v3"
+      responses:
+        '201':
+          description: Service created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_uri:
+                  summary: Invalid URI in protected_resources
+                  value:
+                    code: "validation_error"
+                    message: "protected_resources[0]: invalid URI format"
+        '409':
+          description: Conflict - duplicate resource URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                duplicate_resource:
+                  summary: Duplicate Resource URI
+                  value:
+                    code: "conflict"
+                    message: "protected_resources[0]: URI https://api.github.com already mapped to service 'GitHub Enterprise'"
+
+  /api/services/{service-id}:
+    get:
+      summary: Get Service by ID
+      description: |
+        Retrieves a third-party OAuth2 service configuration.
+        Response includes the `protected_resources` field.
+      operationId: getService
+      tags:
+        - Services
+      parameters:
+        - name: service-id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Service found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+              examples:
+                github:
+                  summary: GitHub Service
+                  value:
+                    data:
+                      id: "550e8400-e29b-41d4-a716-446655440000"
+                      display_name: "GitHub"
+                      client_id: "Iv1.xxxxxxxxxxxx"
+                      issuer_uri: "https://github.com"
+                      discovery:
+                        enable_discovery: false
+                      endpoints:
+                        token_endpoint: "https://github.com/login/oauth/access_token"
+                        authorize_endpoint: "https://github.com/login/oauth/authorize"
+                      scopes:
+                        - scope_value: "repo"
+                          description: "Full control of private repositories"
+                      protected_resources:
+                        - "https://api.github.com"
+                        - "https://github.com/api/v3"
+                      created_at: "2026-01-15T10:30:00Z"
+                      updated_at: "2026-01-15T10:30:00Z"
+        '404':
+          description: Service not found
+
+    put:
+      summary: Update Service
+      description: |
+        Updates a third-party OAuth2 service configuration.
+        
+        **New field**: `protected_resources` can be added or modified.
+        System validates:
+        - All URIs are valid format
+        - No duplicate URIs within the array
+        - No URI conflicts with other services
+      operationId: updateService
+      tags:
+        - Services
+      parameters:
+        - name: service-id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServiceRequest'
+            examples:
+              add_resources:
+                summary: Add Protected Resources
+                value:
+                  display_name: "GitHub"
+                  client_id: "Iv1.xxxxxxxxxxxx"
+                  issuer_uri: "https://github.com"
+                  protected_resources:
+                    - "https://api.github.com"
+                    - "https://github.com/api/v3"
+                    - "https://raw.githubusercontent.com"
+      responses:
+        '200':
+          description: Service updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceResponse'
+        '400':
+          description: Invalid request - malformed URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Service not found
+        '409':
+          description: Conflict - duplicate resource URI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    CreateServiceRequest:
+      type: object
+      required:
+        - display_name
+        - client_id
+        - client_secret
+        - issuer_uri
+      properties:
+        display_name:
+          type: string
+          maxLength: 255
+          description: Human-readable service name
+          example: "GitHub"
+        client_id:
+          type: string
+          description: OAuth2 client ID for this service
+          example: "Iv1.xxxxxxxxxxxx"
+        client_secret:
+          type: string
+          description: OAuth2 client secret (stored encrypted)
+          example: "xxxxxxxxxxxxxxxxxxxx"
+        issuer_uri:
+          type: string
+          format: uri
+          description: OAuth2 issuer URI
+          example: "https://github.com"
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfig'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2Endpoints'
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthScope'
+        protected_resources:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: |
+            URIs that map to this service for token exchange.
+            URIs are normalized (trailing slashes removed) before storage.
+            Must be unique across all services.
+          example:
+            - "https://api.github.com"
+            - "https://github.com/api/v3"
+
+    UpdateServiceRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 255
+        client_id:
+          type: string
+        client_secret:
+          type: string
+          description: Only included if updating the secret
+        issuer_uri:
+          type: string
+          format: uri
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfig'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2Endpoints'
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthScope'
+        protected_resources:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: |
+            URIs that map to this service for token exchange.
+            Replaces existing protected_resources array.
+
+    ServiceResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Service'
+
+    Service:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        client_id:
+          type: string
+        issuer_uri:
+          type: string
+          format: uri
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfig'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2Endpoints'
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthScope'
+        protected_resources:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: |
+            Normalized URIs that map to this service for token exchange.
+            Empty array if no resources configured.
+          example:
+            - "https://api.github.com"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DiscoveryConfig:
+      type: object
+      properties:
+        enable_discovery:
+          type: boolean
+          default: false
+        metadata_url:
+          type: string
+          format: uri
+
+    OAuth2Endpoints:
+      type: object
+      properties:
+        token_endpoint:
+          type: string
+          format: uri
+        authorize_endpoint:
+          type: string
+          format: uri
+
+    OAuthScope:
+      type: object
+      properties:
+        scope_value:
+          type: string
+        description:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - validation_error
+            - conflict
+            - not_found
+            - internal_error
+        message:
+          type: string
+          description: Human-readable error message

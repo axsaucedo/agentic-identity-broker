@@ -35,4 +35,11 @@ var (
 
 	// ErrInvalidConfiguration is returned when OAuth2 service configuration is invalid.
 	ErrInvalidConfiguration = errors.New("invalid OAuth2 service configuration")
+
+	// ErrSessionExpired indicates both access token and refresh token are expired.
+	// Corresponds to RFC 8693 T076: invalid_grant error with re-auth hint.
+	ErrSessionExpired = errors.New("session expired: both access and refresh tokens expired")
+
+	// ErrRefreshFailed indicates token refresh operation failed with upstream provider.
+	ErrRefreshFailed = errors.New("failed to refresh access token with upstream provider")
 )

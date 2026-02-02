@@ -93,7 +93,7 @@ func TestGrantFixtures(t *testing.T) {
 	agentID := "agent-123"
 
 	t.Run("ActiveGrant", func(t *testing.T) {
-		g := ActiveGrant(principalEmail, agentID)
+		g := ActiveGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
 		if g == nil {
 			t.Fatal("ActiveGrant returned nil")
 		}
@@ -112,7 +112,7 @@ func TestGrantFixtures(t *testing.T) {
 	})
 
 	t.Run("ExpiredGrant", func(t *testing.T) {
-		g := ExpiredGrant(principalEmail, agentID)
+		g := ExpiredGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
 		if g == nil {
 			t.Fatal("ExpiredGrant returned nil")
 		}
@@ -128,7 +128,7 @@ func TestGrantFixtures(t *testing.T) {
 	})
 
 	t.Run("GrantExpiringIn", func(t *testing.T) {
-		g := GrantExpiringIn(principalEmail, agentID, 24*time.Hour)
+		g := GrantExpiringIn(principalEmail, agentID, "test-service", []string{"read", "write"}, 24*time.Hour)
 		if g == nil {
 			t.Fatal("GrantExpiringIn returned nil")
 		}
@@ -144,7 +144,7 @@ func TestGrantFixtures(t *testing.T) {
 	})
 
 	t.Run("IndefiniteGrant", func(t *testing.T) {
-		g := IndefiniteGrant(principalEmail, agentID)
+		g := IndefiniteGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
 		if g == nil {
 			t.Fatal("IndefiniteGrant returned nil")
 		}
@@ -255,8 +255,8 @@ func TestFixtureDeterminism(t *testing.T) {
 	}
 
 	// Grants should get fresh UUIDs each time
-	g1 := ActiveGrant("user@example.com", "agent-1")
-	g2 := ActiveGrant("user@example.com", "agent-1")
+	g1 := ActiveGrant("user@example.com", "agent-1", "test-service", []string{"read"})
+	g2 := ActiveGrant("user@example.com", "agent-1", "test-service", []string{"read"})
 	if g1.ID == g2.ID {
 		t.Error("ActiveGrant should generate fresh UUIDs, but got same ID twice")
 	}
