@@ -11,9 +11,7 @@ const config: StorybookConfig = {
     '../src/design-system/**/*.stories.@(js|jsx|ts|tsx)',
   ],
   addons: [
-    '@storybook/addon-essentials',    // Docs, controls, actions, viewport
     '@storybook/addon-a11y',          // Accessibility testing
-    '@storybook/addon-interactions',  // Interaction testing
     '@storybook/addon-themes',        // Theme switcher (future dark mode)
   ],
   framework: {
