@@ -128,8 +128,11 @@ func newAdapterWithKMSARNAndKeyStore(kmsARN, dynamoDBTableName string, branchKey
 		return nil, nil, err
 	}
 
-	// Create Encryption SDK client
-	encryptionClient, err := client.NewClient(esdktypes.AwsEncryptionSdkConfig{})
+	// Create Encryption SDK client with commitment policy for key commitment
+	policy := mpltypes.ESDKCommitmentPolicyRequireEncryptRequireDecrypt
+	encryptionClient, err := client.NewClient(esdktypes.AwsEncryptionSdkConfig{
+		CommitmentPolicy: &policy,
+	})
 	if err != nil {
 		return nil, nil, encryption.NewKEKUnavailableError(
 			fmt.Sprintf("failed to create encryption SDK client: %v", err),
@@ -197,8 +200,11 @@ func newAdapterWithBase64KEK(keyMaterial string) (*AWSAdapter, error) {
 		)
 	}
 
-	// Create Encryption SDK client
-	encryptionClient, err := client.NewClient(esdktypes.AwsEncryptionSdkConfig{})
+	// Create Encryption SDK client with commitment policy for key commitment
+	policy := mpltypes.ESDKCommitmentPolicyRequireEncryptRequireDecrypt
+	encryptionClient, err := client.NewClient(esdktypes.AwsEncryptionSdkConfig{
+		CommitmentPolicy: &policy,
+	})
 	if err != nil {
 		return nil, encryption.NewKEKUnavailableError(
 			fmt.Sprintf("failed to create encryption SDK client: %v", err),
