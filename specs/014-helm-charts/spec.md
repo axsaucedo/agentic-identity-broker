@@ -16,6 +16,14 @@
 - Q: How should the dual-port broker (8000 end-user, 14000 admin) be exposed? → A: Single Service exposing both ports with different names, plus two separate Ingress resources
 - Q: How should PostgreSQL credentials be passed to broker/migration Job? → A: Via environment variables; when using Zalando operator, automatically reference the operator-created secrets (e.g., `<team>.<username>.credentials.postgresql.acid.zalan.do`)
 
+### Session 2026-01-29 - Docker Image Architecture Decision
+
+**Design Change**: The original user requirement specified "same Docker image" for broker and migration Job. After security analysis, **ADR-009** was created recommending separate images for defense-in-depth security:
+- `agentic-identity-broker`: Runtime broker image (no migration tools)
+- `agentic-identity-broker-migrate`: Migration-only image (golang-migrate + migrations)
+
+**Rationale**: Removing migration tooling from runtime containers reduces attack surface if the broker is compromised, following the principle of least privilege. See [adrs/009-separate-migration-docker-image.md](../../adrs/009-separate-migration-docker-image.md) for full analysis.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Deploy Broker with Helm (Priority: P1)
@@ -113,7 +121,7 @@ As a platform operator using the Zalando PostgreSQL Operator, I want the Helm ch
 1. **Given** Helm values with `postgresql.operator.enabled: true`, **When** the chart is installed, **Then** a `postgresql` custom resource is created for the Zalando operator.
 2. **Given** the `postgresql` CR, **When** it is created, **Then** it includes both migration and broker users in the `users` configuration (e.g., `broker-migration` and `broker`).
 3. **Given** a deployed Zalando-managed PostgreSQL, **When** the PostgreSQL operator provisions the database, **Then** it creates secrets following the naming convention `<username>.<team>-<db>.credentials.postgresql.acid.zalan.do`.
-4. **Given** the operator-created secrets, **When** the migration Job starts, **Then** it mounts the migration user secret and injects credentials via environment variables (e.g., `POSTGRES_USER`, `POSTGRES_PASSWORD`).
+4. **Given** the operator-created secrets, **When** the migration Job starts, **Then** it mounts the migration user secret and injects credentials via environment variables (`DB_USERNAME`, `DB_PASSWORD`).
 5. **Given** the operator-created secrets, **When** the broker Deployment starts, **Then** it mounts the broker user secret and injects credentials via environment variables.
 6. **Given** Helm values with custom PostgreSQL sizing (storage, replicas), **When** the chart is installed, **Then** the `postgresql` CR reflects the specified sizing parameters.
 7. **Given** custom user names via `postgresql.operator.users.migration` and `postgresql.operator.users.broker`, **When** the chart is installed, **Then** the PostgreSQL CR and workload configurations use the specified user names and derive the correct secret names.
@@ -181,15 +189,15 @@ As a platform operator, I want to configure CPU and memory resource limits for t
 - **FR-010**: Migration Job MUST run as a Helm pre-install/pre-upgrade hook, completing before broker Deployment is created or updated.
 - **FR-011**: Migration Job MUST use database credentials with schema permissions (CREATE, ALTER, DROP, etc.).
 - **FR-012**: Broker Deployment MUST use database credentials with only data permissions (SELECT, INSERT, UPDATE, DELETE).
-- **FR-013**: Docker image MUST include golang-migrate tool and existing migrations from `/migrations/` directory.
+- **FR-013**: System MUST use separate Docker images for security: `agentic-identity-broker` (runtime, no migration tools) and `agentic-identity-broker-migrate` (migration image with golang-migrate tool and migrations from `/migrations/` directory) per ADR-009.
 - **FR-014**: Helm chart MUST support generating static Kubernetes manifests via `helm template`.
 - **FR-015**: Helm chart MUST follow Helm best practices (proper labels, annotations, helper templates).
 - **FR-016**: Helm chart MUST include a `values.yaml` with sensible defaults and comprehensive documentation.
 - **FR-017**: Helm chart MUST support specifying existing secrets for sensitive values (separate migration and broker database credentials).
 - **FR-018**: Helm chart MUST support custom annotations and labels on all created resources.
-- **FR-019**: System MUST use the same Docker image for both broker and migration Job (different entrypoint/command).
+- **FR-019**: Migration Job MUST use the `agentic-identity-broker-migrate` image while broker Deployment uses the `agentic-identity-broker` image to maintain separation of runtime and migration capabilities per ADR-009.
 - **FR-020**: Ingress configuration MUST support className and custom annotations, with documented examples for Skipper ingress controller.
-- **FR-021**: Database credentials MUST be injected via environment variables from Kubernetes Secrets: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.
+- **FR-021**: Database credentials MUST be injected via environment variables from Kubernetes Secrets: `DB_USERNAME` and `DB_PASSWORD` (connection URL is constructed in Helm templates using values from `postgresql.external.*` or `postgresql.operator.*` configuration).
 - **FR-022**: When using Zalando PostgreSQL Operator, Helm chart MUST automatically derive and reference the operator-created secret names following the convention `<username>.<teamId>-<database>.credentials.postgresql.acid.zalan.do` (example: `broker.broker-broker.credentials.postgresql.acid.zalan.do` for user "broker" with teamId "broker" and database "broker").
 - **FR-023**: For external PostgreSQL deployments, operators MUST manually create both migration and broker database users before Helm installation and provide credentials via two separate Kubernetes Secrets (referenced by `postgresql.external.migrationSecretName` and `postgresql.external.brokerSecretName`).
 - **FR-024**: When migration Job fails, Helm MUST abort the release without creating or updating the broker Deployment; failed Job pods MUST remain available for debugging (helm hook-delete-policy MUST NOT delete on failure).
@@ -203,6 +211,9 @@ As a platform operator, I want to configure CPU and memory resource limits for t
 | `image.repository` | string | Docker image repository | `ghcr.io/zalando-infosec/agentic-identity-broker` |
 | `image.tag` | string | Docker image tag | Chart appVersion |
 | `image.pullPolicy` | string | Image pull policy | `IfNotPresent` |
+| `migration.image.repository` | string | Migration Docker image repository | `ghcr.io/zalando-infosec/agentic-identity-broker-migrate` |
+| `migration.image.tag` | string | Migration image tag | Chart appVersion |
+| `migration.image.pullPolicy` | string | Migration image pull policy | `IfNotPresent` |
 | `replicaCount` | integer | Number of broker replicas | `1` |
 | `service.type` | string | Kubernetes Service type | `ClusterIP` |
 | `service.ports.http` | integer | End-user API port | `8000` |
@@ -247,6 +258,22 @@ image:
   repository: ghcr.io/zalando-infosec/agentic-identity-broker
   tag: ""  # Defaults to chart appVersion
   pullPolicy: IfNotPresent
+
+# Migration Job configuration (separate image per ADR-009)
+migration:
+  enabled: true  # Auto-enabled when storage.type=postgres
+  image:
+    repository: ghcr.io/zalando-infosec/agentic-identity-broker-migrate
+    tag: ""  # Defaults to chart appVersion
+    pullPolicy: IfNotPresent
+  backoffLimit: 10
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 
 # Service configuration (single Service, dual ports)
 service:
@@ -386,6 +413,6 @@ resources:
 - Kubernetes cluster version 1.25+ is used (for current API versions).
 - Helm 3.x is available for Helm-based deployments.
 - For Zalando PostgreSQL Operator integration, the operator is already installed in the cluster.
-- The Docker image will be extended to include golang-migrate tool; migrations are already available in `/migrations/` directory.
+- A separate migration Docker image (`agentic-identity-broker-migrate`) will be created containing golang-migrate tool and migrations from `/migrations/` directory per ADR-009; the runtime image remains minimal.
 - PostgreSQL 12+ is used for database deployments.
 - Standard ingress controllers (nginx, skipper, traefik, etc.) are supported via className and custom annotations.
