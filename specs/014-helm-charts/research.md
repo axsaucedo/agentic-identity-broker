@@ -228,23 +228,33 @@ automountServiceAccountToken: false  # Disable unless needed
 
 ## R4: golang-migrate Docker Integration
 
-### Decision: Install golang-migrate in Production Image
+### Decision: Separate Migration Docker Image (ADR-009)
 
-**Rationale**: Using the same image for broker and migrations simplifies versioning and ensures migration files match the application version.
+**Rationale**: Security best practice requires minimizing attack surface in production runtime. A compromised broker container should not have SQL schema modification capabilities. Using separate images (`agentic-identity-broker` for runtime, `agentic-identity-broker-migrate` for migrations) follows defense-in-depth and least-privilege principles while maintaining version consistency through shared appVersion.
 
-### Dockerfile Modifications
+### Migration Image Dockerfile
 
 ```dockerfile
-# Install golang-migrate
+# Dockerfile.migrate - Separate migration image
+FROM alpine:3.19
+
 ARG MIGRATE_VERSION=v4.17.0
+ARG TARGETARCH
+
+# Install golang-migrate
 RUN apk add --no-cache curl && \
     curl -L https://github.com/golang-migrate/migrate/releases/download/${MIGRATE_VERSION}/migrate.linux-${TARGETARCH}.tar.gz | tar xvz && \
     mv migrate /usr/local/bin/migrate && \
     chmod +x /usr/local/bin/migrate && \
     apk del curl
 
-# Copy migration files
-COPY --chown=1000:1000 ./migrations /app/migrations
+# Copy migration files only
+COPY ./migrations /migrations
+
+# Run as non-root user
+USER 1000:1000
+
+ENTRYPOINT ["/usr/local/bin/migrate"]
 ```
 
 ### Migration Job Command
@@ -252,28 +262,26 @@ COPY --chown=1000:1000 ./migrations /app/migrations
 ```yaml
 containers:
   - name: migrate
-    image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-    command:
-      - /usr/local/bin/migrate
+    image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag | default .Chart.AppVersion }}"
     args:
       - "-path"
-      - "/app/migrations"
+      - "/migrations"
       - "-database"
-      - "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DATABASE)?sslmode=disable"
+      - "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
       - "up"
 ```
 
 ### Environment Variables
 
-Standard PostgreSQL environment variables:
-- `POSTGRES_HOST` - Database host
-- `POSTGRES_PORT` - Database port (default: 5432)
-- `POSTGRES_DATABASE` - Database name
-- `POSTGRES_USER` - Username (from secret)
-- `POSTGRES_PASSWORD` - Password (from secret)
+Standard database environment variables (DB_* prefix per ADR-009):
+- `DB_HOST` - Database host
+- `DB_PORT` - Database port (default: 5432)
+- `DB_NAME` - Database name
+- `DB_USER` - Migration user with schema privileges (from secret)
+- `DB_PASSWORD` - Migration password (from secret)
 
 **Alternatives Considered**:
-- Separate migration image: Rejected for version synchronization complexity
+- Single image with dual-purpose: Rejected per ADR-009; violates least-privilege principle, increases runtime attack surface
 - Flyway: Rejected; golang-migrate is lighter and Go-native
 - Embedded migrations in Go binary: Requires Go code changes; Helm should work with existing binary
 
@@ -288,4 +296,4 @@ Standard PostgreSQL environment variables:
 | Zalando Operator | Operator-managed users | `postgresql.users` in CR spec |
 | Secret Naming | Auto-derived from CR | `<user>.<team>-<db>.credentials...` |
 | Security | Restricted Pod Security | runAsNonRoot, drop ALL capabilities |
-| golang-migrate | Install in production image | Same image for broker and migrations |
+| golang-migrate | Separate migration image (ADR-009) | Two images: broker (runtime) + migrate (migrations only) |
