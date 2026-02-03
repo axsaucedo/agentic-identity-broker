@@ -43,7 +43,7 @@ func RequirePrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *s
 			// Validate: principal must be present and non-empty
 			if principalValue == "" {
 				err := principal.NewMissingPrincipalError(headerName)
-				logger.Warn("Missing or empty principal",
+				logger.Warn("Missing or empty principal (401 REJECT)",
 					"header", headerName,
 					"remote_addr", r.RemoteAddr,
 					"path", r.URL.Path)

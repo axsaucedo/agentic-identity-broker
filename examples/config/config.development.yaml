@@ -49,6 +49,16 @@ storage:
     read: 5s
     write: 10s
 
+encryption:
+  # Memory backend for development (uses base64-encoded AES-256 key)
+  memory:
+    # Base64-encoded 32-byte AES-256 key (can be set via environment variable)
+    # Default fallback key provided for development convenience
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+
+  # AWS KMS backend not used in development
+  # aws_kms: null
+
 # Future sections for expanded configuration:
 # database:
 #   connection_string: postgresql://user:password@localhost:5432/identity_broker_dev

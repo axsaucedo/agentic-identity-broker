@@ -51,7 +51,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 		built, err := factory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred())
 
-		server, err = bootstrap.NewTestServer(built, logger)
+		server, err = bootstrap.NewEndUserTestServer(built, logger)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -278,7 +278,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				server.Close()
 			}
 
-			upstreamServer, err = bootstrap.NewTestServer(built, logger)
+			upstreamServer, err = bootstrap.NewEndUserTestServer(built, logger)
 			Expect(err).ToNot(HaveOccurred())
 			server = upstreamServer
 
@@ -324,7 +324,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				server.Close()
 			}
 
-			server, err = bootstrap.NewTestServer(built, logger)
+			server, err = bootstrap.NewEndUserTestServer(built, logger)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -378,7 +378,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				server.Close()
 			}
 
-			server, err = bootstrap.NewTestServer(built, logger)
+			server, err = bootstrap.NewEndUserTestServer(built, logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create test agent and grant for PKCE scenario
@@ -386,7 +386,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			err = testStorage.Agents().Create(ctx, agent)
 			Expect(err).ToNot(HaveOccurred())
 
-			grant = fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID)
+			grant = fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
 			err = testStorage.UserGrants().Create(ctx, grant)
 			Expect(err).ToNot(HaveOccurred())
 		})

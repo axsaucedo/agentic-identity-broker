@@ -10,16 +10,21 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	encmemory "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwks"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
+	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -30,12 +35,15 @@ type App struct {
 	Config *ports.Config
 
 	// Repositories
-	Storage *storage.Adapter
+	Storage          *storage.Adapter
+	BranchKeyManager ports.BranchKeyManager
 
 	// Domain services
 	ConsentService       *consentservice.Service
+	AuthProvider         *services.ThirdpartyOAuth2ServiceProvider
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
+	TokenExchangeService *tokenexchange.TokenExchangeService
 
 	// Handler groups for routing
 	AdminHandlers   *AdminHandlers
@@ -59,7 +67,8 @@ type Builder struct {
 	config                 *ports.Config
 	storage                *storage.Adapter
 	logger                 *slog.Logger
-	encryption             ports.EncryptionPort // Optional: custom encryption implementation
+	encryption             ports.EncryptionPort   // Optional: custom encryption implementation
+	branchKeyManager       ports.BranchKeyManager // Optional: custom branch key manager
 	staticWebResourcesPath string
 }
 
@@ -93,6 +102,14 @@ func (b *Builder) WithLogger(logger *slog.Logger) *Builder {
 // Use this to inject a production encryption adapter.
 func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
 	b.encryption = encryptor
+	return b
+}
+
+// WithBranchKeyManager sets a custom branch key manager for the builder.
+// If not set, defaults based on keyring type (AWS manager or in-memory).
+// Use this to inject a test or custom branch key manager.
+func (b *Builder) WithBranchKeyManager(mgr ports.BranchKeyManager) *Builder {
+	b.branchKeyManager = mgr
 	return b
 }
 
@@ -139,6 +156,15 @@ func (b *Builder) Build() (*App, error) {
 		)
 	}
 
+	// Create auth provider service if services repository available
+	if b.storage.Services() != nil {
+		app.AuthProvider = services.NewAuthProvider(
+			b.storage.Services(),
+			b.branchKeyManager, // May be nil if no encryption backend configured
+			b.logger,
+		)
+	}
+
 	// Create OAuth2 service if configuration available
 	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
 		app.OAuth2Service = oauth2service.NewService(
@@ -177,12 +203,59 @@ func (b *Builder) Build() (*App, error) {
 	// Constitution Principle VII: Configuration-Driven Design
 	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
 
-	// Use configured encryption or no-op for development
+	// Initialize encryption adapter based on configuration or builder override
+	// Constitution Principle VII: Configuration-Driven Design
 	var encryptor ports.EncryptionPort
 	if b.encryption != nil {
+		// Builder override takes precedence (for testing)
 		encryptor = b.encryption
+	} else if b.config.Encryption.AWSKMS != nil || b.config.Encryption.Memory != nil {
+		// Production/Development: Use new backend-explicit configuration factory
+		// The factory handles backend detection and validation automatically
+		adapter, branchKeyManager, err := awsencryption.NewEncryptionAdapter(&b.config.Encryption)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize encryption adapter: %w", err)
+		}
+		encryptor = adapter
+
+		// Wire branch key manager if available (for all backends except no-op)
+		if branchKeyManager != nil && b.branchKeyManager == nil {
+			b.branchKeyManager = branchKeyManager
+		}
+
+		// Log initialization with backend information
+		if b.config.Encryption.AWSKMS != nil {
+			b.logger.Info("AWS KMS encryption adapter initialized",
+				"dynamodb_table", b.config.Encryption.AWSKMS.DynamoDBTableName,
+				"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
+				"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
+				"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
+				"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
+				"branch_key_manager_wired", branchKeyManager != nil)
+		} else if b.config.Encryption.Memory != nil {
+			b.logger.Info("Memory encryption adapter initialized",
+				"branch_key_manager_wired", branchKeyManager != nil)
+		}
 	} else {
 		encryptor = noop.NewNoOpEncryption()
+		b.logger.Info("No-op encryption enabled (development mode)")
+
+		// Wire in-memory BranchKeyManager for development if not already set
+		if b.branchKeyManager == nil {
+			b.branchKeyManager = encmemory.NewInMemoryBranchKeyRepository()
+			b.logger.Info("BranchKeyManager wired from in-memory implementation (development mode)")
+		}
+	}
+
+	// Assign BranchKeyManager to app if wired
+	if b.branchKeyManager != nil {
+		app.BranchKeyManager = b.branchKeyManager
+	}
+
+	// Create HTTP client for token endpoint with configured timeout
+	// Created early to support both OAuth2SessionService and TokenExchangeService
+	upstreamClient := &http.Client{
+		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
 	}
 
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(
@@ -191,22 +264,81 @@ func (b *Builder) Build() (*App, error) {
 		b.storage.UserGrants(),
 		b.storage.Agents(),
 		encryptor,
+		upstreamClient,
 		jweKey,
 		cfg,
 		b.logger,
 	)
+
+	// Create token exchange service if token exchange configuration is available
+	// Per Constitution Principle VII (Configuration-Driven Design): only create if configured
+	if b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
+		b.config.TokenExchange.Authorization.CEL.Expression != "" {
+		// Validate required dependencies
+		if app.ConsentService == nil {
+			return nil, fmt.Errorf("token exchange service requires consent service, but storage repositories (Agents, Services, UserGrants) are not available")
+		}
+
+		// Create CEL evaluator with configuration
+		celConfig := tokenexchange.CELEvaluatorConfig{
+			PrincipalExpression:     b.config.TokenExchange.ClaimExtraction.PrincipalExpression,
+			AgentClientIDExpression: b.config.TokenExchange.ClaimExtraction.AgentClientIDExpression,
+			AuthorizationExpression: b.config.TokenExchange.Authorization.CEL.Expression,
+			EvaluationTimeout:       b.config.TokenExchange.Authorization.CEL.EvaluationTimeout,
+		}
+		celEvaluator, err := tokenexchange.NewCELEvaluator(celConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CEL evaluator for token exchange: %w", err)
+		}
+
+		// Create JWKS adapter for JWT validation
+		// Per spec FR-039: JWKS fetched from upstream OAuth2 server
+		jwksAdapter, err := jwks.NewJWKSAdapter(
+			b.config.OAuth2AuthServer.UpstreamIssuerURI+"/.well-known/jwks.json",
+			upstreamClient,
+			15*time.Minute, // min refresh interval
+			1*time.Hour,    // max refresh interval
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWKS adapter for token exchange: %w", err)
+		}
+
+		// Create JWT validator
+		// Per spec SR-001: Client assertion and subject_token JWTs validated against JWKS
+		jwtValidator, err := tokenexchange.NewJWTValidator(
+			jwksAdapter,
+			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			"token-exchange-broker", // Per spec: broker's own identifier in audience claim
+			60,                      // Per spec FR-042: 60 second clock skew tolerance
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWT validator for token exchange: %w", err)
+		}
+
+		// Create token exchange service
+		// Per Constitution Principle VI: service depends on ports (repository interfaces)
+		// SessionRepository is no longer needed - token lifecycle is managed through OAuth2SessionService
+		tokenExchangeService, err := tokenexchange.NewTokenExchangeService(
+			jwtValidator,
+			celEvaluator,
+			b.storage.Services(),
+			app.OAuth2SessionService,
+			app.ConsentService,
+			&b.config.TokenExchange,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create token exchange service: %w", err)
+		}
+
+		app.TokenExchangeService = tokenExchangeService
+	}
 
 	// Phase 2: Create handler instances
 
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
 		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
-		Services: admin.NewServicesHandler(b.storage.Services(), b.config, b.logger),
-	}
-
-	// Create HTTP client for token endpoint with configured timeout
-	upstreamClient := &http.Client{
-		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
+		Services: admin.NewServicesHandler(app.AuthProvider, b.config, b.logger),
 	}
 
 	// Create agent detail handler with repository dependencies for service requirements (Phase 6)
@@ -229,6 +361,9 @@ func (b *Builder) Build() (*App, error) {
 		OAuth2Token: &enduser.OAuth2TokenHandler{
 			UpstreamTokenURL: b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
 			Client:           upstreamClient,
+			Services:         b.storage.Services(), // For RFC 8693 token exchange (resource lookup)
+			TokenExchange:    app.TokenExchangeService,
+			Logger:           b.logger,
 		},
 		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
 			Service: app.OAuth2Service,

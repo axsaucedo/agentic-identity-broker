@@ -181,6 +181,20 @@ type ThirdpartyOAuth2ServiceRepository interface {
 	// Returns 0 if no grants reference the service.
 	// Returns StorageError for connection/timeout issues.
 	CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error)
+
+	// FindByProtectedResource retrieves an OAuth2 service configuration by matching resource URI
+	// against protected_resources field. Used for resource-based service discovery in token exchange.
+	// The resourceURI parameter MUST be normalized before calling using tokenexchange.Normalize()
+	// to remove trailing slashes for consistent matching.
+	// Example: normalizedURI := tokenexchange.Normalize(requestURI)
+	// Returns the service whose protected_resources contains the resourceURI (case-sensitive match).
+	// Returns error if:
+	// - No service configured with matching protected_resources (InvalidTargetError: "No service configured for the requested resource")
+	// - Multiple services match the same resource (misconfiguration) (InvalidTargetError: "Multiple services configured for the same resource")
+	// - Storage connection fails (StorageError with Kind=Connection)
+	// - Operation timeout (StorageError with Kind=Timeout)
+	// Client secret will be decrypted using the configured EncryptionPort.
+	FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error)
 }
 
 // UserGrantRepository defines storage operations for user grant entities.

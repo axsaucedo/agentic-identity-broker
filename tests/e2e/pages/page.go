@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -193,7 +194,7 @@ func (p *Page) WaitForURL(ctx context.Context, pattern string) error {
 			}
 		} else {
 			// Try substring match
-			if contains(currentURL, pattern) {
+			if strings.Contains(currentURL, pattern) {
 				return nil
 			}
 		}
@@ -365,23 +366,4 @@ func (p *Page) Close() error {
 		return nil
 	}
 	return p.page.Close()
-}
-
-// contains checks if haystack contains needle as a substring.
-// Helper function for URL matching.
-func contains(haystack, needle string) bool {
-	// Use built-in strings.Contains logic
-	if len(needle) == 0 {
-		return true
-	}
-	if len(needle) > len(haystack) {
-		return false
-	}
-
-	for i := 0; i <= len(haystack)-len(needle); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
 }

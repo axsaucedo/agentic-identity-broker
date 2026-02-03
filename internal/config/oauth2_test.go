@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
@@ -148,21 +149,11 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 
 			// Check that defaults contain expected values
 			if !tt.wantErr && tt.wantDefaults {
-				assert.True(t, contains(tt.config.SupportedResponseTypes, "code"), "SupportedResponseTypes should contain 'code'")
-				assert.True(t, contains(tt.config.SupportedGrantTypes, "authorization_code"), "SupportedGrantTypes should contain 'authorization_code'")
+				assert.True(t, slices.Contains(tt.config.SupportedResponseTypes, "code"), "SupportedResponseTypes should contain 'code'")
+				assert.True(t, slices.Contains(tt.config.SupportedGrantTypes, "authorization_code"), "SupportedGrantTypes should contain 'authorization_code'")
 				assert.Equal(t, 30, tt.config.UpstreamTimeoutSeconds, "UpstreamTimeoutSeconds should be 30")
 				assert.Equal(t, "proxy", tt.config.Mode, "Mode should be 'proxy'")
 			}
 		})
 	}
-}
-
-// contains helper function checks if slice contains string
-func contains(slice []string, item string) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
-		}
-	}
-	return false
 }

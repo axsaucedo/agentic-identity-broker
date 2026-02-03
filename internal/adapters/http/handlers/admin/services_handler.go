@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -16,32 +17,33 @@ import (
 
 // ServicesHandler handles HTTP requests for third-party OAuth2 service CRUD operations.
 type ServicesHandler struct {
-	repo   ports.ThirdpartyOAuth2ServiceRepository
-	config *ports.Config
-	logger *slog.Logger
+	authProvider services.AuthProvider
+	config       *ports.Config
+	logger       *slog.Logger
 }
 
 // NewServicesHandler creates a new services handler.
-func NewServicesHandler(repo ports.ThirdpartyOAuth2ServiceRepository, config *ports.Config, logger *slog.Logger) *ServicesHandler {
+func NewServicesHandler(authProvider services.AuthProvider, config *ports.Config, logger *slog.Logger) *ServicesHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ServicesHandler{
-		repo:   repo,
-		config: config,
-		logger: logger,
+		authProvider: authProvider,
+		config:       config,
+		logger:       logger,
 	}
 }
 
 // ServiceRequest represents the request body for creating/updating a service.
 type ServiceRequest struct {
-	DisplayName  string                  `json:"display_name"`
-	ClientID     string                  `json:"client_id"`
-	ClientSecret string                  `json:"client_secret"`
-	IssuerURI    string                  `json:"issuer_uri"`
-	Discovery    DiscoveryConfigRequest  `json:"discovery"`
-	Endpoints    *OAuth2EndpointsRequest `json:"endpoints,omitempty"`
-	Scopes       []OAuthScopeRequest     `json:"scopes"`
+	DisplayName        string                  `json:"display_name"`
+	ClientID           string                  `json:"client_id"`
+	ClientSecret       string                  `json:"client_secret"`
+	IssuerURI          string                  `json:"issuer_uri"`
+	Discovery          DiscoveryConfigRequest  `json:"discovery"`
+	Endpoints          *OAuth2EndpointsRequest `json:"endpoints,omitempty"`
+	Scopes             []OAuthScopeRequest     `json:"scopes"`
+	ProtectedResources []string                `json:"protected_resources,omitempty"` // RFC 8693 resource URIs
 }
 
 // DiscoveryConfigRequest represents the discovery configuration in requests.
@@ -65,16 +67,17 @@ type OAuthScopeRequest struct {
 // ServiceResponse represents the response body for service operations.
 // Client secret is always redacted in responses per SR-003.
 type ServiceResponse struct {
-	ID           string                  `json:"id"`
-	DisplayName  string                  `json:"display_name"`
-	ClientID     string                  `json:"client_id"`
-	ClientSecret string                  `json:"client_secret"` // Always "REDACTED"
-	IssuerURI    string                  `json:"issuer_uri"`
-	Discovery    DiscoveryConfigResponse `json:"discovery"`
-	Endpoints    OAuth2EndpointsResponse `json:"endpoints"`
-	Scopes       []OAuthScopeResponse    `json:"scopes"`
-	CreatedAt    string                  `json:"created_at"`
-	UpdatedAt    string                  `json:"updated_at"`
+	ID                 string                  `json:"id"`
+	DisplayName        string                  `json:"display_name"`
+	ClientID           string                  `json:"client_id"`
+	ClientSecret       string                  `json:"client_secret"` // Always "REDACTED"
+	IssuerURI          string                  `json:"issuer_uri"`
+	Discovery          DiscoveryConfigResponse `json:"discovery"`
+	Endpoints          OAuth2EndpointsResponse `json:"endpoints"`
+	Scopes             []OAuthScopeResponse    `json:"scopes"`
+	ProtectedResources []string                `json:"protected_resources,omitempty"` // RFC 8693 resource URIs
+	CreatedAt          string                  `json:"created_at"`
+	UpdatedAt          string                  `json:"updated_at"`
 }
 
 // DiscoveryConfigResponse represents the discovery configuration in responses.
@@ -118,9 +121,10 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 			EnableDiscovery: req.Discovery.EnableDiscovery,
 			MetadataURL:     req.Discovery.MetadataURL,
 		},
-		Scopes:    make([]storage.OAuthScope, len(req.Scopes)),
-		CreatedAt: now,
-		UpdatedAt: now,
+		Scopes:             make([]storage.OAuthScope, len(req.Scopes)),
+		ProtectedResources: req.ProtectedResources,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 
 	// Convert scopes
@@ -174,33 +178,54 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Create in repository (skip validation since we already did it above)
-	if err := h.repo.Create(ctx, service); err != nil {
+	// Validate protected_resources (RFC 8693 resource URIs) - return 400 for invalid format (T023)
+	if err := service.ValidateProtectedResources(); err != nil {
+		h.logger.Warn("protected_resources validation failed",
+			"service_id", service.ID,
+			"error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	// Check for duplicate resource URIs across existing services (T022)
+	if len(service.ProtectedResources) > 0 {
+		for _, resource := range service.ProtectedResources {
+			existing, err := h.authProvider.FindByProtectedResource(ctx, resource)
+			if err == nil && existing != nil {
+				// Conflict: another service already has this resource URI
+				h.logger.Warn("duplicate protected resource",
+					"resource", resource,
+					"service_id", existing.ID)
+				h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
+				return
+			}
+			// Ignore NotFound errors, those are expected when no existing service has the resource
+		}
+	}
+
+	// Create service using domain service (handles branch key provisioning and creation atomically)
+	createdService, err := h.authProvider.Create(ctx, service)
+	if err != nil {
 		h.handleStorageError(w, r, "CreateService", err)
 		return
 	}
 
-	h.logger.Info("OAuth2 service created",
-		"service_id", service.ID,
-		"client_id", service.ClientID,
-		"issuer_uri", service.IssuerURI)
-
 	// Return created service with redacted secret
-	resp := h.toResponse(service.RedactedCopy())
+	resp := h.toResponse(createdService.RedactedCopy())
 	h.writeJSON(w, http.StatusCreated, resp)
 }
 
 // GetService handles GET /api/third-party/oauth2/clients/:client-id
 func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID := chi.URLParam(r, "client-id")
+	serviceID := chi.URLParam(r, "service-id")
 
-	if clientID == "" {
-		h.writeError(w, http.StatusBadRequest, "client ID is required", "")
+	if serviceID == "" {
+		h.writeError(w, http.StatusBadRequest, "service ID is required", "")
 		return
 	}
 
-	service, err := h.repo.Get(ctx, clientID)
+	service, err := h.authProvider.Get(ctx, serviceID)
 	if err != nil {
 		h.handleStorageError(w, r, "GetService", err)
 		return
@@ -211,13 +236,13 @@ func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-// UpdateService handles PUT /api/third-party/oauth2/clients/:client-id
+// UpdateService handles PUT /api/services/:service-id
 func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID := chi.URLParam(r, "client-id")
+	serviceID := chi.URLParam(r, "service-id")
 
-	if clientID == "" {
-		h.writeError(w, http.StatusBadRequest, "client ID is required", "")
+	if serviceID == "" {
+		h.writeError(w, http.StatusBadRequest, "service ID is required", "")
 		return
 	}
 
@@ -229,7 +254,7 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Get existing service to preserve created_at
-	existing, err := h.repo.Get(ctx, clientID)
+	existing, err := h.authProvider.Get(ctx, serviceID)
 	if err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
 		return
@@ -237,7 +262,7 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 
 	// Update service entity
 	service := &storage.ThirdpartyOAuth2Service{
-		ID:           clientID,
+		ID:           serviceID,
 		DisplayName:  req.DisplayName,
 		ClientID:     req.ClientID,
 		ClientSecret: req.ClientSecret,
@@ -246,9 +271,10 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 			EnableDiscovery: req.Discovery.EnableDiscovery,
 			MetadataURL:     req.Discovery.MetadataURL,
 		},
-		Scopes:    make([]storage.OAuthScope, len(req.Scopes)),
-		CreatedAt: existing.CreatedAt,
-		UpdatedAt: time.Now().UTC(),
+		Scopes:             make([]storage.OAuthScope, len(req.Scopes)),
+		ProtectedResources: req.ProtectedResources,
+		CreatedAt:          existing.CreatedAt,
+		UpdatedAt:          time.Now().UTC(),
 	}
 
 	// Convert scopes
@@ -302,8 +328,34 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Validate protected_resources (RFC 8693 resource URIs) - return 400 for invalid format (T023)
+	if err := service.ValidateProtectedResources(); err != nil {
+		h.logger.Warn("protected_resources validation failed",
+			"service_id", service.ID,
+			"error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	// Check for duplicate resource URIs across other services (T022)
+	// Only check resources that are different from existing service's resources
+	if len(service.ProtectedResources) > 0 {
+		for _, resource := range service.ProtectedResources {
+			existing, err := h.authProvider.FindByProtectedResource(ctx, resource)
+			if err == nil && existing != nil && existing.ID != service.ID {
+				// Conflict: another service already has this resource URI
+				h.logger.Warn("duplicate protected resource",
+					"resource", resource,
+					"service_id", existing.ID)
+				h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
+				return
+			}
+			// Ignore NotFound errors, those are expected when no existing service has the resource
+		}
+	}
+
 	// Update in repository (skip validation since we already did it above)
-	if err := h.repo.Update(ctx, service); err != nil {
+	if err := h.authProvider.Update(ctx, service); err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
 		return
 	}
@@ -317,24 +369,24 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-// DeleteService handles DELETE /api/third-party/oauth2/clients/:client-id
+// DeleteService handles DELETE /api/services/:service-id
 func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	clientID := chi.URLParam(r, "client-id")
+	serviceID := chi.URLParam(r, "service-id")
 
-	if clientID == "" {
-		h.writeError(w, http.StatusBadRequest, "client ID is required", "")
+	if serviceID == "" {
+		h.writeError(w, http.StatusBadRequest, "service ID is required", "")
 		return
 	}
 
-	// Delete from repository
-	if err := h.repo.Delete(ctx, clientID); err != nil {
+	// Delete via domain service
+	if err := h.authProvider.Delete(ctx, serviceID); err != nil {
 		// Special handling for conflict errors (grants exist)
 		if storageErr, ok := err.(*storage.StorageError); ok && storageErr.Kind == storage.ErrorKindConflict {
 			// Extract grant count from error message if possible
 			message := storageErr.Message
 			h.logger.Warn("service deletion blocked due to existing grants",
-				"service_id", clientID,
+				"service_id", serviceID,
 				"error", message)
 			h.writeError(w, http.StatusConflict, "conflict", message)
 			return
@@ -344,7 +396,7 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.logger.Info("OAuth2 service deleted", "service_id", clientID)
+	h.logger.Info("OAuth2 service deleted", "service_id", serviceID)
 
 	// Return 204 No Content
 	w.WriteHeader(http.StatusNoContent)
@@ -354,7 +406,7 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 func (h *ServicesHandler) ListServices(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	services, err := h.repo.List(ctx)
+	services, err := h.authProvider.List(ctx)
 	if err != nil {
 		h.handleStorageError(w, r, "ListServices", err)
 		return
@@ -394,9 +446,10 @@ func (h *ServicesHandler) toResponse(service *storage.ThirdpartyOAuth2Service) S
 			TokenEndpoint:     service.Endpoints.TokenEndpoint,
 			AuthorizeEndpoint: service.Endpoints.AuthorizeEndpoint,
 		},
-		Scopes:    scopes,
-		CreatedAt: service.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: service.UpdatedAt.Format(time.RFC3339),
+		Scopes:             scopes,
+		ProtectedResources: service.ProtectedResources,
+		CreatedAt:          service.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:          service.UpdatedAt.Format(time.RFC3339),
 	}
 }
 

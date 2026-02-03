@@ -95,6 +95,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 
 		// T034: Token endpoint (no authentication required, proxies to upstream)
 		// POST /oauth2/token
+		cfg.Logger.Info("Registering POST /oauth2/token endpoint")
 		r.Post("/oauth2/token", h.OAuth2Token.ServeHTTP)
 
 		// T041: Metadata endpoint (public, RFC 8414 compliant)

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -40,6 +41,11 @@ func Validate(cfg *ports.Config) error {
 
 	// Validate OAuth2 Authorization Server configuration (if provided)
 	if err := validateOAuth2AuthServerConfig(&cfg.OAuth2AuthServer); err != nil {
+		return err
+	}
+
+	// Validate encryption configuration
+	if err := validateEncryptionConfig(&cfg.Encryption); err != nil {
 		return err
 	}
 
@@ -298,6 +304,132 @@ func formatValidationError(field string, value string, expected string, err erro
 		Source:   "", // Will be filled in by caller if known
 		Err:      err,
 	}
+}
+
+// validateEncryptionConfig validates the new backend-explicit encryption configuration.
+// Ensures exactly one backend (AWS KMS or Memory) is configured.
+func validateEncryptionConfig(cfg *ports.EncryptionConfig) error {
+	// Count configured backends
+	backendCount := 0
+	if cfg.AWSKMS != nil {
+		backendCount++
+	}
+	if cfg.Memory != nil {
+		backendCount++
+	}
+
+	// Ensure exactly one backend is configured
+	if backendCount == 0 {
+		return formatValidationError(
+			"encryption",
+			"neither backend configured",
+			"exactly one backend (aws_kms or memory) must be configured",
+			nil,
+		)
+	}
+	if backendCount > 1 {
+		return formatValidationError(
+			"encryption",
+			"multiple backends configured",
+			"exactly one backend (aws_kms or memory) must be configured, not both",
+			nil,
+		)
+	}
+
+	// Validate backend-specific configuration
+	if cfg.AWSKMS != nil {
+		if err := validateAWSKMSConfig(cfg.AWSKMS); err != nil {
+			return err
+		}
+	}
+	if cfg.Memory != nil {
+		if err := validateMemoryConfig(cfg.Memory); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateAWSKMSConfig validates AWS KMS backend configuration.
+func validateAWSKMSConfig(cfg *ports.AWSKMSConfig) error {
+	// KeyARN is required
+	if cfg.KeyARN == "" {
+		return formatValidationError(
+			"encryption.aws_kms.key_arn",
+			"",
+			"AWS KMS ARN (arn:aws:kms:region:account:key/key-id)",
+			nil,
+		)
+	}
+
+	// Validate KeyARN format
+	if !strings.HasPrefix(cfg.KeyARN, "arn:aws:kms:") {
+		return formatValidationError(
+			"encryption.aws_kms.key_arn",
+			maskSensitiveValue(cfg.KeyARN),
+			"valid AWS KMS ARN format (arn:aws:kms:region:account:key/key-id)",
+			nil,
+		)
+	}
+
+	// Basic ARN structure validation
+	parts := strings.Split(cfg.KeyARN, ":")
+	if len(parts) < 6 {
+		return formatValidationError(
+			"encryption.aws_kms.key_arn",
+			maskSensitiveValue(cfg.KeyARN),
+			"valid AWS KMS ARN with at least 6 colon-separated parts",
+			nil,
+		)
+	}
+
+	return nil
+}
+
+// validateMemoryConfig validates Memory backend configuration.
+func validateMemoryConfig(cfg *ports.MemoryConfig) error {
+	// RawKey is required
+	if cfg.RawKey == "" {
+		return formatValidationError(
+			"encryption.memory.raw_key",
+			"",
+			"base64-encoded 32-byte AES-256 key",
+			nil,
+		)
+	}
+
+	// Validate base64 encoding
+	keyBytes, err := base64.StdEncoding.DecodeString(cfg.RawKey)
+	if err != nil {
+		return formatValidationError(
+			"encryption.memory.raw_key",
+			maskSensitiveValue(cfg.RawKey),
+			"valid base64-encoded string",
+			err,
+		)
+	}
+
+	// Validate key length (must be exactly 32 bytes for AES-256)
+	if len(keyBytes) != 32 {
+		return formatValidationError(
+			"encryption.memory.raw_key",
+			fmt.Sprintf("%d bytes", len(keyBytes)),
+			"exactly 32 bytes when decoded (AES-256)",
+			nil,
+		)
+	}
+
+	return nil
+}
+
+// maskSensitiveValue masks sensitive values for display in error messages.
+// Shows only the first 10 and last 5 characters for readability while maintaining some specificity.
+func maskSensitiveValue(value string) string {
+	if len(value) <= 15 {
+		return "***" // Too short to safely display any part
+	}
+	return value[:10] + "..." + value[len(value)-5:]
 }
 
 // isValidURL checks if a string is a valid HTTP or HTTPS URL.

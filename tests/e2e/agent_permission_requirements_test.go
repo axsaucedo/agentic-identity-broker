@@ -61,7 +61,8 @@ func findScopeByName(scopes []interface{}, name string) map[string]interface{} {
 
 var _ = Describe("Agent Permission Requirements", func() {
 	var (
-		server         *bootstrap.TestServer
+		enduserServer  *bootstrap.TestServer
+		adminServer    *bootstrap.TestServer
 		testStorage    *storageadapter.Adapter
 		mockUpstream   *helpers.MockUpstreamOAuth2Server
 		storageFactory *bootstrap.StorageFactory
@@ -89,8 +90,13 @@ var _ = Describe("Agent Permission Requirements", func() {
 		appInstance, err := serverFactory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred(), "Failed to build app instance")
 
-		server, err = bootstrap.NewTestServer(appInstance, logger)
-		Expect(err).ToNot(HaveOccurred(), "Failed to create test server")
+		// Create separate servers for end-user and admin routes
+		// This matches production where they would be on different ports/servers
+		enduserServer, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+		Expect(err).ToNot(HaveOccurred(), "Failed to create end-user test server")
+
+		adminServer, err = bootstrap.NewAdminTestServer(appInstance, logger)
+		Expect(err).ToNot(HaveOccurred(), "Failed to create admin test server")
 	}
 
 	BeforeEach(func() {
@@ -103,9 +109,12 @@ var _ = Describe("Agent Permission Requirements", func() {
 	})
 
 	AfterEach(func() {
-		// Cleanup: Close server and storage
-		if server != nil {
-			server.Close()
+		// Cleanup: Close servers and storage
+		if enduserServer != nil {
+			enduserServer.Close()
+		}
+		if adminServer != nil {
+			adminServer.Close()
 		}
 		if mockUpstream != nil {
 			mockUpstream.Close()
@@ -163,7 +172,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			}
 			body, _ := json.Marshal(payload)
 
-			resp, err := server.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
+			resp, err := adminServer.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
 			Expect(err).ToNot(HaveOccurred())
 			defer func() {
 				_ = resp.Body.Close()
@@ -191,7 +200,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			}
 			body, _ := json.Marshal(agentPayload)
 
-			resp, err := server.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
+			resp, err := adminServer.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
 			Expect(err).ToNot(HaveOccurred())
 			defer func() {
 				_ = resp.Body.Close()
@@ -221,7 +230,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				}
 				body, _ := json.Marshal(payload)
 
-				resp, err := server.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
+				resp, err := adminServer.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
 				Expect(err).ToNot(HaveOccurred())
 				defer func() {
 					_ = resp.Body.Close()
@@ -248,7 +257,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(err).ToNot(HaveOccurred(), "Failed to create test agent")
 
 			// When: Administrator retrieves the agent via GET /api/agents/{agent-id}
-			resp, err := server.AuthenticatedGET(fmt.Sprintf("/api/agents/%s", agent.ID), adminPrincipal)
+			resp, err := adminServer.AuthenticatedGET(fmt.Sprintf("/api/agents/%s", agent.ID), adminPrincipal)
 			Expect(err).ToNot(HaveOccurred())
 			// Then: Response includes service_requirements with service display names
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -298,7 +307,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			}
 			body, _ := json.Marshal(updatePayload)
 
-			resp, err := server.DirectRequest("PUT", fmt.Sprintf("/api/agents/%s", agent.ID), adminPrincipal,
+			resp, err := adminServer.DirectRequest("PUT", fmt.Sprintf("/api/agents/%s", agent.ID), adminPrincipal,
 				map[string]string{"Content-Type": "application/json"}, bytes.NewReader(body))
 			Expect(err).ToNot(HaveOccurred())
 			defer func() {
@@ -329,7 +338,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				}
 				body, _ := json.Marshal(agentPayload)
 
-				resp, err := server.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
+				resp, err := adminServer.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
 				Expect(err).ToNot(HaveOccurred())
 
 				// Then: System returns HTTP 400 with error indicating invalid service reference
@@ -364,7 +373,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				}
 				body, _ := json.Marshal(agentPayload)
 
-				resp, err := server.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
+				resp, err := adminServer.AuthenticatedPOST("/api/agents", adminPrincipal, "application/json", bytes.NewReader(body))
 				Expect(err).ToNot(HaveOccurred())
 
 				// Then: System returns HTTP 400 with error listing invalid scope names
@@ -433,7 +442,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// (Intentionally not creating a grant)
 
 			// When: Authorization request arrives
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz",
 					agent.ClientID),
 				userPrincipal,
@@ -483,7 +492,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Authorization endpoint processes the request
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
 					agent.ClientID),
 				userPrincipal,
@@ -532,7 +541,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Authorization request arrives
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=abc123",
 					agent.ClientID),
 				userPrincipal,
@@ -569,7 +578,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// And: User has no grant
 
 			// When: Authorization endpoint processes the request
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
 					agent.ClientID),
 				userPrincipal,
@@ -619,7 +628,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Authorization endpoint processes the request
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
 					agent.ClientID),
 				userPrincipal,
@@ -656,7 +665,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// And: User has no grant for optional service
 
 			// When: Authorization endpoint processes the request
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
 					agent.ClientID),
 				userPrincipal,
@@ -697,7 +706,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				// When: Authorization endpoint processes the request
-				resp, err := server.AuthenticatedGET(
+				resp, err := enduserServer.AuthenticatedGET(
 					fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz",
 						agent.ClientID),
 					userPrincipal,
@@ -765,7 +774,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should return agent information via GET /api/consent/agent/{agent-id}", func() {
 			// Given: An agent with mandatory service requirements
 			// When: User requests consent endpoint GET /api/consent/agent/{agent-id}
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -793,7 +802,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should return services with requirementType field set to 'mandatory' or 'optional'", func() {
 			// Given: Agent with service requirement
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -820,7 +829,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should include serviceName, serviceId, and connectionStatus in each service", func() {
 			// Given: Agent with service requirement
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -848,7 +857,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should include requiredScopes array with name and description fields", func() {
 			// Given: Agent with service requirement containing scopes
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -910,7 +919,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -945,7 +954,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -1016,7 +1025,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should return scopes as read-only arrays from API (not editable)", func() {
 			// Given: Agent with required scopes
 			// When: User requests consent endpoint GET /api/consent/agent/{agent-id}
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -1041,7 +1050,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should return each scope with name and description fields", func() {
 			// Given: Service with scopes that have descriptions
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -1069,7 +1078,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should populate scope descriptions from service configuration", func() {
 			// Given: Service with scopes that have descriptions
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -1101,7 +1110,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should return description field for all scopes with their descriptions", func() {
 			// Given: Service with scopes that have descriptions
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -1130,7 +1139,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should return exactly the required scopes configured in the agent", func() {
 			// Given: Agent configured with specific scopes
 			// When: User requests consent endpoint
-			resp, err := server.AuthenticatedGET(
+			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/api/consent/agent/%s", agent.ID),
 				userPrincipal,
 			)
@@ -1257,7 +1266,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			body, _ := json.Marshal(payload)
 
 			// When: User submits grant approval with redirect_uri parameter
-			resp, err := server.AuthenticatedPOST(
+			resp, err := enduserServer.AuthenticatedPOST(
 				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("/callback")),
 				userPrincipalForGrant,
 				"application/json",
@@ -1301,7 +1310,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			encodedCallback := url.QueryEscape(customCallback)
 
 			// When: User submits grant approval
-			resp, err := server.AuthenticatedPOST(
+			resp, err := enduserServer.AuthenticatedPOST(
 				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, encodedCallback),
 				userPrincipalForGrant,
 				"application/json",
@@ -1339,7 +1348,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			body, _ := json.Marshal(payload)
 
 			// When: User submits grant approval without redirect_uri
-			resp, err := server.AuthenticatedPOST(
+			resp, err := enduserServer.AuthenticatedPOST(
 				fmt.Sprintf("/api/consent/agent/%s/grants", agent.ID),
 				userPrincipalForGrant,
 				"application/json",
@@ -1373,7 +1382,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			body, _ := json.Marshal(payload)
 
 			// When: User submits grant approval with same-origin redirect_uri
-			resp, err := server.AuthenticatedPOST(
+			resp, err := enduserServer.AuthenticatedPOST(
 				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("/local/callback")),
 				userPrincipalForGrant,
 				"application/json",
@@ -1408,7 +1417,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			body, _ := json.Marshal(payload)
 
 			// When: User submits grant approval with external redirect_uri
-			resp, err := server.AuthenticatedPOST(
+			resp, err := enduserServer.AuthenticatedPOST(
 				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("https://evil.com/callback")),
 				userPrincipalForGrant,
 				"application/json",

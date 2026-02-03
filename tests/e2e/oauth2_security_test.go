@@ -46,7 +46,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 		appInstance, err := factory.BuildApp(testStorage)
 		Expect(err).ToNot(HaveOccurred())
 
-		server, err = bootstrap.NewTestServer(appInstance, logger)
+		server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -213,7 +213,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			if server != nil {
 				server.Close()
 			}
-			server, err = bootstrap.NewTestServer(appInstance, logger)
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -296,7 +296,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			if server != nil {
 				server.Close()
 			}
-			server, err = bootstrap.NewTestServer(appInstance, logger)
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request token endpoint
@@ -337,7 +337,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			if server != nil {
 				server.Close()
 			}
-			server, err = bootstrap.NewTestServer(appInstance, logger)
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request token endpoint
@@ -383,7 +383,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			if server != nil {
 				server.Close()
 			}
-			server, err = bootstrap.NewTestServer(appInstance, logger)
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request token endpoint
@@ -428,7 +428,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			if server != nil {
 				server.Close()
 			}
-			server, err = bootstrap.NewTestServer(appInstance, logger)
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request token endpoint
@@ -478,7 +478,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			if server != nil {
 				server.Close()
 			}
-			server, err = bootstrap.NewTestServer(appInstance, logger)
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request includes Connection header

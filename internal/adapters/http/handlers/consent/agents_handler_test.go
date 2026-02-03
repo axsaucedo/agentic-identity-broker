@@ -281,6 +281,10 @@ func (m *mockServiceRepoForAgents) CountGrantsReferencingService(ctx context.Con
 	return 0, nil
 }
 
+func (m *mockServiceRepoForAgents) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+	return nil, nil
+}
+
 type mockGrantRepoForAgents struct {
 	delegations []consent.AgentDelegation
 	err         error
