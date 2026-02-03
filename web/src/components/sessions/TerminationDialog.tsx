@@ -69,7 +69,7 @@ export const TerminationDialog: React.FC<TerminationDialogProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <button
         type="button"
-        className="absolute inset-0 cursor-default"
+        className="absolute inset-0 cursor-pointer"
         aria-label="Close dialog"
         onClick={onClose}
       />
