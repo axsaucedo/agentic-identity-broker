@@ -681,12 +681,12 @@ func TestPlaintextKEKNeverLogged(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, err := NewAWSEncryption(tt.keyMaterial, "", 0)
-			
+
 			if tt.shouldFail {
 				if err == nil {
 					t.Fatalf("expected error for %s", tt.name)
 				}
-				
+
 				// Verify error message does NOT contain the KEK material
 				errMsg := err.Error()
 				if tt.keyMaterial != "" && len(tt.keyMaterial) > 10 {
@@ -695,12 +695,12 @@ func TestPlaintextKEKNeverLogged(t *testing.T) {
 						t.Errorf("error message should not contain KEK material, got: %s", errMsg)
 					}
 				}
-				
+
 				// Verify error message is sanitized (contains generic messages only)
 				// Accept various error message patterns that don't leak KEK material
 				sanitized := false
 				for _, keyword := range []string{
-					"invalid", "unavailable", "failed", "base64", "length", 
+					"invalid", "unavailable", "failed", "base64", "length",
 					"required", "must be", "bytes", "material",
 				} {
 					if strings.Contains(errMsg, keyword) {
@@ -715,5 +715,3 @@ func TestPlaintextKEKNeverLogged(t *testing.T) {
 		})
 	}
 }
-
-
