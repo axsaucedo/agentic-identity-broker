@@ -44,13 +44,8 @@ pipeline:
     commands:
       - desc: "Build and push Docker images (broker + migrate)"
         cmd: |
-          # Build Go binaries and frontend
-          just build-linux-amd64
-          just build-linux-arm64
-          just web-build
-
           # Build and push both images to ZCR (broker + migrate)
-          # Uses justfile docker-push target which builds both images
+          # docker-push target handles building Go binaries, frontend, and Docker images
           just docker-push
 
           # promote images to production during push/merge pipeline
