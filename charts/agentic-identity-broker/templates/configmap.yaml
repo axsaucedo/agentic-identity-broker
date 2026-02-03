@@ -66,15 +66,15 @@ data:
       skip_thirdparty_https_validation: {{ .Values.broker.security.skipThirdpartyHttpsValidation }}
 
     {{- if eq .Values.storage.type "postgres" }}
-    # Storage configuration
+    # Storage configuration (overridden by environment variables)
+    # Environment variables IDENTITY_BROKER_STORAGE_BACKEND and
+    # IDENTITY_BROKER_STORAGE_POSTGRES_URL take precedence
     storage:
-      type: postgres
-      postgres:
-        connection_string: {{ include "agentic-identity-broker.postgresURL" . }}
+      backend: postgres
     {{- else }}
     # Storage configuration (in-memory)
     storage:
-      type: memory
+      backend: memory
     {{- end }}
 
     {{- if .Values.broker.extraConfig }}
