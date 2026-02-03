@@ -157,7 +157,7 @@ output, err := keyStoreClient.CreateKey(ctx, keystoretypes.CreateKeyInput{
 })
 
 // Get active branch key
-output, err := keyStoreClient.GetActiveBranchKey(keystoretypes.GetActiveBranchKeyInput{
+output, err := keyStoreClient.GetActiveBranchKey(ctx, keystoretypes.GetActiveBranchKeyInput{
     BranchKeyIdentifier: branchKeyID,
 })
 
