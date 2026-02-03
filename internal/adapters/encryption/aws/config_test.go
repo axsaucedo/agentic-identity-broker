@@ -14,15 +14,12 @@ import (
 func TestBuildAWSConfig_Default(t *testing.T) {
 	// Test default configuration (empty config uses AWS SDK defaults)
 	// Note: In CI/test environments without AWS credentials, region may not be set
-	// This is acceptable as the config will be explicitly set in production
 	cfg := &ports.AWSKMSConfig{}
 
 	awsConfig, err := buildAWSConfig(context.Background(), cfg)
 
 	require.NoError(t, err)
-	// Region may be empty in test environment without AWS credentials
-	// In production, region is always explicitly configured
-	// assert.NotEmpty(t, awsConfig.Region) // Commented out - not reliable in CI
+	// Region may be empty in test environment - this is acceptable
 	t.Logf("AWS Config region: %s (may be empty in test environment)", awsConfig.Region)
 }
 

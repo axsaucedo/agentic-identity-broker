@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
@@ -690,17 +691,23 @@ func TestPlaintextKEKNeverLogged(t *testing.T) {
 				errMsg := err.Error()
 				if tt.keyMaterial != "" && len(tt.keyMaterial) > 10 {
 					// Check that no part of the KEK appears in the error
-					if containsSubstring(errMsg, tt.keyMaterial) {
+					if strings.Contains(errMsg, tt.keyMaterial) {
 						t.Errorf("error message should not contain KEK material, got: %s", errMsg)
 					}
 				}
 				
 				// Verify error message is sanitized (contains generic messages only)
 				// Accept various error message patterns that don't leak KEK material
-				sanitized := containsAny(errMsg, []string{
+				sanitized := false
+				for _, keyword := range []string{
 					"invalid", "unavailable", "failed", "base64", "length", 
 					"required", "must be", "bytes", "material",
-				})
+				} {
+					if strings.Contains(errMsg, keyword) {
+						sanitized = true
+						break
+					}
+				}
 				if !sanitized {
 					t.Errorf("error message should contain generic error info: %s", errMsg)
 				}
@@ -758,29 +765,4 @@ func TestDEKEntropyValidation(t *testing.T) {
 	// structure implies the DEK size based on the algorithm suite
 	// The AWS Encryption SDK documentation guarantees >= 256-bit DEK for AESGCM
 	t.Logf("Generated %d unique ciphertexts with sufficient DEK entropy (>= 256 bits)", len(uniqueCiphertexts))
-}
-
-// Helper function to check if a string contains a substring
-func containsSubstring(s, substr string) bool {
-	return len(substr) > 0 && len(s) > 0 && stringContains(s, substr)
-}
-
-// Helper function to check if string contains any of the given substrings
-func containsAny(s string, substrs []string) bool {
-	for _, substr := range substrs {
-		if stringContains(s, substr) {
-			return true
-		}
-	}
-	return false
-}
-
-// Simple contains check to avoid external dependencies
-func stringContains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
