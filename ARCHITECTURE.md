@@ -33,7 +33,10 @@ This section provides a high-level overview of the project's directory and file 
 │   ├── tests/            # Frontend unit and integration tests (Vitest)
 │   ├── package.json      # Frontend dependencies and scripts
 │   ├── vite.config.ts    # Vite build configuration
-│   ├── tsconfig.json     # TypeScript configuration
+│   ├── tsconfig.json     # TypeScript solution references
+│   ├── tsconfig.app.json # App TypeScript configuration
+│   ├── tsconfig.test.json # Test TypeScript configuration
+│   ├── tsconfig.build.json # Build TypeScript configuration
 │   └── tailwind.config.ts # Tailwind CSS v4.0 configuration
 ├── docs/                 # Project documentation (e.g., API docs, setup guides)
 ├── scripts/              # Automation scripts (e.g., deployment, data seeding)
@@ -180,7 +183,10 @@ web/
 │   └── main.tsx          # Application entry point
 ├── dist/consent/         # Build output (served by Go)
 ├── vite.config.ts        # Vite configuration
-├── tsconfig.json         # TypeScript configuration
+├── tsconfig.json         # TypeScript solution references
+├── tsconfig.app.json     # App TypeScript configuration
+├── tsconfig.test.json    # Test TypeScript configuration
+├── tsconfig.build.json   # Build TypeScript configuration
 ├── tailwind.config.ts    # Tailwind CSS configuration
 └── package.json          # Dependencies and scripts
 ```

@@ -158,8 +158,12 @@ describe('SessionCard', () => {
       // Verify component renders with buttons
       expect(container).toBeInTheDocument();
       expect(screen.getByText('Google Drive')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /view details/i }));
-      expect(screen.getByRole('button', { name: /terminate/i }));
+      expect(
+        screen.getByRole('button', { name: /view details/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /terminate/i }),
+      ).toBeInTheDocument();
     });
 
     it('calls onTerminate when Terminate button is clicked', async () => {
@@ -194,6 +198,7 @@ describe('SessionCard', () => {
       expect(container).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: /view details/i }));
+      expect(onViewDetails).toHaveBeenCalledTimes(1);
       expect(onViewDetails).toHaveBeenCalledWith(session.service_id);
     });
 

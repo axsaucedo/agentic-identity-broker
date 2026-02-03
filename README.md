@@ -569,7 +569,10 @@ web/
 ├── dist/consent/         # Build output (served by Go backend)
 ├── package.json          # Dependencies and scripts
 ├── vite.config.ts        # Vite configuration
-├── tsconfig.json         # TypeScript configuration
+├── tsconfig.json         # TypeScript solution references
+├── tsconfig.app.json     # App TypeScript configuration
+├── tsconfig.test.json    # Test TypeScript configuration
+├── tsconfig.build.json   # Build TypeScript configuration
 └── tailwind.config.ts    # Tailwind CSS configuration
 ```
 
