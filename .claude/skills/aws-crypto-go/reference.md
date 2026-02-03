@@ -162,7 +162,7 @@ output, err := keyStoreClient.GetActiveBranchKey(ctx, keystoretypes.GetActiveBra
 })
 
 // Version/rotate branch key
-output, err := keyStoreClient.VersionKey(keystoretypes.VersionKeyInput{
+output, err := keyStoreClient.VersionKey(ctx, keystoretypes.VersionKeyInput{
     BranchKeyIdentifier: branchKeyID,
 })
 ```
