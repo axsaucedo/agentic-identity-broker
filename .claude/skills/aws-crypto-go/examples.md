@@ -97,13 +97,6 @@ func (e *Encryptor) Decrypt(ctx context.Context, ciphertext []byte, resourceID s
         return nil, fmt.Errorf("decryption failed: %w", err)
     }
 
-    // Verify encryption context matches
-    for key, expectedValue := range expectedContext {
-        if actualValue, exists := output.EncryptionContext[key]; !exists || actualValue != expectedValue {
-            return nil, fmt.Errorf("encryption context mismatch for key %q", key)
-        }
-    }
-
     return output.Plaintext, nil
 }
 ```
@@ -160,7 +153,7 @@ func NewHierarchicalEncryptor(ctx context.Context, cfg HierarchicalConfig) (*Hie
     }
 
     // 3. Create KeyStore backed by DynamoDB
-   // Prerequisite: Table must exist with Partition Key "partition_key" (S) and Sort Key "sort_key" (S)
+    // Prerequisite: Table must exist with Partition Key "partition_key" (S) and Sort Key "sort_key" (S)
     keyStoreClient, err := keystore.NewClient(keystoretypes.KeyStoreConfig{
         DdbTableName:        cfg.DynamoDBTable,
         KmsConfiguration:    &keystoretypes.KMSConfigurationMemberkmsKeyArn{Value: cfg.KMSKeyArn},
