@@ -237,9 +237,6 @@ Key commitment adds ~30 bytes to ciphertext size.
 
 ## Encrypted Data Key Limits
 
-The SDK supports up to 65,535 encrypted data keys per message. For security:
+The SDK supports up to 65,535 encrypted data keys per message. When decrypting messages from untrusted sources, be aware that malicious actors could craft messages with many encrypted data keys to cause resource exhaustion or increased KMS costs.
 
-```go
-// Limit encrypted data keys when decrypting untrusted messages
-// (Configuration depends on SDK version - check latest docs)
-```
+The Go SDK does not currently expose a configuration to limit encrypted data keys during decryption. Mitigate by validating message sources before decryption.
