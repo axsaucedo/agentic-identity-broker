@@ -401,10 +401,10 @@ build-all: build web-build
 # =============================================================================
 
 # Create and push multi-architecture Docker images to registry
-# Builds for linux/amd64 and linux/arm64 using docker buildx
-# Optional: set BUILDKIT_CONFIG to a buildx config file path (defaults to /etc/cdp-buildkitd.toml if present) 
+# Builds broker and migrate images for linux/amd64 and linux/arm64 using docker buildx
+# Optional: set BUILDKIT_CONFIG to a buildx config file path (defaults to /etc/cdp-buildkitd.toml if present)
 docker-push: build-linux-amd64 build-linux-arm64 web-build
-    @echo "Building and pushing multi-architecture Docker images: {{NAME}}:{{VERSION}} (amd64, arm64)..."
+    @echo "Building and pushing multi-architecture Docker images..."
     @BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
     if [ -f "$$BUILDKIT_CONFIG" ]; then \
         echo "Using buildx config: $$BUILDKIT_CONFIG"; \
@@ -413,8 +413,29 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
         echo "Note: buildx config not found at $$BUILDKIT_CONFIG"; \
         docker buildx create --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
     fi; \
-    docker buildx build --rm -t "{{NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .
-    @echo "✓ Multi-architecture images pushed: {{NAME}}:{{VERSION}}"
+    echo "Building broker image: {{NAME}}:{{VERSION}}..."; \
+    docker buildx build --rm -t "{{NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
+    echo "Building migrate image: {{NAME}}-migrate:{{VERSION}}..."; \
+    docker buildx build --rm -t "{{NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .
+    @echo "✓ Multi-architecture images pushed:"
+    @echo "  - {{NAME}}:{{VERSION}}"
+    @echo "  - {{NAME}}-migrate:{{VERSION}}"
+
+# Build multi-architecture migrate Docker image locally (no push)
+docker-build-migrate:
+    @echo "Building migrate Docker image: {{NAME}}-migrate:{{VERSION}}..."
+    @docker buildx build --rm -t "{{NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --load .
+    @echo "✓ Migrate image built: {{NAME}}-migrate:{{VERSION}}"
+
+# Build multi-architecture broker Docker image locally (no push)
+docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
+    @echo "Building broker Docker image: {{NAME}}:{{VERSION}}..."
+    @docker buildx build --rm -t "{{NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --load .
+    @echo "✓ Broker image built: {{NAME}}:{{VERSION}}"
+
+# Build both broker and migrate images locally (no push)
+docker-build-all: docker-build-broker docker-build-migrate
+    @echo "✓ All Docker images built"
 
 # =============================================================================
 # Docker Compose - Development (Hot Reload)
@@ -517,6 +538,60 @@ compose-clean: compose-down-volumes
     @echo "Cleaning up build and temporary directories..."
     @rm -rf tmp/ coverage/ bin/ web/dist web/node_modules
     @echo "✓ Cleanup complete"
+
+# =============================================================================
+# Helm Chart Targets
+# =============================================================================
+
+# Lint Helm chart for syntax and best practices
+helm-lint:
+    @echo "Linting Helm chart..."
+    @helm lint charts/agentic-identity-broker
+    @echo "✓ Helm chart lint passed"
+
+# Validate Helm chart deployment in Kind cluster (full E2E test)
+helm-validate:
+    @echo "Validating Helm chart in Kind cluster..."
+    @./scripts/validate-helm-chart.sh
+
+# Render Helm templates (dry-run)
+helm-template:
+    @echo "Rendering Helm templates..."
+    @helm template broker ./charts/agentic-identity-broker
+
+# Render Helm templates with custom values
+helm-template-values VALUES_FILE:
+    @echo "Rendering Helm templates with {{VALUES_FILE}}..."
+    @helm template broker ./charts/agentic-identity-broker -f {{VALUES_FILE}}
+
+# Install Helm chart to local Kind cluster
+helm-install-kind RELEASE_NAME="broker":
+    @echo "Installing Helm chart to Kind cluster..."
+    @kind create cluster --name helm-test 2>/dev/null || echo "Kind cluster already exists"
+    @helm install {{RELEASE_NAME}} ./charts/agentic-identity-broker --wait
+    @echo "✓ Chart installed as {{RELEASE_NAME}}"
+    @echo ""
+    @echo "Check status: kubectl get pods"
+    @echo "Uninstall: helm uninstall {{RELEASE_NAME}}"
+
+# Uninstall Helm chart from Kind cluster
+helm-uninstall-kind RELEASE_NAME="broker":
+    @echo "Uninstalling Helm chart..."
+    @helm uninstall {{RELEASE_NAME}}
+    @echo "✓ Chart uninstalled"
+
+# Delete Kind test cluster
+helm-kind-delete:
+    @echo "Deleting Kind test cluster..."
+    @kind delete cluster --name helm-test
+    @echo "✓ Kind cluster deleted"
+
+# Package Helm chart for distribution
+helm-package:
+    @echo "Packaging Helm chart..."
+    @mkdir -p dist
+    @helm package charts/agentic-identity-broker -d dist
+    @echo "✓ Chart packaged to dist/"
 
 # =============================================================================
 # Documentation Targets

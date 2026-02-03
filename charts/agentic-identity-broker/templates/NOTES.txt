@@ -1,0 +1,52 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }}
+  $ helm get all {{ .Release.Name }}
+
+{{ if eq .Values.storage.type "memory" -}}
+⚠️  NOTICE: Running with in-memory storage (ephemeral)
+   Data will be lost when pods restart. This is suitable for evaluation only.
+   For production, configure PostgreSQL storage:
+   - External PostgreSQL: Set storage.type=postgres and postgresql.external.*
+   - Zalando Operator: Set storage.type=postgres and postgresql.operator.*
+
+{{- end }}
+
+{{ if and (eq .Values.storage.type "postgres") .Values.postgresql.operator.enabled -}}
+📦 PostgreSQL Operator provisioning database...
+   The PostgreSQL cluster may take 1-2 minutes to become ready.
+   Check status: kubectl get postgresql {{ .Values.postgresql.operator.teamId }}-{{ include "agentic-identity-broker.fullname" . }}
+
+{{- end }}
+
+🔍 Check broker status:
+  $ kubectl get pods -l app.kubernetes.io/name={{ include "agentic-identity-broker.name" . }}
+
+{{ if or .Values.ingress.enduser.enabled .Values.ingress.admin.enabled -}}
+🌐 Ingress endpoints:
+{{- if .Values.ingress.enduser.enabled }}
+{{- range .Values.ingress.enduser.hosts }}
+  End-user API: http{{ if $.Values.ingress.enduser.tls }}s{{ end }}://{{ .host }}{{ (index .paths 0).path }}
+{{- end }}
+{{- end }}
+{{- if .Values.ingress.admin.enabled }}
+{{- range .Values.ingress.admin.hosts }}
+  Admin API: http{{ if $.Values.ingress.admin.tls }}s{{ end }}://{{ .host }}{{ (index .paths 0).path }}
+{{- end }}
+{{- end }}
+{{- else }}
+🔗 Access the broker using port-forward:
+  End-user API:
+  $ kubectl port-forward svc/{{ include "agentic-identity-broker.fullname" . }} 8000:{{ .Values.service.ports.enduser }}
+  $ curl http://localhost:8000/health
+
+  Admin API:
+  $ kubectl port-forward svc/{{ include "agentic-identity-broker.fullname" . }} 14000:{{ .Values.service.ports.admin }}
+  $ curl http://localhost:14000/health
+{{- end }}
+
+📚 Documentation: https://github.com/zalando-infosec/agentic-identity-broker/tree/main/docs

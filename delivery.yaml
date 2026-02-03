@@ -42,13 +42,15 @@ pipeline:
         - /go/pkg/mod
         - ~/.cache/go-build
     commands:
-      - desc: "Build and push Docker image"
+      - desc: "Build and push Docker images (broker + migrate)"
         cmd: |
-          # build and push image to ZCR
-          VERSION="${CDP_BUILD_VERSION}" make docker-push
+          # Build and push both images to ZCR (broker + migrate)
+          # docker-push target handles building Go binaries, frontend, and Docker images
+          just docker-push
 
-          # promote image to a production during push/merge pipeline
+          # promote images to production during push/merge pipeline
           # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker:${CDP_BUILD_VERSION}
+          # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker-migrate:${CDP_BUILD_VERSION}
       - desc: git-tag
         cmd: |
           git gh-tag "${CDP_BUILD_VERSION}"
