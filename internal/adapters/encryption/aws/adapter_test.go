@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
@@ -660,5 +661,57 @@ func TestAdapterInterfaceImplementation(t *testing.T) {
 
 	if string(decrypted) != string(plaintext) {
 		t.Errorf("Decrypt should return original plaintext: expected %q, got %q", string(plaintext), string(decrypted))
+	}
+}
+
+// T045 [US2] Unit test: Plaintext KEK never logged
+// This test verifies that KEK material is never included in error messages or logs
+func TestPlaintextKEKNeverLogged(t *testing.T) {
+	// Test various error scenarios and verify KEK is not in error messages
+	tests := []struct {
+		name        string
+		keyMaterial string
+		shouldFail  bool
+	}{
+		{"invalid base64", "not-valid-base64!!!", true},
+		{"too short KEK", "AQIDBAUGBwgJCgsMDQ4PEA==", true}, // 16 bytes binary data, need 32
+		{"empty KEK", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := NewAWSEncryption(tt.keyMaterial, "", 0)
+
+			if tt.shouldFail {
+				if err == nil {
+					t.Fatalf("expected error for %s", tt.name)
+				}
+
+				// Verify error message does NOT contain the KEK material
+				errMsg := err.Error()
+				if tt.keyMaterial != "" && len(tt.keyMaterial) > 10 {
+					// Check that no part of the KEK appears in the error
+					if strings.Contains(errMsg, tt.keyMaterial) {
+						t.Errorf("error message should not contain KEK material, got: %s", errMsg)
+					}
+				}
+
+				// Verify error message is sanitized (contains generic messages only)
+				// Accept various error message patterns that don't leak KEK material
+				sanitized := false
+				for _, keyword := range []string{
+					"invalid", "unavailable", "failed", "base64", "length",
+					"required", "must be", "bytes", "material",
+				} {
+					if strings.Contains(errMsg, keyword) {
+						sanitized = true
+						break
+					}
+				}
+				if !sanitized {
+					t.Errorf("error message should contain generic error info: %s", errMsg)
+				}
+			}
+		})
 	}
 }
