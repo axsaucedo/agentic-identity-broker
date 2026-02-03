@@ -152,7 +152,7 @@ kmsConfig := &keystoretypes.KMSConfigurationMemberdiscovery{
 
 ```go
 // Create branch key
-output, err := keyStoreClient.CreateKey(keystoretypes.CreateKeyInput{
+output, err := keyStoreClient.CreateKey(ctx, keystoretypes.CreateKeyInput{
     BranchKeyIdentifier: &branchKeyID,
 })
 
