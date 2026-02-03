@@ -267,7 +267,7 @@ containers:
       - "-path"
       - "/migrations"
       - "-database"
-      - "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
+      - "postgres://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
       - "up"
 ```
 
@@ -277,7 +277,7 @@ Standard database environment variables (DB_* prefix per ADR-009):
 - `DB_HOST` - Database host
 - `DB_PORT` - Database port (default: 5432)
 - `DB_NAME` - Database name
-- `DB_USER` - Migration user with schema privileges (from secret)
+- `DB_USERNAME` - Migration user with schema privileges (from secret)
 - `DB_PASSWORD` - Migration password (from secret)
 
 **Alternatives Considered**:
