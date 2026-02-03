@@ -374,6 +374,6 @@ podDisruptionBudget:
 
 ## Links
 
-- [Project Repository](https://github.com/yourusername/agentic-identity-broker)
-- [Documentation](https://github.com/yourusername/agentic-identity-broker/tree/main/docs)
-- [Issue Tracker](https://github.com/yourusername/agentic-identity-broker/issues)
+- [Project Repository](https://github.com/zalando-infosec/agentic-identity-broker)
+- [Documentation](https://github.com/zalando-infosec/agentic-identity-broker/tree/main/docs)
+- [Issue Tracker](https://github.com/zalando-infosec/agentic-identity-broker/issues)
