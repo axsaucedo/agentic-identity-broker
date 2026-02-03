@@ -19,7 +19,10 @@ func TestBuildAWSConfig_Default(t *testing.T) {
 	awsConfig, err := buildAWSConfig(context.Background(), cfg)
 
 	require.NoError(t, err)
-	// Region may be empty in test environment - this is acceptable
+	require.NotNil(t, awsConfig, "AWS config should not be nil")
+	
+	// Verify config has expected properties set, even if region is empty
+	// In CI environments without AWS credentials, this validates config structure
 	t.Logf("AWS Config region: %s (may be empty in test environment)", awsConfig.Region)
 }
 

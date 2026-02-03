@@ -58,7 +58,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 ### Phase 2e: E2E Acceptance Tests (Principle XIII - CRITICAL)
 
-- [x] T012 [P] Write E2E tests for ALL 24 acceptance scenarios BEFORE implementation: create `tests/e2e/encryption_vault_test.go`
+- [x] T012 [P] Write E2E tests for ALL 24 acceptance scenarios BEFORE implementation: create `tests/e2e/encryption_vault_raw_test.go`
   - **Test Organization** (Ginkgo/Gomega BDD):
     - Feature-level Describe: "Encryption Vault for OAuth Tokens"
     - Context per user story: "User Story 1: Envelope Encryption", "User Story 2: Secure KEK Storage", etc.
@@ -82,7 +82,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
     - `FailWithContextMismatch()` - verify context mismatch errors
   - **Status**: ✅ COMPLETE - E2E test file created at `tests/e2e/encryption_vault_raw_test.go`
 
-- [x] T013 [P] Verify E2E tests FAIL before implementation (red phase): run `ginkgo -v ./tests/e2e/encryption_vault_test.go` and confirm all 24 tests fail (no implementation exists)
+- [x] T013 [P] Verify E2E tests FAIL before implementation (red phase): run `ginkgo -v ./tests/e2e/encryption_vault_raw_test.go` and confirm all 24 tests fail (no implementation exists)
   - **Status**: ✅ COMPLETE - E2E test file exists and tests fail semantically before implementation
 
 - [x] T014 Verify E2E test file includes comments: map each test to spec.md scenarios with `// Scenario X.Y from specs/012-aws-encryption-vault/spec.md`
@@ -101,7 +101,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 
 🔒 [MANDATORY] **Tests written first, verified to fail, guide implementation**
 
-- [x] T015 Create [tests/e2e/encryption_vault_test.go](../../tests/e2e/encryption_vault_test.go) with skeleton:
+- [x] T015 Create [tests/e2e/encryption_vault_raw_test.go](../../tests/e2e/encryption_vault_raw_test.go) with skeleton:
   ```go
   var _ = Describe("Encryption Vault for OAuth Tokens", func() {
       var app *app.App
@@ -512,9 +512,8 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 ### US3 Unit Tests
 
 - [x] T051 [P] [US3] Unit test: DEK entropy >= 256 bits
-  - Verify AWS SDK generates DEKs with sufficient randomness
-  - Test multiple DEK generations; verify no pattern
-  - **Status**: ✅ IMPLEMENTED as TestDEKEntropyValidation
+  - **Status**: ❌ REMOVED - Test dropped per code review feedback (comment 2758633205)
+  - **Rationale**: DEK uniqueness is already verified by TestUniqueEncryptionPerCall; entropy measurement requires statistical analysis of DEK bytes which are wrapped and not directly observable
 
 - [x] T052 [P] [US3] Unit test: Context binding prevents cross-context reuse
   - Encrypt with context1, extract ciphertext
@@ -828,7 +827,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
   - **Status**: ✅ VERIFIED - E2E tests are stable with clear scenario mappings
 
 - [x] T091 [P] Verify all 24 spec scenarios have E2E tests:
-  - Count It() blocks in [tests/e2e/encryption_vault_test.go](../../tests/e2e/encryption_vault_test.go)
+  - Count It() blocks in [tests/e2e/encryption_vault_raw_test.go](../../tests/e2e/encryption_vault_raw_test.go)
   - Verify each test has comment mapping to spec.md scenario
   - Verify all E2E tests pass (green phase)
   - **Status**: ✅ VERIFIED - 24 It() blocks found, all tests pass (ginkgo run output confirms SUCCESS! -- 24 Passed | 0 Failed)
@@ -836,7 +835,7 @@ This feature implements envelope encryption for OAuth tokens in the agentic-iden
 ### Implementation Phase Verification (Principle XIII)
 
 - [x] T092 [P] Verify E2E tests turn GREEN as implementation completes:
-  - Run `ginkgo -v ./tests/e2e/encryption_vault_test.go`
+  - Run `ginkgo -v ./tests/e2e/encryption_vault_raw_test.go`
   - Confirm 24/24 tests pass
   - Track test status in PR description
   - **Status**: ✅ VERIFIED - All 24 tests pass (SUCCESS! -- 24 Passed | 0 Failed | 0 Pending | 140 Skipped)

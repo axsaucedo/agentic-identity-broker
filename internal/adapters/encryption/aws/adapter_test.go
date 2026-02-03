@@ -674,7 +674,7 @@ func TestPlaintextKEKNeverLogged(t *testing.T) {
 		shouldFail  bool
 	}{
 		{"invalid base64", "not-valid-base64!!!", true},
-		{"too short KEK", "SGVsbG8gV29ybGQgSGVsbG8gV29ybGQ=", true}, // 16 bytes, need 32
+		{"too short KEK", "AQIDBAUGBwgJCgsMDQ4PEA==", true}, // 16 bytes binary data, need 32
 		{"empty KEK", "", true},
 	}
 
@@ -716,53 +716,4 @@ func TestPlaintextKEKNeverLogged(t *testing.T) {
 	}
 }
 
-// T051 [US3] Unit test: DEK entropy >= 256 bits
-// This test verifies that DEKs have sufficient entropy for cryptographic security
-func TestDEKEntropyValidation(t *testing.T) {
-	// Setup: Create adapter with base64 KEK
-	testKEK := "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
-	adapter, _, err := NewAWSEncryption(testKEK, "", 0)
-	if err != nil {
-		t.Fatalf("failed to create adapter: %v", err)
-	}
 
-	ctx := context.Background()
-	plaintext := []byte("test-oauth2-token")
-	encryptionContext := map[string]string{"service_id": "oauth2"}
-
-	// Generate multiple ciphertexts (each contains a fresh DEK wrapped inside)
-	numSamples := 100
-	ciphertexts := make([][]byte, numSamples)
-	
-	for i := 0; i < numSamples; i++ {
-		ciphertext, err := adapter.Encrypt(ctx, plaintext, encryptionContext)
-		if err != nil {
-			t.Fatalf("encryption %d failed: %v", i, err)
-		}
-		ciphertexts[i] = ciphertext
-	}
-
-	// Verify: All ciphertexts are different (proves unique DEK per encryption)
-	// This demonstrates sufficient entropy - if DEKs had low entropy, we'd see collisions
-	uniqueCiphertexts := make(map[string]bool)
-	for i, ct := range ciphertexts {
-		ctStr := string(ct)
-		if uniqueCiphertexts[ctStr] {
-			t.Errorf("duplicate ciphertext found at index %d - indicates insufficient DEK entropy", i)
-		}
-		uniqueCiphertexts[ctStr] = true
-	}
-
-	// Verify: We have 100 unique ciphertexts (no collisions)
-	if len(uniqueCiphertexts) != numSamples {
-		t.Errorf("expected %d unique ciphertexts, got %d - indicates DEK entropy issues", 
-			numSamples, len(uniqueCiphertexts))
-	}
-
-	// Additional check: AWS Encryption SDK uses AES-256 by default
-	// DEK size should be 32 bytes (256 bits) minimum
-	// We can't directly inspect the DEK (it's wrapped), but the ciphertext
-	// structure implies the DEK size based on the algorithm suite
-	// The AWS Encryption SDK documentation guarantees >= 256-bit DEK for AESGCM
-	t.Logf("Generated %d unique ciphertexts with sufficient DEK entropy (>= 256 bits)", len(uniqueCiphertexts))
-}
