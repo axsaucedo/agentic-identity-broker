@@ -106,7 +106,7 @@ class ApiCache {
     url: string,
     data: T,
     ttl: number = this.DEFAULT_TTL,
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>,
   ): void {
     const key = this.generateKey(url, params);
     const entry: CacheEntry<T> = {
@@ -164,7 +164,7 @@ class ApiCache {
    */
   invalidatePattern(pattern: string): void {
     const regex = new RegExp(
-      '^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '\\?') + '$'
+      '^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '\\?') + '$',
     );
 
     for (const key of this.cache.keys()) {
@@ -235,9 +235,12 @@ export const apiCache = new ApiCache();
 
 // Cleanup expired entries every 2 minutes
 if (typeof window !== 'undefined') {
-  setInterval(() => {
-    apiCache.cleanup();
-  }, 2 * 60 * 1000);
+  setInterval(
+    () => {
+      apiCache.cleanup();
+    },
+    2 * 60 * 1000,
+  );
 }
 
 export default apiCache;

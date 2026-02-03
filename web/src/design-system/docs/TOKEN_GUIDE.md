@@ -5,6 +5,7 @@ Design tokens are the visual design decisions encoded as data. This guide covers
 ## Overview
 
 Design tokens in this system are managed through:
+
 - **Tailwind CSS v4**: CSS variables via `@theme` directive
 - **CSS Custom Properties**: For runtime customization
 - **TypeScript Type System**: For compile-time safety
@@ -19,6 +20,7 @@ The color palette uses **semantic tokens** based on meaning, brand identity, and
 Semantic tokens provide meaning-driven color naming that improves code readability and maintainability.
 
 **✅ DO: Use semantic tokens**
+
 ```tsx
 <button className="bg-trust text-white hover:bg-trust-hover">
   Primary Action
@@ -29,6 +31,7 @@ Semantic tokens provide meaning-driven color naming that improves code readabili
 ```
 
 **❌ DON'T: Use extended palettes (removed)**
+
 ```tsx
 <button className="bg-navy-700">...</button>    {/* No longer available */}
 <div className="bg-gray-100">...</div>          {/* Use neutral-100 */}
@@ -101,20 +104,20 @@ border-focus:     #1E4D6B // Focus ring (trust)
 
 ### Color Usage
 
-| Use Case | Token | Example |
-|----------|-------|---------|
-| Primary buttons | bg-trust-deep | `<Button variant="primary">` |
-| Success status | bg-success-primary | `<Badge variant="success">Granted</Badge>` |
-| Warning/Pending | bg-warning-primary or bg-cta | `<Badge variant="warning">Pending</Badge>` |
-| Error/Denied | bg-error-primary | `<Alert variant="error">` |
-| Link hover | hover:text-trust-hover | Navigation links |
-| Disabled state | text-disabled or bg-neutral-50 | Inactive form inputs |
-| Borders | border-primary or border-neutral-300 | Card outlines |
-| Backgrounds | bg-primary or bg-neutral-50 | Page backgrounds |
-| Section backgrounds | bg-secondary or bg-neutral-100 | Section containers |
-| Body text | text-neutral-700 | Paragraph text |
-| Headings (h1-h2) | text-trust-deep | Major headings for authority |
-| Headings (h3-h6) | text-trust | Minor headings, subsections |
+| Use Case            | Token                                | Example                                    |
+| ------------------- | ------------------------------------ | ------------------------------------------ |
+| Primary buttons     | bg-trust-deep                        | `<Button variant="primary">`               |
+| Success status      | bg-success-primary                   | `<Badge variant="success">Granted</Badge>` |
+| Warning/Pending     | bg-warning-primary or bg-cta         | `<Badge variant="warning">Pending</Badge>` |
+| Error/Denied        | bg-error-primary                     | `<Alert variant="error">`                  |
+| Link hover          | hover:text-trust-hover               | Navigation links                           |
+| Disabled state      | text-disabled or bg-neutral-50       | Inactive form inputs                       |
+| Borders             | border-primary or border-neutral-300 | Card outlines                              |
+| Backgrounds         | bg-primary or bg-neutral-50          | Page backgrounds                           |
+| Section backgrounds | bg-secondary or bg-neutral-100       | Section containers                         |
+| Body text           | text-neutral-700                     | Paragraph text                             |
+| Headings (h1-h2)    | text-trust-deep                      | Major headings for authority               |
+| Headings (h3-h6)    | text-trust                           | Minor headings, subsections                |
 
 ### ⚠️ Important: Semantic Token Naming Clarification
 
@@ -130,11 +133,13 @@ border-focus:     #1E4D6B // Focus ring (trust)
 ```
 
 **Why `text-primary` is confusing for headings:**
+
 - `text-primary` points to `trust-deep` (#0A2540) technically, but semantically it's unclear
 - "Primary" could mean "primary text" (body text) OR "primary brand color" (headings)
 - This creates ambiguity that makes code harder to maintain
 
 **Semantic Token Rules:**
+
 - `text-trust-deep` → h1, h2 (major sections, authority)
 - `text-trust` → h3-h6 (minor sections, subsections)
 - `text-secondary` → Supporting text, metadata (neutral-600)
@@ -142,6 +147,7 @@ border-focus:     #1E4D6B // Focus ring (trust)
 - `text-neutral-700` → Body paragraphs (explicit and clear)
 
 **When to use semantic aliases:**
+
 - ✅ `text-secondary` for supporting text (consistent, clear intent)
 - ✅ `text-tertiary` for metadata (consistent, clear intent)
 - ✅ `bg-primary` / `bg-secondary` for backgrounds (layouts, not brand)
@@ -152,13 +158,15 @@ See [COMMON_MISTAKES.md](./COMMON_MISTAKES.md) (Mistake #1) and [DECISION_TREES.
 ### Color Accessibility
 
 All semantic colors meet WCAG AA contrast requirements:
+
 - Text contrast: Minimum 4.5:1 (for body text)
 - UI component contrast: Minimum 3:1 (for graphics)
 - Use ColorSnack or WebAIM for verification
 
 **When choosing colors:**
+
 1. Prefer semantic tokens (trust, success, warning, error)
-2. Use warm neutrals (neutral-*) instead of standard grays
+2. Use warm neutrals (neutral-\*) instead of standard grays
 3. Check contrast with intended background (WCAG AA minimum 4.5:1 for text)
 4. Consider colorblind accessibility (don't rely on color alone)
 5. Test with accessibility tools (WebAIM, ColorSnack)
@@ -169,18 +177,18 @@ Tailwind's spacing scale follows a consistent 4px base unit (0.25rem).
 
 ```typescript
 // Core Spacing Scale
-0       // 0px       - No space (useful for removing margins)
-px      // 1px       - Divider lines
-0.5     // 2px       - Very tight spacing
-1       // 4px       - xs: Extra small spacing
-2       // 8px       - Extra small
-3       // 12px      - Small
-4       // 16px      - md: Medium (default)
-6       // 24px      - lg: Large
-8       // 32px      - Extra large
-10      // 40px      - XXL
-12      // 48px      - XXXL
-16      // 64px      - 2XL
+0; // 0px       - No space (useful for removing margins)
+px; // 1px       - Divider lines
+0.5; // 2px       - Very tight spacing
+1; // 4px       - xs: Extra small spacing
+2; // 8px       - Extra small
+3; // 12px      - Small
+4; // 16px      - md: Medium (default)
+6; // 24px      - lg: Large
+8; // 32px      - Extra large
+10; // 40px      - XXL
+12; // 48px      - XXXL
+16; // 64px      - 2XL
 ```
 
 ### Named Spacing (in components)
@@ -251,6 +259,7 @@ Typography is managed through semantic HTML and Tailwind's text utilities.
 ```
 
 **Rationale:**
+
 - **Crimson Pro** conveys trust, authority, and seriousness—essential for consent UI
 - **Manrope** provides excellent readability and humanist approachability
 - **JetBrains Mono** offers clarity for technical values while maintaining visual consistency
@@ -393,12 +402,14 @@ Popover  → z-20
 
 ```tsx
 // If needing dynamic theming
-<div style={{
-  backgroundColor: 'var(--color-bg-primary)',
-  color: 'var(--color-text-primary)',
-  padding: 'var(--spacing-4)',
-  borderRadius: 'var(--radius-lg)',
-}}>
+<div
+  style={{
+    backgroundColor: 'var(--color-bg-primary)',
+    color: 'var(--color-text-primary)',
+    padding: 'var(--spacing-4)',
+    borderRadius: 'var(--radius-lg)',
+  }}
+>
   {children}
 </div>
 ```
@@ -423,30 +434,32 @@ Popover  → z-20
 ### For Application-Specific Theming
 
 1. **Color overrides** in `tailwind.config.ts`:
+
 ```typescript
 export default {
   theme: {
     extend: {
       colors: {
-        'brand-primary': '#0A2540',  // Override trust-deep
-        'brand-accent': '#D97706',    // Override cta
-      }
-    }
-  }
-}
+        'brand-primary': '#0A2540', // Override trust-deep
+        'brand-accent': '#D97706', // Override cta
+      },
+    },
+  },
+};
 ```
 
 2. **CSS variable overrides**:
+
 ```css
 :root {
-  --color-trust-deep: #0A2540;
-  --color-cta: #D97706;
+  --color-trust-deep: #0a2540;
+  --color-cta: #d97706;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg-primary: #0d1829;      /* Dark navy */
-    --color-text-primary: #faf9f7;    /* Cream text */
+    --color-bg-primary: #0d1829; /* Dark navy */
+    --color-text-primary: #faf9f7; /* Cream text */
   }
 }
 ```
@@ -471,7 +484,7 @@ export default {
 
 1. **Always verify color contrast** when using custom colors (WCAG AA: 4.5:1 for text, 3:1 for UI components)
 2. **Use semantic tokens** (trust, success, warning, error) which are pre-verified for WCAG 2.1 AA
-3. **Use warm neutrals** (neutral-*) for text hierarchy - pre-verified contrast ratios
+3. **Use warm neutrals** (neutral-\*) for text hierarchy - pre-verified contrast ratios
 4. **Avoid color-only encoding** - use icons, text, or patterns for status communication
 5. **Test with ColorSnack** or WebAIM Contrast Checker for custom combinations
 6. **Respect prefers-reduced-motion** in animations and transitions
@@ -479,12 +492,14 @@ export default {
 ## Token Maintenance
 
 Design tokens are maintained in:
+
 - `tailwind.config.ts` - Tailwind configuration
 - Component CVA files - Component-specific variants
 - Storybook docs - Visual reference
 - This guide - Documentation
 
 When proposing new tokens:
+
 1. Identify the design need
 2. Check if existing token works
 3. Verify accessibility compliance
@@ -495,6 +510,7 @@ When proposing new tokens:
 ## Summary
 
 Design tokens provide:
+
 - **Consistency** across all applications
 - **Accessibility** through verified color and sizing choices
 - **Flexibility** to customize for brand or context

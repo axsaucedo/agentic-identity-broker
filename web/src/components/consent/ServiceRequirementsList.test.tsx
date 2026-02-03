@@ -32,11 +32,11 @@ describe('ServiceRequirementsList', () => {
           requirements={[]}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(
-        screen.getByText('No service requirements configured for this agent.')
+        screen.getByText('No service requirements configured for this agent.'),
       ).toBeInTheDocument();
     });
   });
@@ -72,7 +72,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Should show both section headers
@@ -105,7 +105,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('Required Services')).toBeInTheDocument();
@@ -128,7 +128,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('Optional Services')).toBeInTheDocument();
@@ -153,7 +153,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('Required Services')).toBeInTheDocument();
@@ -175,7 +175,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('Optional Services')).toBeInTheDocument();
@@ -206,7 +206,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('GitHub')).toBeInTheDocument();
@@ -236,18 +236,18 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Should show Login button for not connected service
       expect(
-        screen.getByRole('button', { name: /login/i })
+        screen.getByRole('button', { name: /login/i }),
       ).toBeInTheDocument();
 
       // Should show Active Session badge and Disconnect button for connected service
       expect(screen.getByText('Active Session')).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: /disconnect/i })
+        screen.getByRole('button', { name: /disconnect/i }),
       ).toBeInTheDocument();
     });
   });
@@ -269,7 +269,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       const loginButton = screen.getByRole('button', { name: /login/i });
@@ -294,10 +294,12 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
-      const disconnectButton = screen.getByRole('button', { name: /disconnect/i });
+      const disconnectButton = screen.getByRole('button', {
+        name: /disconnect/i,
+      });
       fireEvent.click(disconnectButton);
 
       expect(mockOnDisconnect).toHaveBeenCalledWith('github');
@@ -326,7 +328,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Click login for GitHub
@@ -334,7 +336,9 @@ describe('ServiceRequirementsList', () => {
       fireEvent.click(loginButtons[0]);
 
       // Click disconnect for Stripe
-      const disconnectButton = screen.getByRole('button', { name: /disconnect/i });
+      const disconnectButton = screen.getByRole('button', {
+        name: /disconnect/i,
+      });
       fireEvent.click(disconnectButton);
 
       expect(mockOnLogin).toHaveBeenCalledWith('github');
@@ -366,7 +370,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('GitHub')).toBeInTheDocument();
@@ -404,7 +408,7 @@ describe('ServiceRequirementsList', () => {
           requirements={requirements}
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('Stripe')).toBeInTheDocument();

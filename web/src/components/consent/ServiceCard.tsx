@@ -47,14 +47,17 @@ export function ServiceCard({
   onDelegate,
   onRevoke,
 }: ServiceCardProps) {
-
   // Get service display name
   // When service is a requirement, backend uses serviceName field
-  const serviceDisplayName = service.displayName || service.serviceName || 'Unknown Service';
+  const serviceDisplayName =
+    service.displayName || service.serviceName || 'Unknown Service';
 
   // Normalize scopes to have consistent structure (value, description)
   // Support both ServiceScope (with 'value') and requiredScopes (with 'name')
-  const normalizeScopes = (): Array<{ value: string; description?: string }> => {
+  const normalizeScopes = (): Array<{
+    value: string;
+    description?: string;
+  }> => {
     if (service.scopes) {
       return service.scopes;
     }
@@ -70,7 +73,9 @@ export function ServiceCard({
   const serviceScopes = normalizeScopes();
 
   // Find the grant for this specific service
-  const serviceGrant = grants?.find((g) => g.thirdparty_oauth2_service_id === service.serviceId);
+  const serviceGrant = grants?.find(
+    (g) => g.thirdparty_oauth2_service_id === service.serviceId,
+  );
   const grantedScopes = serviceGrant?.scopes || [];
 
   // Determine connection status
@@ -78,7 +83,6 @@ export function ServiceCard({
 
   return (
     <article
-      role="article"
       aria-label={`Service: ${serviceDisplayName}`}
       data-testid={`service-card-${service.serviceId}`}
     >
@@ -86,127 +90,138 @@ export function ServiceCard({
         padding="none"
         hover="none"
         border="subtle"
-        className={isDelegated ? 'ring-2 ring-success-primary bg-success-50' : ''}
+        className={
+          isDelegated ? 'ring-2 ring-success-primary bg-success-50' : ''
+        }
       >
-      {/* Service header */}
-      <div className="p-6">
-        <Stack direction="row" gap="md" align="start">
-          {/* Avatar with status badge below */}
-          <Stack gap="md" align="center">
-            <Avatar
-              src={service.logoUrl}
-              alt={`${serviceDisplayName} logo`}
-              initials={serviceDisplayName.charAt(0).toUpperCase()}
-              size="lg"
-              shape="rounded"
-            />
-            {service.requirementType && (
-              <span
-                className={
-                  service.requirementType === 'mandatory'
-                    ? 'px-2 py-1 text-xs font-semibold text-white bg-trust-deep rounded'
-                    : 'px-2 py-1 text-xs font-semibold text-trust-deep border border-trust-deep rounded'
-                }
-              >
-                {service.requirementType === 'mandatory' ? 'Required' : 'Optional'}
-              </span>
-            )}
-          </Stack>
-
-          {/* Service info */}
-          <Stack gap="sm" className="flex-1 min-w-0">
-            {/* Title */}
-            <h3 className="text-lg font-semibold text-trust-deep">
-              {serviceDisplayName}
-            </h3>
-
-            {/* Connection status */}
-            {isConnected && (
-              <StatusIndicator
-                label="Active Session"
-                variant="success"
-                icon={
-                  <svg
-                    className="w-full h-full"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                }
+        {/* Service header */}
+        <div className="p-6">
+          <Stack direction="row" gap="md" align="start">
+            {/* Avatar with status badge below */}
+            <Stack gap="md" align="center">
+              <Avatar
+                src={service.logoUrl}
+                alt={`${serviceDisplayName} logo`}
+                initials={serviceDisplayName.charAt(0).toUpperCase()}
+                size="lg"
+                shape="rounded"
               />
-            )}
-
-            {/* Permissions (Scopes) as StatusIndicators with tooltips */}
-            {serviceScopes.length > 0 && (
-              <Stack gap="xs">
-                <span className="text-xs font-semibold text-neutral-600 uppercase tracking-wider">
-                  Permissions
+              {service.requirementType && (
+                <span
+                  className={
+                    service.requirementType === 'mandatory'
+                      ? 'px-2 py-1 text-xs font-semibold text-white bg-trust-deep rounded'
+                      : 'px-2 py-1 text-xs font-semibold text-trust-deep border border-trust-deep rounded'
+                  }
+                >
+                  {service.requirementType === 'mandatory'
+                    ? 'Required'
+                    : 'Optional'}
                 </span>
-                <div className="flex flex-wrap gap-2">
-                  {serviceScopes.map((scope) => (
-                    <Tooltip
-                      key={scope.value}
-                      content={scope.description || `Scope: ${scope.value}`}
-                    >
-                      <StatusIndicator
-                        label={scope.value}
-                        variant={grantedScopes.includes(scope.value) ? 'success' : 'default'}
-                        interactive
-                      />
-                    </Tooltip>
-                  ))}
-                </div>
-              </Stack>
-            )}
-          </Stack>
+              )}
+            </Stack>
 
-          {/* Action button - Login / Delegate / Revoke */}
-          <div className="flex-shrink-0" data-testid={`service-actions-${service.serviceId}`}>
-            {!isConnected ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => onDelegate?.(service.serviceId)}
-                disabled={isLoading}
-                title="Connect to this service"
-                className="bg-success-primary hover:bg-success-hover text-white"
-                data-testid="service-login-button"
-              >
-                Login
-              </Button>
-            ) : isDelegated ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onRevoke?.(service.serviceId)}
-                disabled={isLoading}
-                title="Revoke delegation for this service"
-                data-testid="service-revoke-button"
-              >
-                Revoke
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => onDelegate?.(service.serviceId)}
-                disabled={isLoading}
-                title="Delegate this service"
-                data-testid="service-delegate-button"
-              >
-                Delegate
-              </Button>
-            )}
-          </div>
-        </Stack>
-      </div>
+            {/* Service info */}
+            <Stack gap="sm" className="flex-1 min-w-0">
+              {/* Title */}
+              <h3 className="text-lg font-semibold text-trust-deep">
+                {serviceDisplayName}
+              </h3>
+
+              {/* Connection status */}
+              {isConnected && (
+                <StatusIndicator
+                  label="Active Session"
+                  variant="success"
+                  icon={
+                    <svg
+                      className="w-full h-full"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  }
+                />
+              )}
+
+              {/* Permissions (Scopes) as StatusIndicators with tooltips */}
+              {serviceScopes.length > 0 && (
+                <Stack gap="xs">
+                  <span className="text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                    Permissions
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {serviceScopes.map((scope) => (
+                      <Tooltip
+                        key={scope.value}
+                        content={scope.description || `Scope: ${scope.value}`}
+                      >
+                        <StatusIndicator
+                          label={scope.value}
+                          variant={
+                            grantedScopes.includes(scope.value)
+                              ? 'success'
+                              : 'default'
+                          }
+                          interactive
+                        />
+                      </Tooltip>
+                    ))}
+                  </div>
+                </Stack>
+              )}
+            </Stack>
+
+            {/* Action button - Login / Delegate / Revoke */}
+            <div
+              className="flex-shrink-0"
+              data-testid={`service-actions-${service.serviceId}`}
+            >
+              {!isConnected ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onDelegate?.(service.serviceId)}
+                  disabled={isLoading}
+                  title="Connect to this service"
+                  className="bg-success-primary hover:bg-success-hover text-white"
+                  data-testid="service-login-button"
+                >
+                  Login
+                </Button>
+              ) : isDelegated ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onRevoke?.(service.serviceId)}
+                  disabled={isLoading}
+                  title="Revoke delegation for this service"
+                  data-testid="service-revoke-button"
+                >
+                  Revoke
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onDelegate?.(service.serviceId)}
+                  disabled={isLoading}
+                  title="Delegate this service"
+                  data-testid="service-delegate-button"
+                >
+                  Delegate
+                </Button>
+              )}
+            </div>
+          </Stack>
+        </div>
       </Card>
     </article>
   );

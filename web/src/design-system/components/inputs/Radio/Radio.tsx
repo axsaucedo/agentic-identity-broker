@@ -29,18 +29,20 @@ const radioVariants = cva(
       variant: {
         default: 'border-neutral-300 bg-white text-trust-deep',
         error: 'border-error-primary bg-error-light/20 text-error-primary',
-        success: 'border-success-primary bg-success-light/20 text-success-primary',
+        success:
+          'border-success-primary bg-success-light/20 text-success-primary',
       },
     },
     defaultVariants: {
       size: 'md',
       variant: 'default',
     },
-  }
+  },
 );
 
 export interface RadioProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size' | 'type'>,
+  extends
+    Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size' | 'type'>,
     VariantProps<typeof radioVariants> {
   /** Label text displayed next to radio */
   label?: string;
@@ -89,10 +91,14 @@ export const Radio = React.forwardRef<HTMLInputElement, RadioProps>(
       checked,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Determine variant based on error/success state
-    const variant = errorMessage ? 'error' : successMessage ? 'success' : 'default';
+    const variant = errorMessage
+      ? 'error'
+      : successMessage
+        ? 'success'
+        : 'default';
 
     return (
       <div className="flex items-start gap-3">
@@ -108,7 +114,7 @@ export const Radio = React.forwardRef<HTMLInputElement, RadioProps>(
               radioVariants({ size, variant }),
               'accent-current',
               disabled && 'opacity-50 cursor-not-allowed',
-              className
+              className,
             )}
             {...props}
           />
@@ -122,7 +128,9 @@ export const Radio = React.forwardRef<HTMLInputElement, RadioProps>(
                 htmlFor={id}
                 className={cn(
                   'text-sm font-medium',
-                  disabled ? 'text-neutral-500 cursor-not-allowed' : 'text-neutral-900 cursor-pointer'
+                  disabled
+                    ? 'text-neutral-500 cursor-not-allowed'
+                    : 'text-neutral-900 cursor-pointer',
                 )}
               >
                 {label}
@@ -134,17 +142,21 @@ export const Radio = React.forwardRef<HTMLInputElement, RadioProps>(
             )}
 
             {errorMessage && (
-              <p className="text-xs text-error-primary font-medium">{errorMessage}</p>
+              <p className="text-xs text-error-primary font-medium">
+                {errorMessage}
+              </p>
             )}
 
             {successMessage && !errorMessage && (
-              <p className="text-xs text-success-primary font-medium">{successMessage}</p>
+              <p className="text-xs text-success-primary font-medium">
+                {successMessage}
+              </p>
             )}
           </div>
         )}
       </div>
     );
-  }
+  },
 );
 
 Radio.displayName = 'Radio';

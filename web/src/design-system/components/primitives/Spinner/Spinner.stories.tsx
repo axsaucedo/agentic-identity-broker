@@ -29,7 +29,15 @@ const meta = {
     },
     variant: {
       control: 'select',
-      options: ['primary', 'success', 'error', 'warning', 'info', 'neutral', 'white'],
+      options: [
+        'primary',
+        'success',
+        'error',
+        'warning',
+        'info',
+        'neutral',
+        'white',
+      ],
       description: 'The semantic color variant',
     },
     label: {
@@ -145,7 +153,9 @@ export const WithText: Story = {
       </div>
       <div className="flex items-center gap-3">
         <Spinner size="md" variant="success" />
-        <span className="text-base text-neutral-700">Processing request...</span>
+        <span className="text-base text-neutral-700">
+          Processing request...
+        </span>
       </div>
       <div className="flex items-center gap-3">
         <Spinner size="lg" variant="primary" />
@@ -177,7 +187,9 @@ export const InlineUseCases: Story = {
     <div className="flex flex-col gap-6 p-6">
       {/* In a button */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-700">Button Loading State</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">
+          Button Loading State
+        </h3>
         <button
           className="inline-flex items-center gap-2 px-4 py-2 bg-trust-deep text-white rounded-md"
           disabled
@@ -189,11 +201,15 @@ export const InlineUseCases: Story = {
 
       {/* In a card header */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-700">Card Loading State</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">
+          Card Loading State
+        </h3>
         <div className="p-4 bg-white border border-neutral-200 rounded-lg">
           <div className="flex items-center gap-2 mb-3">
             <Spinner size="xs" />
-            <h4 className="text-sm font-medium text-neutral-900">Fetching updates...</h4>
+            <h4 className="text-sm font-medium text-neutral-900">
+              Fetching updates...
+            </h4>
           </div>
           <div className="space-y-2">
             <div className="h-4 bg-neutral-100 rounded animate-pulse" />
@@ -205,11 +221,15 @@ export const InlineUseCases: Story = {
 
       {/* In a list item */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-700">List Item Loading</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">
+          List Item Loading
+        </h3>
         <div className="space-y-2">
           <div className="flex items-center gap-3 p-3 bg-white border border-neutral-200 rounded-lg">
             <Spinner size="xs" variant="info" />
-            <span className="text-sm text-neutral-700">Syncing permissions...</span>
+            <span className="text-sm text-neutral-700">
+              Syncing permissions...
+            </span>
           </div>
           <div className="flex items-center gap-3 p-3 bg-white border border-neutral-200 rounded-lg">
             <Spinner size="xs" variant="success" />

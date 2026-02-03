@@ -10,25 +10,26 @@ The most important visual element in the interface. Every interaction begins wit
 
 ### Visual Specifications
 
-| Property | Value | Notes |
-|----------|-------|-------|
-| **Background** | Trust Deep (#0A2540) | With subtle gradient overlay for depth |
-| **Text Color** | Pure white (#ffffff) | Maximum contrast and clarity |
-| **Font** | Manrope Medium (500) | Humanist sans-serif, weight 500 |
-| **Height** | 44px | Touch-friendly minimum for mobile |
-| **Padding** | 12px 16px | Horizontal 16px, vertical 12px |
-| **Border Radius** | 6px (md) | Subtle rounding, not pill-shaped |
-| **Shadow (default)** | `0 2px 8px rgba(0,0,0,0.08)` | Subtle elevation |
-| **Shadow (hover)** | `0 8px 20px rgba(0,0,0,0.1)` | Increased elevation on hover |
-| **Transform (hover)** | `translateY(-1px)` | Subtle lift on interaction |
-| **Transition** | All properties 200ms | Easing: cubic-bezier(0.34, 1.56, 0.64, 1) |
+| Property              | Value                        | Notes                                     |
+| --------------------- | ---------------------------- | ----------------------------------------- |
+| **Background**        | Trust Deep (#0A2540)         | With subtle gradient overlay for depth    |
+| **Text Color**        | Pure white (#ffffff)         | Maximum contrast and clarity              |
+| **Font**              | Manrope Medium (500)         | Humanist sans-serif, weight 500           |
+| **Height**            | 44px                         | Touch-friendly minimum for mobile         |
+| **Padding**           | 12px 16px                    | Horizontal 16px, vertical 12px            |
+| **Border Radius**     | 6px (md)                     | Subtle rounding, not pill-shaped          |
+| **Shadow (default)**  | `0 2px 8px rgba(0,0,0,0.08)` | Subtle elevation                          |
+| **Shadow (hover)**    | `0 8px 20px rgba(0,0,0,0.1)` | Increased elevation on hover              |
+| **Transform (hover)** | `translateY(-1px)`           | Subtle lift on interaction                |
+| **Transition**        | All properties 200ms         | Easing: cubic-bezier(0.34, 1.56, 0.64, 1) |
 
 ### States
 
 #### Default State
+
 ```css
 button {
-  background: #0A2540; /* trust-deep */
+  background: #0a2540; /* trust-deep */
   color: #ffffff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-radius: 6px;
@@ -43,6 +44,7 @@ button {
 ```
 
 #### Hover State
+
 ```css
 button:hover {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
@@ -51,6 +53,7 @@ button:hover {
 ```
 
 #### Focus State
+
 ```css
 button:focus {
   outline: 2px solid #1e4d6b;
@@ -59,6 +62,7 @@ button:focus {
 ```
 
 #### Active State
+
 ```css
 button:active {
   transform: translateY(0);
@@ -67,6 +71,7 @@ button:active {
 ```
 
 #### Disabled State
+
 ```css
 button:disabled {
   opacity: 0.6;
@@ -76,6 +81,7 @@ button:disabled {
 ```
 
 #### Loading State
+
 ```css
 button.is-loading {
   opacity: 0.85;
@@ -91,13 +97,13 @@ button.is-loading .spinner {
 
 ### Variants
 
-| Variant | Background | Text | Border | Shadow |
-|---------|-----------|------|--------|--------|
-| **Primary** | #0A2540 (trust-deep) | white | none | md → lg on hover |
-| **Secondary** | #f5f1ed (neutral-100) | #0A2540 | 1px solid #e8e3de | sm → md on hover |
-| **Outline** | transparent | #0A2540 | 2px solid #ddd8d1 | none |
-| **Ghost** | transparent | #0A2540 | none | none |
-| **Danger** | #DC2626 (error-primary) | white | none | md → lg on hover |
+| Variant       | Background              | Text    | Border            | Shadow           |
+| ------------- | ----------------------- | ------- | ----------------- | ---------------- |
+| **Primary**   | #0A2540 (trust-deep)    | white   | none              | md → lg on hover |
+| **Secondary** | #f5f1ed (neutral-100)   | #0A2540 | 1px solid #e8e3de | sm → md on hover |
+| **Outline**   | transparent             | #0A2540 | 2px solid #ddd8d1 | none             |
+| **Ghost**     | transparent             | #0A2540 | none              | none             |
+| **Danger**    | #DC2626 (error-primary) | white   | none              | md → lg on hover |
 
 ---
 
@@ -107,16 +113,16 @@ The workhorse of the UI. Cards organize content hierarchically and create visual
 
 ### Visual Specifications
 
-| Property | Value | Notes |
-|----------|-------|-------|
-| **Background** | Pure white (#ffffff) | With 10px blur backdrop-filter if supported |
-| **Border** | 1px solid rgba(240, 237, 232, 0.8) | Barely visible, containment only |
-| **Padding** | 24px standard, 32px headers | Generous whitespace |
-| **Border Radius** | 12px (xl) | Generous but not extreme |
-| **Shadow (default)** | `0 2px 8px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,1)` | Subtle external + internal highlight |
-| **Shadow (hover)** | `0 8px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,1)` | Elevated on hover |
-| **Transition** | All properties 300ms | Easing: cubic-bezier(0.34, 1.56, 0.64, 1) |
-| **Hover Transform** | `translateY(-2px)` | Subtle lift on hover |
+| Property             | Value                                                           | Notes                                       |
+| -------------------- | --------------------------------------------------------------- | ------------------------------------------- |
+| **Background**       | Pure white (#ffffff)                                            | With 10px blur backdrop-filter if supported |
+| **Border**           | 1px solid rgba(240, 237, 232, 0.8)                              | Barely visible, containment only            |
+| **Padding**          | 24px standard, 32px headers                                     | Generous whitespace                         |
+| **Border Radius**    | 12px (xl)                                                       | Generous but not extreme                    |
+| **Shadow (default)** | `0 2px 8px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,1)` | Subtle external + internal highlight        |
+| **Shadow (hover)**   | `0 8px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,1)` | Elevated on hover                           |
+| **Transition**       | All properties 300ms                                            | Easing: cubic-bezier(0.34, 1.56, 0.64, 1)   |
+| **Hover Transform**  | `translateY(-2px)`                                              | Subtle lift on hover                        |
 
 ### Base Styling
 
@@ -126,7 +132,9 @@ The workhorse of the UI. Cards organize content hierarchically and create visual
   border: 1px solid rgba(240, 237, 232, 0.8);
   border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 1);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
   backdrop-filter: blur(10px);
   transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -135,14 +143,18 @@ The workhorse of the UI. Cards organize content hierarchically and create visual
 ### Interactive States
 
 #### Hover State
+
 ```css
 .card:hover {
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 1);
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
   transform: translateY(-2px);
 }
 ```
 
 #### Focus State (when interactive)
+
 ```css
 .card:focus-within {
   outline: 2px solid #1e4d6b;
@@ -152,11 +164,11 @@ The workhorse of the UI. Cards organize content hierarchically and create visual
 
 ### Padding Variants
 
-| Variant | Padding | Use Case |
-|---------|---------|----------|
-| **Compact** | 16px | Dense lists, data tables |
-| **Default** | 24px | Standard content cards |
-| **Spacious** | 32px | Important sections, emphasis |
+| Variant      | Padding | Use Case                     |
+| ------------ | ------- | ---------------------------- |
+| **Compact**  | 16px    | Dense lists, data tables     |
+| **Default**  | 24px    | Standard content cards       |
+| **Spacious** | 32px    | Important sections, emphasis |
 
 ### Card with Header
 
@@ -175,7 +187,11 @@ The workhorse of the UI. Cards organize content hierarchically and create visual
 
 ```tsx
 <Card>
-  <img src="image.jpg" alt="Card image" className="w-full h-48 object-cover rounded-t-xl" />
+  <img
+    src="image.jpg"
+    alt="Card image"
+    className="w-full h-48 object-cover rounded-t-xl"
+  />
   <div className="p-6">
     <h3 className="text-lg font-semibold">Title</h3>
     <p className="text-neutral-600">Description</p>
@@ -191,18 +207,18 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 
 ### Visual Specifications
 
-| Property | Value (Default) | Value (Focus) | Value (Error) | Notes |
-|----------|---|---|---|---|
-| **Border** | 1.5px solid #ddd8d1 | 1.5px solid #1e4d6b | 1.5px solid #dc2626 | Neutral-300 default |
-| **Height** | 44px | 44px | 44px | Touch-friendly minimum |
-| **Padding** | 12px 16px | 12px 16px | 12px 16px | Horizontal 16px, vertical 12px |
-| **Background** | #ffffff | #ffffff | #ffffff | Always white for clarity |
-| **Border Radius** | 6px (md) | 6px (md) | 6px (md) | Consistent with buttons |
-| **Focus Ring** | none | 2px solid #1e4d6b, 2px offset | none | Clear, 2px offset |
-| **Disabled Background** | #f5f1ed | — | — | Subtle background |
-| **Disabled Border** | 1px solid #ddd8d1 | — | — | Lighter border |
-| **Disabled Text** | #9a9591 | — | — | Muted color |
-| **Transition** | — | All 150ms | — | Border and shadow |
+| Property                | Value (Default)     | Value (Focus)                 | Value (Error)       | Notes                          |
+| ----------------------- | ------------------- | ----------------------------- | ------------------- | ------------------------------ |
+| **Border**              | 1.5px solid #ddd8d1 | 1.5px solid #1e4d6b           | 1.5px solid #dc2626 | Neutral-300 default            |
+| **Height**              | 44px                | 44px                          | 44px                | Touch-friendly minimum         |
+| **Padding**             | 12px 16px           | 12px 16px                     | 12px 16px           | Horizontal 16px, vertical 12px |
+| **Background**          | #ffffff             | #ffffff                       | #ffffff             | Always white for clarity       |
+| **Border Radius**       | 6px (md)            | 6px (md)                      | 6px (md)            | Consistent with buttons        |
+| **Focus Ring**          | none                | 2px solid #1e4d6b, 2px offset | none                | Clear, 2px offset              |
+| **Disabled Background** | #f5f1ed             | —                             | —                   | Subtle background              |
+| **Disabled Border**     | 1px solid #ddd8d1   | —                             | —                   | Lighter border                 |
+| **Disabled Text**       | #9a9591             | —                             | —                   | Muted color                    |
+| **Transition**          | —                   | All 150ms                     | —                   | Border and shadow              |
 
 ### Base Styling
 
@@ -215,8 +231,10 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
   background: #ffffff;
   font-family: 'Manrope', sans-serif;
   font-size: 1rem;
-  color: #0A2540; /* trust-deep */
-  transition: border 150ms, box-shadow 150ms;
+  color: #0a2540; /* trust-deep */
+  transition:
+    border 150ms,
+    box-shadow 150ms;
 }
 
 .input::placeholder {
@@ -227,6 +245,7 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 ### States
 
 #### Focus State
+
 ```css
 .input:focus {
   outline: none;
@@ -237,6 +256,7 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 ```
 
 #### Error State
+
 ```css
 .input.is-error {
   border-color: #dc2626;
@@ -250,6 +270,7 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 ```
 
 #### Disabled State
+
 ```css
 .input:disabled {
   background: #f5f1ed;
@@ -263,7 +284,10 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 
 ```tsx
 <div className="mb-4">
-  <label htmlFor="email" className="block text-sm font-medium text-trust-deep mb-2">
+  <label
+    htmlFor="email"
+    className="block text-sm font-medium text-trust-deep mb-2"
+  >
     Email Address
     <span className="text-error-primary">*</span>
   </label>
@@ -280,12 +304,14 @@ Trust through clarity. Form inputs are where users enter sensitive data, so ever
 ### Error Message Display
 
 ```tsx
-{errorMessage && (
-  <div className="mt-2 flex items-center gap-2">
-    <AlertCircleIcon className="w-4 h-4 text-error-primary" />
-    <p className="text-sm text-error-primary">{errorMessage}</p>
-  </div>
-)}
+{
+  errorMessage && (
+    <div className="mt-2 flex items-center gap-2">
+      <AlertCircleIcon className="w-4 h-4 text-error-primary" />
+      <p className="text-sm text-error-primary">{errorMessage}</p>
+    </div>
+  );
+}
 ```
 
 ---
@@ -296,18 +322,18 @@ Command attention without aggression. Modals are critical for permission dialogs
 
 ### Visual Specifications
 
-| Property | Value | Notes |
-|----------|-------|-------|
-| **Overlay Background** | rgba(13, 24, 41, 0.5) | Dark navy, 50% opacity |
-| **Overlay Blur** | 8px backdrop-blur | Gaussian blur effect |
-| **Modal Background** | Pure white (#ffffff) | Clean, elevated |
-| **Modal Border Radius** | 16px (2xl) | Premium feel |
-| **Modal Shadow** | `0 20px 40px rgba(0,0,0,0.12)` | Strong separation |
-| **Modal Padding** | 24px standard, 32px spacious | Generous whitespace |
-| **Header Padding** | 32px | Emphasis and hierarchy |
-| **Overlay Animation** | Fade in 200ms | Easing: ease-out |
-| **Modal Animation** | Slide up + scale 300ms | Easing: cubic-bezier(0.34, 1.56, 0.64, 1) |
-| **Animation Delay** | 100ms | Stagger overlay and modal |
+| Property                | Value                          | Notes                                     |
+| ----------------------- | ------------------------------ | ----------------------------------------- |
+| **Overlay Background**  | rgba(13, 24, 41, 0.5)          | Dark navy, 50% opacity                    |
+| **Overlay Blur**        | 8px backdrop-blur              | Gaussian blur effect                      |
+| **Modal Background**    | Pure white (#ffffff)           | Clean, elevated                           |
+| **Modal Border Radius** | 16px (2xl)                     | Premium feel                              |
+| **Modal Shadow**        | `0 20px 40px rgba(0,0,0,0.12)` | Strong separation                         |
+| **Modal Padding**       | 24px standard, 32px spacious   | Generous whitespace                       |
+| **Header Padding**      | 32px                           | Emphasis and hierarchy                    |
+| **Overlay Animation**   | Fade in 200ms                  | Easing: ease-out                          |
+| **Modal Animation**     | Slide up + scale 300ms         | Easing: cubic-bezier(0.34, 1.56, 0.64, 1) |
+| **Animation Delay**     | 100ms                          | Stagger overlay and modal                 |
 
 ### Base Styling
 
@@ -339,6 +365,7 @@ Command attention without aggression. Modals are critical for permission dialogs
 ### Animations
 
 #### Overlay Fade In
+
 ```css
 @keyframes fadeIn {
   from {
@@ -351,6 +378,7 @@ Command attention without aggression. Modals are critical for permission dialogs
 ```
 
 #### Modal Slide Up + Scale
+
 ```css
 @keyframes slideUpScale {
   from {
@@ -366,13 +394,13 @@ Command attention without aggression. Modals are critical for permission dialogs
 
 ### Modal Sizes
 
-| Size | Width | Use Case |
-|------|-------|----------|
-| **Small (sm)** | 400px | Confirmations, simple dialogs |
-| **Medium (md)** | 600px | Standard modals (default) |
-| **Large (lg)** | 800px | Forms, complex content |
-| **Extra Large (xl)** | 1000px | Full content modals |
-| **Full** | 90vw | Mobile-optimized, maximized |
+| Size                 | Width  | Use Case                      |
+| -------------------- | ------ | ----------------------------- |
+| **Small (sm)**       | 400px  | Confirmations, simple dialogs |
+| **Medium (md)**      | 600px  | Standard modals (default)     |
+| **Large (lg)**       | 800px  | Forms, complex content        |
+| **Extra Large (xl)** | 1000px | Full content modals           |
+| **Full**             | 90vw   | Mobile-optimized, maximized   |
 
 ### Modal Structure
 
@@ -455,9 +483,9 @@ Always maintain the core philosophy: **Trust through sophisticated simplicity.**
 
 These four component archetypes define the visual identity of the Refined Trust Architecture design system. Every other component is built upon these foundations, ensuring consistency and trustworthiness across the entire interface.
 
-| Component | Key Visual Feature | Emotional Signal |
-|-----------|---|---|
-| **Primary Button** | Trust-deep (#0A2540) + lifting animation | Authority with approachability |
-| **Card** | Double shadow + white on warm neutrals | Elevated content, premium quality |
-| **Form Input** | 44px + trust focus ring | Safety and touch-friendly |
-| **Modal** | Trust-deep overlay + slide animation | Important moment, clear focus |
+| Component          | Key Visual Feature                       | Emotional Signal                  |
+| ------------------ | ---------------------------------------- | --------------------------------- |
+| **Primary Button** | Trust-deep (#0A2540) + lifting animation | Authority with approachability    |
+| **Card**           | Double shadow + white on warm neutrals   | Elevated content, premium quality |
+| **Form Input**     | 44px + trust focus ring                  | Safety and touch-friendly         |
+| **Modal**          | Trust-deep overlay + slide animation     | Important moment, clear focus     |

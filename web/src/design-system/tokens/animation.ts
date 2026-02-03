@@ -5,10 +5,10 @@
 
 export const duration = {
   instant: '0ms',
-  fast: '150ms',     // Hover color transitions, focus ring appearance
-  base: '200ms',     // Button state changes, dropdown open/close
-  slow: '300ms',     // Card elevation changes, modal overlays
-  slower: '500ms',   // Page transitions, full-screen loading states
+  fast: '150ms', // Hover color transitions, focus ring appearance
+  base: '200ms', // Button state changes, dropdown open/close
+  slow: '300ms', // Card elevation changes, modal overlays
+  slower: '500ms', // Page transitions, full-screen loading states
 } as const;
 
 export const easing = {
@@ -17,8 +17,8 @@ export const easing = {
   easeIn: 'ease-in',
   easeOut: 'ease-out',
   easeInOut: 'ease-in-out',
-  spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',  // Spring feeling for important actions
-  smooth: 'cubic-bezier(0.16, 1, 0.3, 1)',       // Smooth, premium transitions
+  spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)', // Spring feeling for important actions
+  smooth: 'cubic-bezier(0.16, 1, 0.3, 1)', // Smooth, premium transitions
 } as const;
 
 export const keyframes = {

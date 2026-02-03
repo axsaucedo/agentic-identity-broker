@@ -26,7 +26,11 @@ body {
   display: flex;
   min-width: 320px;
   min-height: 100vh;
-  background: linear-gradient(135deg, var(--color-cream) 0%, var(--color-sand) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--color-cream) 0%,
+    var(--color-sand) 100%
+  );
 }
 
 #root {
@@ -34,7 +38,12 @@ body {
 }
 
 /* Premium typography */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   color: var(--color-text-primary);
   line-height: 1.2;
 }

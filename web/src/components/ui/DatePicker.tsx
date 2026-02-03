@@ -87,7 +87,10 @@ export function DatePicker({
   return (
     <div className={className}>
       {label && (
-        <label htmlFor={inputId} className="block text-sm font-medium text-neutral-700 mb-2">
+        <label
+          htmlFor={inputId}
+          className="block text-sm font-medium text-neutral-700 mb-2"
+        >
           {label}
         </label>
       )}

@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 import { Button } from '@design-system/components/primitives/Button';
 
@@ -37,21 +37,24 @@ const emptyStateVariants = cva(
     defaultVariants: {
       size: 'default',
     },
-  }
+  },
 );
 
-const iconContainerVariants = cva('flex items-center justify-center rounded-full', {
-  variants: {
-    size: {
-      compact: 'w-12 h-12 mb-2',
-      default: 'w-16 h-16 mb-3',
-      expanded: 'w-20 h-20 mb-4',
+const iconContainerVariants = cva(
+  'flex items-center justify-center rounded-full',
+  {
+    variants: {
+      size: {
+        compact: 'w-12 h-12 mb-2',
+        default: 'w-16 h-16 mb-3',
+        expanded: 'w-20 h-20 mb-4',
+      },
+    },
+    defaultVariants: {
+      size: 'default',
     },
   },
-  defaultVariants: {
-    size: 'default',
-  },
-});
+);
 
 const titleVariants = cva('font-semibold text-neutral-900', {
   variants: {
@@ -92,8 +95,10 @@ const actionsContainerVariants = cva('flex gap-3', {
   },
 });
 
-export interface EmptyStateProps
-  extends Omit<React.ComponentPropsWithoutRef<'div'>, 'title'> {
+export interface EmptyStateProps extends Omit<
+  React.ComponentPropsWithoutRef<'div'>,
+  'title'
+> {
   /** Icon or illustration to display (decorative) */
   icon?: React.ReactNode;
   /** Main heading text (required) */
@@ -181,7 +186,7 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     return (
       <div
@@ -234,7 +239,7 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 EmptyState.displayName = 'EmptyState';

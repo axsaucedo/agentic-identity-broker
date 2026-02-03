@@ -12,7 +12,8 @@ const meta = {
     layout: 'centered',
     docs: {
       description: {
-        component: 'Multi-line text input with validation states, character count, and optional auto-grow support.',
+        component:
+          'Multi-line text input with validation states, character count, and optional auto-grow support.',
       },
     },
   },
@@ -58,7 +59,12 @@ export const States: Story = {
         successMessage="Feedback received!"
         rows={3}
       />
-      <TextArea label="Disabled" placeholder="Disabled state" rows={3} disabled />
+      <TextArea
+        label="Disabled"
+        placeholder="Disabled state"
+        rows={3}
+        disabled
+      />
     </div>
   ),
 };
@@ -102,7 +108,9 @@ export const RealWorldUseCases: Story = {
   render: () => (
     <div className="w-96 space-y-6 p-6 bg-white rounded-lg border border-neutral-200">
       <div>
-        <h3 className="text-sm font-semibold text-neutral-900 mb-4">Feedback Form</h3>
+        <h3 className="text-sm font-semibold text-neutral-900 mb-4">
+          Feedback Form
+        </h3>
       </div>
 
       <TextArea
@@ -120,11 +128,7 @@ export const RealWorldUseCases: Story = {
         rows={3}
       />
 
-      <TextArea
-        label="Additional comments"
-        placeholder="Optional"
-        rows={2}
-      />
+      <TextArea label="Additional comments" placeholder="Optional" rows={2} />
     </div>
   ),
 };

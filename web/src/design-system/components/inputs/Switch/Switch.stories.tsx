@@ -13,7 +13,8 @@ const meta = {
     layout: 'centered',
     docs: {
       description: {
-        component: 'Toggle switch for binary on/off controls with labels and descriptions.',
+        component:
+          'Toggle switch for binary on/off controls with labels and descriptions.',
       },
     },
   },
@@ -26,7 +27,9 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   render: () => {
     const [checked, setChecked] = useState(false);
-    return <Switch checked={checked} onChange={setChecked} label="Enable feature" />;
+    return (
+      <Switch checked={checked} onChange={setChecked} label="Enable feature" />
+    );
   },
 };
 
@@ -39,7 +42,12 @@ export const Sizes: Story = {
     return (
       <div className="space-y-6">
         <Switch size="sm" checked={sm} onChange={setSm} label="Small" />
-        <Switch size="md" checked={md} onChange={setMd} label="Medium (default)" />
+        <Switch
+          size="md"
+          checked={md}
+          onChange={setMd}
+          label="Medium (default)"
+        />
         <Switch size="lg" checked={lg} onChange={setLg} label="Large" />
       </div>
     );
@@ -80,7 +88,12 @@ export const States: Story = {
         <Switch checked={checked} onChange={setChecked} label="Off state" />
         <Switch checked={checked2} onChange={setChecked2} label="On state" />
         <Switch checked={false} onChange={() => {}} label="Disabled" disabled />
-        <Switch checked={true} onChange={() => {}} label="Disabled checked" disabled />
+        <Switch
+          checked={true}
+          onChange={() => {}}
+          label="Disabled checked"
+          disabled
+        />
       </div>
     );
   },
@@ -164,7 +177,8 @@ export const Interactive: Story = {
           size="lg"
         />
         <div className="text-sm text-neutral-600">
-          Current state: <span className="font-semibold">{checked ? 'ON' : 'OFF'}</span>
+          Current state:{' '}
+          <span className="font-semibold">{checked ? 'ON' : 'OFF'}</span>
         </div>
       </div>
     );

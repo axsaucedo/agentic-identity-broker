@@ -9,7 +9,11 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { AgentDetail, ThirdpartyService, UserGrant } from '../types/consent';
+import type {
+  AgentDetail,
+  ThirdpartyService,
+  UserGrant,
+} from '../types/consent';
 import { consentApi } from '../services/api/consent';
 
 interface UseAgentGrantsState {
@@ -51,6 +55,17 @@ export function useAgentGrants(agentId: string): UseAgentGrantsReturn {
    * Updates state with results or error.
    */
   const fetchData = useCallback(async () => {
+    if (!agentId) {
+      setState({
+        agent: null,
+        services: [],
+        grants: null,
+        loading: false,
+        error: 'Invalid agent ID',
+      });
+      return;
+    }
+
     // Set loading state
     setState((prev) => ({
       ...prev,
@@ -78,8 +93,15 @@ export function useAgentGrants(agentId: string): UseAgentGrantsReturn {
       let errorMessage = 'Failed to load agent details';
 
       if (err && typeof err === 'object') {
-        if ('response' in err && err.response && typeof err.response === 'object') {
-          const response = err.response as { status?: number; data?: { message?: string } };
+        if (
+          'response' in err &&
+          err.response &&
+          typeof err.response === 'object'
+        ) {
+          const response = err.response as {
+            status?: number;
+            data?: { message?: string };
+          };
 
           if (response.status === 404) {
             errorMessage = 'Agent not found';
@@ -111,18 +133,11 @@ export function useAgentGrants(agentId: string): UseAgentGrantsReturn {
 
   // Fetch data on mount or when agentId changes
   useEffect(() => {
-    let isMounted = true;
-
     // Execute fetch
     fetchData().catch(() => {
       // Error handling is done in fetchData
       // This catch is to prevent unhandled promise rejection
     });
-
-    // Cleanup function
-    return () => {
-      isMounted = false;
-    };
   }, [fetchData]);
 
   return {

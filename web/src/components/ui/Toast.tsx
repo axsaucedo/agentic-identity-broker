@@ -24,7 +24,13 @@
  * ```
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+} from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export type ToastVariant = 'success' | 'error' | 'warning' | 'info';
@@ -37,7 +43,11 @@ export interface ToastMessage {
 }
 
 interface ToastContextValue {
-  showToast: (message: string, variant?: ToastVariant, duration?: number) => void;
+  showToast: (
+    message: string,
+    variant?: ToastVariant,
+    duration?: number,
+  ) => void;
   hideToast: (id: string) => void;
 }
 
@@ -71,7 +81,11 @@ export function ToastProvider({ children, maxToasts = 5 }: ToastProviderProps) {
    * Show a new toast notification.
    */
   const showToast = useCallback(
-    (message: string, variant: ToastVariant = 'info', duration: number = 4000) => {
+    (
+      message: string,
+      variant: ToastVariant = 'info',
+      duration: number = 4000,
+    ) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const newToast: ToastMessage = { id, message, variant, duration };
 
@@ -84,7 +98,7 @@ export function ToastProvider({ children, maxToasts = 5 }: ToastProviderProps) {
         return updated;
       });
     },
-    [maxToasts]
+    [maxToasts],
   );
 
   /**
@@ -240,7 +254,12 @@ function Toast({ toast, onDismiss }: ToastProps) {
 // Icon components
 function SuccessIcon() {
   return (
-    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-6 h-6"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -253,7 +272,12 @@ function SuccessIcon() {
 
 function ErrorIcon() {
   return (
-    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-6 h-6"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -266,7 +290,12 @@ function ErrorIcon() {
 
 function WarningIcon() {
   return (
-    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-6 h-6"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -279,7 +308,12 @@ function WarningIcon() {
 
 function InfoIcon() {
   return (
-    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg
+      className="w-6 h-6"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

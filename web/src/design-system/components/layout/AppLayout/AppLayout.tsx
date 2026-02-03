@@ -27,7 +27,7 @@ const appLayoutVariants = cva(
       // No variant needed for outer container
     },
     defaultVariants: {},
-  }
+  },
 );
 
 const headerVariants = cva(
@@ -43,7 +43,7 @@ const headerVariants = cva(
     defaultVariants: {
       sticky: false,
     },
-  }
+  },
 );
 
 const mainContainerVariants = cva(
@@ -52,7 +52,7 @@ const mainContainerVariants = cva(
   {
     variants: {},
     defaultVariants: {},
-  }
+  },
 );
 
 const sidebarVariants = cva(
@@ -97,7 +97,7 @@ const sidebarVariants = cva(
       collapsed: false,
       mobile: 'standard',
     },
-  }
+  },
 );
 
 const contentVariants = cva(
@@ -106,7 +106,7 @@ const contentVariants = cva(
   {
     variants: {},
     defaultVariants: {},
-  }
+  },
 );
 
 const footerVariants = cva(
@@ -122,7 +122,7 @@ const footerVariants = cva(
     defaultVariants: {
       sticky: false,
     },
-  }
+  },
 );
 
 const overlayVariants = cva(
@@ -138,11 +138,12 @@ const overlayVariants = cva(
     defaultVariants: {
       visible: false,
     },
-  }
+  },
 );
 
 export interface AppLayoutProps
-  extends React.ComponentPropsWithoutRef<'div'>,
+  extends
+    React.ComponentPropsWithoutRef<'div'>,
     VariantProps<typeof appLayoutVariants> {
   /** Header content (optional) */
   header?: React.ReactNode;
@@ -228,11 +229,15 @@ export const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
       defaultCollapsed = false,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Manage collapsed state (controlled or uncontrolled)
-    const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
-    const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+    const [internalCollapsed, setInternalCollapsed] =
+      useState(defaultCollapsed);
+    const isCollapsed =
+      controlledCollapsed !== undefined
+        ? controlledCollapsed
+        : internalCollapsed;
 
     // Mobile drawer state
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -279,11 +284,7 @@ export const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
     const mobilePattern = mobileDrawer ? 'drawer' : 'standard';
 
     return (
-      <div
-        ref={ref}
-        className={cn(appLayoutVariants(), className)}
-        {...props}
-      >
+      <div ref={ref} className={cn(appLayoutVariants(), className)} {...props}>
         {/* Header section */}
         {header && (
           <header
@@ -317,10 +318,18 @@ export const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
                     mobile: mobilePattern,
                   }),
                   // Mobile drawer: show when open, hide when closed
-                  mobileDrawer && (mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0')
+                  mobileDrawer &&
+                    (mobileOpen
+                      ? 'translate-x-0'
+                      : '-translate-x-full md:translate-x-0'),
                 )}
                 style={{
-                  width: isCollapsed && !mobileDrawer ? 0 : mobileDrawer && !mobileOpen ? 0 : sidebarWidthValue,
+                  width:
+                    isCollapsed && !mobileDrawer
+                      ? 0
+                      : mobileDrawer && !mobileOpen
+                        ? 0
+                        : sidebarWidthValue,
                   maxWidth: sidebarWidthValue,
                 }}
                 aria-label="Sidebar navigation"
@@ -332,10 +341,7 @@ export const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
           )}
 
           {/* Main content area */}
-          <main
-            className={cn(contentVariants())}
-            role="main"
-          >
+          <main className={cn(contentVariants())} role="main">
             {children}
           </main>
 
@@ -360,10 +366,18 @@ export const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
                     mobile: mobilePattern,
                   }),
                   // Mobile drawer: show when open, hide when closed
-                  mobileDrawer && (mobileOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0')
+                  mobileDrawer &&
+                    (mobileOpen
+                      ? 'translate-x-0'
+                      : 'translate-x-full md:translate-x-0'),
                 )}
                 style={{
-                  width: isCollapsed && !mobileDrawer ? 0 : mobileDrawer && !mobileOpen ? 0 : sidebarWidthValue,
+                  width:
+                    isCollapsed && !mobileDrawer
+                      ? 0
+                      : mobileDrawer && !mobileOpen
+                        ? 0
+                        : sidebarWidthValue,
                   maxWidth: sidebarWidthValue,
                 }}
                 aria-label="Sidebar"
@@ -395,7 +409,9 @@ export const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
           >
             <svg
               className="w-5 h-5 transition-transform duration-300"
-              style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
+              style={{
+                transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)',
+              }}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -405,7 +421,11 @@ export const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d={sidebarPosition === 'left' ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'}
+                d={
+                  sidebarPosition === 'left'
+                    ? 'M15 19l-7-7 7-7'
+                    : 'M9 5l7 7-7 7'
+                }
               />
             </svg>
           </button>
@@ -446,7 +466,7 @@ export const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 AppLayout.displayName = 'AppLayout';

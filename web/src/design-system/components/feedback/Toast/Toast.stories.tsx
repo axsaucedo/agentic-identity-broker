@@ -25,7 +25,8 @@ const meta = {
     },
     duration: {
       control: 'number',
-      description: 'Auto-dismiss duration in milliseconds (0 = no auto-dismiss)',
+      description:
+        'Auto-dismiss duration in milliseconds (0 = no auto-dismiss)',
     },
     position: {
       control: 'select',
@@ -116,24 +117,27 @@ export const Variants: Story = {
           </Toast>
         )}
 
-        {!toasts.info && !toasts.success && !toasts.warning && !toasts.error && (
-          <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
-            <p className="text-neutral-600 mb-4">All toasts dismissed</p>
-            <button
-              onClick={() =>
-                setToasts({
-                  info: true,
-                  success: true,
-                  warning: true,
-                  error: true,
-                })
-              }
-              className="px-4 py-2 bg-trust-deep text-white rounded-md hover:bg-trust-hover transition-colors"
-            >
-              Show All Toasts
-            </button>
-          </div>
-        )}
+        {!toasts.info &&
+          !toasts.success &&
+          !toasts.warning &&
+          !toasts.error && (
+            <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
+              <p className="text-neutral-600 mb-4">All toasts dismissed</p>
+              <button
+                onClick={() =>
+                  setToasts({
+                    info: true,
+                    success: true,
+                    warning: true,
+                    error: true,
+                  })
+                }
+                className="px-4 py-2 bg-trust-deep text-white rounded-md hover:bg-trust-hover transition-colors"
+              >
+                Show All Toasts
+              </button>
+            </div>
+          )}
       </div>
     );
   },
@@ -761,24 +765,27 @@ export const WithTitle: Story = {
           </Toast>
         )}
 
-        {!toasts.toast1 && !toasts.toast2 && !toasts.toast3 && !toasts.toast4 && (
-          <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
-            <p className="text-neutral-600 mb-4">All toasts dismissed</p>
-            <button
-              onClick={() =>
-                setToasts({
-                  toast1: true,
-                  toast2: true,
-                  toast3: true,
-                  toast4: true,
-                })
-              }
-              className="px-4 py-2 bg-trust-deep text-white rounded-md hover:bg-trust-hover transition-colors"
-            >
-              Show All Toasts
-            </button>
-          </div>
-        )}
+        {!toasts.toast1 &&
+          !toasts.toast2 &&
+          !toasts.toast3 &&
+          !toasts.toast4 && (
+            <div className="text-center p-8 border border-dashed border-neutral-300 rounded-lg">
+              <p className="text-neutral-600 mb-4">All toasts dismissed</p>
+              <button
+                onClick={() =>
+                  setToasts({
+                    toast1: true,
+                    toast2: true,
+                    toast3: true,
+                    toast4: true,
+                  })
+                }
+                className="px-4 py-2 bg-trust-deep text-white rounded-md hover:bg-trust-hover transition-colors"
+              >
+                Show All Toasts
+              </button>
+            </div>
+          )}
       </div>
     );
   },
@@ -859,8 +866,8 @@ export const RealWorldExamples: Story = {
                     position={undefined as any}
                     onDismiss={() => removeNotification(notification.id)}
                   >
-                    You've successfully granted access to your profile data. This
-                    permission is valid for 30 days.
+                    You've successfully granted access to your profile data.
+                    This permission is valid for 30 days.
                   </Toast>
                 );
               }
@@ -875,8 +882,8 @@ export const RealWorldExamples: Story = {
                     position={undefined as any}
                     onDismiss={() => removeNotification(notification.id)}
                   >
-                    Access permissions have been revoked. The application will no
-                    longer have access to your data.
+                    Access permissions have been revoked. The application will
+                    no longer have access to your data.
                   </Toast>
                 );
               }

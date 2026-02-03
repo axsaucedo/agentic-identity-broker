@@ -208,6 +208,7 @@ export interface CreateOrUpdateGrantRequest {
  */
 export interface CreateOrUpdateGrantResponse {
   data: UserGrant;
+  redirect_url?: string;
 }
 
 /**

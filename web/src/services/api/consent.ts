@@ -69,7 +69,8 @@ export class ConsentApiService {
     }
 
     // Fetch from API
-    const response = await apiClient.get<GetAgentDelegationsResponse>('/consent/agents');
+    const response =
+      await apiClient.get<GetAgentDelegationsResponse>('/consent/agents');
     const data = response.data.data;
 
     // Cache the result (5 minutes TTL)
@@ -93,14 +94,17 @@ export class ConsentApiService {
     const cacheKey = `/consent/agent/${agentId}`;
 
     // Check cache first
-    const cached = apiCache.get<{ agent: AgentDetail; services: ThirdpartyService[] }>(cacheKey);
+    const cached = apiCache.get<{
+      agent: AgentDetail;
+      services: ThirdpartyService[];
+    }>(cacheKey);
     if (cached) {
       return cached;
     }
 
     // Fetch from API
     const response = await apiClient.get<GetAgentDetailResponse>(
-      `/consent/agent/${agentId}`
+      `/consent/agent/${agentId}`,
     );
     const data = response.data.data;
 
@@ -129,7 +133,7 @@ export class ConsentApiService {
 
     // Fetch from API
     const response = await apiClient.get<GetAgentGrantsResponse>(
-      `/consent/agent/${agentId}/grants`
+      `/consent/agent/${agentId}/grants`,
     );
     const data = response.data.data;
 
@@ -152,7 +156,7 @@ export class ConsentApiService {
   async createOrUpdateGrant(
     agentId: string,
     request: CreateOrUpdateGrantRequest,
-    redirectUri?: string
+    redirectUri?: string,
   ): Promise<UserGrant | null> {
     // Build URL with optional redirect_uri query parameter (FR-025, T055)
     let url = `/consent/agent/${agentId}/grants`;
@@ -162,7 +166,7 @@ export class ConsentApiService {
 
     const response = await apiClient.post<CreateOrUpdateGrantResponse>(
       url,
-      request
+      request,
     );
 
     // Invalidate caches for this agent since data changed
@@ -178,12 +182,14 @@ export class ConsentApiService {
     if (response.status === 201) {
       // Check if backend provided a redirect_url in the response body (FR-025, T056)
       // Backend returns redirect_url instead of HTTP 303 to avoid CORS issues with cross-origin redirects
-      const redirectUrl = (response.data as any).redirect_url;
+      const redirectUrl = response.data.redirect_url;
       if (redirectUrl) {
         // Defense-in-depth: Validate redirect URL is same-origin before following
         // Backend already validates (SR-003), but frontend validation adds security layer
         if (!isSafeRedirectUrl(redirectUrl)) {
-          throw new Error('Redirect URL validation failed: URL must be same-origin');
+          throw new Error(
+            'Redirect URL validation failed: URL must be same-origin',
+          );
         }
 
         // Use window.location.href to navigate (not XHR/fetch)

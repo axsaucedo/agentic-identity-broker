@@ -72,7 +72,8 @@ const dividerLineVariants = cva('', {
 });
 
 export interface DividerProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'style'>,
+  extends
+    Omit<React.HTMLAttributes<HTMLDivElement>, 'style'>,
     VariantProps<typeof dividerVariants> {
   /** Style of the divider: solid or dashed */
   style?: 'solid' | 'dashed';
@@ -110,7 +111,7 @@ export const Divider = React.forwardRef<HTMLDivElement, DividerProps>(
       labelSpacing = 'md',
       ...props
     },
-    ref
+    ref,
   ) => {
     const spacing = {
       sm: 'px-2',
@@ -125,14 +126,20 @@ export const Divider = React.forwardRef<HTMLDivElement, DividerProps>(
           ref={ref}
           className={cn(
             dividerVariants({ orientation, variant }),
-            'flex items-center'
+            'flex items-center',
           )}
           role="separator"
           aria-orientation="vertical"
           {...props}
         >
           <div
-            className={cn(dividerLineVariants({ orientation, style: dividerStyle, variant }))}
+            className={cn(
+              dividerLineVariants({
+                orientation,
+                style: dividerStyle,
+                variant,
+              }),
+            )}
             style={dividerStyle === 'solid' ? {} : undefined}
           />
         </div>
@@ -146,14 +153,20 @@ export const Divider = React.forwardRef<HTMLDivElement, DividerProps>(
           ref={ref}
           className={cn(
             dividerVariants({ orientation, variant }),
-            'flex items-center'
+            'flex items-center',
           )}
           role="separator"
           aria-orientation="horizontal"
           {...props}
         >
           <div
-            className={cn(dividerLineVariants({ orientation, style: dividerStyle, variant }))}
+            className={cn(
+              dividerLineVariants({
+                orientation,
+                style: dividerStyle,
+                variant,
+              }),
+            )}
             style={dividerStyle === 'solid' ? {} : undefined}
           />
         </div>
@@ -167,7 +180,7 @@ export const Divider = React.forwardRef<HTMLDivElement, DividerProps>(
         className={cn(
           dividerVariants({ orientation, variant }),
           'flex items-center gap-0',
-          className
+          className,
         )}
         role="separator"
         aria-label={typeof label === 'string' ? label : undefined}
@@ -177,7 +190,7 @@ export const Divider = React.forwardRef<HTMLDivElement, DividerProps>(
         <div
           className={cn(
             dividerLineVariants({ orientation, style: dividerStyle, variant }),
-            'flex-1'
+            'flex-1',
           )}
           style={dividerStyle === 'solid' ? {} : undefined}
         />
@@ -186,7 +199,7 @@ export const Divider = React.forwardRef<HTMLDivElement, DividerProps>(
         <span
           className={cn(
             spacing,
-            'text-sm text-neutral-600 font-medium whitespace-nowrap'
+            'text-sm text-neutral-600 font-medium whitespace-nowrap',
           )}
         >
           {label}
@@ -196,13 +209,13 @@ export const Divider = React.forwardRef<HTMLDivElement, DividerProps>(
         <div
           className={cn(
             dividerLineVariants({ orientation, style: dividerStyle, variant }),
-            'flex-1'
+            'flex-1',
           )}
           style={dividerStyle === 'solid' ? {} : undefined}
         />
       </div>
     );
-  }
+  },
 );
 
 Divider.displayName = 'Divider';

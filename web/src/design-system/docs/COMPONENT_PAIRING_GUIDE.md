@@ -47,6 +47,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Spacing Breakdown**:
+
 - Card padding: 24px (`p-6`)
 - Content vertical spacing: 16px (`space-y-4`)
 - Heading to subtitle: 4px (`mt-1`)
@@ -94,6 +95,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Spacing Breakdown**:
+
 - Primary actions side-by-side: 12px gap (`gap-3`)
 - Equal width for equal importance (`flex-1`)
 - Tertiary action below with full width
@@ -149,6 +151,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Layout Strategy**:
+
 - Grid gap: 24px (`gap-6`) for breathing room
 - Flex column ensures buttons stay at bottom
 - Fixed header, flexible body, fixed footer pattern
@@ -169,18 +172,20 @@ Real-world examples showing how to combine design system components with exact s
 
   {/* Subtitle */}
   <p className="text-lg text-secondary mb-6">
-    Control which AI agents can access your data and perform actions on your behalf
+    Control which AI agents can access your data and perform actions on your
+    behalf
   </p>
 
   {/* Section Heading */}
-  <h2 className="text-xl font-semibold text-trust mb-4">
-    Active Delegations
-  </h2>
+  <h2 className="text-xl font-semibold text-trust mb-4">Active Delegations</h2>
 
   {/* List of Items */}
   <div className="space-y-3 mb-6">
     {delegations.map((delegation) => (
-      <div key={delegation.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-neutral-50">
+      <div
+        key={delegation.id}
+        className="flex items-start gap-3 p-3 rounded-lg hover:bg-neutral-50"
+      >
         {/* Icon */}
         <div className="w-10 h-10 bg-success-light rounded-lg flex items-center justify-center flex-shrink-0">
           <CheckIcon className="w-5 h-5 text-success-primary" />
@@ -195,12 +200,15 @@ Real-world examples showing how to combine design system components with exact s
             {delegation.description}
           </p>
           <p className="text-xs text-tertiary mt-1">
-            Granted {delegation.grantedDate} • {delegation.scopeCount} permissions
+            Granted {delegation.grantedDate} • {delegation.scopeCount}{' '}
+            permissions
           </p>
         </div>
 
         {/* Status */}
-        <Badge variant="success" size="sm">Active</Badge>
+        <Badge variant="success" size="sm">
+          Active
+        </Badge>
       </div>
     ))}
   </div>
@@ -213,6 +221,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Hierarchy Breakdown**:
+
 1. **h1** (48px, trust-deep) - Page title, maximum visual weight
 2. **Subtitle** (18px, secondary) - Context and purpose
 3. **h2** (20px, trust) - Section divider
@@ -222,6 +231,7 @@ Real-world examples showing how to combine design system components with exact s
 7. **Helper text** (14px, tertiary) - Footer notes
 
 **Spacing Breakdown**:
+
 - Title to subtitle: 8px (`mb-2`)
 - Subtitle to section: 24px (`mb-6`)
 - Section to content: 16px (`mb-4`)
@@ -237,7 +247,10 @@ Real-world examples showing how to combine design system components with exact s
 ```tsx
 <div className="mb-4">
   {/* Label */}
-  <label htmlFor="email" className="block text-sm font-medium text-trust-deep mb-2">
+  <label
+    htmlFor="email"
+    className="block text-sm font-medium text-trust-deep mb-2"
+  >
     Email Address
     <span className="text-error-primary">*</span>
   </label>
@@ -257,9 +270,7 @@ Real-world examples showing how to combine design system components with exact s
   {error && (
     <div className="mt-2 flex items-start gap-2">
       <AlertCircleIcon className="w-4 h-4 text-error-primary flex-shrink-0 mt-0.5" />
-      <p className="text-sm text-error-primary">
-        {error}
-      </p>
+      <p className="text-sm text-error-primary">{error}</p>
     </div>
   )}
 
@@ -273,6 +284,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Spacing Breakdown**:
+
 - Label to input: 8px (`mb-2`)
 - Input to error: 8px (`mt-2`)
 - Input to helper: 4px (`mt-1`)
@@ -342,6 +354,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Spacing Breakdown**:
+
 - Form sections: 24px (`space-y-6`)
 - Form fields: 16px (`space-y-4`)
 - Action separator: 16px padding top (`pt-4`)
@@ -357,10 +370,10 @@ Real-world examples showing how to combine design system components with exact s
 <div className="inline-flex rounded-lg border border-neutral-300 p-1 bg-neutral-50">
   <button
     className={cn(
-      "px-4 py-2 text-sm font-medium rounded-md transition-colors",
+      'px-4 py-2 text-sm font-medium rounded-md transition-colors',
       active === 'grid'
-        ? "bg-white text-trust-deep shadow-sm"
-        : "text-neutral-700 hover:text-trust-deep"
+        ? 'bg-white text-trust-deep shadow-sm'
+        : 'text-neutral-700 hover:text-trust-deep',
     )}
     onClick={() => setActive('grid')}
   >
@@ -369,10 +382,10 @@ Real-world examples showing how to combine design system components with exact s
   </button>
   <button
     className={cn(
-      "px-4 py-2 text-sm font-medium rounded-md transition-colors",
+      'px-4 py-2 text-sm font-medium rounded-md transition-colors',
       active === 'list'
-        ? "bg-white text-trust-deep shadow-sm"
-        : "text-neutral-700 hover:text-trust-deep"
+        ? 'bg-white text-trust-deep shadow-sm'
+        : 'text-neutral-700 hover:text-trust-deep',
     )}
     onClick={() => setActive('list')}
   >
@@ -383,6 +396,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Styling Details**:
+
 - Container padding: 4px (`p-1`)
 - Button padding: 16px/8px (`px-4 py-2`)
 - Icon spacing: 8px (`mr-2`)
@@ -423,6 +437,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Layout Strategy**:
+
 - Gap between buttons: 12px (`gap-3`)
 - Icon to text: 8px (`mr-2`)
 - Danger button pushed right (`ml-auto`)
@@ -448,8 +463,8 @@ Real-world examples showing how to combine design system components with exact s
 
   {/* Description */}
   <p className="text-neutral-700 max-w-sm mb-6">
-    You haven't granted any permissions yet. Start by connecting an AI agent
-    to access your data securely.
+    You haven't granted any permissions yet. Start by connecting an AI agent to
+    access your data securely.
   </p>
 
   {/* Primary CTA */}
@@ -466,6 +481,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Spacing Breakdown**:
+
 - Container padding: 64px/24px (`py-16 px-6`)
 - Icon to heading: 24px (`mb-6`)
 - Heading to description: 8px (`mb-2`)
@@ -485,12 +501,8 @@ Real-world examples showing how to combine design system components with exact s
   <div className="flex items-center gap-4">
     <Badge variant="success">Active</Badge>
     <div>
-      <p className="text-sm font-medium text-trust-deep">
-        Calendar Access
-      </p>
-      <p className="text-xs text-tertiary mt-0.5">
-        Last used 2 hours ago
-      </p>
+      <p className="text-sm font-medium text-trust-deep">Calendar Access</p>
+      <p className="text-xs text-tertiary mt-0.5">Last used 2 hours ago</p>
     </div>
   </div>
 
@@ -502,6 +514,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Spacing Breakdown**:
+
 - Container padding: 16px (`p-4`)
 - Badge to text: 16px (`gap-4`)
 - Text to timestamp: 2px (`mt-0.5`)
@@ -520,12 +533,16 @@ Real-world examples showing how to combine design system components with exact s
       )}
 
       {/* Status Dot */}
-      <div className={cn(
-        "absolute left-0 top-1 w-4 h-4 rounded-full border-2",
-        event.status === 'success' && "bg-success-primary border-success-light",
-        event.status === 'pending' && "bg-warning-primary border-warning-light",
-        event.status === 'error' && "bg-error-primary border-error-light"
-      )} />
+      <div
+        className={cn(
+          'absolute left-0 top-1 w-4 h-4 rounded-full border-2',
+          event.status === 'success' &&
+            'bg-success-primary border-success-light',
+          event.status === 'pending' &&
+            'bg-warning-primary border-warning-light',
+          event.status === 'error' && 'bg-error-primary border-error-light',
+        )}
+      />
 
       {/* Content */}
       <div>
@@ -537,12 +554,8 @@ Real-world examples showing how to combine design system components with exact s
             {event.statusLabel}
           </Badge>
         </div>
-        <p className="text-sm text-neutral-700 mb-1">
-          {event.description}
-        </p>
-        <p className="text-xs text-tertiary">
-          {event.timestamp}
-        </p>
+        <p className="text-sm text-neutral-700 mb-1">{event.description}</p>
+        <p className="text-xs text-tertiary">{event.timestamp}</p>
       </div>
     </div>
   ))}
@@ -550,6 +563,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Layout Details**:
+
 - Timeline spacing: 16px (`space-y-4`)
 - Content left padding: 32px (`pl-8`)
 - Dot position: 8px left, 4px top
@@ -577,8 +591,8 @@ Real-world examples showing how to combine design system components with exact s
 
     {/* Description */}
     <p className="text-neutral-700 mb-6">
-      This will immediately remove the agent's access to your calendar. This action
-      cannot be undone.
+      This will immediately remove the agent's access to your calendar. This
+      action cannot be undone.
     </p>
 
     {/* Actions */}
@@ -595,6 +609,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Spacing Breakdown**:
+
 - Icon to title: 16px (`mb-4`)
 - Title to description: 8px (`mb-2`)
 - Description to actions: 24px (`mb-6`)
@@ -605,13 +620,16 @@ Real-world examples showing how to combine design system components with exact s
 ### Pattern: Form Modal
 
 ```tsx
-<Modal isOpen={isOpen} onClose={onClose} size="md" title="Edit Permission Scope">
+<Modal
+  isOpen={isOpen}
+  onClose={onClose}
+  size="md"
+  title="Edit Permission Scope"
+>
   <form onSubmit={handleSubmit} className="space-y-6">
     {/* Section 1 */}
     <div>
-      <h3 className="text-sm font-medium text-trust-deep mb-3">
-        Access Level
-      </h3>
+      <h3 className="text-sm font-medium text-trust-deep mb-3">Access Level</h3>
       <RadioGroup value={accessLevel} onChange={setAccessLevel}>
         <div className="space-y-2">
           {accessLevels.map((level) => (
@@ -630,9 +648,7 @@ Real-world examples showing how to combine design system components with exact s
 
     {/* Section 2 */}
     <div>
-      <h3 className="text-sm font-medium text-trust-deep mb-3">
-        Expiration
-      </h3>
+      <h3 className="text-sm font-medium text-trust-deep mb-3">Expiration</h3>
       <DatePicker value={expirationDate} onChange={setExpirationDate} />
     </div>
 
@@ -650,6 +666,7 @@ Real-world examples showing how to combine design system components with exact s
 ```
 
 **Spacing Breakdown**:
+
 - Form sections: 24px (`space-y-6`)
 - Section heading to content: 12px (`mb-3`)
 - Radio options: 8px (`space-y-2`)
@@ -661,38 +678,38 @@ Real-world examples showing how to combine design system components with exact s
 
 ### Spacing Cheat Sheet
 
-| Context | Gap/Margin | Tailwind | Pixels |
-|---------|-----------|----------|--------|
-| Label → Input | `mb-2` | 0.5rem | 8px |
-| Input → Helper | `mt-1` | 0.25rem | 4px |
-| Form Fields | `space-y-4` | 1rem | 16px |
-| Form Sections | `space-y-6` | 1.5rem | 24px |
-| Card Content | `space-y-4` | 1rem | 16px |
-| Button Group | `gap-3` | 0.75rem | 12px |
-| Grid Cards | `gap-6` | 1.5rem | 24px |
-| List Items | `space-y-3` | 0.75rem | 12px |
-| Major Sections | `gap-16` | 4rem | 64px |
+| Context        | Gap/Margin  | Tailwind | Pixels |
+| -------------- | ----------- | -------- | ------ |
+| Label → Input  | `mb-2`      | 0.5rem   | 8px    |
+| Input → Helper | `mt-1`      | 0.25rem  | 4px    |
+| Form Fields    | `space-y-4` | 1rem     | 16px   |
+| Form Sections  | `space-y-6` | 1.5rem   | 24px   |
+| Card Content   | `space-y-4` | 1rem     | 16px   |
+| Button Group   | `gap-3`     | 0.75rem  | 12px   |
+| Grid Cards     | `gap-6`     | 1.5rem   | 24px   |
+| List Items     | `space-y-3` | 0.75rem  | 12px   |
+| Major Sections | `gap-16`    | 4rem     | 64px   |
 
 ### Icon Sizing Cheat Sheet
 
-| Context | Class | Pixels |
-|---------|-------|--------|
-| Small button | `w-4 h-4` | 16px |
-| Medium button | `w-5 h-5` | 20px |
-| Large button | `w-6 h-6` | 24px |
-| Badge/Tag | `w-3 h-3` | 12px |
-| Content decoration | `w-5 h-5` | 20px |
-| Empty state | `w-16 h-16` | 64px |
+| Context            | Class       | Pixels |
+| ------------------ | ----------- | ------ |
+| Small button       | `w-4 h-4`   | 16px   |
+| Medium button      | `w-5 h-5`   | 20px   |
+| Large button       | `w-6 h-6`   | 24px   |
+| Badge/Tag          | `w-3 h-3`   | 12px   |
+| Content decoration | `w-5 h-5`   | 20px   |
+| Empty state        | `w-16 h-16` | 64px   |
 
 ### Typography Hierarchy Cheat Sheet
 
-| Element | Size | Weight | Color | Spacing |
-|---------|------|--------|-------|---------|
-| Page title (h1) | `text-3xl` | `font-bold` | `text-trust-deep` | `mb-2` |
-| Section (h2) | `text-xl` | `font-semibold` | `text-trust-deep` | `mb-4` |
-| Subsection (h3) | `text-lg` | `font-semibold` | `text-trust` | `mb-3` |
-| Body text | `text-base` | `font-normal` | `text-neutral-700` | — |
-| Secondary text | `text-sm` | `font-normal` | `text-secondary` | — |
-| Metadata | `text-xs` | `font-normal` | `text-tertiary` | — |
+| Element         | Size        | Weight          | Color              | Spacing |
+| --------------- | ----------- | --------------- | ------------------ | ------- |
+| Page title (h1) | `text-3xl`  | `font-bold`     | `text-trust-deep`  | `mb-2`  |
+| Section (h2)    | `text-xl`   | `font-semibold` | `text-trust-deep`  | `mb-4`  |
+| Subsection (h3) | `text-lg`   | `font-semibold` | `text-trust`       | `mb-3`  |
+| Body text       | `text-base` | `font-normal`   | `text-neutral-700` | —       |
+| Secondary text  | `text-sm`   | `font-normal`   | `text-secondary`   | —       |
+| Metadata        | `text-xs`   | `font-normal`   | `text-tertiary`    | —       |
 
 Use these patterns as starting points and adapt to your specific use case while maintaining the design system's visual consistency.

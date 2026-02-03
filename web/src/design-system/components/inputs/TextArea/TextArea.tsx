@@ -23,19 +23,23 @@ const textareaVariants = cva(
   {
     variants: {
       variant: {
-        default: 'border-neutral-300 text-neutral-900 placeholder-neutral-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
-        error: 'border-error-primary bg-error-light/20 text-neutral-900 placeholder-neutral-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
-        success: 'border-success-primary bg-success-light/20 text-neutral-900 placeholder-neutral-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
+        default:
+          'border-neutral-300 text-neutral-900 placeholder-neutral-500 focus:border-trust-deep focus:ring-1 focus:ring-trust',
+        error:
+          'border-error-primary bg-error-light/20 text-neutral-900 placeholder-neutral-500 focus:border-error-primary focus:ring-1 focus:ring-error-primary',
+        success:
+          'border-success-primary bg-success-light/20 text-neutral-900 placeholder-neutral-500 focus:border-success-primary focus:ring-1 focus:ring-success-primary',
       },
     },
     defaultVariants: {
       variant: 'default',
     },
-  }
+  },
 );
 
 export interface TextAreaProps
-  extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'rows'>,
+  extends
+    Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'rows'>,
     VariantProps<typeof textareaVariants> {
   /** Label text displayed above textarea */
   label?: string;
@@ -98,14 +102,19 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
       onChange,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Determine variant based on error/success state
-    const variant = errorMessage ? 'error' : successMessage ? 'success' : 'default';
+    const variant = errorMessage
+      ? 'error'
+      : successMessage
+        ? 'success'
+        : 'default';
 
     // Character count
     const charCount = typeof value === 'string' ? value.length : 0;
-    const displayCharCount = showCharCount && maxLength ? `${charCount}/${maxLength}` : null;
+    const displayCharCount =
+      showCharCount && maxLength ? `${charCount}/${maxLength}` : null;
 
     // Handle auto-grow
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -143,7 +152,9 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
         <textarea
           ref={(node) => {
             if (node) {
-              (textareaRef as React.MutableRefObject<HTMLTextAreaElement>).current = node;
+              (
+                textareaRef as React.MutableRefObject<HTMLTextAreaElement>
+              ).current = node;
               if (typeof ref === 'function') ref(node);
               else if (ref) ref.current = node;
             }
@@ -158,7 +169,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
             textareaVariants({ variant }),
             disabled && 'bg-neutral-50 cursor-not-allowed opacity-60',
             autoGrow && 'min-h-[2.5rem] overflow-hidden',
-            className
+            className,
           )}
           {...props}
         />
@@ -166,10 +177,14 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
         {/* Helper text, error message, or character count */}
         <div className="mt-1.5 flex items-center justify-between">
           {errorMessage && (
-            <span className="text-xs text-error-primary font-medium">{errorMessage}</span>
+            <span className="text-xs text-error-primary font-medium">
+              {errorMessage}
+            </span>
           )}
           {successMessage && !errorMessage && (
-            <span className="text-xs text-success-primary font-medium">{successMessage}</span>
+            <span className="text-xs text-success-primary font-medium">
+              {successMessage}
+            </span>
           )}
           {helperText && !errorMessage && !successMessage && (
             <span className="text-xs text-neutral-600">{helperText}</span>
@@ -180,7 +195,9 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
             <span
               className={cn(
                 'text-xs ml-auto',
-                charCount > maxLength! * 0.8 ? 'text-warning-primary' : 'text-neutral-500'
+                charCount > maxLength! * 0.8
+                  ? 'text-warning-primary'
+                  : 'text-neutral-500',
               )}
             >
               {displayCharCount}
@@ -189,7 +206,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
         </div>
       </div>
     );
-  }
+  },
 );
 
 TextArea.displayName = 'TextArea';

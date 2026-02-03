@@ -40,9 +40,13 @@ export function validateGrantRequest(request: {
   request.delegatedTokens.forEach((token, index) => {
     // Service ID is required
     if (!token.thirdparty_oauth2_service_id) {
-      errors.push(`Service ${index + 1}: thirdparty_oauth2_service_id is required`);
+      errors.push(
+        `Service ${index + 1}: thirdparty_oauth2_service_id is required`,
+      );
     } else if (!validateServiceId(token.thirdparty_oauth2_service_id)) {
-      errors.push(`Service ${index + 1}: invalid thirdparty_oauth2_service_id format`);
+      errors.push(
+        `Service ${index + 1}: invalid thirdparty_oauth2_service_id format`,
+      );
     }
 
     // Scopes are required
@@ -57,7 +61,9 @@ export function validateGrantRequest(request: {
 
   // Validate expiration date if provided
   if (request.validUntil) {
-    const validationError = validateExpirationDate(new Date(request.validUntil));
+    const validationError = validateExpirationDate(
+      new Date(request.validUntil),
+    );
     if (validationError) {
       errors.push(validationError);
     }
@@ -159,7 +165,7 @@ export function formatValidationErrors(errors: string[]): string {
 
 /**
  * Validates that a URL is safe for redirection (same-origin or relative).
- * 
+ *
  * This provides defense-in-depth protection against open redirect vulnerabilities.
  * While the backend performs the primary validation (SR-003), frontend validation
  * adds an additional security layer.
@@ -173,9 +179,16 @@ export function isSafeRedirectUrl(redirectUrl: string): boolean {
   }
 
   // Check for obviously malicious or dangerous schemes first
-  const dangerousSchemes = ['javascript:', 'data:', 'vbscript:', 'file:', 'about:', 'blob:'];
+  const dangerousSchemes = [
+    'javascript:',
+    'data:',
+    'vbscript:',
+    'file:',
+    'about:',
+    'blob:',
+  ];
   const lowerUrl = redirectUrl.toLowerCase();
-  if (dangerousSchemes.some(scheme => lowerUrl.startsWith(scheme))) {
+  if (dangerousSchemes.some((scheme) => lowerUrl.startsWith(scheme))) {
     return false;
   }
 
@@ -187,7 +200,7 @@ export function isSafeRedirectUrl(redirectUrl: string): boolean {
   try {
     // Try to parse as absolute URL
     const url = new URL(redirectUrl);
-    
+
     // It's an absolute URL - check if it's same-origin
     // Normalize ports: http default 80, https default 443
     const normalizePort = (protocol: string, port: string): string => {
@@ -196,8 +209,11 @@ export function isSafeRedirectUrl(redirectUrl: string): boolean {
     };
 
     const urlPort = normalizePort(url.protocol, url.port);
-    const locationPort = normalizePort(window.location.protocol, window.location.port);
-    
+    const locationPort = normalizePort(
+      window.location.protocol,
+      window.location.port,
+    );
+
     return (
       url.protocol === window.location.protocol &&
       url.hostname === window.location.hostname &&

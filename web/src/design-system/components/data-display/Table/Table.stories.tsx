@@ -121,7 +121,11 @@ const largeDataset: User[] = Array.from({ length: 25 }, (_, i) => ({
   name: `User ${i + 1}`,
   email: `user${i + 1}@example.com`,
   role: i % 3 === 0 ? 'Admin' : 'User',
-  status: (i % 3 === 0 ? 'active' : i % 3 === 1 ? 'inactive' : 'pending') as User['status'],
+  status: (i % 3 === 0
+    ? 'active'
+    : i % 3 === 1
+      ? 'inactive'
+      : 'pending') as User['status'],
   lastActive: `${i + 1} days ago`,
 }));
 
@@ -138,7 +142,7 @@ const sampleTransactions: Transaction[] = [
     id: 'TXN-002',
     date: '2024-01-14',
     description: 'API usage overage',
-    amount: 15.50,
+    amount: 15.5,
     status: 'pending',
     category: 'Usage',
   },
@@ -146,7 +150,7 @@ const sampleTransactions: Transaction[] = [
     id: 'TXN-003',
     date: '2024-01-10',
     description: 'Support ticket',
-    amount: 50.00,
+    amount: 50.0,
     status: 'failed',
     category: 'Support',
   },
@@ -191,11 +195,7 @@ export const BasicTable: Story = {
  */
 export const StripedTable: Story = {
   render: () => (
-    <Table<User>
-      columns={basicColumns}
-      data={sampleUsers}
-      striped
-    />
+    <Table<User> columns={basicColumns} data={sampleUsers} striped />
   ),
 };
 
@@ -204,13 +204,7 @@ export const StripedTable: Story = {
  * Rows highlight on mouse hover for better interaction feedback.
  */
 export const HoverTable: Story = {
-  render: () => (
-    <Table<User>
-      columns={basicColumns}
-      data={sampleUsers}
-      hover
-    />
-  ),
+  render: () => <Table<User> columns={basicColumns} data={sampleUsers} hover />,
 };
 
 /**
@@ -337,7 +331,10 @@ export const WithCustomContent: Story = {
         header: '',
         accessor: (row) => (
           <Avatar
-            initials={row.name.split(' ').map(n => n[0]).join('')}
+            initials={row.name
+              .split(' ')
+              .map((n) => n[0])
+              .join('')}
             size="sm"
           />
         ),
@@ -371,8 +368,8 @@ export const WithCustomContent: Story = {
               row.status === 'active'
                 ? 'success'
                 : row.status === 'inactive'
-                ? 'neutral'
-                : 'warning'
+                  ? 'neutral'
+                  : 'warning'
             }
             showDot
           >
@@ -399,13 +396,7 @@ export const WithCustomContent: Story = {
       },
     ];
 
-    return (
-      <Table<User>
-        columns={customColumns}
-        data={sampleUsers}
-        hover
-      />
-    );
+    return <Table<User> columns={customColumns} data={sampleUsers} hover />;
   },
 };
 
@@ -433,7 +424,9 @@ export const EmptyState: Story = {
               d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
             />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-neutral-900">No users found</h3>
+          <h3 className="mt-2 text-sm font-medium text-neutral-900">
+            No users found
+          </h3>
           <p className="mt-1 text-sm text-neutral-500">
             Get started by adding a new user.
           </p>
@@ -453,13 +446,7 @@ export const EmptyState: Story = {
  * Table displaying skeleton loading placeholders.
  */
 export const LoadingState: Story = {
-  render: () => (
-    <Table<User>
-      columns={basicColumns}
-      data={[]}
-      loading
-    />
-  ),
+  render: () => <Table<User> columns={basicColumns} data={[]} loading />,
 };
 
 /**
@@ -539,7 +526,10 @@ export const LargeDataset: Story = {
         key: 'role',
         header: 'Role',
         accessor: (row) => (
-          <Badge variant={row.role === 'Admin' ? 'primary' : 'neutral'} size="sm">
+          <Badge
+            variant={row.role === 'Admin' ? 'primary' : 'neutral'}
+            size="sm"
+          >
             {row.role}
           </Badge>
         ),
@@ -553,8 +543,8 @@ export const LargeDataset: Story = {
               row.status === 'active'
                 ? 'success'
                 : row.status === 'inactive'
-                ? 'neutral'
-                : 'warning'
+                  ? 'neutral'
+                  : 'warning'
             }
             size="sm"
             showDot
@@ -611,8 +601,8 @@ export const PermissionsTable: Story = {
               row.type === 'admin'
                 ? 'error'
                 : row.type === 'write'
-                ? 'warning'
-                : 'info'
+                  ? 'warning'
+                  : 'info'
             }
             size="sm"
           >
@@ -625,10 +615,7 @@ export const PermissionsTable: Story = {
         key: 'granted',
         header: 'Access',
         accessor: (row) => (
-          <Badge
-            variant={row.granted ? 'success' : 'neutral'}
-            size="sm"
-          >
+          <Badge variant={row.granted ? 'success' : 'neutral'} size="sm">
             {row.granted ? 'Granted' : 'Denied'}
           </Badge>
         ),
@@ -687,8 +674,8 @@ export const ResponsiveTable: Story = {
               row.status === 'completed'
                 ? 'success'
                 : row.status === 'pending'
-                ? 'warning'
-                : 'error'
+                  ? 'warning'
+                  : 'error'
             }
             size="sm"
             showDot
@@ -766,7 +753,10 @@ export const AllFeaturesCombined: Story = {
         header: '',
         accessor: (row) => (
           <Avatar
-            initials={row.name.split(' ').map(n => n[0]).join('')}
+            initials={row.name
+              .split(' ')
+              .map((n) => n[0])
+              .join('')}
             size="sm"
             status={row.status === 'active' ? 'online' : 'offline'}
           />
@@ -788,7 +778,10 @@ export const AllFeaturesCombined: Story = {
         key: 'role',
         header: 'Role',
         accessor: (row) => (
-          <Badge variant={row.role === 'Admin' ? 'primary' : 'neutral'} size="sm">
+          <Badge
+            variant={row.role === 'Admin' ? 'primary' : 'neutral'}
+            size="sm"
+          >
             {row.role}
           </Badge>
         ),
@@ -804,8 +797,8 @@ export const AllFeaturesCombined: Story = {
               row.status === 'active'
                 ? 'success'
                 : row.status === 'inactive'
-                ? 'neutral'
-                : 'warning'
+                  ? 'neutral'
+                  : 'warning'
             }
             size="sm"
             showDot

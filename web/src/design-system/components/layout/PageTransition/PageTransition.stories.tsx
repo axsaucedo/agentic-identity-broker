@@ -224,7 +224,9 @@ export const SlowDuration: Story = {
  */
 export const EasingVariants: Story = {
   render: () => {
-    const [easing, setEasing] = useState<string>('cubic-bezier(0.4, 0, 0.2, 1)');
+    const [easing, setEasing] = useState<string>(
+      'cubic-bezier(0.4, 0, 0.2, 1)',
+    );
     const [view, setView] = useState(0);
 
     const easings = [
@@ -233,8 +235,16 @@ export const EasingVariants: Story = {
         value: 'cubic-bezier(0.4, 0, 0.2, 1)',
         desc: 'Smooth, balanced',
       },
-      { name: 'Ease In', value: 'cubic-bezier(0.4, 0, 1, 1)', desc: 'Slow start' },
-      { name: 'Ease Out', value: 'cubic-bezier(0, 0, 0.2, 1)', desc: 'Slow end' },
+      {
+        name: 'Ease In',
+        value: 'cubic-bezier(0.4, 0, 1, 1)',
+        desc: 'Slow start',
+      },
+      {
+        name: 'Ease Out',
+        value: 'cubic-bezier(0, 0, 0.2, 1)',
+        desc: 'Slow end',
+      },
       {
         name: 'Ease In Out',
         value: 'cubic-bezier(0.4, 0, 0.6, 1)',
@@ -268,7 +278,12 @@ export const EasingVariants: Story = {
           ))}
         </div>
 
-        <PageTransition key={view} type="slideLeft" duration={400} easing={easing}>
+        <PageTransition
+          key={view}
+          type="slideLeft"
+          duration={400}
+          easing={easing}
+        >
           <ContentCard
             title={easings[view].name}
             description={`${easings[view].desc} - Easing: ${easings[view].value}`}
@@ -298,9 +313,7 @@ export const ConsentFlowExample: Story = {
             <h2 className="font-display text-3xl font-semibold text-trust-deep">
               Welcome to Identity Broker
             </h2>
-            <p className="text-secondary-600 mt-2">
-              Step 1 of 3: Introduction
-            </p>
+            <p className="text-secondary-600 mt-2">Step 1 of 3: Introduction</p>
           </div>
 
           <div className="space-y-3">
@@ -309,8 +322,8 @@ export const ConsentFlowExample: Story = {
               applications. We need your consent to proceed with authentication.
             </p>
             <p className="text-secondary-700 leading-relaxed">
-              In the next steps, you'll review the permissions being requested and
-              decide whether to grant access.
+              In the next steps, you'll review the permissions being requested
+              and decide whether to grant access.
             </p>
           </div>
 
@@ -437,8 +450,8 @@ export const ConsentFlowExample: Story = {
                 className="mt-1 w-4 h-4 text-trust-hover rounded border-secondary-300 focus:ring-trust"
               />
               <label htmlFor="terms" className="text-sm text-secondary-700">
-                I have read and understood the requested permissions and agree to
-                grant access to this application.
+                I have read and understood the requested permissions and agree
+                to grant access to this application.
               </label>
             </div>
           </div>
@@ -501,7 +514,9 @@ export const ConsentFlowExample: Story = {
  * Useful when you want more distinct separation between views.
  */
 export const WithExitDelay: Story = {
-  render: () => <TransitionDemo type="fade" mode="sequential" exitDelay={200} />,
+  render: () => (
+    <TransitionDemo type="fade" mode="sequential" exitDelay={200} />
+  ),
   parameters: {
     docs: {
       description: {
@@ -523,8 +538,9 @@ export const AccessibilityDemo: Story = {
       <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
         <p className="text-sm text-amber-900">
           <strong>Accessibility Note:</strong> This component respects the
-          prefers-reduced-motion media query. Users who have enabled reduced motion
-          in their OS settings will see instant transitions without animation.
+          prefers-reduced-motion media query. Users who have enabled reduced
+          motion in their OS settings will see instant transitions without
+          animation.
         </p>
         <p className="text-sm text-amber-900 mt-2">
           To test: Enable "Reduce motion" in your system accessibility settings.

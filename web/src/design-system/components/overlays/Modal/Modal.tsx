@@ -17,7 +17,7 @@
 
 import React from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const modalVariants = cva(
@@ -39,7 +39,7 @@ const modalVariants = cva(
       size: 'md',
       scrollable: false,
     },
-  }
+  },
 );
 
 const CloseIcon = () => (
@@ -130,7 +130,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
       icon,
       className,
     },
-    ref
+    ref,
   ) => {
     const handleBackdropClick = () => {
       if (closeOnBackdropClick) {
@@ -174,17 +174,14 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
               >
                 <Dialog.Panel
                   ref={ref}
-                  className={cn(
-                    modalVariants({ size, scrollable }),
-                    className
-                  )}
+                  className={cn(modalVariants({ size, scrollable }), className)}
                 >
                   {/* Header */}
                   {(title || icon) && (
                     <div
                       className={cn(
                         'px-6 py-5 border-b border-neutral-200',
-                        scrollable && 'flex-shrink-0'
+                        scrollable && 'flex-shrink-0',
                       )}
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -222,7 +219,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
                       scrollable
                         ? 'overflow-y-auto flex-1'
                         : 'overflow-visible',
-                      !title && !icon && 'pt-6'
+                      !title && !icon && 'pt-6',
                     )}
                   >
                     {children}
@@ -233,7 +230,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
                     <div
                       className={cn(
                         'px-6 py-4 border-t border-neutral-200 bg-neutral-50 rounded-b-2xl',
-                        scrollable && 'flex-shrink-0'
+                        scrollable && 'flex-shrink-0',
                       )}
                     >
                       {footer}
@@ -246,7 +243,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
         </Dialog>
       </Transition>
     );
-  }
+  },
 );
 
 Modal.displayName = 'Modal';

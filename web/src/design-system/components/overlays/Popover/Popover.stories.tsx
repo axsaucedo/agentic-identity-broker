@@ -502,8 +502,8 @@ export const Playground: Story = {
           {args.children || (
             <div>
               <p className="mb-3">
-                Use the controls below to customize this popover's appearance and
-                behavior.
+                Use the controls below to customize this popover's appearance
+                and behavior.
               </p>
               <ul className="list-disc list-inside text-sm space-y-1">
                 <li>Change position (top, right, bottom, left)</li>
@@ -541,11 +541,7 @@ export const Controlled: Story = {
             External controls (controlled mode):
           </p>
           <div className="flex gap-2 justify-center">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsOpen(true)}
-            >
+            <Button size="sm" variant="outline" onClick={() => setIsOpen(true)}>
               Open Popover
             </Button>
             <Button
@@ -617,7 +613,11 @@ export const ConsentExamples: Story = {
 
           {/* Grant Consent Popover */}
           <Popover
-            trigger={<Button variant="primary" size="sm">Grant Access</Button>}
+            trigger={
+              <Button variant="primary" size="sm">
+                Grant Access
+              </Button>
+            }
             header="Grant Consent"
             position="bottom"
             width="md"
@@ -700,7 +700,8 @@ export const ConsentExamples: Story = {
             }
           >
             <p className="text-sm">
-              This will immediately remove the application's access to your data.
+              This will immediately remove the application's access to your
+              data.
             </p>
           </Popover>
         </div>

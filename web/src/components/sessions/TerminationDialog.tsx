@@ -66,19 +66,20 @@ export const TerminationDialog: React.FC<TerminationDialogProps> = ({
   const pluralize = agentCount !== 1 ? 's' : '';
 
   return (
-    // Modal backdrop with semi-transparent overlay
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="termination-dialog-title"
-      aria-describedby="termination-dialog-description"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-pointer"
+        aria-label="Close dialog"
+        onClick={onClose}
+      />
       {/* Modal content card */}
       <div
         className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
-        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="termination-dialog-title"
+        aria-describedby="termination-dialog-description"
       >
         <Stack gap="md">
           {/* Dialog header */}
@@ -100,11 +101,15 @@ export const TerminationDialog: React.FC<TerminationDialogProps> = ({
 
           {/* Warning about dependent agents */}
           {agentCount > 0 && (
-            <Alert variant="warning" title="Dependent Agents" dismissible={false}>
+            <Alert
+              variant="warning"
+              title="Dependent Agents"
+              dismissible={false}
+            >
               <Stack gap="sm">
                 <p className="text-sm">
-                  This session is used by <strong>{agentCount}</strong> agent{pluralize}.
-                  Terminating will revoke their access.
+                  This session is used by <strong>{agentCount}</strong> agent
+                  {pluralize}. Terminating will revoke their access.
                 </p>
 
                 {/* List of dependent agents */}
@@ -126,7 +131,11 @@ export const TerminationDialog: React.FC<TerminationDialogProps> = ({
 
           {/* Info message when no dependent agents */}
           {agentCount === 0 && (
-            <Alert variant="info" title="No Dependent Agents" dismissible={false}>
+            <Alert
+              variant="info"
+              title="No Dependent Agents"
+              dismissible={false}
+            >
               <p className="text-sm">
                 No agents are currently using this session.
               </p>
@@ -135,7 +144,11 @@ export const TerminationDialog: React.FC<TerminationDialogProps> = ({
 
           {/* Termination error */}
           {error && (
-            <Alert variant="error" title="Termination Failed" dismissible={false}>
+            <Alert
+              variant="error"
+              title="Termination Failed"
+              dismissible={false}
+            >
               <p className="text-sm">{error}</p>
             </Alert>
           )}

@@ -17,6 +17,7 @@ Semantic Tokens (Recommended):
 ```
 
 **Usage:**
+
 - Primary buttons and links: `bg-trust` or `bg-trust-deep`
 - Headings and brand text: `text-trust-deep`
 - Focus rings and active states: `ring-trust`
@@ -24,6 +25,7 @@ Semantic Tokens (Recommended):
 - Light backgrounds for sections: `bg-trust-light`
 
 **Examples:**
+
 ```tsx
 <button className="bg-trust-deep text-white hover:bg-trust-hover">
   Primary Action
@@ -44,12 +46,14 @@ Semantic Tokens (Recommended):
 ```
 
 **Usage:**
+
 - Success badges: `bg-success-primary text-white`
 - Approved permission states: `bg-success-light text-success-dark`
 - Checkmarks and confirmation icons: `text-success-primary`
 - Success alerts: `bg-success-light border-success-primary`
 
 **Examples:**
+
 ```tsx
 <span className="bg-success-primary text-white px-3 py-1 rounded">
   Granted
@@ -77,12 +81,14 @@ Aliases (same values):
 ```
 
 **Usage:**
+
 - Warning states: `bg-warning-light border-warning-primary`
 - Important CTAs: `bg-cta text-white hover:bg-cta-hover`
 - Pending permission states: `bg-warning-light text-warning-dark`
 - Attention badges: `bg-warning-primary text-trust-deep`
 
 **Examples:**
+
 ```tsx
 <button className="bg-cta text-white hover:bg-cta-hover">
   Important Action
@@ -105,6 +111,7 @@ Semantic Tokens (Recommended):
 ```
 
 **Usage:**
+
 - Error states: `border-error-primary text-error-primary`
 - Revoked permissions: `bg-error-light text-error-dark`
 - Delete/destructive buttons: `bg-error-primary text-white hover:bg-error-hover`
@@ -112,6 +119,7 @@ Semantic Tokens (Recommended):
 - Validation messages: `text-error-primary`
 
 **Examples:**
+
 ```tsx
 <button className="bg-error-primary text-white hover:bg-error-hover">
   Delete Account
@@ -154,19 +162,20 @@ Semantic Aliases:
 
 **Migration from Gray:**
 
-| Old (Gray) | New (Warm Neutral) | Use Case |
-|------------|-------------------|----------|
-| `gray-50` | `neutral-50` | Page backgrounds |
-| `gray-100` | `neutral-100` | Section backgrounds |
-| `gray-200` | `neutral-200` | Card borders |
-| `gray-300` | `neutral-300` | Input borders |
-| `gray-400` | `neutral-400` | Placeholders |
-| `gray-500` | `neutral-500` | Secondary icons |
-| `gray-600` | `neutral-600` | Secondary text |
-| `gray-700` | `neutral-700` | Body text |
-| `gray-900` | `trust-deep` | Primary headings (use trust for brand consistency) |
+| Old (Gray) | New (Warm Neutral) | Use Case                                           |
+| ---------- | ------------------ | -------------------------------------------------- |
+| `gray-50`  | `neutral-50`       | Page backgrounds                                   |
+| `gray-100` | `neutral-100`      | Section backgrounds                                |
+| `gray-200` | `neutral-200`      | Card borders                                       |
+| `gray-300` | `neutral-300`      | Input borders                                      |
+| `gray-400` | `neutral-400`      | Placeholders                                       |
+| `gray-500` | `neutral-500`      | Secondary icons                                    |
+| `gray-600` | `neutral-600`      | Secondary text                                     |
+| `gray-700` | `neutral-700`      | Body text                                          |
+| `gray-900` | `trust-deep`       | Primary headings (use trust for brand consistency) |
 
 **Usage:**
+
 ```tsx
 // Page structure
 <body className="bg-primary text-primary">              {/* neutral-50 bg, trust-deep text */}
@@ -190,12 +199,14 @@ Semantic Aliases:
 **TL;DR**: Always use `text-trust-deep` explicitly for headings, not `text-primary`.
 
 **Why the confusion exists:**
+
 - `text-primary` is an alias that points to `trust-deep` (#0A2540)
 - While technically correct, `text-primary` is semantically ambiguous
 - "Primary" could mean "primary text color" (for body text) OR "primary brand color"
 - This ambiguity makes code harder to read and maintain
 
 **The Rule:**
+
 ```tsx
 // ❌ DON'T - Confusing intent
 <h1 className="text-primary">Dashboard</h1>
@@ -205,6 +216,7 @@ Semantic Aliases:
 ```
 
 **When to use each:**
+
 - **Headings (h1-h2)**: Use `text-trust-deep` explicitly (major sections, authority)
 - **Headings (h3-h6)**: Use `text-trust` explicitly (minor sections, subsections)
 - **Body text**: Use `text-neutral-700` or `text-secondary` (neutral-600) for paragraphs
@@ -219,14 +231,14 @@ See [COMMON_MISTAKES.md](./COMMON_MISTAKES.md) (Mistake #1) and [DECISION_TREES.
 
 All color combinations below meet WCAG 2.1 Level AA standards:
 
-| Text Color | Background | Contrast Ratio | Status |
-|-----------|-----------|---|---|
-| Navy-900 (#0d1829) | White (#ffffff) | 13.8:1 | AAA (Passes large text) |
-| Navy-700 (#1e4d6b) | White (#ffffff) | 8.2:1 | AAA |
-| Emerald-600 (#059669) | White (#ffffff) | 5.3:1 | AA |
-| Amber-600 (#d97706) | White (#ffffff) | 5.1:1 | AA |
-| Red-600 (#dc2626) | White (#ffffff) | 5.5:1 | AA |
-| Navy-800 (#0d1829) | Neutral-100 (#f5f1ed) | 11.2:1 | AAA |
+| Text Color            | Background            | Contrast Ratio | Status                  |
+| --------------------- | --------------------- | -------------- | ----------------------- |
+| Navy-900 (#0d1829)    | White (#ffffff)       | 13.8:1         | AAA (Passes large text) |
+| Navy-700 (#1e4d6b)    | White (#ffffff)       | 8.2:1          | AAA                     |
+| Emerald-600 (#059669) | White (#ffffff)       | 5.3:1          | AA                      |
+| Amber-600 (#d97706)   | White (#ffffff)       | 5.1:1          | AA                      |
+| Red-600 (#dc2626)     | White (#ffffff)       | 5.5:1          | AA                      |
+| Navy-800 (#0d1829)    | Neutral-100 (#f5f1ed) | 11.2:1         | AAA                     |
 
 **Rule:** Always verify custom color combinations with [WebAIM Contrast Checker](https://webaim.org/resources/contrastchecker/) or [ColorSnack](https://www.colorsnack.com/).
 
@@ -235,26 +247,28 @@ All color combinations below meet WCAG 2.1 Level AA standards:
 ### In Tailwind Classes
 
 **✅ DO: Use semantic tokens**
+
 ```tsx
 // Background colors
-className="bg-trust-deep"          // Primary brand
-className="bg-success-primary"     // Success
-className="bg-cta"                 // Warning/CTA
-className="bg-error-primary"       // Error
-className="bg-secondary"           // Section background (neutral-100)
+className = 'bg-trust-deep'; // Primary brand
+className = 'bg-success-primary'; // Success
+className = 'bg-cta'; // Warning/CTA
+className = 'bg-error-primary'; // Error
+className = 'bg-secondary'; // Section background (neutral-100)
 
 // Text colors
-className="text-primary"           // Primary text (trust-deep)
-className="text-secondary"         // Secondary text (neutral-600)
-className="text-success-primary"   // Success text
-className="text-error-primary"     // Error text
+className = 'text-primary'; // Primary text (trust-deep)
+className = 'text-secondary'; // Secondary text (neutral-600)
+className = 'text-success-primary'; // Success text
+className = 'text-error-primary'; // Error text
 ```
 
 **❌ DON'T: Use extended palettes (removed)**
+
 ```tsx
-className="bg-navy-700"            // No longer available
-className="bg-emerald-600"         // No longer available
-className="bg-gray-100"            // Use neutral-100 instead
+className = 'bg-navy-700'; // No longer available
+className = 'bg-emerald-600'; // No longer available
+className = 'bg-gray-100'; // Use neutral-100 instead
 ```
 
 ### In CSS Custom Properties
@@ -269,6 +283,7 @@ border-color: var(--color-neutral-200);
 ### Component Guidelines
 
 #### Buttons
+
 - **Primary**: `bg-trust-deep text-white hover:bg-trust-hover`
 - **Secondary**: `bg-success-primary text-white hover:bg-success-hover`
 - **Outline**: `border-neutral-300 text-trust-deep hover:bg-neutral-50`
@@ -276,6 +291,7 @@ border-color: var(--color-neutral-200);
 - **Danger**: `bg-error-primary text-white hover:bg-error-hover`
 
 **Example:**
+
 ```tsx
 <Button variant="primary" className="bg-trust-deep text-white">
   Primary Action
@@ -283,18 +299,21 @@ border-color: var(--color-neutral-200);
 ```
 
 #### Status Badges
+
 - **Active/Approved**: `bg-success-primary text-white`
 - **Pending**: `bg-warning-primary text-trust-deep`
 - **Revoked/Error**: `bg-error-primary text-white`
 - **Inactive**: `bg-neutral-300 text-neutral-600`
 
 **Example:**
+
 ```tsx
 <Badge variant="success">Granted</Badge>
 <Badge variant="warning">Pending</Badge>
 ```
 
 #### Form Inputs
+
 - **Border (default)**: `border-neutral-300`
 - **Border (focus)**: `focus:border-trust focus:ring-trust`
 - **Border (error)**: `border-error-primary focus:ring-error-primary`
@@ -302,6 +321,7 @@ border-color: var(--color-neutral-200);
 - **Text**: `text-neutral-900 placeholder-neutral-500`
 
 **Example:**
+
 ```tsx
 <input
   className="border-neutral-300 text-neutral-900 focus:border-trust focus:ring-1 focus:ring-trust"
@@ -310,11 +330,13 @@ border-color: var(--color-neutral-200);
 ```
 
 #### Cards
+
 - **Background**: `bg-elevated` (white) or `bg-primary` (neutral-50)
 - **Border**: `border-neutral-200`
 - **Text**: `text-trust-deep` (headings), `text-neutral-700` (body)
 
 **Example:**
+
 ```tsx
 <div className="bg-elevated border border-neutral-200 rounded-xl p-6">
   <h3 className="text-trust-deep font-semibold mb-2">Card Title</h3>
@@ -323,12 +345,14 @@ border-color: var(--color-neutral-200);
 ```
 
 #### Alerts
+
 - **Success**: `bg-success-light border-success-primary text-success-dark`
 - **Warning**: `bg-warning-light border-warning-primary text-warning-dark`
 - **Error**: `bg-error-light border-error-primary text-error-dark`
 - **Info**: `bg-info-light border-info-primary text-info-dark`
 
 **Example:**
+
 ```tsx
 <Alert variant="success">Permission granted successfully</Alert>
 <Alert variant="error">Access denied</Alert>
@@ -368,12 +392,14 @@ colors: {
 ## Color Combinations to Avoid
 
 ❌ **Don't use**:
+
 - Red on Amber backgrounds (poor readability)
 - Emerald on Navy backgrounds (insufficient contrast)
 - Neutral-600 on Neutral-200 (indistinguishable)
 - Single color to indicate state (use icon + color combination)
 
 ✅ **Do use**:
+
 - High-contrast text on colored backgrounds
 - Color + icon/symbol for status indication
 - Semantic tokens consistently across components
@@ -385,10 +411,10 @@ For future dark mode support, invert the palette:
 
 ```css
 @media (prefers-color-scheme: dark) {
-  --color-bg-primary: #0d1829;      /* Was Navy-900 */
-  --color-bg-secondary: #1f2937;    /* Was Neutral-700 */
-  --color-text-primary: #faf9f7;    /* Was Neutral-50 */
-  --color-text-secondary: #c4bdb3;  /* Was Neutral-400 */
+  --color-bg-primary: #0d1829; /* Was Navy-900 */
+  --color-bg-secondary: #1f2937; /* Was Neutral-700 */
+  --color-text-primary: #faf9f7; /* Was Neutral-50 */
+  --color-text-secondary: #c4bdb3; /* Was Neutral-400 */
 }
 ```
 

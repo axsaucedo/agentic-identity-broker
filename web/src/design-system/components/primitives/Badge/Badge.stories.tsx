@@ -261,7 +261,9 @@ export const UseCases: Story = {
     <div className="flex flex-col gap-6">
       {/* Status badges */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-700">Status Indicators</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">
+          Status Indicators
+        </h3>
         <div className="flex flex-wrap gap-2">
           <Badge variant="success" showDot>
             Active
@@ -280,7 +282,9 @@ export const UseCases: Story = {
 
       {/* Counts and labels */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-700">Counts & Labels</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">
+          Counts & Labels
+        </h3>
         <div className="flex flex-wrap gap-2">
           <Badge variant="neutral" size="sm" shape="rounded">
             Beta
@@ -363,7 +367,11 @@ export const Accessibility: Story = {
           <Badge variant="info" shape="pill" aria-label="3 unread messages">
             3
           </Badge>
-          <Badge variant="error" shape="pill" aria-label="99 or more notifications">
+          <Badge
+            variant="error"
+            shape="pill"
+            aria-label="99 or more notifications"
+          >
             99+
           </Badge>
         </div>

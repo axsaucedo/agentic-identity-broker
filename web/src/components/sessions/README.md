@@ -13,6 +13,7 @@ Users can view all their active OAuth2 sessions with third-party services, see d
 A card component that displays a single OAuth2 session with comprehensive metadata and actions.
 
 **Features:**
+
 - Status badge with 4 states:
   - **Active**: Session is valid and operational
   - **Expiring Soon**: Refresh token expires within 7 days
@@ -27,16 +28,18 @@ A card component that displays a single OAuth2 session with comprehensive metada
   - Terminate (with confirmation dialog)
 
 **Props:**
+
 ```typescript
 interface SessionCardProps {
-  session: SessionSummary;           // Session data to display
-  onTerminate: (serviceId: string) => void;  // Termination callback
-  onViewDetails?: (serviceId: string) => void;  // Optional details callback
-  loading?: boolean;                 // Loading state for actions
+  session: SessionSummary; // Session data to display
+  onTerminate: (serviceId: string) => void; // Termination callback
+  onViewDetails?: (serviceId: string) => void; // Optional details callback
+  loading?: boolean; // Loading state for actions
 }
 ```
 
 **Example Usage:**
+
 ```tsx
 <SessionCard
   session={session}
@@ -53,6 +56,7 @@ interface SessionCardProps {
 Main page component that displays all OAuth2 sessions in a responsive grid layout.
 
 **Features:**
+
 - Responsive grid layout (1 column mobile, 2 tablet, 3 desktop)
 - Loading state with skeleton cards
 - Error state with retry button
@@ -61,11 +65,13 @@ Main page component that displays all OAuth2 sessions in a responsive grid layou
 - Real-time error handling with user feedback
 
 **Route:**
+
 - Path: `/oauth2/sessions`
 - Base: `/consent` (configured in App.tsx)
 - Full URL: `http://localhost:3000/consent/oauth2/sessions`
 
 **States:**
+
 1. **Loading**: Shows 3 skeleton cards in grid
 2. **Error**: Shows error alert with retry button
 3. **Empty**: Shows empty state with illustration and refresh button
@@ -78,12 +84,14 @@ Main page component that displays all OAuth2 sessions in a responsive grid layou
 Located in `/web/src/services/api/sessions.ts`
 
 **Endpoints:**
+
 - `GET /api/third-party/sessions` - List all sessions
 - `GET /api/third-party/:service-id/session` - Get session details
 - `DELETE /api/third-party/:service-id/session` - Terminate session
 - `POST /api/third-party/:service-id/session/refresh` - Refresh session
 
 **Caching:**
+
 - Cache TTL: 2 minutes
 - Cache invalidation on mutations (terminate, refresh)
 
@@ -92,16 +100,18 @@ Located in `/web/src/services/api/sessions.ts`
 Custom React hook for fetching and managing sessions state.
 
 **API:**
+
 ```typescript
 const {
-  sessions,    // SessionSummary[]
-  loading,     // boolean
-  error,       // string | null
-  refetch,     // () => Promise<void>
+  sessions, // SessionSummary[]
+  loading, // boolean
+  error, // string | null
+  refetch, // () => Promise<void>
 } = useSessions();
 ```
 
 **Features:**
+
 - Automatic data fetching on mount
 - Loading state management
 - Error handling with user-friendly messages
@@ -113,12 +123,14 @@ const {
 All components follow the **Refined Trust Architecture** design system:
 
 ### Colors
+
 - Success (Active): `success-primary` (green)
 - Warning (Expiring Soon, Access Token Expired): `warning-primary` (amber)
 - Error (Expired): `error-primary` (red)
 - Neutral: `neutral-300` to `neutral-900`
 
 ### Components Used
+
 - `Card` - Container with header, body, footer
 - `Button` - Primary, outline, danger variants
 - `Badge` - Status indicators with dot and variants
@@ -130,6 +142,7 @@ All components follow the **Refined Trust Architecture** design system:
 - `EmptyState` - No data placeholder
 
 ### Accessibility
+
 - WCAG 2.1 AA compliant
 - Semantic HTML (h1, h2, h3 hierarchy)
 - Proper ARIA attributes
@@ -141,9 +154,11 @@ All components follow the **Refined Trust Architecture** design system:
 ## Testing
 
 ### SessionCard Tests
+
 Location: `SessionCard.test.tsx`
 
 **Coverage:**
+
 - Component rendering with different states
 - Status badge variants
 - Action button behavior
@@ -152,9 +167,11 @@ Location: `SessionCard.test.tsx`
 - Date formatting
 
 ### useSessions Tests
+
 Location: `/web/src/hooks/useSessions.test.ts`
 
 **Coverage:**
+
 - Data fetching on mount
 - Loading state management
 - Error handling
@@ -162,6 +179,7 @@ Location: `/web/src/hooks/useSessions.test.ts`
 - Cleanup on unmount
 
 **Run Tests:**
+
 ```bash
 # Run all tests
 cd web && npm test
@@ -178,6 +196,7 @@ npm test -- --watch
 ### Local Development
 
 **Option 1: Hot Reload (Recommended)**
+
 ```bash
 # Terminal 1: Start Go backend
 just run
@@ -190,6 +209,7 @@ Access frontend at: http://localhost:3000/consent/oauth2/sessions
 API proxied to: http://localhost:8000
 
 **Option 2: Production Build**
+
 ```bash
 # Build frontend and serve from Go
 just web-build && just run

@@ -95,7 +95,7 @@ function isNaturallyFocusable(element: HTMLElement): boolean {
  */
 export function scrollToElement(
   elementOrSelector: HTMLElement | string,
-  options: Omit<ScrollToErrorOptions, 'selector'> = {}
+  options: Omit<ScrollToErrorOptions, 'selector'> = {},
 ): boolean {
   const element =
     typeof elementOrSelector === 'string'

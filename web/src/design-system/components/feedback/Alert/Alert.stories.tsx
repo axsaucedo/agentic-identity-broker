@@ -63,8 +63,8 @@ export const Variants: Story = {
   render: () => (
     <div className="space-y-4 max-w-2xl">
       <Alert variant="info">
-        This is an informational alert. It provides helpful context or additional
-        information about the current action.
+        This is an informational alert. It provides helpful context or
+        additional information about the current action.
       </Alert>
 
       <Alert variant="success">
@@ -139,8 +139,8 @@ export const WithActions: Story = {
               onClick: () => alert('Action clicked!'),
             }}
           >
-            Your subscription will expire in 3 days. Review your plan to continue
-            using all features.
+            Your subscription will expire in 3 days. Review your plan to
+            continue using all features.
           </Alert>
         )}
 
@@ -204,13 +204,13 @@ export const WithTitle: Story = {
       </Alert>
 
       <Alert variant="success" title="Access Granted">
-        You now have editor permissions for the "Marketing Assets" workspace. You
-        can view, edit, and share all documents.
+        You now have editor permissions for the "Marketing Assets" workspace.
+        You can view, edit, and share all documents.
       </Alert>
 
       <Alert variant="warning" title="Action Required">
-        Your account requires two-factor authentication. Please enable 2FA within
-        7 days to maintain access to sensitive resources.
+        Your account requires two-factor authentication. Please enable 2FA
+        within 7 days to maintain access to sensitive resources.
       </Alert>
 
       <Alert variant="error" title="Authentication Failed">
@@ -350,8 +350,8 @@ export const Banner: Story = {
 
       <div className="p-4">
         <p className="text-neutral-700">
-          They span the full width of their container and have no rounded corners
-          on the sides.
+          They span the full width of their container and have no rounded
+          corners on the sides.
         </p>
       </div>
 
@@ -361,8 +361,8 @@ export const Banner: Story = {
         title="System Alert"
         action={{ label: 'View Status', onClick: () => alert('View status') }}
       >
-        We're experiencing higher than normal response times. Our team is working
-        to resolve this issue.
+        We're experiencing higher than normal response times. Our team is
+        working to resolve this issue.
       </Alert>
     </div>
   ),
@@ -517,8 +517,8 @@ export const WithoutIcons: Story = {
   render: () => (
     <div className="space-y-4 max-w-2xl">
       <Alert variant="info" hideIcon title="Plain Information">
-        Sometimes you may want to display alerts without icons for a cleaner look
-        or when the icon doesn't add meaningful context.
+        Sometimes you may want to display alerts without icons for a cleaner
+        look or when the icon doesn't add meaningful context.
       </Alert>
 
       <Alert variant="success" hideIcon>
@@ -621,7 +621,9 @@ export const Accessibility: Story = {
           <li>
             • Dismiss buttons have <code>aria-label="Dismiss alert"</code>
           </li>
-          <li>• Icons are marked with <code>aria-hidden="true"</code></li>
+          <li>
+            • Icons are marked with <code>aria-hidden="true"</code>
+          </li>
           <li>• All interactive elements are keyboard accessible</li>
           <li>• Focus indicators meet WCAG 2.1 AA requirements</li>
           <li>• Color contrast ratios comply with AA standards</li>
@@ -680,8 +682,8 @@ export const ComplexContent: Story = {
             usage and your privacy rights.
           </p>
           <p>
-            Key changes include enhanced data portability options, clearer consent
-            management workflows, and updated retention policies.
+            Key changes include enhanced data portability options, clearer
+            consent management workflows, and updated retention policies.
           </p>
           <p className="font-medium">
             Please review the changes by January 1, 2026 to continue using our

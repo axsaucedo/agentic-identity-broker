@@ -61,7 +61,7 @@ export const Header: React.FC = () => {
                     'px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200',
                     isActive
                       ? 'bg-trust-light text-trust-deep'
-                      : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900'
+                      : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900',
                   )}
                   aria-current={isActive ? 'page' : undefined}
                 >

@@ -12,6 +12,7 @@ const config: StorybookConfig = {
   ],
   addons: [
     '@storybook/addon-a11y',          // Accessibility testing
+    '@storybook/addon-docs',          // MDX/Docs support
     '@storybook/addon-themes',        // Theme switcher (future dark mode)
   ],
   framework: {

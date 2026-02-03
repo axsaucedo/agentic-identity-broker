@@ -55,7 +55,7 @@ export function GrantValidityControl({
       { label: '3 months', date: addMonths(today, 3) },
       { label: '1 year', date: addYears(today, 1) },
     ],
-    [today]
+    [today],
   );
 
   // Handle checkbox toggle
@@ -89,7 +89,8 @@ export function GrantValidityControl({
     <Stack gap="md" className={className}>
       {/* Current date info */}
       <p className="text-sm text-neutral-600">
-        Today: <span className="font-medium">{format(today, 'MMMM d, yyyy')}</span>
+        Today:{' '}
+        <span className="font-medium">{format(today, 'MMMM d, yyyy')}</span>
       </p>
 
       {/* Expiration checkbox */}

@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { PageTransition } from '@components/ui/PageTransition';
 import { Button } from '@components/ui/Button';
 
@@ -96,7 +96,10 @@ export function NotFoundPage({
             </h2>
             <ul className="space-y-2">
               {message.suggestions.map((suggestion, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm text-neutral-600">
+                <li
+                  key={index}
+                  className="flex items-start gap-2 text-sm text-neutral-600"
+                >
                   <svg
                     className="w-5 h-5 text-neutral-400 flex-shrink-0 mt-0.5"
                     fill="none"

@@ -66,7 +66,9 @@ export const ServiceRequirementCard: React.FC<ServiceRequirementCardProps> = ({
 
   // Determine badge variant based on requirement type
   // FR-017: Mandatory services use trust-deep, optional use neutral
-  const badgeVariant = isMandatory ? ('primary' as const) : ('neutral' as const);
+  const badgeVariant = isMandatory
+    ? ('primary' as const)
+    : ('neutral' as const);
   const badgeLabel = isMandatory ? 'Required' : 'Optional';
 
   return (
@@ -77,11 +79,7 @@ export const ServiceRequirementCard: React.FC<ServiceRequirementCardProps> = ({
           <h3 className="text-base font-semibold text-trust-deep">
             {serviceName}
           </h3>
-          <Badge
-            variant={badgeVariant}
-            size="sm"
-            shape="rounded"
-          >
+          <Badge variant={badgeVariant} size="sm" shape="rounded">
             {badgeLabel}
           </Badge>
         </div>

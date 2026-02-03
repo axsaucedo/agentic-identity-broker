@@ -18,85 +18,79 @@
  */
 
 import React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
-const progressContainerVariants = cva(
-  'relative',
-  {
-    variants: {
-      type: {
-        linear: 'w-full overflow-hidden rounded-full bg-neutral-200',
-        circular: 'inline-flex items-center justify-center',
-      },
-      size: {
-        sm: '',
-        md: '',
-        lg: '',
-      },
+const progressContainerVariants = cva('relative', {
+  variants: {
+    type: {
+      linear: 'w-full overflow-hidden rounded-full bg-neutral-200',
+      circular: 'inline-flex items-center justify-center',
     },
-    compoundVariants: [
-      // Linear sizes (height)
-      { type: 'linear', size: 'sm', class: 'h-2' },
-      { type: 'linear', size: 'md', class: 'h-3' },
-      { type: 'linear', size: 'lg', class: 'h-4' },
-    ],
-    defaultVariants: {
-      type: 'linear',
-      size: 'md',
+    size: {
+      sm: '',
+      md: '',
+      lg: '',
     },
-  }
-);
+  },
+  compoundVariants: [
+    // Linear sizes (height)
+    { type: 'linear', size: 'sm', class: 'h-2' },
+    { type: 'linear', size: 'md', class: 'h-3' },
+    { type: 'linear', size: 'lg', class: 'h-4' },
+  ],
+  defaultVariants: {
+    type: 'linear',
+    size: 'md',
+  },
+});
 
-const progressBarVariants = cva(
-  'h-full transition-all duration-500 ease-out',
-  {
-    variants: {
-      variant: {
-        default: 'bg-trust-hover',
-        success: 'bg-success-primary',
-        warning: 'bg-amber-500',
-        error: 'bg-red-600',
-      },
-      striped: {
-        true: 'bg-gradient-to-r bg-[length:1rem_1rem] animate-[progress-stripes_1s_linear_infinite]',
-        false: '',
-      },
-      indeterminate: {
-        true: 'animate-[progress-indeterminate_1.5s_ease-in-out_infinite]',
-        false: '',
-      },
+const progressBarVariants = cva('h-full transition-all duration-500 ease-out', {
+  variants: {
+    variant: {
+      default: 'bg-trust-hover',
+      success: 'bg-success-primary',
+      warning: 'bg-amber-500',
+      error: 'bg-red-600',
     },
-    compoundVariants: [
-      // Striped patterns per variant
-      {
-        variant: 'default',
-        striped: true,
-        class: 'from-trust-hover via-trust to-trust-hover',
-      },
-      {
-        variant: 'success',
-        striped: true,
-        class: 'from-success-primary via-success-hover to-success-primary',
-      },
-      {
-        variant: 'warning',
-        striped: true,
-        class: 'from-amber-500 via-amber-600 to-amber-500',
-      },
-      {
-        variant: 'error',
-        striped: true,
-        class: 'from-red-600 via-red-700 to-red-600',
-      },
-    ],
-    defaultVariants: {
+    striped: {
+      true: 'bg-gradient-to-r bg-[length:1rem_1rem] animate-[progress-stripes_1s_linear_infinite]',
+      false: '',
+    },
+    indeterminate: {
+      true: 'animate-[progress-indeterminate_1.5s_ease-in-out_infinite]',
+      false: '',
+    },
+  },
+  compoundVariants: [
+    // Striped patterns per variant
+    {
       variant: 'default',
-      striped: false,
-      indeterminate: false,
+      striped: true,
+      class: 'from-trust-hover via-trust to-trust-hover',
     },
-  }
-);
+    {
+      variant: 'success',
+      striped: true,
+      class: 'from-success-primary via-success-hover to-success-primary',
+    },
+    {
+      variant: 'warning',
+      striped: true,
+      class: 'from-amber-500 via-amber-600 to-amber-500',
+    },
+    {
+      variant: 'error',
+      striped: true,
+      class: 'from-red-600 via-red-700 to-red-600',
+    },
+  ],
+  defaultVariants: {
+    variant: 'default',
+    striped: false,
+    indeterminate: false,
+  },
+});
 
 const circularSizeMap = {
   sm: { size: 40, strokeWidth: 4 },
@@ -111,8 +105,10 @@ const circularVariantColorMap = {
   error: 'stroke-red-600',
 };
 
-export interface ProgressProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children'> {
+export interface ProgressProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  'children'
+> {
   /** Progress value (0-100). If omitted, shows indeterminate state */
   value?: number;
   /** Visual variant for semantic meaning */
@@ -195,12 +191,13 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Normalize value between 0-100
-    const normalizedValue = indeterminate || value === undefined
-      ? 0
-      : Math.min(100, Math.max(0, value));
+    const normalizedValue =
+      indeterminate || value === undefined
+        ? 0
+        : Math.min(100, Math.max(0, value));
 
     // Determine if we should show indeterminate state
     const isIndeterminate = indeterminate || value === undefined;
@@ -208,7 +205,8 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
     // Calculate value text
     const getValueText = () => {
       if (customValue) return customValue;
-      if (valueFormat === 'percentage') return `${Math.round(normalizedValue)}%`;
+      if (valueFormat === 'percentage')
+        return `${Math.round(normalizedValue)}%`;
       return normalizedValue;
     };
 
@@ -234,10 +232,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
 
           {/* Progress bar container */}
           <div
-            className={cn(
-              progressContainerVariants({ type, size }),
-              className
-            )}
+            className={cn(progressContainerVariants({ type, size }), className)}
             style={height ? { height } : undefined}
             role="progressbar"
             aria-valuenow={isIndeterminate ? undefined : normalizedValue}
@@ -253,7 +248,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
                   variant,
                   striped,
                   indeterminate: isIndeterminate,
-                })
+                }),
               )}
               style={{
                 width: isIndeterminate ? '30%' : `${normalizedValue}%`,
@@ -273,12 +268,14 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       : circumference - (normalizedValue / 100) * circumference;
 
     return (
-      <div ref={ref} className={cn('inline-flex flex-col items-center gap-2', className)} {...props}>
+      <div
+        ref={ref}
+        className={cn('inline-flex flex-col items-center gap-2', className)}
+        {...props}
+      >
         {/* Label above circle */}
         {label && (
-          <span className="text-sm font-medium text-neutral-700">
-            {label}
-          </span>
+          <span className="text-sm font-medium text-neutral-700">{label}</span>
         )}
 
         {/* SVG circular progress */}
@@ -293,9 +290,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
             aria-valuemax={100}
             aria-label={label || 'Progress'}
             aria-busy={isIndeterminate}
-            className={cn(
-              isIndeterminate && 'animate-spin',
-            )}
+            className={cn(isIndeterminate && 'animate-spin')}
             style={isIndeterminate ? { animationDuration: '1.5s' } : undefined}
           >
             {/* Background circle */}
@@ -319,7 +314,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
               strokeLinecap="round"
               className={cn(
                 'transition-all duration-500 ease-out',
-                circularVariantColorMap[variant]
+                circularVariantColorMap[variant],
               )}
               style={{
                 strokeDasharray: circumference,
@@ -333,12 +328,14 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
           {/* Center value text */}
           {showValue && !isIndeterminate && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className={cn(
-                'font-semibold text-neutral-900',
-                size === 'sm' && 'text-xs',
-                size === 'md' && 'text-sm',
-                size === 'lg' && 'text-base',
-              )}>
+              <span
+                className={cn(
+                  'font-semibold text-neutral-900',
+                  size === 'sm' && 'text-xs',
+                  size === 'md' && 'text-sm',
+                  size === 'lg' && 'text-base',
+                )}
+              >
                 {getValueText()}
               </span>
             </div>
@@ -346,7 +343,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
         </div>
       </div>
     );
-  }
+  },
 );
 
 Progress.displayName = 'Progress';

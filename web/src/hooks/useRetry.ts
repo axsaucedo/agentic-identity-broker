@@ -55,13 +55,9 @@ interface UseRetryResult {
  */
 export function useRetry(
   fn: () => Promise<void>,
-  options: UseRetryOptions = {}
+  options: UseRetryOptions = {},
 ): UseRetryResult {
-  const {
-    initialDelay = 1000,
-    maxRetries = 3,
-    maxDelay = 30000,
-  } = options;
+  const { initialDelay = 1000, maxRetries = 3, maxDelay = 30000 } = options;
 
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -75,7 +71,7 @@ export function useRetry(
       const exponentialDelay = initialDelay * Math.pow(2, attemptNumber);
       return Math.min(exponentialDelay, maxDelay);
     },
-    [initialDelay, maxDelay]
+    [initialDelay, maxDelay],
   );
 
   /**

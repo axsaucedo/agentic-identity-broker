@@ -201,7 +201,8 @@ const googleScopes: Scope[] = [
   {
     id: 'google-7',
     name: 'https://www.googleapis.com/auth/drive.file',
-    description: 'View and manage Drive files that you have opened with this app',
+    description:
+      'View and manage Drive files that you have opened with this app',
     category: 'Storage',
     riskLevel: 'medium',
   },
@@ -309,7 +310,9 @@ export const Selectable: Story = {
     return (
       <div className="space-y-4">
         <div className="p-4 bg-neutral-100 rounded-lg">
-          <p className="text-sm font-medium text-neutral-700">Selected scopes:</p>
+          <p className="text-sm font-medium text-neutral-700">
+            Selected scopes:
+          </p>
           <p className="text-sm text-neutral-600 mt-1">
             {selectedIds.length > 0 ? selectedIds.join(', ') : 'None'}
           </p>
@@ -339,7 +342,8 @@ export const WithRiskLevels: Story = {
   parameters: {
     docs: {
       description: {
-        story: 'Scopes can be color-coded by risk level: low (green), medium (yellow), high (red).',
+        story:
+          'Scopes can be color-coded by risk level: low (green), medium (yellow), high (red).',
       },
     },
   },
@@ -405,7 +409,8 @@ export const WithIcons: Story = {
   parameters: {
     docs: {
       description: {
-        story: 'Category icons are automatically displayed based on category name.',
+        story:
+          'Category icons are automatically displayed based on category name.',
       },
     },
   },
@@ -444,7 +449,9 @@ export const CustomEmptyState: Story = {
     size: 'default',
     empty: (
       <div>
-        <h3 className="text-lg font-medium text-neutral-900 mb-1">No permissions requested</h3>
+        <h3 className="text-lg font-medium text-neutral-900 mb-1">
+          No permissions requested
+        </h3>
         <p className="text-sm text-neutral-600">
           This application doesn't require any special permissions.
         </p>
@@ -464,13 +471,15 @@ export const PreSelected: Story = {
     }));
 
     const [selectedIds, setSelectedIds] = useState<string[]>(
-      scopesWithPreSelection.filter((s) => s.selected).map((s) => s.id)
+      scopesWithPreSelection.filter((s) => s.selected).map((s) => s.id),
     );
 
     return (
       <div className="space-y-4">
         <div className="p-4 bg-neutral-100 rounded-lg">
-          <p className="text-sm font-medium text-neutral-700">Selected scopes:</p>
+          <p className="text-sm font-medium text-neutral-700">
+            Selected scopes:
+          </p>
           <p className="text-sm text-neutral-600 mt-1">
             {selectedIds.length > 0 ? selectedIds.join(', ') : 'None'}
           </p>
@@ -532,17 +541,23 @@ export const GitHubOAuthScopes: Story = {
 export const ConsentFlow: Story = {
   render: (args) => {
     const [selectedIds, setSelectedIds] = useState<string[]>(
-      googleScopes.filter((s) => s.riskLevel === 'low').map((s) => s.id)
+      googleScopes.filter((s) => s.riskLevel === 'low').map((s) => s.id),
     );
 
-    const selectedScopes = googleScopes.filter((s) => selectedIds.includes(s.id));
-    const highRiskCount = selectedScopes.filter((s) => s.riskLevel === 'high').length;
+    const selectedScopes = googleScopes.filter((s) =>
+      selectedIds.includes(s.id),
+    );
+    const highRiskCount = selectedScopes.filter(
+      (s) => s.riskLevel === 'high',
+    ).length;
 
     return (
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-neutral-900 mb-2">Grant Permissions</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 mb-2">
+            Grant Permissions
+          </h2>
           <p className="text-sm text-neutral-600">
             Application "Example App" is requesting access to your account
           </p>
@@ -566,10 +581,13 @@ export const ConsentFlow: Story = {
                 />
               </svg>
               <div>
-                <p className="text-sm font-medium text-error-dark">High-risk permissions selected</p>
+                <p className="text-sm font-medium text-error-dark">
+                  High-risk permissions selected
+                </p>
                 <p className="text-xs text-error-dark mt-1">
-                  You've selected {highRiskCount} high-risk permission{highRiskCount > 1 ? 's' : ''}.
-                  Please review carefully before granting access.
+                  You've selected {highRiskCount} high-risk permission
+                  {highRiskCount > 1 ? 's' : ''}. Please review carefully before
+                  granting access.
                 </p>
               </div>
             </div>
@@ -620,7 +638,9 @@ export const AllFeatures: Story = {
     return (
       <div className="space-y-4">
         <div className="p-4 bg-neutral-100 rounded-lg">
-          <p className="text-sm font-medium text-neutral-700 mb-2">Features enabled:</p>
+          <p className="text-sm font-medium text-neutral-700 mb-2">
+            Features enabled:
+          </p>
           <ul className="text-xs text-neutral-600 space-y-1">
             <li>✓ Selectable scopes with checkboxes</li>
             <li>✓ Search/filter by name, description, or category</li>
@@ -629,7 +649,8 @@ export const AllFeatures: Story = {
             <li>✓ Category icons</li>
           </ul>
           <p className="text-sm font-medium text-neutral-700 mt-3">
-            Selected: {selectedIds.length} scope{selectedIds.length !== 1 ? 's' : ''}
+            Selected: {selectedIds.length} scope
+            {selectedIds.length !== 1 ? 's' : ''}
           </p>
         </div>
         <ScopeList
@@ -659,7 +680,8 @@ export const NonExpandable: Story = {
   parameters: {
     docs: {
       description: {
-        story: 'When expandable is false, all categories remain open and cannot be collapsed.',
+        story:
+          'When expandable is false, all categories remain open and cannot be collapsed.',
       },
     },
   },

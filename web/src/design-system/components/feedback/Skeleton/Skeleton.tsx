@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const skeletonVariants = cva(
@@ -44,11 +44,13 @@ const skeletonVariants = cva(
       variant: 'line',
       animate: true,
     },
-  }
+  },
 );
 
-export interface SkeletonProps
-  extends Omit<React.ComponentPropsWithoutRef<'div'>, 'children'> {
+export interface SkeletonProps extends Omit<
+  React.ComponentPropsWithoutRef<'div'>,
+  'children'
+> {
   /** Shape variant of the skeleton */
   variant?: 'line' | 'circle' | 'rectangle' | 'rounded';
   /** Whether to animate with pulse effect */
@@ -98,7 +100,7 @@ export const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(
       style,
       ...props
     },
-    ref
+    ref,
   ) => {
     // Calculate default dimensions based on variant
     const getDefaultDimensions = () => {
@@ -174,7 +176,7 @@ export const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(
         <span className="sr-only">Loading...</span>
       </div>
     );
-  }
+  },
 );
 
 Skeleton.displayName = 'Skeleton';

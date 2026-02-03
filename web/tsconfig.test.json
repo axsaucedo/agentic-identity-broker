@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "vitest.setup.ts", "**/*.test.ts", "**/*.test.tsx"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "**/*.stories.ts",
+    "**/*.stories.tsx",
+    "**/*.mdx"
+  ]
+}

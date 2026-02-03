@@ -2,7 +2,7 @@
  * Tests for validation utilities.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   validateGrantRequest,
   validateServiceId,
@@ -11,24 +11,30 @@ import {
   formatValidationErrors,
   isSafeRedirectUrl,
 } from './validation';
+import type { DelegatedToken } from '../types/consent';
 
 describe('isSafeRedirectUrl', () => {
   const originalLocation = window.location;
 
   beforeEach(() => {
     // Mock window.location for testing
-    delete (window as any).location;
-    window.location = {
-      ...originalLocation,
-      protocol: 'https:',
-      hostname: 'example.com',
-      port: '443',
-      origin: 'https://example.com',
-    } as Location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        protocol: 'https:',
+        hostname: 'example.com',
+        port: '443',
+        origin: 'https://example.com',
+      } as Location,
+    });
   });
 
   afterEach(() => {
-    window.location = originalLocation;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    });
   });
 
   describe('same-origin URLs', () => {
@@ -50,7 +56,9 @@ describe('isSafeRedirectUrl', () => {
   describe('cross-origin URLs', () => {
     it('should reject different domain', () => {
       expect(isSafeRedirectUrl('https://evil.com/phishing')).toBe(false);
-      expect(isSafeRedirectUrl('https://attacker.example.com/phishing')).toBe(false);
+      expect(isSafeRedirectUrl('https://attacker.example.com/phishing')).toBe(
+        false,
+      );
     });
 
     it('should reject different protocol', () => {
@@ -76,7 +84,9 @@ describe('isSafeRedirectUrl', () => {
 
     it('should reject dangerous protocols', () => {
       expect(isSafeRedirectUrl('javascript:alert(1)')).toBe(false);
-      expect(isSafeRedirectUrl('data:text/html,<script>alert(1)</script>')).toBe(false);
+      expect(
+        isSafeRedirectUrl('data:text/html,<script>alert(1)</script>'),
+      ).toBe(false);
       expect(isSafeRedirectUrl('vbscript:msgbox(1)')).toBe(false);
       expect(isSafeRedirectUrl('file:///etc/passwd')).toBe(false);
       expect(isSafeRedirectUrl('about:blank')).toBe(false);
@@ -85,13 +95,17 @@ describe('isSafeRedirectUrl', () => {
 
     it('should reject dangerous protocols regardless of case', () => {
       expect(isSafeRedirectUrl('JavaScript:alert(1)')).toBe(false);
-      expect(isSafeRedirectUrl('DATA:text/html,<script>alert(1)</script>')).toBe(false);
+      expect(
+        isSafeRedirectUrl('DATA:text/html,<script>alert(1)</script>'),
+      ).toBe(false);
       expect(isSafeRedirectUrl('VBScript:msgbox(1)')).toBe(false);
     });
 
     it('should accept relative URLs with :// in query params', () => {
       // This is a legitimate relative URL with :// in query string
-      expect(isSafeRedirectUrl('/consent?redirect=http://example.com')).toBe(true);
+      expect(isSafeRedirectUrl('/consent?redirect=http://example.com')).toBe(
+        true,
+      );
     });
 
     it('should reject unknown protocols', () => {
@@ -101,14 +115,16 @@ describe('isSafeRedirectUrl', () => {
 
   describe('HTTP context', () => {
     beforeEach(() => {
-      delete (window as any).location;
-      window.location = {
-        ...originalLocation,
-        protocol: 'http:',
-        hostname: 'localhost',
-        port: '8000',
-        origin: 'http://localhost:8000',
-      } as Location;
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: {
+          ...originalLocation,
+          protocol: 'http:',
+          hostname: 'localhost',
+          port: '8000',
+          origin: 'http://localhost:8000',
+        } as Location,
+      });
     });
 
     it('should accept same-origin HTTP URLs', () => {
@@ -142,7 +158,7 @@ describe('validateGrantRequest', () => {
   });
 
   it('should require delegatedTokens field', () => {
-    const request = {} as any;
+    const request = {} as { delegatedTokens: DelegatedToken[] };
     const errors = validateGrantRequest(request);
     expect(errors).toContain('delegatedTokens field is required');
   });
@@ -200,7 +216,9 @@ describe('validateExpirationDate', () => {
   it('should reject dates more than 10 years in future', () => {
     const farFutureDate = new Date();
     farFutureDate.setFullYear(farFutureDate.getFullYear() + 11);
-    expect(validateExpirationDate(farFutureDate)).toContain('cannot be more than 10 years');
+    expect(validateExpirationDate(farFutureDate)).toContain(
+      'cannot be more than 10 years',
+    );
   });
 });
 

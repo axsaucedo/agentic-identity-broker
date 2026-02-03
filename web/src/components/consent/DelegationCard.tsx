@@ -30,13 +30,8 @@ interface DelegationCardProps {
  * Memoized for performance in large lists.
  */
 function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
-  const {
-    displayName,
-    logoUrl,
-    activeGrantCount,
-    lastModifiedAt,
-    expiresAt,
-  } = delegation;
+  const { displayName, logoUrl, activeGrantCount, lastModifiedAt, expiresAt } =
+    delegation;
 
   // Format last modified time as relative (e.g., "2 days ago")
   const lastModifiedText = formatDistanceToNow(new Date(lastModifiedAt), {
@@ -102,7 +97,9 @@ function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
 
         {/* Metadata row */}
         <Stack direction="row" justify="space-between" align="center">
-          <span className="text-xs text-neutral-500">Updated {lastModifiedText}</span>
+          <span className="text-xs text-neutral-500">
+            Updated {lastModifiedText}
+          </span>
           {expirationText && (
             <Stack direction="row" gap="xs" align="center">
               <svg
@@ -138,12 +135,14 @@ export const DelegationCard = memo(
     // Custom comparison: only re-render if delegation or onClick changed
     return (
       prevProps.delegation.agentId === nextProps.delegation.agentId &&
-      prevProps.delegation.lastModifiedAt === nextProps.delegation.lastModifiedAt &&
-      prevProps.delegation.activeGrantCount === nextProps.delegation.activeGrantCount &&
+      prevProps.delegation.lastModifiedAt ===
+        nextProps.delegation.lastModifiedAt &&
+      prevProps.delegation.activeGrantCount ===
+        nextProps.delegation.activeGrantCount &&
       prevProps.delegation.expiresAt === nextProps.delegation.expiresAt &&
       prevProps.onClick === nextProps.onClick
     );
-  }
+  },
 );
 
 DelegationCard.displayName = 'DelegationCard';

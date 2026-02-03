@@ -20,7 +20,7 @@
  */
 
 import React from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 import { Skeleton } from '@design-system/components/feedback/Skeleton';
 
@@ -59,7 +59,7 @@ const cellVariants = cva(
       align: 'left',
       type: 'body',
     },
-  }
+  },
 );
 
 const rowVariants = cva('transition-colors', {
@@ -94,8 +94,10 @@ export interface TableColumn<T> {
   sortable?: boolean;
 }
 
-export interface TableProps<T>
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children'> {
+export interface TableProps<T> extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  'children'
+> {
   /** Column definitions */
   columns: TableColumn<T>[];
   /** Array of row data */
@@ -139,14 +141,20 @@ const SortIcon: React.FC<{
   return (
     <span className="ml-2 inline-flex flex-col" aria-hidden="true">
       <svg
-        className={cn('w-3 h-3 -mb-1', isAsc ? 'text-trust-deep' : 'text-neutral-400')}
+        className={cn(
+          'w-3 h-3 -mb-1',
+          isAsc ? 'text-trust-deep' : 'text-neutral-400',
+        )}
         fill="currentColor"
         viewBox="0 0 20 20"
       >
         <path d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" />
       </svg>
       <svg
-        className={cn('w-3 h-3', isDesc ? 'text-trust-deep' : 'text-neutral-400')}
+        className={cn(
+          'w-3 h-3',
+          isDesc ? 'text-trust-deep' : 'text-neutral-400',
+        )}
         fill="currentColor"
         viewBox="0 0 20 20"
       >
@@ -218,7 +226,10 @@ export const Table = <T extends Record<string, unknown>>({
   if (loading) {
     return (
       <div
-        className={cn('overflow-x-auto rounded-lg border border-neutral-200', className)}
+        className={cn(
+          'overflow-x-auto rounded-lg border border-neutral-200',
+          className,
+        )}
         {...props}
       >
         <table className={cn(tableVariants({ density }))}>
@@ -234,7 +245,7 @@ export const Table = <T extends Record<string, unknown>>({
                       align: column.align,
                       type: 'header',
                     }),
-                    stickyHeader && 'sticky top-0 z-10'
+                    stickyHeader && 'sticky top-0 z-10',
                   )}
                   style={{ width: column.width }}
                 >
@@ -254,7 +265,7 @@ export const Table = <T extends Record<string, unknown>>({
                         density,
                         align: column.align,
                         type: 'body',
-                      })
+                      }),
                     )}
                   >
                     <Skeleton width="90%" height="16px" />
@@ -274,7 +285,7 @@ export const Table = <T extends Record<string, unknown>>({
       <div
         className={cn(
           'overflow-x-auto rounded-lg border border-neutral-200',
-          className
+          className,
         )}
         {...props}
       >
@@ -291,7 +302,7 @@ export const Table = <T extends Record<string, unknown>>({
                       align: column.align,
                       type: 'header',
                     }),
-                    stickyHeader && 'sticky top-0 z-10'
+                    stickyHeader && 'sticky top-0 z-10',
                   )}
                   style={{ width: column.width }}
                 >
@@ -306,7 +317,7 @@ export const Table = <T extends Record<string, unknown>>({
                 colSpan={columns.length}
                 className={cn(
                   cellVariants({ density, align: 'center', type: 'body' }),
-                  'py-12'
+                  'py-12',
                 )}
               >
                 {empty || (
@@ -325,7 +336,10 @@ export const Table = <T extends Record<string, unknown>>({
   // Render table with data
   return (
     <div
-      className={cn('overflow-x-auto rounded-lg border border-neutral-200', className)}
+      className={cn(
+        'overflow-x-auto rounded-lg border border-neutral-200',
+        className,
+      )}
       {...props}
     >
       <table className={cn(tableVariants({ density }))}>
@@ -346,7 +360,8 @@ export const Table = <T extends Record<string, unknown>>({
                     type: 'header',
                   }),
                   stickyHeader && 'sticky top-0 z-10',
-                  column.sortable && 'cursor-pointer select-none hover:bg-neutral-100'
+                  column.sortable &&
+                    'cursor-pointer select-none hover:bg-neutral-100',
                 )}
                 style={{ width: column.width }}
                 onClick={() => handleSort(column)}
@@ -382,10 +397,7 @@ export const Table = <T extends Record<string, unknown>>({
         </thead>
         <tbody>
           {data.map((row, rowIndex) => (
-            <tr
-              key={rowIndex}
-              className={cn(rowVariants({ striped, hover }))}
-            >
+            <tr key={rowIndex} className={cn(rowVariants({ striped, hover }))}>
               {columns.map((column) => (
                 <td
                   key={column.key}
@@ -394,7 +406,7 @@ export const Table = <T extends Record<string, unknown>>({
                       density,
                       align: column.align,
                       type: 'body',
-                    })
+                    }),
                   )}
                 >
                   {column.accessor

@@ -95,10 +95,10 @@ const BellIcon = () => (
   </svg>
 );
 
-const Badge: React.FC<{ children: React.ReactNode; variant?: 'primary' | 'neutral' }> = ({
-  children,
-  variant = 'neutral',
-}) => (
+const Badge: React.FC<{
+  children: React.ReactNode;
+  variant?: 'primary' | 'neutral';
+}> = ({ children, variant = 'neutral' }) => (
   <span
     className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
       variant === 'primary'
@@ -134,9 +134,9 @@ const basicItems: AccordionItem[] = [
     title: 'What is the Agentic Identity Broker?',
     content: (
       <p className="text-neutral-700">
-        The Agentic Identity Broker is a secure OAuth 2.0/OIDC proxy that enables
-        AI agents to access protected resources on behalf of users while maintaining
-        strict consent and scope management.
+        The Agentic Identity Broker is a secure OAuth 2.0/OIDC proxy that
+        enables AI agents to access protected resources on behalf of users while
+        maintaining strict consent and scope management.
       </p>
     ),
   },
@@ -164,7 +164,8 @@ const basicItems: AccordionItem[] = [
     content: (
       <div className="space-y-3">
         <p className="text-neutral-700">
-          The broker implements multiple layers of security to protect user data:
+          The broker implements multiple layers of security to protect user
+          data:
         </p>
         <ul className="list-disc list-inside space-y-1 text-neutral-700">
           <li>OAuth 2.0 and OpenID Connect standards</li>
@@ -243,7 +244,8 @@ export const WithDescriptions: Story = {
       {
         id: '1',
         title: 'Account Settings',
-        description: 'Manage your profile, email preferences, and account security',
+        description:
+          'Manage your profile, email preferences, and account security',
         content: (
           <div className="space-y-4">
             <div>
@@ -272,7 +274,7 @@ export const WithDescriptions: Story = {
       {
         id: '2',
         title: 'Privacy & Security',
-        description: 'Control who can see your information and how it\'s used',
+        description: "Control who can see your information and how it's used",
         content: (
           <div className="space-y-3">
             <label className="flex items-center gap-2">
@@ -304,11 +306,15 @@ export const WithDescriptions: Story = {
           <div className="space-y-3">
             <label className="flex items-center gap-2">
               <input type="checkbox" defaultChecked className="rounded" />
-              <span className="text-sm text-neutral-700">Email notifications</span>
+              <span className="text-sm text-neutral-700">
+                Email notifications
+              </span>
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" className="rounded" />
-              <span className="text-sm text-neutral-700">Push notifications</span>
+              <span className="text-sm text-neutral-700">
+                Push notifications
+              </span>
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" defaultChecked className="rounded" />
@@ -334,7 +340,8 @@ export const WithIcons: Story = {
         icon: <UserIcon />,
         content: (
           <p className="text-neutral-700">
-            Update your name, photo, and other personal details visible to other users.
+            Update your name, photo, and other personal details visible to other
+            users.
           </p>
         ),
       },
@@ -386,16 +393,26 @@ export const WithBadges: Story = {
         content: (
           <div className="space-y-2">
             <div className="flex items-center justify-between p-2 bg-neutral-50 rounded">
-              <span className="text-sm text-neutral-700">Research Assistant</span>
-              <span className="text-xs text-neutral-500">Last active 5m ago</span>
+              <span className="text-sm text-neutral-700">
+                Research Assistant
+              </span>
+              <span className="text-xs text-neutral-500">
+                Last active 5m ago
+              </span>
             </div>
             <div className="flex items-center justify-between p-2 bg-neutral-50 rounded">
               <span className="text-sm text-neutral-700">Data Analyzer</span>
-              <span className="text-xs text-neutral-500">Last active 1h ago</span>
+              <span className="text-xs text-neutral-500">
+                Last active 1h ago
+              </span>
             </div>
             <div className="flex items-center justify-between p-2 bg-neutral-50 rounded">
-              <span className="text-sm text-neutral-700">Content Generator</span>
-              <span className="text-xs text-neutral-500">Last active 2h ago</span>
+              <span className="text-sm text-neutral-700">
+                Content Generator
+              </span>
+              <span className="text-xs text-neutral-500">
+                Last active 2h ago
+              </span>
             </div>
           </div>
         ),
@@ -434,7 +451,9 @@ export const WithDisabled: Story = {
       {
         id: '1',
         title: 'Available Feature',
-        content: <p className="text-neutral-700">This feature is available for use.</p>,
+        content: (
+          <p className="text-neutral-700">This feature is available for use.</p>
+        ),
       },
       {
         id: '2',
@@ -453,7 +472,9 @@ export const WithDisabled: Story = {
       {
         id: '4',
         title: 'Another Available Feature',
-        content: <p className="text-neutral-700">This feature is also available.</p>,
+        content: (
+          <p className="text-neutral-700">This feature is also available.</p>
+        ),
       },
     ],
     defaultOpen: '1',
@@ -620,10 +641,26 @@ export const CustomContent: Story = {
         content: (
           <div className="space-y-2">
             {[
-              { action: 'Profile Read', time: '2 minutes ago', status: 'success' },
-              { action: 'Email Access', time: '15 minutes ago', status: 'success' },
-              { action: 'Document Write', time: '1 hour ago', status: 'denied' },
-              { action: 'Profile Read', time: '3 hours ago', status: 'success' },
+              {
+                action: 'Profile Read',
+                time: '2 minutes ago',
+                status: 'success',
+              },
+              {
+                action: 'Email Access',
+                time: '15 minutes ago',
+                status: 'success',
+              },
+              {
+                action: 'Document Write',
+                time: '1 hour ago',
+                status: 'denied',
+              },
+              {
+                action: 'Profile Read',
+                time: '3 hours ago',
+                status: 'success',
+              },
             ].map((log, index) => (
               <div
                 key={index}
@@ -777,9 +814,10 @@ export const FAQLayout: Story = {
         title: 'How are my credentials stored?',
         content: (
           <p className="text-neutral-700">
-            All sensitive data is encrypted at rest using industry-standard AES-256
-            encryption. Access tokens are short-lived and stored with additional
-            encryption layers. We follow OWASP best practices for credential management.
+            All sensitive data is encrypted at rest using industry-standard
+            AES-256 encryption. Access tokens are short-lived and stored with
+            additional encryption layers. We follow OWASP best practices for
+            credential management.
           </p>
         ),
       },
@@ -789,17 +827,27 @@ export const FAQLayout: Story = {
         content: (
           <div className="space-y-3">
             <p className="text-neutral-700">
-              Scopes define granular permissions for what an agent can access. Instead
-              of giving blanket access to your account, you grant specific capabilities:
+              Scopes define granular permissions for what an agent can access.
+              Instead of giving blanket access to your account, you grant
+              specific capabilities:
             </p>
             <ul className="list-disc list-inside space-y-1 text-neutral-700">
-              <li><strong>profile:read</strong> - View basic profile information</li>
-              <li><strong>email:read</strong> - Access email address</li>
-              <li><strong>documents:read</strong> - Read your documents</li>
-              <li><strong>documents:write</strong> - Create or modify documents</li>
+              <li>
+                <strong>profile:read</strong> - View basic profile information
+              </li>
+              <li>
+                <strong>email:read</strong> - Access email address
+              </li>
+              <li>
+                <strong>documents:read</strong> - Read your documents
+              </li>
+              <li>
+                <strong>documents:write</strong> - Create or modify documents
+              </li>
             </ul>
             <p className="text-neutral-700 pt-2">
-              You can grant or revoke individual scopes without affecting others.
+              You can grant or revoke individual scopes without affecting
+              others.
             </p>
           </div>
         ),
@@ -819,7 +867,8 @@ export const FAQLayout: Story = {
               <li>Failed access attempts</li>
             </ul>
             <p className="text-neutral-700 pt-2">
-              Access your complete audit trail in the Activity section of your dashboard.
+              Access your complete audit trail in the Activity section of your
+              dashboard.
             </p>
           </div>
         ),
@@ -894,7 +943,9 @@ export const SettingsPanel: Story = {
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" defaultChecked className="rounded" />
-                  <span className="text-sm text-neutral-700">OpenID Connect</span>
+                  <span className="text-sm text-neutral-700">
+                    OpenID Connect
+                  </span>
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" className="rounded" />

@@ -39,7 +39,7 @@ const avatarVariants = cva(
       size: 'md',
       shape: 'circle',
     },
-  }
+  },
 );
 
 const statusIndicatorVariants = cva(
@@ -60,11 +60,12 @@ const statusIndicatorVariants = cva(
         busy: 'bg-error-primary',
       },
     },
-  }
+  },
 );
 
 export interface AvatarProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children'>,
+  extends
+    Omit<React.HTMLAttributes<HTMLDivElement>, 'children'>,
     VariantProps<typeof avatarVariants> {
   /** Image source URL */
   src?: string;
@@ -109,7 +110,7 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
       onError,
       ...props
     },
-    ref
+    ref,
   ) => {
     const [imageError, setImageError] = React.useState(false);
     const [imageLoaded, setImageLoaded] = React.useState(false);
@@ -144,7 +145,7 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
             alt={alt}
             className={cn(
               'w-full h-full object-cover',
-              !imageLoaded && 'opacity-0'
+              !imageLoaded && 'opacity-0',
             )}
             onError={handleImageError}
             onLoad={handleImageLoad}
@@ -184,7 +185,7 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 Avatar.displayName = 'Avatar';

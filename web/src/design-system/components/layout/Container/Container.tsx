@@ -54,11 +54,12 @@ const containerVariants = cva(
       centered: true,
       padding: false,
     },
-  }
+  },
 );
 
 export interface ContainerProps
-  extends React.ComponentPropsWithoutRef<'div'>,
+  extends
+    React.ComponentPropsWithoutRef<'div'>,
     VariantProps<typeof containerVariants> {
   /** Maximum width constraint */
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -101,27 +102,20 @@ export interface ContainerProps
  * ```
  */
 export const Container = React.forwardRef<HTMLDivElement, ContainerProps>(
-  (
-    {
-      size,
-      centered,
-      padding,
-      className,
-      children,
-      ...props
-    },
-    ref
-  ) => {
+  ({ size, centered, padding, className, children, ...props }, ref) => {
     return (
       <div
         ref={ref}
-        className={cn(containerVariants({ size, centered, padding }), className)}
+        className={cn(
+          containerVariants({ size, centered, padding }),
+          className,
+        )}
         {...props}
       >
         {children}
       </div>
     );
-  }
+  },
 );
 
 Container.displayName = 'Container';

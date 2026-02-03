@@ -29,7 +29,13 @@ export const Sizes: Story = {
   render: () => (
     <div className="space-y-4">
       <Radio size="sm" label="Small radio" name="size" value="sm" />
-      <Radio size="md" label="Medium radio (default)" name="size" value="md" checked />
+      <Radio
+        size="md"
+        label="Medium radio (default)"
+        name="size"
+        value="md"
+        checked
+      />
       <Radio size="lg" label="Large radio" name="size" value="lg" />
     </div>
   ),
@@ -41,7 +47,13 @@ export const States: Story = {
       <Radio label="Unchecked" name="state" value="unchecked" />
       <Radio label="Checked" name="state" value="checked" checked />
       <Radio label="Disabled" name="state" value="disabled" disabled />
-      <Radio label="Disabled checked" name="state" value="disabled-checked" checked disabled />
+      <Radio
+        label="Disabled checked"
+        name="state"
+        value="disabled-checked"
+        checked
+        disabled
+      />
     </div>
   ),
 };

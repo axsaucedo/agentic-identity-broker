@@ -84,7 +84,9 @@ export const WithHeader: Story = {
     header: (
       <Stack gap="xs">
         <h2 className="text-xl font-bold text-neutral-900">Card Header</h2>
-        <p className="text-sm text-neutral-600">Optional subtitle or metadata</p>
+        <p className="text-sm text-neutral-600">
+          Optional subtitle or metadata
+        </p>
       </Stack>
     ),
     children: (
@@ -103,7 +105,9 @@ export const WithFooter: Story = {
   args: {
     children: (
       <Stack gap="sm">
-        <h3 className="text-lg font-semibold text-neutral-900">Card with Footer</h3>
+        <h3 className="text-lg font-semibold text-neutral-900">
+          Card with Footer
+        </h3>
         <p className="text-neutral-700">
           This card demonstrates the footer area, commonly used for actions or
           additional metadata.
@@ -152,7 +156,9 @@ export const WithHeaderAndFooter: Story = {
     ),
     footer: (
       <Stack direction="row" justify="space-between" align="center">
-        <span className="text-sm text-neutral-600">Last updated: 2 hours ago</span>
+        <span className="text-sm text-neutral-600">
+          Last updated: 2 hours ago
+        </span>
         <Stack direction="row" gap="sm">
           <Button variant="outline" size="sm">
             Edit
@@ -182,22 +188,32 @@ export const PaddingVariants: Story = {
 
       <Card padding="compact">
         <Stack gap="xs">
-          <p className="font-semibold text-neutral-900">Padding: compact (16px)</p>
-          <p className="text-sm text-neutral-600">Compact cards for tight layouts</p>
+          <p className="font-semibold text-neutral-900">
+            Padding: compact (16px)
+          </p>
+          <p className="text-sm text-neutral-600">
+            Compact cards for tight layouts
+          </p>
         </Stack>
       </Card>
 
       <Card padding="default">
         <Stack gap="xs">
-          <p className="font-semibold text-neutral-900">Padding: default (24px)</p>
+          <p className="font-semibold text-neutral-900">
+            Padding: default (24px)
+          </p>
           <p className="text-sm text-neutral-600">Standard spacing - default</p>
         </Stack>
       </Card>
 
       <Card padding="spacious">
         <Stack gap="xs">
-          <p className="font-semibold text-neutral-900">Padding: spacious (32px)</p>
-          <p className="text-sm text-neutral-600">Generous spacing for emphasis</p>
+          <p className="font-semibold text-neutral-900">
+            Padding: spacious (32px)
+          </p>
+          <p className="text-sm text-neutral-600">
+            Generous spacing for emphasis
+          </p>
         </Stack>
       </Card>
     </Stack>
@@ -213,7 +229,9 @@ export const BorderVariants: Story = {
     <Stack gap="lg">
       <Card border="subtle">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-neutral-900">Subtle Border</h3>
+          <h3 className="text-lg font-semibold text-neutral-900">
+            Subtle Border
+          </h3>
           <p className="text-neutral-700">
             Uses a ring-based border (ring-1) for a softer, more refined
             appearance. This is the default style.
@@ -243,7 +261,9 @@ export const HoverLift: Story = {
     <Stack gap="lg">
       <Card hover="none">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-neutral-900">No Hover Effect</h3>
+          <h3 className="text-lg font-semibold text-neutral-900">
+            No Hover Effect
+          </h3>
           <p className="text-neutral-700">
             Static card with no hover interaction. Use for non-interactive
             content displays.
@@ -253,7 +273,9 @@ export const HoverLift: Story = {
 
       <Card hover="lift">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-neutral-900">Hover Lift Effect</h3>
+          <h3 className="text-lg font-semibold text-neutral-900">
+            Hover Lift Effect
+          </h3>
           <p className="text-neutral-700">
             Hover over this card to see the lift effect. The card subtly
             elevates with increased shadow. Perfect for interactive cards.
@@ -274,10 +296,12 @@ export const Clickable: Story = {
     onClick: () => alert('Card clicked!'),
     children: (
       <Stack gap="sm">
-        <h3 className="text-lg font-semibold text-neutral-900">Clickable Card</h3>
+        <h3 className="text-lg font-semibold text-neutral-900">
+          Clickable Card
+        </h3>
         <p className="text-neutral-700">
-          This entire card is clickable. Notice the cursor changes to pointer
-          on hover. Click anywhere to trigger the action.
+          This entire card is clickable. Notice the cursor changes to pointer on
+          hover. Click anywhere to trigger the action.
         </p>
         <p className="text-sm text-neutral-600">
           Supports keyboard navigation with Enter/Space keys.
@@ -296,7 +320,9 @@ export const BackgroundVariants: Story = {
     <Stack gap="lg">
       <Card backgroundColor="white">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-neutral-900">White Background</h3>
+          <h3 className="text-lg font-semibold text-neutral-900">
+            White Background
+          </h3>
           <p className="text-neutral-700">
             Pure white background - the default. Best for most use cases and
             provides maximum contrast.
@@ -306,7 +332,9 @@ export const BackgroundVariants: Story = {
 
       <Card backgroundColor="neutral-50">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-neutral-900">Gray-50 Background</h3>
+          <h3 className="text-lg font-semibold text-neutral-900">
+            Gray-50 Background
+          </h3>
           <p className="text-neutral-700">
             Subtle gray background for secondary or less prominent cards.
             Creates visual hierarchy through background color.
@@ -316,7 +344,9 @@ export const BackgroundVariants: Story = {
 
       <Card backgroundColor="blue-50">
         <Stack gap="sm">
-          <h3 className="text-lg font-semibold text-neutral-900">Blue-50 Background</h3>
+          <h3 className="text-lg font-semibold text-neutral-900">
+            Blue-50 Background
+          </h3>
           <p className="text-neutral-700">
             Light blue background for highlighted or informational content.
             Draws attention without being too bold.
@@ -335,7 +365,9 @@ export const WithDividers: Story = {
   render: () => (
     <Stack gap="lg">
       <Card
-        header={<h2 className="text-xl font-bold text-neutral-900">With Dividers</h2>}
+        header={
+          <h2 className="text-xl font-bold text-neutral-900">With Dividers</h2>
+        }
         footer={
           <Stack direction="row" gap="sm" justify="end">
             <Button variant="outline" size="sm">
@@ -355,7 +387,11 @@ export const WithDividers: Story = {
       </Card>
 
       <Card
-        header={<h2 className="text-xl font-bold text-neutral-900">Without Dividers</h2>}
+        header={
+          <h2 className="text-xl font-bold text-neutral-900">
+            Without Dividers
+          </h2>
+        }
         footer={
           <Stack direction="row" gap="sm" justify="end">
             <Button variant="outline" size="sm">
@@ -409,7 +445,8 @@ export const WithIcon: Story = {
       <Stack gap="sm">
         <p className="text-neutral-700">
           Cards can include an icon in the header section. The icon is
-          automatically positioned before the header content with proper spacing.
+          automatically positioned before the header content with proper
+          spacing.
         </p>
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-sm text-neutral-700">
@@ -436,7 +473,9 @@ export const SizingVariants: Story = {
       <Card padding="compact">
         <Stack gap="xs">
           <h4 className="text-sm font-semibold text-neutral-900">Compact</h4>
-          <p className="text-xs text-neutral-600">Small card with minimal content</p>
+          <p className="text-xs text-neutral-600">
+            Small card with minimal content
+          </p>
         </Stack>
       </Card>
 
@@ -509,17 +548,12 @@ export const ConsentApplicationCard: Story = {
       <Card
         header={
           <Stack direction="row" gap="md" align="center">
-            <Avatar
-              initials="AP"
-              size="lg"
-            />
+            <Avatar initials="AP" size="lg" />
             <Stack gap="xs">
               <h2 className="text-xl font-bold text-neutral-900">
                 Analytics Platform
               </h2>
-              <p className="text-sm text-neutral-600">
-                analytics.example.com
-              </p>
+              <p className="text-sm text-neutral-600">analytics.example.com</p>
             </Stack>
           </Stack>
         }
@@ -539,9 +573,7 @@ export const ConsentApplicationCard: Story = {
                   d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <span>
-                Your consent will be valid for 90 days
-              </span>
+              <span>Your consent will be valid for 90 days</span>
             </div>
             <Stack direction="row" gap="sm" justify="end">
               <Button variant="outline" size="md" fullWidth>
@@ -638,8 +670,9 @@ export const ConsentApplicationCard: Story = {
 
           <div className="bg-blue-50 -mx-6 px-6 py-3 rounded">
             <p className="text-sm text-neutral-700">
-              <span className="font-semibold">Privacy notice:</span> We will never
-              share your data with third parties without your explicit consent.
+              <span className="font-semibold">Privacy notice:</span> We will
+              never share your data with third parties without your explicit
+              consent.
             </p>
           </div>
         </Stack>
@@ -658,10 +691,7 @@ export const UserProfileCard: Story = {
       <Card hover="lift" padding="spacious">
         <Stack gap="md">
           <Stack direction="row" gap="md" align="center">
-            <Avatar
-              initials="JD"
-              size="xl"
-            />
+            <Avatar initials="JD" size="xl" />
             <Stack gap="xs">
               <h2 className="text-xl font-bold text-neutral-900">John Doe</h2>
               <p className="text-sm text-neutral-600">Senior Developer</p>
@@ -686,11 +716,15 @@ export const UserProfileCard: Story = {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-600">Department</span>
-                <span className="text-neutral-900 font-medium">Engineering</span>
+                <span className="text-neutral-900 font-medium">
+                  Engineering
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-600">Location</span>
-                <span className="text-neutral-900 font-medium">San Francisco, CA</span>
+                <span className="text-neutral-900 font-medium">
+                  San Francisco, CA
+                </span>
               </div>
             </Stack>
           </div>

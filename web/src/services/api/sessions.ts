@@ -104,7 +104,9 @@ export class SessionsApiService {
     }
 
     // Fetch from API
-    const response = await apiClient.get<ListSessionsResponse>('/third-party/sessions');
+    const response = await apiClient.get<ListSessionsResponse>(
+      '/third-party/sessions',
+    );
     const sessions = response.data.data.sessions || [];
 
     // Cache the result (2 minutes TTL)
@@ -132,7 +134,7 @@ export class SessionsApiService {
 
     // Fetch from API
     const response = await apiClient.get<GetSessionDetailResponse>(
-      `/third-party/${serviceId}/session`
+      `/third-party/${serviceId}/session`,
     );
     const data = response.data.data;
 
@@ -166,7 +168,7 @@ export class SessionsApiService {
    */
   async refreshSession(serviceId: string): Promise<SessionSummary> {
     const response = await apiClient.post<{ data: SessionSummary }>(
-      `/third-party/${serviceId}/session/refresh`
+      `/third-party/${serviceId}/session/refresh`,
     );
 
     // Invalidate caches since data changed

@@ -31,13 +31,13 @@ Is this action supporting/tertiary?
 
 ### Examples by Context
 
-| Context | Primary Action | Secondary Action | Tertiary Action | Destructive |
-|---------|---------------|------------------|-----------------|-------------|
-| **Modal Dialog** | "Confirm" (primary) | "Cancel" (ghost) | N/A | "Delete Forever" (danger) |
-| **Form** | "Submit" (primary) | "Save Draft" (secondary) | "Preview" (outline) | "Reset Form" (ghost) |
-| **Card** | "Grant Access" (primary) | "View Details" (outline) | "Copy Link" (ghost) | "Revoke" (danger) |
-| **Permission List** | "Approve All" (primary) | "Review" (secondary) | "Skip" (ghost) | "Deny All" (danger) |
-| **Navigation** | N/A | N/A | Links (ghost) | N/A |
+| Context             | Primary Action           | Secondary Action         | Tertiary Action     | Destructive               |
+| ------------------- | ------------------------ | ------------------------ | ------------------- | ------------------------- |
+| **Modal Dialog**    | "Confirm" (primary)      | "Cancel" (ghost)         | N/A                 | "Delete Forever" (danger) |
+| **Form**            | "Submit" (primary)       | "Save Draft" (secondary) | "Preview" (outline) | "Reset Form" (ghost)      |
+| **Card**            | "Grant Access" (primary) | "View Details" (outline) | "Copy Link" (ghost) | "Revoke" (danger)         |
+| **Permission List** | "Approve All" (primary)  | "Review" (secondary)     | "Skip" (ghost)      | "Deny All" (danger)       |
+| **Navigation**      | N/A                      | N/A                      | Links (ghost)       | N/A                       |
 
 ### Visual Hierarchy Rules
 
@@ -153,32 +153,36 @@ Is it a large TRANSITION (page change, full-screen modal)?
 
 ### Duration by Element Type
 
-| Element | Duration | Use Case | Easing |
-|---------|----------|----------|--------|
-| **Button hover** | 150ms | Background color change | `cubic-bezier(0.4, 0, 0.2, 1)` |
-| **Button press** | 200ms | Scale down (active state) | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
-| **Focus ring** | 150ms | Border color + ring appearance | `cubic-bezier(0.4, 0, 0.2, 1)` |
-| **Card hover** | 300ms | Elevation + translateY | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
-| **Dropdown open** | 200ms | Scale + opacity | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
-| **Modal enter** | 300ms | Scale + opacity (staggered) | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
-| **Accordion expand** | 300ms | Height transition | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
-| **Page transition** | 500ms | Fade + slide | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
-| **Skeleton pulse** | 1500ms | Opacity shimmer (loop) | `cubic-bezier(0.4, 0, 0.6, 1)` |
+| Element              | Duration | Use Case                       | Easing                              |
+| -------------------- | -------- | ------------------------------ | ----------------------------------- |
+| **Button hover**     | 150ms    | Background color change        | `cubic-bezier(0.4, 0, 0.2, 1)`      |
+| **Button press**     | 200ms    | Scale down (active state)      | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
+| **Focus ring**       | 150ms    | Border color + ring appearance | `cubic-bezier(0.4, 0, 0.2, 1)`      |
+| **Card hover**       | 300ms    | Elevation + translateY         | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
+| **Dropdown open**    | 200ms    | Scale + opacity                | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
+| **Modal enter**      | 300ms    | Scale + opacity (staggered)    | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
+| **Accordion expand** | 300ms    | Height transition              | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
+| **Page transition**  | 500ms    | Fade + slide                   | `cubic-bezier(0.34, 1.56, 0.64, 1)` |
+| **Skeleton pulse**   | 1500ms   | Opacity shimmer (loop)         | `cubic-bezier(0.4, 0, 0.6, 1)`      |
 
 ### Edge Cases
 
 **Multiple properties animating together?**
+
 - Use the slowest duration for consistency
 - Example: Card hover (bg-color + shadow + transform) → 300ms for all
 
 **Hover on small elements (icons, badges)?**
+
 - Use 150ms for snappy feel
 
 **User-triggered vs automatic?**
+
 - User-triggered: Use stated durations
 - Automatic (toast dismiss): Add +100ms for user to notice
 
 **Background color on Card hover?**
+
 - 300ms (matches elevation change duration)
 
 ---
@@ -237,16 +241,19 @@ Is it VERTICAL SPACING between elements?
 ### Context-Specific Guidelines
 
 **Form Fields**
+
 - Between label and input: `mb-2` (8px)
 - Between input and helper text: `mt-1` (4px)
 - Between form fields: `mb-4` (16px)
 - Between form sections: `mb-8` (32px)
 
 **Cards in Grid**
+
 - Card-to-card gap: `gap-6` (24px) on desktop
 - Card-to-card gap: `gap-4` (16px) on mobile
 
 **Modal Dialog**
+
 - Body padding: `p-6` (24px)
 - Header padding: `px-6 py-5` (24px/20px)
 - Between header and body: No gap (border handles separation)
@@ -284,17 +291,17 @@ Is it a BUTTON?
 
 ### Shadow Hierarchy
 
-| Element | Shadow | When | Purpose |
-|---------|--------|------|---------|
-| **Cards (rest)** | `shadow-sm` | Default state | Subtle hint of elevation |
-| **Cards (hover)** | `shadow-lg` | Hover state | Clear interactive feedback |
-| **Dropdowns** | `shadow-md` | Open state | Separate from page content |
-| **Popovers** | `shadow-md` | Visible | Floating element clarity |
-| **Modals** | `shadow-xl-premium` | Open state | Maximum prominence |
-| **Tooltips** | `shadow-sm` | Visible | Subtle, non-intrusive |
-| **Buttons** | None | All states | Background provides depth |
-| **Inputs** | None | Default | Border provides definition |
-| **Inputs (focus)** | `ring-2` | Focus state | Use ring, not shadow |
+| Element            | Shadow              | When          | Purpose                    |
+| ------------------ | ------------------- | ------------- | -------------------------- |
+| **Cards (rest)**   | `shadow-sm`         | Default state | Subtle hint of elevation   |
+| **Cards (hover)**  | `shadow-lg`         | Hover state   | Clear interactive feedback |
+| **Dropdowns**      | `shadow-md`         | Open state    | Separate from page content |
+| **Popovers**       | `shadow-md`         | Visible       | Floating element clarity   |
+| **Modals**         | `shadow-xl-premium` | Open state    | Maximum prominence         |
+| **Tooltips**       | `shadow-sm`         | Visible       | Subtle, non-intrusive      |
+| **Buttons**        | None                | All states    | Background provides depth  |
+| **Inputs**         | None                | Default       | Border provides definition |
+| **Inputs (focus)** | `ring-2`            | Focus state   | Use ring, not shadow       |
 
 ### Custom Shadow Values
 
@@ -340,17 +347,17 @@ Is it an AVATAR or PROFILE IMAGE?
 
 ### Component-Specific Radius
 
-| Component | Radius | Pixels | Rationale |
-|-----------|--------|--------|-----------|
-| **Buttons** | `rounded-md` | 6px | Subtle rounding, professional |
-| **Inputs** | `rounded-md` | 6px | Match button consistency |
-| **Cards** | `rounded-xl` | 12px | Generous, premium feel |
-| **Modals** | `rounded-2xl` | 16px | Maximum refinement |
-| **Badges** | `rounded` | 4px | Compact, not pill-shaped |
-| **Dropdowns** | `rounded-lg` | 8px | Balance between card and button |
-| **Avatars** | `rounded-lg` | 8px | Soft square (not circular by default) |
-| **Images** | `rounded-xl` | 12px | Match card radius |
-| **Checkboxes** | `rounded-sm` | 2px | Minimal rounding |
+| Component      | Radius        | Pixels | Rationale                             |
+| -------------- | ------------- | ------ | ------------------------------------- |
+| **Buttons**    | `rounded-md`  | 6px    | Subtle rounding, professional         |
+| **Inputs**     | `rounded-md`  | 6px    | Match button consistency              |
+| **Cards**      | `rounded-xl`  | 12px   | Generous, premium feel                |
+| **Modals**     | `rounded-2xl` | 16px   | Maximum refinement                    |
+| **Badges**     | `rounded`     | 4px    | Compact, not pill-shaped              |
+| **Dropdowns**  | `rounded-lg`  | 8px    | Balance between card and button       |
+| **Avatars**    | `rounded-lg`  | 8px    | Soft square (not circular by default) |
+| **Images**     | `rounded-xl`  | 12px   | Match card radius                     |
+| **Checkboxes** | `rounded-sm`  | 2px    | Minimal rounding                      |
 
 ---
 
@@ -383,13 +390,13 @@ Does it need maximum space?
 
 ### Examples by Content Type
 
-| Content Type | Modal Size | Max Width | Example |
-|--------------|-----------|-----------|---------|
-| **Simple confirmation** | `sm` | 400px | "Delete this item?" |
-| **Permission grant** | `md` | 600px | Grant form with scope selection |
-| **Detailed form** | `lg` | 800px | Multi-step agent registration |
-| **Data table** | `xl` | 1000px | Permission audit log viewer |
-| **Full-screen editor** | `full` | 90vw | JSON permission editor |
+| Content Type            | Modal Size | Max Width | Example                         |
+| ----------------------- | ---------- | --------- | ------------------------------- |
+| **Simple confirmation** | `sm`       | 400px     | "Delete this item?"             |
+| **Permission grant**    | `md`       | 600px     | Grant form with scope selection |
+| **Detailed form**       | `lg`       | 800px     | Multi-step agent registration   |
+| **Data table**          | `xl`       | 1000px    | Permission audit log viewer     |
+| **Full-screen editor**  | `full`     | 90vw      | JSON permission editor          |
 
 ---
 

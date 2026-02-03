@@ -16,8 +16,8 @@
  * - WCAG 2.1 AA compliant with proper ARIA attributes
  */
 
-import React, { useState, useEffect } from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import React, { useState, useEffect, useCallback } from 'react';
+import { cva } from 'class-variance-authority';
 import { cn } from '@design-system/utils';
 
 const toastVariants = cva(
@@ -49,7 +49,7 @@ const toastVariants = cva(
       variant: 'info',
       position: 'top-right',
     },
-  }
+  },
 );
 
 const iconColorVariants = cva('flex-shrink-0 w-5 h-5', {
@@ -66,8 +66,10 @@ const iconColorVariants = cva('flex-shrink-0 w-5 h-5', {
   },
 });
 
-export interface ToastProps
-  extends Omit<React.ComponentPropsWithoutRef<'div'>, 'title'> {
+export interface ToastProps extends Omit<
+  React.ComponentPropsWithoutRef<'div'>,
+  'title'
+> {
   /** Toast variant based on message severity */
   variant?: 'info' | 'success' | 'warning' | 'error';
   /** Optional icon to display (overrides default icon) */
@@ -214,7 +216,7 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
       children,
       ...props
     },
-    ref
+    ref,
   ) => {
     const [isVisible, setIsVisible] = useState(true);
     const [isExiting, setIsExiting] = useState(false);
@@ -236,13 +238,13 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
     };
 
     // Handle dismiss with animation
-    const handleDismiss = () => {
+    const handleDismiss = useCallback(() => {
       setIsExiting(true);
       setTimeout(() => {
         setIsVisible(false);
         onDismiss?.();
       }, 200); // Match transition duration
-    };
+    }, [onDismiss]);
 
     // Auto-dismiss after duration
     useEffect(() => {
@@ -253,7 +255,7 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
 
         return () => clearTimeout(timer);
       }
-    }, [duration]);
+    }, [duration, handleDismiss]);
 
     // Entrance animation
     useEffect(() => {
@@ -298,7 +300,7 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
         className={cn(
           toastVariants({ variant, position }),
           getSlideAnimation(),
-          className
+          className,
         )}
         {...props}
       >
@@ -333,7 +335,7 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
               variant === 'warning' &&
                 'text-warning-primary hover:bg-warning-primary/10 focus:ring-warning-primary',
               variant === 'error' &&
-                'text-error-primary hover:bg-error-primary/10 focus:ring-error-primary'
+                'text-error-primary hover:bg-error-primary/10 focus:ring-error-primary',
             )}
           >
             {action.label}
@@ -354,14 +356,14 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
             variant === 'warning' &&
               'text-warning-primary/70 hover:text-warning-primary hover:bg-warning-primary/10 focus:ring-warning-primary',
             variant === 'error' &&
-              'text-error-primary/70 hover:text-error-primary hover:bg-error-primary/10 focus:ring-error-primary'
+              'text-error-primary/70 hover:text-error-primary hover:bg-error-primary/10 focus:ring-error-primary',
           )}
         >
           <CloseIcon />
         </button>
       </div>
     );
-  }
+  },
 );
 
 Toast.displayName = 'Toast';

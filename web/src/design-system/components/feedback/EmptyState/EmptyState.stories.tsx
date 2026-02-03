@@ -190,7 +190,7 @@ export const WithAction: Story = {
   args: {
     title: 'No consents found',
     description:
-      'You haven\'t granted any permissions yet. Connect your first application to get started.',
+      "You haven't granted any permissions yet. Connect your first application to get started.",
     primaryAction: {
       label: 'Add Application',
       onClick: () => alert('Add application clicked'),
@@ -227,7 +227,7 @@ export const NoResults: Story = {
     icon: <SearchIcon />,
     title: 'No results found',
     description:
-      'We couldn\'t find any matches for your search. Try adjusting your filters or search terms.',
+      "We couldn't find any matches for your search. Try adjusting your filters or search terms.",
     primaryAction: {
       label: 'Clear Filters',
       onClick: () => alert('Clear filters clicked'),
@@ -244,7 +244,7 @@ export const NoPermissions: Story = {
     icon: <LockIcon />,
     title: 'Access restricted',
     description:
-      'You don\'t have permission to view this content. Contact your administrator to request access.',
+      "You don't have permission to view this content. Contact your administrator to request access.",
     primaryAction: {
       label: 'Request Access',
       onClick: () => alert('Request access clicked'),
@@ -333,7 +333,8 @@ export const WithIllustration: Story = {
 export const Playground: Story = {
   args: {
     title: 'Customize this empty state',
-    description: 'Use the controls below to experiment with different props and configurations.',
+    description:
+      'Use the controls below to experiment with different props and configurations.',
     size: 'default',
     primaryAction: {
       label: 'Primary Action',
@@ -510,8 +511,13 @@ export const Accessibility: Story = {
           Accessibility Features
         </h4>
         <ul className="text-sm text-neutral-700 space-y-1">
-          <li>• Uses <code>role="status"</code> and <code>aria-live="polite"</code></li>
-          <li>• Icons are decorative with <code>aria-hidden="true"</code></li>
+          <li>
+            • Uses <code>role="status"</code> and{' '}
+            <code>aria-live="polite"</code>
+          </li>
+          <li>
+            • Icons are decorative with <code>aria-hidden="true"</code>
+          </li>
           <li>• All interactive elements are keyboard accessible</li>
           <li>• Semantic heading hierarchy (h3 for title)</li>
           <li>• Focus indicators meet WCAG 2.1 AA requirements</li>

@@ -20,7 +20,9 @@ describe('GrantValidityControl', () => {
   });
 
   it('should render with no expiration by default', () => {
-    render(<GrantValidityControl value={defaultState} onChange={mockOnChange} />);
+    render(
+      <GrantValidityControl value={defaultState} onChange={mockOnChange} />,
+    );
 
     const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
     expect(checkbox.checked).toBe(false);
@@ -30,7 +32,9 @@ describe('GrantValidityControl', () => {
   });
 
   it('should show date picker when checkbox is checked', () => {
-    render(<GrantValidityControl value={defaultState} onChange={mockOnChange} />);
+    render(
+      <GrantValidityControl value={defaultState} onChange={mockOnChange} />,
+    );
 
     const checkbox = screen.getByRole('checkbox');
     fireEvent.click(checkbox);
@@ -39,7 +43,7 @@ describe('GrantValidityControl', () => {
       expect.objectContaining({
         noExpiration: false,
         expiresAt: expect.any(Date),
-      })
+      }),
     );
   });
 
@@ -53,8 +57,11 @@ describe('GrantValidityControl', () => {
       expiresAt: futureDate,
     };
 
-    const { rerender } = render(
-      <GrantValidityControl value={stateWithExpiration} onChange={mockOnChange} />
+    render(
+      <GrantValidityControl
+        value={stateWithExpiration}
+        onChange={mockOnChange}
+      />,
     );
 
     // Date picker should be visible
@@ -74,16 +81,21 @@ describe('GrantValidityControl', () => {
     // Use a future date
     const futureDate = new Date();
     futureDate.setFullYear(futureDate.getFullYear() + 1);
-    const futureDateString = futureDate.toISOString().split('T')[0];
-
     const stateWithExpiration: GrantValidityState = {
       noExpiration: false,
       expiresAt: futureDate,
     };
 
-    render(<GrantValidityControl value={stateWithExpiration} onChange={mockOnChange} />);
+    render(
+      <GrantValidityControl
+        value={stateWithExpiration}
+        onChange={mockOnChange}
+      />,
+    );
 
-    const dateInput = screen.getByLabelText('Expiration date') as HTMLInputElement;
+    const dateInput = screen.getByLabelText(
+      'Expiration date',
+    ) as HTMLInputElement;
 
     // Change to a different future date
     const newFutureDate = new Date(futureDate);
@@ -107,7 +119,12 @@ describe('GrantValidityControl', () => {
       expiresAt: futureDate,
     };
 
-    render(<GrantValidityControl value={stateWithExpiration} onChange={mockOnChange} />);
+    render(
+      <GrantValidityControl
+        value={stateWithExpiration}
+        onChange={mockOnChange}
+      />,
+    );
 
     expect(screen.getByText('1 month', { exact: false })).toBeInTheDocument();
     expect(screen.getByText('3 months', { exact: false })).toBeInTheDocument();
@@ -123,7 +140,12 @@ describe('GrantValidityControl', () => {
       expiresAt: futureDate,
     };
 
-    render(<GrantValidityControl value={stateWithExpiration} onChange={mockOnChange} />);
+    render(
+      <GrantValidityControl
+        value={stateWithExpiration}
+        onChange={mockOnChange}
+      />,
+    );
 
     const oneMonthButton = screen.getByText('1 month', { exact: false });
     fireEvent.click(oneMonthButton);
@@ -145,13 +167,17 @@ describe('GrantValidityControl', () => {
   });
 
   it('should show current date', () => {
-    render(<GrantValidityControl value={defaultState} onChange={mockOnChange} />);
+    render(
+      <GrantValidityControl value={defaultState} onChange={mockOnChange} />,
+    );
 
     expect(screen.getByText(/Today:/)).toBeInTheDocument();
   });
 
   it('should show indefinite message when no expiration', () => {
-    render(<GrantValidityControl value={defaultState} onChange={mockOnChange} />);
+    render(
+      <GrantValidityControl value={defaultState} onChange={mockOnChange} />,
+    );
 
     expect(screen.getByText(/remain active indefinitely/)).toBeInTheDocument();
   });
@@ -163,7 +189,12 @@ describe('GrantValidityControl', () => {
       expiresAt: pastDate,
     };
 
-    render(<GrantValidityControl value={stateWithPastDate} onChange={mockOnChange} />);
+    render(
+      <GrantValidityControl
+        value={stateWithPastDate}
+        onChange={mockOnChange}
+      />,
+    );
 
     expect(screen.getByText(/must be in the future/)).toBeInTheDocument();
   });

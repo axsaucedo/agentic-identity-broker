@@ -28,15 +28,17 @@ const switchContainerVariants = cva(
         lg: 'h-7 w-14 focus:ring-offset-2',
       },
       variant: {
-        primary: 'focus:ring-trust-deep data-[checked=true]:bg-trust-deep data-[checked=false]:bg-neutral-300',
-        success: 'focus:ring-success-primary data-[checked=true]:bg-success-primary data-[checked=false]:bg-neutral-300',
+        primary:
+          'focus:ring-trust-deep data-[checked=true]:bg-trust-deep data-[checked=false]:bg-neutral-300',
+        success:
+          'focus:ring-success-primary data-[checked=true]:bg-success-primary data-[checked=false]:bg-neutral-300',
       },
     },
     defaultVariants: {
       size: 'md',
       variant: 'primary',
     },
-  }
+  },
 );
 
 const switchThumbVariants = cva(
@@ -52,11 +54,12 @@ const switchThumbVariants = cva(
     defaultVariants: {
       size: 'md',
     },
-  }
+  },
 );
 
 export interface SwitchProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'>,
+  extends
+    Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'>,
     VariantProps<typeof switchContainerVariants> {
   /** Whether the switch is checked */
   checked: boolean;
@@ -107,7 +110,7 @@ export const Switch = React.forwardRef<HTMLDivElement, SwitchProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     return (
       <HeadlessSwitch.Group>
@@ -126,14 +129,11 @@ export const Switch = React.forwardRef<HTMLDivElement, SwitchProps>(
               data-checked={checked}
               className={cn(
                 switchContainerVariants({ size, variant }),
-                disabled && 'opacity-50 cursor-not-allowed'
+                disabled && 'opacity-50 cursor-not-allowed',
               )}
             >
               <span
-                className={cn(
-                  switchThumbVariants({ size }),
-                  'shadow-md'
-                )}
+                className={cn(switchThumbVariants({ size }), 'shadow-md')}
                 data-checked={checked}
               />
             </HeadlessSwitch>
@@ -146,7 +146,9 @@ export const Switch = React.forwardRef<HTMLDivElement, SwitchProps>(
                 <HeadlessSwitch.Label
                   className={cn(
                     'text-sm font-medium',
-                    disabled ? 'text-neutral-500 cursor-not-allowed' : 'text-neutral-900 cursor-pointer'
+                    disabled
+                      ? 'text-neutral-500 cursor-not-allowed'
+                      : 'text-neutral-900 cursor-pointer',
                   )}
                 >
                   {label}
@@ -161,7 +163,7 @@ export const Switch = React.forwardRef<HTMLDivElement, SwitchProps>(
         </div>
       </HeadlessSwitch.Group>
     );
-  }
+  },
 );
 
 Switch.displayName = 'Switch';

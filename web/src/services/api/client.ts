@@ -7,7 +7,11 @@
  * - Response interceptor: Handles errors and redirects on auth failures
  */
 
-import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosError,
+  AxiosInstance,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import type { ApiError } from '../../types/consent';
 
 /**
@@ -32,7 +36,7 @@ function createApiClient(): AxiosInstance {
     },
     (error) => {
       return Promise.reject(error);
-    }
+    },
   );
 
   // Response interceptor: Handle errors with enhanced error messages
@@ -104,7 +108,8 @@ function createApiClient(): AxiosInstance {
         const networkError: ApiError & { retryable: boolean } = {
           status: 0,
           code: 'NETWORK_ERROR',
-          message: 'Unable to connect to server. Please check your internet connection.',
+          message:
+            'Unable to connect to server. Please check your internet connection.',
           retryable: true,
         };
         return Promise.reject(networkError);
@@ -117,7 +122,7 @@ function createApiClient(): AxiosInstance {
         message: error.message || 'An unexpected error occurred',
       };
       return Promise.reject(genericError);
-    }
+    },
   );
 
   return client;

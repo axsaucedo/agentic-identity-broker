@@ -40,7 +40,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Service name should be visible
@@ -66,7 +66,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Service name should be visible
@@ -92,7 +92,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('Google Drive')).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       const loginButton = screen.getByRole('button', { name: /login/i });
@@ -127,7 +127,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       const activeBadge = screen.getByText('Active Session');
@@ -149,7 +149,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Should show scope names
@@ -158,7 +158,9 @@ describe('ServiceRequirementCard', () => {
 
       // Should show scope descriptions
       expect(screen.getByText('Read your email address')).toBeInTheDocument();
-      expect(screen.getByText('Read your profile information')).toBeInTheDocument();
+      expect(
+        screen.getByText('Read your profile information'),
+      ).toBeInTheDocument();
 
       // Should have "Required Permissions:" label
       expect(screen.getByText('Required Permissions:')).toBeInTheDocument();
@@ -174,7 +176,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Find all code elements
@@ -199,12 +201,14 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Each scope should have its description displayed
       expect(screen.getByText('Read your email address')).toBeInTheDocument();
-      expect(screen.getByText('Read your profile information')).toBeInTheDocument();
+      expect(
+        screen.getByText('Read your profile information'),
+      ).toBeInTheDocument();
 
       // Verify descriptions are displayed as helper text (smaller text)
       const descriptions = screen.getAllByText(/Read your (email|profile)/);
@@ -226,7 +230,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Should still render with empty scopes
@@ -244,11 +248,13 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('Read your email address')).toBeInTheDocument();
-      expect(screen.getByText('Read your profile information')).toBeInTheDocument();
+      expect(
+        screen.getByText('Read your profile information'),
+      ).toBeInTheDocument();
     });
 
     it('handles scopes without descriptions (display name only)', () => {
@@ -266,7 +272,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Should display both scope names
@@ -292,7 +298,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // Verify no checkboxes or toggles for scopes
@@ -331,7 +337,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       // All scopes should be visible
@@ -341,7 +347,9 @@ describe('ServiceRequirementCard', () => {
 
       // All descriptions should be visible
       expect(screen.getByText('Access email address')).toBeInTheDocument();
-      expect(screen.getByText('Access profile information')).toBeInTheDocument();
+      expect(
+        screen.getByText('Access profile information'),
+      ).toBeInTheDocument();
       expect(screen.getByText('Create and update gists')).toBeInTheDocument();
     });
   });
@@ -357,7 +365,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       const loginButton = screen.getByRole('button', { name: /login/i });
@@ -377,10 +385,12 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
-      const disconnectButton = screen.getByRole('button', { name: /disconnect/i });
+      const disconnectButton = screen.getByRole('button', {
+        name: /disconnect/i,
+      });
       expect(disconnectButton).toBeInTheDocument();
     });
 
@@ -394,10 +404,12 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
-      const disconnectButton = screen.getByRole('button', { name: /disconnect/i });
+      const disconnectButton = screen.getByRole('button', {
+        name: /disconnect/i,
+      });
       fireEvent.click(disconnectButton);
 
       expect(mockOnDisconnect).toHaveBeenCalledWith('github');
@@ -414,10 +426,12 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
-      const disconnectButton = screen.queryByRole('button', { name: /disconnect/i });
+      const disconnectButton = screen.queryByRole('button', {
+        name: /disconnect/i,
+      });
       expect(disconnectButton).not.toBeInTheDocument();
     });
 
@@ -431,7 +445,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       const loginButton = screen.queryByRole('button', { name: /login/i });
@@ -450,11 +464,13 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(
-        screen.getByText('Very Long Service Name That Should Still Display Properly')
+        screen.getByText(
+          'Very Long Service Name That Should Still Display Properly',
+        ),
       ).toBeInTheDocument();
     });
 
@@ -473,7 +489,7 @@ describe('ServiceRequirementCard', () => {
           connectionStatus="not_connected"
           onLogin={mockOnLogin}
           onDisconnect={mockOnDisconnect}
-        />
+        />,
       );
 
       expect(screen.getByText('read:repo:status')).toBeInTheDocument();

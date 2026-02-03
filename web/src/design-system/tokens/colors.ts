@@ -100,12 +100,12 @@ export type SemanticColors = typeof semanticColors;
 export const colorTokens = {
   // Trust
   'trust-deep': semanticColors.trust.deep,
-  'trust': semanticColors.trust.default,
+  trust: semanticColors.trust.default,
   'trust-hover': semanticColors.trust.hover,
   'trust-light': semanticColors.trust.light,
 
   // CTA
-  'cta': semanticColors.cta.default,
+  cta: semanticColors.cta.default,
   'cta-hover': semanticColors.cta.hover,
   'cta-light': semanticColors.cta.light,
 

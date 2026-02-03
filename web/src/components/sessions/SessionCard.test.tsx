@@ -10,13 +10,15 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SessionCard } from './SessionCard';
 import type { SessionSummary } from '@services/api/sessions';
 
 // Mock session data factory
-const createMockSession = (overrides?: Partial<SessionSummary>): SessionSummary => ({
+const createMockSession = (
+  overrides?: Partial<SessionSummary>,
+): SessionSummary => ({
   id: 'test-session-id',
   service_id: 'google',
   service_display_name: 'Google Drive',
@@ -25,7 +27,9 @@ const createMockSession = (overrides?: Partial<SessionSummary>): SessionSummary 
   initiated_at: new Date('2024-01-01T12:00:00Z').toISOString(),
   is_expired: false,
   access_token_expired: false,
-  refresh_token_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  refresh_token_expires_at: new Date(
+    Date.now() + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString(),
   dependent_agent_count: 2,
   is_encrypted: true,
   ...overrides,
@@ -37,7 +41,9 @@ describe('SessionCard', () => {
       const session = createMockSession();
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       // Verify service name
       expect(screen.getByText('Google Drive')).toBeInTheDocument();
@@ -50,7 +56,9 @@ describe('SessionCard', () => {
       const session = createMockSession();
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       // Verify component renders for active session
       expect(container).toBeInTheDocument();
@@ -59,11 +67,15 @@ describe('SessionCard', () => {
 
     it('renders "Expiring Soon" status for session expiring within 7 days', () => {
       const session = createMockSession({
-        refresh_token_expires_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+        refresh_token_expires_at: new Date(
+          Date.now() + 5 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
       });
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       // Verify component renders for expiring session
       expect(container).toBeInTheDocument();
@@ -76,7 +88,9 @@ describe('SessionCard', () => {
       });
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       // Verify component renders for expired access token
       expect(container).toBeInTheDocument();
@@ -89,7 +103,9 @@ describe('SessionCard', () => {
       });
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       // Verify component renders for expired session
       expect(container).toBeInTheDocument();
@@ -102,7 +118,9 @@ describe('SessionCard', () => {
       });
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       expect(container).toBeInTheDocument();
       expect(screen.getByText('Google Drive')).toBeInTheDocument();
@@ -114,7 +132,9 @@ describe('SessionCard', () => {
       });
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       expect(container).toBeInTheDocument();
       expect(screen.getByText('Google Drive')).toBeInTheDocument();
@@ -132,12 +152,18 @@ describe('SessionCard', () => {
           session={session}
           onTerminate={onTerminate}
           onViewDetails={onViewDetails}
-        />
+        />,
       );
 
       // Verify component renders with buttons
       expect(container).toBeInTheDocument();
       expect(screen.getByText('Google Drive')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /view details/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /terminate/i }),
+      ).toBeInTheDocument();
     });
 
     it('calls onTerminate when Terminate button is clicked', async () => {
@@ -145,11 +171,14 @@ describe('SessionCard', () => {
       const session = createMockSession();
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
-      // Verify component renders
       expect(container).toBeInTheDocument();
-      expect(screen.getByText('Google Drive')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /terminate/i }));
+      expect(onTerminate).toHaveBeenCalledWith(session.service_id);
     });
 
     it('calls onViewDetails when View Details button is clicked', async () => {
@@ -163,23 +192,26 @@ describe('SessionCard', () => {
           session={session}
           onTerminate={onTerminate}
           onViewDetails={onViewDetails}
-        />
+        />,
       );
 
-      // Verify component renders
       expect(container).toBeInTheDocument();
-      expect(screen.getByText('Google Drive')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /view details/i }));
+      expect(onViewDetails).toHaveBeenCalledTimes(1);
+      expect(onViewDetails).toHaveBeenCalledWith(session.service_id);
     });
 
     it('does not render "View Details" button when onViewDetails is not provided', () => {
       const session = createMockSession();
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
-      // Verify component renders
       expect(container).toBeInTheDocument();
-      expect(screen.getByText('Google Drive')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /view details/i })).toBeNull();
     });
 
     it('renders expired message instead of buttons for expired session', () => {
@@ -188,7 +220,9 @@ describe('SessionCard', () => {
       });
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       // Verify component renders for expired session
       expect(container).toBeInTheDocument();
@@ -201,7 +235,13 @@ describe('SessionCard', () => {
       const session = createMockSession();
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} loading={true} />);
+      const { container } = render(
+        <SessionCard
+          session={session}
+          onTerminate={onTerminate}
+          loading={true}
+        />,
+      );
 
       // Verify component renders in loading state
       expect(container).toBeInTheDocument();
@@ -219,7 +259,7 @@ describe('SessionCard', () => {
           onTerminate={onTerminate}
           onViewDetails={onViewDetails}
           loading={true}
-        />
+        />,
       );
 
       // Verify component renders in loading state
@@ -234,7 +274,7 @@ describe('SessionCard', () => {
       const onTerminate = vi.fn();
 
       const { container } = render(
-        <SessionCard session={session} onTerminate={onTerminate} />
+        <SessionCard session={session} onTerminate={onTerminate} />,
       );
 
       // Card should use semantic heading for service name
@@ -253,7 +293,7 @@ describe('SessionCard', () => {
           session={session}
           onTerminate={onTerminate}
           onViewDetails={onViewDetails}
-        />
+        />,
       );
 
       // Verify component renders
@@ -266,11 +306,14 @@ describe('SessionCard', () => {
       const session = createMockSession();
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
-      // Verify component renders
       expect(container).toBeInTheDocument();
-      expect(screen.getByText('Google Drive')).toBeInTheDocument();
+
+      await user.tab();
+      expect(screen.getByRole('button', { name: /terminate/i })).toHaveFocus();
     });
   });
 
@@ -281,7 +324,9 @@ describe('SessionCard', () => {
       });
       const onTerminate = vi.fn();
 
-      const { container } = render(<SessionCard session={session} onTerminate={onTerminate} />);
+      const { container } = render(
+        <SessionCard session={session} onTerminate={onTerminate} />,
+      );
 
       // Verify component renders
       expect(container).toBeInTheDocument();

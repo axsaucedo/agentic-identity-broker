@@ -56,7 +56,7 @@ const scopeItemVariants = cva(
       size: 'default',
       selectable: false,
     },
-  }
+  },
 );
 
 const categoryHeaderVariants = cva(
@@ -76,7 +76,7 @@ const categoryHeaderVariants = cva(
       size: 'default',
       expanded: false,
     },
-  }
+  },
 );
 
 export interface Scope {
@@ -99,7 +99,8 @@ export interface Scope {
 }
 
 export interface ScopeListProps
-  extends Omit<React.ComponentPropsWithoutRef<'div'>, 'children'>,
+  extends
+    Omit<React.ComponentPropsWithoutRef<'div'>, 'children'>,
     VariantProps<typeof scopeListVariants> {
   /** Array of scopes to display */
   scopes: Scope[];
@@ -129,53 +130,133 @@ const getCategoryIcon = (category: string): React.ReactNode => {
     case 'profile':
     case 'user':
       return (
-        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        <svg
+          className={iconClass}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+          />
         </svg>
       );
     case 'email':
       return (
-        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        <svg
+          className={iconClass}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+          />
         </svg>
       );
     case 'calendar':
       return (
-        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        <svg
+          className={iconClass}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
         </svg>
       );
     case 'contacts':
       return (
-        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        <svg
+          className={iconClass}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+          />
         </svg>
       );
     case 'documents':
     case 'files':
       return (
-        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <svg
+          className={iconClass}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
         </svg>
       );
     case 'storage':
     case 'drive':
       return (
-        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+        <svg
+          className={iconClass}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+          />
         </svg>
       );
     case 'api':
     case 'admin':
       return (
-        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        <svg
+          className={iconClass}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+          />
         </svg>
       );
     default:
       return (
-        <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        <svg
+          className={iconClass}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+          />
         </svg>
       );
   }
@@ -206,7 +287,12 @@ const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
     stroke="currentColor"
     viewBox="0 0 24 24"
   >
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M19 9l-7 7-7-7"
+    />
   </svg>
 );
 
@@ -214,8 +300,18 @@ const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
  * SearchIcon for search input
  */
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={cn('w-5 h-5', className)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+  <svg
+    className={cn('w-5 h-5', className)}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+    />
   </svg>
 );
 
@@ -254,12 +350,14 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
       className,
       ...props
     },
-    ref
+    ref,
   ) => {
     const [searchQuery, setSearchQuery] = useState('');
-    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+    const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+      new Set(),
+    );
     const [selectedIds, setSelectedIds] = useState<Set<string>>(
-      new Set(scopes.filter((s) => s.selected).map((s) => s.id))
+      new Set(scopes.filter((s) => s.selected).map((s) => s.id)),
     );
 
     // Group scopes by category
@@ -269,7 +367,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
           !searchQuery ||
           scope.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           scope.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          scope.category.toLowerCase().includes(searchQuery.toLowerCase())
+          scope.category.toLowerCase().includes(searchQuery.toLowerCase()),
       );
 
       const groups = new Map<string, Scope[]>();
@@ -282,7 +380,9 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
       });
 
       // Sort categories alphabetically
-      return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+      return Array.from(groups.entries()).sort(([a], [b]) =>
+        a.localeCompare(b),
+      );
     }, [scopes, searchQuery]);
 
     // Toggle category expansion
@@ -311,14 +411,20 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
     // Initialize expanded categories on mount
     React.useEffect(() => {
       if (!expandable) {
-        setExpandedCategories(new Set(groupedScopes.map(([category]) => category)));
+        setExpandedCategories(
+          new Set(groupedScopes.map(([category]) => category)),
+        );
       }
     }, [expandable, groupedScopes]);
 
     // Loading state
     if (loading) {
       return (
-        <div ref={ref} className={cn(scopeListVariants({ size }), className)} {...props}>
+        <div
+          ref={ref}
+          className={cn(scopeListVariants({ size }), className)}
+          {...props}
+        >
           <Stack gap="md">
             {[1, 2, 3].map((i) => (
               <div key={i} className="p-4 border border-neutral-200 rounded-lg">
@@ -341,7 +447,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
           className={cn(
             scopeListVariants({ size }),
             'flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-neutral-300 rounded-lg',
-            className
+            className,
           )}
           {...props}
         >
@@ -360,8 +466,12 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                   d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
                 />
               </svg>
-              <h3 className="text-lg font-medium text-neutral-900 mb-1">No scopes available</h3>
-              <p className="text-sm text-neutral-600">There are no permissions to display.</p>
+              <h3 className="text-lg font-medium text-neutral-900 mb-1">
+                No scopes available
+              </h3>
+              <p className="text-sm text-neutral-600">
+                There are no permissions to display.
+              </p>
             </>
           )}
         </div>
@@ -369,7 +479,11 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
     }
 
     return (
-      <div ref={ref} className={cn(scopeListVariants({ size }), className)} {...props}>
+      <div
+        ref={ref}
+        className={cn(scopeListVariants({ size }), className)}
+        {...props}
+      >
         <Stack gap="md">
           {/* Search input */}
           {searchable && (
@@ -392,43 +506,68 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
           {groupedScopes.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-center border border-neutral-200 rounded-lg">
               <SearchIcon className="text-neutral-400 w-8 h-8 mb-2" />
-              <p className="text-sm text-neutral-600">No scopes match your search.</p>
+              <p className="text-sm text-neutral-600">
+                No scopes match your search.
+              </p>
             </div>
           ) : (
             <Stack gap="sm">
               {groupedScopes.map(([category, categoryScopes]) => {
-                const isExpanded = expandedCategories.has(category) || !expandable;
+                const isExpanded =
+                  expandedCategories.has(category) || !expandable;
 
                 return (
-                  <div key={category} className="border border-neutral-200 rounded-lg">
+                  <div
+                    key={category}
+                    className="border border-neutral-200 rounded-lg"
+                  >
                     {/* Category header */}
                     {expandable ? (
                       <button
                         type="button"
                         onClick={() => toggleCategory(category)}
                         className={cn(
-                          categoryHeaderVariants({ size, expanded: isExpanded }),
-                          'w-full'
+                          categoryHeaderVariants({
+                            size,
+                            expanded: isExpanded,
+                          }),
+                          'w-full',
                         )}
                         aria-expanded={isExpanded}
                         aria-controls={`category-${category}`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-neutral-600">{getCategoryIcon(category)}</span>
-                          <span className="font-semibold text-neutral-900">{category}</span>
+                          <span className="text-neutral-600">
+                            {getCategoryIcon(category)}
+                          </span>
+                          <span className="font-semibold text-neutral-900">
+                            {category}
+                          </span>
                           <Badge variant="neutral" size="sm">
                             {categoryScopes.length}
                           </Badge>
                         </div>
                         <ChevronDownIcon
-                          className={cn('text-neutral-600', isExpanded && 'rotate-180')}
+                          className={cn(
+                            'text-neutral-600',
+                            isExpanded && 'rotate-180',
+                          )}
                         />
                       </button>
                     ) : (
-                      <div className={cn(categoryHeaderVariants({ size }), 'cursor-default')}>
+                      <div
+                        className={cn(
+                          categoryHeaderVariants({ size }),
+                          'cursor-default',
+                        )}
+                      >
                         <div className="flex items-center gap-2">
-                          <span className="text-neutral-600">{getCategoryIcon(category)}</span>
-                          <span className="font-semibold text-neutral-900">{category}</span>
+                          <span className="text-neutral-600">
+                            {getCategoryIcon(category)}
+                          </span>
+                          <span className="font-semibold text-neutral-900">
+                            {category}
+                          </span>
                           <Badge variant="neutral" size="sm">
                             {categoryScopes.length}
                           </Badge>
@@ -438,7 +577,10 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
 
                     {/* Category scopes */}
                     {isExpanded && (
-                      <div id={`category-${category}`} className="border-t border-neutral-200">
+                      <div
+                        id={`category-${category}`}
+                        className="border-t border-neutral-200"
+                      >
                         <Stack gap="xs" className="p-2">
                           {categoryScopes.map((scope) => {
                             const isSelected = selectedIds.has(scope.id);
@@ -448,13 +590,36 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                                 key={scope.id}
                                 className={cn(
                                   scopeItemVariants({ size, selectable }),
-                                  isSelected && 'border-trust bg-trust-light/10'
+                                  isSelected &&
+                                    'border-trust bg-trust-light/10',
                                 )}
                                 onClick={
                                   selectable
-                                    ? () => handleScopeSelection(scope.id, !isSelected)
+                                    ? () =>
+                                        handleScopeSelection(
+                                          scope.id,
+                                          !isSelected,
+                                        )
                                     : undefined
                                 }
+                                onKeyDown={
+                                  selectable
+                                    ? (event) => {
+                                        if (
+                                          event.key === 'Enter' ||
+                                          event.key === ' '
+                                        ) {
+                                          event.preventDefault();
+                                          handleScopeSelection(
+                                            scope.id,
+                                            !isSelected,
+                                          );
+                                        }
+                                      }
+                                    : undefined
+                                }
+                                role={selectable ? 'button' : undefined}
+                                tabIndex={selectable ? 0 : undefined}
                               >
                                 {/* Checkbox */}
                                 {selectable && (
@@ -463,7 +628,10 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                                       id={`scope-${scope.id}`}
                                       checked={isSelected}
                                       onChange={(e) =>
-                                        handleScopeSelection(scope.id, e.target.checked)
+                                        handleScopeSelection(
+                                          scope.id,
+                                          e.target.checked,
+                                        )
                                       }
                                       onClick={(e) => e.stopPropagation()}
                                       size={size === 'compact' ? 'sm' : 'md'}
@@ -473,7 +641,8 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
 
                                 {/* Scope icon */}
                                 <div className="flex-shrink-0 pt-0.5 text-neutral-600">
-                                  {scope.icon || getCategoryIcon(scope.category)}
+                                  {scope.icon ||
+                                    getCategoryIcon(scope.category)}
                                 </div>
 
                                 {/* Scope content */}
@@ -483,7 +652,9 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                                       <p
                                         className={cn(
                                           'font-mono font-medium text-neutral-900',
-                                          size === 'compact' ? 'text-xs' : 'text-sm'
+                                          size === 'compact'
+                                            ? 'text-xs'
+                                            : 'text-sm',
                                         )}
                                       >
                                         {scope.name}
@@ -491,7 +662,9 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                                       <p
                                         className={cn(
                                           'text-neutral-600 mt-0.5',
-                                          size === 'compact' ? 'text-xs' : 'text-sm'
+                                          size === 'compact'
+                                            ? 'text-xs'
+                                            : 'text-sm',
                                         )}
                                       >
                                         {scope.description}
@@ -501,7 +674,9 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
                                     {/* Risk badge */}
                                     {scope.riskLevel && (
                                       <Badge
-                                        variant={getRiskBadgeVariant(scope.riskLevel)}
+                                        variant={getRiskBadgeVariant(
+                                          scope.riskLevel,
+                                        )}
                                         size="sm"
                                         className="flex-shrink-0"
                                       >
@@ -524,7 +699,7 @@ export const ScopeList = React.forwardRef<HTMLDivElement, ScopeListProps>(
         </Stack>
       </div>
     );
-  }
+  },
 );
 
 ScopeList.displayName = 'ScopeList';

@@ -206,7 +206,11 @@ export const CustomFallbackIcon: Story = {
     <div className="flex items-center gap-4">
       <Avatar
         fallbackIcon={
-          <svg fill="currentColor" viewBox="0 0 20 20" className="w-full h-full">
+          <svg
+            fill="currentColor"
+            viewBox="0 0 20 20"
+            className="w-full h-full"
+          >
             <path
               fillRule="evenodd"
               d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -218,7 +222,11 @@ export const CustomFallbackIcon: Story = {
       />
       <Avatar
         fallbackIcon={
-          <svg fill="currentColor" viewBox="0 0 20 20" className="w-full h-full">
+          <svg
+            fill="currentColor"
+            viewBox="0 0 20 20"
+            className="w-full h-full"
+          >
             <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
           </svg>
         }
@@ -237,7 +245,9 @@ export const AvatarGroup: Story = {
     <div className="flex flex-col gap-6">
       {/* Stacked avatars */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-700">Stacked Group</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">
+          Stacked Group
+        </h3>
         <div className="flex -space-x-2">
           <Avatar
             src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
@@ -301,28 +311,40 @@ export const UseCases: Story = {
         <div className="flex items-center gap-3 p-4 bg-white border border-neutral-200 rounded-lg">
           <Avatar initials="AI" shape="rounded" status="online" size="lg" />
           <div>
-            <h4 className="text-sm font-medium text-neutral-900">Email Assistant</h4>
-            <p className="text-xs text-neutral-500">Active · 3 permissions granted</p>
+            <h4 className="text-sm font-medium text-neutral-900">
+              Email Assistant
+            </h4>
+            <p className="text-xs text-neutral-500">
+              Active · 3 permissions granted
+            </p>
           </div>
         </div>
       </div>
 
       {/* Comment thread */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-700">Comment Thread</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">
+          Comment Thread
+        </h3>
         <div className="space-y-3">
           <div className="flex gap-3">
             <Avatar initials="JD" size="sm" />
             <div className="flex-1">
               <p className="text-xs font-medium text-neutral-900">John Doe</p>
-              <p className="text-xs text-neutral-600">This looks great! When can we ship?</p>
+              <p className="text-xs text-neutral-600">
+                This looks great! When can we ship?
+              </p>
             </div>
           </div>
           <div className="flex gap-3">
             <Avatar initials="AS" size="sm" />
             <div className="flex-1">
-              <p className="text-xs font-medium text-neutral-900">Alice Smith</p>
-              <p className="text-xs text-neutral-600">Ready to go live tomorrow.</p>
+              <p className="text-xs font-medium text-neutral-900">
+                Alice Smith
+              </p>
+              <p className="text-xs text-neutral-600">
+                Ready to go live tomorrow.
+              </p>
             </div>
           </div>
         </div>
@@ -350,13 +372,19 @@ export const Accessibility: Story = {
   render: () => (
     <div className="flex flex-col gap-6">
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-neutral-700">Avatars with proper alt text</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">
+          Avatars with proper alt text
+        </h3>
         <div className="flex gap-4">
           <Avatar
             src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
             alt="John Doe, Senior Developer"
           />
-          <Avatar initials="AS" alt="Alice Smith, Product Manager" status="online" />
+          <Avatar
+            initials="AS"
+            alt="Alice Smith, Product Manager"
+            status="online"
+          />
           <Avatar alt="Anonymous user" />
         </div>
       </div>

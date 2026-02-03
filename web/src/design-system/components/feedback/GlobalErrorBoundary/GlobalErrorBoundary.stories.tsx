@@ -64,8 +64,9 @@ const BuggyApp = ({ shouldThrow }: { shouldThrow: boolean }) => {
           Application Running Normally
         </h2>
         <p className="text-neutral-700 mb-6">
-          This represents your full application. Click the button below to simulate a
-          critical error that will be caught by the GlobalErrorBoundary.
+          This represents your full application. Click the button below to
+          simulate a critical error that will be caught by the
+          GlobalErrorBoundary.
         </p>
         <div className="flex gap-3">
           <Button variant="primary" size="md">
@@ -92,7 +93,9 @@ const BrokenApp = () => {
  */
 const NetworkErrorApp = ({ shouldThrow }: { shouldThrow: boolean }) => {
   if (shouldThrow) {
-    throw new Error('Network connection timeout - failed to fetch data from server');
+    throw new Error(
+      'Network connection timeout - failed to fetch data from server',
+    );
   }
   return <BuggyApp shouldThrow={false} />;
 };
@@ -102,7 +105,9 @@ const NetworkErrorApp = ({ shouldThrow }: { shouldThrow: boolean }) => {
  */
 const PermissionErrorApp = ({ shouldThrow }: { shouldThrow: boolean }) => {
   if (shouldThrow) {
-    throw new Error('Permission denied: Unauthorized access to protected resource');
+    throw new Error(
+      'Permission denied: Unauthorized access to protected resource',
+    );
   }
   return <BuggyApp shouldThrow={false} />;
 };
@@ -309,8 +314,9 @@ export const GracefulDegradation: Story = {
             </h2>
           </div>
           <p className="text-amber-800 mb-6">
-            Some features are temporarily unavailable, but you can continue using
-            essential functions. Full functionality will be restored shortly.
+            Some features are temporarily unavailable, but you can continue
+            using essential functions. Full functionality will be restored
+            shortly.
           </p>
           <div className="space-y-3">
             <Button variant="primary" size="md" fullWidth>
@@ -363,7 +369,9 @@ export const GracefulDegradation: Story = {
  */
 export const ErrorCategories: Story = {
   render: () => {
-    const [errorType, setErrorType] = useState<'none' | 'network' | 'permission' | 'generic'>('none');
+    const [errorType, setErrorType] = useState<
+      'none' | 'network' | 'permission' | 'generic'
+    >('none');
 
     return (
       <div className="relative">
@@ -409,7 +417,9 @@ export const ErrorCategories: Story = {
           showDetails={false}
         >
           {errorType === 'network' && <NetworkErrorApp shouldThrow={true} />}
-          {errorType === 'permission' && <PermissionErrorApp shouldThrow={true} />}
+          {errorType === 'permission' && (
+            <PermissionErrorApp shouldThrow={true} />
+          )}
           {errorType === 'generic' && <BrokenApp />}
           {errorType === 'none' && <BuggyApp shouldThrow={false} />}
         </GlobalErrorBoundary>
@@ -492,7 +502,8 @@ export const CompleteExample: Story = {
             Limited Mode Active
           </h2>
           <p className="text-amber-800 mb-6">
-            Operating with reduced functionality. Core features remain available.
+            Operating with reduced functionality. Core features remain
+            available.
           </p>
           <Button variant="primary" size="md" fullWidth>
             Access Core Features
@@ -596,7 +607,9 @@ export const Playground: Story = {
  */
 export const RealWorldScenarios: Story = {
   render: () => {
-    const [scenario, setScenario] = useState<'none' | 'auth' | 'network' | 'permission'>('none');
+    const [scenario, setScenario] = useState<
+      'none' | 'auth' | 'network' | 'permission'
+    >('none');
 
     const AuthFailureApp = () => {
       throw new Error('Authentication service failed to initialize');
@@ -653,7 +666,9 @@ export const RealWorldScenarios: Story = {
         >
           {scenario === 'auth' && <AuthFailureApp />}
           {scenario === 'network' && <NetworkErrorApp shouldThrow={true} />}
-          {scenario === 'permission' && <PermissionErrorApp shouldThrow={true} />}
+          {scenario === 'permission' && (
+            <PermissionErrorApp shouldThrow={true} />
+          )}
           {scenario === 'none' && <BuggyApp shouldThrow={false} />}
         </GlobalErrorBoundary>
       </div>

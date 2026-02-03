@@ -27,6 +27,7 @@ import { useSessions } from '@hooks/useSessions';
 import { SessionCard } from '@components/sessions/SessionCard';
 import { TerminationDialog } from '@components/sessions/TerminationDialog';
 import { sessionsApi } from '@services/api/sessions';
+import type { SessionDetail } from '@services/api/sessions';
 
 /**
  * Alert state for OAuth2 callback success/error messages
@@ -55,8 +56,11 @@ export const ThirdPartySessionsPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { sessions, loading, error, refetch } = useSessions();
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [selectedSessionDetails, setSelectedSessionDetails] = useState<any>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    null,
+  );
+  const [selectedSessionDetails, setSelectedSessionDetails] =
+    useState<SessionDetail | null>(null);
   const [terminatingLoading, setTerminatingLoading] = useState(false);
   const [terminationError, setTerminationError] = useState<string | null>(null);
   const [alert, setAlert] = useState<AlertState | null>(null);
@@ -65,15 +69,20 @@ export const ThirdPartySessionsPage: React.FC = () => {
    * Map OAuth2 error codes to user-friendly messages.
    * Handles standard OAuth2 error codes and custom error codes from the backend.
    */
-  const mapErrorToMessage = (errorCode: string, description?: string | null): string => {
+  const mapErrorToMessage = (
+    errorCode: string,
+    description?: string | null,
+  ): string => {
     const errorMap: Record<string, string> = {
       access_denied: 'You denied access to the service. No tokens were stored.',
-      invalid_scope: 'The requested permissions are not available. Please contact support.',
+      invalid_scope:
+        'The requested permissions are not available. Please contact support.',
       expired_token: 'Your session expired. Please try again.',
       callback_failed: description || 'Authorization failed. Please try again.',
       invalid_callback: 'Invalid response from service. Please try again.',
       invalid_state: 'Invalid request state. Please try again.',
-      invalid_redirect_uri: 'Invalid redirect configuration. Please contact support.',
+      invalid_redirect_uri:
+        'Invalid redirect configuration. Please contact support.',
     };
 
     return errorMap[errorCode] || 'Authorization failed. Please try again.';
@@ -91,7 +100,8 @@ export const ThirdPartySessionsPage: React.FC = () => {
 
     if (success === 'true') {
       // Success state: Display success alert
-      const message = 'Successfully connected to service. You can now delegate access to agents.';
+      const message =
+        'Successfully connected to service. You can now delegate access to agents.';
       setAlert({ type: 'success', message });
 
       // Refresh session list to show new session
@@ -213,7 +223,11 @@ export const ThirdPartySessionsPage: React.FC = () => {
               <h3 className="text-lg font-medium text-neutral-900 mb-4">
                 Your Sessions
               </h3>
-              <Grid columns={1} gap="md" className="sm:grid-cols-2 lg:grid-cols-3">
+              <Grid
+                columns={1}
+                gap="md"
+                className="sm:grid-cols-2 lg:grid-cols-3"
+              >
                 {[1, 2, 3].map((i) => (
                   <Skeleton key={i} variant="rounded" height="320px" />
                 ))}
@@ -346,13 +360,20 @@ export const ThirdPartySessionsPage: React.FC = () => {
             <h3 className="text-lg font-medium text-neutral-900 mb-4">
               Your Sessions
             </h3>
-            <Grid columns={1} gap="md" className="sm:grid-cols-2 lg:grid-cols-3">
+            <Grid
+              columns={1}
+              gap="md"
+              className="sm:grid-cols-2 lg:grid-cols-3"
+            >
               {sessions.map((session) => (
                 <SessionCard
                   key={session.id}
                   session={session}
                   onTerminate={handleTerminate}
-                  loading={terminatingLoading && selectedSessionId === session.service_id}
+                  loading={
+                    terminatingLoading &&
+                    selectedSessionId === session.service_id
+                  }
                 />
               ))}
             </Grid>

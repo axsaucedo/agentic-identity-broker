@@ -56,11 +56,12 @@ const gridVariants = cva(
       columns: 3,
       gap: 'md',
     },
-  }
+  },
 );
 
 export interface GridProps
-  extends React.ComponentPropsWithoutRef<'div'>,
+  extends
+    React.ComponentPropsWithoutRef<'div'>,
     VariantProps<typeof gridVariants> {
   /** Number of columns (1-6) */
   columns?: 1 | 2 | 3 | 4 | 5 | 6;
@@ -125,7 +126,7 @@ export const Grid = React.forwardRef<HTMLDivElement, GridProps>(
         {children}
       </div>
     );
-  }
+  },
 );
 
 Grid.displayName = 'Grid';
