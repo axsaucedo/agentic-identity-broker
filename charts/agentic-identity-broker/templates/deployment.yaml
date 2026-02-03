@@ -69,7 +69,10 @@ spec:
               key: signing-key
         {{- end }}
         {{- if eq .Values.storage.type "postgres" }}
-        # PostgreSQL connection parameters
+        # PostgreSQL storage configuration
+        - name: IDENTITY_BROKER_STORAGE_BACKEND
+          value: "postgres"
+        # Database credentials (must be set before POSTGRES_URL for expansion)
         - name: DB_USERNAME
           valueFrom:
             secretKeyRef:
@@ -80,6 +83,10 @@ spec:
             secretKeyRef:
               name: {{ include "agentic-identity-broker.brokerSecretName" . }}
               key: {{ .Values.postgresql.external.brokerSecretKeys.password | default "password" }}
+        # PostgreSQL connection URL with variable expansion
+        # Uses $(VAR) syntax for Kubernetes variable expansion
+        - name: IDENTITY_BROKER_STORAGE_POSTGRES_URL
+          value: {{ include "agentic-identity-broker.postgresURL" . | quote }}
         {{- end }}
         volumeMounts:
         - name: config
