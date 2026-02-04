@@ -163,9 +163,13 @@ class ApiCache {
    * ```
    */
   invalidatePattern(pattern: string): void {
-    const regex = new RegExp(
-      '^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '\\?') + '$',
-    );
+    // Escape all regex metacharacters, then convert wildcard syntax (* and ?)
+    const escapedPattern = pattern
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // escape regex special chars, including backslash
+      .replace(/\\\*/g, '.*') // convert escaped '*' to '.*'
+      .replace(/\\\?/g, '.'); // convert escaped '?' to '.'
+
+    const regex = new RegExp('^' + escapedPattern + '$');
 
     for (const key of this.cache.keys()) {
       if (regex.test(key)) {
