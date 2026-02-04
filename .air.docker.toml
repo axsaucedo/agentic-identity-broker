@@ -1,0 +1,94 @@
+# Air configuration for hot-reload development in Docker Compose
+# See https://github.com/air-verse/air for full documentation
+
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  # Command to build the application
+  cmd = "go build -o ./tmp/agentic-identity-broker ./cmd/agentic-identity-broker"
+
+  # Use wrapper script that auto-seeds data before starting broker (docker-compose only)
+  # The wrapper checks if we're in docker-compose and seeds data, then execs the broker binary
+  bin = "scripts/start-broker.sh"
+
+  # Customize binary arguments
+  args_bin = []
+
+  # Watch these filename extensions
+  include_ext = ["go", "tpl", "tmpl", "html", "yaml", "yml", "toml", "env"]
+
+  # Ignore these filename extensions or directories
+  exclude_dir = ["assets", "tmp", "vendor", "testdata", "bin", "coverage", "node_modules", ".git"]
+
+  # Watch these directories if you specified
+  include_dir = []
+
+  # Exclude files
+  exclude_file = []
+
+  # Exclude specific regular expressions
+  exclude_regex = ["_test.go"]
+
+  # Exclude unchanged files
+  exclude_unchanged = false
+
+  # Follow symlinks
+  follow_symlink = false
+
+  # This log file places in your tmp_dir
+  log = "build-errors.log"
+
+  # Poll for file changes instead of using fsnotify
+  # Required for Docker volume mounts (inotify not supported across host/container boundary)
+  poll = true
+
+  # Poll interval (milliseconds) - 300ms for faster feedback in containers
+  poll_interval = 300
+
+  # Delay after a detected file change before rebuilding (milliseconds)
+  delay = 300
+
+  # Stop running old binary when build errors occur
+  stop_on_error = true
+
+  # Send Interrupt signal before killing process (windows does not support this feature)
+  send_interrupt = true
+
+  # Kill process timeout (milliseconds)
+  kill_delay = 500
+
+  # Rerun binary or not
+  rerun = false
+
+  # Delay after each execution (milliseconds)
+  rerun_delay = 500
+
+  # Add additional arguments when running binary (bin/full_bin). Will run './tmp/agentic-identity-broker hello world'
+  # args_bin = ["hello", "world"]
+
+[log]
+  # Show log time
+  time = true
+
+  # Only show main log (silences watcher, build, runner)
+  main_only = false
+
+[color]
+  # Customize each part's color. If no color found, use the raw app log.
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  # Delete tmp directory on exit
+  clean_on_exit = true
+
+[screen]
+  # Clear the screen before each build
+  clear_on_rebuild = true
+
+  # Enable truecolor support
+  keep_scroll = true

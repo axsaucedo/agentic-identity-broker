@@ -1,0 +1,25 @@
+server:
+  port: 9000
+  bind: "0.0.0.0"
+
+oauth2:
+  client_id: "mock-oauth2-client-dev"
+  client_secret: "mock-oauth2-secret-12345"
+  access_token_ttl: 3600s
+  refresh_token_ttl: 604800s
+  authorization_code_ttl: 300s
+
+  scopes:
+    - name: "profile"
+      description: "Access user profile information"
+    - name: "email"
+      description: "Access email address"
+    - name: "read"
+      description: "Read data"
+    - name: "write"
+      description: "Write data"
+
+mock_user:
+  sub: "testuser@example.com"
+  name: "Test User"
+  email: "testuser@example.com"

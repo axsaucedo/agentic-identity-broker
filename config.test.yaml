@@ -1,0 +1,12 @@
+# Test Configuration
+# In-memory storage for automated test suites with isolated data
+
+log:
+  level: warn
+  format: text
+
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s

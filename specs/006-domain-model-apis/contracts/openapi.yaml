@@ -1,0 +1,1070 @@
+openapi: 3.0.3
+info:
+  title: Agentic Identity Broker - Domain Model and Consent APIs
+  version: 1.0.0
+  description: |
+    REST APIs for managing AI agents, third-party OAuth2 services, and user consent grants.
+
+    ## API Categories
+
+    ### Admin APIs
+    - Agent management: `/api/agents` - Full CRUD operations for agent registry
+    - Third-party OAuth2 services: `/api/third-party/oauth2/clients` - Full CRUD operations for OAuth2 service configurations
+
+    ### User APIs
+    - Consent management: `/api/consent/agent/{agent-id}` - View agent information and available services
+    - Grant management: `/api/consent/agent/{agent-id}/grants` - Create, view, and revoke permission grants
+
+    ## Authentication
+
+    All endpoints require authentication via reverse proxy. The principal (authenticated user identifier)
+    is extracted from the configured HTTP header (default: `X-Remote-User`).
+
+    - **Admin endpoints**: Require administrative privileges
+    - **User endpoints**: Automatically scoped to authenticated principal from session
+
+    ## Security
+
+    - Client secrets are encrypted at rest and redacted in all API responses
+    - Users can only view and modify their own grants
+    - Service deletion is blocked if active grants reference the service
+    - All URLs are validated to prevent injection attacks
+    - Rate limiting is enforced on all endpoints
+  contact:
+    name: Identity Broker Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server (enduser port)
+  - url: http://localhost:8081
+    description: Development server (admin port)
+
+tags:
+  - name: Admin - Agents
+    description: Administrative operations for agent registry management
+  - name: Admin - OAuth2 Services
+    description: Administrative operations for third-party OAuth2 service configurations
+  - name: User - Consent
+    description: User-facing operations for viewing agent information
+  - name: User - Grants
+    description: User-facing operations for managing permission grants
+
+paths:
+  /api/agents:
+    get:
+      tags:
+        - Admin - Agents
+      summary: List all agents
+      description: Retrieve a list of all registered agents in the system
+      operationId: listAgents
+      responses:
+        '200':
+          description: List of agents retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Agent'
+                  count:
+                    type: integer
+                    description: Total number of agents
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Admin - Agents
+      summary: Create a new agent
+      description: Register a new AI agent in the identity broker system
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCreateRequest'
+      responses:
+        '201':
+          description: Agent created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/agents/{agent-id}:
+    get:
+      tags:
+        - Admin - Agents
+      summary: Get agent by ID
+      description: Retrieve detailed information about a specific agent
+      operationId: getAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Admin - Agents
+      summary: Update agent
+      description: Update configuration for an existing agent
+      operationId: updateAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentUpdateRequest'
+      responses:
+        '200':
+          description: Agent updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Admin - Agents
+      summary: Delete agent
+      description: |
+        Remove an agent from the system. This operation will cascade delete all grants associated with the agent.
+        The deletion is logged for audit purposes.
+      operationId: deleteAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '204':
+          description: Agent deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/third-party/oauth2/clients:
+    get:
+      tags:
+        - Admin - OAuth2 Services
+      summary: List all OAuth2 services
+      description: Retrieve a list of all configured third-party OAuth2 services
+      operationId: listOAuth2Services
+      responses:
+        '200':
+          description: List of OAuth2 services retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OAuth2Service'
+                  count:
+                    type: integer
+                    description: Total number of services
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Admin - OAuth2 Services
+      summary: Create a new OAuth2 service
+      description: |
+        Configure a new third-party OAuth2 service provider. If discovery is enabled,
+        the system will automatically retrieve OAuth2 endpoints from the issuer's metadata URL.
+      operationId: createOAuth2Service
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuth2ServiceCreateRequest'
+      responses:
+        '201':
+          description: OAuth2 service created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Service'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/third-party/oauth2/clients/{client-id}:
+    get:
+      tags:
+        - Admin - OAuth2 Services
+      summary: Get OAuth2 service by ID
+      description: Retrieve detailed configuration for a specific OAuth2 service (client_secret is redacted)
+      operationId: getOAuth2Service
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      responses:
+        '200':
+          description: OAuth2 service retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Service'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Admin - OAuth2 Services
+      summary: Update OAuth2 service
+      description: |
+        Update configuration for an existing OAuth2 service. If discovery is enabled,
+        endpoints will be re-discovered. Client secret rotation is supported.
+      operationId: updateOAuth2Service
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuth2ServiceUpdateRequest'
+      responses:
+        '200':
+          description: OAuth2 service updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Service'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Admin - OAuth2 Services
+      summary: Delete OAuth2 service
+      description: |
+        Remove an OAuth2 service from the system. This operation will fail if there are active grants
+        referencing this service. Administrators must revoke or modify grants first.
+      operationId: deleteOAuth2Service
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      responses:
+        '204':
+          description: OAuth2 service deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Cannot delete service with active grants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Cannot delete OAuth2 service with active grants
+                  message:
+                    type: string
+                    example: Service 'github-prod' has 15 active grants referencing it. Remove grants first.
+                  grants_count:
+                    type: integer
+                    example: 15
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/consent/agent/{agent-id}:
+    get:
+      tags:
+        - User - Consent
+      summary: Get agent information for consent
+      description: |
+        Retrieve detailed information about an agent including its metadata, available third-party services,
+        and their OAuth2 scopes. This endpoint is used to build consent interfaces for users.
+
+        **Note**: All configured third-party OAuth2 services are returned regardless of agent-specific associations.
+        Agent-to-service relationships will be implemented in a future feature.
+      operationId: getAgentForConsent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentConsentInfo'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/consent/agent/{agent-id}/grants:
+    get:
+      tags:
+        - User - Grants
+      summary: Get user's grants for an agent
+      description: |
+        Retrieve all active grants that the authenticated user has created for the specified agent.
+        Expired grants (valid_until < current_time) are automatically filtered out.
+        Returns an empty array if the user has no active grants for this agent.
+      operationId: getUserGrants
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Grants retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserGrant'
+                  count:
+                    type: integer
+                    description: Total number of active grants
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - User - Grants
+      summary: Create or update grant
+      description: |
+        Create a new grant or update an existing grant for the authenticated user and specified agent.
+        The system enforces one active grant per user-agent pair using upsert semantics.
+
+        **Grant Creation**: Submit with desired services and scopes
+        **Grant Update**: Submit with modified scopes (updates existing grant)
+        **Grant Revocation**: Submit with empty delegated_oauth2_tokens array (deletes grant)
+
+        The principal is automatically derived from the authenticated session.
+      operationId: createOrUpdateGrant
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantRequest'
+      responses:
+        '200':
+          description: Grant updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserGrant'
+        '201':
+          description: Grant created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserGrant'
+        '204':
+          description: Grant revoked successfully (empty scopes array)
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    AgentId:
+      name: agent-id
+      in: path
+      required: true
+      description: Unique identifier of the agent
+      schema:
+        type: string
+        format: uuid
+        example: 550e8400-e29b-41d4-a716-446655440000
+
+    ClientId:
+      name: client-id
+      in: path
+      required: true
+      description: Unique identifier of the OAuth2 service
+      schema:
+        type: string
+        format: uuid
+        example: 660e8400-e29b-41d4-a716-446655440001
+
+  schemas:
+    Agent:
+      type: object
+      required:
+        - id
+        - oauth2_client_id
+        - display_name
+        - description
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the agent (system-generated)
+          example: 550e8400-e29b-41d4-a716-446655440000
+        oauth2_client_id:
+          type: string
+          description: OAuth2 client_id for this agent
+          example: agent-assistant-prod
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier
+          example: gov-sys-12345
+        display_name:
+          type: string
+          description: Human-readable name for the agent
+          example: Research Assistant
+        description:
+          type: string
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information
+          example: https://example.com/agents/research-assistant/governance
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation
+          example: https://example.com/docs/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent
+          example: https://example.com/agent/research-assistant
+
+    AgentCreateRequest:
+      type: object
+      required:
+        - oauth2_client_id
+        - display_name
+        - description
+      properties:
+        oauth2_client_id:
+          type: string
+          description: OAuth2 client_id for this agent
+          example: agent-assistant-prod
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier
+          example: gov-sys-12345
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Human-readable name for the agent
+          example: Research Assistant
+        description:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information
+          example: https://example.com/agents/research-assistant/governance
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation
+          example: https://example.com/docs/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent
+          example: https://example.com/agent/research-assistant
+
+    AgentUpdateRequest:
+      type: object
+      properties:
+        oauth2_client_id:
+          type: string
+          description: OAuth2 client_id for this agent
+          example: agent-assistant-prod
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier
+          example: gov-sys-12345
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Human-readable name for the agent
+          example: Research Assistant
+        description:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information
+          example: https://example.com/agents/research-assistant/governance
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation
+          example: https://example.com/docs/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent
+          example: https://example.com/agent/research-assistant
+
+    OAuth2Service:
+      type: object
+      required:
+        - id
+        - display_name
+        - client_id
+        - issuer_uri
+        - discovery
+        - endpoints
+        - scopes
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the OAuth2 service (system-generated)
+          example: 660e8400-e29b-41d4-a716-446655440001
+        display_name:
+          type: string
+          description: Human-readable name for the service
+          example: GitHub Production
+        client_id:
+          type: string
+          description: OAuth2 client_id for this service
+          example: Iv1.1234567890abcdef
+        client_secret:
+          type: string
+          description: Always redacted in responses (shown as "***REDACTED***")
+          example: "***REDACTED***"
+          readOnly: true
+        issuer_uri:
+          type: string
+          format: uri
+          description: OAuth2 issuer URI
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfig'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2Endpoints'
+        scopes:
+          type: array
+          description: Available OAuth2 scopes for this service
+          items:
+            $ref: '#/components/schemas/OAuth2Scope'
+
+    OAuth2ServiceCreateRequest:
+      type: object
+      required:
+        - display_name
+        - client_id
+        - client_secret
+        - issuer_uri
+        - discovery
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Human-readable name for the service
+          example: GitHub Production
+        client_id:
+          type: string
+          minLength: 1
+          description: OAuth2 client_id for this service
+          example: Iv1.1234567890abcdef
+        client_secret:
+          type: string
+          minLength: 1
+          description: OAuth2 client_secret (encrypted at rest, never returned in responses)
+          example: abcdef1234567890secret
+        issuer_uri:
+          type: string
+          format: uri
+          description: OAuth2 issuer URI
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfig'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2EndpointsInput'
+        scopes:
+          type: array
+          description: Available OAuth2 scopes for this service
+          items:
+            $ref: '#/components/schemas/OAuth2Scope'
+          default: []
+
+    OAuth2ServiceUpdateRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Human-readable name for the service
+          example: GitHub Production
+        client_id:
+          type: string
+          minLength: 1
+          description: OAuth2 client_id for this service
+          example: Iv1.1234567890abcdef
+        client_secret:
+          type: string
+          minLength: 1
+          description: OAuth2 client_secret (encrypted at rest, never returned in responses)
+          example: abcdef1234567890secret
+        issuer_uri:
+          type: string
+          format: uri
+          description: OAuth2 issuer URI
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfig'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2EndpointsInput'
+        scopes:
+          type: array
+          description: Available OAuth2 scopes for this service
+          items:
+            $ref: '#/components/schemas/OAuth2Scope'
+
+    DiscoveryConfig:
+      type: object
+      required:
+        - enable_discovery
+      properties:
+        enable_discovery:
+          type: boolean
+          description: Whether to automatically discover OAuth2 endpoints
+          example: true
+        metadata_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional override for metadata discovery URL (defaults to {issuer}/.well-known/oauth-authorization-server)
+          example: https://github.com/.well-known/oauth-authorization-server
+
+    OAuth2Endpoints:
+      type: object
+      required:
+        - token_endpoint
+        - authorize_endpoint
+      properties:
+        token_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 token endpoint URL
+          example: https://github.com/login/oauth/access_token
+        authorize_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 authorization endpoint URL
+          example: https://github.com/login/oauth/authorize
+
+    OAuth2EndpointsInput:
+      type: object
+      description: |
+        OAuth2 endpoints (optional if discovery is enabled).
+        If discovery is disabled, both token_endpoint and authorize_endpoint must be provided.
+      properties:
+        token_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 token endpoint URL
+          example: https://github.com/login/oauth/access_token
+        authorize_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 authorization endpoint URL
+          example: https://github.com/login/oauth/authorize
+
+    OAuth2Scope:
+      type: object
+      required:
+        - scope_value
+        - description
+      properties:
+        scope_value:
+          type: string
+          description: OAuth2 scope value used in authorization requests
+          example: repo
+        description:
+          type: string
+          description: Human-readable description of what this scope allows
+          example: Full control of private repositories
+
+    AgentConsentInfo:
+      type: object
+      required:
+        - agent
+        - requested_services
+      properties:
+        agent:
+          type: object
+          description: Agent metadata for display to user
+          required:
+            - id
+            - display_name
+            - description
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: 550e8400-e29b-41d4-a716-446655440000
+            display_name:
+              type: string
+              example: Research Assistant
+            description:
+              type: string
+              example: AI assistant that helps with academic research
+            governance_url:
+              type: string
+              format: uri
+              nullable: true
+              example: https://example.com/governance
+            user_documentation_url:
+              type: string
+              format: uri
+              nullable: true
+              example: https://example.com/docs
+            agent_interface_url:
+              type: string
+              format: uri
+              nullable: true
+              example: https://example.com/agent
+        requested_services:
+          type: array
+          description: All third-party OAuth2 services requested by this agent (currently all configured services)
+          items:
+            type: object
+            required:
+              - id
+              - display_name
+              - scopes
+            properties:
+              id:
+                type: string
+                format: uuid
+                example: 660e8400-e29b-41d4-a716-446655440001
+              display_name:
+                type: string
+                example: GitHub Production
+              scopes:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OAuth2Scope'
+
+    UserGrant:
+      type: object
+      required:
+        - id
+        - principal
+        - agent_id
+        - delegated_oauth2_tokens
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the grant (system-generated)
+          example: 770e8400-e29b-41d4-a716-446655440002
+        principal:
+          type: string
+          description: User identifier (derived from authenticated session)
+          example: alice@example.com
+        agent_id:
+          type: string
+          format: uuid
+          description: Agent receiving the delegated permissions
+          example: 550e8400-e29b-41d4-a716-446655440000
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: Grant expiration timestamp (null for indefinite grants)
+          example: "2025-12-31T23:59:59Z"
+        delegated_oauth2_tokens:
+          type: array
+          description: List of OAuth2 services and scopes delegated to the agent
+          items:
+            $ref: '#/components/schemas/DelegatedOAuth2Token'
+
+    GrantRequest:
+      type: object
+      required:
+        - delegated_oauth2_tokens
+      properties:
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Optional expiration timestamp for the grant.
+            - Must be in the future if provided
+            - Omit for indefinite grants (no expiration)
+          example: "2025-12-31T23:59:59Z"
+        delegated_oauth2_tokens:
+          type: array
+          description: |
+            List of OAuth2 services and scopes to delegate to the agent.
+            - Empty array revokes the grant (deletes it)
+            - Non-empty array creates or updates the grant
+          items:
+            $ref: '#/components/schemas/DelegatedOAuth2Token'
+
+    DelegatedOAuth2Token:
+      type: object
+      required:
+        - thirdparty_oauth2_service_id
+        - scopes
+      properties:
+        thirdparty_oauth2_service_id:
+          type: string
+          format: uuid
+          description: ID of the third-party OAuth2 service
+          example: 660e8400-e29b-41d4-a716-446655440001
+        scopes:
+          type: array
+          description: OAuth2 scopes delegated for this service
+          items:
+            type: string
+          minItems: 1
+          example: ["repo", "read:org"]
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message describing what went wrong
+          example: Invalid request parameters
+        message:
+          type: string
+          description: Additional context about the error
+          example: Field 'display_name' is required
+        validation_errors:
+          type: array
+          description: Detailed validation errors for specific fields
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: valid_until
+              message:
+                type: string
+                example: Timestamp must be in the future
+              code:
+                type: string
+                example: FUTURE_DATE_REQUIRED
+
+  responses:
+    BadRequestError:
+      description: Invalid request parameters or validation errors
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            validation_error:
+              value:
+                error: Validation failed
+                message: One or more fields contain invalid values
+                validation_errors:
+                  - field: display_name
+                    message: Field is required
+                    code: REQUIRED_FIELD_MISSING
+                  - field: valid_until
+                    message: Timestamp must be in the future
+                    code: FUTURE_DATE_REQUIRED
+            invalid_scope:
+              value:
+                error: Invalid scopes
+                message: Requested scopes do not exist in service configuration
+                validation_errors:
+                  - field: scopes[2]
+                    message: Scope 'invalid_scope' does not exist in service
+                    code: SCOPE_NOT_FOUND
+
+    UnauthorizedError:
+      description: Authentication required or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Unauthorized
+            message: Missing or invalid authentication credentials
+
+    ForbiddenError:
+      description: Insufficient permissions to perform this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Forbidden
+            message: Administrative privileges required for this operation
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Not found
+            message: Agent with ID '550e8400-e29b-41d4-a716-446655440000' not found
+
+    ConflictError:
+      description: Resource conflict (duplicate, referential integrity violation, etc.)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            duplicate:
+              value:
+                error: Conflict
+                message: Agent with oauth2_client_id 'agent-assistant-prod' already exists
+            referential_integrity:
+              value:
+                error: Conflict
+                message: Cannot delete OAuth2 service with active grants
+                grants_count: 15
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Internal server error
+            message: An unexpected error occurred. Please try again later.
+
+  securitySchemes:
+    PreAuthProxy:
+      type: apiKey
+      in: header
+      name: X-Remote-User
+      description: |
+        Pre-authentication via reverse proxy. The proxy validates user credentials and sets
+        the principal (user identifier) in the X-Remote-User header (configurable).
+
+security:
+  - PreAuthProxy: []

@@ -1,0 +1,68 @@
+# GitHub Copilot Coding Agent Setup Steps
+# This workflow is used by GitHub Copilot to set up the development environment
+# before it can compile and run tests on this repository.
+#
+# See: https://docs.github.com/en/copilot/customizing-copilot/customizing-the-development-environment-for-copilot-coding-agent
+
+name: "Copilot Setup Steps"
+
+on: workflow_dispatch
+
+# Allow network access to hosts needed for tool installation
+env:
+  COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS: "just.systems"
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    # Set the permissions to the lowest permissions possible needed for your steps.
+    # Copilot will be given its own token for its operations.
+    permissions:
+      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
+      contents: read
+
+    steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # Set up Go
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      # Set up Node.js (for web frontend)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Install just command runner
+      - name: Install just
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+      # Install other tools
+      - name: "Install Tools via `just install-tools`"
+        run: just install-tools
+
+      # Install web dependencies
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      # Verify installation
+      - name: Verify tools
+        run: |
+          echo "=== Tool Versions ==="
+          echo "Go: $(go version)"
+          echo "Node: $(node --version)"
+          echo "npm: $(npm --version)"
+          echo "just: $(just --version)"
+          echo "ginkgo: $(ginkgo version)"
+          echo "golangci-lint: $(golangci-lint --version)"
+          echo "=== Build Test ==="
+          just build
+          echo "=== Ready for Copilot ===" 

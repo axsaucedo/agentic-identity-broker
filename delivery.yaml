@@ -1,0 +1,56 @@
+version: "2017-09-20"
+
+tags:
+  application: agentic-identity-broker
+
+pipeline:
+  - id: test
+    type: script
+    vm_config:
+      type: linux
+      image: cdp-runtime/go-1.25
+    commands:
+      - desc: "Install pre-requisites"
+        cmd: |
+          apt-get update
+          apt-get --yes install just npm curl
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get --yes install nodejs
+          just install-tools
+          just web-ci
+      - desc: "Run quality checks"
+        cmd: |
+          just check
+      - desc: "Run all tests (unit + integration)"
+        cmd: |
+          cdp-wrap-cmd "just test-all-junit" "cdp-tool upload-test-results -t junit $(pwd)/test-results/all-tests-junit.xml"
+      - desc: "Run artifacts build test"
+        cmd: |
+          just build-all
+
+  - id: release
+    type: script
+    when:
+      - event: push
+        branch: main
+    vm_config:
+      type: linux
+      image: cdp-runtime/go-1.25
+    cache:
+      paths:
+        # pkg cache for Go modules and Go build cache
+        - /go/pkg/mod
+        - ~/.cache/go-build
+    commands:
+      - desc: "Build and push Docker images (broker + migrate)"
+        cmd: |
+          # Build and push both images to ZCR (broker + migrate)
+          # docker-push target handles building Go binaries, frontend, and Docker images
+          just docker-push
+
+          # promote images to production during push/merge pipeline
+          # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker:${CDP_BUILD_VERSION}
+          # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker-migrate:${CDP_BUILD_VERSION}
+      - desc: git-tag
+        cmd: |
+          git gh-tag "${CDP_BUILD_VERSION}"

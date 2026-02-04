@@ -1,0 +1,12 @@
+# Development Configuration
+# In-memory storage for rapid development and testing
+
+log:
+  level: debug
+  format: text
+
+storage:
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s

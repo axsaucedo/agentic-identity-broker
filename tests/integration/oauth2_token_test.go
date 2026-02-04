@@ -1,0 +1,241 @@
+package integration
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestOAuth2TokenEndpoint_SuccessfulTokenExchange tests complete token exchange flow
+func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
+	// Mock upstream OAuth2 server
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
+
+		// Verify required token request parameters
+		err := r.ParseForm()
+		require.NoError(t, err)
+		assert.Equal(t, "authorization_code", r.FormValue("grant_type"))
+		assert.Equal(t, "auth_code_123", r.FormValue("code"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"access_token": "access_token_xyz",
+			"token_type": "Bearer",
+			"expires_in": 3600,
+			"scope": "openid profile"
+		}`))
+	}))
+	defer mockUpstream.Close()
+
+	handler := &enduser.OAuth2TokenHandler{
+		UpstreamTokenURL: mockUpstream.URL,
+	}
+
+	reqBody := strings.NewReader("grant_type=authorization_code&code=auth_code_123&client_id=client-1&client_secret=secret&redirect_uri=https://client.example.com/callback")
+	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	// Verify broker proxies response correctly
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+
+	respBody, _ := io.ReadAll(w.Body)
+	assert.Contains(t, string(respBody), "access_token_xyz")
+	assert.Contains(t, string(respBody), "Bearer")
+}
+
+// TestOAuth2TokenEndpoint_RefreshTokenGrant tests refresh token grant exchange
+func TestOAuth2TokenEndpoint_RefreshTokenGrant(t *testing.T) {
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := r.ParseForm()
+		require.NoError(t, err)
+		assert.Equal(t, "refresh_token", r.FormValue("grant_type"))
+		assert.Equal(t, "refresh_token_abc", r.FormValue("refresh_token"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"access_token": "new_access_token",
+			"token_type": "Bearer",
+			"expires_in": 3600
+		}`))
+	}))
+	defer mockUpstream.Close()
+
+	handler := &enduser.OAuth2TokenHandler{
+		UpstreamTokenURL: mockUpstream.URL,
+	}
+
+	reqBody := strings.NewReader("grant_type=refresh_token&refresh_token=refresh_token_abc&client_id=client-1&client_secret=secret")
+	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	respBody, _ := io.ReadAll(w.Body)
+	assert.Contains(t, string(respBody), "new_access_token")
+}
+
+// TestOAuth2TokenEndpoint_InvalidGrantError tests upstream error responses are proxied
+func TestOAuth2TokenEndpoint_InvalidGrantError(t *testing.T) {
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{
+			"error": "invalid_grant",
+			"error_description": "Authorization code has expired or been revoked"
+		}`))
+	}))
+	defer mockUpstream.Close()
+
+	handler := &enduser.OAuth2TokenHandler{
+		UpstreamTokenURL: mockUpstream.URL,
+	}
+
+	reqBody := strings.NewReader("grant_type=authorization_code&code=expired_code")
+	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	// Upstream error status and response preserved
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	respBody, _ := io.ReadAll(w.Body)
+	assert.Contains(t, string(respBody), "invalid_grant")
+	assert.Contains(t, string(respBody), "expired")
+}
+
+// TestOAuth2TokenEndpoint_HeadersFiltered tests hop-by-hop headers are filtered
+func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
+	// Mock upstream server that verifies hop-by-hop headers were filtered
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check that hop-by-hop headers were not forwarded
+		if r.Header.Get("Connection") != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error": "hop-by-hop headers not filtered"}`))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
+	}))
+	defer mockUpstream.Close()
+
+	handler := &enduser.OAuth2TokenHandler{
+		UpstreamTokenURL: mockUpstream.URL,
+	}
+
+	body := strings.NewReader("grant_type=authorization_code&code=abc123")
+	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Add hop-by-hop headers that should be filtered
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Transfer-Encoding", "chunked")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestOAuth2TokenEndpoint_StandardHeadersPreserved tests standard headers are preserved
+func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Custom-Header", "custom-value")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token": "token123", "token_type": "Bearer"}`))
+	}))
+	defer mockUpstream.Close()
+
+	handler := &enduser.OAuth2TokenHandler{
+		UpstreamTokenURL: mockUpstream.URL,
+	}
+
+	body := strings.NewReader("grant_type=authorization_code&code=abc123")
+	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// Verify response headers preserved
+	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+	assert.Equal(t, "custom-value", w.Header().Get("X-Custom-Header"))
+}
+
+// TestOAuth2TokenEndpoint_StatusCodePreserved tests various status codes are preserved
+func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
+	tests := []struct {
+		name           string
+		upstreamStatus int
+		upstreamBody   string
+	}{
+		{
+			name:           "200 OK",
+			upstreamStatus: http.StatusOK,
+			upstreamBody:   `{"access_token": "token", "token_type": "Bearer"}`,
+		},
+		{
+			name:           "400 Bad Request",
+			upstreamStatus: http.StatusBadRequest,
+			upstreamBody:   `{"error": "invalid_request"}`,
+		},
+		{
+			name:           "401 Unauthorized",
+			upstreamStatus: http.StatusUnauthorized,
+			upstreamBody:   `{"error": "invalid_client"}`,
+		},
+		{
+			name:           "500 Internal Server Error",
+			upstreamStatus: http.StatusInternalServerError,
+			upstreamBody:   `{"error": "server_error"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.upstreamStatus)
+				_, _ = w.Write([]byte(tt.upstreamBody))
+			}))
+			defer mockUpstream.Close()
+
+			handler := &enduser.OAuth2TokenHandler{
+				UpstreamTokenURL: mockUpstream.URL,
+			}
+
+			body := strings.NewReader("grant_type=authorization_code&code=abc123")
+			req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", body)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			// Verify status code preserved
+			assert.Equal(t, tt.upstreamStatus, w.Code)
+		})
+	}
+}

@@ -1,0 +1,28 @@
+# OAuth2 Authorization Server Proxy Configuration
+#
+# This configuration enables the identity broker to act as an RFC 6749 compliant
+# OAuth2 Authorization Server proxy, forwarding authorization and token requests
+# to an upstream OAuth2 server while handling consent checks via the grant system.
+
+oauth2_authorization_server:
+  # Upstream OAuth2 server configuration
+  upstream_issuer_uri: "https://auth.example.com"                    # Upstream OAuth2 issuer URL
+  upstream_authorize_endpoint: "https://auth.example.com/authorize"  # Upstream authorization endpoint
+  upstream_token_endpoint: "https://auth.example.com/token"          # Upstream token endpoint
+
+  # Broker's public configuration
+  public_base_url: "https://broker.example.com"  # Broker's public base URL used in OAuth2 metadata (/.well-known/oauth-authorization-server)
+
+  # Supported OAuth2 grant types
+  supported_response_types:
+    - code                                       # Authorization code flow (RFC 6749 Section 4.1)
+
+  supported_grant_types:
+    - authorization_code                         # Authorization code grant (RFC 6749 Section 4.1)
+    - refresh_token                              # Refresh token grant (RFC 6749 Section 6)
+
+  # Upstream HTTP client configuration
+  upstream_timeout_seconds: 30  # Timeout for upstream OAuth2 server requests (seconds)
+
+  # Broker mode
+  mode: "proxy"  # Mode of operation: "proxy" (default) proxies to upstream OAuth2 server

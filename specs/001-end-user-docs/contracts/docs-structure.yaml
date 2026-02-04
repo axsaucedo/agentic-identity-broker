@@ -1,0 +1,358 @@
+# Documentation Structure Contract
+# This file defines the complete structure of the Agentic Identity Broker documentation site
+
+metadata:
+  project: "Agentic Identity Broker"
+  documentation_version: "1.0.0"
+  docusaurus_version: "3.6.x"
+  created: "2025-12-14"
+  status: "active"
+
+site_config:
+  title: "Agentic Identity Broker Documentation"
+  tagline: "Identity brokering for agentic systems"
+  base_url: "/"
+  github_repo: "https://github.com/[org]/agentic-identity-broker"
+  default_language: "en"
+  color_mode:
+    default: "light"
+    respect_system_preference: true
+
+navigation:
+  sections:
+    - id: "introduction"
+      label: "Introduction"
+      collapsed: false
+      description: "Overview of the project, value proposition, and use cases"
+      pages:
+        - id: "index"
+          path: "introduction/index.md"
+          title: "What is Agentic Identity Broker?"
+          description: "Overview of the project's purpose and core concepts"
+          audience: "All users"
+          priority: "P1"
+
+        - id: "why-not-idp"
+          path: "introduction/why-not-idp.md"
+          title: "Why Not a Traditional Identity Provider?"
+          description: "Comparison with Keycloak, Auth0, Okta, and traditional IdPs"
+          audience: "Evaluators, decision makers"
+          priority: "P1"
+
+        - id: "use-cases"
+          path: "introduction/use-cases.md"
+          title: "Use Cases"
+          description: "Common scenarios for agentic identity brokering"
+          audience: "Evaluators, architects"
+          priority: "P1"
+
+    - id: "quick-start"
+      label: "Quick Start"
+      collapsed: false
+      description: "Get up and running in 15 minutes"
+      pages:
+        - id: "index"
+          path: "quick-start/index.md"
+          title: "Quick Start Overview"
+          description: "High-level steps to get broker running locally"
+          audience: "New developers"
+          priority: "P2"
+
+        - id: "prerequisites"
+          path: "quick-start/prerequisites.md"
+          title: "Prerequisites"
+          description: "Required dependencies and system requirements"
+          audience: "New developers"
+          priority: "P2"
+
+        - id: "installation"
+          path: "quick-start/installation.md"
+          title: "Installation"
+          description: "Step-by-step installation instructions"
+          audience: "New developers"
+          priority: "P2"
+
+        - id: "verification"
+          path: "quick-start/verification.md"
+          title: "Verify Installation"
+          description: "Confirm broker is working correctly"
+          audience: "New developers"
+          priority: "P2"
+
+    - id: "features"
+      label: "Features"
+      collapsed: true
+      description: "Available features, capabilities, and configuration"
+      pages:
+        - id: "index"
+          path: "features/index.md"
+          title: "Feature Overview"
+          description: "High-level overview of all features"
+          audience: "All users"
+          priority: "P3"
+
+        - id: "authentication"
+          path: "features/authentication.md"
+          title: "Authentication"
+          description: "Agent authentication mechanisms"
+          audience: "Developers, integrators"
+          priority: "P3"
+          status: "placeholder"
+
+        - id: "authorization"
+          path: "features/authorization.md"
+          title: "Authorization"
+          description: "Agent authorization and access control"
+          audience: "Developers, integrators"
+          priority: "P3"
+          status: "placeholder"
+
+        - id: "configuration"
+          path: "features/configuration.md"
+          title: "Configuration Reference"
+          description: "All configuration options, defaults, and environment variables"
+          audience: "Operators, developers"
+          priority: "P3"
+
+    - id: "api"
+      label: "API Reference"
+      collapsed: true
+      description: "API endpoints, request/response formats, and examples"
+      pages:
+        - id: "index"
+          path: "api/index.md"
+          title: "API Overview"
+          description: "API architecture and conventions"
+          audience: "Integrators"
+          priority: "P4"
+
+        - id: "authentication"
+          path: "api/authentication.md"
+          title: "Authentication Endpoints"
+          description: "API endpoints for agent authentication"
+          audience: "Integrators"
+          priority: "P4"
+          status: "placeholder"
+
+        - id: "error-codes"
+          path: "api/error-codes.md"
+          title: "Error Codes"
+          description: "Complete error code reference with causes and resolutions"
+          audience: "Integrators, troubleshooters"
+          priority: "P4"
+
+    - id: "architecture"
+      label: "Architecture"
+      collapsed: true
+      description: "System design, concepts, and glossary"
+      pages:
+        - id: "index"
+          path: "architecture/index.md"
+          title: "Architecture Overview"
+          description: "High-level system design (links to ARCHITECTURE.md)"
+          audience: "Architects, contributors"
+          priority: "P3"
+
+        - id: "concepts"
+          path: "architecture/concepts.md"
+          title: "Key Concepts"
+          description: "Core concepts and design principles"
+          audience: "Architects, contributors"
+          priority: "P3"
+
+        - id: "glossary"
+          path: "architecture/glossary.md"
+          title: "Glossary"
+          description: "Domain-specific terminology"
+          audience: "All users"
+          priority: "P3"
+
+    - id: "security"
+      label: "Security"
+      collapsed: true
+      description: "Security best practices and compliance"
+      pages:
+        - id: "index"
+          path: "security/index.md"
+          title: "Security Overview"
+          description: "Security architecture and principles"
+          audience: "Security engineers, operators"
+          priority: "P3"
+
+        - id: "best-practices"
+          path: "security/best-practices.md"
+          title: "Best Practices"
+          description: "Production security recommendations"
+          audience: "Operators, security engineers"
+          priority: "P3"
+
+        - id: "compliance"
+          path: "security/compliance.md"
+          title: "Compliance"
+          description: "Compliance considerations and certifications"
+          audience: "Security engineers, compliance officers"
+          priority: "P3"
+
+    - id: "troubleshooting"
+      label: "Troubleshooting"
+      collapsed: true
+      description: "Common issues, solutions, and support"
+      pages:
+        - id: "index"
+          path: "troubleshooting/index.md"
+          title: "Common Issues"
+          description: "Troubleshooting guide for common problems"
+          audience: "All users"
+          priority: "P5"
+
+        - id: "faq"
+          path: "troubleshooting/faq.md"
+          title: "FAQ"
+          description: "Frequently asked questions"
+          audience: "All users"
+          priority: "P5"
+
+    - id: "contributing"
+      label: "Contributing"
+      collapsed: true
+      description: "Guidelines for contributors"
+      pages:
+        - id: "index"
+          path: "contributing/index.md"
+          title: "Contributing Guide"
+          description: "How to contribute to the project"
+          audience: "Contributors"
+          priority: "P4"
+
+        - id: "code-of-conduct"
+          path: "contributing/code-of-conduct.md"
+          title: "Code of Conduct"
+          description: "Community standards and expectations"
+          audience: "Contributors"
+          priority: "P4"
+
+        - id: "development"
+          path: "contributing/development.md"
+          title: "Development Setup"
+          description: "Setting up local development environment"
+          audience: "Contributors"
+          priority: "P4"
+
+plugins:
+  required:
+    - name: "@docusaurus/preset-classic"
+      description: "Core Docusaurus functionality"
+      version: "3.6.x"
+
+  optional:
+    - name: "docusaurus-lunr-search"
+      description: "Local search functionality"
+      version: "latest"
+      rationale: "Provides search without requiring Algolia application"
+
+    - name: "@docusaurus/plugin-client-redirects"
+      description: "URL redirect support"
+      version: "3.6.x"
+      rationale: "Enables clean URL migrations as docs evolve"
+
+content_guidelines:
+  code_examples:
+    required: true
+    languages: ["bash", "go", "javascript", "python", "yaml"]
+    style: "practical, working examples"
+
+  tone:
+    voice: "technical but approachable"
+    audience: "developers with basic identity system knowledge"
+    security_focus: true
+
+  structure:
+    pattern: "code-first"
+    layers:
+      - name: "quick example"
+        description: "Working code snippet"
+      - name: "explanation"
+        description: "How it works and why"
+      - name: "configuration"
+        description: "Options and defaults"
+      - name: "advanced"
+        description: "Edge cases and complex scenarios"
+
+  linking:
+    internal: "extensive cross-linking between related topics"
+    external: "link to standards (RFCs) and related projects"
+
+  versioning:
+    strategy: "single version initially"
+    future: "multi-version support when releasing v1.0"
+
+deployment:
+  primary:
+    platform: "GitHub Pages"
+    url: "https://[org].github.io/agentic-identity-broker/"
+    build_command: "cd assets/docusaurus && npm run build"
+    deploy_command: "cd assets/docusaurus && npm run deploy"
+
+  alternatives:
+    - platform: "Netlify"
+      trigger: "automatic on main branch push"
+      build_command: "cd assets/docusaurus && npm run build"
+      publish_directory: "assets/docusaurus/build"
+
+    - platform: "Vercel"
+      trigger: "automatic on main branch push"
+      build_command: "cd assets/docusaurus && npm run build"
+      output_directory: "assets/docusaurus/build"
+
+quality_checks:
+  automated:
+    - check: "Markdown linting"
+      tool: "markdownlint-cli2"
+      command: "npx markdownlint-cli2 'docs/**/*.md'"
+
+    - check: "Link validation"
+      tool: "broken-link-checker"
+      command: "npx broken-link-checker http://localhost:3000"
+
+    - check: "Docusaurus build"
+      tool: "docusaurus"
+      command: "cd website && npm run build"
+
+  manual:
+    - check: "Technical accuracy review"
+      reviewer: "subject matter expert"
+
+    - check: "User experience testing"
+      reviewer: "external developer"
+
+    - check: "Security guidance review"
+      reviewer: "security engineer"
+
+maintenance:
+  update_triggers:
+    - "New feature implementation (per Constitution Principle IV)"
+    - "API changes or additions"
+    - "Configuration option changes"
+    - "Security best practice updates"
+
+  review_frequency:
+    technical_accuracy: "every major release"
+    link_validation: "monthly"
+    user_feedback: "continuous via GitHub issues"
+
+success_metrics:
+  - metric: "Time to first success"
+    target: "15 minutes for quick start"
+    measurement: "user testing"
+
+  - metric: "Documentation coverage"
+    target: "100% of public APIs documented"
+    measurement: "automated coverage check"
+
+  - metric: "User satisfaction"
+    target: ">90% find docs helpful"
+    measurement: "GitHub discussions feedback"
+
+  - metric: "Self-service rate"
+    target: "90% of questions answered by docs"
+    measurement: "GitHub issues tagged 'documentation'"

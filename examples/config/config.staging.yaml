@@ -1,0 +1,73 @@
+# Agentic Identity Broker - Staging Configuration
+# Use this configuration for staging/pre-production environments
+# Environment variables should be set separately for sensitive values
+# To run: IDENTITY_BROKER_LOG_LEVEL=info IDENTITY_BROKER_LOG_FORMAT=json agentic-identity-broker --config ./examples/config/config.staging.yaml
+
+log:
+  # Staging uses info level for normal operation
+  level: ${IDENTITY_BROKER_LOG_LEVEL:info}
+  # JSON format for structured logging and log aggregation
+  format: ${IDENTITY_BROKER_LOG_FORMAT:json}
+
+server:
+  # End-user server configuration (public-facing API)
+  enduser:
+    # Standard port for end-user traffic
+    port: 8000
+    # Bind to all interfaces (dual-stack IPv6/IPv4)
+    bind: "::"
+    # Authentication configuration for end-user server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        # Set by trusted reverse proxy (nginx, Traefik, HAProxy, etc.)
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER:X-Remote-User}
+
+  # Admin server configuration (internal management API)
+  admin:
+    # Standard admin port
+    port: 14000
+    # Bind to all interfaces in staging for testing
+    # In production, this should be restricted to internal network
+    bind: "::"
+    # Authentication configuration for admin server
+    authentication:
+      # Pre-authentication mode: Trust principals from reverse proxy headers
+      preauth:
+        # HTTP header containing the authenticated user principal
+        principal_header_name: ${IDENTITY_BROKER_PRINCIPAL_HEADER:X-Remote-User}
+
+  # Graceful shutdown configuration
+  shutdown:
+    # Standard timeout for staging environment
+    timeout: 30s
+
+storage:
+  # Staging uses in-memory storage for quick iteration
+  backend: memory
+  timeouts:
+    read: 5s
+    write: 10s
+
+encryption:
+  # Memory backend for staging (suitable for testing)
+  memory:
+    # Base64-encoded 32-byte AES-256 key
+    # MUST be provided via environment variable for security
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
+
+  # For AWS KMS backend (alternative for staging):
+  # aws_kms:
+  #   key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
+  #   dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys-Staging"
+
+# Future sections for expanded configuration:
+# database:
+#   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}
+#   max_connections: 20
+#   ssl_mode: require
+#
+# auth:
+#   jwt_secret: ${IDENTITY_BROKER_JWT_SECRET}
+#   token_expiry: 12h

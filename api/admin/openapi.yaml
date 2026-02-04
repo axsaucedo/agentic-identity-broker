@@ -1,0 +1,1507 @@
+openapi: 3.0.3
+info:
+  title: Agentic Identity Broker - Admin Server API
+  version: 1.0.0
+  description: |
+    Administrative REST APIs for the Agentic Identity Broker running on Port 14000.
+
+    ## Overview
+
+    The Admin Server provides full CRUD operations for managing:
+    - **AI Agents**: Registry of agents that can request delegated user permissions
+    - **Third-Party OAuth2 Services**: External OAuth2 providers (GitHub, Google, Databricks, etc.)
+    - **System Health**: Monitoring and health check endpoints
+
+    ## Dual-Port Architecture
+
+    The Agentic Identity Broker uses a dual-port HTTP server architecture:
+    - **Port 8000** (default): End-user server for consent management
+    - **Port 14000** (default): Admin server for configuration (this API)
+
+    ## Authentication & Authorization
+
+    All endpoints require authentication via reverse proxy (oauth2-proxy, nginx, etc.).
+    The proxy validates user credentials and sets the principal identifier in the
+    `X-Remote-User` header (configurable via `auth.principal_header`).
+
+    - **Admin endpoints**: Require administrative privileges (enforced at proxy level)
+    - **Health endpoint**: Public, no authentication required
+
+    ## Security Considerations
+
+    ### Client Secret Protection (SR-003)
+
+    - Client secrets are **NEVER** transmitted in plaintext to the frontend
+    - All API responses redact secrets with the value `"REDACTED"`
+    - Secrets are encrypted at rest using AES-256-GCM
+    - Update operations support secret rotation
+
+    ### URL Validation
+
+    - All URLs must use HTTP or HTTPS schemes
+    - OAuth2 issuer URIs **must** use HTTPS
+    - Metadata URLs **must** use HTTPS
+    - URL validation prevents injection attacks
+
+    ### Referential Integrity
+
+    - Services cannot be deleted if user grants reference them (409 Conflict)
+    - Agent deletion cascades to associated grants (logged for audit)
+
+    ## OAuth2 Discovery Support
+
+    Services can be configured with automatic endpoint discovery:
+    - **Enabled**: System fetches endpoints from `{issuer_uri}/.well-known/oauth-authorization-server`
+    - **Disabled**: Requires manual `token_endpoint` and `authorize_endpoint` configuration
+    - **Metadata URL**: Optional override for non-standard discovery locations
+
+    ## Error Handling
+
+    All error responses follow a consistent format with appropriate HTTP status codes.
+    See the ErrorResponse schema for details.
+
+  contact:
+    name: Agentic Identity Broker Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:14000
+    description: Admin server (default port 14000)
+  - url: http://localhost:8000
+    description: End-user server (health endpoint only)
+
+tags:
+  - name: Health
+    description: Health check and monitoring endpoints
+  - name: Agents
+    description: Administrative operations for AI agent registry management
+  - name: Services
+    description: Administrative operations for third-party OAuth2 service configurations
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: |
+        Returns the current health status of the HTTP server. Each server (end-user and admin)
+        has its own independent health endpoint that reports only that server's status.
+
+        This endpoint is **public** and does not require authentication.
+
+        **Status Codes**:
+        - `200 OK`: Server is healthy and accepting requests
+        - `503 Service Unavailable`: Server is starting, shutting down, or unhealthy
+
+        **Health States**:
+        - `healthy`: Server is operational and processing requests normally
+        - `starting`: Server is initializing (binding to port, setting up routes)
+        - `shutting_down`: Graceful shutdown in progress, completing in-flight requests
+        - `unhealthy`: Server encountered an error and requires restart
+      operationId: getHealth
+      tags:
+        - Health
+      security: []  # Public endpoint, no authentication required
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy_admin:
+                  summary: Healthy admin server
+                  value:
+                    status: healthy
+                    timestamp: '2025-12-19T10:30:00Z'
+                    uptime_seconds: 3600
+        '503':
+          description: Server is unavailable (starting, shutting down, or unhealthy)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                starting:
+                  summary: Server starting
+                  value:
+                    status: starting
+                    timestamp: '2025-12-19T10:25:00Z'
+                    uptime_seconds: 0
+                shutting_down:
+                  summary: Server shutting down
+                  value:
+                    status: shutting_down
+                    timestamp: '2025-12-19T11:30:00Z'
+                    uptime_seconds: 7200
+
+  /api/agents:
+    get:
+      summary: List all agents
+      description: |
+        Retrieve a list of all registered agents in the system.
+
+        Returns a direct array of agent objects (no envelope).
+        Agents are returned in no guaranteed order.
+      operationId: listAgents
+      tags:
+        - Agents
+      responses:
+        '200':
+          description: List of agents retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Agent'
+              examples:
+                multiple_agents:
+                  summary: Multiple agents
+                  value:
+                    - id: 550e8400-e29b-41d4-a716-446655440000
+                      client_id: agent-research-assistant
+                      display_name: Research Assistant
+                      description: AI assistant that helps with academic research
+                      governance_url: https://example.com/governance/research-assistant
+                      user_documentation_url: https://example.com/docs/research-assistant
+                      created_at: '2025-12-01T10:00:00Z'
+                      updated_at: '2025-12-01T10:00:00Z'
+                    - id: 660e8400-e29b-41d4-a716-446655440001
+                      client_id: agent-data-analyst
+                      external_id: gov-sys-12345
+                      display_name: Data Analyst
+                      description: Analyzes datasets and generates insights
+                      created_at: '2025-12-05T14:30:00Z'
+                      updated_at: '2025-12-10T09:15:00Z'
+                empty_list:
+                  summary: No agents configured
+                  value: []
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a new agent
+      description: |
+        Register a new AI agent in the identity broker system.
+
+        **Validation Rules**:
+        - `client_id`: Required, unique across all agents
+        - `display_name`: Required, max 255 characters
+        - `description`: Required, max 1000 characters
+        - URLs: Must be valid HTTP/HTTPS URLs if provided
+
+        **ID Generation**: System generates a UUID for the agent ID
+      operationId: createAgent
+      tags:
+        - Agents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCreateRequest'
+            examples:
+              minimal:
+                summary: Minimal agent
+                value:
+                  client_id: agent-simple-assistant
+                  display_name: Simple Assistant
+                  description: A basic AI assistant for general tasks
+              full:
+                summary: Full agent with all fields
+                value:
+                  client_id: agent-research-assistant
+                  external_id: gov-sys-12345
+                  display_name: Research Assistant
+                  description: AI assistant that helps with academic research by accessing papers, datasets, and citation databases
+                  governance_url: https://example.com/governance/research-assistant
+                  user_documentation_url: https://example.com/docs/research-assistant
+                  agent_interface_url: https://example.com/agent/research-assistant
+      responses:
+        '201':
+          description: Agent created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                client_id: agent-research-assistant
+                external_id: gov-sys-12345
+                display_name: Research Assistant
+                description: AI assistant that helps with academic research
+                governance_url: https://example.com/governance/research-assistant
+                user_documentation_url: https://example.com/docs/research-assistant
+                agent_interface_url: https://example.com/agent/research-assistant
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T10:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/agents/{agent-id}:
+    get:
+      summary: Get agent by ID
+      description: |
+        Retrieve detailed information about a specific agent.
+
+        Returns the complete agent configuration including all optional fields.
+      operationId: getAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                client_id: agent-research-assistant
+                display_name: Research Assistant
+                description: AI assistant that helps with academic research
+                governance_url: https://example.com/governance/research-assistant
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T10:30:00Z'
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: agent ID is required
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update agent
+      description: |
+        Update configuration for an existing agent.
+
+        **Update Semantics**:
+        - All fields in the request body will update the agent
+        - Omitted optional fields are preserved from existing configuration
+        - `created_at` timestamp is preserved
+        - `updated_at` timestamp is set to current time
+
+        **Validation**: Same rules as creation apply
+      operationId: updateAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentUpdateRequest'
+            examples:
+              update_display_name:
+                summary: Update display name only
+                value:
+                  client_id: agent-research-assistant
+                  display_name: Advanced Research Assistant
+                  description: AI assistant that helps with academic research
+              update_urls:
+                summary: Update documentation URLs
+                value:
+                  client_id: agent-research-assistant
+                  display_name: Research Assistant
+                  description: AI assistant that helps with academic research
+                  governance_url: https://example.com/governance/v2/research-assistant
+                  user_documentation_url: https://docs.example.com/research-assistant
+      responses:
+        '200':
+          description: Agent updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                client_id: agent-research-assistant
+                display_name: Advanced Research Assistant
+                description: AI assistant that helps with academic research
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T15:45:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete agent
+      description: |
+        Remove an agent from the system.
+
+        **Cascade Behavior**:
+        - All user grants associated with this agent are automatically deleted
+        - Deletion is logged for audit purposes
+
+        **Irreversible**: This operation cannot be undone
+      operationId: deleteAgent
+      tags:
+        - Agents
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '204':
+          description: Agent deleted successfully (no content)
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: agent ID is required
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/services:
+    get:
+      summary: List all OAuth2 services
+      description: |
+        Retrieve a list of all configured third-party OAuth2 services.
+
+        Returns a direct array of service objects (no envelope).
+
+        **Security**: All `client_secret` fields are redacted as `"REDACTED"`
+      operationId: listServices
+      tags:
+        - Services
+      responses:
+        '200':
+          description: List of services retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Service'
+              examples:
+                multiple_services:
+                  summary: Multiple services
+                  value:
+                    - id: 770e8400-e29b-41d4-a716-446655440002
+                      display_name: GitHub Production
+                      client_id: Iv1.1234567890abcdef
+                      client_secret: REDACTED
+                      issuer_uri: https://github.com
+                      discovery:
+                        enable_discovery: true
+                      endpoints:
+                        token_endpoint: https://github.com/login/oauth/access_token
+                        authorize_endpoint: https://github.com/login/oauth/authorize
+                      scopes:
+                        - scope_value: repo
+                          description: Full control of private repositories
+                        - scope_value: read:org
+                          description: Read organization membership
+                      created_at: '2025-12-01T09:00:00Z'
+                      updated_at: '2025-12-15T14:30:00Z'
+                    - id: 880e8400-e29b-41d4-a716-446655440003
+                      display_name: Google Cloud
+                      client_id: 123456789-abcdef.apps.googleusercontent.com
+                      client_secret: REDACTED
+                      issuer_uri: https://accounts.google.com
+                      discovery:
+                        enable_discovery: true
+                      endpoints:
+                        token_endpoint: https://oauth2.googleapis.com/token
+                        authorize_endpoint: https://accounts.google.com/o/oauth2/v2/auth
+                      scopes:
+                        - scope_value: https://www.googleapis.com/auth/drive.readonly
+                          description: View and download Google Drive files
+                      created_at: '2025-12-05T11:20:00Z'
+                      updated_at: '2025-12-05T11:20:00Z'
+                empty_list:
+                  summary: No services configured
+                  value: []
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a new OAuth2 service
+      description: |
+        Configure a new third-party OAuth2 service provider.
+
+        **Validation Rules**:
+        - `display_name`: Required, max 255 characters
+        - `client_id`: Required, unique across all services
+        - `client_secret`: Required (encrypted at rest, never returned)
+        - `issuer_uri`: Required, must be HTTPS URL
+        - `scopes`: Required, at least one scope must be provided
+
+        **Discovery Modes**:
+
+        1. **Automatic Discovery** (`enable_discovery: true`):
+           - System fetches endpoints from `{issuer_uri}/.well-known/oauth-authorization-server`
+           - Optional `metadata_url` can override default discovery location
+           - Falls back to manual `endpoints` if discovery fails
+
+        2. **Manual Configuration** (`enable_discovery: false`):
+           - Requires `endpoints.token_endpoint` and `endpoints.authorize_endpoint`
+
+        **Security**: `client_secret` is encrypted with AES-256-GCM before storage
+      operationId: createService
+      tags:
+        - Services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceCreateRequest'
+            examples:
+              github_discovery:
+                summary: GitHub with automatic discovery
+                value:
+                  display_name: GitHub Production
+                  client_id: Iv1.1234567890abcdef
+                  client_secret: ghp_secretkey1234567890abcdef
+                  issuer_uri: https://github.com
+                  discovery:
+                    enable_discovery: true
+                  scopes:
+                    - scope_value: repo
+                      description: Full control of private repositories
+                    - scope_value: read:org
+                      description: Read organization membership
+                    - scope_value: user:email
+                      description: Read user email addresses
+              manual_endpoints:
+                summary: Custom OAuth2 provider with manual endpoints
+                value:
+                  display_name: Corporate SSO
+                  client_id: corp-sso-client-123
+                  client_secret: secret-value-never-exposed
+                  issuer_uri: https://sso.corp.example.com
+                  discovery:
+                    enable_discovery: false
+                  endpoints:
+                    token_endpoint: https://sso.corp.example.com/oauth/token
+                    authorize_endpoint: https://sso.corp.example.com/oauth/authorize
+                  scopes:
+                    - scope_value: profile
+                      description: Access user profile information
+                    - scope_value: corporate_data
+                      description: Access corporate data systems
+      responses:
+        '201':
+          description: Service created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+              example:
+                id: 770e8400-e29b-41d4-a716-446655440002
+                display_name: GitHub Production
+                client_id: Iv1.1234567890abcdef
+                client_secret: REDACTED
+                issuer_uri: https://github.com
+                discovery:
+                  enable_discovery: true
+                endpoints:
+                  token_endpoint: https://github.com/login/oauth/access_token
+                  authorize_endpoint: https://github.com/login/oauth/authorize
+                scopes:
+                  - scope_value: repo
+                    description: Full control of private repositories
+                  - scope_value: read:org
+                    description: Read organization membership
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T10:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          description: Conflict - duplicate client_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: conflict
+                message: Service with client_id 'Iv1.1234567890abcdef' already exists
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/services/{service-id}:
+    get:
+      summary: Get OAuth2 service by ID
+      description: |
+        Retrieve detailed configuration for a specific OAuth2 service.
+
+        **Security**: `client_secret` is always redacted as `"REDACTED"`
+      operationId: getService
+      tags:
+        - Services
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+      responses:
+        '200':
+          description: Service retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+              example:
+                id: 770e8400-e29b-41d4-a716-446655440002
+                display_name: GitHub Production
+                client_id: Iv1.1234567890abcdef
+                client_secret: REDACTED
+                issuer_uri: https://github.com
+                discovery:
+                  enable_discovery: true
+                endpoints:
+                  token_endpoint: https://github.com/login/oauth/access_token
+                  authorize_endpoint: https://github.com/login/oauth/authorize
+                scopes:
+                  - scope_value: repo
+                    description: Full control of private repositories
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T10:30:00Z'
+        '400':
+          description: Invalid service ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: client ID is required
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update OAuth2 service
+      description: |
+        Update configuration for an existing OAuth2 service.
+
+        **Update Semantics**:
+        - All fields in the request body will update the service
+        - Omitted optional fields are preserved from existing configuration
+        - `created_at` timestamp is preserved
+        - `updated_at` timestamp is set to current time
+
+        **Secret Rotation**:
+        - Provide new `client_secret` to rotate credentials
+        - New secret is encrypted before storage
+        - Old secret is securely discarded
+
+        **Discovery Re-run**:
+        - If `enable_discovery: true`, endpoints are re-fetched
+        - Useful for services that change endpoint URLs
+
+        **Security**: `client_secret` is redacted in response
+      operationId: updateService
+      tags:
+        - Services
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceUpdateRequest'
+            examples:
+              rotate_secret:
+                summary: Rotate client secret
+                value:
+                  display_name: GitHub Production
+                  client_id: Iv1.1234567890abcdef
+                  client_secret: ghp_newsecretkey9876543210zyxwvu
+                  issuer_uri: https://github.com
+                  discovery:
+                    enable_discovery: true
+                  scopes:
+                    - scope_value: repo
+                      description: Full control of private repositories
+                    - scope_value: read:org
+                      description: Read organization membership
+              add_scopes:
+                summary: Add new OAuth2 scopes
+                value:
+                  display_name: GitHub Production
+                  client_id: Iv1.1234567890abcdef
+                  client_secret: ghp_secretkey1234567890abcdef
+                  issuer_uri: https://github.com
+                  discovery:
+                    enable_discovery: true
+                  scopes:
+                    - scope_value: repo
+                      description: Full control of private repositories
+                    - scope_value: read:org
+                      description: Read organization membership
+                    - scope_value: workflow
+                      description: Update GitHub Actions workflows
+      responses:
+        '200':
+          description: Service updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+              example:
+                id: 770e8400-e29b-41d4-a716-446655440002
+                display_name: GitHub Production
+                client_id: Iv1.1234567890abcdef
+                client_secret: REDACTED
+                issuer_uri: https://github.com
+                discovery:
+                  enable_discovery: true
+                endpoints:
+                  token_endpoint: https://github.com/login/oauth/access_token
+                  authorize_endpoint: https://github.com/login/oauth/authorize
+                scopes:
+                  - scope_value: repo
+                    description: Full control of private repositories
+                  - scope_value: read:org
+                    description: Read organization membership
+                  - scope_value: workflow
+                    description: Update GitHub Actions workflows
+                created_at: '2025-12-19T10:30:00Z'
+                updated_at: '2025-12-19T16:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete OAuth2 service
+      description: |
+        Remove an OAuth2 service from the system.
+
+        **Referential Integrity Check**:
+        - Operation fails with 409 Conflict if user grants reference this service
+        - Administrators must revoke or modify grants before deletion
+        - This prevents breaking active user permissions
+
+        **Irreversible**: This operation cannot be undone
+      operationId: deleteService
+      tags:
+        - Services
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+      responses:
+        '204':
+          description: Service deleted successfully (no content)
+        '400':
+          description: Invalid service ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: client ID is required
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Cannot delete service with active grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                grants_exist:
+                  summary: Service has active grants
+                  value:
+                    error: conflict
+                    message: Cannot delete service 'GitHub Production' - 15 user grants reference it. Revoke grants first.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    AgentId:
+      name: agent-id
+      in: path
+      required: true
+      description: Unique identifier of the agent (UUID format)
+      schema:
+        type: string
+        format: uuid
+        example: 550e8400-e29b-41d4-a716-446655440000
+
+    ServiceId:
+      name: service-id
+      in: path
+      required: true
+      description: Unique identifier of the OAuth2 service (UUID format)
+      schema:
+        type: string
+        format: uuid
+        example: 770e8400-e29b-41d4-a716-446655440002
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime_seconds
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - starting
+            - shutting_down
+            - unhealthy
+          description: Current health state of the server
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the health check (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+        uptime_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of seconds since the server started
+          example: 3600
+      example:
+        status: healthy
+        timestamp: '2025-12-19T10:30:00Z'
+        uptime_seconds: 3600
+
+    Agent:
+      type: object
+      required:
+        - id
+        - client_id
+        - display_name
+        - description
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the agent (system-generated UUID)
+          example: 550e8400-e29b-41d4-a716-446655440000
+          readOnly: true
+        client_id:
+          type: string
+          description: |
+            OAuth2 client_id for this agent. Must be unique across all agents.
+            Used to identify the agent in OAuth2 flows.
+          example: agent-research-assistant
+          maxLength: 255
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier for tracking and audit
+          example: gov-sys-12345
+          maxLength: 255
+        display_name:
+          type: string
+          description: Human-readable name for the agent displayed to end users
+          example: Research Assistant
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+          minLength: 1
+          maxLength: 1000
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information (must be HTTP/HTTPS)
+          example: https://example.com/agents/research-assistant/governance
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation (must be HTTP/HTTPS)
+          example: https://example.com/docs/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent (must be HTTP/HTTPS)
+          example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            - **Mandatory requirements**: Block authorization if user lacks active sessions with required scopes
+            - **Optional requirements**: Display in consent UI but never block authorization
+            - Referential integrity enforced: service_id must exist, required_scopes must match service definition
+          items:
+            $ref: '#/components/schemas/ServiceRequirement'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              service_name: GitHub
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
+            - service_id: 550e8400-e29b-41d4-a716-446655440002
+              service_name: Google Drive
+              requirement_type: optional
+              required_scopes:
+                - https://www.googleapis.com/auth/drive.readonly
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the agent was created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the agent was last updated (RFC3339 format)
+          example: '2025-12-19T15:45:00Z'
+          readOnly: true
+
+    AgentCreateRequest:
+      type: object
+      required:
+        - client_id
+        - display_name
+        - description
+      properties:
+        client_id:
+          type: string
+          description: OAuth2 client_id for this agent (must be unique)
+          example: agent-research-assistant
+          maxLength: 255
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier
+          example: gov-sys-12345
+          maxLength: 255
+        display_name:
+          type: string
+          description: Human-readable name for the agent
+          example: Research Assistant
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+          minLength: 1
+          maxLength: 1000
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information (must be HTTP/HTTPS)
+          example: https://example.com/agents/research-assistant/governance
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation (must be HTTP/HTTPS)
+          example: https://example.com/docs/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent (must be HTTP/HTTPS)
+          example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            Referential integrity is validated: service_id must exist and required_scopes must match service definition.
+          items:
+            $ref: '#/components/schemas/ServiceRequirementRequest'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
+
+    AgentUpdateRequest:
+      type: object
+      required:
+        - client_id
+        - display_name
+        - description
+      properties:
+        client_id:
+          type: string
+          description: OAuth2 client_id for this agent
+          example: agent-research-assistant
+          maxLength: 255
+        external_id:
+          type: string
+          nullable: true
+          description: Optional external governance system identifier
+          example: gov-sys-12345
+          maxLength: 255
+        display_name:
+          type: string
+          description: Human-readable name for the agent
+          example: Advanced Research Assistant
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the agent's purpose and capabilities
+          example: AI assistant that helps with academic research by accessing papers and datasets
+          minLength: 1
+          maxLength: 1000
+        governance_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to governance and compliance information (must be HTTP/HTTPS)
+          example: https://example.com/governance/v2/research-assistant
+        user_documentation_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to user-facing documentation (must be HTTP/HTTPS)
+          example: https://docs.example.com/research-assistant
+        agent_interface_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL where users can interact with the agent (must be HTTP/HTTPS)
+          example: https://example.com/agent/research-assistant
+        service_requirements:
+          type: array
+          nullable: true
+          description: |
+            List of third-party OAuth2 services that the agent requires access to.
+            Referential integrity is validated: service_id must exist and required_scopes must match service definition.
+          items:
+            $ref: '#/components/schemas/ServiceRequirementRequest'
+          example:
+            - service_id: 550e8400-e29b-41d4-a716-446655440001
+              requirement_type: mandatory
+              required_scopes:
+                - repo
+                - user:email
+
+    ServiceRequirement:
+      type: object
+      required:
+        - service_id
+        - requirement_type
+        - required_scopes
+      properties:
+        service_id:
+          type: string
+          format: uuid
+          description: UUID of the third-party OAuth2 service this requirement references
+          example: 550e8400-e29b-41d4-a716-446655440001
+        service_name:
+          type: string
+          description: Display name of the referenced service (resolved from service configuration)
+          example: GitHub
+          readOnly: true
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          description: |
+            - **mandatory**: Authorization fails if user lacks active session with required scopes
+            - **optional**: Displayed in consent UI but never blocks authorization
+          example: mandatory
+        required_scopes:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: |
+            List of OAuth2 scopes the agent requires from this service.
+            - Scopes are case-sensitive and must match service scope definitions
+            - User must have superset of required scopes (case-sensitive comparison)
+          example:
+            - repo
+            - user:email
+
+    ServiceRequirementRequest:
+      type: object
+      required:
+        - service_id
+        - requirement_type
+        - required_scopes
+      properties:
+        service_id:
+          type: string
+          format: uuid
+          description: UUID of the third-party OAuth2 service this requirement references
+          example: 550e8400-e29b-41d4-a716-446655440001
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          description: |
+            - **mandatory**: Authorization fails if user lacks active session with required scopes
+            - **optional**: Displayed in consent UI but never blocks authorization
+          example: mandatory
+        required_scopes:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: |
+            List of OAuth2 scopes the agent requires from this service.
+            Referential integrity enforced: all scopes must exist in the referenced service's scope definitions.
+          example:
+            - repo
+            - user:email
+
+    Service:
+      type: object
+      required:
+        - id
+        - display_name
+        - client_id
+        - client_secret
+        - issuer_uri
+        - discovery
+        - endpoints
+        - scopes
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the service (system-generated UUID)
+          example: 770e8400-e29b-41d4-a716-446655440002
+          readOnly: true
+        display_name:
+          type: string
+          description: Human-readable name for the service displayed to end users
+          example: GitHub Production
+          minLength: 1
+          maxLength: 255
+        client_id:
+          type: string
+          description: OAuth2 client_id for this service (must be unique)
+          example: Iv1.1234567890abcdef
+        client_secret:
+          type: string
+          description: |
+            OAuth2 client_secret for this service.
+
+            **SECURITY**: Always returns "REDACTED" in API responses per SR-003.
+            Client secrets are never transmitted to the frontend.
+            Secrets are encrypted at rest using AES-256-GCM.
+          example: REDACTED
+          readOnly: true
+        issuer_uri:
+          type: string
+          format: uri
+          description: OAuth2 issuer URI (must be HTTPS)
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfig'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2Endpoints'
+        scopes:
+          type: array
+          description: Available OAuth2 scopes for this service (at least one required)
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OAuth2Scope'
+        protected_resources:
+          type: array
+          description: |
+            List of protected resource URIs for RFC 8693 token exchange.
+            These URIs identify which resources this service can provide tokens for.
+            URIs are normalized (trailing slashes removed) for consistent matching.
+            Example: ["https://api.github.com", "https://github.com/api/v3"]
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the service was created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the service was last updated (RFC3339 format)
+          example: '2025-12-19T15:45:00Z'
+          readOnly: true
+
+    ServiceCreateRequest:
+      type: object
+      required:
+        - display_name
+        - client_id
+        - client_secret
+        - issuer_uri
+        - discovery
+        - scopes
+      properties:
+        display_name:
+          type: string
+          description: Human-readable name for the service
+          example: GitHub Production
+          minLength: 1
+          maxLength: 255
+        client_id:
+          type: string
+          description: OAuth2 client_id for this service (must be unique)
+          example: Iv1.1234567890abcdef
+          minLength: 1
+        client_secret:
+          type: string
+          description: |
+            OAuth2 client_secret for this service.
+
+            **SECURITY**: Encrypted at rest using AES-256-GCM.
+            Never returned in API responses (always "REDACTED").
+          example: ghp_secretkey1234567890abcdef
+          minLength: 1
+          writeOnly: true
+        issuer_uri:
+          type: string
+          format: uri
+          description: OAuth2 issuer URI (must be HTTPS URL)
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfigRequest'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2EndpointsRequest'
+        scopes:
+          type: array
+          description: Available OAuth2 scopes for this service (at least one required)
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OAuth2ScopeRequest'
+          example:
+            - scope_value: repo
+              description: Full control of private repositories
+            - scope_value: read:org
+              description: Read organization membership
+        protected_resources:
+          type: array
+          description: |
+            List of protected resource URIs for RFC 8693 token exchange (optional).
+            These URIs identify which resources this service can provide tokens for.
+            URIs are normalized (trailing slashes removed) for consistent matching.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
+
+    ServiceUpdateRequest:
+      type: object
+      required:
+        - display_name
+        - client_id
+        - client_secret
+        - issuer_uri
+        - discovery
+        - scopes
+      properties:
+        display_name:
+          type: string
+          description: Human-readable name for the service
+          example: GitHub Production
+          minLength: 1
+          maxLength: 255
+        client_id:
+          type: string
+          description: OAuth2 client_id for this service
+          example: Iv1.1234567890abcdef
+          minLength: 1
+        client_secret:
+          type: string
+          description: |
+            OAuth2 client_secret for this service (provide new value to rotate).
+
+            **SECURITY**: Encrypted at rest, never returned in responses.
+          example: ghp_newsecretkey9876543210zyxwvu
+          minLength: 1
+          writeOnly: true
+        issuer_uri:
+          type: string
+          format: uri
+          description: OAuth2 issuer URI (must be HTTPS URL)
+          example: https://github.com
+        discovery:
+          $ref: '#/components/schemas/DiscoveryConfigRequest'
+        endpoints:
+          $ref: '#/components/schemas/OAuth2EndpointsRequest'
+        scopes:
+          type: array
+          description: Available OAuth2 scopes for this service (at least one required)
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OAuth2ScopeRequest'
+        protected_resources:
+          type: array
+          description: |
+            List of protected resource URIs for RFC 8693 token exchange (optional).
+            These URIs identify which resources this service can provide tokens for.
+            URIs are normalized (trailing slashes removed) for consistent matching.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.github.com
+            - https://github.com/api/v3
+
+    DiscoveryConfig:
+      type: object
+      required:
+        - enable_discovery
+      properties:
+        enable_discovery:
+          type: boolean
+          description: |
+            Whether to automatically discover OAuth2 endpoints.
+
+            - `true`: Fetch from `{issuer_uri}/.well-known/oauth-authorization-server`
+            - `false`: Use manually configured endpoints (required)
+          example: true
+        metadata_url:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Optional override for metadata discovery URL (must be HTTPS).
+            If not provided, defaults to `{issuer_uri}/.well-known/oauth-authorization-server`
+          example: https://github.com/.well-known/oauth-authorization-server
+
+    DiscoveryConfigRequest:
+      type: object
+      required:
+        - enable_discovery
+      properties:
+        enable_discovery:
+          type: boolean
+          description: Whether to automatically discover OAuth2 endpoints
+          example: true
+        metadata_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional override for metadata discovery URL (must be HTTPS)
+          example: https://github.com/.well-known/oauth-authorization-server
+
+    OAuth2Endpoints:
+      type: object
+      required:
+        - token_endpoint
+        - authorize_endpoint
+      properties:
+        token_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 token endpoint URL
+          example: https://github.com/login/oauth/access_token
+        authorize_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 authorization endpoint URL
+          example: https://github.com/login/oauth/authorize
+
+    OAuth2EndpointsRequest:
+      type: object
+      description: |
+        OAuth2 endpoints configuration.
+
+        **Required when** `discovery.enable_discovery = false`
+        **Optional when** `discovery.enable_discovery = true` (used as fallback)
+      properties:
+        token_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 token endpoint URL
+          example: https://github.com/login/oauth/access_token
+        authorize_endpoint:
+          type: string
+          format: uri
+          description: OAuth2 authorization endpoint URL
+          example: https://github.com/login/oauth/authorize
+
+    OAuth2Scope:
+      type: object
+      required:
+        - scope_value
+        - description
+      properties:
+        scope_value:
+          type: string
+          description: OAuth2 scope value used in authorization requests
+          example: repo
+          minLength: 1
+        description:
+          type: string
+          description: Human-readable description of what this scope allows
+          example: Full control of private repositories
+          minLength: 1
+
+    OAuth2ScopeRequest:
+      type: object
+      required:
+        - scope_value
+        - description
+      properties:
+        scope_value:
+          type: string
+          description: OAuth2 scope value used in authorization requests
+          example: repo
+          minLength: 1
+        description:
+          type: string
+          description: Human-readable description of what this scope allows
+          example: Full control of private repositories
+          minLength: 1
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error type or category
+          example: validation failed
+        message:
+          type: string
+          description: Additional context about the error
+          example: display_name exceeds 255 characters (got 300)
+
+  responses:
+    BadRequestError:
+      description: Invalid request parameters or validation errors
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_required:
+              summary: Missing required field
+              value:
+                error: invalid request body
+                message: display_name is required
+            validation_failed:
+              summary: Validation failure
+              value:
+                error: validation failed
+                message: display_name exceeds 255 characters (got 300)
+            invalid_url:
+              summary: Invalid URL format
+              value:
+                error: validation failed
+                message: governance_url is not a valid HTTP/HTTPS URL
+            invalid_issuer:
+              summary: Issuer URI must be HTTPS
+              value:
+                error: validation failed
+                message: issuer_uri must be a valid HTTPS URL
+            missing_endpoints:
+              summary: Endpoints required when discovery disabled
+              value:
+                error: validation failed
+                message: token_endpoint is required when discovery is disabled
+            no_scopes:
+              summary: At least one scope required
+              value:
+                error: validation failed
+                message: at least one scope is required
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            agent_not_found:
+              summary: Agent not found
+              value:
+                error: agent not found
+                message: Agent with ID '550e8400-e29b-41d4-a716-446655440000' does not exist
+            service_not_found:
+              summary: Service not found
+              value:
+                error: service not found
+                message: Service with ID '770e8400-e29b-41d4-a716-446655440002' does not exist
+
+    ConflictError:
+      description: Resource conflict (duplicate identifier)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            duplicate_agent:
+              summary: Duplicate agent client_id
+              value:
+                error: conflict
+                message: Agent with client_id 'agent-research-assistant' already exists
+            duplicate_service:
+              summary: Duplicate service client_id
+              value:
+                error: conflict
+                message: Service with client_id 'Iv1.1234567890abcdef' already exists
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: internal server error
+
+  securitySchemes:
+    PreAuthProxy:
+      type: apiKey
+      in: header
+      name: X-Remote-User
+      description: |
+        Pre-authentication via reverse proxy (oauth2-proxy, nginx, etc.).
+
+        The proxy validates user credentials and sets the principal (user identifier)
+        in the configured HTTP header (default: `X-Remote-User`).
+
+        **Configuration**: Header name is configurable via `auth.principal_header`
+
+        **Admin Access**: All admin endpoints require administrative privileges,
+        enforced at the proxy level before requests reach this API.
+
+security:
+  - PreAuthProxy: []
