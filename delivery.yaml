@@ -53,12 +53,12 @@ pipeline:
           apt-get --yes install just
 
           NAME="${CDP_REGISTRY}/infosec/agentic-identity-broker"
-          IMAGE=${NAME}:${CDP_BUILD_VERSION}
           
-          just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-build-all
           if [ -z "$CDP_PULL_REQUEST_NUMBER" ]; then
             just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-push
             just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-promote
+          else
+            just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-build-all
           fi
       - desc: git-tag
         cmd: |
