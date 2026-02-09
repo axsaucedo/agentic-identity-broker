@@ -47,7 +47,11 @@ pipeline:
       - desc: "Build and push Docker images (broker + migrate)"
         cmd: |
           apt-get update
-          apt-get --yes install just
+          apt-get --yes install just npm curl
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get --yes install nodejs
+          just install-tools
+          just web-ci
 
           IMAGE_NAME="${CDP_REGISTRY}/infosec/agentic-identity-broker"
 
