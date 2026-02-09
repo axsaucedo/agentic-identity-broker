@@ -49,13 +49,13 @@ pipeline:
           apt-get update
           apt-get --yes install just
 
-          NAME="${CDP_REGISTRY}/infosec/agentic-identity-broker"
-          
+          IMAGE_NAME="${CDP_REGISTRY}/infosec/agentic-identity-broker"
+
           if [ -z "$CDP_PULL_REQUEST_NUMBER" ]; then
-            just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-push
-            just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-promote
+            just VERSION="${CDP_BUILD_VERSION}" IMAGE_NAME="${IMAGE_NAME}" docker-push
+            just VERSION="${CDP_BUILD_VERSION}" IMAGE_NAME="${IMAGE_NAME}" docker-promote
           else
-            just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-build-all
+            just VERSION="${CDP_BUILD_VERSION}" IMAGE_NAME="${IMAGE_NAME}" docker-build-all
           fi
       - desc: git-tag
         cmd: |

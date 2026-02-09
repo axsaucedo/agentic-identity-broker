@@ -1,5 +1,6 @@
 # Variable definitions
 NAME := "agentic-identity-broker"
+IMAGE_NAME := env_var_or_default("IMAGE_NAME", "agentic-identity-broker")
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
 
 # Determine compose command (docker compose or podman-compose)
@@ -413,30 +414,30 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
         echo "Note: buildx config not found at $$BUILDKIT_CONFIG"; \
         docker buildx create --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
     fi; \
-    echo "Building broker image: {{NAME}}:{{VERSION}}..."; \
-    docker buildx build --rm -t "{{NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
-    echo "Building migrate image: {{NAME}}-migrate:{{VERSION}}..."; \
-    docker buildx build --rm -t "{{NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .
+    echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."; \
+    docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
+    echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."; \
+    docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .
     @echo "✓ Multi-architecture images pushed:"
-    @echo "  - {{NAME}}:{{VERSION}}"
-    @echo "  - {{NAME}}-migrate:{{VERSION}}"
+    @echo "  - {{IMAGE_NAME}}:{{VERSION}}"
+    @echo "  - {{IMAGE_NAME}}-migrate:{{VERSION}}"
 
 docker-promote:
     @echo "Promoting docker images to production channel..."
-    cdp-promote-image $NAME:$VERSION
-    cdp-promote-image $NAME-migrate:$VERSION
+    cdp-promote-image {{IMAGE_NAME}}:{{VERSION}}
+    cdp-promote-image {{IMAGE_NAME}}-migrate:{{VERSION}}
 
 # Build multi-architecture migrate Docker image locally (no push)
 docker-build-migrate:
-    @echo "Building migrate Docker image: {{NAME}}-migrate:{{VERSION}}..."
-    @docker buildx build --rm -t "{{NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --load .
-    @echo "✓ Migrate image built: {{NAME}}-migrate:{{VERSION}}"
+    @echo "Building migrate Docker image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."
+    @docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --load .
+    @echo "✓ Migrate image built: {{IMAGE_NAME}}-migrate:{{VERSION}}"
 
 # Build multi-architecture broker Docker image locally (no push)
 docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
-    @echo "Building broker Docker image: {{NAME}}:{{VERSION}}..."
-    @docker buildx build --rm -t "{{NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --load .
-    @echo "✓ Broker image built: {{NAME}}:{{VERSION}}"
+    @echo "Building broker Docker image: {{IMAGE_NAME}}:{{VERSION}}..."
+    @docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --load .
+    @echo "✓ Broker image built: {{IMAGE_NAME}}:{{VERSION}}"
 
 # Build both broker and migrate images locally (no push)
 docker-build-all: docker-build-broker docker-build-migrate
