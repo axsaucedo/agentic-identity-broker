@@ -9,6 +9,11 @@ pipeline:
     vm_config:
       type: linux
       image: cdp-runtime/go-1.25
+    cache:
+      paths:
+        # pkg cache for Go modules and Go build cache
+        - /go/pkg/mod
+        - ~/.cache/go-build      
     commands:
       - desc: "Install pre-requisites"
         cmd: |
@@ -44,13 +49,17 @@ pipeline:
     commands:
       - desc: "Build and push Docker images (broker + migrate)"
         cmd: |
-          # Build and push both images to ZCR (broker + migrate)
-          # docker-push target handles building Go binaries, frontend, and Docker images
-          just docker-push
+          apt-get update
+          apt-get --yes install just
 
-          # promote images to production during push/merge pipeline
-          # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker:${CDP_BUILD_VERSION}
-          # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker-migrate:${CDP_BUILD_VERSION}
+          NAME="${CDP_REGISTRY}/infosec/agentic-identity-broker"
+          IMAGE=${NAME}:${CDP_BUILD_VERSION}
+          
+          just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-build-all
+          if [ -z "$CDP_PULL_REQUEST_NUMBER" ]; then
+            just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-push
+            just VERSION="${CDP_BUILD_VERSION}" NAME="${NAME}" docker-promote
+          fi
       - desc: git-tag
         cmd: |
           git gh-tag "${CDP_BUILD_VERSION}"

@@ -421,6 +421,11 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
     @echo "  - {{NAME}}:{{VERSION}}"
     @echo "  - {{NAME}}-migrate:{{VERSION}}"
 
+docker-promote:
+    @echo "Promoting docker images to production channel..."
+    cdp-promote-image $NAME:$VERSION
+    cdp-promote-image $NAME-migrate:$VERSION
+
 # Build multi-architecture migrate Docker image locally (no push)
 docker-build-migrate:
     @echo "Building migrate Docker image: {{NAME}}-migrate:{{VERSION}}..."
