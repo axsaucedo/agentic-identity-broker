@@ -427,21 +427,21 @@ docker-promote:
     cdp-promote-image {{IMAGE_NAME}}:{{VERSION}}
     cdp-promote-image {{IMAGE_NAME}}-migrate:{{VERSION}}
 
-# Build multi-architecture migrate Docker image locally (no push)
+# Build multi-architecture migrate Docker image (validates both platforms, no output)
 docker-build-migrate:
     @echo "Building migrate Docker image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."
-    @docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --load .
-    @echo "✓ Migrate image built: {{IMAGE_NAME}}-migrate:{{VERSION}}"
+    @docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate .
+    @echo "✓ Migrate image validated: {{IMAGE_NAME}}-migrate:{{VERSION}}"
 
-# Build multi-architecture broker Docker image locally (no push)
+# Build multi-architecture broker Docker image (validates both platforms, no output)
 docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
     @echo "Building broker Docker image: {{IMAGE_NAME}}:{{VERSION}}..."
-    @docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --load .
-    @echo "✓ Broker image built: {{IMAGE_NAME}}:{{VERSION}}"
+    @docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 .
+    @echo "✓ Broker image validated: {{IMAGE_NAME}}:{{VERSION}}"
 
-# Build both broker and migrate images locally (no push)
+# Build both broker and migrate images (validates both platforms, no output)
 docker-build-all: docker-build-broker docker-build-migrate
-    @echo "✓ All Docker images built"
+    @echo "✓ All Docker images validated for linux/amd64,linux/arm64"
 
 # =============================================================================
 # Docker Compose - Development (Hot Reload)
