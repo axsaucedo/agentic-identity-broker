@@ -9,11 +9,16 @@ pipeline:
     vm_config:
       type: linux
       image: cdp-runtime/go-1.25
+    cache:
+      paths:
+        # pkg cache for Go modules and Go build cache
+        - /go/pkg/mod
+        - $HOME/.cache/go-build
     commands:
       - desc: "Install pre-requisites"
         cmd: |
           apt-get update
-          apt-get --yes install just npm curl
+          apt-get --yes install just curl ca-certificates
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get --yes install nodejs
           just install-tools
@@ -30,9 +35,6 @@ pipeline:
 
   - id: release
     type: script
-    when:
-      - event: push
-        branch: main
     vm_config:
       type: linux
       image: cdp-runtime/go-1.25
@@ -40,17 +42,27 @@ pipeline:
       paths:
         # pkg cache for Go modules and Go build cache
         - /go/pkg/mod
-        - ~/.cache/go-build
+        - $HOME/.cache/go-build
     commands:
       - desc: "Build and push Docker images (broker + migrate)"
         cmd: |
-          # Build and push both images to ZCR (broker + migrate)
-          # docker-push target handles building Go binaries, frontend, and Docker images
-          just docker-push
+          apt-get update
+          apt-get --yes install just curl ca-certificates
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get --yes install nodejs
+          just install-tools
+          just web-ci
 
-          # promote images to production during push/merge pipeline
-          # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker:${CDP_BUILD_VERSION}
-          # cdp-promote-image ${CDP_REGISTRY}/infosec/agentic-identity-broker-migrate:${CDP_BUILD_VERSION}
+          IMAGE_NAME="${CDP_REGISTRY}/infosec/agentic-identity-broker"
+
+          if [ -z "$CDP_PULL_REQUEST_NUMBER" ]; then
+            just VERSION="${CDP_BUILD_VERSION}" IMAGE_NAME="${IMAGE_NAME}" docker-push
+            just VERSION="${CDP_BUILD_VERSION}" IMAGE_NAME="${IMAGE_NAME}" docker-promote
+          else
+            just VERSION="${CDP_BUILD_VERSION}" IMAGE_NAME="${IMAGE_NAME}" docker-build-all
+          fi
       - desc: git-tag
         cmd: |
-          git gh-tag "${CDP_BUILD_VERSION}"
+          if [ -z "$CDP_PULL_REQUEST_NUMBER" ]; then
+            git gh-tag "${CDP_BUILD_VERSION}"
+          fi

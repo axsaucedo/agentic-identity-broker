@@ -1,6 +1,11 @@
 # Variable definitions
 NAME := "agentic-identity-broker"
+IMAGE_NAME := env_var_or_default("IMAGE_NAME", "agentic-identity-broker")
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
+
+# Determine container runtime (docker or podman)
+# Prefer docker over podman when both are available for better multi-arch support
+CONTAINER_RUNTIME := `if [ -n "${CONTAINER_RUNTIME:-}" ]; then echo "$CONTAINER_RUNTIME"; elif command -v docker >/dev/null 2>&1; then echo "docker"; elif command -v podman >/dev/null 2>&1; then echo "podman"; else echo "Error: no container runtime found. Please install podman or docker, or set CONTAINER_RUNTIME." >&2; exit 1; fi`
 
 # Determine compose command (docker compose or podman-compose)
 COMPOSE_CMD := `if [ -n "${COMPOSE_CMD:-}" ]; then echo "$COMPOSE_CMD"; elif [ -n "${COMPOSE_TOOL:-}" ]; then echo "$COMPOSE_TOOL"; elif command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; elif command -v docker >/dev/null 2>&1; then echo "docker compose"; else echo "Error: no compose tool found. Please install podman-compose or Docker, or set COMPOSE_CMD." >&2; exit 1; fi`
@@ -401,41 +406,93 @@ build-all: build web-build
 # =============================================================================
 
 # Create and push multi-architecture Docker images to registry
-# Builds broker and migrate images for linux/amd64 and linux/arm64 using docker buildx
+# Builds broker and migrate images for linux/amd64 and linux/arm64 using docker buildx or podman build
 # Optional: set BUILDKIT_CONFIG to a buildx config file path (defaults to /etc/cdp-buildkitd.toml if present)
 docker-push: build-linux-amd64 build-linux-arm64 web-build
-    @echo "Building and pushing multi-architecture Docker images..."
-    @BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
-    if [ -f "$$BUILDKIT_CONFIG" ]; then \
-        echo "Using buildx config: $$BUILDKIT_CONFIG"; \
-        docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
+    @echo "Building and pushing multi-architecture images using {{CONTAINER_RUNTIME}}..."
+    @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
+        BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
+        if [ -f "$$BUILDKIT_CONFIG" ]; then \
+            echo "Using buildx config: $$BUILDKIT_CONFIG"; \
+            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        else \
+            echo "Note: buildx config not found at $$BUILDKIT_CONFIG"; \
+            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        fi; \
+        echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."; \
+        docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
+        echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."; \
+        docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .; \
     else \
-        echo "Note: buildx config not found at $$BUILDKIT_CONFIG"; \
-        docker buildx create --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
-    fi; \
-    echo "Building broker image: {{NAME}}:{{VERSION}}..."; \
-    docker buildx build --rm -t "{{NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
-    echo "Building migrate image: {{NAME}}-migrate:{{VERSION}}..."; \
-    docker buildx build --rm -t "{{NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .
+        echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."; \
+        podman rmi "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest rm "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest create "{{IMAGE_NAME}}:{{VERSION}}"; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}:{{VERSION}}" .; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}:{{VERSION}}" .; \
+        podman manifest push --all "{{IMAGE_NAME}}:{{VERSION}}" "docker://{{IMAGE_NAME}}:{{VERSION}}"; \
+        echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."; \
+        podman rmi "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest rm "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest create "{{IMAGE_NAME}}-migrate:{{VERSION}}"; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}-migrate:{{VERSION}}" --file Dockerfile.migrate .; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}-migrate:{{VERSION}}" --file Dockerfile.migrate .; \
+        podman manifest push --all "{{IMAGE_NAME}}-migrate:{{VERSION}}" "docker://{{IMAGE_NAME}}-migrate:{{VERSION}}"; \
+    fi
     @echo "✓ Multi-architecture images pushed:"
-    @echo "  - {{NAME}}:{{VERSION}}"
-    @echo "  - {{NAME}}-migrate:{{VERSION}}"
+    @echo "  - {{IMAGE_NAME}}:{{VERSION}}"
+    @echo "  - {{IMAGE_NAME}}-migrate:{{VERSION}}"
 
-# Build multi-architecture migrate Docker image locally (no push)
+docker-promote:
+    @echo "Promoting docker images to production channel..."
+    cdp-promote-image {{IMAGE_NAME}}:{{VERSION}}
+    cdp-promote-image {{IMAGE_NAME}}-migrate:{{VERSION}}
+
+# Build multi-architecture migrate Docker image (validates both platforms, no output)
 docker-build-migrate:
-    @echo "Building migrate Docker image: {{NAME}}-migrate:{{VERSION}}..."
-    @docker buildx build --rm -t "{{NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --load .
-    @echo "✓ Migrate image built: {{NAME}}-migrate:{{VERSION}}"
+    @echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}} using {{CONTAINER_RUNTIME}}..."
+    @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
+        BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
+        if [ -f "$$BUILDKIT_CONFIG" ]; then \
+            echo "Using buildx config: $$BUILDKIT_CONFIG"; \
+            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        else \
+            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        fi; \
+        docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate .; \
+    else \
+        podman rmi "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest rm "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest create "{{IMAGE_NAME}}-migrate:{{VERSION}}"; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}-migrate:{{VERSION}}" --file Dockerfile.migrate .; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}-migrate:{{VERSION}}" --file Dockerfile.migrate .; \
+    fi
+    @echo "✓ Migrate image validated: {{IMAGE_NAME}}-migrate:{{VERSION}}"
 
-# Build multi-architecture broker Docker image locally (no push)
+# Build multi-architecture broker Docker image (validates both platforms, no output)
 docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
-    @echo "Building broker Docker image: {{NAME}}:{{VERSION}}..."
-    @docker buildx build --rm -t "{{NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --load .
-    @echo "✓ Broker image built: {{NAME}}:{{VERSION}}"
+    @echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}} using {{CONTAINER_RUNTIME}}..."
+    @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
+        BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
+        if [ -f "$$BUILDKIT_CONFIG" ]; then \
+            echo "Using buildx config: $$BUILDKIT_CONFIG"; \
+            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        else \
+            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        fi; \
+        docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 .; \
+    else \
+        podman rmi "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest rm "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest create "{{IMAGE_NAME}}:{{VERSION}}"; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}:{{VERSION}}" .; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}:{{VERSION}}" .; \
+    fi
+    @echo "✓ Broker image validated: {{IMAGE_NAME}}:{{VERSION}}"
 
-# Build both broker and migrate images locally (no push)
+# Build both broker and migrate images (validates both platforms, no output)
 docker-build-all: docker-build-broker docker-build-migrate
-    @echo "✓ All Docker images built"
+    @echo "✓ All Docker images validated for linux/amd64,linux/arm64"
 
 # =============================================================================
 # Docker Compose - Development (Hot Reload)
