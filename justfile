@@ -411,14 +411,6 @@ build-all: build web-build
 docker-push: build-linux-amd64 build-linux-arm64 web-build
     @echo "Building and pushing multi-architecture images using {{CONTAINER_RUNTIME}}..."
     @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
-        BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
-        if [ -f "$$BUILDKIT_CONFIG" ]; then \
-            echo "Using buildx config: $$BUILDKIT_CONFIG"; \
-            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
-        else \
-            echo "Note: buildx config not found at $$BUILDKIT_CONFIG"; \
-            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
-        fi; \
         echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."; \
         docker_buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
         echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."; \
@@ -452,13 +444,6 @@ docker-promote:
 docker-build-migrate:
     @echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}} using {{CONTAINER_RUNTIME}}..."
     @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
-        BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
-        if [ -f "$$BUILDKIT_CONFIG" ]; then \
-            echo "Using buildx config: $$BUILDKIT_CONFIG"; \
-            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
-        else \
-            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
-        fi; \
         docker_buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate .; \
     else \
         podman rmi "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
@@ -473,13 +458,6 @@ docker-build-migrate:
 docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
     @echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}} using {{CONTAINER_RUNTIME}}..."
     @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
-        BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
-        if [ -f "$$BUILDKIT_CONFIG" ]; then \
-            echo "Using buildx config: $$BUILDKIT_CONFIG"; \
-            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
-        else \
-            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
-        fi; \
         docker_buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 .; \
     else \
         podman rmi "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
