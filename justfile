@@ -420,9 +420,9 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
             docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
         fi; \
         echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."; \
-        docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
+        docker_buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
         echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."; \
-        docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .; \
+        docker_buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .; \
     else \
         echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."; \
         podman rmi "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
@@ -459,7 +459,7 @@ docker-build-migrate:
         else \
             docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
         fi; \
-        docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate .; \
+        docker_buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate .; \
     else \
         podman rmi "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
         podman manifest rm "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
@@ -480,7 +480,7 @@ docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
         else \
             docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
         fi; \
-        docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 .; \
+        docker_buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 .; \
     else \
         podman rmi "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
         podman manifest rm "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
