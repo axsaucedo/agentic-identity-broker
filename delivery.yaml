@@ -63,4 +63,6 @@ pipeline:
           fi
       - desc: git-tag
         cmd: |
-          git gh-tag "${CDP_BUILD_VERSION}"
+          if [ -z "$CDP_PULL_REQUEST_NUMBER" ]; then
+            git gh-tag "${CDP_BUILD_VERSION}"
+          fi
