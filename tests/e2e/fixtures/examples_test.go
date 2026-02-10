@@ -45,7 +45,6 @@ func TestAgentFixtures(t *testing.T) {
 		a := ValidAgent()
 		if a == nil {
 			t.Fatal("ValidAgent returned nil")
-			return
 		}
 		if a.ID == "" {
 			t.Error("agent ID is empty")
@@ -65,7 +64,6 @@ func TestAgentFixtures(t *testing.T) {
 		a := AnotherAgent()
 		if a == nil {
 			t.Fatal("AnotherAgent returned nil")
-			return
 		}
 		if a.ClientID != "test-client-another" {
 			t.Errorf("got ClientID %q, want %q", a.ClientID, "test-client-another")
@@ -79,7 +77,6 @@ func TestAgentFixtures(t *testing.T) {
 		a := AgentWithClientID("custom-client-id")
 		if a == nil {
 			t.Fatal("AgentWithClientID returned nil")
-			return
 		}
 		if a.ClientID != "custom-client-id" {
 			t.Errorf("got ClientID %q, want %q", a.ClientID, "custom-client-id")
@@ -99,7 +96,6 @@ func TestGrantFixtures(t *testing.T) {
 		g := ActiveGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
 		if g == nil {
 			t.Fatal("ActiveGrant returned nil")
-			return
 		}
 		if !g.IsActive() {
 			t.Error("ActiveGrant should be active")
@@ -119,7 +115,6 @@ func TestGrantFixtures(t *testing.T) {
 		g := ExpiredGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
 		if g == nil {
 			t.Fatal("ExpiredGrant returned nil")
-			return
 		}
 		if g.IsActive() {
 			t.Error("ExpiredGrant should not be active")
@@ -136,7 +131,6 @@ func TestGrantFixtures(t *testing.T) {
 		g := GrantExpiringIn(principalEmail, agentID, "test-service", []string{"read", "write"}, 24*time.Hour)
 		if g == nil {
 			t.Fatal("GrantExpiringIn returned nil")
-			return
 		}
 		if !g.IsActive() {
 			t.Error("GrantExpiringIn should be active")
@@ -153,7 +147,6 @@ func TestGrantFixtures(t *testing.T) {
 		g := IndefiniteGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
 		if g == nil {
 			t.Fatal("IndefiniteGrant returned nil")
-			return
 		}
 		if !g.IsActive() {
 			t.Error("IndefiniteGrant should always be active")
@@ -176,7 +169,6 @@ func TestConfigFixtures(t *testing.T) {
 		c := DefaultOAuth2Config()
 		if c == nil {
 			t.Fatal("DefaultOAuth2Config returned nil")
-			return
 		}
 		if c.Storage.Backend != "memory" {
 			t.Errorf("got Backend %q, want %q", c.Storage.Backend, "memory")
@@ -190,7 +182,6 @@ func TestConfigFixtures(t *testing.T) {
 		c := OAuth2ConfigWithUpstream("http://custom-upstream:8080")
 		if c == nil {
 			t.Fatal("OAuth2ConfigWithUpstream returned nil")
-			return
 		}
 		if c.OAuth2AuthServer.UpstreamIssuerURI != "http://custom-upstream:8080" {
 			t.Errorf("got UpstreamIssuerURI %q, want %q",
@@ -206,7 +197,6 @@ func TestConfigFixtures(t *testing.T) {
 		c := OAuth2ConfigWithTimeout(60)
 		if c == nil {
 			t.Fatal("OAuth2ConfigWithTimeout returned nil")
-			return
 		}
 		if c.OAuth2AuthServer.UpstreamTimeoutSeconds != 60 {
 			t.Errorf("got UpstreamTimeoutSeconds %d, want %d",
@@ -221,7 +211,6 @@ func TestConfigFixtures(t *testing.T) {
 		c := OAuth2ConfigWithLogLevel("debug")
 		if c == nil {
 			t.Fatal("OAuth2ConfigWithLogLevel returned nil")
-			return
 		}
 		if c.Log.Level != "debug" {
 			t.Errorf("got Log.Level %q, want %q", c.Log.Level, "debug")
@@ -235,7 +224,6 @@ func TestConfigFixtures(t *testing.T) {
 		c := OAuth2ConfigWithPublicURL("https://broker.example.com")
 		if c == nil {
 			t.Fatal("OAuth2ConfigWithPublicURL returned nil")
-			return
 		}
 		if c.Server.EndUser.PublicURL != "https://broker.example.com" {
 			t.Errorf("got PublicURL %q, want %q",

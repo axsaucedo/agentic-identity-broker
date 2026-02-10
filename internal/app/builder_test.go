@@ -100,7 +100,6 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 	// Verify application is wired correctly
 	if app == nil {
 		t.Fatal("expected non-nil application")
-		return
 	}
 
 	// Verify required fields are set

@@ -430,14 +430,14 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
         podman manifest create "{{IMAGE_NAME}}:{{VERSION}}"; \
         podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}:{{VERSION}}" .; \
         podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}:{{VERSION}}" .; \
-        podman manifest push "{{IMAGE_NAME}}:{{VERSION}}"; \
+        podman manifest push --all "{{IMAGE_NAME}}:{{VERSION}}" "docker://{{IMAGE_NAME}}:{{VERSION}}"; \
         echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."; \
         podman rmi "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
         podman manifest rm "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
         podman manifest create "{{IMAGE_NAME}}-migrate:{{VERSION}}"; \
         podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}-migrate:{{VERSION}}" --file Dockerfile.migrate .; \
         podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}-migrate:{{VERSION}}" --file Dockerfile.migrate .; \
-        podman manifest push "{{IMAGE_NAME}}-migrate:{{VERSION}}"; \
+        podman manifest push --all "{{IMAGE_NAME}}-migrate:{{VERSION}}" "docker://{{IMAGE_NAME}}-migrate:{{VERSION}}"; \
     fi
     @echo "✓ Multi-architecture images pushed:"
     @echo "  - {{IMAGE_NAME}}:{{VERSION}}"

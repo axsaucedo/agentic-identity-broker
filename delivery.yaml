@@ -13,12 +13,12 @@ pipeline:
       paths:
         # pkg cache for Go modules and Go build cache
         - /go/pkg/mod
-        - ~/.cache/go-build      
+        - $HOME/.cache/go-build
     commands:
       - desc: "Install pre-requisites"
         cmd: |
           apt-get update
-          apt-get --yes install just npm curl
+          apt-get --yes install just curl ca-certificates
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get --yes install nodejs
           just install-tools
@@ -42,12 +42,12 @@ pipeline:
       paths:
         # pkg cache for Go modules and Go build cache
         - /go/pkg/mod
-        - ~/.cache/go-build
+        - $HOME/.cache/go-build
     commands:
       - desc: "Build and push Docker images (broker + migrate)"
         cmd: |
           apt-get update
-          apt-get --yes install just npm curl
+          apt-get --yes install just curl ca-certificates
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get --yes install nodejs
           just install-tools

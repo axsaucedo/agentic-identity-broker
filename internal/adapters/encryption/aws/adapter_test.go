@@ -577,7 +577,6 @@ func TestHierarchicalKeyringWithEnvVarFallback(t *testing.T) {
 
 	if adapter == nil {
 		t.Fatal("adapter should not be nil")
-		return
 	}
 
 	if adapter.keyring == nil {
@@ -629,7 +628,6 @@ func TestAdapterInterfaceImplementation(t *testing.T) {
 	// Verify adapter was created and has required fields
 	if adapter == nil {
 		t.Fatal("adapter should not be nil")
-		return
 	}
 
 	if adapter.keyring == nil {

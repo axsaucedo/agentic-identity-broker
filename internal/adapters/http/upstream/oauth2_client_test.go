@@ -86,7 +86,6 @@ func TestNewSecureUpstreamClient(t *testing.T) {
 
 			if client == nil {
 				t.Fatal("Expected non-nil client")
-				return
 			}
 
 			// Verify transport configuration
