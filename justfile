@@ -4,7 +4,8 @@ IMAGE_NAME := env_var_or_default("IMAGE_NAME", "agentic-identity-broker")
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
 
 # Determine container runtime (docker or podman)
-CONTAINER_RUNTIME := `if [ -n "${CONTAINER_RUNTIME:-}" ]; then echo "$CONTAINER_RUNTIME"; elif command -v podman >/dev/null 2>&1; then echo "podman"; elif command -v docker >/dev/null 2>&1; then echo "docker"; else echo "Error: no container runtime found. Please install podman or docker, or set CONTAINER_RUNTIME." >&2; exit 1; fi`
+# Prefer docker over podman when both are available for better multi-arch support
+CONTAINER_RUNTIME := `if [ -n "${CONTAINER_RUNTIME:-}" ]; then echo "$CONTAINER_RUNTIME"; elif command -v docker >/dev/null 2>&1; then echo "docker"; elif command -v podman >/dev/null 2>&1; then echo "podman"; else echo "Error: no container runtime found. Please install podman or docker, or set CONTAINER_RUNTIME." >&2; exit 1; fi`
 
 # Determine compose command (docker compose or podman-compose)
 COMPOSE_CMD := `if [ -n "${COMPOSE_CMD:-}" ]; then echo "$COMPOSE_CMD"; elif [ -n "${COMPOSE_TOOL:-}" ]; then echo "$COMPOSE_TOOL"; elif command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; elif command -v docker >/dev/null 2>&1; then echo "docker compose"; else echo "Error: no compose tool found. Please install podman-compose or Docker, or set COMPOSE_CMD." >&2; exit 1; fi`
@@ -413,10 +414,10 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
         BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
         if [ -f "$$BUILDKIT_CONFIG" ]; then \
             echo "Using buildx config: $$BUILDKIT_CONFIG"; \
-            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
+            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
         else \
             echo "Note: buildx config not found at $$BUILDKIT_CONFIG"; \
-            docker buildx create --driver-opt network=host --bootstrap --use 2>/dev/null || true; \
+            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
         fi; \
         echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."; \
         docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
@@ -451,6 +452,13 @@ docker-promote:
 docker-build-migrate:
     @echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}} using {{CONTAINER_RUNTIME}}..."
     @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
+        BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
+        if [ -f "$$BUILDKIT_CONFIG" ]; then \
+            echo "Using buildx config: $$BUILDKIT_CONFIG"; \
+            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        else \
+            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        fi; \
         docker buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate .; \
     else \
         podman rmi "{{IMAGE_NAME}}-migrate:{{VERSION}}" 2>/dev/null || true; \
@@ -465,6 +473,13 @@ docker-build-migrate:
 docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
     @echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}} using {{CONTAINER_RUNTIME}}..."
     @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
+        BUILDKIT_CONFIG="$${BUILDKIT_CONFIG:-/etc/cdp-buildkitd.toml}"; \
+        if [ -f "$$BUILDKIT_CONFIG" ]; then \
+            echo "Using buildx config: $$BUILDKIT_CONFIG"; \
+            docker buildx create --config "$$BUILDKIT_CONFIG" --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        else \
+            docker buildx create --driver-opt network=host --name cdpbuildx --bootstrap --use || true; \
+        fi; \
         docker buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 .; \
     else \
         podman rmi "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
