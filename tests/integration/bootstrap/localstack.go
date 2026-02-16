@@ -239,3 +239,11 @@ func awsConfigForLocalStack(ctx context.Context, endpoint string) aws.Config {
 }
 
 func wrap(s string) *string { return &s }
+
+// NewKMSClientForLocalStack creates a KMS client configured for LocalStack endpoint
+// Used for test operations like key rotation that need direct KMS API access
+func NewKMSClientForLocalStack(endpoint string) (*kms.Client, error) {
+	ctx := context.Background()
+	cfg := awsConfigForLocalStack(ctx, endpoint)
+	return kms.NewFromConfig(cfg), nil
+}

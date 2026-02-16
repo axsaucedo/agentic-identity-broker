@@ -1,0 +1,17 @@
+{
+  "app": "go run .",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "go.sum",
+      "**/*_test.go"
+    ]
+  },
+  "context": {
+    "@aws-cdk/core:aspectStabilization": true,
+    "env": "dev",
+    "project": "agentic-identity-broker"
+  }
+}

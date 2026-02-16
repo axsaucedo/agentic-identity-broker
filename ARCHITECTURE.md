@@ -39,6 +39,8 @@ This section provides a high-level overview of the project's directory and file 
 │   ├── tsconfig.build.json # Build TypeScript configuration
 │   └── tailwind.config.ts # Tailwind CSS v4.0 configuration
 ├── docs/                 # Project documentation (e.g., API docs, setup guides)
+├── infra/                # Infrastructure as Code
+│   └── cdk/              # AWS CDK (Go) – encryption infrastructure (KMS, DynamoDB, IAM)
 ├── scripts/              # Automation scripts (e.g., deployment, data seeding)
 ├── .github/              # GitHub Actions or other CI/CD configurations
 ├── .gitignore            # Specifies intentionally untracked files to ignore
@@ -578,6 +580,7 @@ This section lists all architectural decisions made for this project. ADRs docum
 ### Security & Encryption
 - [ADR 008: Encryption Context Optimization](adrs/008-encryption-context-optimization.md) - Service-ID-only context binding performance optimization
 - [ADR 009: Envelope Encryption Design](adrs/009-envelope-encryption-design.md) - DEK-per-session with AWS KMS and context binding
+- [ADR 010: CDK Encryption Infrastructure](adrs/010-cdk-encryption-infrastructure.md) - AWS CDK (Go) for KMS, DynamoDB, and IAM provisioning
 
 ## 11. Project Identification
 
