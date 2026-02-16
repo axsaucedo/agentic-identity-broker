@@ -137,3 +137,53 @@ func TestConfigurationSources(t *testing.T) {
 	}
 	assert.True(t, hasDefaults, "defaults source should be present")
 }
+
+func TestAWSKMSConfigurationEnvironmentVariables(t *testing.T) {
+	t.Run("AWS KMS configuration from environment variables", func(t *testing.T) {
+		// Set basic required env vars
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME", "MyBranchKeys")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION", "us-east-1")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN", "arn:aws:iam::123456789012:role/EncryptionRole-prod")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ENDPOINT", "http://localhost:4566")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_ENDPOINT", "http://localhost:8000")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_PROFILE", "production")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DISABLE_SSL", "false")
+
+		loader := NewLoader()
+		cfg, err := loader.GetConfig(context.Background())
+
+		require.NoError(t, err)
+		require.NotNil(t, cfg.Encryption.AWSKMS)
+		assert.Equal(t, "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012", cfg.Encryption.AWSKMS.KeyARN)
+		assert.Equal(t, "MyBranchKeys", cfg.Encryption.AWSKMS.DynamoDBTableName)
+		assert.Equal(t, "us-east-1", cfg.Encryption.AWSKMS.Region)
+		assert.Equal(t, "arn:aws:iam::123456789012:role/EncryptionRole-prod", cfg.Encryption.AWSKMS.AssumeRoleARN)
+		assert.Equal(t, "http://localhost:4566", cfg.Encryption.AWSKMS.KMSEndpoint)
+		assert.Equal(t, "http://localhost:8000", cfg.Encryption.AWSKMS.DynamoDBEndpoint)
+		assert.Equal(t, "production", cfg.Encryption.AWSKMS.Profile)
+		assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", cfg.Encryption.AWSKMS.AccessKeyID)
+		assert.Equal(t, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", cfg.Encryption.AWSKMS.SecretAccessKey)
+		assert.Equal(t, false, cfg.Encryption.AWSKMS.DisableSSL)
+	})
+
+	t.Run("DynamoDB timeout configuration from environment variables", func(t *testing.T) {
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/12345678")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT", "10s")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT", "15s")
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL", "30m")
+
+		loader := NewLoader()
+		cfg, err := loader.GetConfig(context.Background())
+
+		require.NoError(t, err)
+		require.NotNil(t, cfg.Encryption.AWSKMS)
+		assert.Equal(t, "10s", cfg.Encryption.AWSKMS.DynamoDBReadTimeout)
+		assert.Equal(t, "15s", cfg.Encryption.AWSKMS.DynamoDBWriteTimeout)
+		assert.Equal(t, "30m", cfg.Encryption.AWSKMS.BranchKeyTTL)
+	})
+}

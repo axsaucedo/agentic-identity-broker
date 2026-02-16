@@ -140,13 +140,22 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("third_party_oauth2.pkce_verifier_length", "IDENTITY_BROKER_PKCE_VERIFIER_LENGTH")
 
 	// Bind encryption configuration to environment variables
-	// AWS KMS backend
+	// AWS KMS backend - KMS key and DynamoDB cache configuration
 	_ = l.v.BindEnv("encryption.aws_kms.key_arn", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN")
 	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_table_name", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME")
 	_ = l.v.BindEnv("encryption.aws_kms.branch_key_ttl", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL")
 	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_region", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION")
 	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_read_timeout", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT")
 	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_write_timeout", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT")
+	// AWS SDK configuration (region, endpoints, credentials, role assumption)
+	_ = l.v.BindEnv("encryption.aws_kms.region", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION")
+	_ = l.v.BindEnv("encryption.aws_kms.kms_endpoint", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ENDPOINT")
+	_ = l.v.BindEnv("encryption.aws_kms.dynamodb_endpoint", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_ENDPOINT")
+	_ = l.v.BindEnv("encryption.aws_kms.profile", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_PROFILE")
+	_ = l.v.BindEnv("encryption.aws_kms.access_key_id", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ACCESS_KEY_ID")
+	_ = l.v.BindEnv("encryption.aws_kms.secret_access_key", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_SECRET_ACCESS_KEY")
+	_ = l.v.BindEnv("encryption.aws_kms.assume_role_arn", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN")
+	_ = l.v.BindEnv("encryption.aws_kms.disable_ssl", "IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DISABLE_SSL")
 	// Memory backend
 	_ = l.v.BindEnv("encryption.memory.raw_key", "IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY")
 

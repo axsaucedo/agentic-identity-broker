@@ -53,23 +53,37 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 
 - [ ] **Configure application environment variables**:
   ```bash
-  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN="arn:aws:kms:eu-central-1:ACCOUNT:key/KEY_ID"
-  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME="IdentityBrokerBranchKeys-prod"
-  export IDENTITY_BROKER_ENCRYPTION_AWS_IAM_ROLE_ARN="arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryptionRole-prod"
+  # Extract stack outputs and set environment variables
+  STACK_NAME="IdentityBrokerEncryption-prod"
+
+  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN=$(aws cloudformation describe-stacks \
+    --stack-name $STACK_NAME \
+    --query 'Stacks[0].Outputs[?OutputKey==`EncryptionKeyARN`].OutputValue' --output text)
+
+  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME=$(aws cloudformation describe-stacks \
+    --stack-name $STACK_NAME \
+    --query 'Stacks[0].Outputs[?OutputKey==`BranchKeyTableName`].OutputValue' --output text)
+
+  # Optional: Use role assumption if required for cross-account access
+  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN=$(aws cloudformation describe-stacks \
+    --stack-name $STACK_NAME \
+    --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' --output text)
   ```
 
-- [ ] **Run smoke test**:
-  ```bash
-  # Test token encryption and decryption
-  curl -X POST http://localhost:8000/api/v1/tokens \
-    -H "X-Remote-User: testuser@example.com" \
-    -H "Content-Type: application/json" \
-    -d '{"service_id": "test-service"}'
+  This automatically populates the required variables from CDK stack outputs.
 
-  # Verify token can be decrypted
-  curl -X GET http://localhost:8000/api/v1/tokens/TOKEN_ID \
+- [ ] **Run smoke test** (OAuth2 session management):
+  ```bash
+  # List OAuth2 sessions (verify encryption is working)
+  curl -X GET http://localhost:8000/api/third-party/sessions \
+    -H "X-Remote-User: testuser@example.com"
+
+  # Verify session details can be retrieved
+  curl -X GET http://localhost:8000/api/third-party/{serviceId}/session \
     -H "X-Remote-User: testuser@example.com"
   ```
+
+  **Alternative**: Create a full OAuth2 session flow via `/api/third-party/{serviceId}/oauth2/authorize` and `/api/third-party/{serviceId}/oauth2/callback` endpoints.
 
 - [ ] **Verify CloudWatch alarms created and subscribed**:
   ```bash
@@ -117,6 +131,30 @@ npx cdk destroy -c env=prod
 # Note: KMS keys have 30-day pending deletion window
 # They can be recovered during this period if needed
 ```
+
+## AWS KMS Configuration Options
+
+All AWS KMS configuration can be set via environment variables:
+
+### Key Encryption Setup
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN` - **Required**. KMS CMK ARN for envelope encryption (from CDK stack output)
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME` - DynamoDB table name for branch key caching (from CDK stack output)
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_BRANCH_KEY_TTL` - TTL for cached branch keys (default: "1h")
+
+### DynamoDB Configuration
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_REGION` - AWS region for DynamoDB operations
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_READ_TIMEOUT` - DynamoDB read timeout (default: "5s")
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_WRITE_TIMEOUT` - DynamoDB write timeout (default: "5s")
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_ENDPOINT` - Custom DynamoDB endpoint (for LocalStack testing)
+
+### AWS SDK Configuration
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_REGION` - AWS region for KMS operations
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ENDPOINT` - Custom KMS endpoint URL (for LocalStack testing)
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_PROFILE` - AWS profile for credentials (~/.aws/credentials)
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ACCESS_KEY_ID` - Static AWS access key ID (for CI/testing)
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_SECRET_ACCESS_KEY` - Static AWS secret access key (for CI/testing)
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN` - IAM role ARN to assume for operations (from CDK stack output)
+- `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DISABLE_SSL` - Disable SSL verification (development only, never in production)
 
 ## Success Criteria
 
