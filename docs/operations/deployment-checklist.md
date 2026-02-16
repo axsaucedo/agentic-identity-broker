@@ -54,7 +54,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Configure application environment variables**:
   ```bash
   export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN="arn:aws:kms:eu-central-1:ACCOUNT:key/KEY_ID"
-  export IDENTITY_BROKER_ENCRYPTION_AWS_DYNAMODB_TABLE_NAME="IdentityBrokerBranchKeys-prod"
+  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME="IdentityBrokerBranchKeys-prod"
   export IDENTITY_BROKER_ENCRYPTION_AWS_IAM_ROLE_ARN="arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryption-prod"
   ```
 
