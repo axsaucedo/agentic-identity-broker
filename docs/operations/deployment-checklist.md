@@ -40,7 +40,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 
 - [ ] **Verify IAM role created**:
   ```bash
-  aws iam get-role --role-name IdentityBrokerEncryption-prod
+  aws iam get-role --role-name IdentityBrokerEncryptionRole-prod
   # Expected: Role exists with KMS decrypt permissions
   ```
 
@@ -55,7 +55,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
   ```bash
   export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN="arn:aws:kms:eu-central-1:ACCOUNT:key/KEY_ID"
   export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME="IdentityBrokerBranchKeys-prod"
-  export IDENTITY_BROKER_ENCRYPTION_AWS_IAM_ROLE_ARN="arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryption-prod"
+  export IDENTITY_BROKER_ENCRYPTION_AWS_IAM_ROLE_ARN="arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryptionRole-prod"
   ```
 
 - [ ] **Run smoke test**:
@@ -184,5 +184,5 @@ Expected monthly costs for production:
 
 - [AWS CDK Deployment Guide](https://docs.aws.amazon.com/cdk/latest/guide/home.html)
 - [CloudFormation Stack Operations](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-view-stack-data-resources.html)
-- [KMS Key Management](/Users/brennenstuhl/Projects/agentic-identity-broker/docs/operations/kms-key-management.md)
-- [DynamoDB Recovery Procedures](/Users/brennenstuhl/Projects/agentic-identity-broker/docs/operations/dynamodb-recovery.md)
+- [KMS Key Management](./kms-key-management.md)
+- [DynamoDB Recovery Procedures](./dynamodb-recovery.md)
