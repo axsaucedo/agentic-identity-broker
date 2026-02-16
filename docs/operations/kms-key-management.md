@@ -110,12 +110,12 @@ aws kms describe-key --key-id alias/identity-broker/prod/token-vault-kek \
   --query 'KeyMetadata.[KeyState, Enabled, PendingDeletion]'
 
 # Check if IAM role has permission
-aws iam get-role-policy --role-name IdentityBrokerEncryption-prod \
+aws iam get-role-policy --role-name IdentityBrokerEncryptionRole-prod \
   --policy-name EncryptionPolicy
 
 # Check CloudTrail for KMS API errors
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=ResourceName,AttributeValue=IdentityBrokerEncryption-prod \
+  --lookup-attributes AttributeKey=ResourceName,AttributeValue=IdentityBrokerEncryptionRole-prod \
   --max-results 10
 ```
 
