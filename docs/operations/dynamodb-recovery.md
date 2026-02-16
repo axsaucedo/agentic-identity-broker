@@ -67,9 +67,9 @@ aws dynamodb update-table \
 
 ## 35-Day Recovery Window
 
-- **Production tables**: 35-day recovery window
-- **Non-production tables**: 7-day recovery window
-- Recovery point can be any second within the window
+- **Production tables**: PITR enabled with a 35-day recovery window
+- **Non-production tables**: PITR disabled (no point-in-time recovery available)
+- For tables with PITR enabled, the recovery point can be any second within the window
 - PITR does not affect table performance or availability
 
 ## Cost Considerations
