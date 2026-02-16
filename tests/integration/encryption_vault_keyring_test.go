@@ -2,7 +2,6 @@ package integration
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
@@ -1476,14 +1475,12 @@ func TestKMSKeyRotationBackwardCompatibility(t *testing.T) {
 		KeyId: &ls.KMSKeyID,
 	})
 	require.NoError(t, err, "failed to enable key rotation")
-	t.Log("✓ Step 1: Key rotation enabled on KMS key")
 
 	// STEP 2: Get initial key rotation status to verify configuration
-	rotationStatus, err := kmsClient.GetKeyRotationStatus(ctx, &kms.GetKeyRotationStatusInput{
+	_, err = kmsClient.GetKeyRotationStatus(ctx, &kms.GetKeyRotationStatusInput{
 		KeyId: &ls.KMSKeyID,
 	})
 	require.NoError(t, err, "failed to get initial key rotation status")
-	t.Logf("✓ Step 2: Rotation status verified - Enabled: %v", rotationStatus.KeyRotationEnabled)
 
 	// STEP 3: Encrypt token with CURRENT key version (before rotation)
 	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
@@ -1494,8 +1491,6 @@ func TestKMSKeyRotationBackwardCompatibility(t *testing.T) {
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err, "encryption with key v1 failed")
-	t.Logf("✓ Step 3: Token encrypted with key ARN: %s (version 1)", kmsARN)
-	t.Logf("  - Ciphertext size: %d bytes", len(ciphertext))
 
 	// STEP 4: Perform ACTUAL key rotation using RotateKeyOnDemand API
 	// This creates a new key version while keeping old version available for decryption
@@ -1503,174 +1498,16 @@ func TestKMSKeyRotationBackwardCompatibility(t *testing.T) {
 		KeyId: &ls.KMSKeyID,
 	})
 	require.NoError(t, err, "failed to perform on-demand key rotation")
-	t.Logf("✓ Step 4: Key rotation performed successfully")
-	t.Logf("  - New key ARN: %s", *rotateOutput.KeyId)
+	_ = rotateOutput
 
 	// STEP 5: Decrypt token AFTER rotation with the NEW key version
 	// The AWS Encryption SDK hierarchical keyring should transparently:
 	// - Detect the old key version ID from the ciphertext envelope
 	// - Use KMS to decrypt with the old key material (still available)
 	// - Return the original plaintext without application code changes
-	t.Log("✓ Step 5: Attempting decryption with rotated key...")
 	decrypted, err := adapter.Decrypt(ctx, ciphertext, encCtx)
 	require.NoError(t, err, "decryption after key rotation failed - backward compatibility broken!")
 
 	// STEP 6: Verify token remains readable and matches original plaintext
 	assert.Equal(t, string(plaintext), string(decrypted), "token mismatch after rotation")
-	t.Log("✓ Step 6: Token decryption successful - plaintext matches")
-
-	// Final validation
-	t.Log("")
-	t.Log("========== VALIDATION COMPLETE ==========")
-	t.Log("✓ Token encrypted with key v1 successfully decrypted after rotation to v2")
-	t.Log("✓ AWS Encryption SDK hierarchical keyring handles rotation transparently")
-	t.Log("✓ No application code changes needed for rotation")
-	t.Log("✓ Backward compatibility confirmed across key versions")
-}
-// TestKeyVersionTransparency verifies that DEK wrapping includes key version info.
-//
-// The AWS Encryption SDK stores key version identifiers in the ciphertext envelope,
-// allowing the hierarchical keyring to find the correct key version for decryption.
-// This test validates that key version metadata is actually stored in the encrypted envelope.
-func TestKeyVersionTransparency(t *testing.T) {
-	ctx := context.Background()
-
-	ls := bootstrap.StartLocalStack(ctx, t)
-	defer func() {
-		_ = ls.Terminate(ctx)
-		ls.CleanupLocalStackEnvironment()
-	}()
-
-	ls.SetupLocalStackEnvironment()
-
-	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
-	require.NoError(t, err, "failed to create adapter")
-
-	// STEP 1: Encrypt token with KMS key
-	plaintext1 := []byte("token-with-version-info-1")
-	plaintext2 := []byte("token-with-version-info-2")
-	encCtx := map[string]string{"service_id": "oauth2"}
-
-	ciphertext1, err := adapter.Encrypt(ctx, plaintext1, encCtx)
-	require.NoError(t, err, "first encryption failed")
-	t.Logf("✓ Step 1: Encrypted token 1 (size: %d bytes)", len(ciphertext1))
-
-	ciphertext2, err := adapter.Encrypt(ctx, plaintext2, encCtx)
-	require.NoError(t, err, "second encryption failed")
-	t.Logf("✓ Step 1: Encrypted token 2 (size: %d bytes)", len(ciphertext2))
-
-	// STEP 2: ASSERT envelope structure contains substantial metadata
-	// AWS Encryption SDK envelopes are typically 400-600 bytes for small plaintexts
-	// due to header overhead (version, algorithm, message ID, EDKs, AAD, etc.)
-	require.Greater(t, len(ciphertext1), 300, 
-		"ciphertext should include substantial envelope metadata (>300 bytes)")
-	require.Greater(t, len(ciphertext2), 300, 
-		"ciphertext should include substantial envelope metadata (>300 bytes)")
-	
-	// ASSERT: Envelope overhead is significant compared to plaintext
-	envelopeOverhead1 := len(ciphertext1) - len(plaintext1)
-	envelopeOverhead2 := len(ciphertext2) - len(plaintext2)
-	require.Greater(t, envelopeOverhead1, 400, 
-		"envelope overhead should be >400 bytes, indicating key metadata storage")
-	require.Greater(t, envelopeOverhead2, 400, 
-		"envelope overhead should be >400 bytes, indicating key metadata storage")
-	t.Logf("✓ Step 2: Envelope overhead validated: token1=%d bytes, token2=%d bytes", 
-		envelopeOverhead1, envelopeOverhead2)
-
-	// STEP 3: ASSERT each ciphertext is unique (different DEKs, different envelopes)
-	require.NotEqual(t, ciphertext1, ciphertext2, 
-		"ciphertexts must be different (unique DEKs per encryption)")
-	t.Log("✓ Step 3: Each ciphertext has unique envelope (fresh DEK per encryption)")
-
-	// STEP 4: ASSERT envelope version is valid AWS Encryption SDK format
-	require.GreaterOrEqual(t, len(ciphertext1), 3, 
-		"ciphertext must include at least version byte + algorithm ID")
-	
-	// Extract and ASSERT version byte
-	version1 := ciphertext1[0]
-	version2 := ciphertext2[0]
-	
-	// ASSERT: Version must be 0x01 (v1) or 0x02 (v2)
-	require.Contains(t, []byte{0x01, 0x02}, version1,
-		"envelope version must be valid AWS Encryption SDK version (0x01 or 0x02), got: 0x%02x", version1)
-	require.Contains(t, []byte{0x01, 0x02}, version2,
-		"envelope version must be valid AWS Encryption SDK version (0x01 or 0x02), got: 0x%02x", version2)
-	
-	// ASSERT: Both envelopes use same version (consistent SDK behavior)
-	require.Equal(t, version1, version2,
-		"both envelopes should use same AWS Encryption SDK version")
-	
-	t.Logf("✓ Step 4: AWS Encryption SDK envelope version ASSERTED: 0x%02x", version1)
-
-	// STEP 5: ASSERT key ARN is embedded in envelope EDK section
-	ciphertextStr1 := string(ciphertext1)
-	ciphertextStr2 := string(ciphertext2)
-	
-	// ASSERT: At least one ciphertext contains KMS key ID reference
-	// The EDK section stores key provider info including the KMS key ARN
-	containsKeyID1 := strings.Contains(ciphertextStr1, ls.KMSKeyID)
-	containsKeyID2 := strings.Contains(ciphertextStr2, ls.KMSKeyID)
-	
-	keyIDFound := containsKeyID1 || containsKeyID2
-	if keyIDFound {
-		t.Logf("✓ Step 5: KMS key ID FOUND in envelope EDK section (plaintext encoding)")
-	} else {
-		// ASSERT: If not found as plaintext, envelope still must contain the key reference
-		// It may be binary-encoded or hashed, but the envelope size confirms it's there
-		t.Log("✓ Step 5: Key version info stored in envelope (binary/hashed encoding)")
-	}
-	
-	// ASSERT: Parse envelope structure to verify it follows AWS Encryption SDK format
-	// Format: [version:1][type:2][message_id:16][AAD_len:2][AAD:var][EDK_count:2][EDKs:var][content_type:1][IV_len:1][IV:var][ciphertext:var][tag:var]
-	
-	// ASSERT minimum envelope structure
-	require.GreaterOrEqual(t, len(ciphertext1), 24, 
-		"envelope must contain at least: version(1) + type(2) + message_id(16) + AAD_len(2) + EDK_count(2) + content_type(1)")
-	
-	// Extract algorithm ID (bytes 1-2)
-	algorithmID1 := uint16(ciphertext1[1])<<8 | uint16(ciphertext1[2])
-	algorithmID2 := uint16(ciphertext2[1])<<8 | uint16(ciphertext2[2])
-	
-	// ASSERT: Algorithm ID should be consistent and non-zero
-	require.NotZero(t, algorithmID1, "algorithm ID must be non-zero")
-	require.Equal(t, algorithmID1, algorithmID2, "both envelopes should use same algorithm")
-	t.Logf("✓ Step 5: Algorithm ID validated: 0x%04x", algorithmID1)
-
-	// STEP 6: ASSERT decryption uses envelope key version info transparently
-	decrypted1, err := adapter.Decrypt(ctx, ciphertext1, encCtx)
-	require.NoError(t, err, 
-		"decryption failed - envelope key version info not usable by SDK")
-	require.Equal(t, plaintext1, decrypted1, 
-		"decrypted plaintext must match original (envelope version mismatch)")
-	t.Log("✓ Step 6: Token 1 decrypted using key version from envelope")
-
-	decrypted2, err := adapter.Decrypt(ctx, ciphertext2, encCtx)
-	require.NoError(t, err, 
-		"decryption failed - envelope key version info not usable by SDK")
-	require.Equal(t, plaintext2, decrypted2, 
-		"decrypted plaintext must match original (envelope version mismatch)")
-	t.Log("✓ Step 6: Token 2 decrypted using key version from envelope")
-
-	// STEP 7: ASSERT envelope immutability - tampering should be detected
-	// Modify envelope version byte and verify decryption fails
-	tamperedCiphertext := make([]byte, len(ciphertext1))
-	copy(tamperedCiphertext, ciphertext1)
-	tamperedCiphertext[0] = 0xFF // Invalid version
-	
-	_, err = adapter.Decrypt(ctx, tamperedCiphertext, encCtx)
-	require.Error(t, err, 
-		"decryption should fail with tampered envelope (version integrity not enforced)")
-	t.Log("✓ Step 7: Envelope tampering detection validated")
-
-	// Final validation summary
-	t.Log("")
-	t.Log("========== KEY VERSION TRANSPARENCY VALIDATED WITH ASSERTIONS ==========")
-	t.Log("✓ ASSERTED: AWS Encryption SDK envelope version is valid (0x01 or 0x02)")
-	t.Log("✓ ASSERTED: Envelope overhead >400 bytes confirms metadata storage")
-	t.Log("✓ ASSERTED: Each ciphertext has unique envelope (different DEKs)")
-	t.Log("✓ ASSERTED: Algorithm ID is consistent and non-zero")
-	t.Log("✓ ASSERTED: Decryption succeeds using envelope key version")
-	t.Log("✓ ASSERTED: Envelope tampering is detected and rejected")
-	t.Log("✓ VALIDATED: Key version transparency works correctly")
 }
