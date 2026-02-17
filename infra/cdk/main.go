@@ -8,8 +8,10 @@
 //
 //	cdk deploy -c env=dev
 //	cdk deploy -c env=staging
-//	cdk deploy -c env=prod
-//	cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::123456789012:role/ECSTaskRole
+//	cdk deploy -c env=prod \
+//	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLEID \
+//	  -c k8sNamespace=default \
+//	  -c k8sServiceAccountName=agentic-identity-broker
 package main
 
 import (
@@ -44,11 +46,45 @@ func main() {
 		env = "prod"
 	}
 
-	// Read optional trust principal ARN for IAM role (generic compute support).
-	var trustPrincipal string
-	if v := app.Node().TryGetContext(jsii.String("trustPrincipal")); v != nil {
+	// Read IRSA parameters for Kubernetes IAM Roles for Service Accounts.
+	var oidcProviderArn string
+	if v := app.Node().TryGetContext(jsii.String("oidcProviderArn")); v != nil {
 		if s, ok := v.(string); ok {
-			trustPrincipal = s
+			oidcProviderArn = s
+		}
+	}
+
+	var k8sNamespace string
+	if v := app.Node().TryGetContext(jsii.String("k8sNamespace")); v != nil {
+		if s, ok := v.(string); ok {
+			k8sNamespace = s
+		}
+	}
+
+	var k8sServiceAccountName string
+	if v := app.Node().TryGetContext(jsii.String("k8sServiceAccountName")); v != nil {
+		if s, ok := v.(string); ok {
+			k8sServiceAccountName = s
+		}
+	}
+
+	// Validate IRSA parameters for production deployments.
+	isProd := env == "prod" || env == "production"
+	if isProd {
+		if oidcProviderArn == "" {
+			panic("ERROR: Production deployments require oidcProviderArn.\n" +
+				"Usage: cdk deploy -c env=prod -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/oidc.eks.REGION.amazonaws.com/id/ID\n" +
+				"Example: cdk deploy -c env=prod -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE")
+		}
+		if k8sNamespace == "" {
+			panic("ERROR: Production deployments require k8sNamespace.\n" +
+				"Usage: cdk deploy -c env=prod -c k8sNamespace=default\n" +
+				"Example: cdk deploy -c env=prod -c k8sNamespace=identity-broker")
+		}
+		if k8sServiceAccountName == "" {
+			panic("ERROR: Production deployments require k8sServiceAccountName.\n" +
+				"Usage: cdk deploy -c env=prod -c k8sServiceAccountName=agentic-identity-broker\n" +
+				"Example: cdk deploy -c env=prod -c k8sServiceAccountName=identity-broker-sa")
 		}
 	}
 
@@ -57,8 +93,11 @@ func main() {
 	NewEncryptionStack(app, stackName, &EncryptionStackProps{
 		StackProps: awscdk.StackProps{
 			StackName:   jsii.String(stackName),
-			Description: jsii.String("Agentic Identity Broker - Token Vault encryption infrastructure (KMS + DynamoDB + IAM)"),
+			Description: jsii.String("Agentic Identity Broker - Token Vault encryption infrastructure (KMS + DynamoDB + IAM) with IRSA support"),
 			Env:         makeEnv(),
+			Synthesizer: awscdk.NewDefaultStackSynthesizer(&awscdk.DefaultStackSynthesizerProps{
+				GenerateBootstrapVersionRule: jsii.Bool(false),
+			}),
 			Tags: &map[string]*string{
 				"Project":     jsii.String("agentic-identity-broker"),
 				"Component":   jsii.String("encryption"),
@@ -66,8 +105,10 @@ func main() {
 				"ManagedBy":   jsii.String("aws-cdk"),
 			},
 		},
-		Environment:    env,
-		TrustPrincipal: trustPrincipal,
+		Environment:           env,
+		OIDCProviderArn:       oidcProviderArn,
+		K8sNamespace:          k8sNamespace,
+		K8sServiceAccountName: k8sServiceAccountName,
 	})
 
 	app.Synth(nil)

@@ -77,6 +77,31 @@ The operator will:
 - Generate Kubernetes Secrets automatically
 - Configure the broker to use the operator-managed database
 
+### Install with AWS IRSA (IAM Roles for Service Accounts)
+
+For AWS EKS deployments using IAM roles for KMS encryption:
+
+1. Deploy the CDK encryption infrastructure stack (see [Kubernetes IRSA Deployment Guide](/docs/deployment/kubernetes-irsa.md))
+
+2. Extract the IAM role ARN from CloudFormation stack outputs:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name IdentityBrokerEncryption-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' \
+  --output text
+```
+
+3. Install the chart with IRSA enabled:
+
+```bash
+helm install broker ./charts/agentic-identity-broker \
+  --set serviceAccount.irsa.enabled=true \
+  --set serviceAccount.irsa.roleArn="arn:aws:iam::123456789012:role/IdentityBrokerEncryptionRole-prod"
+```
+
+The ServiceAccount will be automatically annotated with `iam.amazonaws.com/role`, enabling the broker pods to assume the IAM role and access KMS/DynamoDB without credentials.
+
 ## Configuration
 
 See [values.yaml](values.yaml) for the complete list of configuration options.
@@ -91,6 +116,8 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `migration.image.repository` | Migration container image repository | `agentic-identity-broker-migrate` |
 | `migration.image.tag` | Migration image tag | Chart appVersion |
 | `storage.type` | Storage backend (`memory` or `postgres`) | `memory` |
+| `serviceAccount.irsa.enabled` | Enable AWS IRSA annotation | `false` |
+| `serviceAccount.irsa.roleArn` | IAM role ARN for IRSA | `""` |
 | `ingress.enduser.enabled` | Enable Ingress for end-user API | `false` |
 | `ingress.admin.enabled` | Enable Ingress for admin API | `false` |
 | `resources.requests.cpu` | CPU request | `100m` |

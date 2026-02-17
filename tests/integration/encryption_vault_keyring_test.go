@@ -1469,7 +1469,7 @@ func TestKMSKeyRotationBackwardCompatibility(t *testing.T) {
 	require.NoError(t, err, "failed to create KMS client")
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
-	
+
 	// STEP 1: Enable automatic key rotation on the KMS key
 	_, err = kmsClient.EnableKeyRotation(ctx, &kms.EnableKeyRotationInput{
 		KeyId: &ls.KMSKeyID,

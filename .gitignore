@@ -66,3 +66,6 @@ tmp
 agentic-identity-broker
 
 tests/e2e/frontend/coverage/
+
+infra/cdk/cdk
+infra/cdk/cdk.out
