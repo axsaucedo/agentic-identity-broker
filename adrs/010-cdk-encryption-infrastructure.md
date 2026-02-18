@@ -12,7 +12,7 @@
 
 Manual provisioning of encryption infrastructure introduces risk:
 
-1. **Schema drift**: The AWS Encryption SDK KeyStore requires a DynamoDB table with a specific schema (`partition_key` (S) / `sort_key` (S)). Manual creation is error-prone.
+1. **Schema drift**: The AWS Encryption SDK KeyStore requires a DynamoDB table with a specific schema (`branch-key-id` (S) / `type` (S)). Manual creation is error-prone.
 2. **Permission creep**: IAM policies must grant exactly the permissions the hierarchical keyring needs — no more, no less.
 3. **Environment parity**: Dev, staging, and production must differ only in safety controls (deletion protection, retention policies), not in resource topology.
 4. **Auditability**: Infrastructure changes must be reviewable, versioned, and traceable.
@@ -50,7 +50,7 @@ A single `EncryptionStack` provisions:
 
 2. **DynamoDB Table** — branch key cache for the KeyStore
    - Name: `IdentityBrokerBranchKeys-{env}`
-   - Schema: `partition_key` (S, HASH) + `sort_key` (S, RANGE) per AWS Encryption SDK spec
+   - Schema: `branch-key-id` (S, HASH) + `type` (S, RANGE) per AWS Encryption SDK spec
    - PAY_PER_REQUEST billing
    - Production: PITR enabled, deletion protection on
    - Non-production: no PITR, no deletion protection

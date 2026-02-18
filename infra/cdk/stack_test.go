@@ -95,25 +95,27 @@ func TestKMSKeyDevDeletion(t *testing.T) {
 func TestDynamoDBTableSchema(t *testing.T) {
 	_, template := createTestStack(t, "dev", "", "", "")
 
-	// The AWS Encryption SDK KeyStore requires partition_key (S) + sort_key (S).
+	// The AWS Encryption SDK KeyStore requires branch-key-id (S) + type (S).
+	// This matches the schema used by the KeyStore client:
+	// github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographykeystoresmithygenerated
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"KeySchema": []interface{}{
 			map[string]interface{}{
-				"AttributeName": "partition_key",
+				"AttributeName": "branch-key-id",
 				"KeyType":       "HASH",
 			},
 			map[string]interface{}{
-				"AttributeName": "sort_key",
+				"AttributeName": "type",
 				"KeyType":       "RANGE",
 			},
 		},
 		"AttributeDefinitions": []interface{}{
 			map[string]interface{}{
-				"AttributeName": "partition_key",
+				"AttributeName": "branch-key-id",
 				"AttributeType": "S",
 			},
 			map[string]interface{}{
-				"AttributeName": "sort_key",
+				"AttributeName": "type",
 				"AttributeType": "S",
 			},
 		},

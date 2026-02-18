@@ -120,18 +120,20 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// ─── DynamoDB Table (Branch Key Cache) ──────────────────────────────
 	//
 	// The AWS Encryption SDK Hierarchical Keyring requires a DynamoDB table
-	// with the specific schema: partition_key (S) + sort_key (S).
+	// with the specific schema: branch-key-id (S) + type (S).
+	// This is the exact schema expected by the KeyStore client implementation:
+	// github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographykeystoresmithygenerated
 	// See: https://docs.aws.amazon.com/encryption-sdk/latest/developer-guide/use-hierarchical-keyring.html
 	tableName := fmt.Sprintf("IdentityBrokerBranchKeys-%s", props.Environment)
 	branchKeyTable := awsdynamodb.NewTable(stack, jsii.String("BranchKeyTable"), &awsdynamodb.TableProps{
 		TableName: jsii.String(tableName),
 		// Schema required by the AWS Encryption SDK KeyStore.
 		PartitionKey: &awsdynamodb.Attribute{
-			Name: jsii.String("partition_key"),
+			Name: jsii.String("branch-key-id"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
 		SortKey: &awsdynamodb.Attribute{
-			Name: jsii.String("sort_key"),
+			Name: jsii.String("type"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
 		BillingMode: awsdynamodb.BillingMode_PAY_PER_REQUEST,

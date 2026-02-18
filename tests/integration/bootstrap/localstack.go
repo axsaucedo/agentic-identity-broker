@@ -84,8 +84,9 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	keyID := *keyOutput.KeyMetadata.KeyId
 
 	// Create DynamoDB table for branch key cache
-	// Per AWS Encryption SDK KeyStore requirements:
+	// Per AWS Encryption SDK KeyStore requirements (matches CDK stack schema):
 	// Partition key: "branch-key-id" (S), Sort key: "type" (S)
+	// Expected by: github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographykeystoresmithygenerated
 	dynamoClient := dynamodb.NewFromConfig(awsConfigForLocalStack(ctx, endpoint))
 	_, err = dynamoClient.CreateTable(ctx, &dynamodb.CreateTableInput{
 		TableName: wrap("IdentityBrokerEncryptionBranchKeys"),

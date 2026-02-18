@@ -153,7 +153,7 @@ func NewHierarchicalEncryptor(ctx context.Context, cfg HierarchicalConfig) (*Hie
     }
 
     // 3. Create KeyStore backed by DynamoDB
-    // Prerequisite: Table must exist with Partition Key "partition_key" (S) and Sort Key "sort_key" (S)
+    // Prerequisite: Table must exist with Partition Key "branch-key-id" (S) and Sort Key "type" (S)
     keyStoreClient, err := keystore.NewClient(keystoretypes.KeyStoreConfig{
         DdbTableName:        cfg.DynamoDBTable,
         KmsConfiguration:    &keystoretypes.KMSConfigurationMemberkmsKeyArn{Value: cfg.KMSKeyArn},
