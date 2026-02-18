@@ -1465,7 +1465,7 @@ func TestKMSKeyRotationBackwardCompatibility(t *testing.T) {
 	ls.SetupLocalStackEnvironment()
 
 	// Create KMS client for rotation operations
-	kmsClient, err := bootstrap.NewKMSClientForLocalStack(ls.Endpoint)
+	kmsClient, err := bootstrap.NewKMSClientForLocalStack(ctx, ls.Endpoint)
 	require.NoError(t, err, "failed to create KMS client")
 
 	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID

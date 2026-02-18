@@ -436,6 +436,15 @@ func pendingWindow(isProd bool) awscdk.Duration {
 
 // createDashboard creates a CloudWatch dashboard for encryption infrastructure monitoring.
 // Displays KMS API metrics and DynamoDB branch key cache utilization for operational visibility.
+//
+// Metrics displayed:
+//   - KMS ApiCalls (Sum): Number of KMS API calls for encryption/decryption
+//   - KMS UserErrorCount (Sum): Errors from KMS operations (throttling, access denied)
+//   - DynamoDB ConsumedReadCapacityUnits (Sum): Branch key cache read operations
+//   - DynamoDB ConsumedWriteCapacityUnits (Sum): Branch key cache write operations
+//
+// Operators can reproduce these metrics via AWS CLI using metric names above.
+// See: docs/operations/deployment-checklist.md for example commands.
 func createDashboard(stack awscdk.Stack, kmsKey awskms.IKey, table awsdynamodb.ITable, props *EncryptionStackProps) awscloudwatch.Dashboard {
 	dashboard := awscloudwatch.NewDashboard(stack, jsii.String("EncryptionDashboard"), &awscloudwatch.DashboardProps{
 		DashboardName: jsii.String(fmt.Sprintf("AgenticIdentityBroker-Encryption-%s", props.Environment)),

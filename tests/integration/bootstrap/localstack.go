@@ -72,7 +72,12 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	endpoint := fmt.Sprintf("http://%s:%s", host, port.Port())
 
 	// Create KMS key
-	kmsClient := kms.NewFromConfig(awsConfigForLocalStack(ctx, endpoint))
+	kmsConfig, err := awsConfigForLocalStack(ctx, endpoint)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		t.Fatalf("failed to load AWS config for KMS: %v", err)
+	}
+	kmsClient := kms.NewFromConfig(kmsConfig)
 	keyOutput, err := kmsClient.CreateKey(ctx, &kms.CreateKeyInput{
 		Description: wrap("Test encryption key"),
 	})
@@ -87,7 +92,12 @@ func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
 	// Per AWS Encryption SDK KeyStore requirements (matches CDK stack schema):
 	// Partition key: "branch-key-id" (S), Sort key: "type" (S)
 	// Expected by: github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographykeystoresmithygenerated
-	dynamoClient := dynamodb.NewFromConfig(awsConfigForLocalStack(ctx, endpoint))
+	dynamoConfig, err := awsConfigForLocalStack(ctx, endpoint)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		t.Fatalf("failed to load AWS config for DynamoDB: %v", err)
+	}
+	dynamoClient := dynamodb.NewFromConfig(dynamoConfig)
 	_, err = dynamoClient.CreateTable(ctx, &dynamodb.CreateTableInput{
 		TableName: wrap("IdentityBrokerEncryptionBranchKeys"),
 		AttributeDefinitions: []types.AttributeDefinition{
@@ -229,22 +239,26 @@ func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dyna
 	return nil
 }
 
-// awsConfigForLocalStack creates AWS SDK config pointing to LocalStack endpoint
-func awsConfigForLocalStack(ctx context.Context, endpoint string) aws.Config {
-	cfg, _ := config.LoadDefaultConfig(ctx,
+// awsConfigForLocalStack creates AWS SDK config pointing to LocalStack endpoint.
+// Returns an error if config loading fails (e.g., invalid credentials, environment issues).
+func awsConfigForLocalStack(ctx context.Context, endpoint string) (aws.Config, error) {
+	return config.LoadDefaultConfig(ctx,
 		config.WithRegion("eu-central-1"),
 		config.WithBaseEndpoint(endpoint),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
 	)
-	return cfg
 }
 
 func wrap(s string) *string { return &s }
 
-// NewKMSClientForLocalStack creates a KMS client configured for LocalStack endpoint
-// Used for test operations like key rotation that need direct KMS API access
-func NewKMSClientForLocalStack(endpoint string) (*kms.Client, error) {
-	ctx := context.Background()
-	cfg := awsConfigForLocalStack(ctx, endpoint)
+// NewKMSClientForLocalStack creates a KMS client configured for LocalStack endpoint.
+// Accepts a context parameter to allow proper error handling and testing.
+// Returns an error if AWS SDK config loading fails.
+// Used for test operations like key rotation that need direct KMS API access.
+func NewKMSClientForLocalStack(ctx context.Context, endpoint string) (*kms.Client, error) {
+	cfg, err := awsConfigForLocalStack(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
 	return kms.NewFromConfig(cfg), nil
 }

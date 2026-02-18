@@ -102,6 +102,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Verify IAM role created**:
   ```bash
   # IAM role name is created by CDK with the format: AgenticIdentityBrokerEncryptionRole-{env}
+  # NOTE: Role name includes "-Role" suffix (different from stack name AgenticIdentityBrokerEncryption-{env})
   aws iam get-role --role-name AgenticIdentityBrokerEncryptionRole-prod
   # Expected: Role exists with KMS and DynamoDB permissions
   # Note: MaxSessionDuration = 1 hour (for temporary credential limitation)
@@ -442,14 +443,15 @@ After deployment, ensure continuous monitoring:
 aws cloudwatch get-dashboard \
   --dashboard-name AgenticIdentityBroker-Encryption-prod
 
-# Monitor KMS API call rate
+# Monitor KMS API call rate (matches dashboard metric)
 aws cloudwatch get-metric-statistics \
   --namespace AWS/KMS \
-  --metric-name ApiCallCount \
+  --metric-name ApiCalls \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Sum
+  --statistics Sum \
+  --dimensions Name=KeyId,Value=<KEY_ID>
 
 # Monitor DynamoDB read/write capacity
 aws cloudwatch get-metric-statistics \
@@ -478,6 +480,8 @@ Expected monthly costs for production:
 
 All outputs from the CDK stack `AgenticIdentityBrokerEncryption-{env}`:
 
+> **Important**: The stack name is `AgenticIdentityBrokerEncryption-{env}`, but the IAM role name is `AgenticIdentityBrokerEncryptionRole-{env}` (includes "-Role" suffix). Use the correct name when calling `aws iam get-role --role-name`.
+
 | Output Key | Description | Usage |
 |------------|-------------|-------|
 | `EncryptionKeyARN` | KMS CMK ARN | → `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN` |
@@ -485,7 +489,7 @@ All outputs from the CDK stack `AgenticIdentityBrokerEncryption-{env}`:
 | `BranchKeyTableName` | DynamoDB table name | → `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME` |
 | `BranchKeyTableARN` | DynamoDB table ARN | IAM policy reference |
 | `EncryptionRoleARN` | IAM role ARN | Cross-account access, role assumption |
-| `IamRoleName` | IAM role name | IRSA annotation: `iam.amazonaws.com/role={IamRoleName}` |
+| `IamRoleName` | IAM role name (`AgenticIdentityBrokerEncryptionRole-{env}`) | IRSA annotation: `iam.amazonaws.com/role={IamRoleName}` |
 | `KMSThrottleAlarmArn` | CloudWatch alarm (KMS throttling) | Link to SNS for alerts |
 | `KMSErrorAlarmArn` | CloudWatch alarm (KMS errors) | Link to SNS for alerts |
 | `ServiceAccountNamespace` | Kubernetes namespace | Reference: `{namespace}:{serviceAccountName}` |
