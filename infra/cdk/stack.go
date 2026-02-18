@@ -124,7 +124,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// This is the exact schema expected by the KeyStore client implementation:
 	// github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographykeystoresmithygenerated
 	// See: https://docs.aws.amazon.com/encryption-sdk/latest/developer-guide/use-hierarchical-keyring.html
-	tableName := fmt.Sprintf("IdentityBrokerBranchKeys-%s", props.Environment)
+	tableName := fmt.Sprintf("AgenticIdentityBrokerBranchKeys-%s", props.Environment)
 	branchKeyTable := awsdynamodb.NewTable(stack, jsii.String("BranchKeyTable"), &awsdynamodb.TableProps{
 		TableName: jsii.String(tableName),
 		// Schema required by the AWS Encryption SDK KeyStore.
@@ -166,7 +166,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		Metric:             kmsThrottleMetric,
 		Threshold:          jsii.Number(KMSThrottleThreshold),
 		EvaluationPeriods:  jsii.Number(KMSThrottleEvalPeriods),
-		AlarmName:          jsii.String(fmt.Sprintf("IdentityBroker-Encryption-%s-KMS-Throttle", props.Environment)),
+		AlarmName:          jsii.String(fmt.Sprintf("AgenticIdentityBroker-Encryption-%s-KMS-Throttle", props.Environment)),
 		AlarmDescription:   jsii.String("KMS key throttling detected - may indicate insufficient quota"),
 		TreatMissingData:   awscloudwatch.TreatMissingData_NOT_BREACHING,
 		ComparisonOperator: awscloudwatch.ComparisonOperator_GREATER_THAN_THRESHOLD,
@@ -188,7 +188,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		Metric:             kmsErrorMetric,
 		Threshold:          jsii.Number(KMSErrorThreshold),
 		EvaluationPeriods:  jsii.Number(KMSErrorEvalPeriods),
-		AlarmName:          jsii.String(fmt.Sprintf("IdentityBroker-Encryption-%s-KMS-Errors", props.Environment)),
+		AlarmName:          jsii.String(fmt.Sprintf("AgenticIdentityBroker-Encryption-%s-KMS-Errors", props.Environment)),
 		AlarmDescription:   jsii.String("KMS API errors detected - check key policy and permissions"),
 		TreatMissingData:   awscloudwatch.TreatMissingData_NOT_BREACHING,
 		ComparisonOperator: awscloudwatch.ComparisonOperator_GREATER_THAN_THRESHOLD,
@@ -201,7 +201,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	trustPrincipal := buildIRSATrustPrincipal(stack, props.OIDCProviderArn, props.K8sNamespace, props.K8sServiceAccountName)
 
 	encryptionRole := awsiam.NewRole(stack, jsii.String("EncryptionRole"), &awsiam.RoleProps{
-		RoleName:           jsii.String(fmt.Sprintf("IdentityBrokerEncryptionRole-%s", props.Environment)),
+		RoleName:           jsii.String(fmt.Sprintf("AgenticIdentityBrokerEncryptionRole-%s", props.Environment)),
 		Description:        jsii.String("IAM role for Agentic Identity Broker encryption operations (KMS + DynamoDB) via IRSA"),
 		AssumedBy:          trustPrincipal,
 		MaxSessionDuration: awscdk.Duration_Hours(jsii.Number(MaxSessionDurationHours)),
@@ -267,7 +267,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	awscdk.NewCfnOutput(stack, jsii.String("EncryptionKeyARN"), &awscdk.CfnOutputProps{
 		Value:       kmsKey.KeyArn(),
 		Description: jsii.String("KMS CMK ARN → IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-EncryptionKeyARN", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-EncryptionKeyARN", props.Environment)),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("EncryptionKeyAlias"), &awscdk.CfnOutputProps{
@@ -278,7 +278,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	awscdk.NewCfnOutput(stack, jsii.String("BranchKeyTableName"), &awscdk.CfnOutputProps{
 		Value:       branchKeyTable.TableName(),
 		Description: jsii.String("DynamoDB table name → IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-BranchKeyTableName", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-BranchKeyTableName", props.Environment)),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("BranchKeyTableARN"), &awscdk.CfnOutputProps{
@@ -289,19 +289,19 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	awscdk.NewCfnOutput(stack, jsii.String("EncryptionRoleARN"), &awscdk.CfnOutputProps{
 		Value:       encryptionRole.RoleArn(),
 		Description: jsii.String("IAM role ARN → IDENTITY_BROKER_ENCRYPTION_IAM_ROLE_ARN"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-EncryptionRoleARN", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-EncryptionRoleARN", props.Environment)),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("KMSThrottleAlarmArn"), &awscdk.CfnOutputProps{
 		Value:       kmsThrottleAlarm.AlarmArn(),
 		Description: jsii.String("CloudWatch Alarm ARN for KMS throttling (subscribe SNS topic for alerts)"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-KMSThrottleAlarmArn", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-KMSThrottleAlarmArn", props.Environment)),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("KMSErrorAlarmArn"), &awscdk.CfnOutputProps{
 		Value:       kmsErrorAlarm.AlarmArn(),
 		Description: jsii.String("CloudWatch Alarm ARN for KMS errors (subscribe SNS topic for alerts)"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-KMSErrorAlarmArn", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-KMSErrorAlarmArn", props.Environment)),
 	})
 
 	// ─── IRSA Outputs ───────────────────────────────────────────────────
@@ -311,25 +311,25 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountNamespace"), &awscdk.CfnOutputProps{
 		Value:       jsii.String(props.K8sNamespace),
 		Description: jsii.String("Kubernetes namespace for service account"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-ServiceAccountNamespace", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountNamespace", props.Environment)),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountName"), &awscdk.CfnOutputProps{
 		Value:       jsii.String(props.K8sServiceAccountName),
 		Description: jsii.String("Kubernetes service account name"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-ServiceAccountName", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountName", props.Environment)),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountFullName"), &awscdk.CfnOutputProps{
 		Value:       jsii.String(fmt.Sprintf("%s:%s", props.K8sNamespace, props.K8sServiceAccountName)),
 		Description: jsii.String("Full service account reference (namespace:name)"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-ServiceAccountFullName", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountFullName", props.Environment)),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("IamRoleName"), &awscdk.CfnOutputProps{
 		Value:       encryptionRole.RoleName(),
 		Description: jsii.String("IAM role name for iam.amazonaws.com/role annotation in Kubernetes ServiceAccount"),
-		ExportName:  jsii.String(fmt.Sprintf("IdentityBroker-%s-IamRoleName", props.Environment)),
+		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-IamRoleName", props.Environment)),
 	})
 
 	// ─── CloudWatch Dashboard ───────────────────────────────────────────
@@ -427,7 +427,7 @@ func pendingWindow(isProd bool) awscdk.Duration {
 // Displays KMS API metrics and DynamoDB branch key cache utilization for operational visibility.
 func createDashboard(stack awscdk.Stack, kmsKey awskms.IKey, table awsdynamodb.ITable, props *EncryptionStackProps) awscloudwatch.Dashboard {
 	dashboard := awscloudwatch.NewDashboard(stack, jsii.String("EncryptionDashboard"), &awscloudwatch.DashboardProps{
-		DashboardName: jsii.String(fmt.Sprintf("IdentityBroker-Encryption-%s", props.Environment)),
+		DashboardName: jsii.String(fmt.Sprintf("AgenticIdentityBroker-Encryption-%s", props.Environment)),
 	})
 
 	// KMS API Calls Metric - tracks encryption/decryption operations.

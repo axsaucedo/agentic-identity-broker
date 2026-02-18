@@ -134,7 +134,7 @@ func TestDynamoDBTableNameFollowsConvention(t *testing.T) {
 	_, template := createTestStack(t, "staging", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
-		"TableName": "IdentityBrokerBranchKeys-staging",
+		"TableName": "AgenticIdentityBrokerBranchKeys-staging",
 	})
 }
 
@@ -169,7 +169,7 @@ func TestIAMRoleCreated(t *testing.T) {
 	_, template := createTestStack(t, "dev", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"RoleName": "IdentityBrokerEncryptionRole-dev",
+		"RoleName": "AgenticIdentityBrokerEncryptionRole-dev",
 	})
 }
 
@@ -342,9 +342,9 @@ func TestStackOutputExportNames(t *testing.T) {
 	require.True(t, ok)
 
 	expectedExports := []string{
-		"IdentityBroker-staging-EncryptionKeyARN",
-		"IdentityBroker-staging-BranchKeyTableName",
-		"IdentityBroker-staging-EncryptionRoleARN",
+		"AgenticIdentityBroker-staging-EncryptionKeyARN",
+		"AgenticIdentityBroker-staging-BranchKeyTableName",
+		"AgenticIdentityBroker-staging-EncryptionRoleARN",
 	}
 
 	var exportNames []string
@@ -416,7 +416,7 @@ func TestRequiredTagsApplied(t *testing.T) {
 
 	// Verify environment is embedded in resource names (alternative to Environment tag)
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
-		"TableName": "IdentityBrokerBranchKeys-prod",
+		"TableName": "AgenticIdentityBrokerBranchKeys-prod",
 	})
 
 	template.HasResourceProperties(jsii.String("AWS::KMS::Alias"), map[string]interface{}{
@@ -470,7 +470,7 @@ func TestDashboardNameFollowsConvention(t *testing.T) {
 	_, template := createTestStack(t, "staging", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Dashboard"), map[string]interface{}{
-		"DashboardName": "IdentityBroker-Encryption-staging",
+		"DashboardName": "AgenticIdentityBroker-Encryption-staging",
 	})
 }
 
@@ -480,7 +480,7 @@ func TestKMSThrottleAlarmCreated(t *testing.T) {
 	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
 
 	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Alarm"), map[string]interface{}{
-		"AlarmName":          "IdentityBroker-Encryption-prod-KMS-Throttle",
+		"AlarmName":          "AgenticIdentityBroker-Encryption-prod-KMS-Throttle",
 		"AlarmDescription":   "KMS key throttling detected - may indicate insufficient quota",
 		"Threshold":          float64(10),
 		"EvaluationPeriods":  float64(2),
@@ -493,7 +493,7 @@ func TestKMSErrorAlarmCreated(t *testing.T) {
 	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
 
 	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Alarm"), map[string]interface{}{
-		"AlarmName":          "IdentityBroker-Encryption-prod-KMS-Errors",
+		"AlarmName":          "AgenticIdentityBroker-Encryption-prod-KMS-Errors",
 		"AlarmDescription":   "KMS API errors detected - check key policy and permissions",
 		"Threshold":          float64(5),
 		"EvaluationPeriods":  float64(1),
@@ -761,10 +761,10 @@ func TestEnvironmentParameterizationDev(t *testing.T) {
 	_, template := createTestStack(t, "dev", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
-		"TableName": "IdentityBrokerBranchKeys-dev",
+		"TableName": "AgenticIdentityBrokerBranchKeys-dev",
 	})
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"RoleName": "IdentityBrokerEncryptionRole-dev",
+		"RoleName": "AgenticIdentityBrokerEncryptionRole-dev",
 	})
 }
 
@@ -772,10 +772,10 @@ func TestEnvironmentParameterizationProd(t *testing.T) {
 	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
-		"TableName": "IdentityBrokerBranchKeys-prod",
+		"TableName": "AgenticIdentityBrokerBranchKeys-prod",
 	})
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"RoleName": "IdentityBrokerEncryptionRole-prod",
+		"RoleName": "AgenticIdentityBrokerEncryptionRole-prod",
 	})
 }
 

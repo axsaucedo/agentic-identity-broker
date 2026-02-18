@@ -88,7 +88,7 @@ func main() {
 		}
 	}
 
-	stackName := "IdentityBrokerEncryption-" + env
+	stackName := "AgenticIdentityBrokerEncryption-" + env
 
 	NewEncryptionStack(app, stackName, &EncryptionStackProps{
 		StackProps: awscdk.StackProps{
