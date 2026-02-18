@@ -94,13 +94,16 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Verify DynamoDB table created**:
   ```bash
   aws dynamodb describe-table --table-name IdentityBrokerBranchKeys-prod
-  # Expected: TableStatus=ACTIVE, PITR=ENABLED
+  # Expected: TableStatus=ACTIVE
+  # Note: PITR is ENABLED only in production, disabled in dev/staging
+  # Note: DeletionProtection is ENABLED only in production
   ```
 
 - [ ] **Verify IAM role created**:
   ```bash
   aws iam get-role --role-name IdentityBrokerEncryptionRole-prod
   # Expected: Role exists with KMS decrypt permissions
+  # Note: MaxSessionDuration = 1 hour (for temporary credential limitation)
   ```
 
 - [ ] **Extract stack outputs**:
@@ -148,9 +151,23 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
     --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' \
     --output text)
 
+  # Extract IAM role name for IRSA annotation
+  export IAM_ROLE_NAME=$(aws cloudformation describe-stacks \
+    --stack-name IdentityBrokerEncryption-prod \
+    --query 'Stacks[0].Outputs[?OutputKey==`IamRoleName`].OutputValue' \
+    --output text)
+
   echo "KMS Key ARN: $KMS_KEY_ARN"
   echo "DynamoDB Table: $DYNAMODB_TABLE_NAME"
   echo "IAM Role ARN: $IAM_ROLE_ARN"
+  echo "IAM Role Name: $IAM_ROLE_NAME"
+
+  # View all available stack outputs
+  echo -e "\n=== All Stack Outputs ==="
+  aws cloudformation describe-stacks \
+    --stack-name IdentityBrokerEncryption-prod \
+    --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
+    --output table
   ```
 
 - [ ] **Create Kubernetes namespace**:
@@ -243,17 +260,49 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 
   **Alternative**: Create a full OAuth2 session flow via `/api/third-party/{serviceId}/oauth2/authorize` and `/api/third-party/{serviceId}/oauth2/callback` endpoints.
 
-- [ ] **Verify CloudWatch alarms created and subscribed**:
+- [ ] **Verify CloudWatch alarms created**:
   ```bash
   aws cloudwatch describe-alarms \
     --alarm-name-prefix IdentityBroker-Encryption-prod
 
-  # Subscribe to alarms
+  # Expected alarms:
+  # - IdentityBroker-Encryption-prod-KMS-Throttle
+  # - IdentityBroker-Encryption-prod-KMS-Errors
+  ```
+
+- [ ] **Configure SNS notifications for alarms** (Optional):
+
+  The CDK stack creates CloudWatch alarms but does NOT automatically create SNS topics. To receive notifications, either:
+
+  **Option A: Create SNS topics and link manually**
+  ```bash
+  # Create SNS topics
+  aws sns create-topic --name IdentityBroker-Encryption-prod-KMS-Alerts
+
+  # Get topic ARN
+  TOPIC_ARN=$(aws sns list-topics \
+    --query 'Topics[?TopicArn==`*IdentityBroker-Encryption-prod-KMS-Alerts*`].TopicArn' \
+    --output text)
+
+  # Link alarms to SNS topic
+  aws cloudwatch put-metric-alarm \
+    --alarm-name IdentityBroker-Encryption-prod-KMS-Throttle \
+    --alarm-actions $TOPIC_ARN
+
+  aws cloudwatch put-metric-alarm \
+    --alarm-name IdentityBroker-Encryption-prod-KMS-Errors \
+    --alarm-actions $TOPIC_ARN
+
+  # Subscribe to topic
   aws sns subscribe \
-    --topic-arn arn:aws:sns:eu-central-1:ACCOUNT:IdentityBroker-Encryption-prod-KMS-Throttle \
+    --topic-arn $TOPIC_ARN \
     --protocol email \
     --notification-endpoint ops-team@example.com
   ```
+
+  **Option B: Use AWS Console or other alerting tools**
+  - Integrate with PagerDuty, Slack, or other services using CloudWatch integrations
+  - Configure alarm actions in AWS Console
 
 ## Rollback Procedures
 
@@ -289,6 +338,54 @@ npx cdk destroy -c env=prod
 # Note: KMS keys have 30-day pending deletion window
 # They can be recovered during this period if needed
 ```
+
+## Infrastructure Details
+
+### KMS Key Deletion Window
+
+The CDK stack configures KMS key deletion windows based on environment:
+
+- **Production**: 30-day pending deletion window (maximum safety)
+- **Non-production (dev/staging)**: 7-day pending deletion window
+
+This means if you delete the KMS key:
+- In production: You have 30 days to recover it before permanent deletion
+- In non-production: You have 7 days to recover it before permanent deletion
+
+To recover a key during the deletion window:
+```bash
+aws kms cancel-key-deletion --key-id alias/identity-broker/prod/token-vault-kek
+```
+
+### DynamoDB Table Features
+
+- **Billing Mode**: Pay-per-request (automatic scaling, no provisioned capacity)
+- **Encryption**: AWS-managed encryption by default
+- **Point-in-Time Recovery (PITR)**: **Enabled for production only**
+- **Deletion Protection**: **Enabled for production only**
+
+To enable PITR or deletion protection for non-production:
+```bash
+# Enable PITR
+aws dynamodb update-continuous-backups \
+  --table-name IdentityBrokerBranchKeys-prod \
+  --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true
+
+# Enable deletion protection
+aws dynamodb update-table \
+  --table-name IdentityBrokerBranchKeys-prod \
+  --deletion-protection-enabled
+```
+
+### IAM Role Configuration
+
+- **Trust Policy**: Uses IRSA (IAM Roles for Service Accounts) for Kubernetes
+- **Session Duration**: 1 hour maximum (enforced for temporary credential safety)
+- **Permissions**: Least-privilege KMS and DynamoDB operations
+- **KMS Permissions**: encrypt, decrypt, generate data keys, describe key, create grants
+- **DynamoDB Permissions**: get/put/query/update/delete item, describe table
+
+---
 
 ## AWS KMS Configuration Options
 
@@ -376,6 +473,26 @@ Expected monthly costs for production:
 
 **Total estimated cost**: $10-50/month depending on request volume
 
+## CloudFormation Stack Outputs Reference
+
+All outputs from the CDK stack `IdentityBrokerEncryption-{env}`:
+
+| Output Key | Description | Usage |
+|------------|-------------|-------|
+| `EncryptionKeyARN` | KMS CMK ARN | → `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN` |
+| `EncryptionKeyAlias` | KMS key alias | Human-readable reference: `alias/identity-broker/{env}/token-vault-kek` |
+| `BranchKeyTableName` | DynamoDB table name | → `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME` |
+| `BranchKeyTableARN` | DynamoDB table ARN | IAM policy reference |
+| `EncryptionRoleARN` | IAM role ARN | Cross-account access, role assumption |
+| `IamRoleName` | IAM role name | IRSA annotation: `iam.amazonaws.com/role={IamRoleName}` |
+| `KMSThrottleAlarmArn` | CloudWatch alarm (KMS throttling) | Link to SNS for alerts |
+| `KMSErrorAlarmArn` | CloudWatch alarm (KMS errors) | Link to SNS for alerts |
+| `ServiceAccountNamespace` | Kubernetes namespace | Reference: `{namespace}:{serviceAccountName}` |
+| `ServiceAccountName` | Kubernetes service account | Reference: `{namespace}:{serviceAccountName}` |
+| `ServiceAccountFullName` | Full service account reference | Format: `namespace:serviceAccountName` |
+
+---
+
 ## References
 
 - [Kubernetes IRSA Deployment Guide](../deployment/kubernetes-irsa.md) - Complete IRSA deployment walkthrough
@@ -384,3 +501,4 @@ Expected monthly costs for production:
 - [EKS IAM Roles for Service Accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
 - [KMS Key Management](./kms-key-management.md)
 - [DynamoDB Recovery Procedures](./dynamodb-recovery.md)
+- [AWS Encryption SDK Hierarchical Keyring](https://docs.aws.amazon.com/encryption-sdk/latest/developer-guide/use-hierarchical-keyring.html)
