@@ -43,20 +43,20 @@ CDK Go provides:
 A single `EncryptionStack` provisions:
 
 1. **AWS KMS Symmetric CMK** — the Key Encryption Key (KEK) for the hierarchical keyring
-   - Alias: `alias/identity-broker/{env}/token-vault-kek`
+   - Alias: `alias/agentic-identity-broker/{env}/token-vault-kek`
    - Automatic annual rotation enabled
    - Production: RETAIN removal policy, 30-day pending deletion window
    - Non-production: DESTROY removal policy, 7-day pending deletion window
 
 2. **DynamoDB Table** — branch key cache for the KeyStore
-   - Name: `IdentityBrokerBranchKeys-{env}`
+   - Name: `AgenticIdentityBrokerBranchKeys-{env}`
    - Schema: `branch-key-id` (S, HASH) + `type` (S, RANGE) per AWS Encryption SDK spec
    - PAY_PER_REQUEST billing
    - Production: PITR enabled, deletion protection on
    - Non-production: no PITR, no deletion protection
 
 3. **IAM Role** — least-privilege access for encryption operations
-   - Name: `IdentityBrokerEncryptionRole-{env}`
+   - Name: `AgenticIdentityBrokerEncryptionRole-{env}`
    - Trust principal configurable via CDK context (`-c trustPrincipal=ARN`)
    - Defaults to same-account root (for dev/test convenience)
    - Permissions:

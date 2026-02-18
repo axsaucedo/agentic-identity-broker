@@ -153,7 +153,7 @@ npx cdk synth \
   -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
 ```
 
-Review the synthesized template in `cdk.out/IdentityBrokerEncryption-prod.template.json`
+Review the synthesized template in `cdk.out/AgenticIdentityBrokerEncryption-prod.template.json`
 
 #### 1.4 Preview Infrastructure Changes
 
@@ -182,7 +182,7 @@ Deployment takes approximately 3-5 minutes.
 After successful deployment, extract the stack outputs needed for Helm configuration:
 
 ```bash
-STACK_NAME="IdentityBrokerEncryption-prod"
+STACK_NAME="AgenticIdentityBrokerEncryption-prod"
 
 # Extract all outputs
 aws cloudformation describe-stacks \
@@ -220,9 +220,9 @@ echo "IAM Role Name: $IAM_ROLE_NAME"
 
 Expected outputs:
 - `EncryptionKeyARN`: KMS key ARN (e.g., `arn:aws:kms:us-east-1:ACCOUNT:key/UUID`)
-- `BranchKeyTableName`: DynamoDB table name (e.g., `IdentityBrokerBranchKeys-prod`)
-- `EncryptionRoleARN`: IAM role ARN (e.g., `arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryptionRole-prod`)
-- `IamRoleName`: IAM role name (e.g., `IdentityBrokerEncryptionRole-prod`)
+- `BranchKeyTableName`: DynamoDB table name (e.g., `AgenticIdentityBrokerBranchKeys-prod`)
+- `EncryptionRoleARN`: IAM role ARN (e.g., `arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod`)
+- `IamRoleName`: IAM role name (e.g., `AgenticIdentityBrokerEncryptionRole-prod`)
 - `ServiceAccountNamespace`: Kubernetes namespace (`identity-broker`)
 - `ServiceAccountName`: Service account name (`broker-sa`)
 - `ServiceAccountFullName`: Full reference (`identity-broker:broker-sa`)
@@ -289,7 +289,7 @@ serviceAccount:
   # IRSA configuration
   irsa:
     enabled: true
-    roleArn: "arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryptionRole-prod"  # Replace with actual ARN
+    roleArn: "arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod"  # Replace with actual ARN
 
 # Broker configuration (AWS encryption settings)
 broker:
@@ -298,7 +298,7 @@ broker:
     encryption:
       aws_kms:
         key_arn: "arn:aws:kms:us-east-1:ACCOUNT:key/UUID"  # Replace with actual ARN
-        dynamodb_table_name: "IdentityBrokerBranchKeys-prod"  # Replace with actual table name
+        dynamodb_table_name: "AgenticIdentityBrokerBranchKeys-prod"  # Replace with actual table name
         region: "us-east-1"  # Replace with your region
         branch_key_ttl: "1h"
 
@@ -457,7 +457,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   annotations:
-    iam.amazonaws.com/role: arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryptionRole-prod
+    iam.amazonaws.com/role: arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod
   name: broker-sa
   namespace: identity-broker
 ```
@@ -494,7 +494,7 @@ kubectl exec -n ${K8S_NAMESPACE} $POD_NAME -- env | grep AWS
 Expected output:
 
 ```
-AWS_ROLE_ARN=arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryptionRole-prod
+AWS_ROLE_ARN=arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod
 AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/token
 AWS_REGION=us-east-1
 ```
@@ -554,7 +554,7 @@ Check encryption infrastructure metrics:
 ```bash
 # View CloudWatch dashboard
 aws cloudwatch get-dashboard \
-  --dashboard-name IdentityBroker-Encryption-prod
+  --dashboard-name AgenticIdentityBroker-Encryption-prod
 
 # Check KMS API call metrics
 aws cloudwatch get-metric-statistics \
@@ -631,7 +631,7 @@ AccessDenied: User: sts:assumed-role/eks-node-role/i-xxxxx is not authorized to 
 
 **Symptoms**:
 ```
-KMS.AccessDeniedException: User: arn:aws:sts::ACCOUNT:assumed-role/IdentityBrokerEncryptionRole-prod/xxxxx is not authorized to perform: kms:Decrypt
+KMS.AccessDeniedException: User: arn:aws:sts::ACCOUNT:assumed-role/AgenticIdentityBrokerEncryptionRole-prod/xxxxx is not authorized to perform: kms:Decrypt
 ```
 
 **Diagnosis**:
@@ -652,7 +652,7 @@ aws iam list-role-policies --role-name $IAM_ROLE_NAME
 
 **Symptoms**:
 ```
-DynamoDB.AccessDeniedException: User: arn:aws:sts::ACCOUNT:assumed-role/IdentityBrokerEncryptionRole-prod/xxxxx is not authorized to perform: dynamodb:GetItem
+DynamoDB.AccessDeniedException: User: arn:aws:sts::ACCOUNT:assumed-role/AgenticIdentityBrokerEncryptionRole-prod/xxxxx is not authorized to perform: dynamodb:GetItem
 ```
 
 **Diagnosis**:
@@ -845,7 +845,7 @@ jobs:
         id: outputs
         run: |
           ROLE_ARN=$(aws cloudformation describe-stacks \
-            --stack-name IdentityBrokerEncryption-prod \
+            --stack-name AgenticIdentityBrokerEncryption-prod \
             --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' \
             --output text)
           echo "role_arn=$ROLE_ARN" >> $GITHUB_OUTPUT

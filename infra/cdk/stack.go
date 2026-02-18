@@ -104,12 +104,17 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// Symmetric CMK used as the Key Encryption Key in the hierarchical keyring.
 	// The AWS Encryption SDK wraps per-operation DEKs with branch keys that are
 	// themselves protected by this CMK.
+	// KMS key alias uses the "agentic-identity-broker" prefix for consistency with other resources.
+	// Keep documentation in sync:
+	// - docs/operations/deployment-checklist.md
+	// - docs/deployment/kubernetes-irsa.md
+	// - adrs/010-cdk-encryption-infrastructure.md
 	kmsKey := awskms.NewKey(stack, jsii.String("EncryptionKEK"), &awskms.KeyProps{
 		Description:       jsii.String(fmt.Sprintf("Agentic Identity Broker - Token Vault KEK (%s)", props.Environment)),
 		KeySpec:           awskms.KeySpec_SYMMETRIC_DEFAULT,
 		KeyUsage:          awskms.KeyUsage_ENCRYPT_DECRYPT,
 		EnableKeyRotation: jsii.Bool(true),
-		Alias:             jsii.String(fmt.Sprintf("alias/identity-broker/%s/token-vault-kek", props.Environment)),
+		Alias:             jsii.String(fmt.Sprintf("alias/agentic-identity-broker/%s/token-vault-kek", props.Environment)),
 		// Prod: RETAIN on stack deletion to prevent accidental data loss.
 		// Non-prod: DESTROY for clean teardown.
 		RemovalPolicy: removalPolicy(isProd),
@@ -124,6 +129,12 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// This is the exact schema expected by the KeyStore client implementation:
 	// github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl/awscryptographykeystoresmithygenerated
 	// See: https://docs.aws.amazon.com/encryption-sdk/latest/developer-guide/use-hierarchical-keyring.html
+	//
+	// Resource names use the "AgenticIdentityBroker" prefix to match the full
+	// project name. Keep documentation in sync:
+	// - docs/operations/deployment-checklist.md
+	// - docs/deployment/kubernetes-irsa.md
+	// - adrs/010-cdk-encryption-infrastructure.md
 	tableName := fmt.Sprintf("AgenticIdentityBrokerBranchKeys-%s", props.Environment)
 	branchKeyTable := awsdynamodb.NewTable(stack, jsii.String("BranchKeyTable"), &awsdynamodb.TableProps{
 		TableName: jsii.String(tableName),

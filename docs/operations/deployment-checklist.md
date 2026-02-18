@@ -87,13 +87,13 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 
 - [ ] **Verify KMS key created**:
   ```bash
-  aws kms describe-key --key-id alias/identity-broker/prod/token-vault-kek
+  aws kms describe-key --key-id alias/agentic-identity-broker/prod/token-vault-kek
   # Expected: KeyState=Enabled, KeyRotationEnabled=true
   ```
 
 - [ ] **Verify DynamoDB table created**:
   ```bash
-  aws dynamodb describe-table --table-name IdentityBrokerBranchKeys-prod
+  aws dynamodb describe-table --table-name AgenticIdentityBrokerBranchKeys-prod
   # Expected: TableStatus=ACTIVE
   # Note: PITR is ENABLED only in production, disabled in dev/staging
   # Note: DeletionProtection is ENABLED only in production
@@ -101,15 +101,15 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 
 - [ ] **Verify IAM role created**:
   ```bash
-  # IAM role name is created by CDK with the format: IdentityBrokerEncryptionRole-{env}
-  aws iam get-role --role-name IdentityBrokerEncryptionRole-prod
+  # IAM role name is created by CDK with the format: AgenticIdentityBrokerEncryptionRole-{env}
+  aws iam get-role --role-name AgenticIdentityBrokerEncryptionRole-prod
   # Expected: Role exists with KMS and DynamoDB permissions
   # Note: MaxSessionDuration = 1 hour (for temporary credential limitation)
   ```
 
 - [ ] **Extract stack outputs**:
   ```bash
-  STACK_NAME="IdentityBrokerEncryption-prod"
+  STACK_NAME="AgenticIdentityBrokerEncryption-prod"
 
   aws cloudformation describe-stacks \
     --stack-name $STACK_NAME \
@@ -122,7 +122,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Verify IAM role trust policy includes federated principal**:
   ```bash
   IAM_ROLE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name IdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryption-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`IamRoleName`].OutputValue' \
     --output text)
 
@@ -138,23 +138,23 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
   ```bash
   # Extract outputs needed for Helm values
   export KMS_KEY_ARN=$(aws cloudformation describe-stacks \
-    --stack-name IdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryption-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`EncryptionKeyARN`].OutputValue' \
     --output text)
 
   export DYNAMODB_TABLE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name IdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryption-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`BranchKeyTableName`].OutputValue' \
     --output text)
 
   export IAM_ROLE_ARN=$(aws cloudformation describe-stacks \
-    --stack-name IdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryption-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' \
     --output text)
 
   # Extract IAM role name for IRSA annotation
   export IAM_ROLE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name IdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryption-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`IamRoleName`].OutputValue' \
     --output text)
 
@@ -166,7 +166,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
   # View all available stack outputs
   echo -e "\n=== All Stack Outputs ==="
   aws cloudformation describe-stacks \
-    --stack-name IdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryption-prod \
     --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
     --output table
   ```
@@ -196,7 +196,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
     -n ${K8S_NAMESPACE} \
     -o jsonpath='{.metadata.annotations.iam\.amazonaws\.com/role}'
 
-  # Expected: arn:aws:iam::ACCOUNT:role/IdentityBrokerEncryptionRole-prod
+  # Expected: arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod
   ```
 
 - [ ] **Verify pod can assume IAM role**:
@@ -230,7 +230,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Configure application environment variables**:
   ```bash
   # Extract stack outputs and set environment variables
-  STACK_NAME="IdentityBrokerEncryption-prod"
+  STACK_NAME="AgenticIdentityBrokerEncryption-prod"
 
   export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN=$(aws cloudformation describe-stacks \
     --stack-name $STACK_NAME \
@@ -264,11 +264,11 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Verify CloudWatch alarms created**:
   ```bash
   aws cloudwatch describe-alarms \
-    --alarm-name-prefix IdentityBroker-Encryption-prod
+    --alarm-name-prefix AgenticIdentityBroker-Encryption-prod
 
   # Expected alarms:
-  # - IdentityBroker-Encryption-prod-KMS-Throttle
-  # - IdentityBroker-Encryption-prod-KMS-Errors
+  # - AgenticIdentityBroker-Encryption-prod-KMS-Throttle
+  # - AgenticIdentityBroker-Encryption-prod-KMS-Errors
   ```
 
 - [ ] **Configure SNS notifications for alarms** (Optional):
@@ -278,20 +278,20 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
   **Option A: Create SNS topics and link manually**
   ```bash
   # Create SNS topics
-  aws sns create-topic --name IdentityBroker-Encryption-prod-KMS-Alerts
+  aws sns create-topic --name AgenticIdentityBroker-Encryption-prod-KMS-Alerts
 
   # Get topic ARN
   TOPIC_ARN=$(aws sns list-topics \
-    --query 'Topics[?TopicArn==`*IdentityBroker-Encryption-prod-KMS-Alerts*`].TopicArn' \
+    --query 'Topics[?TopicArn==`*AgenticIdentityBroker-Encryption-prod-KMS-Alerts*`].TopicArn' \
     --output text)
 
   # Link alarms to SNS topic
   aws cloudwatch put-metric-alarm \
-    --alarm-name IdentityBroker-Encryption-prod-KMS-Throttle \
+    --alarm-name AgenticIdentityBroker-Encryption-prod-KMS-Throttle \
     --alarm-actions $TOPIC_ARN
 
   aws cloudwatch put-metric-alarm \
-    --alarm-name IdentityBroker-Encryption-prod-KMS-Errors \
+    --alarm-name AgenticIdentityBroker-Encryption-prod-KMS-Errors \
     --alarm-actions $TOPIC_ARN
 
   # Subscribe to topic
@@ -314,18 +314,18 @@ If deployment fails or issues are discovered:
 # CloudFormation automatically rolls back failed stacks
 # No manual action required - monitors stack events
 aws cloudformation describe-stack-events \
-  --stack-name IdentityBrokerEncryption-prod
+  --stack-name AgenticIdentityBrokerEncryption-prod
 ```
 
 ### Option 2: Manual Rollback
 ```bash
 # Cancel in-progress deployment
 aws cloudformation cancel-update-stack \
-  --stack-name IdentityBrokerEncryption-prod
+  --stack-name AgenticIdentityBrokerEncryption-prod
 
 # Verify stack returns to previous state
 aws cloudformation describe-stacks \
-  --stack-name IdentityBrokerEncryption-prod \
+  --stack-name AgenticIdentityBrokerEncryption-prod \
   --query 'Stacks[0].StackStatus'
 ```
 
@@ -355,7 +355,7 @@ This means if you delete the KMS key:
 
 To recover a key during the deletion window:
 ```bash
-aws kms cancel-key-deletion --key-id alias/identity-broker/prod/token-vault-kek
+aws kms cancel-key-deletion --key-id alias/agentic-identity-broker/prod/token-vault-kek
 ```
 
 ### DynamoDB Table Features
@@ -369,12 +369,12 @@ To enable PITR or deletion protection for non-production:
 ```bash
 # Enable PITR
 aws dynamodb update-continuous-backups \
-  --table-name IdentityBrokerBranchKeys-prod \
+  --table-name AgenticIdentityBrokerBranchKeys-prod \
   --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true
 
 # Enable deletion protection
 aws dynamodb update-table \
-  --table-name IdentityBrokerBranchKeys-prod \
+  --table-name AgenticIdentityBrokerBranchKeys-prod \
   --deletion-protection-enabled
 ```
 
@@ -440,7 +440,7 @@ After deployment, ensure continuous monitoring:
 ```bash
 # View CloudWatch dashboard
 aws cloudwatch get-dashboard \
-  --dashboard-name IdentityBroker-Encryption-prod
+  --dashboard-name AgenticIdentityBroker-Encryption-prod
 
 # Monitor KMS API call rate
 aws cloudwatch get-metric-statistics \
@@ -455,7 +455,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/DynamoDB \
   --metric-name ConsumedReadCapacityUnits \
-  --dimensions Name=TableName,Value=IdentityBrokerBranchKeys-prod \
+  --dimensions Name=TableName,Value=AgenticIdentityBrokerBranchKeys-prod \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
@@ -476,12 +476,12 @@ Expected monthly costs for production:
 
 ## CloudFormation Stack Outputs Reference
 
-All outputs from the CDK stack `IdentityBrokerEncryption-{env}`:
+All outputs from the CDK stack `AgenticIdentityBrokerEncryption-{env}`:
 
 | Output Key | Description | Usage |
 |------------|-------------|-------|
 | `EncryptionKeyARN` | KMS CMK ARN | → `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN` |
-| `EncryptionKeyAlias` | KMS key alias | Human-readable reference: `alias/identity-broker/{env}/token-vault-kek` |
+| `EncryptionKeyAlias` | KMS key alias | Human-readable reference: `alias/agentic-identity-broker/{env}/token-vault-kek` |
 | `BranchKeyTableName` | DynamoDB table name | → `IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME` |
 | `BranchKeyTableARN` | DynamoDB table ARN | IAM policy reference |
 | `EncryptionRoleARN` | IAM role ARN | Cross-account access, role assumption |
