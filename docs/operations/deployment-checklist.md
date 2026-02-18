@@ -101,8 +101,9 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 
 - [ ] **Verify IAM role created**:
   ```bash
+  # IAM role name is created by CDK with the format: IdentityBrokerEncryptionRole-{env}
   aws iam get-role --role-name IdentityBrokerEncryptionRole-prod
-  # Expected: Role exists with KMS decrypt permissions
+  # Expected: Role exists with KMS and DynamoDB permissions
   # Note: MaxSessionDuration = 1 hour (for temporary credential limitation)
   ```
 
