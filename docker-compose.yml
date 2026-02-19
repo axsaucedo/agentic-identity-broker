@@ -33,11 +33,15 @@ services:
       - broker-tmp:/app/tmp
       # Mount .air.docker.toml for Docker-optimized hot reload configuration
       - ./.air.docker.toml:/app/.air.docker.toml:ro
+      # Mount go.mod and go.sum to keep them in sync with host (fixes "updates to go.mod needed" error)
+      - ./go.mod:/app/go.mod
+      - ./go.sum:/app/go.sum
     environment:
       - IDENTITY_BROKER_CONFIG_PATH=config.docker.yaml
       - IDENTITY_BROKER_LOG_LEVEL=debug
       - IDENTITY_BROKER_LOG_FORMAT=text
       - IDENTITY_BROKER_JWE_SIGNING_KEY=${IDENTITY_BROKER_JWE_SIGNING_KEY}
+      - IDENTITY_BROKER_ENCRYPTION_KEY=${IDENTITY_BROKER_ENCRYPTION_KEY}
       - IDENTITY_BROKER_STATE_TOKEN_TTL=10m
       - IDENTITY_BROKER_PKCE_VERIFIER_LENGTH=32
       - IDENTITY_BROKER_STORAGE_BACKEND=memory

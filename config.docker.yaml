@@ -72,3 +72,12 @@ security:
   # Skip HTTPS validation for third-party OAuth2 services (dev/test only!)
   # Allows HTTP connections to mock OAuth2 services during development
   skip_thirdparty_https_validation: true
+
+encryption:
+  # Memory backend configuration
+  memory:
+    # Base64-encoded 32-byte AES-256 key (REQUIRED)
+    # Must be exactly 32 bytes (256 bits) when base64-decoded
+    # Generate with: openssl rand -base64 32
+    # SECURITY: This field contains sensitive key material and will be redacted in logs
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_KEY}

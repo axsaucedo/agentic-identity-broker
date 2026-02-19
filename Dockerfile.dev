@@ -2,7 +2,7 @@
 # Enables hot-reload with Air during development
 # Built for use with docker-compose volume mounts
 
-FROM golang:1.25-alpine
+FROM golang:1.25.6-alpine
 
 WORKDIR /app
 

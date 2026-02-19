@@ -493,6 +493,7 @@ compose-validate:
 # Start all services with logs streaming (foreground)
 compose-up: compose-env
     @echo "Generating JWE signing key..."
+    @echo "Generating encryption key..."
     @echo "Starting docker-compose services with hot reload..."
     @echo "Services:"
     @echo "  - Identity Broker (8000, 14000) with Air hot reload"
@@ -503,13 +504,13 @@ compose-up: compose-env
     @echo "  - Seed data will auto-run once broker is healthy"
     @echo ""
     @echo "Press Ctrl+C to stop"
-    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up
 
 # Start all services in background
 compose-up-detached: compose-env
     @echo "Generating JWE signing key..."
     @echo "Starting docker-compose services in background..."
-    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up -d
+    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up -d
     @sleep 2
     @just compose-health
     @echo ""

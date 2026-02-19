@@ -39,6 +39,15 @@ third_party_oauth2:
   # Load from environment variable (never commit actual keys!)
   jwe_signing_key: ${IDENTITY_BROKER_JWE_SIGNING_KEY}
 
+encryption:
+  # Memory backend configuration
+  memory:
+    # Base64-encoded 32-byte AES-256 key (REQUIRED)
+    # Must be exactly 32 bytes (256 bits) when base64-decoded
+    # Generate with: openssl rand -base64 32
+    # SECURITY: This field contains sensitive key material and will be redacted in logs
+    raw_key: ${IDENTITY_BROKER_ENCRYPTION_KEY}
+
 # OAuth2 Authorization Server (upstream provider)
 oauth2_authorization_server:
   # Upstream OAuth2 server configuration
