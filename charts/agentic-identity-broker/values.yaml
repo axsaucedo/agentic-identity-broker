@@ -31,6 +31,16 @@ serviceAccount:
   # -- ServiceAccount name (generated if not set)
   name: ""
 
+  # IRSA configuration (AWS IAM Roles for Service Accounts)
+  # Enable this when running in AWS EKS to bind an IAM role to the ServiceAccount
+  irsa:
+    # -- Enable IRSA annotation injection
+    enabled: false
+    # -- IAM role ARN or name to bind to the ServiceAccount
+    # Can be an ARN: "arn:aws:iam::123456789012:role/IdentityBrokerEncryptionRole-prod"
+    # Or a role name: "IdentityBrokerEncryptionRole-prod"
+    role: ""
+
 # -- Pod annotations
 podAnnotations: {}
 

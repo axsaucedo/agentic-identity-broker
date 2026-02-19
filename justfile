@@ -822,3 +822,44 @@ mock-sample-agent-clean:
     @pkill -f 'sample-agent|bin/sample-agent' || true
     @rm -f bin/sample-agent
     @echo "✓ Mock cleanup complete"
+
+# =============================================================================
+# CDK Infrastructure Targets
+# =============================================================================
+
+# Install CDK dependencies (run once after cloning)
+cdk-deps:
+    @echo "Installing CDK Go dependencies..."
+    cd infra/cdk && go mod tidy && go mod download
+    @echo "✓ CDK dependencies installed"
+
+# Run CDK unit tests
+cdk-test:
+    @echo "Running CDK stack tests..."
+    cd infra/cdk && go test -v -race ./...
+    @echo "✓ CDK tests passed"
+
+# Synthesize CloudFormation template (default: dev)
+cdk-synth env="dev":
+    @echo "Synthesizing CDK stack for {{env}}..."
+    cd infra/cdk && npx cdk synth -c env={{env}}
+
+# Diff CDK stack against deployed (default: dev)
+cdk-diff env="dev":
+    @echo "Diffing CDK stack for {{env}}..."
+    cd infra/cdk && npx cdk diff -c env={{env}}
+
+# Deploy CDK stack (default: dev)
+cdk-deploy env="dev" *ARGS="":
+    @echo "Deploying CDK stack for {{env}}..."
+    cd infra/cdk && npx cdk deploy -c env={{env}} {{ARGS}}
+
+# Destroy CDK stack (default: dev). Requires confirmation.
+cdk-destroy env="dev":
+    @echo "Destroying CDK stack for {{env}}..."
+    cd infra/cdk && npx cdk destroy -c env={{env}}
+
+# List CDK stacks
+cdk-list:
+    @echo "Listing CDK stacks..."
+    cd infra/cdk && npx cdk list

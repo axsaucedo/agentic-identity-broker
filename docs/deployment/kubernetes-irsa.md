@@ -1,0 +1,927 @@
+# Kubernetes IRSA Deployment Guide
+
+This guide covers deploying the Agentic Identity Broker to Amazon EKS using IAM Roles for Service Accounts (IRSA) for secure AWS resource access.
+
+## Overview
+
+IRSA (IAM Roles for Service Accounts) enables Kubernetes pods to assume AWS IAM roles without requiring static credentials. This integration provides:
+
+- **Least privilege access**: Each service account gets its own IAM role
+- **No credential management**: No AWS keys stored in Kubernetes Secrets
+- **Audit trail**: CloudTrail logs show which pods accessed AWS services
+- **Automatic credential rotation**: AWS SDK handles credential refresh
+- **Fine-grained permissions**: KMS and DynamoDB access scoped to specific resources
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         EKS Cluster                         │
+│                                                             │
+│  ┌──────────────────────────────────────────────────┐     │
+│  │  Pod: agentic-identity-broker                    │     │
+│  │                                                   │     │
+│  │  ServiceAccount: broker-sa                       │     │
+│  │  Annotation: iam.amazonaws.com/role=RoleARN      │     │
+│  │                                                   │     │
+│  │  AWS SDK → STS AssumeRoleWithWebIdentity        │     │
+│  └──────────────────┬───────────────────────────────┘     │
+│                     │                                       │
+│                     │ Federated Trust (OIDC)              │
+└─────────────────────┼───────────────────────────────────────┘
+                      │
+                      ▼
+         ┌────────────────────────┐
+         │  AWS IAM Role         │
+         │  (Created by CDK)     │
+         │                       │
+         │  Trust Policy:        │
+         │  - OIDC Provider      │
+         │  - Namespace          │
+         │  - Service Account    │
+         │                       │
+         │  Permissions:         │
+         │  - KMS Decrypt        │
+         │  - DynamoDB R/W       │
+         └───────┬───────────────┘
+                 │
+                 ▼
+    ┌────────────────────────────┐
+    │  Encryption Resources      │
+    │  - KMS CMK                 │
+    │  - DynamoDB Table          │
+    └────────────────────────────┘
+```
+
+## Prerequisites
+
+Before deploying with IRSA, ensure you have:
+
+### 1. EKS Cluster with OIDC Provider
+
+Your EKS cluster must have an OIDC identity provider configured:
+
+```bash
+# Check if OIDC provider exists
+aws eks describe-cluster \
+  --name my-cluster \
+  --query 'cluster.identity.oidc.issuer' \
+  --output text
+
+# Example output:
+# https://oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE
+```
+
+If not configured, create the OIDC provider:
+
+```bash
+eksctl utils associate-iam-oidc-provider \
+  --cluster my-cluster \
+  --approve
+```
+
+### 2. Get OIDC Provider ARN
+
+Extract the OIDC provider ARN for CDK deployment:
+
+```bash
+# Get cluster OIDC issuer
+OIDC_ISSUER=$(aws eks describe-cluster \
+  --name my-cluster \
+  --query 'cluster.identity.oidc.issuer' \
+  --output text)
+
+# Extract OIDC provider ID (last segment of URL)
+OIDC_ID=$(echo $OIDC_ISSUER | awk -F'/' '{print $NF}')
+
+# Get AWS account ID
+ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+
+# Construct OIDC provider ARN
+OIDC_PROVIDER_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/${OIDC_ID}"
+
+echo "OIDC Provider ARN: $OIDC_PROVIDER_ARN"
+```
+
+### 3. Define Service Account Details
+
+Choose your Kubernetes namespace and service account name:
+
+```bash
+export K8S_NAMESPACE="identity-broker"
+export K8S_SERVICE_ACCOUNT="broker-sa"
+```
+
+### 4. Tools Required
+
+- AWS CLI 2.x
+- Go 1.23.0+ (CDK infrastructure is written in Go)
+- Node.js 18+ with AWS CDK CLI (`npm install -g aws-cdk`)
+- kubectl (configured for your EKS cluster)
+- Helm 3.x
+- jq (for JSON parsing)
+
+**Note:** The CDK infrastructure is written in Go but uses the Node.js AWS CDK CLI to synthesize and deploy. The CLI invokes the Go code as configured in `cdk.json`.
+
+## Deployment Steps
+
+### Step 1: Deploy CDK Encryption Infrastructure
+
+The CDK stack creates:
+- KMS CMK for envelope encryption
+- DynamoDB table for branch key caching
+- IAM role with IRSA trust policy
+- CloudWatch dashboard and alarms
+
+#### 1.1 Navigate to CDK Directory
+
+```bash
+cd infra/cdk
+```
+
+#### 1.2 Install CDK Dependencies
+
+The CDK infrastructure uses a Go/Node.js hybrid approach: the infrastructure code is written in Go, but deployed via the AWS CDK CLI (Node.js). Install both:
+
+```bash
+# Install Go dependencies
+go mod tidy && go mod download
+
+# Install AWS CDK CLI globally (or use npx if preferred)
+npm install -g aws-cdk
+# Alternative (if you don't want to install globally):
+# npx aws-cdk@latest (then use npx cdk instead of cdk in subsequent commands)
+```
+
+#### 1.3 Synthesize CloudFormation Template
+
+The AWS CDK CLI will invoke the Go code to generate a CloudFormation template:
+
+```bash
+npx cdk synth \
+  -c env=prod \
+  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
+  -c k8sNamespace="${K8S_NAMESPACE}" \
+  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+```
+
+This command:
+1. Calls the Go CDK app (via `go run .` as configured in `cdk.json`)
+2. Generates a CloudFormation template in `cdk.out/`
+
+Review the synthesized template: `cdk.out/AgenticIdentityBrokerEncryption-prod.template.json`
+
+#### 1.4 Preview Infrastructure Changes
+
+```bash
+npx cdk diff \
+  -c env=prod \
+  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
+  -c k8sNamespace="${K8S_NAMESPACE}" \
+  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+```
+
+#### 1.5 Deploy Stack
+
+```bash
+npx cdk deploy \
+  -c env=prod \
+  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
+  -c k8sNamespace="${K8S_NAMESPACE}" \
+  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+```
+
+Deployment takes approximately 3-5 minutes.
+
+### Step 2: Extract Stack Outputs
+
+After successful deployment, extract the stack outputs needed for Helm configuration:
+
+```bash
+STACK_NAME="AgenticIdentityBrokerEncryption-prod"
+
+# Extract all outputs
+aws cloudformation describe-stacks \
+  --stack-name $STACK_NAME \
+  --query 'Stacks[0].Outputs' \
+  --output table
+
+# Extract specific outputs for Helm
+export KMS_KEY_ARN=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_NAME \
+  --query 'Stacks[0].Outputs[?OutputKey==`EncryptionKeyARN`].OutputValue' \
+  --output text)
+
+export DYNAMODB_TABLE_NAME=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_NAME \
+  --query 'Stacks[0].Outputs[?OutputKey==`BranchKeyTableName`].OutputValue' \
+  --output text)
+
+export IAM_ROLE_ARN=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_NAME \
+  --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' \
+  --output text)
+
+export IAM_ROLE_NAME=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_NAME \
+  --query 'Stacks[0].Outputs[?OutputKey==`IamRoleName`].OutputValue' \
+  --output text)
+
+# Verify outputs
+echo "KMS Key ARN: $KMS_KEY_ARN"
+echo "DynamoDB Table: $DYNAMODB_TABLE_NAME"
+echo "IAM Role ARN: $IAM_ROLE_ARN"
+echo "IAM Role Name: $IAM_ROLE_NAME"
+```
+
+Expected outputs:
+- `EncryptionKeyARN`: KMS key ARN (e.g., `arn:aws:kms:us-east-1:ACCOUNT:key/UUID`)
+- `BranchKeyTableName`: DynamoDB table name (e.g., `AgenticIdentityBrokerBranchKeys-prod`)
+- `EncryptionRoleARN`: IAM role ARN (e.g., `arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod`)
+- `IamRoleName`: IAM role name (e.g., `AgenticIdentityBrokerEncryptionRole-prod`)
+- `ServiceAccountNamespace`: Kubernetes namespace (`identity-broker`)
+- `ServiceAccountName`: Service account name (`broker-sa`)
+- `ServiceAccountFullName`: Full reference (`identity-broker:broker-sa`)
+
+### Step 3: Verify IAM Role Trust Policy
+
+Verify the IAM role has the correct IRSA trust policy:
+
+```bash
+aws iam get-role \
+  --role-name $IAM_ROLE_NAME \
+  --query 'Role.AssumeRolePolicyDocument' \
+  --output json | jq .
+```
+
+Expected trust policy structure:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::ACCOUNT:oidc-provider/oidc.eks.REGION.amazonaws.com/id/EXAMPLEID"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.REGION.amazonaws.com/id/EXAMPLEID:sub": "system:serviceaccount:identity-broker:broker-sa",
+          "oidc.eks.REGION.amazonaws.com/id/EXAMPLEID:aud": "sts.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Step 4: Configure Helm Values for IRSA
+
+Create a Helm values file (`values-irsa.yaml`) with IRSA configuration:
+
+```yaml
+# Storage configuration
+storage:
+  type: postgres  # Use PostgreSQL for production
+
+# PostgreSQL configuration (use external or operator)
+postgresql:
+  external:
+    enabled: true
+    host: postgres.database.svc.cluster.local
+    port: 5432
+    database: broker
+    migrationSecretName: broker-db-migration
+    brokerSecretName: broker-db
+
+# ServiceAccount configuration with IRSA
+serviceAccount:
+  create: true
+  name: broker-sa
+  annotations: {}
+
+  # IRSA configuration
+  irsa:
+    enabled: true
+    role: "arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod"  # Replace with actual ARN or role name
+
+# Broker configuration (AWS encryption settings)
+broker:
+  # Additional configuration passed to config.yaml
+  extraConfig:
+    encryption:
+      aws_kms:
+        key_arn: "arn:aws:kms:us-east-1:ACCOUNT:key/UUID"  # Replace with actual ARN
+        dynamodb_table_name: "AgenticIdentityBrokerBranchKeys-prod"  # Replace with actual table name
+        region: "us-east-1"  # Replace with your region
+        branch_key_ttl: "1h"
+
+# Production resource configuration
+replicaCount: 3
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Ingress configuration (adjust for your environment)
+ingress:
+  enduser:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: broker.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: broker-tls
+        hosts:
+          - broker.example.com
+
+  admin:
+    enabled: true
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
+    hosts:
+      - host: broker-admin.internal.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+```
+
+**Automated Configuration**:
+
+You can generate this file automatically using the extracted outputs:
+
+```bash
+cat > values-irsa.yaml <<EOF
+storage:
+  type: postgres
+
+postgresql:
+  external:
+    enabled: true
+    host: postgres.database.svc.cluster.local
+    port: 5432
+    database: broker
+    migrationSecretName: broker-db-migration
+    brokerSecretName: broker-db
+
+serviceAccount:
+  create: true
+  name: ${K8S_SERVICE_ACCOUNT}
+  irsa:
+    enabled: true
+    role: "${IAM_ROLE_ARN}"
+
+broker:
+  extraConfig:
+    encryption:
+      aws_kms:
+        key_arn: "${KMS_KEY_ARN}"
+        dynamodb_table_name: "${DYNAMODB_TABLE_NAME}"
+        region: "us-east-1"
+
+replicaCount: 3
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+EOF
+```
+
+### Step 5: Create Kubernetes Namespace
+
+Create the namespace specified in the CDK deployment:
+
+```bash
+kubectl create namespace ${K8S_NAMESPACE}
+```
+
+### Step 6: Create PostgreSQL Secrets
+
+Create database credentials (if using external PostgreSQL):
+
+```bash
+kubectl create secret generic broker-db-migration \
+  -n ${K8S_NAMESPACE} \
+  --from-literal=username=broker-migration \
+  --from-literal=password=SECURE_MIGRATION_PASSWORD
+
+kubectl create secret generic broker-db \
+  -n ${K8S_NAMESPACE} \
+  --from-literal=username=broker \
+  --from-literal=password=SECURE_BROKER_PASSWORD
+```
+
+### Step 7: Deploy with Helm
+
+Deploy the broker with IRSA configuration:
+
+```bash
+cd charts/agentic-identity-broker
+
+helm install broker . \
+  -n ${K8S_NAMESPACE} \
+  -f values-irsa.yaml
+```
+
+### Step 8: Verify Deployment
+
+#### 8.1 Check ServiceAccount Annotation
+
+Verify the ServiceAccount has the IRSA role annotation:
+
+```bash
+kubectl get serviceaccount ${K8S_SERVICE_ACCOUNT} \
+  -n ${K8S_NAMESPACE} \
+  -o yaml
+```
+
+Expected output:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    iam.amazonaws.com/role: arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod
+  name: broker-sa
+  namespace: identity-broker
+```
+
+#### 8.2 Check Pod Status
+
+Verify broker pods are running:
+
+```bash
+kubectl get pods -n ${K8S_NAMESPACE} -l app.kubernetes.io/name=agentic-identity-broker
+```
+
+Expected output:
+
+```
+NAME                                         READY   STATUS    RESTARTS   AGE
+broker-agentic-identity-broker-xxxxx-yyyyy   1/1     Running   0          2m
+broker-agentic-identity-broker-xxxxx-zzzzz   1/1     Running   0          2m
+broker-agentic-identity-broker-xxxxx-wwwww   1/1     Running   0          2m
+```
+
+#### 8.3 Check Pod Environment
+
+Verify the pod has AWS SDK environment variables for IRSA:
+
+```bash
+POD_NAME=$(kubectl get pods -n ${K8S_NAMESPACE} \
+  -l app.kubernetes.io/name=agentic-identity-broker \
+  --output jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n ${K8S_NAMESPACE} $POD_NAME -- env | grep AWS
+```
+
+Expected output:
+
+```
+AWS_ROLE_ARN=arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod
+AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/token
+AWS_REGION=us-east-1
+```
+
+These environment variables are automatically injected by the EKS Pod Identity Webhook.
+
+#### 8.4 Check Application Logs
+
+Verify the application can access AWS resources:
+
+```bash
+kubectl logs -n ${K8S_NAMESPACE} $POD_NAME | grep -i kms
+kubectl logs -n ${K8S_NAMESPACE} $POD_NAME | grep -i dynamodb
+```
+
+No errors should appear related to AWS credential or permission issues.
+
+#### 8.5 Run Helm Tests
+
+Execute Helm tests to verify deployment health:
+
+```bash
+helm test broker -n ${K8S_NAMESPACE}
+```
+
+### Step 9: Basic Health Check
+
+Verify the broker is running and responding:
+
+```bash
+# Port-forward to broker service
+kubectl port-forward -n ${K8S_NAMESPACE} svc/broker-agentic-identity-broker 8000:8000 &
+
+# Test health endpoint
+curl http://localhost:8000/health
+```
+
+For comprehensive end-to-end testing of OAuth2 flows and encryption functionality, refer to the application's integration tests and API documentation.
+
+### Step 10: Monitor CloudWatch Metrics
+
+Check encryption infrastructure metrics:
+
+```bash
+# View CloudWatch dashboard
+aws cloudwatch get-dashboard \
+  --dashboard-name AgenticIdentityBroker-Encryption-prod
+
+# Check KMS API call metrics
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/KMS \
+  --metric-name ApiCallCount \
+  --dimensions Name=KeyId,Value=$(echo $KMS_KEY_ARN | awk -F'/' '{print $2}') \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --period 300 \
+  --statistics Sum
+
+# Check DynamoDB read/write metrics
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/DynamoDB \
+  --metric-name ConsumedReadCapacityUnits \
+  --dimensions Name=TableName,Value=$DYNAMODB_TABLE_NAME \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --period 300 \
+  --statistics Sum
+```
+
+## Verification Checklist
+
+After deployment, verify:
+
+- [ ] CDK stack deployed successfully
+- [ ] IAM role created with federated trust policy
+- [ ] Trust policy includes correct OIDC provider ARN
+- [ ] Trust policy condition keys match namespace and service account
+- [ ] ServiceAccount has `iam.amazonaws.com/role` annotation
+- [ ] Pods have AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE env vars
+- [ ] Application logs show successful AWS SDK initialization
+- [ ] No credential or permission errors in logs
+- [ ] Health endpoint responds successfully
+- [ ] CloudWatch dashboard shows KMS and DynamoDB metrics
+- [ ] KMS API calls visible in CloudWatch
+- [ ] DynamoDB read/write operations recorded
+
+## Troubleshooting
+
+### Issue: Pod Cannot Assume IAM Role
+
+**Symptoms**:
+```
+AccessDenied: User: sts:assumed-role/eks-node-role/i-xxxxx is not authorized to perform: sts:AssumeRoleWithWebIdentity
+```
+
+**Diagnosis**:
+
+1. Check ServiceAccount annotation:
+   ```bash
+   kubectl get sa ${K8S_SERVICE_ACCOUNT} -n ${K8S_NAMESPACE} -o yaml
+   ```
+
+2. Verify OIDC provider trust relationship:
+   ```bash
+   aws iam get-role --role-name $IAM_ROLE_NAME \
+     --query 'Role.AssumeRolePolicyDocument'
+   ```
+
+**Solutions**:
+
+- Ensure ServiceAccount name matches trust policy condition
+- Verify namespace matches trust policy condition
+- Confirm OIDC provider ARN is correct
+- Check pod is using correct ServiceAccount:
+  ```bash
+  kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.spec.serviceAccountName}'
+  ```
+
+### Issue: KMS Access Denied
+
+**Symptoms**:
+```
+KMS.AccessDeniedException: User: arn:aws:sts::ACCOUNT:assumed-role/AgenticIdentityBrokerEncryptionRole-prod/xxxxx is not authorized to perform: kms:Decrypt
+```
+
+**Diagnosis**:
+
+Check IAM role permissions:
+```bash
+aws iam list-attached-role-policies --role-name $IAM_ROLE_NAME
+aws iam list-role-policies --role-name $IAM_ROLE_NAME
+```
+
+**Solutions**:
+
+- Redeploy CDK stack (permissions are managed by CDK)
+- Verify KMS key ARN in Helm values matches CDK output
+- Check KMS key policy allows the role
+
+### Issue: DynamoDB Access Denied
+
+**Symptoms**:
+```
+DynamoDB.AccessDeniedException: User: arn:aws:sts::ACCOUNT:assumed-role/AgenticIdentityBrokerEncryptionRole-prod/xxxxx is not authorized to perform: dynamodb:GetItem
+```
+
+**Diagnosis**:
+
+Check DynamoDB table configuration:
+```bash
+aws dynamodb describe-table --table-name $DYNAMODB_TABLE_NAME
+```
+
+**Solutions**:
+
+- Verify DynamoDB table name in Helm values matches CDK output
+- Confirm IAM role has DynamoDB permissions (managed by CDK)
+- Check table exists and is ACTIVE
+
+### Issue: OIDC Provider Not Found
+
+**Symptoms**:
+```
+InvalidIdentityToken: No OpenIDConnect provider found
+```
+
+**Diagnosis**:
+
+Check OIDC provider exists:
+```bash
+aws iam list-open-id-connect-providers
+```
+
+**Solutions**:
+
+- Create OIDC provider for EKS cluster:
+  ```bash
+  eksctl utils associate-iam-oidc-provider --cluster my-cluster --approve
+  ```
+- Verify OIDC provider ARN matches CDK input
+- Ensure EKS cluster has OIDC identity provider enabled
+
+### Issue: Wrong Namespace or Service Account
+
+**Symptoms**:
+```
+AssumeRoleWithWebIdentity: Condition not met (namespace mismatch)
+```
+
+**Diagnosis**:
+
+Compare actual vs expected:
+```bash
+# Actual pod configuration
+kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.spec.serviceAccountName}'
+kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.metadata.namespace}'
+
+# Expected from CDK outputs
+aws cloudformation describe-stacks \
+  --stack-name $STACK_NAME \
+  --query 'Stacks[0].Outputs[?OutputKey==`ServiceAccountFullName`].OutputValue' \
+  --output text
+```
+
+**Solutions**:
+
+- Ensure Helm values match CDK deployment parameters
+- Redeploy CDK stack with correct namespace and service account
+- Verify pod is in correct namespace
+- Check ServiceAccount name matches Helm values
+
+## Security Best Practices
+
+### 1. Principle of Least Privilege
+
+The CDK stack creates IAM roles with minimal permissions:
+- KMS: Only `Decrypt` on specific key (no `Encrypt` needed - hierarchical keyring handles that)
+- DynamoDB: Only `GetItem` and `PutItem` on branch key table
+- No wildcard permissions
+- No cross-account access
+
+### 2. Namespace Isolation
+
+Use separate namespaces for different environments:
+```bash
+# Development
+kubectl create namespace identity-broker-dev
+
+# Staging
+kubectl create namespace identity-broker-staging
+
+# Production
+kubectl create namespace identity-broker-prod
+```
+
+Deploy separate CDK stacks with environment-specific IRSA roles.
+
+### 3. Service Account Per Application
+
+Do not share service accounts between applications. Each service should have:
+- Dedicated ServiceAccount
+- Dedicated IAM role
+- Dedicated KMS key
+- Dedicated DynamoDB table
+
+### 4. Pod Security Standards
+
+The Helm chart enforces restricted Pod Security Standards:
+- Non-root user (UID 1000)
+- Read-only root filesystem
+- No privilege escalation
+- All capabilities dropped
+- Seccomp profile applied
+
+### 5. Network Policies
+
+Restrict network access to AWS services:
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: broker-netpol
+  namespace: identity-broker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentic-identity-broker
+  policyTypes:
+    - Egress
+  egress:
+    # Allow AWS API endpoints
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443  # HTTPS for KMS, DynamoDB, STS
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+```
+
+### 6. Audit Logging
+
+Enable AWS CloudTrail to audit IRSA operations:
+```bash
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=Username,AttributeValue=$IAM_ROLE_NAME \
+  --max-results 50
+```
+
+Monitor for:
+- `AssumeRoleWithWebIdentity` events
+- KMS `Decrypt` operations
+- DynamoDB `GetItem`/`PutItem` operations
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+name: Deploy to EKS with IRSA
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::ACCOUNT:role/GitHubActionsDeployRole
+          aws-region: us-east-1
+
+      - name: Deploy CDK Stack
+        run: |
+          cd infra/cdk
+          npm install -g aws-cdk
+          npx cdk deploy \
+            -c env=prod \
+            -c oidcProviderArn=${{ secrets.OIDC_PROVIDER_ARN }} \
+            -c k8sNamespace=identity-broker \
+            -c k8sServiceAccountName=broker-sa \
+            --require-approval never
+
+      - name: Extract Stack Outputs
+        id: outputs
+        run: |
+          ROLE_ARN=$(aws cloudformation describe-stacks \
+            --stack-name AgenticIdentityBrokerEncryption-prod \
+            --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' \
+            --output text)
+          echo "role_arn=$ROLE_ARN" >> $GITHUB_OUTPUT
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name my-cluster --region us-east-1
+
+      - name: Deploy Helm Chart
+        run: |
+          helm upgrade --install broker ./charts/agentic-identity-broker \
+            -n identity-broker \
+            --set serviceAccount.irsa.enabled=true \
+            --set serviceAccount.irsa.role=${{ steps.outputs.outputs.role_arn }}
+```
+
+## Cost Optimization
+
+### KMS Key Rotation
+
+Enable automatic key rotation (already configured in CDK):
+- KMS automatically rotates backing keys annually
+- Application transparently uses old and new keys
+- No downtime or redeployment required
+
+### DynamoDB On-Demand Pricing
+
+The CDK stack uses on-demand billing for DynamoDB:
+- No capacity planning required
+- Pay only for requests
+- Automatic scaling
+- Suitable for variable workloads
+
+### CloudWatch Dashboard
+
+Monitor costs in CloudWatch dashboard:
+- KMS request volume
+- DynamoDB read/write capacity
+- Set alarms for unexpected usage spikes
+
+## Disaster Recovery
+
+### KMS Key Recovery
+
+KMS keys have a 30-day pending deletion window:
+
+```bash
+# Cancel pending deletion (within 30 days)
+aws kms cancel-key-deletion --key-id $KMS_KEY_ARN
+```
+
+### DynamoDB Point-in-Time Recovery
+
+The CDK stack enables PITR for DynamoDB:
+
+```bash
+# Restore to specific timestamp
+aws dynamodb restore-table-to-point-in-time \
+  --source-table-name $DYNAMODB_TABLE_NAME \
+  --target-table-name ${DYNAMODB_TABLE_NAME}-restored \
+  --restore-date-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)
+```
+
+## Next Steps
+
+- [Production deployment checklist](../operations/deployment-checklist.md)
+- [KMS key management](../operations/kms-key-management.md)
+- [DynamoDB recovery procedures](../operations/dynamodb-recovery.md)
+- [Monitoring and alerting](../observability/monitoring.md)
+- [Security hardening](../security/hardening.md)
+
+## References
+
+- [EKS IAM Roles for Service Accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
+- [AWS CDK for Kubernetes](https://docs.aws.amazon.com/cdk/latest/guide/home.html)
+- [KMS Envelope Encryption](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#enveloping)
+- [DynamoDB On-Demand Capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html)

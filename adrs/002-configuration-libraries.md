@@ -2,7 +2,6 @@
 
 **Status**: Accepted
 **Date**: 2025-12-15
-**Decision Makers**: golang-pro
 **Technical Story**: Feature 002-flexible-configuration
 
 ## Context

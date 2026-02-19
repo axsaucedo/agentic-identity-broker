@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1439,4 +1440,74 @@ func isIntegrityViolationError(err error) bool {
 func isDecryptionFailedError(err error) bool {
 	encErr, ok := err.(*encryption.EncryptionError)
 	return ok && encErr.Kind == encryption.ErrorKindDecryptionFailed
+}
+
+// ===== SUITE 9: KMS Key Rotation Compatibility (2 tests) =====
+
+// TestKMSKeyRotationBackwardCompatibility verifies that tokens encrypted with current key
+// versions remain decryptable after KMS key rotation.
+//
+// This test performs ACTUAL key rotation using AWS KMS RotateKeyOnDemand API:
+// 1. Encrypts token with current key version (v1)
+// 2. Performs on-demand key rotation via KMS API
+// 3. Decrypts token after rotation (with new key version v2)
+// 4. Validates AWS Encryption SDK hierarchical keyring handles rotation transparently
+func TestKMSKeyRotationBackwardCompatibility(t *testing.T) {
+	ctx := context.Background()
+
+	// Start LocalStack
+	ls := bootstrap.StartLocalStack(ctx, t)
+	defer func() {
+		_ = ls.Terminate(ctx)
+		ls.CleanupLocalStackEnvironment()
+	}()
+
+	ls.SetupLocalStackEnvironment()
+
+	// Create KMS client for rotation operations
+	kmsClient, err := bootstrap.NewKMSClientForLocalStack(ctx, ls.Endpoint)
+	require.NoError(t, err, "failed to create KMS client")
+
+	kmsARN := "arn:aws:kms:eu-central-1:000000000000:key/" + ls.KMSKeyID
+
+	// STEP 1: Enable automatic key rotation on the KMS key
+	_, err = kmsClient.EnableKeyRotation(ctx, &kms.EnableKeyRotationInput{
+		KeyId: &ls.KMSKeyID,
+	})
+	require.NoError(t, err, "failed to enable key rotation")
+
+	// STEP 2: Get initial key rotation status to verify configuration
+	_, err = kmsClient.GetKeyRotationStatus(ctx, &kms.GetKeyRotationStatusInput{
+		KeyId: &ls.KMSKeyID,
+	})
+	require.NoError(t, err, "failed to get initial key rotation status")
+
+	// STEP 3: Encrypt token with CURRENT key version (before rotation)
+	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
+	require.NoError(t, err, "failed to create adapter")
+
+	plaintext := []byte("oauth2-token-encrypted-before-rotation")
+	encCtx := map[string]string{"service_id": "oauth2"}
+
+	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
+	require.NoError(t, err, "encryption with key v1 failed")
+
+	// STEP 4: Perform ACTUAL key rotation using RotateKeyOnDemand API
+	// This creates a new key version while keeping old version available for decryption
+	rotateOutput, err := kmsClient.RotateKeyOnDemand(ctx, &kms.RotateKeyOnDemandInput{
+		KeyId: &ls.KMSKeyID,
+	})
+	require.NoError(t, err, "failed to perform on-demand key rotation")
+	_ = rotateOutput
+
+	// STEP 5: Decrypt token AFTER rotation with the NEW key version
+	// The AWS Encryption SDK hierarchical keyring should transparently:
+	// - Detect the old key version ID from the ciphertext envelope
+	// - Use KMS to decrypt with the old key material (still available)
+	// - Return the original plaintext without application code changes
+	decrypted, err := adapter.Decrypt(ctx, ciphertext, encCtx)
+	require.NoError(t, err, "decryption after key rotation failed - backward compatibility broken!")
+
+	// STEP 6: Verify token remains readable and matches original plaintext
+	assert.Equal(t, string(plaintext), string(decrypted), "token mismatch after rotation")
 }

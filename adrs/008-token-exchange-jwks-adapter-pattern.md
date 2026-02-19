@@ -3,9 +3,6 @@
 **Date**: 2026-01-19
 **Status**: Accepted
 **Feature**: 013-token-exchange
-**Authors**: Claude Code
-**Supersedes**: N/A
-**Superseded by**: N/A
 
 ## Context
 

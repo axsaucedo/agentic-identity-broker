@@ -3,9 +3,6 @@
 **Status**: Accepted
 **Date**: 2026-01-16
 **Feature**: 013-token-exchange (User Story 4 - Gateway Authorization via CEL)
-**Authors**: Claude Code
-**Supersedes**: N/A
-**Superseded by**: N/A
 
 ## Context
 
