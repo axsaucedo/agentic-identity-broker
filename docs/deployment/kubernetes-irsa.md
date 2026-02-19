@@ -115,10 +115,13 @@ export K8S_SERVICE_ACCOUNT="broker-sa"
 ### 4. Tools Required
 
 - AWS CLI 2.x
-- AWS CDK CLI (`npm install -g aws-cdk`)
+- Go 1.23.0+ (CDK infrastructure is written in Go)
+- Node.js 18+ with AWS CDK CLI (`npm install -g aws-cdk`)
 - kubectl (configured for your EKS cluster)
 - Helm 3.x
 - jq (for JSON parsing)
+
+**Note:** The CDK infrastructure is written in Go but uses the Node.js AWS CDK CLI to synthesize and deploy. The CLI invokes the Go code as configured in `cdk.json`.
 
 ## Deployment Steps
 
@@ -138,12 +141,21 @@ cd infra/cdk
 
 #### 1.2 Install CDK Dependencies
 
+The CDK infrastructure uses a Go/Node.js hybrid approach: the infrastructure code is written in Go, but deployed via the AWS CDK CLI (Node.js). Install both:
+
 ```bash
-go mod download
+# Install Go dependencies
+go mod tidy && go mod download
+
+# Install AWS CDK CLI globally (or use npx if preferred)
 npm install -g aws-cdk
+# Alternative (if you don't want to install globally):
+# npx aws-cdk@latest (then use npx cdk instead of cdk in subsequent commands)
 ```
 
 #### 1.3 Synthesize CloudFormation Template
+
+The AWS CDK CLI will invoke the Go code to generate a CloudFormation template:
 
 ```bash
 npx cdk synth \
@@ -153,7 +165,11 @@ npx cdk synth \
   -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
 ```
 
-Review the synthesized template in `cdk.out/AgenticIdentityBrokerEncryption-prod.template.json`
+This command:
+1. Calls the Go CDK app (via `go run .` as configured in `cdk.json`)
+2. Generates a CloudFormation template in `cdk.out/`
+
+Review the synthesized template: `cdk.out/AgenticIdentityBrokerEncryption-prod.template.json`
 
 #### 1.4 Preview Infrastructure Changes
 
@@ -520,9 +536,9 @@ Execute Helm tests to verify deployment health:
 helm test broker -n ${K8S_NAMESPACE}
 ```
 
-### Step 9: Test Encryption Functionality
+### Step 9: Basic Health Check
 
-Verify end-to-end encryption functionality:
+Verify the broker is running and responding:
 
 ```bash
 # Port-forward to broker service
@@ -530,22 +546,9 @@ kubectl port-forward -n ${K8S_NAMESPACE} svc/broker-agentic-identity-broker 8000
 
 # Test health endpoint
 curl http://localhost:8000/health
-
-# Create an OAuth2 session (tests encryption/decryption with KMS)
-curl -X POST http://localhost:8000/api/third-party/oauth2/authorize \
-  -H "X-Remote-User: testuser@example.com" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_id": "test-client",
-    "redirect_uri": "https://app.example.com/callback",
-    "scope": "openid profile",
-    "state": "test-state"
-  }'
-
-# Verify session storage (confirms KMS encryption and DynamoDB storage work)
-curl -X GET http://localhost:8000/api/third-party/sessions \
-  -H "X-Remote-User: testuser@example.com"
 ```
+
+For comprehensive end-to-end testing of OAuth2 flows and encryption functionality, refer to the application's integration tests and API documentation.
 
 ### Step 10: Monitor CloudWatch Metrics
 
@@ -590,7 +593,6 @@ After deployment, verify:
 - [ ] Application logs show successful AWS SDK initialization
 - [ ] No credential or permission errors in logs
 - [ ] Health endpoint responds successfully
-- [ ] OAuth2 session create/retrieve operations work
 - [ ] CloudWatch dashboard shows KMS and DynamoDB metrics
 - [ ] KMS API calls visible in CloudWatch
 - [ ] DynamoDB read/write operations recorded
