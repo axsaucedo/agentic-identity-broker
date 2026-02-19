@@ -184,7 +184,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
     --set serviceAccount.create=true \
     --set serviceAccount.name=${K8S_SERVICE_ACCOUNT} \
     --set serviceAccount.irsa.enabled=true \
-    --set serviceAccount.irsa.roleArn="${IAM_ROLE_ARN}" \
+    --set serviceAccount.irsa.role="${IAM_ROLE_ARN}" \
     --set broker.extraConfig.encryption.aws_kms.key_arn="${KMS_KEY_ARN}" \
     --set broker.extraConfig.encryption.aws_kms.dynamodb_table_name="${DYNAMODB_TABLE_NAME}" \
     --set storage.type=postgres \

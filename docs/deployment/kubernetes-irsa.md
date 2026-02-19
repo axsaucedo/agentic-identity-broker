@@ -305,7 +305,7 @@ serviceAccount:
   # IRSA configuration
   irsa:
     enabled: true
-    roleArn: "arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod"  # Replace with actual ARN
+    role: "arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod"  # Replace with actual ARN or role name
 
 # Broker configuration (AWS encryption settings)
 broker:
@@ -391,7 +391,7 @@ serviceAccount:
   name: ${K8S_SERVICE_ACCOUNT}
   irsa:
     enabled: true
-    roleArn: "${IAM_ROLE_ARN}"
+    role: "${IAM_ROLE_ARN}"
 
 broker:
   extraConfig:
@@ -861,7 +861,7 @@ jobs:
           helm upgrade --install broker ./charts/agentic-identity-broker \
             -n identity-broker \
             --set serviceAccount.irsa.enabled=true \
-            --set serviceAccount.irsa.roleArn=${{ steps.outputs.outputs.role_arn }}
+            --set serviceAccount.irsa.role=${{ steps.outputs.outputs.role_arn }}
 ```
 
 ## Cost Optimization

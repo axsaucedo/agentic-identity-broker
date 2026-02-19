@@ -36,10 +36,10 @@ serviceAccount:
   irsa:
     # -- Enable IRSA annotation injection
     enabled: false
-    # -- IAM role ARN to bind to the ServiceAccount
-    # Extract this from CloudFormation stack outputs: IamRoleName or EncryptionRoleARN
-    # Example: "arn:aws:iam::123456789012:role/IdentityBrokerEncryptionRole-prod"
-    roleArn: ""
+    # -- IAM role ARN or name to bind to the ServiceAccount
+    # Can be an ARN: "arn:aws:iam::123456789012:role/IdentityBrokerEncryptionRole-prod"
+    # Or a role name: "IdentityBrokerEncryptionRole-prod"
+    role: ""
 
 # -- Pod annotations
 podAnnotations: {}
