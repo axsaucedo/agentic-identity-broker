@@ -49,6 +49,12 @@ type EncryptionStackProps struct {
 
 	// K8sServiceAccountName is the name of the Kubernetes service account.
 	K8sServiceAccountName string
+
+	// Tags is a map of optional resource tags to apply to all taggable resources.
+	// Standard tags (Project, Component, Environment, ManagedBy) are applied by default.
+	// Tags provided here will override defaults or add additional tags (e.g., Application, Team, CostCenter).
+	// Example: map[string]string{"Application": "TokenVault", "Team": "Security"}
+	Tags map[string]string
 }
 
 // NewEncryptionStack creates the Token Vault encryption infrastructure stack.
@@ -95,11 +101,8 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 
 	// ─── Tags ───────────────────────────────────────────────────────────
 	//
-	// Apply standard tags to all taggable resources in this stack.
-	awscdk.Tags_Of(stack).Add(jsii.String("Project"), jsii.String("agentic-identity-broker"), nil)
-	awscdk.Tags_Of(stack).Add(jsii.String("Component"), jsii.String("encryption"), nil)
-	awscdk.Tags_Of(stack).Add(jsii.String("Environment"), jsii.String(props.Environment), nil)
-	awscdk.Tags_Of(stack).Add(jsii.String("ManagedBy"), jsii.String("aws-cdk"), nil)
+	// Apply tags to all taggable resources. Merges default tags with user-provided overrides.
+	applyStackTags(stack, props)
 
 	// ─── KMS Key (KEK) ──────────────────────────────────────────────────
 	//
@@ -434,6 +437,35 @@ func pendingWindow(isProd bool) awscdk.Duration {
 		return awscdk.Duration_Days(jsii.Number(ProdDeletionWindowDays))
 	}
 	return awscdk.Duration_Days(jsii.Number(DevDeletionWindowDays))
+}
+
+// applyStackTags applies default and custom tags to all stack resources.
+// Default tags (Project, Component, ManagedBy) are always applied.
+// Environment is always set to match props.Environment.
+// User-provided Tags in props override or extend the defaults.
+func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
+	// Build default tags
+	defaultTags := map[string]string{
+		"Project":   "agentic-identity-broker",
+		"Component": "encryption-vault",
+		"ManagedBy": "aws-cdk",
+	}
+
+	// Merge user-provided tags into defaults (user tags override defaults)
+	allTags := defaultTags
+	if props.Tags != nil {
+		for key, value := range props.Tags {
+			allTags[key] = value
+		}
+	}
+
+	// Always set Environment to match props.Environment
+	allTags["Environment"] = props.Environment
+
+	// Apply all tags to the stack
+	for key, value := range allTags {
+		awscdk.Tags_Of(stack).Add(jsii.String(key), jsii.String(value), nil)
+	}
 }
 
 // createDashboard creates a CloudWatch dashboard for encryption infrastructure monitoring.

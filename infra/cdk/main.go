@@ -12,6 +12,10 @@
 //	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLEID \
 //	  -c k8sNamespace=default \
 //	  -c k8sServiceAccountName=agentic-identity-broker
+//
+// Custom Tags (optional):
+//
+//	cdk deploy -c env=dev -c 'customTags={"Application":"TokenVault","Team":"Security","CostCenter":"CC123"}'
 package main
 
 import (
@@ -68,6 +72,19 @@ func main() {
 		}
 	}
 
+	// Read custom tags from CDK context (optional).
+	// Usage: cdk deploy -c customTags='{"Application":"TokenVault","Team":"Security"}'
+	customTags := make(map[string]string)
+	if v := app.Node().TryGetContext(jsii.String("customTags")); v != nil {
+		if m, ok := v.(map[string]interface{}); ok {
+			for key, val := range m {
+				if str, ok := val.(string); ok {
+					customTags[key] = str
+				}
+			}
+		}
+	}
+
 	// Validate IRSA parameters for production deployments.
 	isProd := env == "prod" || env == "production"
 	if isProd {
@@ -98,17 +115,12 @@ func main() {
 			Synthesizer: awscdk.NewDefaultStackSynthesizer(&awscdk.DefaultStackSynthesizerProps{
 				GenerateBootstrapVersionRule: jsii.Bool(false),
 			}),
-			Tags: &map[string]*string{
-				"Project":     jsii.String("agentic-identity-broker"),
-				"Component":   jsii.String("encryption"),
-				"Environment": jsii.String(env),
-				"ManagedBy":   jsii.String("aws-cdk"),
-			},
 		},
 		Environment:           env,
 		OIDCProviderArn:       oidcProviderArn,
 		K8sNamespace:          k8sNamespace,
 		K8sServiceAccountName: k8sServiceAccountName,
+		Tags:                  customTags,
 	})
 
 	app.Synth(nil)
