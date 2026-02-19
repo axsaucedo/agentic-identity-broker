@@ -60,12 +60,14 @@ type EncryptionStackProps struct {
 //
 // Stack outputs are named to map directly to the application's IDENTITY_BROKER_*
 // environment variables.
+//
+// Props is required; if nil, the function will panic with a clear error message.
 func NewEncryptionStack(scope constructs.Construct, id string, props *EncryptionStackProps) awscdk.Stack {
-	var sprops awscdk.StackProps
-	if props != nil {
-		sprops = props.StackProps
+	if props == nil {
+		panic("NewEncryptionStack requires props to be non-nil; provide EncryptionStackProps with Environment, OIDCProviderArn, K8sNamespace, and K8sServiceAccountName")
 	}
-	stack := awscdk.NewStack(scope, &id, &sprops)
+
+	stack := awscdk.NewStack(scope, &id, &props.StackProps)
 
 	isProd := props.Environment == "prod" || props.Environment == "production"
 
