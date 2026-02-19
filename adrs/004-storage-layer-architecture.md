@@ -2,9 +2,6 @@
 
 **Date**: 2025-12-15
 **Status**: Accepted
-**Authors**: Claude Code
-**Supersedes**: N/A
-**Superseded by**: N/A
 
 ## Context
 

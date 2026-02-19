@@ -1,8 +1,7 @@
 # ADR 010: CDK Infrastructure for Encryption Resources
 
 **Status**: Accepted
-**Date**: 2026-06-17
-**Deciders**: System Architecture Team
+**Date**: 2026-02-17
 
 ---
 

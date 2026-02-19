@@ -2,9 +2,7 @@
 
 **Status**: Accepted
 **Date**: 2026-01-16
-**Feature**: 012-aws-encryption-vault  
-**Supercedes**: None  
-**Superseded By**: None
+**Feature**: 012-aws-encryption-vault
 
 ## Context
 

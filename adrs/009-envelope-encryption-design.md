@@ -2,7 +2,6 @@
 
 **Status**: Accepted
 **Date**: 2026-01-16
-**Deciders**: System Architecture Team
 
 ---
 
