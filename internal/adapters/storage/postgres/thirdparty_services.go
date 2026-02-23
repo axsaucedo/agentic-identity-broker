@@ -17,24 +17,23 @@ import (
 )
 
 // ThirdpartyServiceRepository implements ports.ThirdpartyOAuth2ServiceRepository using PostgreSQL.
+// Following Domain Service Encryption pattern, this repository operates on opaque encrypted bytes
+// and is unaware of encryption mechanics. Encryption is handled by ThirdpartyServiceManager.
 type ThirdpartyServiceRepository struct {
-	adapter        *Adapter
-	encryptionPort ports.EncryptionPort
+	adapter *Adapter
 }
 
 // NewThirdpartyServiceRepository creates a new PostgreSQL third-party service repository.
 // The adapter must be initialized before use.
-// encryptionPort is used to encrypt/decrypt client secrets.
-func NewThirdpartyServiceRepository(adapter *Adapter, encryptionPort ports.EncryptionPort) *ThirdpartyServiceRepository {
+func NewThirdpartyServiceRepository(adapter *Adapter) *ThirdpartyServiceRepository {
 	return &ThirdpartyServiceRepository{
-		adapter:        adapter,
-		encryptionPort: encryptionPort,
+		adapter: adapter,
 	}
 }
 
 // Create creates a new OAuth2 service configuration in PostgreSQL.
 // Generates a UUID for the service if ID is empty.
-// Encrypts client_secret using the configured EncryptionPort.
+// Stores ClientSecretCiphertext as opaque encrypted bytes (encrypted by caller).
 // Returns StorageError with Kind=Conflict if service ID already exists.
 func (r *ThirdpartyServiceRepository) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
 	if r.adapter.db == nil {
@@ -58,20 +57,6 @@ func (r *ThirdpartyServiceRepository) Create(ctx context.Context, service *stora
 	// Generate ID if not provided
 	if service.ID == "" {
 		service.ID = uuid.New().String()
-	}
-
-	// Encrypt client secret
-	encryptionContext := map[string]string{
-		"service_id": service.ID,
-	}
-	encryptedSecret, err := r.encryptionPort.Encrypt(ctx, []byte(service.ClientSecret), encryptionContext)
-	if err != nil {
-		return storage.NewStorageError(
-			"CreateThirdpartyOAuth2Service",
-			storage.ErrorKindConnection,
-			err,
-			"failed to encrypt client secret",
-		)
 	}
 
 	// Marshal scopes to JSON
@@ -102,7 +87,7 @@ func (r *ThirdpartyServiceRepository) Create(ctx context.Context, service *stora
 		service.ID,
 		service.DisplayName,
 		service.ClientID,
-		encryptedSecret,
+		service.ClientSecretCiphertext, // Store pre-encrypted bytes directly
 		service.IssuerURI,
 		service.Discovery.EnableDiscovery,
 		service.Discovery.MetadataURL,
@@ -149,7 +134,7 @@ func (r *ThirdpartyServiceRepository) Create(ctx context.Context, service *stora
 }
 
 // Get retrieves an OAuth2 service configuration by ID from PostgreSQL.
-// Decrypts client_secret using the configured EncryptionPort.
+// Returns ClientSecretCiphertext as opaque encrypted bytes (decryption handled by caller).
 // Returns StorageError with Kind=NotFound if service not found.
 func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
 	if r.adapter.db == nil {
@@ -182,16 +167,15 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 	`
 
 	var (
-		service         storage.ThirdpartyOAuth2Service
-		encryptedSecret []byte
-		scopesJSON      []byte
+		service    storage.ThirdpartyOAuth2Service
+		scopesJSON []byte
 	)
 
 	err := r.adapter.db.QueryRowContext(queryCtx, query, id).Scan(
 		&service.ID,
 		&service.DisplayName,
 		&service.ClientID,
-		&encryptedSecret,
+		&service.ClientSecretCiphertext, // Scan directly to encrypted bytes field
 		&service.IssuerURI,
 		&service.Discovery.EnableDiscovery,
 		&service.Discovery.MetadataURL,
@@ -240,27 +224,13 @@ func (r *ThirdpartyServiceRepository) Get(ctx context.Context, id string) (*stor
 
 	// protected_resources array already scanned using pq.Array()
 
-	// Decrypt client secret
-	encryptionContext := map[string]string{
-		"service_id": service.ID,
-	}
-	decryptedSecret, err := r.encryptionPort.Decrypt(ctx, encryptedSecret, encryptionContext)
-	if err != nil {
-		return nil, storage.NewStorageError(
-			"GetThirdpartyOAuth2Service",
-			storage.ErrorKindConnection,
-			err,
-			"failed to decrypt client secret",
-		)
-	}
-	service.ClientSecret = string(decryptedSecret)
-
+	// No decryption - return encrypted bytes as-is (caller handles decryption)
 	// Return deep copy to prevent external mutation
 	return service.Copy(), nil
 }
 
 // Update updates an existing OAuth2 service configuration in PostgreSQL.
-// Encrypts client_secret using the configured EncryptionPort.
+// Stores ClientSecretCiphertext as opaque encrypted bytes (encrypted by caller).
 // Returns StorageError with Kind=NotFound if service ID not found.
 func (r *ThirdpartyServiceRepository) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
 	if r.adapter.db == nil {
@@ -285,20 +255,6 @@ func (r *ThirdpartyServiceRepository) Update(ctx context.Context, service *stora
 	// This allows the handler to use configuration-based HTTPS validation skipping for dev/test modes.
 	// The repository does not re-validate to avoid duplicate validation logic and consistency issues.
 	// Handlers must call ValidateWith() before calling Update().
-
-	// Encrypt client secret
-	encryptionContext := map[string]string{
-		"service_id": service.ID,
-	}
-	encryptedSecret, err := r.encryptionPort.Encrypt(ctx, []byte(service.ClientSecret), encryptionContext)
-	if err != nil {
-		return storage.NewStorageError(
-			"UpdateThirdpartyOAuth2Service",
-			storage.ErrorKindConnection,
-			err,
-			"failed to encrypt client secret",
-		)
-	}
 
 	// Marshal scopes to JSON
 	scopesJSON, err := json.Marshal(service.Scopes)
@@ -336,7 +292,7 @@ func (r *ThirdpartyServiceRepository) Update(ctx context.Context, service *stora
 		service.ID,
 		service.DisplayName,
 		service.ClientID,
-		encryptedSecret,
+		service.ClientSecretCiphertext, // Store pre-encrypted bytes directly
 		service.IssuerURI,
 		service.Discovery.EnableDiscovery,
 		service.Discovery.MetadataURL,
@@ -452,7 +408,7 @@ func (r *ThirdpartyServiceRepository) Delete(ctx context.Context, id string) err
 }
 
 // List retrieves all OAuth2 service configurations from PostgreSQL.
-// Decrypts client secrets for each service.
+// Returns ClientSecretCiphertext as opaque encrypted bytes (decryption handled by caller).
 // Returns empty slice if no services exist (not an error).
 func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
 	if r.adapter.db == nil {
@@ -498,16 +454,15 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 
 	for rows.Next() {
 		var (
-			service         storage.ThirdpartyOAuth2Service
-			encryptedSecret []byte
-			scopesJSON      []byte
+			service    storage.ThirdpartyOAuth2Service
+			scopesJSON []byte
 		)
 
 		err := rows.Scan(
 			&service.ID,
 			&service.DisplayName,
 			&service.ClientID,
-			&encryptedSecret,
+			&service.ClientSecretCiphertext, // Scan directly to encrypted bytes field
 			&service.IssuerURI,
 			&service.Discovery.EnableDiscovery,
 			&service.Discovery.MetadataURL,
@@ -541,21 +496,7 @@ func (r *ThirdpartyServiceRepository) List(ctx context.Context) ([]*storage.Thir
 
 		// protected_resources array already scanned using pq.Array()
 
-		// Decrypt client secret
-		encryptionContext := map[string]string{
-			"service_id": service.ID,
-		}
-		decryptedSecret, err := r.encryptionPort.Decrypt(ctx, encryptedSecret, encryptionContext)
-		if err != nil {
-			return nil, storage.NewStorageError(
-				"ListThirdpartyOAuth2Services",
-				storage.ErrorKindConnection,
-				err,
-				"failed to decrypt client secret",
-			)
-		}
-		service.ClientSecret = string(decryptedSecret)
-
+		// No decryption - return encrypted bytes as-is (caller handles decryption)
 		services = append(services, service.Copy())
 	}
 
@@ -627,7 +568,7 @@ func (r *ThirdpartyServiceRepository) CountGrantsReferencingService(ctx context.
 // Returns the service whose protected_resources contains the resourceURI (case-sensitive match).
 // Returns StorageError with Kind=NotFound if no service matches.
 // Returns StorageError with Kind=Conflict if multiple services match (misconfiguration).
-// Client secret will be decrypted using the configured EncryptionPort.
+// Returns ClientSecretCiphertext as opaque encrypted bytes (decryption handled by caller).
 func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
@@ -683,16 +624,15 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 
 	for rows.Next() {
 		var (
-			service         storage.ThirdpartyOAuth2Service
-			encryptedSecret []byte
-			scopesJSON      []byte
+			service    storage.ThirdpartyOAuth2Service
+			scopesJSON []byte
 		)
 
 		err := rows.Scan(
 			&service.ID,
 			&service.DisplayName,
 			&service.ClientID,
-			&encryptedSecret,
+			&service.ClientSecretCiphertext, // Scan directly to encrypted bytes field
 			&service.IssuerURI,
 			&service.Discovery.EnableDiscovery,
 			&service.Discovery.MetadataURL,
@@ -726,21 +666,7 @@ func (r *ThirdpartyServiceRepository) FindByProtectedResource(ctx context.Contex
 
 		// protected_resources array already scanned using pq.Array()
 
-		// Decrypt client secret
-		encryptionContext := map[string]string{
-			"service_id": service.ID,
-		}
-		decryptedSecret, err := r.encryptionPort.Decrypt(ctx, encryptedSecret, encryptionContext)
-		if err != nil {
-			return nil, storage.NewStorageError(
-				"FindByProtectedResource",
-				storage.ErrorKindConnection,
-				err,
-				"failed to decrypt client secret",
-			)
-		}
-		service.ClientSecret = string(decryptedSecret)
-
+		// No decryption - return encrypted bytes as-is (caller handles decryption)
 		services = append(services, service.Copy())
 	}
 

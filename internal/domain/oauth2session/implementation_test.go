@@ -17,6 +17,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
 
 // setupImplementedService creates a service with full encryption support for testing the implementation.
@@ -42,8 +43,15 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
 
-	svc := oauth2session.NewOAuth2SessionService(
+	// Create ServiceManager for handling encryption/decryption of client secrets
+	serviceManager := thirdparty.NewServiceManager(
 		serviceRepo,
+		encryption,
+		slog.Default(),
+	)
+
+	svc := oauth2session.NewOAuth2SessionService(
+		serviceManager,
 		sessionRepo,
 		grantRepo,
 		agentRepo,

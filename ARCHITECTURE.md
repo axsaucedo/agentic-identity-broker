@@ -487,6 +487,35 @@ Token Decryption Flow:
 - Integration tests with LocalStack KMS and real PostgreSQL storage
 - Backward compatibility tests for KEK rotation scenarios
 
+**Encryption Architecture Pattern**:
+
+The project follows **Domain Service Encryption** for all sensitive data encryption. This pattern maintains hexagonal architecture purity by placing encryption logic in the domain service layer rather than the storage adapter layer.
+
+**Standard Pattern**:
+- Encryption logic resides in domain service layer (business concern)
+- Repository stores opaque encrypted bytes (infrastructure concern)
+- Clean hexagonal architecture boundaries
+- No encryption dependencies in storage adapters
+
+**Data Flow**:
+```
+Service Layer (OAuth2SessionService):
+  ↓ Encrypts tokens with EncryptionPort
+  ↓ Creates domain entity with encrypted bytes
+Repository Layer (UserSessionRepository):
+  ↓ Stores encrypted bytes as BYTEA (opaque)
+  ↓ Returns encrypted bytes on retrieval
+Service Layer (OAuth2SessionService):
+  ↓ Decrypts tokens with EncryptionPort
+  ↓ Returns plaintext to caller
+```
+
+**Example Implementation**: UserSessionRepository + OAuth2SessionService
+
+**See Also**:
+- ADR 009: Envelope Encryption Design (cryptographic approach)
+- ADR 012: Encryption Layer Separation (architectural pattern)
+
 ## 4. Data Stores
 
 (List and describe the databases and other persistent storage solutions used.)
@@ -581,6 +610,7 @@ This section lists all architectural decisions made for this project. ADRs docum
 - [ADR 008: Encryption Context Optimization](adrs/008-encryption-context-optimization.md) - Service-ID-only context binding performance optimization
 - [ADR 009: Envelope Encryption Design](adrs/009-envelope-encryption-design.md) - DEK-per-session with AWS KMS and context binding
 - [ADR 010: CDK Encryption Infrastructure](adrs/010-cdk-encryption-infrastructure.md) - AWS CDK (Go) for KMS, DynamoDB, and IAM provisioning
+- [ADR 012: Encryption Layer Separation](adrs/012-encryption-layer-separation.md) - Domain service encryption pattern for hexagonal architecture
 
 ## 11. Project Identification
 

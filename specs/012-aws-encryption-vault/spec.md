@@ -73,19 +73,19 @@ A developer in a local development or test environment needs to inject KEK mater
 
 ---
 
-### User Story 5 - Transparent Token Encryption/Decryption in Repository (Priority: P1)
+### User Story 5 - Transparent Token Encryption/Decryption (Priority: P1)
 
-A developer using the session repository needs token envelope encryption to be transparent and automatic. When storing sessions with tokens and their context, DEK generation and encryption should happen automatically without manual intervention. When retrieving sessions, DEK unwrapping and token decryption should happen automatically with context verification.
+A developer using the OAuth2SessionService needs token envelope encryption to be transparent and automatic. When storing sessions with tokens and their context, DEK generation and encryption should happen automatically in the service layer without manual intervention. When retrieving sessions, DEK unwrapping and token decryption should happen automatically in the service layer with context verification. The UserSessionRepository operates on opaque encrypted bytes and is unaware of encryption mechanics.
 
-**Why this priority**: Transparency is critical for developer experience. The encryption vault should be integrated into the session repository so developers don't need to think about encryption/decryption at the application level.
+**Why this priority**: Transparency is critical for developer experience. OAuth2SessionService should transparently handle envelope encryption/decryption so developers don't need to manage encryption manually. UserSessionRepository operates on opaque encrypted bytes and is unaware of encryption mechanics.
 
-**Independent Test**: Can be fully tested by calling the repository's `Create` and `Get` methods with context data, verifying that tokens are encrypted with envelope encryption, and that the returned session has plaintext tokens.
+**Independent Test**: Can be fully tested by calling OAuth2SessionService methods with context data, verifying that tokens are encrypted with envelope encryption before storage, and that retrieved sessions have plaintext tokens after decryption.
 
 **Acceptance Scenarios**:
 
-1. **Given** a session with tokens and service_id context is passed to the repository's `Create` method, **When** the session is stored, **Then** tokens are encrypted using envelope encryption with service_id context binding and plaintext tokens are not stored
-2. **Given** a session is retrieved with the repository's `Get` method, **When** the session is returned, **Then** tokens are automatically decrypted using envelope encryption with context verification and available as plaintext
-3. **Given** the session repository is used normally, **When** envelope encryption/decryption happens, **Then** no manual encryption steps are required by calling code
+1. **Given** a session with tokens and service_id context is passed to OAuth2SessionService.storeSession(), **When** the session is stored, **Then** OAuth2SessionService encrypts tokens using envelope encryption with service_id context binding, UserSessionRepository stores encrypted bytes as opaque data, and plaintext tokens are not stored
+2. **Given** a session is retrieved with OAuth2SessionService.Get(), **When** the session is returned, **Then** UserSessionRepository returns encrypted bytes, OAuth2SessionService automatically decrypts tokens using envelope encryption with context verification, and plaintext tokens are available to the caller
+3. **Given** OAuth2SessionService is used normally, **When** envelope encryption/decryption happens, **Then** no manual encryption steps are required by calling code (transparent to HTTP handlers)
 
 ---
 
@@ -154,7 +154,7 @@ A reliability engineer needs the system to handle edge cases gracefully: large t
 - **FR-006**: System MUST decrypt tokens by first unwrapping the DEK using the KEK (verifying context), then using the DEK to decrypt the token (verifying context)
 - **FR-007**: System MUST reject token decryption if context verification fails at either the DEK layer or the KEK layer
 - **FR-008**: System MUST support configurable KEK storage via single `encryption.key` field: AWS KMS ARN for production or `${ENCRYPTION_KEK}` for environment variable injection
-- **FR-009**: System MUST automatically decrypt OAuth tokens when retrieving sessions, performing DEK unwrapping and token decryption transparently with context verification
+- **FR-009**: OAuth2SessionService MUST automatically decrypt OAuth tokens when retrieving sessions from UserSessionRepository, performing DEK unwrapping and token decryption transparently with context verification. UserSessionRepository operates on opaque encrypted bytes and is unaware of decryption mechanics
 - **FR-010**: System MUST encode encrypted tokens in base64 for safe storage in database columns
 - **FR-011**: System MUST validate KEK is accessible before the application starts (fail-fast on startup if KEK unavailable)
 - **FR-012**: System MUST fail securely if KEK is missing, inaccessible, or unwrapping fails (no plaintext fallback)

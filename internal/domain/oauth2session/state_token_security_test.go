@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
 
 // T075: Security tests for state token expiration rejection
@@ -242,8 +244,16 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
 
-	service1 := oauth2session.NewOAuth2SessionService(
+	// Create ServiceManager for handling encryption/decryption of client secrets
+	encryption := noop.NewNoOpEncryption()
+	serviceManager1 := thirdparty.NewServiceManager(
 		serviceRepo1,
+		encryption,
+		slog.Default(),
+	)
+
+	service1 := oauth2session.NewOAuth2SessionService(
+		serviceManager1,
 		sessionRepo1,
 		grantRepo1,
 		agentRepo1,
@@ -267,8 +277,15 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	grantRepo2 := memory.NewUserGrantRepository()
 	agentRepo2 := memory.NewAgentRepository()
 
-	service2 := oauth2session.NewOAuth2SessionService(
+	// Create ServiceManager for handling encryption/decryption of client secrets
+	serviceManager2 := thirdparty.NewServiceManager(
 		serviceRepo2,
+		encryption,
+		slog.Default(),
+	)
+
+	service2 := oauth2session.NewOAuth2SessionService(
+		serviceManager2,
 		sessionRepo2,
 		grantRepo2,
 		agentRepo2,

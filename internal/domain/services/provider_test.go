@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -77,26 +79,33 @@ func TestNewAuthProvider(t *testing.T) {
 	mockBranchKeyManager := new(MockBranchKeyManager)
 	logger := slog.Default()
 
+	// Create ServiceManager for tests (Pattern B)
+	serviceManager := thirdparty.NewServiceManager(
+		mockRepo,
+		noop.NewNoOpEncryption(), // No-op encryption for tests
+		logger,
+	)
+
 	t.Run("with all dependencies", func(t *testing.T) {
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 		assert.NotNil(t, authProvider)
-		assert.Equal(t, mockRepo, authProvider.serviceRepository)
+		assert.Equal(t, serviceManager, authProvider.serviceManager)
 		assert.Equal(t, mockBranchKeyManager, authProvider.branchKeyManager)
 		assert.Equal(t, logger, authProvider.logger)
 	})
 
 	t.Run("with nil branch key manager", func(t *testing.T) {
-		authProvider := NewAuthProvider(mockRepo, nil, logger)
+		authProvider := NewAuthProvider(serviceManager, nil, logger)
 		assert.NotNil(t, authProvider)
-		assert.Equal(t, mockRepo, authProvider.serviceRepository)
+		assert.Equal(t, serviceManager, authProvider.serviceManager)
 		assert.Nil(t, authProvider.branchKeyManager)
 		assert.Equal(t, logger, authProvider.logger)
 	})
 
 	t.Run("with nil logger", func(t *testing.T) {
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, nil)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, nil)
 		assert.NotNil(t, authProvider)
-		assert.Equal(t, mockRepo, authProvider.serviceRepository)
+		assert.Equal(t, serviceManager, authProvider.serviceManager)
 		assert.Equal(t, mockBranchKeyManager, authProvider.branchKeyManager)
 		assert.Equal(t, slog.Default(), authProvider.logger)
 	})
@@ -119,7 +128,8 @@ func TestAuthProvider_Create(t *testing.T) {
 	t.Run("successful creation with branch key manager", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		// Mock branch key provisioning first
 		mockBranchKeyManager.On("Create", ctx, "service-123").Return("service_service-123_branch_key", nil)
@@ -139,7 +149,8 @@ func TestAuthProvider_Create(t *testing.T) {
 
 	t.Run("successful creation without branch key manager", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
-		authProvider := NewAuthProvider(mockRepo, nil, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, nil, logger)
 
 		// Only mock service creation (no branch key provisioning)
 		mockRepo.On("Create", ctx, service).Return(nil)
@@ -155,7 +166,8 @@ func TestAuthProvider_Create(t *testing.T) {
 	t.Run("branch key provisioning fails", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		// Mock branch key provisioning failure
 		branchKeyError := fmt.Errorf("failed to create branch key in DynamoDB")
@@ -179,7 +191,8 @@ func TestAuthProvider_Create(t *testing.T) {
 	t.Run("service creation fails after branch key provisioning succeeds", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		// Mock successful branch key provisioning
 		mockBranchKeyManager.On("Create", ctx, "service-123").Return("service_service-123_branch_key", nil)
@@ -214,7 +227,8 @@ func TestAuthProvider_Get(t *testing.T) {
 	t.Run("successful get", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		mockRepo.On("Get", ctx, "service-123").Return(service, nil)
 
@@ -229,7 +243,8 @@ func TestAuthProvider_Get(t *testing.T) {
 	t.Run("service not found", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		notFoundError := storage.NewStorageError("GetService", storage.ErrorKindNotFound, nil, "service not found")
 		mockRepo.On("Get", ctx, "nonexistent").Return(nil, notFoundError)
@@ -257,7 +272,8 @@ func TestAuthProvider_Update(t *testing.T) {
 	t.Run("successful update", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		mockRepo.On("Update", ctx, service).Return(nil)
 
@@ -270,7 +286,8 @@ func TestAuthProvider_Update(t *testing.T) {
 	t.Run("update failure", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		updateError := storage.NewStorageError("UpdateService", storage.ErrorKindNotFound, nil, "service not found")
 		mockRepo.On("Update", ctx, service).Return(updateError)
@@ -291,7 +308,8 @@ func TestAuthProvider_Delete(t *testing.T) {
 	t.Run("successful delete", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		mockRepo.On("Delete", ctx, "service-123").Return(nil)
 
@@ -304,7 +322,8 @@ func TestAuthProvider_Delete(t *testing.T) {
 	t.Run("delete blocked by grants", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		conflictError := storage.NewStorageError("DeleteService", storage.ErrorKindConflict, nil, "cannot delete service: 5 grants reference it")
 		mockRepo.On("Delete", ctx, "service-123").Return(conflictError)
@@ -338,7 +357,8 @@ func TestAuthProvider_List(t *testing.T) {
 	t.Run("successful list", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		mockRepo.On("List", ctx).Return(services, nil)
 
@@ -354,7 +374,8 @@ func TestAuthProvider_List(t *testing.T) {
 	t.Run("empty list", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		emptyServices := []*storage.ThirdpartyOAuth2Service{}
 		mockRepo.On("List", ctx).Return(emptyServices, nil)
@@ -371,7 +392,8 @@ func TestAuthProvider_List(t *testing.T) {
 	t.Run("list failure", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		listError := storage.NewStorageError("ListServices", storage.ErrorKindConnection, nil, "database connection failed")
 		mockRepo.On("List", ctx).Return(nil, listError)
@@ -403,7 +425,8 @@ func TestAuthProvider_AtomicBehavior(t *testing.T) {
 	t.Run("atomic failure handling - branch key provisioning fails", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		// Simulate branch key provisioning failure
 		branchKeyError := fmt.Errorf("KMS operation failed")
@@ -428,7 +451,8 @@ func TestAuthProvider_AtomicBehavior(t *testing.T) {
 	t.Run("proper orchestration order", func(t *testing.T) {
 		mockRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		mockBranchKeyManager := new(MockBranchKeyManager)
-		authProvider := NewAuthProvider(mockRepo, mockBranchKeyManager, logger)
+		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
+		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		// Set up call order tracking
 		callOrder := make([]string, 0)

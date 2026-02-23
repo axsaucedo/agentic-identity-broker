@@ -24,6 +24,7 @@ import (
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -144,66 +145,7 @@ func (b *Builder) Build() (*App, error) {
 		Logger:  b.logger,
 	}
 
-	// Phase 1: Create domain services
-	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
-
-	// Create consent service if repositories available
-	if b.storage.Agents() != nil && b.storage.Services() != nil && b.storage.UserGrants() != nil {
-		app.ConsentService = consentservice.NewService(
-			b.storage.Agents(),
-			b.storage.Services(),
-			b.storage.UserGrants(),
-		)
-	}
-
-	// Create auth provider service if services repository available
-	if b.storage.Services() != nil {
-		app.AuthProvider = services.NewAuthProvider(
-			b.storage.Services(),
-			b.branchKeyManager, // May be nil if no encryption backend configured
-			b.logger,
-		)
-	}
-
-	// Create OAuth2 service if configuration available
-	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
-		app.OAuth2Service = oauth2service.NewService(
-			b.storage.Agents(),
-			b.storage.UserGrants(),
-			&oauth2service.OAuth2Config{
-				UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
-				UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
-				PublicURL:                 b.config.Server.EndUser.PublicURL,
-				SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
-				SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
-			},
-		)
-	}
-
-	// OAuth2SessionService is always created because JWESigningKey is mandatory.
-	// Unlike ConsentService and OAuth2Service (which are conditionally created based on
-	// storage availability and config), OAuth2SessionService requires the JWESigningKey
-	// which is marked as REQUIRED in config validation (internal/config/validator.go).
-	// The application will fail to start if JWESigningKey is not provided, so we can
-	// safely create OAuth2SessionService unconditionally here.
-
-	// Decode JWE signing key
-	keyBytes, err := base64.StdEncoding.DecodeString(b.config.ThirdPartyOAuth2.JWESigningKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JWE signing key: %w", err)
-	}
-
-	// Import key as JWK
-	jweKey, err := jwk.Import(keyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
-	}
-
-	// Build service configuration from application config
-	// Constitution Principle VII: Configuration-Driven Design
-	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
-
-	// Initialize encryption adapter based on configuration or builder override
+	// Phase 1: Initialize encryption adapter (must happen before domain services)
 	// Constitution Principle VII: Configuration-Driven Design
 	var encryptor ports.EncryptionPort
 	if b.encryption != nil {
@@ -252,6 +194,83 @@ func (b *Builder) Build() (*App, error) {
 		app.BranchKeyManager = b.branchKeyManager
 	}
 
+	// Phase 2: Create domain services
+	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
+
+	// Create ThirdpartyServiceManager (handles encryption for OAuth2 services)
+	// Must be created early since it's needed by both AuthProvider and OAuth2SessionService
+	// encryptor is guaranteed to be initialized from Phase 1
+	var serviceManager *thirdparty.ServiceManager
+	if b.storage.Services() != nil {
+		serviceManager = thirdparty.NewServiceManager(
+			b.storage.Services(),
+			encryptor,
+			b.logger,
+		)
+	}
+
+	// Create consent service if repositories available
+	if b.storage.Agents() != nil && b.storage.Services() != nil && b.storage.UserGrants() != nil {
+		app.ConsentService = consentservice.NewService(
+			b.storage.Agents(),
+			b.storage.Services(),
+			b.storage.UserGrants(),
+		)
+	}
+
+	// Create auth provider service if service manager available
+	if serviceManager != nil {
+		// Create AuthProvider (handles branch key provisioning)
+		app.AuthProvider = services.NewAuthProvider(
+			serviceManager,
+			b.branchKeyManager, // May be nil if no encryption backend configured
+			b.logger,
+		)
+	}
+
+	// Create OAuth2 service if configuration available
+	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
+		app.OAuth2Service = oauth2service.NewService(
+			b.storage.Agents(),
+			b.storage.UserGrants(),
+			&oauth2service.OAuth2Config{
+				UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
+				UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+				PublicURL:                 b.config.Server.EndUser.PublicURL,
+				SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
+				SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
+			},
+		)
+	}
+
+	// OAuth2SessionService is always created because JWESigningKey is mandatory.
+	// Unlike ConsentService and OAuth2Service (which are conditionally created based on
+	// storage availability and config), OAuth2SessionService requires the JWESigningKey
+	// which is marked as REQUIRED in config validation (internal/config/validator.go).
+	// The application will fail to start if JWESigningKey is not provided, so we can
+	// safely create OAuth2SessionService unconditionally here.
+	//
+	// Note: OAuth2SessionService requires a serviceManager for decrypting client secrets.
+	// If services repository is not available, serviceManager will be nil and OAuth2SessionService
+	// will fail to fetch services. This is acceptable since the application is non-functional
+	// without the services repository anyway.
+
+	// Decode JWE signing key
+	keyBytes, err := base64.StdEncoding.DecodeString(b.config.ThirdPartyOAuth2.JWESigningKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWE signing key: %w", err)
+	}
+
+	// Import key as JWK
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
+	}
+
+	// Build service configuration from application config
+	// Constitution Principle VII: Configuration-Driven Design
+	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
+
 	// Create HTTP client for token endpoint with configured timeout
 	// Created early to support both OAuth2SessionService and TokenExchangeService
 	upstreamClient := &http.Client{
@@ -259,7 +278,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(
-		b.storage.Services(),
+		serviceManager,
 		b.storage.UserSessions(),
 		b.storage.UserGrants(),
 		b.storage.Agents(),
@@ -333,7 +352,7 @@ func (b *Builder) Build() (*App, error) {
 		app.TokenExchangeService = tokenExchangeService
 	}
 
-	// Phase 2: Create handler instances
+	// Phase 3: Create handler instances
 
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
