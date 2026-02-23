@@ -67,7 +67,7 @@ func NewStorageFactory(logger *slog.Logger) *StorageFactory {
 //
 //	storage, err := storageFactory.NewTestStorage()
 //	require.NoError(t, err)
-//	defer storage.Lifecycle().Close(context.Background())
+//	defer storage.Close(context.Background())
 //	// storage is ready to pass to app.Builder
 func (f *StorageFactory) NewTestStorage() (*storageadapter.Adapter, error) {
 	// Configuration for in-memory backend
@@ -89,12 +89,6 @@ func (f *StorageFactory) NewTestStorage() (*storageadapter.Adapter, error) {
 		return nil, fmt.Errorf("failed to create test storage: %w", err)
 	}
 
-	// Initialize storage (in-memory is instant)
-	ctx := context.Background()
-	if err := adapter.Lifecycle().Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("failed to initialize test storage: %w", err)
-	}
-
 	return adapter, nil
 }
 
@@ -114,7 +108,7 @@ func (f *StorageFactory) HealthCheck(storage *storageadapter.Adapter) error {
 	}
 
 	ctx := context.Background()
-	if err := storage.Lifecycle().HealthCheck(ctx); err != nil {
+	if err := storage.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("storage health check failed: %w", err)
 	}
 
@@ -136,7 +130,7 @@ func (f *StorageFactory) CloseStorage(storage *storageadapter.Adapter) error {
 	}
 
 	ctx := context.Background()
-	if err := storage.Lifecycle().Close(ctx); err != nil {
+	if err := storage.Close(ctx); err != nil {
 		return fmt.Errorf("failed to close storage: %w", err)
 	}
 

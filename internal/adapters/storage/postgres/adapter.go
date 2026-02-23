@@ -14,7 +14,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// Adapter implements ports.StorageLifecycle and ports.UserRepository interfaces
+// Adapter implements storage repository and lifecycle helpers
 // using PostgreSQL as the persistence backend.
 type Adapter struct {
 	db       *sqlx.DB
@@ -69,7 +69,7 @@ func NewAdapter(config *ports.StorageConfig) (*Adapter, error) {
 }
 
 // Initialize connects to PostgreSQL and verifies schema.
-// Satisfies ports.StorageLifecycle interface.
+// Satisfies storage lifecycle expectations.
 // Returns error if connection fails or schema is invalid.
 func (a *Adapter) Initialize(ctx context.Context) error {
 	// Check context for cancellation
@@ -183,7 +183,7 @@ func (a *Adapter) verifySchema(ctx context.Context, db *sqlx.DB) error {
 }
 
 // Close gracefully closes the PostgreSQL connection.
-// Satisfies ports.StorageLifecycle interface.
+// Satisfies storage lifecycle expectations.
 func (a *Adapter) Close(ctx context.Context) error {
 	if a.db == nil {
 		return nil // Already closed
@@ -210,7 +210,7 @@ func (a *Adapter) Close(ctx context.Context) error {
 }
 
 // HealthCheck verifies PostgreSQL connection is operational.
-// Satisfies ports.StorageLifecycle interface.
+// Satisfies storage lifecycle expectations.
 func (a *Adapter) HealthCheck(ctx context.Context) error {
 	if a.db == nil {
 		return storage.NewStorageError(

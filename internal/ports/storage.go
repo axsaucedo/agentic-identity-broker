@@ -15,23 +15,8 @@ var (
 	ErrNotFound = errors.New("entity not found")
 )
 
-// StorageLifecycle manages storage backend lifecycle operations.
-// Handles initialization, health checking, and cleanup.
-// This interface isolates storage lifecycle concerns from CRUD operations.
-type StorageLifecycle interface {
-	// Initialize performs storage backend initialization and verification.
-	// For PostgreSQL: connects to database, verifies schema version
-	// For in-memory: initializes empty storage structures
-	// Returns error if initialization fails (FR-007).
-	// Applications MUST fail startup if Initialize returns an error.
-	Initialize(ctx context.Context) error
-
-	// Close gracefully closes storage connections and releases resources.
-	// Should be called during application shutdown.
-	// Idempotent: safe to call multiple times.
-	// Best effort - does not fail startup if Close fails.
-	Close(ctx context.Context) error
-
+// HealthChecker verifies storage backend health.
+type HealthChecker interface {
 	// HealthCheck verifies storage backend is operational.
 	// Lightweight operation for monitoring (5-20ms typical).
 	// Returns nil if healthy, error with details if unhealthy.

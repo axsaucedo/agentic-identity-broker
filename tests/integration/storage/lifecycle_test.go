@@ -29,15 +29,10 @@ func TestMemoryAdapter_FullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, adapter)
 
-	lifecycle := adapter.Lifecycle()
 	users := adapter.Users()
 
-	// Initialize
-	err = lifecycle.Initialize(ctx)
-	require.NoError(t, err)
-
 	// Health check after initialization
-	err = lifecycle.HealthCheck(ctx)
+	err = adapter.HealthCheck(ctx)
 	assert.NoError(t, err)
 
 	// Create users
@@ -96,11 +91,11 @@ func TestMemoryAdapter_FullLifecycle(t *testing.T) {
 	assert.Len(t, remainingUsers, 1)
 
 	// Health check before close
-	err = lifecycle.HealthCheck(ctx)
+	err = adapter.HealthCheck(ctx)
 	assert.NoError(t, err)
 
 	// Close
-	err = lifecycle.Close(ctx)
+	err = adapter.Close(ctx)
 	require.NoError(t, err)
 }
 
@@ -120,11 +115,7 @@ func TestMemoryAdapter_ConcurrentOperations(t *testing.T) {
 	adapter, err := storage.NewAdapter(config)
 	require.NoError(t, err)
 
-	lifecycle := adapter.Lifecycle()
 	users := adapter.Users()
-
-	err = lifecycle.Initialize(ctx)
-	require.NoError(t, err)
 
 	// Create 100 users concurrently
 	done := make(chan struct{})
@@ -163,7 +154,7 @@ func TestMemoryAdapter_ConcurrentOperations(t *testing.T) {
 	assert.Greater(t, len(allUsers), 0)
 
 	// Close
-	err = lifecycle.Close(ctx)
+	err = adapter.Close(ctx)
 	assert.NoError(t, err)
 }
 
@@ -216,11 +207,7 @@ func TestMemoryAdapter_PaginationSupport(t *testing.T) {
 	adapter, err := storage.NewAdapter(config)
 	require.NoError(t, err)
 
-	lifecycle := adapter.Lifecycle()
 	users := adapter.Users()
-
-	err = lifecycle.Initialize(ctx)
-	require.NoError(t, err)
 
 	// Create 25 users with unique IDs
 	for i := 1; i <= 25; i++ {
@@ -256,7 +243,7 @@ func TestMemoryAdapter_PaginationSupport(t *testing.T) {
 	assert.Equal(t, 5, len(page3))
 
 	// Close
-	err = lifecycle.Close(ctx)
+	err = adapter.Close(ctx)
 	assert.NoError(t, err)
 }
 
@@ -276,11 +263,7 @@ func TestMemoryAdapter_ErrorRecovery(t *testing.T) {
 	adapter, err := storage.NewAdapter(config)
 	require.NoError(t, err)
 
-	lifecycle := adapter.Lifecycle()
 	users := adapter.Users()
-
-	err = lifecycle.Initialize(ctx)
-	require.NoError(t, err)
 
 	// Try to create duplicate user
 	user1 := &ports.User{
@@ -313,10 +296,10 @@ func TestMemoryAdapter_ErrorRecovery(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Adapter should still be healthy
-	err = lifecycle.HealthCheck(ctx)
+	err = adapter.HealthCheck(ctx)
 	assert.NoError(t, err)
 
 	// Close
-	err = lifecycle.Close(ctx)
+	err = adapter.Close(ctx)
 	assert.NoError(t, err)
 }

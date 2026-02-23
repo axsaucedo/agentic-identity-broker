@@ -23,7 +23,6 @@ func TestNewAdapter_Memory(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, adapter)
-	assert.NotNil(t, adapter.Lifecycle())
 	assert.NotNil(t, adapter.Users())
 }
 
@@ -39,12 +38,13 @@ func TestNewAdapter_Postgres(t *testing.T) {
 		},
 	}
 
+	// NewAdapter now initializes the adapter at creation time.
+	// Without a running database, initialization must fail.
 	adapter, err := NewAdapter(config)
 
-	require.NoError(t, err)
-	assert.NotNil(t, adapter)
-	assert.NotNil(t, adapter.Lifecycle())
-	assert.NotNil(t, adapter.Users())
+	assert.Error(t, err)
+	assert.Nil(t, adapter)
+	assert.Contains(t, err.Error(), "failed to initialize storage adapter")
 }
 
 func TestNewAdapter_InvalidBackend(t *testing.T) {
@@ -84,9 +84,6 @@ func TestNewAdapter_PostgresNoURL(t *testing.T) {
 
 // TestBackendSwitching verifies that different adapters can be created independently
 func TestBackendSwitching(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	// Create memory adapter
 	memConfig := &ports.StorageConfig{
 		Backend: "memory",
@@ -99,9 +96,8 @@ func TestBackendSwitching(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, memAdapter)
 
-	// Initialize memory adapter
-	err = memAdapter.Lifecycle().Initialize(ctx)
-	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// Create user in memory adapter
 	user := &ports.User{
@@ -118,31 +114,15 @@ func TestBackendSwitching(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "user123", retrieved.ID)
 
-	// Create postgres adapter (would use different underlying storage)
-	postgresConfig := &ports.StorageConfig{
-		Backend: "postgres",
-		Postgres: ports.PostgresConfig{
-			ConnectionURL: "postgresql://user:pass@localhost:5432/testdb",
-		},
-		Timeouts: ports.StorageTimeouts{
-			Read:  5 * time.Second,
-			Write: 10 * time.Second,
-		},
-	}
-	postgresAdapter, err := NewAdapter(postgresConfig)
-	require.NoError(t, err)
-	require.NotNil(t, postgresAdapter)
-
-	// Verify backends are different types by checking their interface implementations
-	// Memory adapter implements both StorageLifecycle and UserRepository
-	assert.NotNil(t, memAdapter.Lifecycle())
+	// Memory adapter implements all repository interfaces
 	assert.NotNil(t, memAdapter.Users())
-	// Postgres adapter implements both StorageLifecycle and UserRepository
-	assert.NotNil(t, postgresAdapter.Lifecycle())
-	assert.NotNil(t, postgresAdapter.Users())
+	assert.NotNil(t, memAdapter.Agents())
+	assert.NotNil(t, memAdapter.Services())
+	assert.NotNil(t, memAdapter.UserGrants())
+	assert.NotNil(t, memAdapter.UserSessions())
 
 	// Close memory adapter
-	err = memAdapter.Lifecycle().Close(ctx)
+	err = memAdapter.Close(context.Background())
 	assert.NoError(t, err)
 }
 
@@ -161,7 +141,7 @@ func TestBackendSelectionValidation(t *testing.T) {
 		{
 			name:       "valid postgres backend",
 			backend:    "postgres",
-			shouldFail: false, // Fails on connection, not backend selection
+			shouldFail: true, // Init fails without a running database in unit tests
 		},
 		{
 			name:       "invalid backend sqlite",
@@ -199,15 +179,9 @@ func TestBackendSelectionValidation(t *testing.T) {
 				assert.Error(t, err)
 				assert.Nil(t, adapter)
 			} else {
-				// Postgres adapter fails on connection, but factory should succeed
-				if tt.backend == "postgres" {
-					// Connection error is acceptable for this test
-					assert.NotNil(t, adapter)
-				} else {
-					assert.NoError(t, err)
-					assert.NotNil(t, adapter)
-				}
-			}
+			assert.NoError(t, err)
+			assert.NotNil(t, adapter)
+		}
 		})
 	}
 }

@@ -1,9 +1,11 @@
 // Package storage implements storage adapters for different backends.
-// Adapters implement the ports.StorageLifecycle and ports.UserRepository interfaces.
+// Adapters implement storage repositories and lifecycle helpers.
 package storage
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
@@ -12,11 +14,18 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
+// lifecycleAdapter defines the lifecycle operations expected on storage adapters.
+type lifecycleAdapter interface {
+	Initialize(context.Context) error
+	Close(context.Context) error
+	HealthCheck(context.Context) error
+}
+
 // Adapter composes storage functionality.
-// Adapters implement both StorageLifecycle and repository interfaces (UserRepository, etc.)
+// Adapters implement repository interfaces (UserRepository, etc.)
 // This struct is returned by NewAdapter factory function.
 type Adapter struct {
-	lifecycle    ports.StorageLifecycle
+	lifecycle    lifecycleAdapter
 	users        ports.UserRepository
 	agents       ports.AgentRepository
 	services     ports.ThirdpartyOAuth2ServiceRepository
@@ -49,6 +58,9 @@ func NewAdapter(config *ports.StorageConfig) (*Adapter, error) {
 // newMemoryAdapter creates an in-memory storage adapter.
 func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	memAdapter := memory.NewAdapter()
+	if err := initializeAdapter(context.Background(), memAdapter, config); err != nil {
+		return nil, err
+	}
 	return &Adapter{
 		lifecycle:    memAdapter,
 		users:        memAdapter,
@@ -65,6 +77,9 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PostgreSQL adapter: %w", err)
 	}
+	if err := initializeAdapter(context.Background(), pgAdapter, config); err != nil {
+		return nil, err
+	}
 
 	return &Adapter{
 		lifecycle:    pgAdapter,
@@ -76,10 +91,44 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	}, nil
 }
 
-// Lifecycle returns the StorageLifecycle interface implementation.
-// Used for Initialize, Close, and HealthCheck operations.
-func (a *Adapter) Lifecycle() ports.StorageLifecycle {
-	return a.lifecycle
+// initializeAdapter configures and runs the initialization lifecycle step for a storage adapter.
+//
+// Timeout behaviour:
+//   - If Read/Write timeouts are configured on StorageConfig, the larger of the two is used.
+//   - If neither Read nor Write timeouts are configured (zero or negative), a 30s default is used.
+//
+// The longer default is intended to accommodate database connection establishment and schema
+// verification, which may legitimately take longer than steady-state read/write operations.
+//
+// The provided ctx is used as the parent context; cancellation or deadline on ctx is propagated
+// to the Initialize call (the computed timeout is applied on top of the parent).
+func initializeAdapter(ctx context.Context, adapter lifecycleAdapter, config *ports.StorageConfig) error {
+	initTimeout := config.Timeouts.Write
+	if config.Timeouts.Read > initTimeout {
+		initTimeout = config.Timeouts.Read
+	}
+	if initTimeout <= 0 {
+		initTimeout = 30 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, initTimeout)
+	defer cancel()
+
+	if err := adapter.Initialize(ctx); err != nil {
+		return fmt.Errorf("failed to initialize storage adapter: %w", err)
+	}
+
+	return nil
+}
+
+// Close closes the underlying storage adapter.
+func (a *Adapter) Close(ctx context.Context) error {
+	return a.lifecycle.Close(ctx)
+}
+
+// HealthCheck verifies the underlying storage adapter health.
+func (a *Adapter) HealthCheck(ctx context.Context) error {
+	return a.lifecycle.HealthCheck(ctx)
 }
 
 // Users returns the UserRepository interface implementation.

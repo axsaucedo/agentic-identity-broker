@@ -12,7 +12,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// Adapter implements ports.StorageLifecycle and ports.UserRepository interfaces
+// Adapter implements storage repository and lifecycle helpers
 // using in-memory storage with sync.RWMutex for thread-safety.
 type Adapter struct {
 	mu    sync.RWMutex
@@ -29,7 +29,7 @@ func NewAdapter() *Adapter {
 
 // Initialize performs in-memory adapter initialization.
 // For in-memory storage: returns nil immediately (no I/O needed).
-// Satisfies ports.StorageLifecycle interface.
+// Satisfies storage lifecycle expectations.
 func (a *Adapter) Initialize(ctx context.Context) error {
 	// Check context for cancellation
 	select {
@@ -52,7 +52,7 @@ func (a *Adapter) Initialize(ctx context.Context) error {
 
 // Close gracefully closes the in-memory adapter.
 // For in-memory storage: clears data and is idempotent.
-// Satisfies ports.StorageLifecycle interface.
+// Satisfies storage lifecycle expectations.
 func (a *Adapter) Close(ctx context.Context) error {
 	// Check context for cancellation
 	select {
@@ -72,7 +72,7 @@ func (a *Adapter) Close(ctx context.Context) error {
 
 // HealthCheck verifies in-memory adapter is operational.
 // For in-memory storage: always returns nil (no external dependency).
-// Satisfies ports.StorageLifecycle interface.
+// Satisfies storage lifecycle expectations.
 func (a *Adapter) HealthCheck(ctx context.Context) error {
 	// Check context for cancellation
 	select {
