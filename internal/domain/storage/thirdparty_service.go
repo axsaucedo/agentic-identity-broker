@@ -12,10 +12,29 @@ import (
 // ThirdpartyOAuth2Service represents an external OAuth2 provider that agents can access
 // on behalf of users (e.g., GitHub, Google, Databricks).
 type ThirdpartyOAuth2Service struct {
-	ID                 string          `json:"id" db:"id"`
-	DisplayName        string          `json:"display_name" db:"display_name"`
-	ClientID           string          `json:"client_id" db:"client_id"`
-	ClientSecret       string          `json:"-" db:"client_secret_encrypted"` // Never serialized to JSON
+	ID          string `json:"id" db:"id"`
+	DisplayName string `json:"display_name" db:"display_name"`
+	ClientID    string `json:"client_id" db:"client_id"`
+
+	// ClientSecretCiphertext contains the OAuth2 client secret ENCRYPTED by ThirdpartyServiceManager
+	// using envelope encryption with the service_id as Additional Authenticated Data (AAD).
+	//
+	// IMPORTANT: This field contains encrypted bytes that MUST be decrypted by ThirdpartyServiceManager
+	// using its Decrypt method. Storage adapters treat this as opaque binary data and MUST NOT
+	// attempt to decrypt or re-encrypt this field.
+	//
+	// Encryption/Decryption Lifecycle:
+	// - Encryption: ThirdpartyServiceManager.Create() encrypts plaintext secret → ClientSecretCiphertext
+	// - Storage: Repository stores encrypted bytes as BYTEA (opaque)
+	// - Retrieval: Repository returns encrypted bytes on Get()
+	// - Decryption: ThirdpartyServiceManager.Get() decrypts bytes → ClientSecret (plaintext)
+	ClientSecretCiphertext []byte `json:"-" db:"client_secret_encrypted"`
+
+	// ClientSecret contains the plaintext client secret (in-memory only, never persisted).
+	// Used during Create/Update operations before encryption.
+	// After encryption, this field is cleared and ClientSecretCiphertext is used.
+	ClientSecret string `json:"-" db:"-"` // Never serialized to JSON, never stored in DB
+
 	IssuerURI          string          `json:"issuer_uri" db:"issuer_uri"`
 	Discovery          DiscoveryConfig `json:"discovery" db:"-"`
 	Endpoints          OAuth2Endpoints `json:"endpoints" db:"-"`
@@ -81,8 +100,9 @@ func (s *ThirdpartyOAuth2Service) ValidateWith(skipHTTPSValidation bool) error {
 	if s.ClientID == "" {
 		return errors.New("client_id is required")
 	}
-	if s.ClientSecret == "" {
-		return errors.New("client_secret is required")
+	// Either ClientSecret (plaintext, before encryption) or ClientSecretCiphertext (encrypted, from storage) must be present
+	if s.ClientSecret == "" && len(s.ClientSecretCiphertext) == 0 {
+		return errors.New("client_secret or client_secret_ciphertext is required")
 	}
 	if s.IssuerURI == "" {
 		return errors.New("issuer_uri is required")
@@ -249,6 +269,12 @@ func (s *ThirdpartyOAuth2Service) Copy() *ThirdpartyOAuth2Service {
 		},
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
+	}
+
+	// Deep copy encrypted client secret bytes
+	if len(s.ClientSecretCiphertext) > 0 {
+		result.ClientSecretCiphertext = make([]byte, len(s.ClientSecretCiphertext))
+		copy(result.ClientSecretCiphertext, s.ClientSecretCiphertext)
 	}
 
 	if s.Discovery.MetadataURL != nil {

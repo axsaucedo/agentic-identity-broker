@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/postgres"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -85,7 +84,7 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		lifecycle:    pgAdapter,
 		users:        pgAdapter,
 		agents:       postgres.NewAgentRepository(pgAdapter),
-		services:     postgres.NewThirdpartyServiceRepository(pgAdapter, noop.NewNoOpEncryption()),
+		services:     postgres.NewThirdpartyServiceRepository(pgAdapter),
 		userGrants:   postgres.NewUserGrantRepository(pgAdapter),
 		userSessions: postgres.NewUserSessionRepository(pgAdapter),
 	}, nil

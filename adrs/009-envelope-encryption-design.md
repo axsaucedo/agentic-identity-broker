@@ -185,9 +185,52 @@ All encryption failures are categorized per [specs/012-aws-encryption-vault/cont
 
 ---
 
+## Layer Separation: Domain Service vs. Storage Adapter Encryption
+
+### Pattern B: Domain Service Encryption
+
+**Overview**: OAuth tokens are encrypted at the domain service layer and stored as opaque
+encrypted bytes in the repository. This maintains hexagonal architecture purity.
+
+**Implementation**:
+- Domain Service: Orchestrates encryption/decryption as business logic
+- Storage Repository: Pure persistence of encrypted bytes (no crypto dependencies)
+- HTTP Adapter: Never sees encrypted data (transparent to callers)
+
+**Data Flow**:
+1. OAuth2 Provider → tokens (plaintext)
+2. OAuth2SessionService.storeSession(tokens, serviceID)
+3. Service encrypts with context: encryption.Encrypt(token, {"service_id": serviceID})
+4. Service creates UserSession{EncryptedAccessToken: ciphertext}
+5. Repository stores ciphertext as BYTEA (opaque)
+6. On retrieval: Repository returns encrypted bytes
+7. Service decrypts: DecryptAccessToken(session) → plaintext
+8. HTTP Handler receives plaintext (transparent)
+
+**Hexagonal Architecture Benefits**:
+- Domain owns business logic (including data protection)
+- Repository is infrastructure-agnostic (easy to swap backends)
+- Clear separation: domain logic ≠ persistence logic
+- Repository tests don't need to mock encryption
+
+**Example**: UserSessionRepository + OAuth2SessionService
+
+### Pattern A: Storage Adapter Encryption (NOT RECOMMENDED)
+
+**Why Pattern A is suboptimal**:
+- Repository depends on EncryptionPort (ISP violation)
+- Encryption logic in adapter layer (infrastructure concern)
+- Memory adapter inconsistency (no encryption in memory, but encryption in postgres)
+- Repository interface exposes crypto concerns
+
+**Migration Strategy**: See ADR 012 (Encryption Layer Separation)
+
+---
+
 ## Related Documents
 
 - [ADR 008: Encryption Context Optimization](008-encryption-context-optimization.md) - Context binding performance analysis
+- [ADR 012: Encryption Layer Separation](012-encryption-layer-separation.md) - Architectural pattern for domain vs. adapter encryption
 - [AWS Encryption Vault Specification](../specs/012-aws-encryption-vault/spec.md) - Functional requirements
 - [Error Contract](../specs/012-aws-encryption-vault/contracts/error-contract.md) - Error handling patterns
 - [AWS KMS Developer Guide](https://docs.aws.amazon.com/kms/latest/developerguide/) - Implementation reference

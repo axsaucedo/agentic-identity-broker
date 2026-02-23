@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,6 +33,10 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	serviceRepo := memory.NewThirdpartyServiceRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	encryption := noop.NewNoOpEncryption()
+	serviceManager := thirdparty.NewServiceManager(serviceRepo, encryption, slog.Default())
+
 	// Seed test data
 	ctx := context.Background()
 
@@ -45,7 +52,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	err := agentRepo.Create(ctx, agent)
 	require.NoError(t, err)
 
-	// Create GitHub service
+	// Create GitHub service via ServiceManager
 	githubService := &storage.ThirdpartyOAuth2Service{
 		ID:           "github",
 		DisplayName:  "GitHub",
@@ -64,10 +71,10 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	err = serviceRepo.Create(ctx, githubService)
+	err = serviceManager.Create(ctx, githubService)
 	require.NoError(t, err)
 
-	// Create Google service
+	// Create Google service via ServiceManager
 	googleService := &storage.ThirdpartyOAuth2Service{
 		ID:           "google",
 		DisplayName:  "Google",
@@ -86,7 +93,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	err = serviceRepo.Create(ctx, googleService)
+	err = serviceManager.Create(ctx, googleService)
 	require.NoError(t, err)
 
 	// Create consent service
@@ -263,6 +270,10 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	serviceRepo := memory.NewThirdpartyServiceRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	encryption := noop.NewNoOpEncryption()
+	serviceManager := thirdparty.NewServiceManager(serviceRepo, encryption, slog.Default())
+
 	ctx := context.Background()
 
 	// Create agent
@@ -277,7 +288,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	err := agentRepo.Create(ctx, agent)
 	require.NoError(t, err)
 
-	// Create service with limited scopes
+	// Create service with limited scopes via ServiceManager
 	service := &storage.ThirdpartyOAuth2Service{
 		ID:           "test-service",
 		DisplayName:  "Test Service",
@@ -295,7 +306,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	err = serviceRepo.Create(ctx, service)
+	err = serviceManager.Create(ctx, service)
 	require.NoError(t, err)
 
 	consentService := consent.NewService(agentRepo, serviceRepo, grantRepo)

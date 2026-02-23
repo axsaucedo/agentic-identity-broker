@@ -5,11 +5,13 @@ package postgres
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/require"
 )
@@ -40,6 +42,9 @@ func TestThirdpartyServiceRepository_Create(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	service := &storage.ThirdpartyOAuth2Service{
 		ID:           "test-service-1",
 		DisplayName:  "Test Service",
@@ -60,7 +65,8 @@ func TestThirdpartyServiceRepository_Create(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = repo.Create(ctx, service)
+	// Use ServiceManager to create service (handles encryption context binding)
+	err = serviceManager.Create(ctx, service)
 	require.NoError(t, err)
 
 	// Verify service was stored
@@ -96,6 +102,9 @@ func TestThirdpartyServiceRepository_Create_GeneratesID(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	service := &storage.ThirdpartyOAuth2Service{
 		// No ID provided
 		DisplayName:  "Test Service",
@@ -116,7 +125,8 @@ func TestThirdpartyServiceRepository_Create_GeneratesID(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = repo.Create(ctx, service)
+	// Use ServiceManager to create service (generates ID and handles encryption context binding)
+	err = serviceManager.Create(ctx, service)
 	require.NoError(t, err)
 	require.NotEmpty(t, service.ID, "expected ID to be generated")
 }
@@ -145,6 +155,9 @@ func TestThirdpartyServiceRepository_Create_DuplicateID(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	service := &storage.ThirdpartyOAuth2Service{
 		ID:           "test-service-1",
 		DisplayName:  "Test Service",
@@ -165,11 +178,12 @@ func TestThirdpartyServiceRepository_Create_DuplicateID(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = repo.Create(ctx, service)
+	// Use ServiceManager to create first service
+	err = serviceManager.Create(ctx, service)
 	require.NoError(t, err)
 
 	// Try to create with same ID
-	err = repo.Create(ctx, service)
+	err = serviceManager.Create(ctx, service)
 	require.Error(t, err)
 
 	storageErr, ok := err.(*storage.StorageError)
@@ -201,6 +215,9 @@ func TestThirdpartyServiceRepository_Get(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	service := &storage.ThirdpartyOAuth2Service{
 		ID:           "test-service-1",
 		DisplayName:  "Test Service",
@@ -222,10 +239,12 @@ func TestThirdpartyServiceRepository_Get(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = repo.Create(ctx, service)
+	// Use ServiceManager to create service (handles encryption context binding)
+	err = serviceManager.Create(ctx, service)
 	require.NoError(t, err)
 
-	retrieved, err := repo.Get(ctx, "test-service-1")
+	// Retrieve via ServiceManager to properly decrypt ClientSecret
+	retrieved, err := serviceManager.Get(ctx, "test-service-1")
 	require.NoError(t, err)
 	require.Equal(t, "test-service-1", retrieved.ID)
 	require.Equal(t, "Test Service", retrieved.DisplayName)
@@ -290,6 +309,9 @@ func TestThirdpartyServiceRepository_Update(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	service := &storage.ThirdpartyOAuth2Service{
 		ID:           "test-service-1",
 		DisplayName:  "Test Service",
@@ -310,7 +332,8 @@ func TestThirdpartyServiceRepository_Update(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = repo.Create(ctx, service)
+	// Use ServiceManager to create service
+	err = serviceManager.Create(ctx, service)
 	require.NoError(t, err)
 
 	// Update service
@@ -321,11 +344,12 @@ func TestThirdpartyServiceRepository_Update(t *testing.T) {
 		{ScopeValue: "write", Description: "Write access"},
 	}
 
-	err = repo.Update(ctx, service)
+	// Use ServiceManager to update service (handles encryption context binding)
+	err = serviceManager.Update(ctx, service)
 	require.NoError(t, err)
 
-	// Verify update
-	retrieved, err := repo.Get(ctx, "test-service-1")
+	// Verify update via ServiceManager to properly decrypt ClientSecret
+	retrieved, err := serviceManager.Get(ctx, "test-service-1")
 	require.NoError(t, err)
 	require.Equal(t, "Updated Service", retrieved.DisplayName)
 	require.Equal(t, "new-secret", retrieved.ClientSecret)
@@ -356,6 +380,9 @@ func TestThirdpartyServiceRepository_Update_NotFound(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	service := &storage.ThirdpartyOAuth2Service{
 		ID:           "non-existent",
 		DisplayName:  "Test Service",
@@ -376,7 +403,8 @@ func TestThirdpartyServiceRepository_Update_NotFound(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = repo.Update(ctx, service)
+	// Use ServiceManager to update (handles encryption context binding)
+	err = serviceManager.Update(ctx, service)
 	require.Error(t, err)
 
 	storageErr, ok := err.(*storage.StorageError)
@@ -408,6 +436,9 @@ func TestThirdpartyServiceRepository_Delete(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	service := &storage.ThirdpartyOAuth2Service{
 		ID:           "test-service-1",
 		DisplayName:  "Test Service",
@@ -428,14 +459,15 @@ func TestThirdpartyServiceRepository_Delete(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = repo.Create(ctx, service)
+	// Use ServiceManager to create service
+	err = serviceManager.Create(ctx, service)
 	require.NoError(t, err)
 
-	err = repo.Delete(ctx, "test-service-1")
+	err = serviceManager.Delete(ctx, "test-service-1")
 	require.NoError(t, err)
 
 	// Verify service was deleted
-	_, err = repo.Get(ctx, "test-service-1")
+	_, err = serviceManager.Get(ctx, "test-service-1")
 	require.Error(t, err)
 }
 
@@ -492,8 +524,11 @@ func TestThirdpartyServiceRepository_List(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	// List empty repository
-	services, err := repo.List(ctx)
+	services, err := serviceManager.List(ctx)
 	require.NoError(t, err)
 	require.Len(t, services, 0)
 
@@ -517,11 +552,13 @@ func TestThirdpartyServiceRepository_List(t *testing.T) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		err = repo.Create(ctx, service)
+		// Use ServiceManager to create service
+		_, err = serviceManager.Create(ctx, service)
 		require.NoError(t, err)
 	}
 
-	services, err = repo.List(ctx)
+	// List via ServiceManager to get properly decrypted services
+	services, err = serviceManager.List(ctx)
 	require.NoError(t, err)
 	require.Len(t, services, 3)
 }
@@ -580,6 +617,9 @@ func TestThirdpartyServiceRepository_DeepCopyProtection(t *testing.T) {
 	encryption := noop.NewNoOpEncryption()
 	repo := NewThirdpartyServiceRepository(adapter, encryption)
 
+	// Create ServiceManager to handle encryption context binding (simulates domain layer)
+	serviceManager := thirdparty.NewServiceManager(repo, encryption, slog.Default())
+
 	service := &storage.ThirdpartyOAuth2Service{
 		ID:           "test-service-1",
 		DisplayName:  "Test Service",
@@ -600,18 +640,19 @@ func TestThirdpartyServiceRepository_DeepCopyProtection(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	err = repo.Create(ctx, service)
+	// Use ServiceManager to create service
+	err = serviceManager.Create(ctx, service)
 	require.NoError(t, err)
 
 	// Get service and modify it
-	retrieved, err := repo.Get(ctx, "test-service-1")
+	retrieved, err := serviceManager.Get(ctx, "test-service-1")
 	require.NoError(t, err)
 
 	retrieved.DisplayName = "Modified"
 	retrieved.Scopes[0].ScopeValue = "write"
 
 	// Verify original is unchanged
-	original, err := repo.Get(ctx, "test-service-1")
+	original, err := serviceManager.Get(ctx, "test-service-1")
 	require.NoError(t, err)
 	require.Equal(t, "Test Service", original.DisplayName)
 	require.Equal(t, "read", original.Scopes[0].ScopeValue)

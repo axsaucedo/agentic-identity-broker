@@ -18,8 +18,10 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -1564,8 +1566,19 @@ func createOAuth2SessionService(
 
 	agentRepo := memory.NewAgentRepository()
 
-	return oauth2session.NewOAuth2SessionService(
+	// Create ServiceManager for handling encryption/decryption of client secrets
+	// Use NoOp encryption if not provided (for tests that don't use encryption)
+	if encryption == nil {
+		encryption = noop.NewNoOpEncryption()
+	}
+	serviceManager := thirdparty.NewServiceManager(
 		serviceRepo,
+		encryption,
+		slog.Default(),
+	)
+
+	return oauth2session.NewOAuth2SessionService(
+		serviceManager,
 		sessionRepo,
 		grantRepo,
 		agentRepo,

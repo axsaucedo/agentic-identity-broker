@@ -1,3 +1,20 @@
+// Package oauth2session manages OAuth2 authorization flows and session management.
+//
+// Encryption Integration:
+//
+// This service handles encryption and decryption of OAuth tokens using envelope encryption.
+// Tokens are encrypted before storage and decrypted on retrieval using the EncryptionPort.
+// The storage repository (UserSessionRepository) operates on opaque encrypted bytes and
+// is unaware of encryption mechanics, maintaining hexagonal architecture purity.
+//
+// Key Methods:
+// - storeSession(): Encrypts tokens before repository.Create()
+// - DecryptAccessToken(): Decrypts access token for use
+// - DecryptRefreshToken(): Decrypts refresh token for use
+//
+// Encryption Context:
+// All encryption uses context binding: {"service_id": "<oauth2-service-id>"}
+// This context is bound as Additional Authenticated Data (AAD) to prevent cross-service token reuse.
 package oauth2session
 
 import (
@@ -22,16 +39,18 @@ import (
 )
 
 // OAuth2SessionService orchestrates OAuth2 authorization flows and session management.
+// Uses a ServiceManager to retrieve third-party services with decrypted client secrets,
+// ensuring OAuth2 configurations always have valid credentials for token exchange.
 type OAuth2SessionService struct {
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository
-	sessionRepo ports.UserSessionRepository
-	grantRepo   ports.UserGrantRepository // For dependent agents
-	agentRepo   ports.AgentRepository     // For agent display names
-	encryption  ports.EncryptionPort
-	httpClient  *http.Client // For upstream OAuth2 token endpoint calls
-	jweKey      jwk.Key
-	config      Config
-	logger      *slog.Logger
+	serviceManager ports.ThirdpartyServiceManager // Domain service that handles encryption/decryption
+	sessionRepo    ports.UserSessionRepository
+	grantRepo      ports.UserGrantRepository // For dependent agents
+	agentRepo      ports.AgentRepository     // For agent display names
+	encryption     ports.EncryptionPort
+	httpClient     *http.Client // For upstream OAuth2 token endpoint calls
+	jweKey         jwk.Key
+	config         Config
+	logger         *slog.Logger
 }
 
 // Config holds configuration for the OAuth2 session service.
@@ -80,8 +99,10 @@ func NewConfigFromPorts(portsCfg ports.ThirdPartyOAuth2Config, callbackBaseURL s
 }
 
 // NewOAuth2SessionService creates a new OAuth2SessionService.
+// Requires a ThirdpartyServiceManager which handles encryption/decryption of client secrets.
+// This ensures OAuth2 configurations always receive decrypted credentials needed for token exchange.
 func NewOAuth2SessionService(
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository,
+	serviceManager ports.ThirdpartyServiceManager,
 	sessionRepo ports.UserSessionRepository,
 	grantRepo ports.UserGrantRepository,
 	agentRepo ports.AgentRepository,
@@ -105,15 +126,15 @@ func NewOAuth2SessionService(
 	}
 
 	return &OAuth2SessionService{
-		serviceRepo: serviceRepo,
-		sessionRepo: sessionRepo,
-		grantRepo:   grantRepo,
-		agentRepo:   agentRepo,
-		encryption:  encryption,
-		httpClient:  httpClient,
-		jweKey:      jweKey,
-		config:      config,
-		logger:      logger,
+		serviceManager: serviceManager,
+		sessionRepo:    sessionRepo,
+		grantRepo:      grantRepo,
+		agentRepo:      agentRepo,
+		encryption:     encryption,
+		httpClient:     httpClient,
+		jweKey:         jweKey,
+		config:         config,
+		logger:         logger,
 	}
 }
 
@@ -348,8 +369,8 @@ func (s *OAuth2SessionService) InitiateOAuth2Flow(
 ) (*InitiateFlowResult, error) {
 	s.logger.Info("initiating OAuth2 flow", "principal", principal, "service_id", serviceID)
 
-	// Fetch the service
-	service, err := s.serviceRepo.Get(ctx, serviceID)
+	// Fetch the service (with decrypted client secret via service manager)
+	service, err := s.serviceManager.Get(ctx, serviceID)
 	if err != nil {
 		s.logger.Error("service not found", "service_id", serviceID, "err", err)
 		return nil, fmt.Errorf("failed to initiate OAuth2 flow: %w", ErrServiceNotFound)
@@ -516,8 +537,8 @@ func (s *OAuth2SessionService) HandleCallback(
 		return nil, fmt.Errorf("state token validation failed: %w", err)
 	}
 
-	// Fetch the service
-	service, err := s.serviceRepo.Get(ctx, req.ServiceID)
+	// Fetch the service (with decrypted client secret via service manager)
+	service, err := s.serviceManager.Get(ctx, req.ServiceID)
 	if err != nil {
 		s.logger.Error("service not found during callback", "service_id", req.ServiceID, "err", err)
 		return nil, fmt.Errorf("service not found: %w", err)
@@ -690,7 +711,7 @@ func (s *OAuth2SessionService) RefreshAccessToken(
 //   - error if encryption or persistence fails
 //
 // The session is modified in-place and persisted with upsert semantics.
-// Encryption context binds tokens to service_id only per ADR 008 for performance optimization.
+// Encryption context binds tokens to service_id per ADR 008 for performance optimization.
 func (s *OAuth2SessionService) UpdateSessionTokens(
 	ctx context.Context,
 	principal string,
@@ -705,7 +726,7 @@ func (s *OAuth2SessionService) UpdateSessionTokens(
 		return fmt.Errorf("new token cannot be nil")
 	}
 
-	// Build encryption context for this session - uses service_id only per ADR 008
+	// Build encryption context for this session - uses service_id only
 	encContext := map[string]string{
 		"service_id": session.ServiceID,
 	}
@@ -763,7 +784,7 @@ func (s *OAuth2SessionService) UpdateSessionTokens(
 //   - string: The decrypted access token value
 //   - error if decryption fails
 //
-// The encryption context uses principal/service/session for verification.
+// The encryption context uses service_id for verification.
 func (s *OAuth2SessionService) DecryptAccessToken(
 	ctx context.Context,
 	session *storage.UserSession,
@@ -826,8 +847,8 @@ func (s *OAuth2SessionService) ListUserSessions(
 	// Convert to summaries with agent counts
 	summaries := make([]*storage.UserSessionSummary, 0, len(sessions))
 	for _, session := range sessions {
-		// Fetch service details
-		service, err := s.serviceRepo.Get(ctx, session.ServiceID)
+		// Fetch service details (with decrypted client secret via service manager)
+		service, err := s.serviceManager.Get(ctx, session.ServiceID)
 		if err != nil {
 			s.logger.Warn("service not found", "service_id", session.ServiceID, "err", err)
 			continue
@@ -1064,8 +1085,8 @@ func (s *OAuth2SessionService) GetValidAccessToken(
 		return nil, "", fmt.Errorf("%w: principal=%s, service=%s", ErrSessionExpired, principal, serviceID)
 	}
 
-	// Step 4: Fetch service details for refresh operation
-	service, err := s.serviceRepo.Get(ctx, serviceID)
+	// Step 4: Fetch service details for refresh operation (with decrypted client secret via service manager)
+	service, err := s.serviceManager.Get(ctx, serviceID)
 	if err != nil {
 		s.logger.Error("failed to fetch service for token refresh",
 			"principal", principal,

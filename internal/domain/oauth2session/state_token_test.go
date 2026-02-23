@@ -12,8 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
 
 // TestCreateStateToken_Success tests successful state token creation.
@@ -312,8 +314,16 @@ func setupTestService(t *testing.T) *oauth2session.OAuth2SessionService {
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
 
-	service := oauth2session.NewOAuth2SessionService(
+	// Create ServiceManager for handling encryption/decryption of client secrets
+	encryption := noop.NewNoOpEncryption()
+	serviceManager := thirdparty.NewServiceManager(
 		serviceRepo,
+		encryption,
+		slog.Default(),
+	)
+
+	service := oauth2session.NewOAuth2SessionService(
+		serviceManager,
 		sessionRepo,
 		grantRepo,
 		agentRepo,
