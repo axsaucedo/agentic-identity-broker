@@ -179,9 +179,9 @@ func TestBackendSelectionValidation(t *testing.T) {
 				assert.Error(t, err)
 				assert.Nil(t, adapter)
 			} else {
-			assert.NoError(t, err)
-			assert.NotNil(t, adapter)
-		}
+				assert.NoError(t, err)
+				assert.NotNil(t, adapter)
+			}
 		})
 	}
 }
