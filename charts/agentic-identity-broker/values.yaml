@@ -44,6 +44,16 @@ serviceAccount:
 # -- Pod annotations
 podAnnotations: {}
 
+# -- Common labels applied to all resources
+commonLabels: {}
+
+# Namespace configuration
+namespace:
+  # -- Create a Namespace resource
+  create: false
+  # -- Namespace name (defaults to .Release.Namespace if empty)
+  name: ""
+
 # Pod Security Context
 podSecurityContext:
   runAsNonRoot: true
@@ -228,6 +238,15 @@ postgresql:
         cpu: 500m
         memory: 512Mi
 
+    # Init container resources (wait for postgres)
+    initContainerResources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 50m
+        memory: 64Mi
+
     # User configuration
     # Note: Zalando operator uses PostgreSQL role attributes, not SQL permissions
     users:
@@ -246,6 +265,15 @@ postgresql:
         # -- Broker user role attributes (login + ownership via databases config)
         permissions:
           - login
+
+    # -- Secret name suffix for operator-managed credentials
+    # Set to "" to omit the suffix entirely
+    secretSuffix: "postgresql.acid.zalan.do"
+
+  # -- Labels applied only to the PostgreSQL resource
+  labels: {}
+  # -- Annotations applied only to the PostgreSQL resource
+  annotations: {}
 
 # Migration Job configuration
 migration:
@@ -275,8 +303,8 @@ migration:
   # Resource limits for migration Job
   resources:
     requests:
-      cpu: 50m
-      memory: 64Mi
+      cpu: 200m
+      memory: 128Mi
     limits:
       cpu: 200m
       memory: 128Mi
@@ -328,9 +356,38 @@ broker:
   # OAuth2 configuration
   thirdPartyOauth2:
     # -- JWE signing key for state tokens (required, load from secret)
-    # Must be 32 bytes, base64 encoded
+    # Raw 32-byte key material; this value will be base64-encoded by the chart when creating the Secret.
     # Set via environment variable or Kubernetes Secret
     jweSigningKey: ""
+    # -- Base64-encoded JWE signing key (used directly if set; do not provide raw bytes here)
+    # This value must already be base64-encoded, as it is written to stringData without additional encoding.
+    # Precedence order (highest to lowest): jweSigningKeyBase64 > jweSigningKey > jweSigningKeySecret
+    jweSigningKeyBase64: ""
+    # -- Secret reference for JWE signing key (alternative to jweSigningKey)
+    jweSigningKeySecret:
+      name: ""
+      key: signing-key
+
+  # -- Encryption configuration
+  encryption:
+    # -- In-memory encryption backend configuration
+    memory:
+      # -- Base64-encoded 32-byte key for the in-memory encryption backend
+      rawKey: ""
+    # -- AWS KMS encryption backend configuration
+    awsKms:
+      # -- ARN of the AWS KMS key used for encryption
+      keyArn: ""
+      # -- DynamoDB table name for storing branch encryption keys
+      dynamodbTableName: "IdentityBrokerEncryptionBranchKeys"
+      # -- Time-to-live for branch keys (e.g., 1h, 24h)
+      branchKeyTtl: "1h"
+      # -- AWS region of the DynamoDB table
+      dynamodbRegion: ""
+      # -- Read timeout for DynamoDB operations
+      dynamodbReadTimeout: ""
+      # -- Write timeout for DynamoDB operations
+      dynamodbWriteTimeout: ""
 
   # OAuth2 Authorization Server configuration
   oauth2AuthorizationServer:

@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "agentic-identity-broker.fullname" . }}-config
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
   labels:
     {{- include "agentic-identity-broker.labels" . | nindent 4 }}
 data:
@@ -45,6 +46,34 @@ data:
     # Third-party OAuth2 configuration
     third_party_oauth2:
       jwe_signing_key: ${IDENTITY_BROKER_JWE_SIGNING_KEY}
+
+    {{- if or .Values.broker.encryption.memory.rawKey .Values.broker.encryption.awsKms.keyArn }}
+    # Encryption configuration
+    encryption:
+      {{- if .Values.broker.encryption.memory.rawKey }}
+      memory:
+        raw_key: ${IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY}
+      {{- end }}
+      {{- if .Values.broker.encryption.awsKms.keyArn }}
+      aws_kms:
+        key_arn: {{ .Values.broker.encryption.awsKms.keyArn | quote }}
+        {{- if .Values.broker.encryption.awsKms.dynamodbTableName }}
+        dynamodb_table_name: {{ .Values.broker.encryption.awsKms.dynamodbTableName | quote }}
+        {{- end }}
+        {{- if .Values.broker.encryption.awsKms.branchKeyTtl }}
+        branch_key_ttl: {{ .Values.broker.encryption.awsKms.branchKeyTtl | quote }}
+        {{- end }}
+        {{- if .Values.broker.encryption.awsKms.dynamodbRegion }}
+        dynamodb_region: {{ .Values.broker.encryption.awsKms.dynamodbRegion | quote }}
+        {{- end }}
+        {{- if .Values.broker.encryption.awsKms.dynamodbReadTimeout }}
+        dynamodb_read_timeout: {{ .Values.broker.encryption.awsKms.dynamodbReadTimeout | quote }}
+        {{- end }}
+        {{- if .Values.broker.encryption.awsKms.dynamodbWriteTimeout }}
+        dynamodb_write_timeout: {{ .Values.broker.encryption.awsKms.dynamodbWriteTimeout | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
 
     {{- if .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
     # OAuth2 Authorization Server configuration

@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "agentic-identity-broker.fullname" . }}
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
   labels:
     {{- include "agentic-identity-broker.labels" . | nindent 4 }}
 spec:
@@ -20,6 +21,9 @@ spec:
         {{- end }}
       labels:
         {{- include "agentic-identity-broker.selectorLabels" . | nindent 8 }}
+        {{- range $key, $value := .Values.commonLabels }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -61,12 +65,25 @@ spec:
           {{- toYaml .Values.resources | nindent 12 }}
         env:
         # JWE signing key for state tokens
-        {{- if .Values.broker.thirdPartyOauth2.jweSigningKey }}
+        {{- if or .Values.broker.thirdPartyOauth2.jweSigningKey .Values.broker.thirdPartyOauth2.jweSigningKeyBase64 }}
         - name: IDENTITY_BROKER_JWE_SIGNING_KEY
           valueFrom:
             secretKeyRef:
               name: {{ include "agentic-identity-broker.fullname" . }}-jwe-key
               key: signing-key
+        {{- else if .Values.broker.thirdPartyOauth2.jweSigningKeySecret.name }}
+        - name: IDENTITY_BROKER_JWE_SIGNING_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.broker.thirdPartyOauth2.jweSigningKeySecret.name }}
+              key: {{ .Values.broker.thirdPartyOauth2.jweSigningKeySecret.key | default "signing-key" }}
+        {{- end }}
+        {{- if .Values.broker.encryption.memory.rawKey }}
+        - name: IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agentic-identity-broker.fullname" . }}-encryption
+              key: memory-raw-key
         {{- end }}
         {{- if eq .Values.storage.type "postgres" }}
         # PostgreSQL storage configuration

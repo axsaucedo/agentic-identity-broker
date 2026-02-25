@@ -3,14 +3,22 @@ apiVersion: "acid.zalan.do/v1"
 kind: postgresql
 metadata:
   name: {{ .Values.postgresql.operator.teamId }}-{{ include "agentic-identity-broker.fullname" . }}
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
   labels:
-    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
-    app.kubernetes.io/component: database
+    {{- $commonLabels := .Values.commonLabels | default dict -}}
+    {{- $postgresLabels := .Values.postgresql.labels | default dict -}}
+    {{- $baseLabels := fromYaml (include "agentic-identity-broker.baseLabels" .) -}}
+    {{- $componentLabel := dict "app.kubernetes.io/component" "database" -}}
+    {{- $mergedLabels := mergeOverwrite $baseLabels $commonLabels $postgresLabels $componentLabel -}}
+    {{- toYaml $mergedLabels | nindent 4 }}
   annotations:
     # Create PostgreSQL cluster before migration Job
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-8"
     "helm.sh/hook-delete-policy": before-hook-creation
+    {{- with .Values.postgresql.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   teamId: {{ .Values.postgresql.operator.teamId | quote }}
   numberOfInstances: {{ .Values.postgresql.operator.numberOfInstances }}

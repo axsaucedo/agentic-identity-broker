@@ -31,15 +31,21 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Common labels
+Base labels (without commonLabels)
 */}}
-{{- define "agentic-identity-broker.labels" -}}
+{{- define "agentic-identity-broker.baseLabels" -}}
 helm.sh/chart: {{ include "agentic-identity-broker.chart" . }}
 {{ include "agentic-identity-broker.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{- define "agentic-identity-broker.labels" -}}
+{{- $base := fromYaml (include "agentic-identity-broker.baseLabels" .) -}}
+{{- $common := .Values.commonLabels | default dict -}}
+{{- toYaml (merge $base $common) -}}
 {{- end }}
 
 {{/*
@@ -75,6 +81,14 @@ extensions/v1beta1
 {{- end -}}
 
 {{/*
+Return the namespace for resources.
+Uses namespace.name if set, otherwise falls back to the release namespace.
+*/}}
+{{- define "agentic-identity-broker.namespace" -}}
+{{- .Values.namespace.name | default .Release.Namespace }}
+{{- end }}
+
+{{/*
 PostgreSQL broker secret name helper
 Returns the name of the secret containing broker database credentials
 */}}
@@ -82,7 +96,16 @@ Returns the name of the secret containing broker database credentials
 {{- if and (eq .Values.storage.type "postgres") .Values.postgresql.external.enabled }}
 {{- .Values.postgresql.external.brokerSecretName }}
 {{- else if and (eq .Values.storage.type "postgres") .Values.postgresql.operator.enabled }}
-{{- printf "%s.%s-%s.credentials.postgresql.acid.zalan.do" .Values.postgresql.operator.users.broker.name .Values.postgresql.operator.teamId (include "agentic-identity-broker.fullname" .) }}
+{{- $hasSuffix := hasKey .Values.postgresql.operator "secretSuffix" }}
+{{- $suffix := "postgresql.acid.zalan.do" }}
+{{- if $hasSuffix }}
+{{- $suffix = .Values.postgresql.operator.secretSuffix }}
+{{- end }}
+{{- if $suffix }}
+{{- printf "%s.%s-%s.credentials.%s" .Values.postgresql.operator.users.broker.name .Values.postgresql.operator.teamId (include "agentic-identity-broker.fullname" .) $suffix }}
+{{- else }}
+{{- printf "%s.%s-%s.credentials" .Values.postgresql.operator.users.broker.name .Values.postgresql.operator.teamId (include "agentic-identity-broker.fullname" .) }}
+{{- end }}
 {{- else }}
 {{- "" }}
 {{- end }}
@@ -96,7 +119,16 @@ Returns the name of the secret containing migration database credentials
 {{- if and (eq .Values.storage.type "postgres") .Values.postgresql.external.enabled }}
 {{- .Values.postgresql.external.migrationSecretName }}
 {{- else if and (eq .Values.storage.type "postgres") .Values.postgresql.operator.enabled }}
-{{- printf "%s.%s-%s.credentials.postgresql.acid.zalan.do" .Values.postgresql.operator.users.migration.name .Values.postgresql.operator.teamId (include "agentic-identity-broker.fullname" .) }}
+{{- $hasSuffix := hasKey .Values.postgresql.operator "secretSuffix" }}
+{{- $suffix := "postgresql.acid.zalan.do" }}
+{{- if $hasSuffix }}
+{{- $suffix = .Values.postgresql.operator.secretSuffix }}
+{{- end }}
+{{- if $suffix }}
+{{- printf "%s.%s-%s.credentials.%s" .Values.postgresql.operator.users.migration.name .Values.postgresql.operator.teamId (include "agentic-identity-broker.fullname" .) $suffix }}
+{{- else }}
+{{- printf "%s.%s-%s.credentials" .Values.postgresql.operator.users.migration.name .Values.postgresql.operator.teamId (include "agentic-identity-broker.fullname" .) }}
+{{- end }}
 {{- else }}
 {{- "" }}
 {{- end }}
