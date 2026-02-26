@@ -70,7 +70,7 @@ Read full ADRs in `adrs/` before implementing in their domain.
 | 004 (dual-server) | errgroup atomic startup: end-user :8000, admin :14000 |
 | 004 (storage) | Hexagonal storage with swappable in-memory/PostgreSQL backends, ISP repositories, sqlx |
 | 005 | Serve React SPA from Go backend via embedded static files with history API fallback |
-| 006 | React 18 + TypeScript + Vite + Tailwind + Headless UI + Vitest |
+| 006 | React 19 + react-router-dom 7 + TypeScript + Vite + Tailwind + Headless UI + Vitest |
 | 007 | Ginkgo v2/Gomega BDD E2E tests exercising full production bootstrap stack |
 | 008 (encryption) | Reduce EncryptionContext to `service_id` only for performance |
 | 008 (JWKS) | Dedicated JWKS adapter with lestrrat-go/jwx jwk.Cache behind hexagonal port |
