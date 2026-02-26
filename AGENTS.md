@@ -41,7 +41,7 @@ domain/                          # Pure business logic, NO infrastructure import
   consent/                       # ConsentService
   encryption/                    # Encryption domain errors
   oauth2/                        # OAuth2AuthorizationService
-  oauth2session/                 # OAuth2SessionService (token vault, PKCE, JWE state)
+  oauth2session/                 # oauth2session.Service (token vault, PKCE, JWE state)
   principal/                     # User identity context (from X-Remote-User header)
   server/                        # Server lifecycle config
   services/                      # ThirdpartyServiceManager
