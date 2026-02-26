@@ -62,6 +62,17 @@ func (e *ThirdpartyOAuth2ProviderEntity) Validate() error {
 	return nil
 }
 
+// RedactedCopy returns a deep copy of the entity with Secret replaced by a plaintext
+// "REDACTED" value. Use for API responses and logs to comply with SR-003.
+func (e *ThirdpartyOAuth2ProviderEntity) RedactedCopy() *ThirdpartyOAuth2ProviderEntity {
+	if e == nil {
+		return nil
+	}
+	c := e.Copy()
+	c.Secret = NewPlaintextSecret("REDACTED")
+	return c
+}
+
 // Copy creates a deep copy of the entity to prevent external mutation.
 // The Secret is copied by value (immutable), with internal slices independently copied.
 func (e *ThirdpartyOAuth2ProviderEntity) Copy() *ThirdpartyOAuth2ProviderEntity {

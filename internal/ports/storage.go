@@ -77,39 +77,6 @@ type UserRepository interface {
 	ListUsers(ctx context.Context, filter *UserFilter) ([]*User, error)
 }
 
-// ThirdpartyServiceManager defines domain service operations for third-party OAuth2 services.
-// Handles encryption/decryption of client secrets as part of the domain layer.
-// Clients use this manager instead of directly accessing the repository to ensure
-// they always get decrypted credentials needed for OAuth2 operations.
-// Following Domain Service Encryption pattern: encryption logic in domain layer, repository holds encrypted bytes.
-type ThirdpartyServiceManager interface {
-	// Get retrieves a service by ID with decrypted client secret.
-	// Returns error if service not found or decryption fails.
-	Get(ctx context.Context, serviceID string) (*storage.ThirdpartyOAuth2Service, error)
-
-	// List retrieves all services with decrypted client secrets.
-	// Returns empty slice if no services exist (not an error).
-	// Fails fast on first decryption error for operational visibility.
-	List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error)
-
-	// Create encrypts client secret and stores the service.
-	// ClientSecret in the input service object is encrypted before storage.
-	// Returns error if creation fails or encryption fails.
-	Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
-
-	// Update encrypts client secret (if changed) and stores the service.
-	// Returns error if update fails or encryption fails.
-	Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
-
-	// Delete removes a service from storage.
-	// It is safe to delete non-existent services (idempotent).
-	Delete(ctx context.Context, serviceID string) error
-
-	// FindByProtectedResource retrieves service by protected resource URI with decrypted secret.
-	// Returns error if service not found or decryption fails.
-	FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error)
-}
-
 // AgentRepository defines storage operations for agent entities.
 // Agents represent AI agents registered in the identity broker.
 // Following Interface Segregation Principle: focused interface for agent operations.

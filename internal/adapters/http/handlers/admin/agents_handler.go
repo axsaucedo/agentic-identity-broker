@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -18,12 +19,12 @@ import (
 // AgentsHandler handles HTTP requests for agent CRUD operations.
 type AgentsHandler struct {
 	repo        ports.AgentRepository
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository
+	serviceRepo ports.ThirdpartyOAuth2ProviderRepository
 	logger      *slog.Logger
 }
 
 // NewAgentsHandler creates a new agents handler.
-func NewAgentsHandler(repo ports.AgentRepository, serviceRepo ports.ThirdpartyOAuth2ServiceRepository, logger *slog.Logger) *AgentsHandler {
+func NewAgentsHandler(repo ports.AgentRepository, serviceRepo ports.ThirdpartyOAuth2ProviderRepository, logger *slog.Logger) *AgentsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -298,7 +299,7 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 
 // batchLoadServices loads all unique services referenced by agents in a single batch.
 // Returns a map of service_id -> service for efficient lookup.
-func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage.Agent) map[string]*storage.ThirdpartyOAuth2Service {
+func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage.Agent) map[string]*model.ThirdpartyOAuth2ProviderEntity {
 	// Collect all unique service IDs
 	serviceIDs := make(map[string]bool)
 	for _, agent := range agents {
@@ -308,7 +309,7 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 	}
 
 	// Load all services
-	serviceMap := make(map[string]*storage.ThirdpartyOAuth2Service)
+	serviceMap := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
 	for serviceID := range serviceIDs {
 		service, err := h.serviceRepo.Get(ctx, serviceID)
 		if err != nil {
@@ -323,7 +324,7 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 
 // toResponseWithServiceMap converts an Agent entity to AgentResponse using a pre-loaded service map.
 // This avoids N+1 queries when converting multiple agents.
-func (h *AgentsHandler) toResponseWithServiceMap(ctx context.Context, agent *storage.Agent, serviceMap map[string]*storage.ThirdpartyOAuth2Service) (AgentResponse, error) {
+func (h *AgentsHandler) toResponseWithServiceMap(ctx context.Context, agent *storage.Agent, serviceMap map[string]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
 	resp := AgentResponse{
 		ID:                   agent.ID,
 		ClientID:             agent.ClientID,

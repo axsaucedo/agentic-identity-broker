@@ -10,6 +10,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -130,27 +131,23 @@ func (m *MockOAuth2SessionService) GetSessionWithValidToken(ctx context.Context,
 
 // MockTokenExchangeRepository mocks are defined at the end of this file
 type MockServiceRepository struct {
-	service *storagedomain.ThirdpartyOAuth2Service
+	service *model.ThirdpartyOAuth2ProviderEntity
 	err     error
 }
 
-func (m *MockServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storagedomain.ThirdpartyOAuth2Service, error) {
+func (m *MockServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return m.service, m.err
 }
 
-func (m *MockServiceRepository) Create(ctx context.Context, service *storagedomain.ThirdpartyOAuth2Service) error {
+func (m *MockServiceRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	return nil
 }
 
-func (m *MockServiceRepository) Get(ctx context.Context, id string) (*storagedomain.ThirdpartyOAuth2Service, error) {
+func (m *MockServiceRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 
-func (m *MockServiceRepository) FindAll(ctx context.Context) ([]*storagedomain.ThirdpartyOAuth2Service, error) {
-	return nil, nil
-}
-
-func (m *MockServiceRepository) Update(ctx context.Context, service *storagedomain.ThirdpartyOAuth2Service) error {
+func (m *MockServiceRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	return nil
 }
 
@@ -162,7 +159,7 @@ func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Contex
 	return 0, nil
 }
 
-func (m *MockServiceRepository) List(ctx context.Context) ([]*storagedomain.ThirdpartyOAuth2Service, error) {
+func (m *MockServiceRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 
@@ -284,7 +281,7 @@ func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal s
 func NewTokenExchangeServiceForTest(
 	jwtValidator *JWTValidator,
 	celEvaluator *CELEvaluator,
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository,
+	serviceRepo ports.ThirdpartyOAuth2ProviderRepository,
 	oauth2SessionService *oauth2session.OAuth2SessionService,
 	consentService *consent.Service,
 	config *ports.TokenExchangeConfig,
@@ -305,7 +302,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 		name                 string
 		jwtValidator         *JWTValidator
 		celEvaluator         *CELEvaluator
-		serviceRepo          ports.ThirdpartyOAuth2ServiceRepository
+		serviceRepo          ports.ThirdpartyOAuth2ProviderRepository
 		oauth2SessionService *oauth2session.OAuth2SessionService
 		consentService       *consent.Service
 		config               *ports.TokenExchangeConfig

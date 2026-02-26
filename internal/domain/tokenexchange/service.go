@@ -41,7 +41,7 @@ type TokenExchangeService struct {
 	celEvaluator *CELEvaluator
 
 	// serviceRepository provides service discovery by protected resources
-	serviceRepository ports.ThirdpartyOAuth2ServiceRepository
+	serviceRepository ports.ThirdpartyOAuth2ProviderRepository
 
 	// oauth2SessionService handles OAuth2 session lifecycle including token refresh
 	oauth2SessionService *oauth2session.OAuth2SessionService
@@ -68,7 +68,7 @@ type TokenExchangeService struct {
 func NewTokenExchangeService(
 	jwtValidator *JWTValidator,
 	celEvaluator *CELEvaluator,
-	serviceRepository ports.ThirdpartyOAuth2ServiceRepository,
+	serviceRepository ports.ThirdpartyOAuth2ProviderRepository,
 	oauth2SessionService *oauth2session.OAuth2SessionService,
 	consentService *consent.Service,
 	config *ports.TokenExchangeConfig,

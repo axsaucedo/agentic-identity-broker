@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
@@ -62,26 +63,26 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string
 	return args.Get(0).(*storage.Agent), args.Error(1)
 }
 
-// MockThirdpartyOAuth2ServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ServiceRepository
+// MockThirdpartyOAuth2ServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ProviderRepository
 type MockThirdpartyOAuth2ServiceRepository struct {
 	mock.Mock
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
-	args := m.Called(ctx, service)
+func (m *MockThirdpartyOAuth2ServiceRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+	args := m.Called(ctx, entity)
 	return args.Error(0)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockThirdpartyOAuth2ServiceRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
-	args := m.Called(ctx, service)
+func (m *MockThirdpartyOAuth2ServiceRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+	args := m.Called(ctx, entity)
 	return args.Error(0)
 }
 
@@ -90,12 +91,12 @@ func (m *MockThirdpartyOAuth2ServiceRepository) Delete(ctx context.Context, id s
 	return args.Error(0)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockThirdpartyOAuth2ServiceRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).([]*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
 func (m *MockThirdpartyOAuth2ServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
@@ -103,12 +104,12 @@ func (m *MockThirdpartyOAuth2ServiceRepository) CountGrantsReferencingService(ct
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockThirdpartyOAuth2ServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, resourceURI)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
 func TestAgentsHandler_CreateAgent(t *testing.T) {
@@ -627,17 +628,18 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "service-123"
-		service := &storage.ThirdpartyOAuth2Service{
+		entity := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          serviceID,
 			DisplayName: "GitHub",
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo"},
 				{ScopeValue: "user:email"},
 				{ScopeValue: "read:org"},
 			},
+			Secret: model.NewEncryptedSecret([]byte("")),
 		}
 
-		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(service, nil)
+		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
 
 		serviceReqs := []storage.ServiceRequirement{
 			{
@@ -658,26 +660,28 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
-		service1 := &storage.ThirdpartyOAuth2Service{
+		entity1 := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          "github-123",
 			DisplayName: "GitHub",
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo"},
 				{ScopeValue: "user:email"},
 			},
+			Secret: model.NewEncryptedSecret([]byte("")),
 		}
 
-		service2 := &storage.ThirdpartyOAuth2Service{
+		entity2 := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          "gitlab-456",
 			DisplayName: "GitLab",
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "api"},
 				{ScopeValue: "read_user"},
 			},
+			Secret: model.NewEncryptedSecret([]byte("")),
 		}
 
-		mockServiceRepo.On("Get", mock.Anything, "github-123").Return(service1, nil)
-		mockServiceRepo.On("Get", mock.Anything, "gitlab-456").Return(service2, nil)
+		mockServiceRepo.On("Get", mock.Anything, "github-123").Return(entity1, nil)
+		mockServiceRepo.On("Get", mock.Anything, "gitlab-456").Return(entity2, nil)
 
 		serviceReqs := []storage.ServiceRequirement{
 			{
@@ -735,16 +739,17 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "github-123"
-		service := &storage.ThirdpartyOAuth2Service{
+		entity := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          serviceID,
 			DisplayName: "GitHub",
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo"},
 				{ScopeValue: "user:email"},
 			},
+			Secret: model.NewEncryptedSecret([]byte("")),
 		}
 
-		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(service, nil)
+		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
 
 		serviceReqs := []storage.ServiceRequirement{
 			{
@@ -773,17 +778,18 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
-		service1 := &storage.ThirdpartyOAuth2Service{
+		entity1 := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          "github-123",
 			DisplayName: "GitHub",
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo"},
 			},
+			Secret: model.NewEncryptedSecret([]byte("")),
 		}
 
 		notFoundErr := storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "service not found")
 
-		mockServiceRepo.On("Get", mock.Anything, "github-123").Return(service1, nil)
+		mockServiceRepo.On("Get", mock.Anything, "github-123").Return(entity1, nil)
 		mockServiceRepo.On("Get", mock.Anything, "invalid-service").Return(nil, notFoundErr)
 
 		serviceReqs := []storage.ServiceRequirement{
@@ -817,16 +823,17 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "github-123"
-		service := &storage.ThirdpartyOAuth2Service{
+		entity := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          serviceID,
 			DisplayName: "GitHub",
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo"},
 				{ScopeValue: "user:email"},
 			},
+			Secret: model.NewEncryptedSecret([]byte("")),
 		}
 
-		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(service, nil)
+		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
 
 		// "REPO" should not match "repo" (case-sensitive)
 		serviceReqs := []storage.ServiceRequirement{

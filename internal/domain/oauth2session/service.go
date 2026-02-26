@@ -35,6 +35,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -42,7 +43,7 @@ import (
 // Uses a ServiceManager to retrieve third-party services with decrypted client secrets,
 // ensuring OAuth2 configurations always have valid credentials for token exchange.
 type OAuth2SessionService struct {
-	serviceManager ports.ThirdpartyServiceManager // Domain service that handles encryption/decryption
+	serviceManager *thirdparty.ServiceManager // Domain service that handles encryption/decryption
 	sessionRepo    ports.UserSessionRepository
 	grantRepo      ports.UserGrantRepository // For dependent agents
 	agentRepo      ports.AgentRepository     // For agent display names
@@ -102,7 +103,7 @@ func NewConfigFromPorts(portsCfg ports.ThirdPartyOAuth2Config, callbackBaseURL s
 // Requires a ThirdpartyServiceManager which handles encryption/decryption of client secrets.
 // This ensures OAuth2 configurations always receive decrypted credentials needed for token exchange.
 func NewOAuth2SessionService(
-	serviceManager ports.ThirdpartyServiceManager,
+	serviceManager *thirdparty.ServiceManager,
 	sessionRepo ports.UserSessionRepository,
 	grantRepo ports.UserGrantRepository,
 	agentRepo ports.AgentRepository,

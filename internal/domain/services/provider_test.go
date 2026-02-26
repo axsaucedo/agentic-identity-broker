@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/stretchr/testify/assert"
@@ -15,26 +16,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MockThirdpartyOAuth2ServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ServiceRepository
+// MockThirdpartyOAuth2ServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ProviderRepository
 type MockThirdpartyOAuth2ServiceRepository struct {
 	mock.Mock
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
-	args := m.Called(ctx, service)
+func (m *MockThirdpartyOAuth2ServiceRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+	args := m.Called(ctx, entity)
 	return args.Error(0)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockThirdpartyOAuth2ServiceRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
-	args := m.Called(ctx, service)
+func (m *MockThirdpartyOAuth2ServiceRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+	args := m.Called(ctx, entity)
 	return args.Error(0)
 }
 
@@ -43,12 +44,12 @@ func (m *MockThirdpartyOAuth2ServiceRepository) Delete(ctx context.Context, id s
 	return args.Error(0)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockThirdpartyOAuth2ServiceRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).([]*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
 func (m *MockThirdpartyOAuth2ServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
@@ -56,12 +57,12 @@ func (m *MockThirdpartyOAuth2ServiceRepository) CountGrantsReferencingService(ct
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockThirdpartyOAuth2ServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, resourceURI)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
 // MockBranchKeyManager is a mock implementation of ports.BranchKeyManager
@@ -134,8 +135,8 @@ func TestAuthProvider_Create(t *testing.T) {
 		// Mock branch key provisioning first
 		mockBranchKeyManager.On("Create", ctx, "service-123").Return("service_service-123_branch_key", nil)
 
-		// Then mock service creation
-		mockRepo.On("Create", ctx, service).Return(nil)
+		// ServiceManager converts storage service to entity internally before calling repo
+		mockRepo.On("Create", ctx, mock.Anything).Return(nil)
 
 		result, err := authProvider.Create(ctx, service)
 
@@ -152,8 +153,8 @@ func TestAuthProvider_Create(t *testing.T) {
 		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
 		authProvider := NewAuthProvider(serviceManager, nil, logger)
 
-		// Only mock service creation (no branch key provisioning)
-		mockRepo.On("Create", ctx, service).Return(nil)
+		// ServiceManager converts storage service to entity internally before calling repo
+		mockRepo.On("Create", ctx, mock.Anything).Return(nil)
 
 		result, err := authProvider.Create(ctx, service)
 
@@ -199,7 +200,7 @@ func TestAuthProvider_Create(t *testing.T) {
 
 		// Mock service creation failure
 		serviceError := storage.NewStorageError("CreateService", storage.ErrorKindValidation, nil, "validation failed")
-		mockRepo.On("Create", ctx, service).Return(serviceError)
+		mockRepo.On("Create", ctx, mock.Anything).Return(serviceError)
 
 		result, err := authProvider.Create(ctx, service)
 
@@ -230,12 +231,21 @@ func TestAuthProvider_Get(t *testing.T) {
 		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
 		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
-		mockRepo.On("Get", ctx, "service-123").Return(service, nil)
+		// Return entity from mock; ServiceManager decrypts and converts back to storage service
+		entity := &model.ThirdpartyOAuth2ProviderEntity{
+			ID:          "service-123",
+			DisplayName: "GitHub",
+			ClientID:    "github-client-id",
+			Secret:      model.NewEncryptedSecret([]byte("")),
+		}
+		mockRepo.On("Get", ctx, "service-123").Return(entity, nil)
 
 		result, err := authProvider.Get(ctx, "service-123")
 
 		require.NoError(t, err)
-		assert.Equal(t, service, result)
+		assert.Equal(t, service.ID, result.ID)
+		assert.Equal(t, service.DisplayName, result.DisplayName)
+		assert.Equal(t, service.ClientID, result.ClientID)
 
 		mockRepo.AssertExpectations(t)
 	})
@@ -275,7 +285,8 @@ func TestAuthProvider_Update(t *testing.T) {
 		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
 		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
-		mockRepo.On("Update", ctx, service).Return(nil)
+		// ServiceManager converts storage service to entity before calling repo
+		mockRepo.On("Update", ctx, mock.Anything).Return(nil)
 
 		err := authProvider.Update(ctx, service)
 
@@ -290,7 +301,7 @@ func TestAuthProvider_Update(t *testing.T) {
 		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
 		updateError := storage.NewStorageError("UpdateService", storage.ErrorKindNotFound, nil, "service not found")
-		mockRepo.On("Update", ctx, service).Return(updateError)
+		mockRepo.On("Update", ctx, mock.Anything).Return(updateError)
 
 		err := authProvider.Update(ctx, service)
 
@@ -341,16 +352,19 @@ func TestAuthProvider_List(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
-	services := []*storage.ThirdpartyOAuth2Service{
+	// Entity equivalents of the storage services (used as mock return values)
+	entities := []*model.ThirdpartyOAuth2ProviderEntity{
 		{
 			ID:          "service-1",
 			DisplayName: "GitHub",
 			ClientID:    "github-client",
+			Secret:      model.NewEncryptedSecret([]byte("")),
 		},
 		{
 			ID:          "service-2",
 			DisplayName: "Google",
 			ClientID:    "google-client",
+			Secret:      model.NewEncryptedSecret([]byte("")),
 		},
 	}
 
@@ -360,13 +374,15 @@ func TestAuthProvider_List(t *testing.T) {
 		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
 		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
-		mockRepo.On("List", ctx).Return(services, nil)
+		mockRepo.On("List", ctx).Return(entities, nil)
 
 		result, err := authProvider.List(ctx)
 
 		require.NoError(t, err)
-		assert.Equal(t, services, result)
 		assert.Len(t, result, 2)
+		assert.Equal(t, "service-1", result[0].ID)
+		assert.Equal(t, "GitHub", result[0].DisplayName)
+		assert.Equal(t, "service-2", result[1].ID)
 
 		mockRepo.AssertExpectations(t)
 	})
@@ -377,13 +393,12 @@ func TestAuthProvider_List(t *testing.T) {
 		serviceManager := thirdparty.NewServiceManager(mockRepo, noop.NewNoOpEncryption(), logger)
 		authProvider := NewAuthProvider(serviceManager, mockBranchKeyManager, logger)
 
-		emptyServices := []*storage.ThirdpartyOAuth2Service{}
-		mockRepo.On("List", ctx).Return(emptyServices, nil)
+		emptyEntities := []*model.ThirdpartyOAuth2ProviderEntity{}
+		mockRepo.On("List", ctx).Return(emptyEntities, nil)
 
 		result, err := authProvider.List(ctx)
 
 		require.NoError(t, err)
-		assert.Equal(t, emptyServices, result)
 		assert.Len(t, result, 0)
 
 		mockRepo.AssertExpectations(t)
@@ -402,7 +417,6 @@ func TestAuthProvider_List(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
-		assert.IsType(t, &storage.StorageError{}, err)
 
 		mockRepo.AssertExpectations(t)
 	})
@@ -461,7 +475,7 @@ func TestAuthProvider_AtomicBehavior(t *testing.T) {
 			callOrder = append(callOrder, "branch_key_create")
 		})
 
-		mockRepo.On("Create", ctx, service).Return(nil).Run(func(args mock.Arguments) {
+		mockRepo.On("Create", ctx, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			callOrder = append(callOrder, "service_create")
 		})
 

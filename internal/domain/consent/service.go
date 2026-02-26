@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -28,14 +29,14 @@ var (
 // to implement consent workflows following FR-009 through FR-020.
 type Service struct {
 	agentRepo   ports.AgentRepository
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository
+	serviceRepo ports.ThirdpartyOAuth2ProviderRepository
 	grantRepo   ports.UserGrantRepository
 }
 
 // NewService creates a new ConsentService.
 func NewService(
 	agentRepo ports.AgentRepository,
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository,
+	serviceRepo ports.ThirdpartyOAuth2ProviderRepository,
 	grantRepo ports.UserGrantRepository,
 ) *Service {
 	return &Service{
@@ -48,7 +49,7 @@ func NewService(
 // AgentConsentInfo contains all information needed for a user to make a consent decision.
 type AgentConsentInfo struct {
 	Agent                       *storage.Agent
-	AvailableThirdpartyServices []*storage.ThirdpartyOAuth2Service
+	AvailableThirdpartyServices []*model.ThirdpartyOAuth2ProviderEntity
 }
 
 // GetAgentConsentInfo retrieves agent metadata and all available third-party services.
@@ -71,7 +72,7 @@ func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID string) (*Age
 	}
 
 	// Redact client secrets in response (SR-003)
-	redactedServices := make([]*storage.ThirdpartyOAuth2Service, len(services))
+	redactedServices := make([]*model.ThirdpartyOAuth2ProviderEntity, len(services))
 	for i, svc := range services {
 		redactedServices[i] = svc.RedactedCopy()
 	}

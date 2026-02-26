@@ -37,7 +37,7 @@ type AgentDetailHandler struct {
 	consentService    ConsentService
 	agentRepository   ports.AgentRepository
 	sessionRepository ports.UserSessionRepository
-	serviceRepository ports.ThirdpartyOAuth2ServiceRepository
+	serviceRepository ports.ThirdpartyOAuth2ProviderRepository
 	logger            *slog.Logger
 }
 
@@ -68,7 +68,7 @@ func (h *AgentDetailHandler) WithSessionRepository(repo ports.UserSessionReposit
 
 // WithServiceRepository sets the service repository for this handler.
 // Used to lookup service metadata including display names and scope descriptions.
-func (h *AgentDetailHandler) WithServiceRepository(repo ports.ThirdpartyOAuth2ServiceRepository) *AgentDetailHandler {
+func (h *AgentDetailHandler) WithServiceRepository(repo ports.ThirdpartyOAuth2ProviderRepository) *AgentDetailHandler {
 	h.serviceRepository = repo
 	return h
 }

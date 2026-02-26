@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/stretchr/testify/assert"
@@ -257,15 +258,15 @@ func (m *mockAgentRepoForAgents) GetByClientID(ctx context.Context, clientID str
 
 type mockServiceRepoForAgents struct{}
 
-func (m *mockServiceRepoForAgents) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (m *mockServiceRepoForAgents) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	return nil
 }
 
-func (m *mockServiceRepoForAgents) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepoForAgents) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 
-func (m *mockServiceRepoForAgents) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (m *mockServiceRepoForAgents) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	return nil
 }
 
@@ -273,7 +274,7 @@ func (m *mockServiceRepoForAgents) Delete(ctx context.Context, id string) error 
 	return nil
 }
 
-func (m *mockServiceRepoForAgents) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepoForAgents) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 
@@ -281,7 +282,7 @@ func (m *mockServiceRepoForAgents) CountGrantsReferencingService(ctx context.Con
 	return 0, nil
 }
 
-func (m *mockServiceRepoForAgents) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepoForAgents) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 

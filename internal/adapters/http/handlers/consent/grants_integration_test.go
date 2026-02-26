@@ -30,7 +30,7 @@ import (
 func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	// Setup real repositories
 	agentRepo := memory.NewAgentRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create ServiceManager to handle encryption context binding (simulates domain layer)
@@ -267,7 +267,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 func TestGrantsIntegration_Validation(t *testing.T) {
 	// Setup repositories
 	agentRepo := memory.NewAgentRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create ServiceManager to handle encryption context binding (simulates domain layer)

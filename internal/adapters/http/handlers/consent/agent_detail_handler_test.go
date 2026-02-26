@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
@@ -127,37 +128,37 @@ func TestGetAgentDetail_Success(t *testing.T) {
 	}
 
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 
 	// Add test services
-	github := &storage.ThirdpartyOAuth2Service{
-		ID:           "github",
-		DisplayName:  "GitHub",
-		ClientID:     "github-client-id",
-		ClientSecret: "github-client-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	github := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "github",
+		DisplayName: "GitHub",
+		ClientID:    "github-client-id",
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "read:user", Description: "Read user profile"},
 			{ScopeValue: "repo", Description: "Full control of repositories"},
 		},
+		Secret: model.NewEncryptedSecret([]byte("github-client-secret")),
 	}
-	google := &storage.ThirdpartyOAuth2Service{
-		ID:           "google",
-		DisplayName:  "Google",
-		ClientID:     "google-client-id",
-		ClientSecret: "google-client-secret",
-		IssuerURI:    "https://accounts.google.com",
-		Endpoints: storage.OAuth2Endpoints{
+	google := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "google",
+		DisplayName: "Google",
+		ClientID:    "google-client-id",
+		IssuerURI:   "https://accounts.google.com",
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://oauth2.googleapis.com/token",
 			AuthorizeEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "email", Description: "View email address"},
 		},
+		Secret: model.NewEncryptedSecret([]byte("google-client-secret")),
 	}
 	if err := serviceRepo.Create(ctx, github); err != nil {
 		t.Fatalf("failed to create github service: %v", err)
@@ -233,7 +234,7 @@ func TestGetAgentDetail_AgentNotFound(t *testing.T) {
 	// Don't create any agents - agent should not be found
 
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 
 	handler := NewAgentDetailHandler(mockService, nil).
 		WithAgentRepository(agentRepo).
@@ -312,7 +313,7 @@ func TestGetAgentDetail_ServiceError(t *testing.T) {
 
 	agentRepo := memory.NewAgentRepository()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 
 	handler := NewAgentDetailHandler(mockService, nil).
 		WithAgentRepository(agentRepo).
@@ -383,7 +384,7 @@ func TestGetAgentDetail_EmptyServicesList(t *testing.T) {
 	}
 
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 
 	handler := NewAgentDetailHandler(mockService, nil).
 		WithAgentRepository(agentRepo).
@@ -462,23 +463,23 @@ func (m *mockSessionRepository) CountByService(ctx context.Context, serviceID st
 	return 0, errors.New("not implemented")
 }
 
-// mockServiceRepository is a mock implementation of ThirdpartyOAuth2ServiceRepository for testing.
+// mockServiceRepository is a mock implementation of ThirdpartyOAuth2ProviderRepository for testing.
 type mockServiceRepository struct {
-	getFunc func(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error)
+	getFunc func(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error)
 }
 
-func (m *mockServiceRepository) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	if m.getFunc != nil {
 		return m.getFunc(ctx, id)
 	}
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockServiceRepository) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (m *mockServiceRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	return errors.New("not implemented")
 }
 
-func (m *mockServiceRepository) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (m *mockServiceRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	return errors.New("not implemented")
 }
 
@@ -486,7 +487,7 @@ func (m *mockServiceRepository) Delete(ctx context.Context, id string) error {
 	return errors.New("not implemented")
 }
 
-func (m *mockServiceRepository) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -494,7 +495,7 @@ func (m *mockServiceRepository) CountGrantsReferencingService(ctx context.Contex
 	return 0, errors.New("not implemented")
 }
 
-func (m *mockServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -563,15 +564,16 @@ func TestBuildServiceRequirementsForUser_WithRequirementsUserConnected(t *testin
 	}
 
 	mockServices := &mockServiceRepository{
-		getFunc: func(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+		getFunc: func(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 			if id == githubServiceID {
-				return &storage.ThirdpartyOAuth2Service{
+				return &model.ThirdpartyOAuth2ProviderEntity{
 					ID:          githubServiceID,
 					DisplayName: "GitHub",
-					Scopes: []storage.OAuthScope{
+					Scopes: []model.OAuthScope{
 						{ScopeValue: "read:user", Description: "Read user profile"},
 						{ScopeValue: "repo", Description: "Full control of repositories"},
 					},
+					Secret: model.NewEncryptedSecret([]byte("")),
 				}, nil
 			}
 			return nil, errors.New("service not found")
@@ -644,14 +646,15 @@ func TestBuildServiceRequirementsForUser_WithRequirementsUserNotConnected(t *tes
 	}
 
 	mockServices := &mockServiceRepository{
-		getFunc: func(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+		getFunc: func(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 			if id == googleServiceID {
-				return &storage.ThirdpartyOAuth2Service{
+				return &model.ThirdpartyOAuth2ProviderEntity{
 					ID:          googleServiceID,
 					DisplayName: "Google",
-					Scopes: []storage.OAuthScope{
+					Scopes: []model.OAuthScope{
 						{ScopeValue: "email", Description: "View email address"},
 					},
+					Secret: model.NewEncryptedSecret([]byte("")),
 				}, nil
 			}
 			return nil, errors.New("service not found")
@@ -705,7 +708,7 @@ func TestBuildServiceRequirementsForUser_ServiceNotFound(t *testing.T) {
 	mockSessions := &mockSessionRepository{}
 
 	mockServices := &mockServiceRepository{
-		getFunc: func(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+		getFunc: func(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 			return nil, errors.New("service not found")
 		},
 	}

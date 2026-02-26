@@ -10,29 +10,30 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
-// MockRepository mocks ThirdpartyOAuth2ServiceRepository
+// MockRepository mocks ports.ThirdpartyOAuth2ProviderRepository
 type MockRepository struct {
 	mock.Mock
 }
 
-func (m *MockRepository) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
-	args := m.Called(ctx, service)
+func (m *MockRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+	args := m.Called(ctx, entity)
 	return args.Error(0)
 }
 
-func (m *MockRepository) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockRepository) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
-	args := m.Called(ctx, service)
+func (m *MockRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+	args := m.Called(ctx, entity)
 	return args.Error(0)
 }
 
@@ -41,12 +42,12 @@ func (m *MockRepository) Delete(ctx context.Context, id string) error {
 	return args.Error(0)
 }
 
-func (m *MockRepository) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).([]*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
 func (m *MockRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
@@ -54,12 +55,12 @@ func (m *MockRepository) CountGrantsReferencingService(ctx context.Context, serv
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *MockRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, resourceURI)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*storage.ThirdpartyOAuth2Service), args.Error(1)
+	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
 // MockEncryption mocks EncryptionPort
@@ -101,8 +102,9 @@ func TestServiceManager_Create_ServiceIDContext(t *testing.T) {
 	}
 	mockEncryption.On("Encrypt", ctx, []byte("supersecret"), expectedEncContext).
 		Return([]byte("encrypted-bytes"), nil)
-	mockRepo.On("Create", ctx, mock.MatchedBy(func(s *storage.ThirdpartyOAuth2Service) bool {
-		return len(s.ClientSecretCiphertext) > 0 && s.ClientSecret == ""
+	mockRepo.On("Create", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+		_, err := e.Secret.GetCiphertext()
+		return err == nil && e.Secret.IsEncrypted()
 	})).Return(nil)
 
 	err := sm.Create(ctx, service)
@@ -140,12 +142,12 @@ func TestServiceManager_CrossServiceProtection(t *testing.T) {
 	err := sm.Create(ctx, serviceA)
 	require.NoError(t, err)
 
-	// Repository returns Service A's encrypted credential
-	storedServiceA := &storage.ThirdpartyOAuth2Service{
-		ID:                     "service-a",
-		ClientSecretCiphertext: []byte("encrypted-a"),
+	// Repository returns Service A's encrypted credential as entity
+	storedEntityA := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:     "service-a",
+		Secret: model.NewEncryptedSecret([]byte("encrypted-a")),
 	}
-	mockRepo.On("Get", ctx, "service-a").Return(storedServiceA, nil)
+	mockRepo.On("Get", ctx, "service-a").Return(storedEntityA, nil)
 
 	// Attempting to decrypt Service A's credential with Service B context should fail
 	serviceBEncContext := map[string]string{
@@ -175,11 +177,11 @@ func TestServiceManager_Get_WithServiceID(t *testing.T) {
 
 	ctx := context.Background()
 
-	storedService := &storage.ThirdpartyOAuth2Service{
-		ID:                     "service-123",
-		ClientSecretCiphertext: []byte("encrypted-secret"),
+	storedEntity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:     "service-123",
+		Secret: model.NewEncryptedSecret([]byte("encrypted-secret")),
 	}
-	mockRepo.On("Get", ctx, "service-123").Return(storedService, nil)
+	mockRepo.On("Get", ctx, "service-123").Return(storedEntity, nil)
 
 	expectedEncContext := map[string]string{
 		"service_id": "service-123",
@@ -212,15 +214,14 @@ func TestServiceManager_Update_WithSecretChange(t *testing.T) {
 	}
 	mockEncryption.On("Encrypt", ctx, []byte("new-secret"), expectedEncContext).
 		Return([]byte("new-encrypted"), nil)
-	mockRepo.On("Update", ctx, mock.MatchedBy(func(s *storage.ThirdpartyOAuth2Service) bool {
-		return len(s.ClientSecretCiphertext) > 0 && s.ClientSecret == ""
+	mockRepo.On("Update", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+		_, err := e.Secret.GetCiphertext()
+		return err == nil && e.Secret.IsEncrypted()
 	})).Return(nil)
 
 	err := sm.Update(ctx, service)
 
 	require.NoError(t, err)
-	assert.Empty(t, service.ClientSecret, "plaintext should be cleared")
-	assert.NotEmpty(t, service.ClientSecretCiphertext, "ciphertext should be set")
 	mockEncryption.AssertExpectations(t)
 	mockRepo.AssertExpectations(t)
 }
@@ -237,7 +238,7 @@ func TestServiceManager_Update_NoSecretChange(t *testing.T) {
 		ClientSecret: "", // Empty = no change
 	}
 
-	mockRepo.On("Update", ctx, service).Return(nil)
+	mockRepo.On("Update", ctx, mock.Anything).Return(nil)
 
 	err := sm.Update(ctx, service)
 
@@ -255,17 +256,17 @@ func TestServiceManager_List_WithServiceIDs(t *testing.T) {
 
 	ctx := context.Background()
 
-	services := []*storage.ThirdpartyOAuth2Service{
+	entities := []*model.ThirdpartyOAuth2ProviderEntity{
 		{
-			ID:                     "service-1",
-			ClientSecretCiphertext: []byte("encrypted-1"),
+			ID:     "service-1",
+			Secret: model.NewEncryptedSecret([]byte("encrypted-1")),
 		},
 		{
-			ID:                     "service-2",
-			ClientSecretCiphertext: []byte("encrypted-2"),
+			ID:     "service-2",
+			Secret: model.NewEncryptedSecret([]byte("encrypted-2")),
 		},
 	}
-	mockRepo.On("List", ctx).Return(services, nil)
+	mockRepo.On("List", ctx).Return(entities, nil)
 
 	// Verify each service is decrypted with service_id-only context (ADR 008)
 	mockEncryption.On("Decrypt", ctx, []byte("encrypted-1"), map[string]string{
@@ -294,17 +295,17 @@ func TestServiceManager_List_DecryptionFailure(t *testing.T) {
 
 	ctx := context.Background()
 
-	services := []*storage.ThirdpartyOAuth2Service{
+	entities := []*model.ThirdpartyOAuth2ProviderEntity{
 		{
-			ID:                     "service-1",
-			ClientSecretCiphertext: []byte("encrypted-1"),
+			ID:     "service-1",
+			Secret: model.NewEncryptedSecret([]byte("encrypted-1")),
 		},
 		{
-			ID:                     "service-2",
-			ClientSecretCiphertext: []byte("corrupted"),
+			ID:     "service-2",
+			Secret: model.NewEncryptedSecret([]byte("corrupted")),
 		},
 	}
-	mockRepo.On("List", ctx).Return(services, nil)
+	mockRepo.On("List", ctx).Return(entities, nil)
 
 	// First service decrypts successfully
 	mockEncryption.On("Decrypt", ctx, []byte("encrypted-1"), map[string]string{

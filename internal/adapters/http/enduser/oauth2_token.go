@@ -18,9 +18,9 @@ import (
 type OAuth2TokenHandler struct {
 	UpstreamTokenURL string
 	Client           *http.Client
-	Services         ports.ThirdpartyOAuth2ServiceRepository // For resource lookup in token exchange
-	TokenExchange    *tokenexchange.TokenExchangeService     // RFC 8693 token exchange service
-	Logger           *slog.Logger                            // For structured logging
+	Services         ports.ThirdpartyOAuth2ProviderRepository // For resource lookup in token exchange
+	TokenExchange    *tokenexchange.TokenExchangeService      // RFC 8693 token exchange service
+	Logger           *slog.Logger                             // For structured logging
 }
 
 // ServeHTTP implements http.Handler for the token endpoint
@@ -294,7 +294,7 @@ func NewOAuth2TokenHandler(upstreamTokenURL string, client *http.Client) *OAuth2
 
 // NewOAuth2TokenHandlerWithServices creates a new token handler with service repository
 // for RFC 8693 token exchange support
-func NewOAuth2TokenHandlerWithServices(upstreamTokenURL string, client *http.Client, services ports.ThirdpartyOAuth2ServiceRepository) *OAuth2TokenHandler {
+func NewOAuth2TokenHandlerWithServices(upstreamTokenURL string, client *http.Client, services ports.ThirdpartyOAuth2ProviderRepository) *OAuth2TokenHandler {
 	return &OAuth2TokenHandler{
 		UpstreamTokenURL: upstreamTokenURL,
 		Client:           client,
