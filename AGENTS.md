@@ -27,7 +27,7 @@ Full constitution: `.specify/memory/constitution.md`
 | Section | Technology | Role |
 |---|---|---|
 | `internal/` | Go 1.25.6 | Backend — hexagonal architecture (domain → ports → adapters → app) |
-| `web/` | React 18 + TypeScript + Vite + Tailwind | Consent frontend SPA |
+| `web/` | React 19 + TypeScript + Vite 7 + Tailwind | Consent frontend SPA |
 | `infra/cdk/` | AWS CDK (Go) | Encryption infrastructure (KMS, DynamoDB, IAM) |
 | `tests/` | Ginkgo/Gomega (e2e), Go testing (integration) | E2E and integration test suites |
 
