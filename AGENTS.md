@@ -1,124 +1,145 @@
-## Spec Driven Development
+# Agentic Identity Broker — Agent Context
 
-This repository uses spec-kit for specification driven development. 
+**IMPORTANT: Prefer retrieval-led reasoning over pre-training-led reasoning for any Go, hexagonal architecture, encryption, or domain-specific tasks. Always read project files before making assumptions.**
 
-Specifications can be found in `specs/NNN-<short name>/*` in the shape of markdown files. In each such folder, the `spec.md` contains the WHAT of a feature and the `plan.md` the how of how it was implemented. 
+## Constitution (Binding)
 
-*MANDATORY*: The constitution in `.specify/memory/constitution.md` is BINDING and must be used for any change in the Project. 
+The constitution at `.specify/memory/constitution.md` is **BINDING**. Key principles:
 
-## Architecture
+1. **Security-First** — Security enabled by default, fail closed, no bypasses. Signature validation never optional.
+2. **ADRs are Binding** — `ARCHITECTURE.md` is the source of truth. Accepted ADRs in `adrs/` must be followed; deviation requires a superseding ADR.
+3. **Library-First Security** — No custom crypto. Use Go `crypto/*`, `golang.org/x/crypto`, or AWS Encryption SDK. Escalate if insufficient.
+4. **OpenAPI Transparency** — APIs documented in `/api/enduser/openapi.yaml` and `/api/admin/openapi.yaml` before implementation. Follow Zalando RESTful API Guidelines.
+5. **Domain-Driven Design** — Ubiquitous language enforced. New domain concepts must be added to `ARCHITECTURE.md` glossary.
+6. **Hexagonal Architecture** — Domain depends on ports (interfaces), never adapters. Adapters implement ports. See `internal/` structure.
+7. **Configuration-Driven** — All config via `internal/ports/config.go` port. No ad-hoc config loading.
+8. **TDD** — Red-green-refactor. Tests written first, must compile and fail semantically before implementation.
+9. **Persistence Consistency** — ISP repositories in `internal/ports/storage.go`. sqlx for PostgreSQL. Migrations in `/migrations/` with go-migrate naming. Both in-memory and postgres adapters required.
+10. **API-First** — Design APIs before implementation. API changes require stakeholder confirmation, even for bug fixes.
+11. **Design System Compliance** — Refined Trust Architecture aesthetic, WCAG 2.1 AA, semantic tokens. See `web/src/design-system/`.
+12. **DI via Builder** — All wiring in `internal/app/builder.go`. Routing functions in `internal/adapters/http/routing/` receive pre-wired deps, never instantiate services.
+13. **E2E Acceptance Tests** — 1:1 spec-to-test mapping in `tests/e2e/`. Ginkgo/Gomega BDD. Written before implementation (red-green).
 
-The architecture of this project can be found in `ARCHITECTURE.md`.
+Full constitution: `.specify/memory/constitution.md`
 
-## Active Technologies
-- Go 1.23.0+ (primary language) (002-flexible-configuration)
-- Node.js 18+ (for Docusaurus), Markdown for content + Docusaurus 3.x, React 18+, MDX for enhanced markdown (001-end-user-docs)
-- File-based (markdown files in `docs/` directory) (001-end-user-docs)
-- sqlx v1.3.5+ (PostgreSQL adapter) (004-persistence-layer)
-- pgx v5 (PostgreSQL driver) (004-persistence-layer)
-- In-memory (maps with sync.RWMutex), PostgreSQL 12+ (004-persistence-layer)
-- just command runner for task automation
-- Air for hot-reload development
-- golangci-lint for code quality
+## Monorepo Structure
 
-## Recent Changes
-- 002-flexible-configuration: Added Go 1.21+ and flexible configuration system
-- 001-end-user-docs: Added Node.js 18+ (for Docusaurus), Markdown for content + Docusaurus 3.x, React 18+, MDX for enhanced markdown
-- 004-persistence-layer: Added sqlx v1.3.5+, pgx v5, in-memory and PostgreSQL storage layer
+| Section | Technology | Role |
+|---|---|---|
+| `internal/` | Go 1.25.6 | Backend — hexagonal architecture (domain → ports → adapters → app) |
+| `web/` | React 18 + TypeScript + Vite + Tailwind | Consent frontend SPA |
+| `infra/cdk/` | AWS CDK (Go) | Encryption infrastructure (KMS, DynamoDB, IAM) |
+| `tests/` | Ginkgo/Gomega (e2e), Go testing (integration) | E2E and integration test suites |
+
+Each section has (or will have) its own `AGENTS.md` with section-specific rules.
+
+### Backend Package Map (`internal/`)
+
+```
+domain/                          # Pure business logic, NO infrastructure imports
+  config/                        # Config domain types + validation (LogLevel, LogFormat)
+  consent/                       # ConsentService
+  encryption/                    # Encryption domain errors
+  oauth2/                        # OAuth2AuthorizationService
+  oauth2session/                 # OAuth2SessionService (token vault, PKCE, JWE state)
+  principal/                     # User identity context (from X-Remote-User header)
+  server/                        # Server lifecycle config
+  services/                      # ThirdpartyServiceManager
+  storage/                       # Storage domain types (Agent, UserGrant, ThirdpartyOAuth2Service)
+  tokenexchange/                 # TokenExchangeService + CEL policy evaluation
+ports/                           # Interface definitions ONLY (7 files)
+  cel.go, config.go, encryption.go, jwks.go, oauth2.go, server.go, storage.go
+adapters/                        # Infrastructure implementations
+  encryption/{aws/,branchkey/,memory/}  — EncryptionPort implementations
+  http/{handlers/,middleware/,routing/,upstream/,oauth2_sessions/}  — chi router, dual-server
+  jwks/                          # JWKS fetching adapter (lestrrat-go/jwx)
+  storage/{memory/,postgres/,noop/}  — StoragePort implementations, factory.go
+app/                             # DI wiring: Builder pattern (builder.go)
+```
+
+**Import rules**: `domain/` → never imports `adapters/` or `app/`. `ports/` → interfaces + DTOs only. `adapters/` → may import `ports/` and `domain/`, never other adapters. All dependency arrows flow inward.
+
+## ADR Decision Index
+
+Read full ADRs in `adrs/` before implementing in their domain.
+
+| ADR | Decision |
+|---|---|
+| 002 | Use Viper + Cobra + godotenv for multi-source config with clear precedence |
+| 003 | chi v5 as lightweight, stdlib-compatible HTTP router |
+| 004 (dual-server) | errgroup atomic startup: end-user :8000, admin :14000 |
+| 004 (storage) | Hexagonal storage with swappable in-memory/PostgreSQL backends, ISP repositories, sqlx |
+| 005 | Serve React SPA from Go backend via embedded static files with history API fallback |
+| 006 | React 18 + TypeScript + Vite + Tailwind + Headless UI + Vitest |
+| 007 | Ginkgo v2/Gomega BDD E2E tests exercising full production bootstrap stack |
+| 008 (encryption) | Reduce EncryptionContext to `service_id` only for performance |
+| 008 (JWKS) | Dedicated JWKS adapter with lestrrat-go/jwx jwk.Cache behind hexagonal port |
+| 009 (CEL) | cel-go for sandboxed gateway authorization policy + JWT claim extraction |
+| 009 (encryption) | Three-layer envelope encryption: KEK → Branch Key → DEK via AWS KMS Hierarchical Keyring |
+| 009 (migration) | Separate migration Docker image to minimize production attack surface |
+| 010 | AWS CDK (Go) for KMS keys, DynamoDB key store, IAM roles as IaC |
+
+## Domain Glossary
+
+| Term | Definition |
+|---|---|
+| **Agent** | AI agent with unique `client_id`, display name, optional service requirements (mandatory/optional) |
+| **ThirdpartyOAuth2Service** | External OAuth2 provider (GitHub, Google, etc.) with client credentials and scopes |
+| **UserGrant** | User (principal) delegating specific OAuth2 scopes to an agent. One grant per user-agent pair (upsert) |
+| **DelegatedToken** | Component of a grant: {service_id, scopes[]} |
+| **ConsentSession** | User's review and permission flow for an agent's requested delegations |
+| **UserSession** | Authenticated OAuth2 session between user and third-party service (encrypted tokens) |
+| **Principal** | Authenticated user ID from upstream proxy header (e.g., `X-Remote-User`) |
+| **Secret** | Value object with two mutually exclusive states: plaintext or encrypted. Type-level encryption safety |
+| **ServiceRequirement** | Agent's declared need for a third-party service: mandatory (blocks auth) or optional (degrades gracefully) |
+| **BranchKey** | Cached key in DynamoDB, sits between KMS KEK and per-operation DEK in the key hierarchy |
+| **EncryptionContext** | `map[string]string` AAD bound to ciphertext. Contains `service_id` only (ADR 008). Never store secrets in it |
+| **OAuth2StateToken** | JWE-encrypted ephemeral token binding OAuth2 callback to initiating request (10 min TTL) |
+| **ResourceURI** | Normalized URI on ThirdpartyOAuth2Service identifying protected resources for RFC 8693 token exchange |
+| **CEL Expression** | Common Expression Language policy for privileged client authorization and JWT claim extraction |
+
+## Encryption Critical Rules
+
+These 4 rules are **mandatory** for all encryption work (from `.claude/skills/aws-crypto-go/SKILL.md`):
+
+1. **Commitment Policy**: Always use `RequireEncryptRequireDecrypt`. Never use `ForbidEncryptAllowDecrypt`.
+2. **Encryption Context**: Always provide `encryptionContext` map (service_id). Never include secrets. Verify context on decrypt.
+3. **Hierarchical Keyring**: Go SDK has no Caching CMM — use AWS KMS Hierarchical Keyring with DynamoDB branch key store.
+4. **Explicit Wrapping Keys**: Always specify KMS key ARN explicitly. Avoid discovery mode.
+
+Deep reference: `.claude/skills/aws-crypto-go/SKILL.md` (and `reference.md`, `examples.md` alongside it).
+
+## Spec-Driven Development
+
+Specifications in `specs/NNN-<short name>/` as markdown files:
+- `spec.md` — the WHAT (feature requirements, acceptance scenarios)
+- `plan.md` — the HOW (implementation approach)
+- `tasks.md` — trackable task list (must follow constitution task template)
 
 ## Development Workflow
 
-### Building and Running
-Use the justfile targets for all development tasks. Run `just --list` to see all available commands.
+Use `just` command runner for all tasks. Run `just --list` for full listing.
 
-**Core Commands:**
-- `just build` - Build the Go binary to ./bin/agentic-identity-broker
-- `just build-release` - Build optimized binary for production (30% smaller, no debug info)
-- `just run` - Build and run the application
-- `just dev` - Start hot-reload development server with Air (auto-rebuilds on file changes)
-- `just clean` - Remove build artifacts (./bin and ./coverage directories)
+### Build & Run
+- `just build` — Build Go binary to `./bin/agentic-identity-broker`
+- `just run` — Build and run
+- `just dev` — Hot-reload dev server with Air
 
 ### Testing
-- `just test` - Run all tests with verbose output and race detection
-- `just test-coverage` - Generate HTML coverage report at coverage/coverage.html
-- `just test-coverage-summary` - Display coverage percentages in terminal
+- `just test` — All tests (verbose, race detection)
+- `just test-coverage` — HTML coverage report
 
 ### Code Quality
-Before committing code, ensure quality checks pass:
-- `just fmt` - Format code with gofmt (applies -s for simplification)
-- `just vet` - Run go vet for static analysis
-- `just lint` - Run golangci-lint (falls back to go vet if not installed)
-- `just check` - Run all quality checks: fmt, vet, lint, test
+- `just check` — Run all checks: `fmt` → `vet` → `lint` → `test`
+- `just fmt` / `just vet` / `just lint` — Individual checks
 
-### Dependencies
-- `just deps` - Run go mod tidy, download, and verify
-- `just install-tools` - Install Air and golangci-lint
+### Frontend (Consent UI)
+- `just web-install` — Install npm deps (once after clone)
+- `just web-dev` — Vite dev server :3000 (proxies API to Go :8000, injects `X-Remote-User: dev@example.com`)
+- `just web-build` — Production bundle to `web/dist/consent/`
+- `just build-all` — Build Go backend + frontend
 
-### Documentation
-- `just docs-serve` - Start documentation server locally with hot reload
-- `just docs-build` - Build documentation site
-- `just docs-deploy` - Deploy documentation to GitHub Pages
-
-### Frontend Development (Consent UI)
-
-The project includes a React-based consent frontend in the `web/` directory.
-
-**Quick Start (Recommended Workflow):**
-
+### Pre-commit
 ```bash
-# Terminal 1: Start Go backend
-just run
-
-# Terminal 2: Start frontend dev server with hot reload
-just web-dev
+just check  # fmt → vet → lint → test — all must pass
 ```
-
-Access frontend at http://localhost:3000 (Vite dev server)
-API requests automatically proxy to http://localhost:8000 (Go backend)
-
-**Web Commands:**
-- `just web-install` - Install npm dependencies (run once after cloning)
-- `just web-dev` - Start Vite dev server with HMR on port 3000
-- `just web-build` - Build production bundle to web/dist/consent/
-- `just build-all` - Build both Go backend and frontend
-
-**How the Vite Proxy Works:**
-
-The Vite dev server (port 3000) proxies API requests to the Go backend (port 8000):
-
-```
-Frontend (port 3000) → Vite Proxy (adds X-Remote-User: dev@example.com) → Backend (port 8000) → API Response
-```
-
-The proxy automatically injects the `X-Remote-User` header to simulate authentication during development. In production, this header is set by the upstream authentication proxy (oauth2-proxy, nginx, etc.).
-
-This provides:
-- Hot Module Replacement (HMR) for instant frontend updates
-- No CORS issues (same-origin requests from browser perspective)
-- Full access to backend API during development
-- Simulated authentication via X-Remote-User header injection (all requests appear as dev@example.com)
-- React DevTools for debugging
-
-**Alternative Workflow (No HMR):**
-
-```bash
-# Build frontend and run from Go backend
-just web-build && just run
-
-# Access at http://localhost:8000/consent
-```
-
-## Pre-commit Checklist
-
-Before committing code, run:
-```bash
-just check
-```
-
-This runs:
-1. `just fmt` - Format code
-2. `just vet` - Static analysis
-3. `just lint` - Linting
-4. `just test` - All tests with race detection
-
-All checks must pass before submitting a PR.
