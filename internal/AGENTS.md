@@ -55,7 +55,7 @@ adapters/
     factory.go     Backend selection (memory vs postgres) from config
     memory/        In-memory storage (maps + sync.RWMutex)
     postgres/      PostgreSQL storage (sqlx + pgx v5)
-    noop/          NoOp encryption fallback (to be removed per REFACTORING.md)
+    noop/          NoOp encryption fallback
 
 app/
   builder.go       Builder pattern — all DI wiring
