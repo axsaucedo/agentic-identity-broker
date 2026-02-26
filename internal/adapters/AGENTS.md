@@ -22,7 +22,7 @@ Three implementations of `ports.EncryptionPort`:
 - Explicit wrapping keys: Always specify KMS key ARN. No discovery mode.
 
 ### NoOp (`storage/noop/`)
-`NoOpEncryption` — pass-through that returns plaintext unchanged. **Development/testing only.** Slated for removal per `REFACTORING.md`.
+`NoOpEncryption` — pass-through that returns plaintext unchanged. **Development/testing only.** 
 
 ### HTTP (`http/`)
 Dual-server architecture (ADR 004): end-user `:8000` + admin `:14000`.
