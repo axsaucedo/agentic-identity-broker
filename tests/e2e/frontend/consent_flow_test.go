@@ -31,7 +31,7 @@ var _ = Describe("Consent Flow", func() {
 			ID:          "github-service",
 			DisplayName: "GitHub",
 			ClientID:    "github-client-id",
-			Secret:      model.NewEncryptedSecret([]byte("github-client-secret")),
+			Secret:      fixtures.EncryptedSecret("github-service", "github-client-secret"),
 			IssuerURI:   "https://github.com",
 			Endpoints: model.OAuth2Endpoints{
 				AuthorizeEndpoint: "https://github.com/login/oauth/authorize",

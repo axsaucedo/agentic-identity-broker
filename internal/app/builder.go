@@ -11,7 +11,6 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
-	encmemory "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
@@ -19,7 +18,6 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwks"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
@@ -98,8 +96,8 @@ func (b *Builder) WithLogger(logger *slog.Logger) *Builder {
 }
 
 // WithEncryption sets a custom encryption implementation for the builder.
-// If not set, defaults to no-op encryption for development.
-// Use this to inject a production encryption adapter.
+// Use this to inject a test or production encryption adapter.
+// If not set, encryption must be configured via Config.Encryption (memory or aws_kms backend).
 func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
 	b.encryption = encryptor
 	return b
@@ -178,14 +176,7 @@ func (b *Builder) Build() (*App, error) {
 				"branch_key_manager_wired", branchKeyManager != nil)
 		}
 	} else {
-		encryptor = noop.NewNoOpEncryption()
-		b.logger.Info("No-op encryption enabled (development mode)")
-
-		// Wire in-memory BranchKeyManager for development if not already set
-		if b.branchKeyManager == nil {
-			b.branchKeyManager = encmemory.NewInMemoryBranchKeyRepository()
-			b.logger.Info("BranchKeyManager wired from in-memory implementation (development mode)")
-		}
+		return nil, fmt.Errorf("encryption configuration required: set encryption.memory.raw_key or encryption.aws_kms in configuration (no fallback)")
 	}
 
 	// Assign BranchKeyManager to app if wired

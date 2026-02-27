@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -80,21 +80,43 @@ func (m *MockProviderRepository) FindByProtectedResource(ctx context.Context, re
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-// setupHandler creates a handler backed by a mock repository and noop encryption.
-func setupHandler(mockRepo *MockProviderRepository) *ServicesHandler {
-	enc := noop.NewNoOpEncryption()
-	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockRepo, enc, nil, slog.Default())
+// newTestEncryption creates a real encryption adapter using a deterministic test key.
+// Panics on error since the key is hardcoded and always valid.
+func newTestEncryption() ports.EncryptionPort {
+	adapter, _, err := awsencryption.NewAWSEncryption("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=", "", 0)
+	if err != nil {
+		panic("newTestEncryption: failed to create test encryption adapter: " + err.Error())
+	}
+	return adapter
+}
+
+// setupHandler creates a handler backed by a mock repository and test encryption.
+func setupHandler(t *testing.T, mockRepo *MockProviderRepository) *ServicesHandler {
+	t.Helper()
+	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockRepo, newTestEncryption(), nil, slog.Default())
 	return NewServicesHandler(svc, testConfig(), slog.Default())
 }
 
+// encryptSecretForTest encrypts a plaintext secret using the test encryption adapter.
+// The service_id is used as the encryption context.
+func encryptSecretForTest(serviceID, secret string) []byte {
+	enc := newTestEncryption()
+	ciphertext, err := enc.Encrypt(context.Background(), []byte(secret), map[string]string{"service_id": serviceID})
+	if err != nil {
+		panic("encryptSecretForTest: " + err.Error())
+	}
+	return ciphertext
+}
+
 // encryptedEntity creates an entity with encrypted secret (as it would come from the repository).
+// The secret is properly encrypted with the test key so the domain service can decrypt it.
 func encryptedEntity(id, displayName, clientID, clientSecret, issuerURI string, scopes []model.OAuthScope) *model.ThirdpartyOAuth2ProviderEntity {
 	now := time.Now()
 	return &model.ThirdpartyOAuth2ProviderEntity{
 		ID:          id,
 		DisplayName: displayName,
 		ClientID:    clientID,
-		Secret:      model.NewEncryptedSecret([]byte(clientSecret)),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(id, clientSecret)),
 		IssuerURI:   issuerURI,
 		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://" + issuerURI[8:] + "/token",
@@ -109,7 +131,7 @@ func encryptedEntity(id, displayName, clientID, clientSecret, issuerURI string, 
 func TestServicesHandler_CreateService(t *testing.T) {
 	t.Run("successful creation without discovery", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		reqBody := ServiceRequest{
 			DisplayName:  "GitHub",
@@ -158,7 +180,7 @@ func TestServicesHandler_CreateService(t *testing.T) {
 
 	t.Run("invalid request body", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/third-party/oauth2/clients", bytes.NewReader([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
@@ -176,7 +198,7 @@ func TestServicesHandler_CreateService(t *testing.T) {
 
 	t.Run("validation error - missing display name", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		reqBody := ServiceRequest{
 			DisplayName: "", // Invalid: empty display name
@@ -206,7 +228,7 @@ func TestServicesHandler_CreateService(t *testing.T) {
 func TestServicesHandler_GetService(t *testing.T) {
 	t.Run("successful get", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		// Repo returns entity with encrypted secret; domain service decrypts (NoOp = identity).
 		entity := encryptedEntity("service-123", "GitHub", "github-client-id", "secret", "https://github.com",
@@ -234,7 +256,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 
 	t.Run("service not found", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		mockRepo.On("Get", mock.Anything, "nonexistent").Return(nil,
 			storage.NewStorageError("GetService", storage.ErrorKindNotFound, nil, "service not found"))
@@ -260,7 +282,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 func TestServicesHandler_UpdateService(t *testing.T) {
 	t.Run("successful update with new secret", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		existing := encryptedEntity("service-123", "GitHub", "github-client-id", "old-secret", "https://github.com",
 			[]model.OAuthScope{{ScopeValue: "repo", Description: "Repo access"}})
@@ -311,7 +333,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 	t.Run("successful update preserving existing secret", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		existing := encryptedEntity("service-123", "GitHub", "github-client-id", "existing-secret", "https://github.com",
 			[]model.OAuthScope{{ScopeValue: "repo", Description: "Repo access"}})
@@ -366,7 +388,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 func TestServicesHandler_DeleteService(t *testing.T) {
 	t.Run("successful deletion", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		mockRepo.On("Delete", mock.Anything, "service-123").Return(nil)
 
@@ -385,7 +407,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 
 	t.Run("deletion blocked by grants", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		// The domain service's Delete wraps errors, so the handler uses errors.As.
 		mockRepo.On("Delete", mock.Anything, "service-123").Return(
@@ -413,7 +435,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 
 	t.Run("service not found", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		mockRepo.On("Delete", mock.Anything, "nonexistent").Return(
 			storage.NewStorageError("DeleteService", storage.ErrorKindNotFound, nil, "service not found"))
@@ -436,7 +458,7 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 func TestServicesHandler_ListServices(t *testing.T) {
 	t.Run("successful list", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		entities := []*model.ThirdpartyOAuth2ProviderEntity{
 			encryptedEntity("service-1", "GitHub", "github-client", "secret1", "https://github.com",
@@ -468,7 +490,7 @@ func TestServicesHandler_ListServices(t *testing.T) {
 
 	t.Run("empty list", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		mockRepo.On("List", mock.Anything).Return([]*model.ThirdpartyOAuth2ProviderEntity{}, nil)
 
@@ -491,7 +513,7 @@ func TestServicesHandler_ListServices(t *testing.T) {
 func TestServicesHandler_SecretRedaction(t *testing.T) {
 	t.Run("secret redacted in all responses", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
-		handler := setupHandler(mockRepo)
+		handler := setupHandler(t, mockRepo)
 
 		entity := encryptedEntity("service-123", "Test Service", "test-client", "super-secret-value", "https://example.com",
 			[]model.OAuthScope{{ScopeValue: "read", Description: "Read access"}})

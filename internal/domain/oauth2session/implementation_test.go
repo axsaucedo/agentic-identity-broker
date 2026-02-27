@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -37,7 +36,7 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	agentRepo := memory.NewAgentRepository()
-	encryption := noop.NewNoOpEncryption()
+	encryption := newTestEncryption(t)
 
 	// Create service
 	config := oauth2session.DefaultConfig()

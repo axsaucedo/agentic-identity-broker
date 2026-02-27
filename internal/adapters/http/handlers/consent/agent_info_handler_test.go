@@ -114,7 +114,7 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 				{ScopeValue: "repo", Description: "Full control of private repositories"},
 				{ScopeValue: "user:email", Description: "Access user emails"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("service-github", "test-client-secret")),
 		},
 		{
 			ID:          "service-google",
@@ -123,7 +123,7 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 				{ScopeValue: "openid", Description: "OpenID Connect"},
 				{ScopeValue: "email", Description: "Access email address"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("service-google", "test-client-secret")),
 		},
 	}
 

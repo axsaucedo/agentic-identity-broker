@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
@@ -35,8 +34,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create providerService to handle encryption context binding (simulates domain layer)
-	encryption := noop.NewNoOpEncryption()
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, encryption, nil, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, slog.Default())
 
 	// Seed test data
 	ctx := context.Background()
@@ -268,8 +266,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create providerService to handle encryption context binding (simulates domain layer)
-	encryption := noop.NewNoOpEncryption()
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, encryption, nil, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, slog.Default())
 
 	ctx := context.Background()
 

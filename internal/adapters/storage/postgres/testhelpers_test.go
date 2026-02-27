@@ -6,16 +6,12 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -182,12 +178,4 @@ func findProjectRoot() (string, error) {
 		}
 		dir = parent
 	}
-}
-
-// createServiceWithManager uses ServiceManager to create a service via encryption layer,
-// ensuring proper encryption context binding. This simulates the domain layer behavior.
-func createServiceWithManager(t *testing.T, ctx context.Context, serviceManager *thirdparty.ServiceManager, service *storage.ThirdpartyOAuth2Service) {
-	t.Helper()
-	_, err := serviceManager.Create(ctx, service)
-	require.NoError(t, err)
 }

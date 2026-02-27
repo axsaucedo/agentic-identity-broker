@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
@@ -245,10 +244,9 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	config.CallbackBaseURL = "https://broker.example.com"
 
 	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
-	encryption := noop.NewNoOpEncryption()
 	providerService1 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo1,
-		encryption,
+		newTestEncryption(t),
 		nil,
 		slog.Default(),
 	)
@@ -281,7 +279,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
 	providerService2 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo2,
-		encryption,
+		newTestEncryption(t),
 		nil,
 		slog.Default(),
 	)

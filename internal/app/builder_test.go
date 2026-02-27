@@ -67,6 +67,11 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey: jweKey,
 		},
+		Encryption: ports.EncryptionConfig{
+			Memory: &ports.MemoryConfig{
+				RawKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+			},
+		},
 	}
 
 	// Create logger

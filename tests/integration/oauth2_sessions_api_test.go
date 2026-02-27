@@ -14,11 +14,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -41,7 +42,7 @@ func TestListSessions_Success(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -199,7 +200,7 @@ func TestAuthorizeEndpoint_Success(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
@@ -365,7 +366,7 @@ func TestAuthorizeEndpoint_InvalidRedirectURI(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
@@ -433,7 +434,7 @@ func TestAuthorizeEndpoint_VerifyAuthorizationURL(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
@@ -532,7 +533,7 @@ func TestCallbackEndpoint_Success(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
@@ -843,7 +844,7 @@ func TestDeleteSession_SuccessfullyTerminatesSessionWithStatusOK(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -980,7 +981,7 @@ func TestDeleteSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1052,7 +1053,7 @@ func TestDeleteSession_VerifiesSessionDeletedFromDatabase(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1121,7 +1122,7 @@ func TestDeleteSession_VerifiesTokensDeleted(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1195,7 +1196,7 @@ func TestGetSession_ReturnsSessionDetailsWithDependentAgentList(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1332,7 +1333,7 @@ func TestGetSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1403,7 +1404,7 @@ func TestGetSession_IncludesAgentCountInResponse(t *testing.T) {
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1474,7 +1475,7 @@ func TestGetSession_ValidatesJSONStructureMatchesSessionWithAgents(t *testing.T)
 		ID:          serviceID,
 		DisplayName: "GitHub",
 		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("test-secret")),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1554,6 +1555,22 @@ func setupTestRouter(handler *oauth2_sessions.Handler) *chi.Mux {
 	return router
 }
 
+// newTestEncryption creates a real encryption adapter using a deterministic test key.
+func newTestEncryption(t *testing.T) ports.EncryptionPort {
+	t.Helper()
+	adapter, _, err := awsencryption.NewAWSEncryption("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=", "", 0)
+	require.NoError(t, err)
+	return adapter
+}
+
+func encryptSecretForTest(t *testing.T, serviceID, secret string) []byte {
+	t.Helper()
+	enc := newTestEncryption(t)
+	ciphertext, err := enc.Encrypt(context.Background(), []byte(secret), map[string]string{"service_id": serviceID})
+	require.NoError(t, err)
+	return ciphertext
+}
+
 func createOAuth2SessionService(
 	t *testing.T,
 	serviceRepo ports.ThirdpartyOAuth2ProviderRepository,
@@ -1568,9 +1585,9 @@ func createOAuth2SessionService(
 	agentRepo := memory.NewAgentRepository()
 
 	// Create ServiceManager for handling encryption/decryption of client secrets
-	// Use NoOp encryption if not provided (for tests that don't use encryption)
+	// Use test encryption if not provided
 	if encryption == nil {
-		encryption = noop.NewNoOpEncryption()
+		encryption = newTestEncryption(t)
 	}
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,

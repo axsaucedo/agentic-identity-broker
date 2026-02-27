@@ -17,7 +17,7 @@ func GitHubService() *model.ThirdpartyOAuth2ProviderEntity {
 		ID:          "github-service",
 		DisplayName: "GitHub",
 		ClientID:    "github-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("github-client-secret")),
+		Secret:      EncryptedSecret("github-service", "github-client-secret"),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
@@ -48,7 +48,7 @@ func GoogleService() *model.ThirdpartyOAuth2ProviderEntity {
 		ID:          "google-service",
 		DisplayName: "Google",
 		ClientID:    "google-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("google-client-secret")),
+		Secret:      EncryptedSecret("google-service", "google-client-secret"),
 		IssuerURI:   "https://accounts.google.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
@@ -79,7 +79,7 @@ func MicrosoftService() *model.ThirdpartyOAuth2ProviderEntity {
 		ID:          "microsoft-service",
 		DisplayName: "Microsoft Azure",
 		ClientID:    "microsoft-client-id",
-		Secret:      model.NewEncryptedSecret([]byte("microsoft-client-secret")),
+		Secret:      EncryptedSecret("microsoft-service", "microsoft-client-secret"),
 		IssuerURI:   "https://login.microsoftonline.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
@@ -109,7 +109,7 @@ func ServiceWithID(id string) *model.ThirdpartyOAuth2ProviderEntity {
 		ID:          id,
 		DisplayName: "Test Service " + id,
 		ClientID:    "test-client-" + id,
-		Secret:      model.NewEncryptedSecret([]byte("test-secret-" + id)),
+		Secret:      EncryptedSecret(id, "test-secret-"+id),
 		IssuerURI:   "https://test-issuer.example.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,

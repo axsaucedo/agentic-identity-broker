@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -315,10 +314,9 @@ func setupTestService(t *testing.T) *oauth2session.OAuth2SessionService {
 	config.CallbackBaseURL = "https://broker.example.com"
 
 	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
-	encryption := noop.NewNoOpEncryption()
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
-		encryption,
+		newTestEncryption(t),
 		nil,
 		slog.Default(),
 	)

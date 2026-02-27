@@ -138,7 +138,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				DisplayName: "GitHub",
 				ClientID:    "github-client",
-				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440000", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -404,7 +404,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				DisplayName: "GitHub",
 				ClientID:    "github-client",
-				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440000", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -742,7 +742,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				DisplayName: "GitHub",
 				ClientID:    "github-client",
-				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440000", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -891,7 +891,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				ID:          "550e8400-e29b-41d4-a716-446655440001",
 				DisplayName: "GitLab",
 				ClientID:    "gitlab-client",
-				Secret:      model.NewEncryptedSecret([]byte("gitlab-secret")),
+				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440001", "gitlab-secret"),
 				IssuerURI:   "https://gitlab.com",
 				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://gitlab.com/oauth/authorize",
@@ -993,7 +993,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				ID:          "550e8400-e29b-41d4-a716-446655440002",
 				DisplayName: "GitHub",
 				ClientID:    "github-client",
-				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440002", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1231,7 +1231,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				ID:          "550e8400-e29b-41d4-a716-446655440006",
 				DisplayName: "GitHub",
 				ClientID:    "github-client",
-				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440006", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",

@@ -19,11 +19,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // =============================================================================
@@ -1003,6 +1004,14 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 	}))
 }
 
+// newTestEncryption creates a real encryption adapter using a deterministic test key.
+func newTestEncryption(t *testing.T) ports.EncryptionPort {
+	t.Helper()
+	adapter, _, err := awsencryption.NewAWSEncryption("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=", "", 0)
+	require.NoError(t, err)
+	return adapter
+}
+
 func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.InMemoryThirdpartyOAuth2ProviderRepository, *thirdparty.ThirdpartyOAuth2ProviderService) {
 	t.Helper()
 
@@ -1024,8 +1033,8 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.In
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
 
-	// Use NoOp encryption for unit tests (implementation is now complete)
-	encryption := noop.NewNoOpEncryption()
+	// Use real encryption for unit tests
+	encryption := newTestEncryption(t)
 
 	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
@@ -1393,7 +1402,7 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	agentRepo := memory.NewAgentRepository()
-	encryption := noop.NewNoOpEncryption()
+	encryption := newTestEncryption(t)
 
 	// Create ThirdpartyOAuth2ProviderService to handle encryption context binding (simulates domain layer)
 	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, encryption, nil, logger)

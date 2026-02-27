@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
@@ -20,10 +20,31 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// newTestEncryption creates a real encryption adapter using a deterministic test key.
+// Panics on error since the key is hardcoded and always valid.
+func newTestEncryption() ports.EncryptionPort {
+	adapter, _, err := awsencryption.NewAWSEncryption("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=", "", 0)
+	if err != nil {
+		panic("newTestEncryption: failed to create test encryption adapter: " + err.Error())
+	}
+	return adapter
+}
+
 // newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
-// with noop encryption. Used in tests across the consent handler package.
+// with test encryption. Used in tests across the consent handler package.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, noop.NewNoOpEncryption(), nil, slog.Default())
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, newTestEncryption(), nil, slog.Default())
+}
+
+// encryptSecretForTest encrypts a plaintext secret using the test encryption adapter.
+// The serviceID is used as the encryption context binding.
+func encryptSecretForTest(serviceID, secret string) []byte {
+	enc := newTestEncryption()
+	ciphertext, err := enc.Encrypt(context.Background(), []byte(secret), map[string]string{"service_id": serviceID})
+	if err != nil {
+		panic("encryptSecretForTest: " + err.Error())
+	}
+	return ciphertext
 }
 
 // mockAgentDetailService is a mock implementation of consent.Service for testing.
@@ -139,8 +160,9 @@ func TestGetAgentDetail_Success(t *testing.T) {
 
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	providerSvc := newTestProviderService(serviceRepo)
 
-	// Add test services
+	// Add test services through the provider service so secrets are properly encrypted
 	github := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:          "github",
 		DisplayName: "GitHub",
@@ -154,7 +176,7 @@ func TestGetAgentDetail_Success(t *testing.T) {
 			{ScopeValue: "read:user", Description: "Read user profile"},
 			{ScopeValue: "repo", Description: "Full control of repositories"},
 		},
-		Secret: model.NewEncryptedSecret([]byte("github-client-secret")),
+		Secret: model.NewPlaintextSecret("github-client-secret"),
 	}
 	google := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:          "google",
@@ -168,19 +190,19 @@ func TestGetAgentDetail_Success(t *testing.T) {
 		Scopes: []model.OAuthScope{
 			{ScopeValue: "email", Description: "View email address"},
 		},
-		Secret: model.NewEncryptedSecret([]byte("google-client-secret")),
+		Secret: model.NewPlaintextSecret("google-client-secret"),
 	}
-	if err := serviceRepo.Create(ctx, github); err != nil {
+	if err := providerSvc.Create(ctx, github); err != nil {
 		t.Fatalf("failed to create github service: %v", err)
 	}
-	if err := serviceRepo.Create(ctx, google); err != nil {
+	if err := providerSvc.Create(ctx, google); err != nil {
 		t.Fatalf("failed to create google service: %v", err)
 	}
 
 	handler := NewAgentDetailHandler(mockService, nil).
 		WithAgentRepository(agentRepo).
 		WithSessionRepository(sessionRepo).
-		WithProviderService(newTestProviderService(serviceRepo))
+		WithProviderService(providerSvc)
 
 	// Create request with principal in context
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
@@ -583,7 +605,7 @@ func TestBuildServiceRequirementsForUser_WithRequirementsUserConnected(t *testin
 						{ScopeValue: "read:user", Description: "Read user profile"},
 						{ScopeValue: "repo", Description: "Full control of repositories"},
 					},
-					Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
+					Secret: model.NewEncryptedSecret(encryptSecretForTest(githubServiceID, "test-client-secret")),
 				}, nil
 			}
 			return nil, errors.New("service not found")
@@ -664,7 +686,7 @@ func TestBuildServiceRequirementsForUser_WithRequirementsUserNotConnected(t *tes
 					Scopes: []model.OAuthScope{
 						{ScopeValue: "email", Description: "View email address"},
 					},
-					Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
+					Secret: model.NewEncryptedSecret(encryptSecretForTest(googleServiceID, "test-client-secret")),
 				}, nil
 			}
 			return nil, errors.New("service not found")

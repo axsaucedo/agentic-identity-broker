@@ -6,14 +6,17 @@ package storage_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/postgres"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/google/uuid"
@@ -28,6 +31,18 @@ func init() {
 	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
 		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 	}
+}
+
+// testKEKForIntegration is the deterministic test KEK used for encryption in integration tests.
+// This is the base64 encoding of known test bytes — NOT for production use.
+const testKEKForIntegration = "ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA="
+
+// newTestEncryption creates a real memory encryption adapter using the deterministic test KEK.
+func newTestEncryption(t *testing.T) ports.EncryptionPort {
+	t.Helper()
+	enc, _, err := awsencryption.NewAWSEncryption(testKEKForIntegration, "", 0)
+	require.NoError(t, err, "failed to create test encryption adapter")
+	return enc
 }
 
 // setupPostgreSQLContainer creates a PostgreSQL test container
@@ -171,29 +186,29 @@ func findProjectRoot() (string, error) {
 	}
 }
 
-// createTestService is a helper to create a test service with specified properties
-func createTestService(id, displayName string, protectedResources []string) *storage.ThirdpartyOAuth2Service {
-	// If id looks like a UUID, use it; otherwise use it as a seed for generating a deterministic UUID
+// createTestService is a helper to create a test service entity with specified properties.
+// Returned entity has Secret in plaintext state, ready for providerService.Create().
+func createTestService(id, displayName string, protectedResources []string) *model.ThirdpartyOAuth2ProviderEntity {
+	// If id looks like a UUID, use it; otherwise generate a deterministic UUID from the id string
 	serviceID := id
 	if !isValidUUID(id) {
-		// Generate a deterministic UUID based on the id string
 		serviceID = generateUUIDFromString(id)
 	}
 
-	return &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  displayName,
-		ClientID:     id + "-client",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://oauth.example.com",
-		Discovery: storage.DiscoveryConfig{
+	return &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: displayName,
+		ClientID:    id + "-client",
+		Secret:      model.NewPlaintextSecret("test-secret"),
+		IssuerURI:   "https://oauth.example.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://oauth.example.com/token",
 			AuthorizeEndpoint: "https://oauth.example.com/authorize",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "read", Description: "Read access"},
 		},
 		ProtectedResources: protectedResources,
@@ -235,16 +250,17 @@ func TestFindByProtectedResource_SingleMatch(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
 	// Create service with protected resources
-	service := createTestService(
+	entity := createTestService(
 		"github-service",
 		"GitHub",
 		[]string{"https://api.github.com", "https://api.github.com/user"},
 	)
-	err = repo.Create(ctx, service)
+	err = providerService.Create(ctx, entity)
 	require.NoError(t, err)
 
 	// Find by exact resource match
@@ -252,7 +268,7 @@ func TestFindByProtectedResource_SingleMatch(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, found)
 	require.Equal(t, "GitHub", found.DisplayName)
-	require.NotEmpty(t, found.ID) // Verify ID was generated
+	require.NotEmpty(t, found.ID)
 	require.Len(t, found.ProtectedResources, 2)
 	require.Contains(t, found.ProtectedResources, "https://api.github.com")
 }
@@ -279,16 +295,17 @@ func TestFindByProtectedResource_NoMatch(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
 	// Create service without matching resource
-	service := createTestService(
+	entity := createTestService(
 		"github-service",
 		"GitHub",
 		[]string{"https://api.github.com"},
 	)
-	err = repo.Create(ctx, service)
+	err = providerService.Create(ctx, entity)
 	require.NoError(t, err)
 
 	// Try to find non-existent resource
@@ -325,8 +342,9 @@ func TestFindByProtectedResource_AmbiguousMatch(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
 	// Create two services with overlapping resources (misconfiguration)
 	service1 := createTestService(
@@ -334,7 +352,7 @@ func TestFindByProtectedResource_AmbiguousMatch(t *testing.T) {
 		"Service 1",
 		[]string{"https://api.example.com"},
 	)
-	err = repo.Create(ctx, service1)
+	err = providerService.Create(ctx, service1)
 	require.NoError(t, err)
 
 	service2 := createTestService(
@@ -342,7 +360,7 @@ func TestFindByProtectedResource_AmbiguousMatch(t *testing.T) {
 		"Service 2",
 		[]string{"https://api.example.com"},
 	)
-	err = repo.Create(ctx, service2)
+	err = providerService.Create(ctx, service2)
 	require.NoError(t, err)
 
 	// Try to find ambiguous resource
@@ -379,24 +397,25 @@ func TestFindByProtectedResource_URINormalization(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
 	// Create service with normalized URI (no trailing slash)
-	service := createTestService(
+	entity := createTestService(
 		"api-service",
 		"API Service",
 		[]string{"https://api.example.com"},
 	)
-	err = repo.Create(ctx, service)
+	err = providerService.Create(ctx, entity)
 	require.NoError(t, err)
 
-	// Query with trailing slash should find the service
+	// Query with exact URI should find the service
 	// (This test documents the current behavior - normalization is done by the caller)
 	found, err := repo.FindByProtectedResource(ctx, "https://api.example.com")
 	require.NoError(t, err)
 	require.NotNil(t, found)
-	require.Equal(t, service.ID, found.ID) // Use actual generated ID
+	require.Equal(t, entity.ID, found.ID)
 	require.Equal(t, "API Service", found.DisplayName)
 }
 
@@ -422,8 +441,9 @@ func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
 	// Create three services with different resources
 	service1 := createTestService(
@@ -431,7 +451,7 @@ func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
 		"GitHub",
 		[]string{"https://api.github.com", "https://api.github.com/user"},
 	)
-	err = repo.Create(ctx, service1)
+	err = providerService.Create(ctx, service1)
 	require.NoError(t, err)
 
 	service2 := createTestService(
@@ -439,7 +459,7 @@ func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
 		"Google",
 		[]string{"https://www.googleapis.com"},
 	)
-	err = repo.Create(ctx, service2)
+	err = providerService.Create(ctx, service2)
 	require.NoError(t, err)
 
 	service3 := createTestService(
@@ -447,7 +467,7 @@ func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
 		"Databricks",
 		[]string{"https://api.databricks.com"},
 	)
-	err = repo.Create(ctx, service3)
+	err = providerService.Create(ctx, service3)
 	require.NoError(t, err)
 
 	// Find each service by its resource
@@ -511,16 +531,17 @@ func TestFindByProtectedResource_EmptyProtectedResources(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
 	// Create service without protected_resources
-	service := createTestService(
+	entity := createTestService(
 		"service-no-resources",
 		"Service Without Resources",
 		nil,
 	)
-	err = repo.Create(ctx, service)
+	err = providerService.Create(ctx, entity)
 	require.NoError(t, err)
 
 	// Try to find by resource - should not match
@@ -555,16 +576,17 @@ func TestFindByProtectedResource_CaseSensitive(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
 	// Create service with specific case
-	service := createTestService(
+	entity := createTestService(
 		"api-service",
 		"API Service",
 		[]string{"https://api.Example.com"},
 	)
-	err = repo.Create(ctx, service)
+	err = providerService.Create(ctx, entity)
 	require.NoError(t, err)
 
 	// Find with exact case - should succeed
@@ -600,17 +622,17 @@ func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
-	// Create mixed services
 	// Service 1: has resources
 	service1 := createTestService(
 		"service-1",
 		"Service 1",
 		[]string{"https://api1.example.com"},
 	)
-	err = repo.Create(ctx, service1)
+	err = providerService.Create(ctx, service1)
 	require.NoError(t, err)
 
 	// Service 2: no resources
@@ -619,7 +641,7 @@ func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
 		"Service 2",
 		nil,
 	)
-	err = repo.Create(ctx, service2)
+	err = providerService.Create(ctx, service2)
 	require.NoError(t, err)
 
 	// Service 3: multiple resources
@@ -628,7 +650,7 @@ func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
 		"Service 3",
 		[]string{"https://api3a.example.com", "https://api3b.example.com"},
 	)
-	err = repo.Create(ctx, service3)
+	err = providerService.Create(ctx, service3)
 	require.NoError(t, err)
 
 	// Test scenarios
@@ -701,24 +723,27 @@ func TestFindByProtectedResource_ClientSecretDecrypted(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
-	// Create service with secret
-	service := createTestService(
+	// Create service with a specific secret
+	entity := createTestService(
 		"service-with-secret",
 		"Service With Secret",
 		[]string{"https://api.example.com"},
 	)
-	service.ClientSecret = "my-super-secret"
-	err = repo.Create(ctx, service)
+	entity.Secret = model.NewPlaintextSecret("my-super-secret")
+	err = providerService.Create(ctx, entity)
 	require.NoError(t, err)
 
-	// Find by resource and verify secret is decrypted
-	found, err := repo.FindByProtectedResource(ctx, "https://api.example.com")
+	// Find by resource via service to get decrypted secret
+	found, err := providerService.FindByProtectedResource(ctx, "https://api.example.com")
 	require.NoError(t, err)
 	require.NotNil(t, found)
-	require.Equal(t, "my-super-secret", found.ClientSecret)
+	p, err := found.Secret.GetPlaintext()
+	require.NoError(t, err)
+	require.Equal(t, "my-super-secret", p)
 }
 
 // TestFindByProtectedResource_InvalidResourceURI tests validation of empty resource URI
@@ -743,8 +768,7 @@ func TestFindByProtectedResource_InvalidResourceURI(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
 
 	// Try to find with empty resource URI
 	found, err := repo.FindByProtectedResource(ctx, "")
@@ -780,24 +804,25 @@ func TestFindByProtectedResource_GINIndexQuery(t *testing.T) {
 	require.NoError(t, err)
 	defer adapter.Close(ctx)
 
-	encryption := noop.NewNoOpEncryption()
-	repo := postgres.NewThirdpartyServiceRepository(adapter, encryption)
+	encryption := newTestEncryption(t)
+	repo := postgres.NewPostgresThirdpartyOAuth2ProviderRepository(adapter)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(repo, encryption, nil, slog.Default())
 
 	// Create multiple services to test query efficiency
-	servicesByName := make(map[string]*storage.ThirdpartyOAuth2Service)
+	servicesByName := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
 	for i := 1; i <= 10; i++ {
 		resources := []string{}
 		for j := 1; j <= 5; j++ {
 			resources = append(resources, fmt.Sprintf("https://api%d.example.com/v%d", i, j))
 		}
-		service := createTestService(
+		entity := createTestService(
 			fmt.Sprintf("service-%d", i),
 			fmt.Sprintf("Service %d", i),
 			resources,
 		)
-		err = repo.Create(ctx, service)
+		err = providerService.Create(ctx, entity)
 		require.NoError(t, err)
-		servicesByName[fmt.Sprintf("Service %d", i)] = service
+		servicesByName[fmt.Sprintf("Service %d", i)] = entity
 	}
 
 	// Query should be efficient even with many services

@@ -430,7 +430,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 				ID:          "ambiguous-service",
 				DisplayName: "Ambiguous Service",
 				ClientID:    "ambiguous-client-id",
-				Secret:      model.NewEncryptedSecret([]byte("ambiguous-client-secret")),
+				Secret:      fixtures.EncryptedSecret("ambiguous-service", "ambiguous-client-secret"),
 				IssuerURI:   "https://ambiguous.example.com",
 				Discovery: model.DiscoveryConfig{
 					EnableDiscovery: false,
