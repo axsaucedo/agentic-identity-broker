@@ -12,6 +12,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -63,53 +64,15 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string
 	return args.Get(0).(*storage.Agent), args.Error(1)
 }
 
-// MockThirdpartyOAuth2ProviderRepository is a mock implementation of ports.ThirdpartyOAuth2ProviderRepository
-type MockThirdpartyOAuth2ProviderRepository struct {
-	mock.Mock
-}
-
-func (m *MockThirdpartyOAuth2ProviderRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
-	args := m.Called(ctx, entity)
-	return args.Error(0)
-}
-
-func (m *MockThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
-	args := m.Called(ctx, id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
-}
-
-func (m *MockThirdpartyOAuth2ProviderRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
-	args := m.Called(ctx, entity)
-	return args.Error(0)
-}
-
-func (m *MockThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *MockThirdpartyOAuth2ProviderRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
-	args := m.Called(ctx)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
-}
-
-func (m *MockThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
-	args := m.Called(ctx, serviceID)
-	return args.Int(0), args.Error(1)
-}
-
-func (m *MockThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
-	args := m.Called(ctx, resourceURI)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
+// newAgentsHandlerForTest creates an AgentsHandler backed by a real domain service
+// wrapping a mock repository. This ensures the architecture invariant holds in tests:
+// the handler always goes through the domain service, never raw storage.
+//
+// MockProviderRepository and newTestEncryption are defined in services_handler_test.go
+// and are available here because both files share the same package admin.
+func newAgentsHandlerForTest(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger) *AgentsHandler {
+	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, logger)
+	return NewAgentsHandler(mockRepo, svc, logger)
 }
 
 func TestAgentsHandler_CreateAgent(t *testing.T) {
@@ -117,8 +80,8 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("successful creation", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
 			ClientID:    "test-client",
@@ -152,8 +115,8 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("with optional fields", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		externalID := "ext-123"
 		govURL := "https://example.com/gov"
@@ -187,8 +150,8 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("invalid request body", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
@@ -206,8 +169,8 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("validation error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
 			ClientID:    "", // Empty client_id
@@ -238,8 +201,8 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("conflict error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
 			ClientID:    "duplicate-client",
@@ -274,8 +237,8 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 
 	t.Run("successful retrieval", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		now := time.Now().UTC()
 		agent := &storage.Agent{
@@ -311,8 +274,8 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 
 	t.Run("agent not found", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		mockRepo.On("Get", mock.Anything, "non-existent").Return(
 			nil,
@@ -340,8 +303,8 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 
 	t.Run("empty agent ID", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/agents/", nil)
 		rctx := chi.NewRouteContext()
@@ -365,8 +328,8 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 	t.Run("successful update", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		now := time.Now().UTC()
 		existingAgent := &storage.Agent{
@@ -413,8 +376,8 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 	t.Run("agent not found", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
 			ClientID:    "test-client",
@@ -445,8 +408,8 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 	t.Run("invalid request body", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/agents/agent-123", bytes.NewReader([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
@@ -467,8 +430,8 @@ func TestAgentsHandler_DeleteAgent(t *testing.T) {
 
 	t.Run("successful deletion", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		mockRepo.On("Delete", mock.Anything, "agent-123").Return(nil)
 
@@ -489,8 +452,8 @@ func TestAgentsHandler_DeleteAgent(t *testing.T) {
 
 	t.Run("empty agent ID", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/agents/", nil)
 		rctx := chi.NewRouteContext()
@@ -509,8 +472,8 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 
 	t.Run("successful list", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		now := time.Now().UTC()
 		agents := []*storage.Agent{
@@ -553,8 +516,8 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 
 	t.Run("empty list", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		mockRepo.On("List", mock.Anything).Return([]*storage.Agent{}, nil)
 
@@ -575,8 +538,8 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 
 	t.Run("storage error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		mockRepo.On("List", mock.Anything).Return(
 			nil,
@@ -594,14 +557,17 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 	})
 }
 
-// TestAgentsHandler_validateServiceRequirements tests the validateServiceRequirements method
+// TestAgentsHandler_validateServiceRequirements tests the validateServiceRequirements method.
+// Entities returned by the mock repository must carry a properly encrypted Secret so that
+// the domain service can decrypt them — this mirrors production behaviour where the
+// repository always stores encrypted secrets.
 func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 	logger := slog.Default()
 
 	t.Run("empty service requirements should pass", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		err := handler.validateServiceRequirements(context.Background(), []storage.ServiceRequirement{})
 		assert.NoError(t, err)
@@ -612,8 +578,8 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("nil service requirements should pass", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		err := handler.validateServiceRequirements(context.Background(), nil)
 		assert.NoError(t, err)
@@ -624,10 +590,11 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("valid service requirements should pass", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "service-123"
+		// Secret must be properly encrypted so the domain service can decrypt it.
 		entity := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          serviceID,
 			DisplayName: "GitHub",
@@ -636,7 +603,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 				{ScopeValue: "user:email"},
 				{ScopeValue: "read:org"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest(serviceID, "client-secret")),
 		}
 
 		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
@@ -657,8 +624,8 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("multiple valid service requirements should pass", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		entity1 := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          "github-123",
@@ -667,7 +634,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 				{ScopeValue: "repo"},
 				{ScopeValue: "user:email"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("github-123", "secret1")),
 		}
 
 		entity2 := &model.ThirdpartyOAuth2ProviderEntity{
@@ -677,7 +644,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 				{ScopeValue: "api"},
 				{ScopeValue: "read_user"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("gitlab-456", "secret2")),
 		}
 
 		mockServiceRepo.On("Get", mock.Anything, "github-123").Return(entity1, nil)
@@ -704,8 +671,8 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("non-existent service_id should return validation error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "non-existent-service"
 		notFoundErr := storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "service not found")
@@ -735,8 +702,8 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("invalid scope should return validation error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "github-123"
 		entity := &model.ThirdpartyOAuth2ProviderEntity{
@@ -746,7 +713,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 				{ScopeValue: "repo"},
 				{ScopeValue: "user:email"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest(serviceID, "client-secret")),
 		}
 
 		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
@@ -775,8 +742,8 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("second service requirement with invalid service should return error with index 1", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		entity1 := &model.ThirdpartyOAuth2ProviderEntity{
 			ID:          "github-123",
@@ -784,7 +751,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("github-123", "secret1")),
 		}
 
 		notFoundErr := storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "service not found")
@@ -819,8 +786,8 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("case-sensitive scope validation", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "github-123"
 		entity := &model.ThirdpartyOAuth2ProviderEntity{
@@ -830,7 +797,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 				{ScopeValue: "repo"},
 				{ScopeValue: "user:email"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest(serviceID, "client-secret")),
 		}
 
 		mockServiceRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
@@ -858,8 +825,8 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("repository error other than not found should be returned as-is", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
-		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "github-123"
 		connError := storage.NewStorageError("Get", storage.ErrorKindConnection, nil, "database connection failed")

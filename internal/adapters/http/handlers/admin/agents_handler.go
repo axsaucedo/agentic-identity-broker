@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -18,20 +19,20 @@ import (
 
 // AgentsHandler handles HTTP requests for agent CRUD operations.
 type AgentsHandler struct {
-	repo        ports.AgentRepository
-	serviceRepo ports.ThirdpartyOAuth2ProviderRepository
-	logger      *slog.Logger
+	repo            ports.AgentRepository
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService
+	logger          *slog.Logger
 }
 
 // NewAgentsHandler creates a new agents handler.
-func NewAgentsHandler(repo ports.AgentRepository, serviceRepo ports.ThirdpartyOAuth2ProviderRepository, logger *slog.Logger) *AgentsHandler {
+func NewAgentsHandler(repo ports.AgentRepository, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger) *AgentsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentsHandler{
-		repo:        repo,
-		serviceRepo: serviceRepo,
-		logger:      logger,
+		repo:            repo,
+		providerService: providerService,
+		logger:          logger,
 	}
 }
 
@@ -311,7 +312,7 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 	// Load all services
 	serviceMap := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
 	for serviceID := range serviceIDs {
-		service, err := h.serviceRepo.Get(ctx, serviceID)
+		service, err := h.providerService.Get(ctx, serviceID)
 		if err != nil {
 			h.logger.Warn("failed to load service for batch", "service_id", serviceID, "error", err)
 			continue
@@ -387,7 +388,7 @@ func (h *AgentsHandler) toResponse(ctx context.Context, agent *storage.Agent) (A
 			}
 
 			// Resolve service name (best effort - don't fail if service not found)
-			service, err := h.serviceRepo.Get(ctx, sr.ServiceID)
+			service, err := h.providerService.Get(ctx, sr.ServiceID)
 			if err == nil {
 				respSR.ServiceName = service.DisplayName
 			} else {
@@ -436,7 +437,7 @@ func (h *AgentsHandler) validateServiceRequirements(ctx context.Context, service
 
 	for i, sr := range serviceReqs {
 		// Check if service exists
-		service, err := h.serviceRepo.Get(ctx, sr.ServiceID)
+		service, err := h.providerService.Get(ctx, sr.ServiceID)
 		if err != nil {
 			if storageErr, ok := err.(*storage.StorageError); ok && storageErr.Kind == storage.ErrorKindNotFound {
 				h.logger.Warn("service not found", "service_id", sr.ServiceID, "index", i)

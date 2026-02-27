@@ -338,7 +338,7 @@ func (b *Builder) Build() (*App, error) {
 
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
-		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
+		Agents:   admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger),
 		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
