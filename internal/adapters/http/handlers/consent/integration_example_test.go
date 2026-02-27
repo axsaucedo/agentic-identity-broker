@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encrypti
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	memorystorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
