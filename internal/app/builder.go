@@ -208,11 +208,13 @@ func (b *Builder) Build() (*App, error) {
 		)
 	}
 
-	// Create consent service if repositories available
-	if b.storage.Agents() != nil && b.storage.Services() != nil && b.storage.UserGrants() != nil {
+	// Create consent service if repositories available.
+	// ConsentService depends on ProviderService (not raw repository) so all service access
+	// goes through the domain service layer including encryption/decryption.
+	if b.storage.Agents() != nil && app.ProviderService != nil && b.storage.UserGrants() != nil {
 		app.ConsentService = consentservice.NewService(
 			b.storage.Agents(),
-			b.storage.Services(),
+			app.ProviderService,
 			b.storage.UserGrants(),
 		)
 	}
@@ -324,12 +326,12 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		// Create token exchange service
-		// Per Constitution Principle VI: service depends on ports (repository interfaces)
+		// Per Constitution Principle VI: service depends on domain service, not raw repository
 		// SessionRepository is no longer needed - token lifecycle is managed through OAuth2SessionService
 		tokenExchangeService, err := tokenexchange.NewTokenExchangeService(
 			jwtValidator,
 			celEvaluator,
-			b.storage.Services(),
+			app.ProviderService,
 			app.OAuth2SessionService,
 			app.ConsentService,
 			&b.config.TokenExchange,
@@ -353,7 +355,7 @@ func (b *Builder) Build() (*App, error) {
 	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger).
 		WithAgentRepository(b.storage.Agents()).
 		WithSessionRepository(b.storage.UserSessions()).
-		WithServiceRepository(b.storage.Services())
+		WithProviderService(app.ProviderService)
 
 	// Enduser handlers
 	app.EnduserHandlers = &EnduserHandlers{
@@ -369,7 +371,6 @@ func (b *Builder) Build() (*App, error) {
 		OAuth2Token: &enduser.OAuth2TokenHandler{
 			UpstreamTokenURL: b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
 			Client:           upstreamClient,
-			Services:         b.storage.Services(), // For RFC 8693 token exchange (resource lookup)
 			TokenExchange:    app.TokenExchangeService,
 			Logger:           b.logger,
 		},

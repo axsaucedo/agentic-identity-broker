@@ -4,17 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
+
+// newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
+// with noop encryption. Used in tests across the consent handler package.
+func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, noop.NewNoOpEncryption(), nil, slog.Default())
+}
 
 // mockAgentDetailService is a mock implementation of consent.Service for testing.
 type mockAgentDetailService struct {
@@ -170,7 +180,7 @@ func TestGetAgentDetail_Success(t *testing.T) {
 	handler := NewAgentDetailHandler(mockService, nil).
 		WithAgentRepository(agentRepo).
 		WithSessionRepository(sessionRepo).
-		WithServiceRepository(serviceRepo)
+		WithProviderService(newTestProviderService(serviceRepo))
 
 	// Create request with principal in context
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
@@ -239,7 +249,7 @@ func TestGetAgentDetail_AgentNotFound(t *testing.T) {
 	handler := NewAgentDetailHandler(mockService, nil).
 		WithAgentRepository(agentRepo).
 		WithSessionRepository(sessionRepo).
-		WithServiceRepository(serviceRepo)
+		WithProviderService(newTestProviderService(serviceRepo))
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/nonexistent", nil)
@@ -318,7 +328,7 @@ func TestGetAgentDetail_ServiceError(t *testing.T) {
 	handler := NewAgentDetailHandler(mockService, nil).
 		WithAgentRepository(agentRepo).
 		WithSessionRepository(sessionRepo).
-		WithServiceRepository(serviceRepo)
+		WithProviderService(newTestProviderService(serviceRepo))
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-123", nil)
@@ -389,7 +399,7 @@ func TestGetAgentDetail_EmptyServicesList(t *testing.T) {
 	handler := NewAgentDetailHandler(mockService, nil).
 		WithAgentRepository(agentRepo).
 		WithSessionRepository(sessionRepo).
-		WithServiceRepository(serviceRepo)
+		WithProviderService(newTestProviderService(serviceRepo))
 
 	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
@@ -515,7 +525,7 @@ func TestBuildServiceRequirementsForUser_NoRequirements(t *testing.T) {
 
 	handler := NewAgentDetailHandler(mockService, nil)
 	handler.sessionRepository = mockSessions
-	handler.serviceRepository = mockServices
+	handler.providerService = newTestProviderService(mockServices)
 
 	// Execute
 	ctx := context.Background()
@@ -573,7 +583,7 @@ func TestBuildServiceRequirementsForUser_WithRequirementsUserConnected(t *testin
 						{ScopeValue: "read:user", Description: "Read user profile"},
 						{ScopeValue: "repo", Description: "Full control of repositories"},
 					},
-					Secret: model.NewEncryptedSecret([]byte("")),
+					Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
 				}, nil
 			}
 			return nil, errors.New("service not found")
@@ -582,7 +592,7 @@ func TestBuildServiceRequirementsForUser_WithRequirementsUserConnected(t *testin
 
 	handler := NewAgentDetailHandler(mockService, nil)
 	handler.sessionRepository = mockSessions
-	handler.serviceRepository = mockServices
+	handler.providerService = newTestProviderService(mockServices)
 
 	// Execute
 	ctx := context.Background()
@@ -654,7 +664,7 @@ func TestBuildServiceRequirementsForUser_WithRequirementsUserNotConnected(t *tes
 					Scopes: []model.OAuthScope{
 						{ScopeValue: "email", Description: "View email address"},
 					},
-					Secret: model.NewEncryptedSecret([]byte("")),
+					Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
 				}, nil
 			}
 			return nil, errors.New("service not found")
@@ -663,7 +673,7 @@ func TestBuildServiceRequirementsForUser_WithRequirementsUserNotConnected(t *tes
 
 	handler := NewAgentDetailHandler(mockService, nil)
 	handler.sessionRepository = mockSessions
-	handler.serviceRepository = mockServices
+	handler.providerService = newTestProviderService(mockServices)
 
 	// Execute
 	ctx := context.Background()
@@ -715,7 +725,7 @@ func TestBuildServiceRequirementsForUser_ServiceNotFound(t *testing.T) {
 
 	handler := NewAgentDetailHandler(mockService, nil)
 	handler.sessionRepository = mockSessions
-	handler.serviceRepository = mockServices
+	handler.providerService = newTestProviderService(mockServices)
 
 	// Execute
 	ctx := context.Background()

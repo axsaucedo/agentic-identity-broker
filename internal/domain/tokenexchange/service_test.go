@@ -13,14 +13,21 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
+
+// newTestProviderService wraps a repository in a ThirdpartyOAuth2ProviderService
+// with passthrough encryption for use in domain-layer tests.
+func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &MockEncryption{}, nil, nil)
+}
 
 // newMockConsentService creates a consent.Service with mock repositories for testing
 func newMockConsentService() *consent.Service {
 	return consent.NewService(
 		&MockAgentRepository{},
-		&MockServiceRepository{},
+		newTestProviderService(&MockServiceRepository{}),
 		&MockGrantRepository{
 			grant: &storagedomain.UserGrant{
 				ID:         "test-grant-id",
@@ -281,7 +288,7 @@ func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal s
 func NewTokenExchangeServiceForTest(
 	jwtValidator *JWTValidator,
 	celEvaluator *CELEvaluator,
-	serviceRepo ports.ThirdpartyOAuth2ProviderRepository,
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	oauth2SessionService *oauth2session.OAuth2SessionService,
 	consentService *consent.Service,
 	config *ports.TokenExchangeConfig,
@@ -289,7 +296,7 @@ func NewTokenExchangeServiceForTest(
 	return NewTokenExchangeService(
 		jwtValidator,
 		celEvaluator,
-		serviceRepo,
+		providerService,
 		oauth2SessionService,
 		consentService,
 		config,
@@ -302,7 +309,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 		name                 string
 		jwtValidator         *JWTValidator
 		celEvaluator         *CELEvaluator
-		serviceRepo          ports.ThirdpartyOAuth2ProviderRepository
+		serviceRepo          *thirdparty.ThirdpartyOAuth2ProviderService
 		oauth2SessionService *oauth2session.OAuth2SessionService
 		consentService       *consent.Service
 		config               *ports.TokenExchangeConfig
@@ -313,7 +320,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 			name:                 "valid parameters - creates service without error",
 			jwtValidator:         &JWTValidator{},
 			celEvaluator:         &CELEvaluator{},
-			serviceRepo:          &MockServiceRepository{},
+			serviceRepo:          newTestProviderService(&MockServiceRepository{}),
 			oauth2SessionService: &oauth2session.OAuth2SessionService{},
 			consentService:       &consent.Service{},
 			config: &ports.TokenExchangeConfig{
@@ -357,7 +364,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 			name:                 "nil oauth2SessionService returns error",
 			jwtValidator:         &JWTValidator{},
 			celEvaluator:         &CELEvaluator{},
-			serviceRepo:          &MockServiceRepository{},
+			serviceRepo:          newTestProviderService(&MockServiceRepository{}),
 			oauth2SessionService: nil,
 			consentService:       &consent.Service{},
 			expectError:          true,
@@ -367,7 +374,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 			name:                 "nil consentService returns error",
 			jwtValidator:         &JWTValidator{},
 			celEvaluator:         &CELEvaluator{},
-			serviceRepo:          &MockServiceRepository{},
+			serviceRepo:          newTestProviderService(&MockServiceRepository{}),
 			oauth2SessionService: &oauth2session.OAuth2SessionService{},
 			consentService:       nil,
 			expectError:          true,
@@ -377,7 +384,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 			name:                 "nil config returns error",
 			jwtValidator:         &JWTValidator{},
 			celEvaluator:         &CELEvaluator{},
-			serviceRepo:          &MockServiceRepository{},
+			serviceRepo:          newTestProviderService(&MockServiceRepository{}),
 			oauth2SessionService: &oauth2session.OAuth2SessionService{},
 			consentService:       &consent.Service{},
 			config:               nil,
@@ -430,7 +437,7 @@ func TestExchange_InvalidRequest(t *testing.T) {
 	service, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
-		&MockServiceRepository{},
+		newTestProviderService(&MockServiceRepository{}),
 		&oauth2session.OAuth2SessionService{},
 		newMockConsentService(),
 		config,
@@ -517,7 +524,7 @@ func TestBuildRequestContext(t *testing.T) {
 	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
-		&MockServiceRepository{},
+		newTestProviderService(&MockServiceRepository{}),
 		&oauth2session.OAuth2SessionService{},
 		newMockConsentService(),
 		&ports.TokenExchangeConfig{},
@@ -552,7 +559,7 @@ func TestGrantVerification_MissingGrant(t *testing.T) {
 	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
-		&MockServiceRepository{},
+		newTestProviderService(&MockServiceRepository{}),
 		&oauth2session.OAuth2SessionService{},
 		newMockConsentService(),
 		&ports.TokenExchangeConfig{},
@@ -583,7 +590,7 @@ func TestGrantVerification_ExpiredGrant(t *testing.T) {
 	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
-		&MockServiceRepository{},
+		newTestProviderService(&MockServiceRepository{}),
 		&oauth2session.OAuth2SessionService{},
 		newMockConsentService(),
 		&ports.TokenExchangeConfig{},
@@ -619,7 +626,7 @@ func TestGrantVerification_ActiveGrant(t *testing.T) {
 	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
-		&MockServiceRepository{},
+		newTestProviderService(&MockServiceRepository{}),
 		&oauth2session.OAuth2SessionService{},
 		newMockConsentService(),
 		&ports.TokenExchangeConfig{},

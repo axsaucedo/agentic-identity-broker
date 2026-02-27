@@ -114,7 +114,7 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 				{ScopeValue: "repo", Description: "Full control of private repositories"},
 				{ScopeValue: "user:email", Description: "Access user emails"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("")),
+			Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
 		},
 		{
 			ID:          "service-google",
@@ -123,7 +123,7 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 				{ScopeValue: "openid", Description: "OpenID Connect"},
 				{ScopeValue: "email", Description: "Access email address"},
 			},
-			Secret: model.NewEncryptedSecret([]byte("")),
+			Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
 		},
 	}
 
@@ -352,7 +352,7 @@ func (m *mockConsentServiceWrapper) asService() *consent.Service {
 	mockServiceRepo := &mockServiceRepo{services: services, err: m.err}
 	mockGrantRepo := &mockGrantRepo{}
 
-	return consent.NewService(mockAgentRepo, mockServiceRepo, mockGrantRepo)
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo)
 }
 
 // Mock repository implementations

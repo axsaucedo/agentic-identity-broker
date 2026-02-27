@@ -10,6 +10,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
@@ -37,7 +38,7 @@ type AgentDetailHandler struct {
 	consentService    ConsentService
 	agentRepository   ports.AgentRepository
 	sessionRepository ports.UserSessionRepository
-	serviceRepository ports.ThirdpartyOAuth2ProviderRepository
+	providerService   *thirdparty.ThirdpartyOAuth2ProviderService
 	logger            *slog.Logger
 }
 
@@ -66,10 +67,10 @@ func (h *AgentDetailHandler) WithSessionRepository(repo ports.UserSessionReposit
 	return h
 }
 
-// WithServiceRepository sets the service repository for this handler.
+// WithProviderService sets the provider service for this handler.
 // Used to lookup service metadata including display names and scope descriptions.
-func (h *AgentDetailHandler) WithServiceRepository(repo ports.ThirdpartyOAuth2ProviderRepository) *AgentDetailHandler {
-	h.serviceRepository = repo
+func (h *AgentDetailHandler) WithProviderService(svc *thirdparty.ThirdpartyOAuth2ProviderService) *AgentDetailHandler {
+	h.providerService = svc
 	return h
 }
 
@@ -209,7 +210,7 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 
 	for _, req := range agent.ServiceRequirements {
 		// Lookup service by ID
-		svc, err := h.serviceRepository.Get(ctx, req.ServiceID)
+		svc, err := h.providerService.Get(ctx, req.ServiceID)
 		if err != nil {
 			// Service not found, skip or log
 			h.logger.Warn("Service not found during requirement building",

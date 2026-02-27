@@ -8,6 +8,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -28,21 +29,21 @@ var (
 // This service orchestrates between agent, service, and grant repositories
 // to implement consent workflows following FR-009 through FR-020.
 type Service struct {
-	agentRepo   ports.AgentRepository
-	serviceRepo ports.ThirdpartyOAuth2ProviderRepository
-	grantRepo   ports.UserGrantRepository
+	agentRepo       ports.AgentRepository
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService
+	grantRepo       ports.UserGrantRepository
 }
 
 // NewService creates a new ConsentService.
 func NewService(
 	agentRepo ports.AgentRepository,
-	serviceRepo ports.ThirdpartyOAuth2ProviderRepository,
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	grantRepo ports.UserGrantRepository,
 ) *Service {
 	return &Service{
-		agentRepo:   agentRepo,
-		serviceRepo: serviceRepo,
-		grantRepo:   grantRepo,
+		agentRepo:       agentRepo,
+		providerService: providerService,
+		grantRepo:       grantRepo,
 	}
 }
 
@@ -66,7 +67,7 @@ func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID string) (*Age
 	}
 
 	// Fetch all available third-party services (FR-025: all services available to all agents)
-	services, err := s.serviceRepo.List(ctx)
+	services, err := s.providerService.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list third-party services: %w", err)
 	}
@@ -255,7 +256,7 @@ func (s *Service) VerifyAgentAccess(ctx context.Context, principal string, agent
 func (s *Service) validateScopes(ctx context.Context, delegations []storage.DelegatedToken) error {
 	for i, delegation := range delegations {
 		// Fetch service
-		service, err := s.serviceRepo.Get(ctx, delegation.ThirdpartyOAuth2ServiceID)
+		service, err := s.providerService.Get(ctx, delegation.ThirdpartyOAuth2ServiceID)
 		if err != nil {
 			return fmt.Errorf("failed to get service %s: %w", delegation.ThirdpartyOAuth2ServiceID, err)
 		}
@@ -342,7 +343,7 @@ func (s *Service) GetAgentDetail(ctx context.Context, agentID string) (*AgentDet
 	}
 
 	// Fetch all available third-party services (FR-025: all services available to all agents)
-	services, err := s.serviceRepo.List(ctx)
+	services, err := s.providerService.List(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list third-party services: %w", err)
 	}

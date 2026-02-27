@@ -212,7 +212,7 @@ func (m *mockAgentsService) asService() *consent.Service {
 		err:         m.err,
 	}
 
-	return consent.NewService(mockAgentRepo, mockServiceRepo, mockGrantRepo)
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo)
 }
 
 // Mock repository implementations for agents handler tests

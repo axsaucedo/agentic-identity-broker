@@ -10,8 +10,27 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
+
+// mockEncryption is a passthrough EncryptionPort for testing.
+// All operations return the input bytes unchanged.
+type mockEncryption struct{}
+
+func (m *mockEncryption) Encrypt(_ context.Context, plaintext []byte, _ map[string]string) ([]byte, error) {
+	return plaintext, nil
+}
+
+func (m *mockEncryption) Decrypt(_ context.Context, ciphertext []byte, _ map[string]string) ([]byte, error) {
+	return ciphertext, nil
+}
+
+// newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
+// with passthrough encryption for use in domain-layer tests.
+func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &mockEncryption{}, nil, nil)
+}
 
 // Mock implementations for testing
 
@@ -310,13 +329,13 @@ func TestService_GetAgentConsentInfo(t *testing.T) {
 		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
-		Secret: model.NewEncryptedSecret([]byte("")),
+		Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
 	}
 
 	t.Run("success", func(t *testing.T) {
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{"agent-1": agent}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{"service-1": service1}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{"service-1": service1}}),
 			&mockGrantRepo{grants: map[string]*storage.UserGrant{}},
 		)
 
@@ -334,7 +353,7 @@ func TestService_GetAgentConsentInfo(t *testing.T) {
 	t.Run("agent not found", func(t *testing.T) {
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[string]*storage.UserGrant{}},
 		)
 
@@ -364,13 +383,13 @@ func TestService_GrantConsent(t *testing.T) {
 			{ScopeValue: "repo", Description: "Repository access"},
 			{ScopeValue: "user:email", Description: "Email access"},
 		},
-		Secret: model.NewEncryptedSecret([]byte("")),
+		Secret: model.NewEncryptedSecret([]byte("test-ciphertext")),
 	}
 
 	t.Run("create new grant", func(t *testing.T) {
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{"agent-1": agent}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{"service-1": service1}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{"service-1": service1}}),
 			&mockGrantRepo{grants: map[string]*storage.UserGrant{}},
 		)
 
@@ -398,7 +417,7 @@ func TestService_GrantConsent(t *testing.T) {
 	t.Run("invalid scopes", func(t *testing.T) {
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{"agent-1": agent}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{"service-1": service1}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{"service-1": service1}}),
 			&mockGrantRepo{grants: map[string]*storage.UserGrant{}},
 		)
 
@@ -422,7 +441,7 @@ func TestService_GrantConsent(t *testing.T) {
 	t.Run("agent not found", func(t *testing.T) {
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[string]*storage.UserGrant{}},
 		)
 
@@ -463,7 +482,7 @@ func TestService_RevokeConsent(t *testing.T) {
 		grantRepo := &mockGrantRepo{grants: map[string]*storage.UserGrant{"grant-1": existingGrant}}
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			grantRepo,
 		)
 
@@ -475,7 +494,7 @@ func TestService_RevokeConsent(t *testing.T) {
 	t.Run("grant not found - idempotent", func(t *testing.T) {
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[string]*storage.UserGrant{}},
 		)
 
@@ -528,7 +547,7 @@ func TestService_GetActiveGrants(t *testing.T) {
 		}}
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			grantRepo,
 		)
 
@@ -541,7 +560,7 @@ func TestService_GetActiveGrants(t *testing.T) {
 	t.Run("no grants - returns empty slice", func(t *testing.T) {
 		svc := NewService(
 			&mockAgentRepo{agents: map[string]*storage.Agent{}},
-			&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}},
+			newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[string]*storage.UserGrant{}},
 		)
 
@@ -741,7 +760,7 @@ func TestService_GetAgentDelegations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := NewService(
 				&mockAgentRepo{agents: tt.agents},
-				&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}},
+				newTestProviderService(&mockServiceRepo{services: map[string]*model.ThirdpartyOAuth2ProviderEntity{}}),
 				&mockGrantRepo{grants: tt.grants},
 			)
 
