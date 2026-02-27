@@ -214,22 +214,7 @@ func (s *ThirdpartyOAuth2ProviderService) FindByProtectedResource(
 		return nil, err
 	}
 
-	dec, err := s.decryptSecret(ctx, entity)
-	if err != nil {
-		s.logger.Error("decryption_failed",
-			"operation", "find_by_protected_resource",
-			"service_id", entity.ID,
-			"resource_uri", resourceURI,
-			"reason", err)
-		return nil, err
-	}
-
-	s.logger.Info("service_secret_decrypted",
-		"operation", "find_by_protected_resource",
-		"service_id", entity.ID,
-		"resource_uri", resourceURI)
-
-	return dec, nil
+	return s.decryptSecret(ctx, entity)
 }
 
 // CountGrantsReferencingService returns the number of grants referencing this provider.
@@ -255,7 +240,6 @@ func (s *ThirdpartyOAuth2ProviderService) decryptSecret(
 	plaintext, err := s.encryption.Decrypt(ctx, ciphertext, encContext)
 	if err != nil {
 		s.logger.Error("decryption_failed",
-			"operation", "decrypt_secret",
 			"service_id", entity.ID,
 			"reason", err)
 		return nil, fmt.Errorf("failed to decrypt client secret: %w", err)
@@ -266,7 +250,6 @@ func (s *ThirdpartyOAuth2ProviderService) decryptSecret(
 	result.Secret = model.NewPlaintextSecret(string(plaintext))
 
 	s.logger.Info("service_secret_decrypted",
-		"operation", "get",
 		"service_id", entity.ID)
 
 	return result, nil
