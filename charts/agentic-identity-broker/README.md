@@ -122,6 +122,18 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `ingress.admin.enabled` | Enable Ingress for admin API | `false` |
 | `resources.requests.cpu` | CPU request | `100m` |
 | `resources.requests.memory` | Memory request | `128Mi` |
+| `commonLabels` | Labels applied to all chart resources | `{}` |
+| `namespace.create` | Create Namespace resource | `false` |
+| `namespace.name` | Namespace name override (applied to all resources) | `""` |
+| `postgresql.labels` | Labels applied only to the PostgreSQL resource (overrides `commonLabels`) | `{}` |
+| `postgresql.operator.initContainerResources` | Resources for wait-for-postgres init container | `{requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 50m, memory: 64Mi}}` |
+| `postgresql.operator.secretSuffix` | Operator credentials secret suffix | `postgresql.acid.zalan.do` |
+| `broker.thirdPartyOauth2.jweSigningKeySecret` | Secret ref for JWE signing key | `{name: "", key: signing-key}` |
+| `broker.thirdPartyOauth2.jweSigningKeyBase64` | Base64-encoded JWE signing key (highest precedence) | `""` |
+| `broker.encryption.memory.rawKey` | Base64-encoded memory encryption key | `""` |
+| `broker.encryption.awsKms.keyArn` | AWS KMS key ARN | `""` |
+| `broker.encryption.awsKms.dynamodbTableName` | DynamoDB table for branch keys | `IdentityBrokerEncryptionBranchKeys` |
+| `broker.encryption.awsKms.branchKeyTtl` | Branch key TTL | `1h` |
 
 ### Custom Values File
 
@@ -130,10 +142,22 @@ Create a `values-production.yaml` file:
 ```yaml
 replicaCount: 3
 
+namespace:
+  create: true
+  name: agentic-identity-broker
+
+commonLabels:
+  custom-label: my-value
+
 storage:
   type: postgres
 
 postgresql:
+  # Labels here override commonLabels for the PostgreSQL resource.
+  # Precedence (highest to lowest): postgresql.labels > commonLabels > base Helm labels.
+  # Note: app.kubernetes.io/component is always "database" and cannot be overridden.
+  labels:
+    custom-label: a-deviating-value
   operator:
     enabled: true
     teamId: production
@@ -161,6 +185,13 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
 ```
+
+> **Label precedence** (highest to lowest):
+> 1. PostgreSQL-specific labels (`postgresql.labels`)
+> 2. Common labels (`commonLabels`)
+> 3. Base Helm labels (chart, version, etc.)
+>
+> Note: The `app.kubernetes.io/component` label is always set to `database` for the PostgreSQL resource and cannot be overridden.
 
 Install with custom values:
 
