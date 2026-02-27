@@ -23,7 +23,6 @@ import (
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -41,7 +40,7 @@ type App struct {
 
 	// Domain services
 	ConsentService       *consentservice.Service
-	AuthProvider         *services.ThirdpartyOAuth2ServiceProvider
+	ProviderService      *thirdparty.ThirdpartyOAuth2ProviderService
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
 	TokenExchangeService *tokenexchange.TokenExchangeService
@@ -197,14 +196,14 @@ func (b *Builder) Build() (*App, error) {
 	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
 
-	// Create ThirdpartyServiceManager (handles encryption for OAuth2 services)
-	// Must be created early since it's needed by both AuthProvider and OAuth2SessionService
-	// encryptor is guaranteed to be initialized from Phase 1
-	var serviceManager *thirdparty.ServiceManager
+	// Create ThirdpartyOAuth2ProviderService (handles encryption, decryption, and branch key provisioning).
+	// This consolidated domain service replaces the previous ServiceManager + AuthProvider split.
+	// encryptor is guaranteed to be initialized from Phase 1.
 	if b.storage.Services() != nil {
-		serviceManager = thirdparty.NewServiceManager(
+		app.ProviderService = thirdparty.NewThirdpartyOAuth2ProviderService(
 			b.storage.Services(),
 			encryptor,
+			b.branchKeyManager, // May be nil if no encryption backend configured
 			b.logger,
 		)
 	}
@@ -215,16 +214,6 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.Agents(),
 			b.storage.Services(),
 			b.storage.UserGrants(),
-		)
-	}
-
-	// Create auth provider service if service manager available
-	if serviceManager != nil {
-		// Create AuthProvider (handles branch key provisioning)
-		app.AuthProvider = services.NewAuthProvider(
-			serviceManager,
-			b.branchKeyManager, // May be nil if no encryption backend configured
-			b.logger,
 		)
 	}
 
@@ -250,8 +239,8 @@ func (b *Builder) Build() (*App, error) {
 	// The application will fail to start if JWESigningKey is not provided, so we can
 	// safely create OAuth2SessionService unconditionally here.
 	//
-	// Note: OAuth2SessionService requires a serviceManager for decrypting client secrets.
-	// If services repository is not available, serviceManager will be nil and OAuth2SessionService
+	// Note: OAuth2SessionService requires a providerService for decrypting client secrets.
+	// If services repository is not available, providerService will be nil and OAuth2SessionService
 	// will fail to fetch services. This is acceptable since the application is non-functional
 	// without the services repository anyway.
 
@@ -278,7 +267,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(
-		serviceManager,
+		app.ProviderService,
 		b.storage.UserSessions(),
 		b.storage.UserGrants(),
 		b.storage.Agents(),
@@ -357,7 +346,7 @@ func (b *Builder) Build() (*App, error) {
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
 		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
-		Services: admin.NewServicesHandler(app.AuthProvider, b.config, b.logger),
+		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
 	// Create agent detail handler with repository dependencies for service requirements (Phase 6)

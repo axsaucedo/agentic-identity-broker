@@ -123,7 +123,7 @@ func TestThirdpartyOAuth2Service_Validate(t *testing.T) {
 					{ScopeValue: "repo", Description: "Full repository access"},
 				},
 			},
-			wantErr: "client_secret is required",
+			wantErr: "client_secret or client_secret_ciphertext is required",
 		},
 		{
 			name: "missing issuer_uri",

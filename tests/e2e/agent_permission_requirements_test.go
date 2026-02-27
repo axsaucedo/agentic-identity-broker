@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -129,21 +130,21 @@ var _ = Describe("Agent Permission Requirements", func() {
 	// ===========================================================================
 
 	Describe("User Story 1: Administrator Configures Agent Service Requirements", func() {
-		var githubService *storage.ThirdpartyOAuth2Service
+		var githubService *model.ThirdpartyOAuth2ProviderEntity
 
 		BeforeEach(func() {
 			// Create test third-party service for reference in service requirements
-			githubService = &storage.ThirdpartyOAuth2Service{
-				ID:           "550e8400-e29b-41d4-a716-446655440000",
-				DisplayName:  "GitHub",
-				ClientID:     "github-client",
-				ClientSecret: "github-secret",
-				IssuerURI:    "https://github.com",
-				Endpoints: storage.OAuth2Endpoints{
+			githubService = &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
+				DisplayName: "GitHub",
+				ClientID:    "github-client",
+				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				IssuerURI:   "https://github.com",
+				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 					TokenEndpoint:     "https://github.com/login/oauth/access_token",
 				},
-				Scopes: []storage.OAuthScope{
+				Scopes: []model.OAuthScope{
 					{ScopeValue: "repo", Description: "Access repositories"},
 					{ScopeValue: "user:email", Description: "Access user email"},
 					{ScopeValue: "read:user", Description: "Read user profile"},
@@ -395,21 +396,21 @@ var _ = Describe("Agent Permission Requirements", func() {
 
 	Describe("User Story 2: Authorization Endpoint Validates Service Requirements", func() {
 		var agent *storage.Agent
-		var githubService *storage.ThirdpartyOAuth2Service
+		var githubService *model.ThirdpartyOAuth2ProviderEntity
 
 		BeforeEach(func() {
 			// Create test third-party service
-			githubService = &storage.ThirdpartyOAuth2Service{
-				ID:           "550e8400-e29b-41d4-a716-446655440000",
-				DisplayName:  "GitHub",
-				ClientID:     "github-client",
-				ClientSecret: "github-secret",
-				IssuerURI:    "https://github.com",
-				Endpoints: storage.OAuth2Endpoints{
+			githubService = &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
+				DisplayName: "GitHub",
+				ClientID:    "github-client",
+				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				IssuerURI:   "https://github.com",
+				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 					TokenEndpoint:     "https://github.com/login/oauth/access_token",
 				},
-				Scopes: []storage.OAuthScope{
+				Scopes: []model.OAuthScope{
 					{ScopeValue: "repo", Description: "Access repositories"},
 					{ScopeValue: "user:email", Description: "Access user email"},
 				},
@@ -732,22 +733,22 @@ var _ = Describe("Agent Permission Requirements", func() {
 	// ===========================================================================
 
 	Describe("User Story 3: Consent Screen Displays Required Services", func() {
-		var githubService *storage.ThirdpartyOAuth2Service
+		var githubService *model.ThirdpartyOAuth2ProviderEntity
 		var agent *storage.Agent
 
 		BeforeEach(func() {
 			// Create test third-party service
-			githubService = &storage.ThirdpartyOAuth2Service{
-				ID:           "550e8400-e29b-41d4-a716-446655440000",
-				DisplayName:  "GitHub",
-				ClientID:     "github-client",
-				ClientSecret: "github-secret",
-				IssuerURI:    "https://github.com",
-				Endpoints: storage.OAuth2Endpoints{
+			githubService = &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
+				DisplayName: "GitHub",
+				ClientID:    "github-client",
+				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				IssuerURI:   "https://github.com",
+				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 					TokenEndpoint:     "https://github.com/login/oauth/access_token",
 				},
-				Scopes: []storage.OAuthScope{
+				Scopes: []model.OAuthScope{
 					{ScopeValue: "repo", Description: "Access repositories"},
 					{ScopeValue: "user:email", Description: "Access user email"},
 					{ScopeValue: "read:user", Description: "Read user profile"},
@@ -886,17 +887,17 @@ var _ = Describe("Agent Permission Requirements", func() {
 		// Spec: Mandatory services appear before optional services in list
 		It("should list mandatory services before optional services in response", func() {
 			// Given: Agent with both mandatory and optional service requirements
-			optionalService := &storage.ThirdpartyOAuth2Service{
-				ID:           "550e8400-e29b-41d4-a716-446655440001",
-				DisplayName:  "GitLab",
-				ClientID:     "gitlab-client",
-				ClientSecret: "gitlab-secret",
-				IssuerURI:    "https://gitlab.com",
-				Endpoints: storage.OAuth2Endpoints{
+			optionalService := &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          "550e8400-e29b-41d4-a716-446655440001",
+				DisplayName: "GitLab",
+				ClientID:    "gitlab-client",
+				Secret:      model.NewEncryptedSecret([]byte("gitlab-secret")),
+				IssuerURI:   "https://gitlab.com",
+				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://gitlab.com/oauth/authorize",
 					TokenEndpoint:     "https://gitlab.com/oauth/token",
 				},
-				Scopes: []storage.OAuthScope{
+				Scopes: []model.OAuthScope{
 					{ScopeValue: "api", Description: "API access"},
 				},
 			}
@@ -945,7 +946,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 		// Spec: Each scope includes description from service configuration
 		It("should return description field for all configured scopes", func() {
 			// Given: Service with properly configured scopes including descriptions
-			githubService.Scopes = append(githubService.Scopes, storage.OAuthScope{ScopeValue: "gist", Description: "Manage gists"})
+			githubService.Scopes = append(githubService.Scopes, model.OAuthScope{ScopeValue: "gist", Description: "Manage gists"})
 			err := testStorage.Services().Update(context.Background(), githubService)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -983,22 +984,22 @@ var _ = Describe("Agent Permission Requirements", func() {
 	// ===========================================================================
 
 	Describe("User Story 4: Display-Only Scopes with Descriptions", func() {
-		var githubService *storage.ThirdpartyOAuth2Service
+		var githubService *model.ThirdpartyOAuth2ProviderEntity
 		var agent *storage.Agent
 
 		BeforeEach(func() {
 			// Create test third-party service with scopes
-			githubService = &storage.ThirdpartyOAuth2Service{
-				ID:           "550e8400-e29b-41d4-a716-446655440002",
-				DisplayName:  "GitHub",
-				ClientID:     "github-client",
-				ClientSecret: "github-secret",
-				IssuerURI:    "https://github.com",
-				Endpoints: storage.OAuth2Endpoints{
+			githubService = &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          "550e8400-e29b-41d4-a716-446655440002",
+				DisplayName: "GitHub",
+				ClientID:    "github-client",
+				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				IssuerURI:   "https://github.com",
+				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 					TokenEndpoint:     "https://github.com/login/oauth/access_token",
 				},
-				Scopes: []storage.OAuthScope{
+				Scopes: []model.OAuthScope{
 					{ScopeValue: "repo", Description: "Access repositories"},
 					{ScopeValue: "user:email", Description: "Access user email"},
 					{ScopeValue: "gist", Description: "Manage gists"},
@@ -1222,21 +1223,21 @@ var _ = Describe("Agent Permission Requirements", func() {
 	Describe("User Story 6: Redirect URL for Seamless Flow Continuation", func() {
 		var agent *storage.Agent
 		var userPrincipalForGrant string
-		var githubService *storage.ThirdpartyOAuth2Service
+		var githubService *model.ThirdpartyOAuth2ProviderEntity
 
 		BeforeEach(func() {
 			// Create test third-party service
-			githubService = &storage.ThirdpartyOAuth2Service{
-				ID:           "550e8400-e29b-41d4-a716-446655440006",
-				DisplayName:  "GitHub",
-				ClientID:     "github-client",
-				ClientSecret: "github-secret",
-				IssuerURI:    "https://github.com",
-				Endpoints: storage.OAuth2Endpoints{
+			githubService = &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          "550e8400-e29b-41d4-a716-446655440006",
+				DisplayName: "GitHub",
+				ClientID:    "github-client",
+				Secret:      model.NewEncryptedSecret([]byte("github-secret")),
+				IssuerURI:   "https://github.com",
+				Endpoints: model.OAuth2Endpoints{
 					AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 					TokenEndpoint:     "https://github.com/login/oauth/access_token",
 				},
-				Scopes: []storage.OAuthScope{
+				Scopes: []model.OAuthScope{
 					{ScopeValue: "repo", Description: "Access repositories"},
 					{ScopeValue: "user:email", Description: "Access user email"},
 				},

@@ -236,7 +236,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	err = key1.Set(jwk.AlgorithmKey, "A256GCM")
 	require.NoError(t, err)
 
-	serviceRepo1 := memory.NewThirdpartyServiceRepository()
+	serviceRepo1 := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	sessionRepo1 := memory.NewInMemoryUserSessionRepository()
 	grantRepo1 := memory.NewUserGrantRepository()
 	agentRepo1 := memory.NewAgentRepository()
@@ -244,16 +244,17 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
 
-	// Create ServiceManager for handling encryption/decryption of client secrets
+	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
 	encryption := noop.NewNoOpEncryption()
-	serviceManager1 := thirdparty.NewServiceManager(
+	providerService1 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo1,
 		encryption,
+		nil,
 		slog.Default(),
 	)
 
 	service1 := oauth2session.NewOAuth2SessionService(
-		serviceManager1,
+		providerService1,
 		sessionRepo1,
 		grantRepo1,
 		agentRepo1,
@@ -272,20 +273,21 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	err = key2.Set(jwk.AlgorithmKey, "A256GCM")
 	require.NoError(t, err)
 
-	serviceRepo2 := memory.NewThirdpartyServiceRepository()
+	serviceRepo2 := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	sessionRepo2 := memory.NewInMemoryUserSessionRepository()
 	grantRepo2 := memory.NewUserGrantRepository()
 	agentRepo2 := memory.NewAgentRepository()
 
-	// Create ServiceManager for handling encryption/decryption of client secrets
-	serviceManager2 := thirdparty.NewServiceManager(
+	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
+	providerService2 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo2,
 		encryption,
+		nil,
 		slog.Default(),
 	)
 
 	service2 := oauth2session.NewOAuth2SessionService(
-		serviceManager2,
+		providerService2,
 		sessionRepo2,
 		grantRepo2,
 		agentRepo2,

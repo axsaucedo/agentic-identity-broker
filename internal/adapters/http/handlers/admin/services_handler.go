@@ -3,34 +3,37 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // ServicesHandler handles HTTP requests for third-party OAuth2 service CRUD operations.
 type ServicesHandler struct {
-	authProvider services.AuthProvider
-	config       *ports.Config
-	logger       *slog.Logger
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService
+	config          *ports.Config
+	logger          *slog.Logger
 }
 
 // NewServicesHandler creates a new services handler.
-func NewServicesHandler(authProvider services.AuthProvider, config *ports.Config, logger *slog.Logger) *ServicesHandler {
+func NewServicesHandler(providerService *thirdparty.ThirdpartyOAuth2ProviderService, config *ports.Config, logger *slog.Logger) *ServicesHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ServicesHandler{
-		authProvider: authProvider,
-		config:       config,
-		logger:       logger,
+		providerService: providerService,
+		config:          config,
+		logger:          logger,
 	}
 }
 
@@ -109,109 +112,96 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Create service entity
+	skipHTTPSValidation := false
+	if h.config != nil {
+		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
+	}
+
+	// Build entity from request
 	now := time.Now().UTC()
-	service := &storage.ThirdpartyOAuth2Service{
-		ID:           uuid.New().String(),
-		DisplayName:  req.DisplayName,
-		ClientID:     req.ClientID,
-		ClientSecret: req.ClientSecret,
-		IssuerURI:    req.IssuerURI,
-		Discovery: storage.DiscoveryConfig{
-			EnableDiscovery: req.Discovery.EnableDiscovery,
-			MetadataURL:     req.Discovery.MetadataURL,
-		},
-		Scopes:             make([]storage.OAuthScope, len(req.Scopes)),
+	entity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:                 uuid.New().String(),
+		DisplayName:        req.DisplayName,
+		ClientID:           req.ClientID,
+		Secret:             model.NewPlaintextSecret(req.ClientSecret),
+		IssuerURI:          req.IssuerURI,
+		Discovery:          model.DiscoveryConfig{EnableDiscovery: req.Discovery.EnableDiscovery, MetadataURL: req.Discovery.MetadataURL},
 		ProtectedResources: req.ProtectedResources,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
 
 	// Convert scopes
+	entity.Scopes = make([]model.OAuthScope, len(req.Scopes))
 	for i, scope := range req.Scopes {
-		service.Scopes[i] = storage.OAuthScope{
-			ScopeValue:  scope.ScopeValue,
-			Description: scope.Description,
-		}
+		entity.Scopes[i] = model.OAuthScope{ScopeValue: scope.ScopeValue, Description: scope.Description}
 	}
 
 	// If discovery is enabled, attempt to discover endpoints
-	skipHTTPSValidation := false
-	if h.config != nil {
-		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
-	}
-
 	if req.Discovery.EnableDiscovery {
 		endpoints, err := storage.DiscoverOAuth2Endpoints(ctx, req.IssuerURI, req.Discovery.MetadataURL, skipHTTPSValidation)
 		if err != nil {
 			h.logger.Warn("OAuth2 endpoint discovery failed, falling back to manual endpoints",
 				"issuer_uri", req.IssuerURI,
 				"error", err)
-
-			// Fall back to manually provided endpoints if discovery fails
+			// Fall back to manually provided endpoints
 			if req.Endpoints != nil {
-				service.Endpoints = storage.OAuth2Endpoints{
+				entity.Endpoints = model.OAuth2Endpoints{
 					TokenEndpoint:     req.Endpoints.TokenEndpoint,
 					AuthorizeEndpoint: req.Endpoints.AuthorizeEndpoint,
 				}
 			}
 		} else {
-			// Use discovered endpoints
-			service.Endpoints = *endpoints
-		}
-	} else {
-		// Use manually provided endpoints
-		if req.Endpoints != nil {
-			service.Endpoints = storage.OAuth2Endpoints{
-				TokenEndpoint:     req.Endpoints.TokenEndpoint,
-				AuthorizeEndpoint: req.Endpoints.AuthorizeEndpoint,
+			entity.Endpoints = model.OAuth2Endpoints{
+				TokenEndpoint:     endpoints.TokenEndpoint,
+				AuthorizeEndpoint: endpoints.AuthorizeEndpoint,
 			}
+		}
+	} else if req.Endpoints != nil {
+		entity.Endpoints = model.OAuth2Endpoints{
+			TokenEndpoint:     req.Endpoints.TokenEndpoint,
+			AuthorizeEndpoint: req.Endpoints.AuthorizeEndpoint,
 		}
 	}
 
-	// Validate service with configuration-based HTTPS validation skipping
-	if err := service.ValidateForCreateWith(skipHTTPSValidation); err != nil {
+	// Validate entity
+	if err := entity.ValidateForCreate(skipHTTPSValidation); err != nil {
 		h.logger.Warn("service validation failed",
-			"client_id", service.ClientID,
+			"client_id", entity.ClientID,
 			"error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 
-	// Validate protected_resources (RFC 8693 resource URIs) - return 400 for invalid format (T023)
-	if err := service.ValidateProtectedResources(); err != nil {
+	// Validate protected_resources (RFC 8693 resource URIs)
+	if err := entity.ValidateProtectedResources(); err != nil {
 		h.logger.Warn("protected_resources validation failed",
-			"service_id", service.ID,
+			"service_id", entity.ID,
 			"error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 
 	// Check for duplicate resource URIs across existing services (T022)
-	if len(service.ProtectedResources) > 0 {
-		for _, resource := range service.ProtectedResources {
-			existing, err := h.authProvider.FindByProtectedResource(ctx, resource)
-			if err == nil && existing != nil {
-				// Conflict: another service already has this resource URI
-				h.logger.Warn("duplicate protected resource",
-					"resource", resource,
-					"service_id", existing.ID)
-				h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
-				return
-			}
-			// Ignore NotFound errors, those are expected when no existing service has the resource
+	for _, resource := range entity.ProtectedResources {
+		existing, err := h.providerService.FindByProtectedResource(ctx, resource)
+		if err == nil && existing != nil {
+			h.logger.Warn("duplicate protected resource",
+				"resource", resource,
+				"service_id", existing.ID)
+			h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
+			return
 		}
 	}
 
-	// Create service using domain service (handles branch key provisioning and creation atomically)
-	createdService, err := h.authProvider.Create(ctx, service)
-	if err != nil {
+	// Create service (branch key provisioning and encryption handled by domain service)
+	if err := h.providerService.Create(ctx, entity); err != nil {
 		h.handleStorageError(w, r, "CreateService", err)
 		return
 	}
 
 	// Return created service with redacted secret
-	resp := h.toResponse(createdService.RedactedCopy())
+	resp := h.toResponse(entity.RedactedCopy())
 	h.writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -225,14 +215,14 @@ func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	service, err := h.authProvider.Get(ctx, serviceID)
+	entity, err := h.providerService.Get(ctx, serviceID)
 	if err != nil {
 		h.handleStorageError(w, r, "GetService", err)
 		return
 	}
 
 	// Return service with redacted secret
-	resp := h.toResponse(service.RedactedCopy())
+	resp := h.toResponse(entity.RedactedCopy())
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
@@ -253,119 +243,115 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get existing service to preserve created_at
-	existing, err := h.authProvider.Get(ctx, serviceID)
+	// Get existing entity to preserve created_at and existing secret if not changed
+	existing, err := h.providerService.Get(ctx, serviceID)
 	if err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
 		return
 	}
 
-	// Update service entity
-	service := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  req.DisplayName,
-		ClientID:     req.ClientID,
-		ClientSecret: req.ClientSecret,
-		IssuerURI:    req.IssuerURI,
-		Discovery: storage.DiscoveryConfig{
-			EnableDiscovery: req.Discovery.EnableDiscovery,
-			MetadataURL:     req.Discovery.MetadataURL,
-		},
-		Scopes:             make([]storage.OAuthScope, len(req.Scopes)),
+	skipHTTPSValidation := false
+	if h.config != nil {
+		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
+	}
+
+	// Build updated entity
+	var secret model.Secret
+	if req.ClientSecret != "" {
+		// New secret provided — use plaintext (will be encrypted by domain service)
+		secret = model.NewPlaintextSecret(req.ClientSecret)
+	} else {
+		// No new secret — preserve existing secret. Get() returns a decrypted entity
+		// (plaintext state), so pass it through directly; Update() will re-encrypt it.
+		secret = existing.Secret
+	}
+
+	entity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:                 serviceID,
+		DisplayName:        req.DisplayName,
+		ClientID:           req.ClientID,
+		Secret:             secret,
+		IssuerURI:          req.IssuerURI,
+		Discovery:          model.DiscoveryConfig{EnableDiscovery: req.Discovery.EnableDiscovery, MetadataURL: req.Discovery.MetadataURL},
 		ProtectedResources: req.ProtectedResources,
 		CreatedAt:          existing.CreatedAt,
 		UpdatedAt:          time.Now().UTC(),
 	}
 
 	// Convert scopes
+	entity.Scopes = make([]model.OAuthScope, len(req.Scopes))
 	for i, scope := range req.Scopes {
-		service.Scopes[i] = storage.OAuthScope{
-			ScopeValue:  scope.ScopeValue,
-			Description: scope.Description,
-		}
+		entity.Scopes[i] = model.OAuthScope{ScopeValue: scope.ScopeValue, Description: scope.Description}
 	}
 
 	// If discovery is enabled, attempt to discover endpoints
-	skipHTTPSValidation := false
-	if h.config != nil {
-		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
-	}
-
 	if req.Discovery.EnableDiscovery {
 		endpoints, err := storage.DiscoverOAuth2Endpoints(ctx, req.IssuerURI, req.Discovery.MetadataURL, skipHTTPSValidation)
 		if err != nil {
 			h.logger.Warn("OAuth2 endpoint discovery failed, falling back to manual endpoints",
 				"issuer_uri", req.IssuerURI,
 				"error", err)
-
-			// Fall back to manually provided endpoints if discovery fails
 			if req.Endpoints != nil {
-				service.Endpoints = storage.OAuth2Endpoints{
+				entity.Endpoints = model.OAuth2Endpoints{
 					TokenEndpoint:     req.Endpoints.TokenEndpoint,
 					AuthorizeEndpoint: req.Endpoints.AuthorizeEndpoint,
 				}
 			}
 		} else {
-			// Use discovered endpoints
-			service.Endpoints = *endpoints
-		}
-	} else {
-		// Use manually provided endpoints
-		if req.Endpoints != nil {
-			service.Endpoints = storage.OAuth2Endpoints{
-				TokenEndpoint:     req.Endpoints.TokenEndpoint,
-				AuthorizeEndpoint: req.Endpoints.AuthorizeEndpoint,
+			entity.Endpoints = model.OAuth2Endpoints{
+				TokenEndpoint:     endpoints.TokenEndpoint,
+				AuthorizeEndpoint: endpoints.AuthorizeEndpoint,
 			}
+		}
+	} else if req.Endpoints != nil {
+		entity.Endpoints = model.OAuth2Endpoints{
+			TokenEndpoint:     req.Endpoints.TokenEndpoint,
+			AuthorizeEndpoint: req.Endpoints.AuthorizeEndpoint,
 		}
 	}
 
-	// Validate service with configuration-based HTTPS validation skipping
-	if err := service.ValidateWith(skipHTTPSValidation); err != nil {
+	// Validate entity
+	if err := entity.ValidateForUpdate(skipHTTPSValidation); err != nil {
 		h.logger.Warn("service validation failed",
-			"client_id", service.ClientID,
+			"client_id", entity.ClientID,
 			"error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 
-	// Validate protected_resources (RFC 8693 resource URIs) - return 400 for invalid format (T023)
-	if err := service.ValidateProtectedResources(); err != nil {
+	// Validate protected_resources
+	if err := entity.ValidateProtectedResources(); err != nil {
 		h.logger.Warn("protected_resources validation failed",
-			"service_id", service.ID,
+			"service_id", entity.ID,
 			"error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 
 	// Check for duplicate resource URIs across other services (T022)
-	// Only check resources that are different from existing service's resources
-	if len(service.ProtectedResources) > 0 {
-		for _, resource := range service.ProtectedResources {
-			existing, err := h.authProvider.FindByProtectedResource(ctx, resource)
-			if err == nil && existing != nil && existing.ID != service.ID {
-				// Conflict: another service already has this resource URI
-				h.logger.Warn("duplicate protected resource",
-					"resource", resource,
-					"service_id", existing.ID)
-				h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
-				return
-			}
-			// Ignore NotFound errors, those are expected when no existing service has the resource
+	for _, resource := range entity.ProtectedResources {
+		existingByResource, err := h.providerService.FindByProtectedResource(ctx, resource)
+		if err == nil && existingByResource != nil && existingByResource.ID != entity.ID {
+			h.logger.Warn("duplicate protected resource",
+				"resource", resource,
+				"service_id", existingByResource.ID)
+			h.writeError(w, http.StatusConflict, "conflict", "protected resource URI already configured for another service")
+			return
 		}
 	}
 
-	// Update in repository (skip validation since we already did it above)
-	if err := h.authProvider.Update(ctx, service); err != nil {
+	// Update in domain service (handles encryption if secret changed)
+	if err := h.providerService.Update(ctx, entity); err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
 		return
 	}
 
 	h.logger.Info("OAuth2 service updated",
-		"service_id", service.ID,
-		"client_id", service.ClientID)
+		"service_id", entity.ID,
+		"client_id", entity.ClientID)
 
 	// Return updated service with redacted secret
-	resp := h.toResponse(service.RedactedCopy())
+	resp := h.toResponse(entity.RedactedCopy())
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
@@ -380,11 +366,11 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Delete via domain service
-	if err := h.authProvider.Delete(ctx, serviceID); err != nil {
-		// Special handling for conflict errors (grants exist)
-		if storageErr, ok := err.(*storage.StorageError); ok && storageErr.Kind == storage.ErrorKindConflict {
-			// Extract grant count from error message if possible
-			message := storageErr.Message
+	if err := h.providerService.Delete(ctx, serviceID); err != nil {
+		// Special handling for conflict errors (grants exist); use errors.As for wrapped errors
+		var conflictErr *storage.StorageError
+		if errors.As(err, &conflictErr) && conflictErr.Kind == storage.ErrorKindConflict {
+			message := conflictErr.Message
 			h.logger.Warn("service deletion blocked due to existing grants",
 				"service_id", serviceID,
 				"error", message)
@@ -406,57 +392,60 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 func (h *ServicesHandler) ListServices(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	services, err := h.authProvider.List(ctx)
+	entities, err := h.providerService.List(ctx)
 	if err != nil {
 		h.handleStorageError(w, r, "ListServices", err)
 		return
 	}
 
 	// Convert to response format with redacted secrets
-	responses := make([]ServiceResponse, len(services))
-	for i, service := range services {
-		responses[i] = h.toResponse(service.RedactedCopy())
+	responses := make([]ServiceResponse, len(entities))
+	for i, entity := range entities {
+		responses[i] = h.toResponse(entity.RedactedCopy())
 	}
 
 	h.writeJSON(w, http.StatusOK, responses)
 }
 
-// toResponse converts a ThirdpartyOAuth2Service entity to ServiceResponse.
-// Assumes the service has already been redacted.
-func (h *ServicesHandler) toResponse(service *storage.ThirdpartyOAuth2Service) ServiceResponse {
-	scopes := make([]OAuthScopeResponse, len(service.Scopes))
-	for i, scope := range service.Scopes {
+// toResponse converts a ThirdpartyOAuth2ProviderEntity to ServiceResponse.
+// Assumes the entity has already been redacted.
+func (h *ServicesHandler) toResponse(entity *model.ThirdpartyOAuth2ProviderEntity) ServiceResponse {
+	scopes := make([]OAuthScopeResponse, len(entity.Scopes))
+	for i, scope := range entity.Scopes {
 		scopes[i] = OAuthScopeResponse{
 			ScopeValue:  scope.ScopeValue,
 			Description: scope.Description,
 		}
 	}
 
+	// Secret should be "REDACTED" for redacted copies
+	clientSecret, _ := entity.Secret.GetPlaintext()
+
 	return ServiceResponse{
-		ID:           service.ID,
-		DisplayName:  service.DisplayName,
-		ClientID:     service.ClientID,
-		ClientSecret: service.ClientSecret, // Should be "REDACTED"
-		IssuerURI:    service.IssuerURI,
+		ID:           entity.ID,
+		DisplayName:  entity.DisplayName,
+		ClientID:     entity.ClientID,
+		ClientSecret: clientSecret,
+		IssuerURI:    entity.IssuerURI,
 		Discovery: DiscoveryConfigResponse{
-			EnableDiscovery: service.Discovery.EnableDiscovery,
-			MetadataURL:     service.Discovery.MetadataURL,
+			EnableDiscovery: entity.Discovery.EnableDiscovery,
+			MetadataURL:     entity.Discovery.MetadataURL,
 		},
 		Endpoints: OAuth2EndpointsResponse{
-			TokenEndpoint:     service.Endpoints.TokenEndpoint,
-			AuthorizeEndpoint: service.Endpoints.AuthorizeEndpoint,
+			TokenEndpoint:     entity.Endpoints.TokenEndpoint,
+			AuthorizeEndpoint: entity.Endpoints.AuthorizeEndpoint,
 		},
 		Scopes:             scopes,
-		ProtectedResources: service.ProtectedResources,
-		CreatedAt:          service.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:          service.UpdatedAt.Format(time.RFC3339),
+		ProtectedResources: entity.ProtectedResources,
+		CreatedAt:          entity.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:          entity.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
 // handleStorageError converts storage errors to HTTP responses.
 func (h *ServicesHandler) handleStorageError(w http.ResponseWriter, r *http.Request, operation string, err error) {
-	storageErr, ok := err.(*storage.StorageError)
-	if !ok {
+	var storageErr *storage.StorageError
+	if !errors.As(err, &storageErr) {
 		h.logger.Error("unexpected error type", "operation", operation, "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
@@ -466,7 +455,6 @@ func (h *ServicesHandler) handleStorageError(w http.ResponseWriter, r *http.Requ
 	case storage.ErrorKindNotFound:
 		h.writeError(w, http.StatusNotFound, "service not found", storageErr.Message)
 	case storage.ErrorKindConflict:
-		// Extract error details for user-friendly message
 		message := storageErr.Message
 		if strings.Contains(message, "grants reference it") {
 			h.writeError(w, http.StatusConflict, "conflict", message)
@@ -484,7 +472,7 @@ func (h *ServicesHandler) handleStorageError(w http.ResponseWriter, r *http.Requ
 }
 
 // writeJSON writes a JSON response.
-func (h *ServicesHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func (h *ServicesHandler) writeJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {

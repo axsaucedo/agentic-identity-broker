@@ -21,8 +21,8 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
 
@@ -32,32 +32,32 @@ import (
 
 func TestInitiateOAuth2Flow_Success(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Create a third-party service
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
 	redirectURI := "https://example.com/sessions"
 
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewPlaintextSecret("test-secret"),
+		IssuerURI:   "https://github.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 			{ScopeValue: "user", Description: "User profile"},
 		},
 	}
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Call InitiateOAuth2Flow
@@ -106,11 +106,11 @@ func TestInitiateOAuth2Flow_InvalidRedirectURI(t *testing.T) {
 	// This test focuses on what the service actually validates.
 
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	principal := "user@example.com"
@@ -130,7 +130,7 @@ func TestInitiateOAuth2Flow_InvalidRedirectURI(t *testing.T) {
 
 func TestInitiateOAuth2Flow_StateTokenContainsCorrectClaims(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Create service
 	principal := "user@example.com"
@@ -138,7 +138,7 @@ func TestInitiateOAuth2Flow_StateTokenContainsCorrectClaims(t *testing.T) {
 	redirectURI := "https://example.com/sessions"
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	result, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, redirectURI)
@@ -153,7 +153,7 @@ func TestInitiateOAuth2Flow_StateTokenContainsCorrectClaims(t *testing.T) {
 
 func TestInitiateOAuth2Flow_AuthorizationURLContainsRequiredParams(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Create service
 	principal := "user@example.com"
@@ -161,7 +161,7 @@ func TestInitiateOAuth2Flow_AuthorizationURLContainsRequiredParams(t *testing.T)
 	redirectURI := "https://example.com/sessions"
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	result, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, redirectURI)
@@ -187,19 +187,19 @@ func TestInitiateOAuth2Flow_AuthorizationURLContainsRequiredParams(t *testing.T)
 func TestInitiateOAuth2Flow_DifferentServicesScopes(t *testing.T) {
 	tests := []struct {
 		name       string
-		scopes     []storage.OAuthScope
+		scopes     []model.OAuthScope
 		expectedQs string // Expected scope query string
 	}{
 		{
 			name: "single scope",
-			scopes: []storage.OAuthScope{
+			scopes: []model.OAuthScope{
 				{ScopeValue: "repo", Description: "Repository access"},
 			},
 			expectedQs: "repo",
 		},
 		{
 			name: "multiple scopes",
-			scopes: []storage.OAuthScope{
+			scopes: []model.OAuthScope{
 				{ScopeValue: "repo", Description: "Repository access"},
 				{ScopeValue: "user", Description: "User profile"},
 				{ScopeValue: "notifications", Description: "Notifications"},
@@ -211,12 +211,12 @@ func TestInitiateOAuth2Flow_DifferentServicesScopes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			service, _, serviceManager := setupService(t)
+			service, _, providerService := setupService(t)
 
 			serviceID := uuid.New().String()
 			thirdPartyService := createTestService(serviceID)
 			thirdPartyService.Scopes = tt.scopes
-			err := serviceManager.Create(ctx, thirdPartyService)
+			err := providerService.Create(ctx, thirdPartyService)
 			require.NoError(t, err)
 
 			principal := "user@example.com"
@@ -242,7 +242,7 @@ func TestInitiateOAuth2Flow_DifferentServicesScopes(t *testing.T) {
 
 func TestHandleCallback_Success(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: create service and initiate flow
 	principal := "user@example.com"
@@ -264,7 +264,7 @@ func TestHandleCallback_Success(t *testing.T) {
 	// Update token endpoint to point to mock server
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
 
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Initiate flow to get state token with PKCE verifier
@@ -322,12 +322,12 @@ func TestHandleCallback_InvalidStateToken(t *testing.T) {
 
 func TestHandleCallback_ExpiredStateToken(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Create service
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Create an expired state token (manually constructed)
@@ -350,7 +350,7 @@ func TestHandleCallback_ExpiredStateToken(t *testing.T) {
 
 func TestHandleCallback_PrincipalMismatch(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Create service and initiate flow as user1
 	principal1 := "user1@example.com"
@@ -358,7 +358,7 @@ func TestHandleCallback_PrincipalMismatch(t *testing.T) {
 	redirectURI := "https://example.com/sessions"
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	flowResult, err := service.InitiateOAuth2Flow(ctx, principal1, serviceID, redirectURI)
@@ -386,7 +386,7 @@ func TestHandleCallback_PrincipalMismatch(t *testing.T) {
 
 func TestHandleCallback_ServiceIDMismatch(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Create two services
 	serviceID1 := uuid.New().String()
@@ -396,9 +396,9 @@ func TestHandleCallback_ServiceIDMismatch(t *testing.T) {
 	service2 := createTestService(serviceID2)
 	service2.DisplayName = "Google"
 
-	err := serviceManager.Create(ctx, service1)
+	err := providerService.Create(ctx, service1)
 	require.NoError(t, err)
-	err = serviceManager.Create(ctx, service2)
+	err = providerService.Create(ctx, service2)
 	require.NoError(t, err)
 
 	// Initiate flow for service1
@@ -478,7 +478,7 @@ func TestHandleCallback_TokenExchangeFailureWithRetry(t *testing.T) {
 	// Mock endpoint fails first 2 attempts (HTTP 500), succeeds on 3rd
 
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
@@ -497,7 +497,7 @@ func TestHandleCallback_TokenExchangeFailureWithRetry(t *testing.T) {
 	// Update token endpoint to point to mock server
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
 
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	principal := "user@example.com"
@@ -537,11 +537,11 @@ func TestHandleCallback_TokenExchangeFailureWithRetry(t *testing.T) {
 
 func TestHandleCallback_RetryExhausted(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	principal := "user@example.com"
@@ -563,7 +563,7 @@ func TestHandleCallback_RetryExhausted(t *testing.T) {
 
 	// Update service to use mock token endpoint
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = serviceManager.Update(ctx, thirdPartyService)
+	err = providerService.Update(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Call HandleCallback - should fail after exhausting retries
@@ -588,11 +588,11 @@ func TestHandleCallback_ContextCancellationDuringRetry(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	principal := "user@example.com"
@@ -614,7 +614,7 @@ func TestHandleCallback_ContextCancellationDuringRetry(t *testing.T) {
 
 	// Update service to use mock token endpoint
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = serviceManager.Update(context.Background(), thirdPartyService)
+	err = providerService.Update(context.Background(), thirdPartyService)
 	require.NoError(t, err)
 
 	// Call HandleCallback with short timeout context - should be cancelled before completion
@@ -636,11 +636,11 @@ func TestHandleCallback_ContextCancellationDuringRetry(t *testing.T) {
 
 func TestHandleCallback_TokenEncryptionFailure(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	principal := "user@example.com"
@@ -661,7 +661,7 @@ func TestHandleCallback_TokenEncryptionFailure(t *testing.T) {
 
 	// Update service to use mock token endpoint
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = serviceManager.Update(ctx, thirdPartyService)
+	err = providerService.Update(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Test with mock token endpoint working but encryption would fail
@@ -683,7 +683,7 @@ func TestHandleCallback_TokenEncryptionFailure(t *testing.T) {
 func TestHandleCallback_SessionAlreadyExists(t *testing.T) {
 	// Test upsert semantics: if session exists, update it
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
@@ -701,7 +701,7 @@ func TestHandleCallback_SessionAlreadyExists(t *testing.T) {
 	// Update token endpoint to point to mock server
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
 
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	principal := "user@example.com"
@@ -752,11 +752,11 @@ func TestHandleCallback_SessionAlreadyExists(t *testing.T) {
 
 func TestHandleCallback_PKCEValidationFailure(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	principal := "user@example.com"
@@ -783,7 +783,7 @@ func TestHandleCallback_PKCEValidationFailure(t *testing.T) {
 
 	// Update service to use mock token endpoint
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = serviceManager.Update(ctx, thirdPartyService)
+	err = providerService.Update(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Call HandleCallback - should fail due to PKCE validation
@@ -1003,7 +1003,7 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 	}))
 }
 
-func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.ThirdpartyServiceRepository, *thirdparty.ServiceManager) {
+func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.InMemoryThirdpartyOAuth2ProviderRepository, *thirdparty.ThirdpartyOAuth2ProviderService) {
 	t.Helper()
 
 	// Create test JWE key
@@ -1015,7 +1015,7 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.Th
 	require.NoError(t, err)
 
 	// Create repositories
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	agentRepo := memory.NewAgentRepository()
@@ -1027,15 +1027,16 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.Th
 	// Use NoOp encryption for unit tests (implementation is now complete)
 	encryption := noop.NewNoOpEncryption()
 
-	// Create ServiceManager for handling encryption/decryption of client secrets
-	serviceManager := thirdparty.NewServiceManager(
+	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
 		encryption,
+		nil,
 		slog.Default(),
 	)
 
 	svc := oauth2session.NewOAuth2SessionService(
-		serviceManager,
+		providerService,
 		sessionRepo,
 		grantRepo,
 		agentRepo,
@@ -1046,24 +1047,24 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.Th
 		slog.Default(),
 	)
 
-	return svc, serviceRepo, serviceManager
+	return svc, serviceRepo, providerService
 }
 
-func createTestService(serviceID string) *storage.ThirdpartyOAuth2Service {
-	return &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-client-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
+func createTestService(serviceID string) *model.ThirdpartyOAuth2ProviderEntity {
+	return &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewPlaintextSecret("test-client-secret"),
+		IssuerURI:   "https://github.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 			{ScopeValue: "user", Description: "User profile"},
 		},
@@ -1078,11 +1079,11 @@ func createTestService(serviceID string) *storage.ThirdpartyOAuth2Service {
 
 func TestTerminateSession_SuccessfullyTerminatesExistingSession(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	serviceID := uuid.New().String()
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	principal := "user@example.com"
@@ -1104,7 +1105,7 @@ func TestTerminateSession_SuccessfullyTerminatesExistingSession(t *testing.T) {
 
 	// Update service to use mock token endpoint
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
-	err = serviceManager.Update(ctx, thirdPartyService)
+	err = providerService.Update(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Complete OAuth2 callback to create session
@@ -1154,14 +1155,14 @@ func TestTerminateSession_ReturnsErrorWhenSessionNotFound(t *testing.T) {
 
 func TestTerminateSession_DeletesSessionFromRepository(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: Create service
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// No session exists, so termination should fail
@@ -1174,14 +1175,14 @@ func TestTerminateSession_DeletesSessionFromRepository(t *testing.T) {
 
 func TestTerminateSession_HandlesRepositoryDeletionErrors(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: Create service
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// No session exists, so termination should fail
@@ -1194,14 +1195,14 @@ func TestTerminateSession_HandlesRepositoryDeletionErrors(t *testing.T) {
 
 func TestTerminateSession_ValidatesPrincipalOwnershipBeforeDeletion(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: Create service and session for user1
 	principal2 := "user2@example.com"
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// No session exists for principal2, so termination should fail with session not found
@@ -1214,14 +1215,14 @@ func TestTerminateSession_ValidatesPrincipalOwnershipBeforeDeletion(t *testing.T
 
 func TestTerminateSession_ReturnsErrorWhenPrincipalMismatch(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: Create service and session
 	attacker := "attacker@example.com"
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Try to terminate session as different user (no session exists for attacker)
@@ -1238,14 +1239,14 @@ func TestTerminateSession_ReturnsErrorWhenPrincipalMismatch(t *testing.T) {
 
 func TestGetSessionWithAgents_ReturnsSessionWithEmptyAgentListWhenNoGrants(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: Create service and session with no grants
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// No session exists for this principal+serviceID pair
@@ -1259,14 +1260,14 @@ func TestGetSessionWithAgents_ReturnsSessionWithEmptyAgentListWhenNoGrants(t *te
 
 func TestGetSessionWithAgents_ReturnsSessionWithAgentListWhenGrantsExist(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: Create service, session, and grants
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// No session exists for this principal+serviceID pair
@@ -1280,14 +1281,14 @@ func TestGetSessionWithAgents_ReturnsSessionWithAgentListWhenGrantsExist(t *test
 
 func TestGetSessionWithAgents_UsesGrantRepositoryCountAgentsByServiceID(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: Create service
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	result, err := service.GetSessionWithAgents(ctx, principal, serviceID)
@@ -1300,14 +1301,14 @@ func TestGetSessionWithAgents_UsesGrantRepositoryCountAgentsByServiceID(t *testi
 
 func TestGetSessionWithAgents_QueriesGrantsByServiceID(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	result, err := service.GetSessionWithAgents(ctx, principal, serviceID)
@@ -1341,7 +1342,7 @@ func TestGetSessionWithAgents_ReturnsErrorWhenSessionNotFound(t *testing.T) {
 
 func TestGetSessionWithAgents_ValidatesPrincipalOwnership(t *testing.T) {
 	ctx := context.Background()
-	service, _, serviceManager := setupService(t)
+	service, _, providerService := setupService(t)
 
 	// Setup: Create service
 	// Note: To test principal ownership validation, we need a session first,
@@ -1350,7 +1351,7 @@ func TestGetSessionWithAgents_ValidatesPrincipalOwnership(t *testing.T) {
 	serviceID := uuid.New().String()
 
 	thirdPartyService := createTestService(serviceID)
-	err := serviceManager.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Try to get session as different user (no session exists yet)
@@ -1388,14 +1389,14 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create repositories
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	agentRepo := memory.NewAgentRepository()
 	encryption := noop.NewNoOpEncryption()
 
-	// Create ServiceManager to handle encryption context binding (simulates domain layer)
-	serviceManager := thirdparty.NewServiceManager(serviceRepo, encryption, logger)
+	// Create ThirdpartyOAuth2ProviderService to handle encryption context binding (simulates domain layer)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, encryption, nil, logger)
 
 	// Create service with capturing logger
 	config := oauth2session.DefaultConfig()
@@ -1403,7 +1404,7 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 	config.MaxRetries = 1 // Reduce retries for faster test
 
 	service := oauth2session.NewOAuth2SessionService(
-		serviceManager,
+		providerService,
 		sessionRepo,
 		grantRepo,
 		agentRepo,
@@ -1420,7 +1421,7 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 
 	// Create third-party service
 	thirdPartyService := createTestService(serviceID)
-	err = serviceManager.Create(ctx, thirdPartyService)
+	err = providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Initiate flow to get valid state token

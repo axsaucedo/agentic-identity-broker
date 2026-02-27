@@ -15,13 +15,13 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
 
 // setupImplementedService creates a service with full encryption support for testing the implementation.
-func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.ThirdpartyServiceRepository) {
+func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService, *thirdparty.ThirdpartyOAuth2ProviderService) {
 	t.Helper()
 
 	// Create test JWE key
@@ -33,7 +33,7 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 	require.NoError(t, err)
 
 	// Create repositories
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	agentRepo := memory.NewAgentRepository()
@@ -43,15 +43,16 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
 
-	// Create ServiceManager for handling encryption/decryption of client secrets
-	serviceManager := thirdparty.NewServiceManager(
+	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
 		encryption,
+		nil,
 		slog.Default(),
 	)
 
 	svc := oauth2session.NewOAuth2SessionService(
-		serviceManager,
+		providerService,
 		sessionRepo,
 		grantRepo,
 		agentRepo,
@@ -62,39 +63,39 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 		slog.Default(),
 	)
 
-	return svc, serviceRepo
+	return svc, providerService
 }
 
 func TestImplementation_InitiateOAuth2Flow_Success(t *testing.T) {
 	ctx := context.Background()
-	service, serviceRepo := setupImplementedService(t)
+	service, providerService := setupImplementedService(t)
 
 	// Create a third-party service
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
 	redirectURI := "https://example.com/sessions"
 
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewPlaintextSecret("test-secret"),
+		IssuerURI:   "https://github.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 			{ScopeValue: "user", Description: "User profile"},
 		},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	err := serviceRepo.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Call InitiateOAuth2Flow
@@ -122,7 +123,7 @@ func TestImplementation_InitiateOAuth2Flow_Success(t *testing.T) {
 
 func TestImplementation_StateTokenValidation_Success(t *testing.T) {
 	ctx := context.Background()
-	service, serviceRepo := setupImplementedService(t)
+	service, providerService := setupImplementedService(t)
 
 	principal := "user@example.com"
 	serviceID := uuid.New().String()
@@ -130,7 +131,7 @@ func TestImplementation_StateTokenValidation_Success(t *testing.T) {
 
 	// Create service
 	thirdPartyService := createTestService(serviceID)
-	err := serviceRepo.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Initiate flow to get state token
@@ -155,7 +156,7 @@ func TestImplementation_StateTokenValidation_Success(t *testing.T) {
 
 func TestImplementation_StateTokenValidation_PrincipalMismatch(t *testing.T) {
 	ctx := context.Background()
-	service, serviceRepo := setupImplementedService(t)
+	service, providerService := setupImplementedService(t)
 
 	principal1 := "user1@example.com"
 	principal2 := "user2@example.com"
@@ -164,7 +165,7 @@ func TestImplementation_StateTokenValidation_PrincipalMismatch(t *testing.T) {
 
 	// Create service
 	thirdPartyService := createTestService(serviceID)
-	err := serviceRepo.Create(ctx, thirdPartyService)
+	err := providerService.Create(ctx, thirdPartyService)
 	require.NoError(t, err)
 
 	// Initiate flow as principal1
@@ -178,7 +179,7 @@ func TestImplementation_StateTokenValidation_PrincipalMismatch(t *testing.T) {
 
 func TestImplementation_StateTokenValidation_ServiceIDMismatch(t *testing.T) {
 	ctx := context.Background()
-	service, serviceRepo := setupImplementedService(t)
+	service, providerService := setupImplementedService(t)
 
 	principal := "user@example.com"
 	serviceID1 := uuid.New().String()
@@ -189,9 +190,9 @@ func TestImplementation_StateTokenValidation_ServiceIDMismatch(t *testing.T) {
 	service1 := createTestService(serviceID1)
 	service2 := createTestService(serviceID2)
 	service2.DisplayName = "Google"
-	err := serviceRepo.Create(ctx, service1)
+	err := providerService.Create(ctx, service1)
 	require.NoError(t, err)
-	err = serviceRepo.Create(ctx, service2)
+	err = providerService.Create(ctx, service2)
 	require.NoError(t, err)
 
 	// Initiate flow for service1

@@ -14,6 +14,7 @@ import (
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	storagememory "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
@@ -425,20 +426,20 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: Multiple services configured with same protected_resource (creates ambiguous mapping)
 			ctx := context.Background()
 			// Create a second service with the same protected_resource as GitHub
-			ambiguousService := &storagedomain.ThirdpartyOAuth2Service{
-				ID:           "ambiguous-service",
-				DisplayName:  "Ambiguous Service",
-				ClientID:     "ambiguous-client-id",
-				ClientSecret: "ambiguous-client-secret",
-				IssuerURI:    "https://ambiguous.example.com",
-				Discovery: storagedomain.DiscoveryConfig{
+			ambiguousService := &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          "ambiguous-service",
+				DisplayName: "Ambiguous Service",
+				ClientID:    "ambiguous-client-id",
+				Secret:      model.NewEncryptedSecret([]byte("ambiguous-client-secret")),
+				IssuerURI:   "https://ambiguous.example.com",
+				Discovery: model.DiscoveryConfig{
 					EnableDiscovery: false,
 				},
-				Endpoints: storagedomain.OAuth2Endpoints{
+				Endpoints: model.OAuth2Endpoints{
 					TokenEndpoint:     "https://ambiguous.example.com/token",
 					AuthorizeEndpoint: "https://ambiguous.example.com/authorize",
 				},
-				Scopes: []storagedomain.OAuthScope{
+				Scopes: []model.OAuthScope{
 					{ScopeValue: "read", Description: "Read access"},
 				},
 				ProtectedResources: []string{"https://api.github.com"}, // Same resource as GitHub service!

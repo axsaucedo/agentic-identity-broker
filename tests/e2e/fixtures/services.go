@@ -3,31 +3,31 @@ package fixtures
 import (
 	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 )
 
 // GitHubService returns a fixture for GitHub OAuth2 service.
 // This is used for token exchange testing - represents GitHub as a third-party service.
 // Includes protected_resources for resource-based service lookup (US2).
-func GitHubService() *storage.ThirdpartyOAuth2Service {
+func GitHubService() *model.ThirdpartyOAuth2ProviderEntity {
 	now := time.Now()
 	metadataURL := "https://github.com/.well-known/oauth-authorization-server"
 
-	return &storage.ThirdpartyOAuth2Service{
-		ID:           "github-service",
-		DisplayName:  "GitHub",
-		ClientID:     "github-client-id",
-		ClientSecret: "github-client-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
+	return &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "github-service",
+		DisplayName: "GitHub",
+		ClientID:    "github-client-id",
+		Secret:      model.NewEncryptedSecret([]byte("github-client-secret")),
+		IssuerURI:   "https://github.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
 			MetadataURL:     &metadataURL,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Access repository"},
 			{ScopeValue: "user", Description: "Access user information"},
 			{ScopeValue: "read:org", Description: "Read organization information"},
@@ -40,25 +40,25 @@ func GitHubService() *storage.ThirdpartyOAuth2Service {
 
 // GoogleService returns a fixture for Google OAuth2 service.
 // This is used for token exchange testing - represents Google as a third-party service.
-func GoogleService() *storage.ThirdpartyOAuth2Service {
+func GoogleService() *model.ThirdpartyOAuth2ProviderEntity {
 	now := time.Now()
 	metadataURL := "https://accounts.google.com/.well-known/openid-configuration"
 
-	return &storage.ThirdpartyOAuth2Service{
-		ID:           "google-service",
-		DisplayName:  "Google",
-		ClientID:     "google-client-id",
-		ClientSecret: "google-client-secret",
-		IssuerURI:    "https://accounts.google.com",
-		Discovery: storage.DiscoveryConfig{
+	return &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "google-service",
+		DisplayName: "Google",
+		ClientID:    "google-client-id",
+		Secret:      model.NewEncryptedSecret([]byte("google-client-secret")),
+		IssuerURI:   "https://accounts.google.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
 			MetadataURL:     &metadataURL,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://oauth2.googleapis.com/token",
 			AuthorizeEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "calendar", Description: "Access calendar"},
 			{ScopeValue: "drive", Description: "Access Google Drive"},
 			{ScopeValue: "userinfo.email", Description: "Access email"},
@@ -71,25 +71,25 @@ func GoogleService() *storage.ThirdpartyOAuth2Service {
 
 // MicrosoftService returns a fixture for Microsoft Azure OAuth2 service.
 // This is used for token exchange testing - represents Microsoft as a third-party service.
-func MicrosoftService() *storage.ThirdpartyOAuth2Service {
+func MicrosoftService() *model.ThirdpartyOAuth2ProviderEntity {
 	now := time.Now()
 	metadataURL := "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
 
-	return &storage.ThirdpartyOAuth2Service{
-		ID:           "microsoft-service",
-		DisplayName:  "Microsoft Azure",
-		ClientID:     "microsoft-client-id",
-		ClientSecret: "microsoft-client-secret",
-		IssuerURI:    "https://login.microsoftonline.com",
-		Discovery: storage.DiscoveryConfig{
+	return &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "microsoft-service",
+		DisplayName: "Microsoft Azure",
+		ClientID:    "microsoft-client-id",
+		Secret:      model.NewEncryptedSecret([]byte("microsoft-client-secret")),
+		IssuerURI:   "https://login.microsoftonline.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
 			MetadataURL:     &metadataURL,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://login.microsoftonline.com/common/oauth2/v2.0/token",
 			AuthorizeEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "mail.read", Description: "Read mail"},
 			{ScopeValue: "calendar.read", Description: "Read calendar"},
 			{ScopeValue: "user.read", Description: "Read user profile"},
@@ -102,23 +102,23 @@ func MicrosoftService() *storage.ThirdpartyOAuth2Service {
 
 // ServiceWithID returns a service with the specified ID.
 // Base service can be customized for testing specific scenarios.
-func ServiceWithID(id string) *storage.ThirdpartyOAuth2Service {
+func ServiceWithID(id string) *model.ThirdpartyOAuth2ProviderEntity {
 	now := time.Now()
 
-	return &storage.ThirdpartyOAuth2Service{
-		ID:           id,
-		DisplayName:  "Test Service " + id,
-		ClientID:     "test-client-" + id,
-		ClientSecret: "test-secret-" + id,
-		IssuerURI:    "https://test-issuer.example.com",
-		Discovery: storage.DiscoveryConfig{
+	return &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          id,
+		DisplayName: "Test Service " + id,
+		ClientID:    "test-client-" + id,
+		Secret:      model.NewEncryptedSecret([]byte("test-secret-" + id)),
+		IssuerURI:   "https://test-issuer.example.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://test-issuer.example.com/token",
 			AuthorizeEndpoint: "https://test-issuer.example.com/authorize",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "read", Description: "Read access"},
 			{ScopeValue: "write", Description: "Write access"},
 		},

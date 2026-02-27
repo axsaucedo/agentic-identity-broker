@@ -13,8 +13,8 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
 
@@ -305,7 +305,7 @@ func setupTestService(t *testing.T) *oauth2session.OAuth2SessionService {
 	require.NoError(t, err)
 
 	// Create in-memory repositories
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	agentRepo := memory.NewAgentRepository()
@@ -314,16 +314,17 @@ func setupTestService(t *testing.T) *oauth2session.OAuth2SessionService {
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
 
-	// Create ServiceManager for handling encryption/decryption of client secrets
+	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
 	encryption := noop.NewNoOpEncryption()
-	serviceManager := thirdparty.NewServiceManager(
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
 		encryption,
+		nil,
 		slog.Default(),
 	)
 
 	service := oauth2session.NewOAuth2SessionService(
-		serviceManager,
+		providerService,
 		sessionRepo,
 		grantRepo,
 		agentRepo,
@@ -335,22 +336,22 @@ func setupTestService(t *testing.T) *oauth2session.OAuth2SessionService {
 	)
 
 	// Set up test data: add a third-party service
-	testService := &storage.ThirdpartyOAuth2Service{
-		ID:           "service-123",
-		DisplayName:  "Test OAuth2 Service",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-client-secret",
-		IssuerURI:    "https://auth.example.com",
-		Discovery: storage.DiscoveryConfig{
+	testService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "service-123",
+		DisplayName: "Test OAuth2 Service",
+		ClientID:    "test-client-id",
+		Secret:      model.NewPlaintextSecret("test-client-secret"),
+		IssuerURI:   "https://auth.example.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "openid", Description: "OpenID Connect scope"},
 			{ScopeValue: "profile", Description: "User profile scope"},
 			{ScopeValue: "email", Description: "Email scope"},
 		},
 	}
-	err = serviceRepo.Create(context.Background(), testService)
+	err = providerService.Create(context.Background(), testService)
 	require.NoError(t, err, "failed to set up test service")
 
 	return service

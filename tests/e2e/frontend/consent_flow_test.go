@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"context"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/pages"
@@ -26,17 +27,17 @@ var _ = Describe("Consent Flow", func() {
 
 		// Step 1: Create a third-party OAuth2 service with scopes
 		// This provides the scopes that can be delegated by the user
-		service := &storage.ThirdpartyOAuth2Service{
-			ID:           "github-service",
-			DisplayName:  "GitHub",
-			ClientID:     "github-client-id",
-			ClientSecret: "github-client-secret",
-			IssuerURI:    "https://github.com",
-			Endpoints: storage.OAuth2Endpoints{
+		service := &model.ThirdpartyOAuth2ProviderEntity{
+			ID:          "github-service",
+			DisplayName: "GitHub",
+			ClientID:    "github-client-id",
+			Secret:      model.NewEncryptedSecret([]byte("github-client-secret")),
+			IssuerURI:   "https://github.com",
+			Endpoints: model.OAuth2Endpoints{
 				AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 				TokenEndpoint:     "https://github.com/login/oauth/access_token",
 			},
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo", Description: "Repository access"},
 				{ScopeValue: "user", Description: "User profile access"},
 			},
