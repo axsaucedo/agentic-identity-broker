@@ -1,0 +1,45 @@
+{{- if and (eq .Values.storage.type "postgres") .Values.migration.enabled .Values.migration.grants.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{ include "agentic-identity-broker.namespace" . }}
+  name: {{ include "agentic-identity-broker.fullname" . }}-grants
+  labels:
+    {{- include "agentic-identity-broker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    # Create ConfigMap before migration Job
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "{{ .Values.migration.hookWeight }}"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  grants.sql: |
+    {{- if .Values.migration.grants.sql }}
+    {{- .Values.migration.grants.sql | nindent 4 }}
+    {{- else }}
+    -- Default database privilege grants for the broker application user.
+    -- The psql variable :broker_user is set via -v broker_user=<username> at runtime.
+
+    -- Grant CONNECT on the current database
+    SELECT format(
+      'GRANT CONNECT ON DATABASE %I TO %I',
+      current_database(),
+      :'broker_user'
+    ) \gexec
+
+    -- Grant USAGE on the public schema
+    SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'broker_user') \gexec
+
+    -- Grant DML permissions on all current tables
+    SELECT format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I',
+      :'broker_user'
+    ) \gexec
+
+    -- Grant permissions on sequences (required for SERIAL / IDENTITY columns)
+    SELECT format(
+      'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I',
+      :'broker_user'
+    ) \gexec
+    {{- end }}
+{{- end }}

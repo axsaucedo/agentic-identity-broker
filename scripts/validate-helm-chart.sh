@@ -197,6 +197,57 @@ helm template "${RELEASE_NAME}" "${CHART_PATH}" \
     > /dev/null || print_error "Template rendering failed (Ingress)"
 print_success "Templates render with Ingress configuration"
 
+# Test 4a: Verify grants ConfigMap is rendered by default (external PostgreSQL)
+print_header "Test 4a: Grants ConfigMap Rendered with External PostgreSQL"
+GRANTS_TEMPLATE=$(helm template "${RELEASE_NAME}" "${CHART_PATH}" \
+    --set storage.type=postgres \
+    --set postgresql.external.enabled=true \
+    --set postgresql.external.host=postgres.database.svc.cluster.local \
+    --set postgresql.external.database=broker \
+    --set postgresql.external.migrationSecretName=broker-migration \
+    --set postgresql.external.brokerSecretName=broker-db)
+echo "${GRANTS_TEMPLATE}" | grep -q "grants.sql" || print_error "Grants ConfigMap not found in template output"
+echo "${GRANTS_TEMPLATE}" | grep -q "apply-grants" || print_error "apply-grants container not found in migration Job"
+echo "${GRANTS_TEMPLATE}" | grep -q "BROKER_USERNAME" || print_error "BROKER_USERNAME env var not found in migration Job"
+print_success "Grants ConfigMap and apply-grants container are present (external PostgreSQL)"
+
+# Test 4b: Verify grants ConfigMap is rendered by default (Zalando operator)
+print_header "Test 4b: Grants ConfigMap Rendered with Zalando Operator"
+GRANTS_TEMPLATE=$(helm template "${RELEASE_NAME}" "${CHART_PATH}" \
+    --set storage.type=postgres \
+    --set postgresql.operator.enabled=true \
+    --set postgresql.operator.teamId=test-team)
+echo "${GRANTS_TEMPLATE}" | grep -q "grants.sql" || print_error "Grants ConfigMap not found in template output"
+echo "${GRANTS_TEMPLATE}" | grep -q "apply-grants" || print_error "apply-grants container not found in migration Job"
+print_success "Grants ConfigMap and apply-grants container are present (Zalando operator)"
+
+# Test 4c: Verify custom grants SQL is applied
+print_header "Test 4c: Custom Grants SQL Configuration"
+CUSTOM_TEMPLATE=$(helm template "${RELEASE_NAME}" "${CHART_PATH}" \
+    --set storage.type=postgres \
+    --set postgresql.external.enabled=true \
+    --set postgresql.external.host=postgres.database.svc.cluster.local \
+    --set postgresql.external.database=broker \
+    --set postgresql.external.migrationSecretName=broker-migration \
+    --set postgresql.external.brokerSecretName=broker-db \
+    --set "migration.grants.sql=GRANT SELECT ON ALL TABLES IN SCHEMA public TO :\"broker_user\";")
+echo "${CUSTOM_TEMPLATE}" | grep -q "GRANT SELECT ON ALL TABLES" || print_error "Custom grants SQL not found in ConfigMap"
+print_success "Custom grants SQL is applied correctly"
+
+# Test 4d: Verify grants can be disabled
+print_header "Test 4d: Grants Disabled Configuration"
+NO_GRANTS_TEMPLATE=$(helm template "${RELEASE_NAME}" "${CHART_PATH}" \
+    --set storage.type=postgres \
+    --set postgresql.external.enabled=true \
+    --set postgresql.external.host=postgres.database.svc.cluster.local \
+    --set postgresql.external.database=broker \
+    --set postgresql.external.migrationSecretName=broker-migration \
+    --set postgresql.external.brokerSecretName=broker-db \
+    --set migration.grants.enabled=false)
+echo "${NO_GRANTS_TEMPLATE}" | grep -q "grants.sql" && print_error "Grants ConfigMap should not be present when disabled"
+echo "${NO_GRANTS_TEMPLATE}" | grep -q "apply-grants" && print_error "apply-grants container should not be present when disabled"
+print_success "Grants are correctly disabled when migration.grants.enabled=false"
+
 # Test 5: Deploy with Zalando PostgreSQL Operator
 print_header "Test 5: Deploy with Zalando PostgreSQL Operator"
 
@@ -303,6 +354,10 @@ echo "  ✓ Service creation"
 echo "  ✓ Helm tests"
 echo "  ✓ Health endpoint (in-memory)"
 echo "  ✓ External PostgreSQL configuration (template only)"
+echo "  ✓ Grants ConfigMap and apply-grants container (external PostgreSQL)"
+echo "  ✓ Grants ConfigMap and apply-grants container (Zalando operator)"
+echo "  ✓ Custom grants SQL configuration"
+echo "  ✓ Grants disabled configuration"
 echo "  ✓ Zalando operator deployment (full E2E)"
 echo "  ✓ PostgreSQL cluster provisioning"
 echo "  ✓ Database migration Job execution"

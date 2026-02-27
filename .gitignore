@@ -63,7 +63,7 @@ test-results
 tmp
 
 .worktrees
-agentic-identity-broker
+/agentic-identity-broker
 
 tests/e2e/frontend/coverage/
 

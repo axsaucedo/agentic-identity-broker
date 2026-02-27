@@ -56,7 +56,7 @@ spec:
   
   # Databases
   databases:
-    {{ .Values.postgresql.operator.database }}: {{ .Values.postgresql.operator.users.broker.name }}
+    {{ .Values.postgresql.operator.database }}: {{ .Values.postgresql.operator.users.migration.name }}
   
   # Enable connection pooler (optional, recommended for production)
   enableConnectionPooler: false
