@@ -216,7 +216,7 @@ postgresql:
     # -- Team ID (required by Zalando operator)
     teamId: ""
     # -- PostgreSQL version
-    version: "15"
+    version: "17"
     # -- Number of PostgreSQL instances (cluster size)
     numberOfInstances: 2
     # -- Database name
@@ -248,23 +248,21 @@ postgresql:
         memory: 64Mi
 
     # User configuration
-    # Note: Zalando operator uses PostgreSQL role attributes, not SQL permissions
+    # Migration user is the database owner; broker user has no special role attributes.
+    # Required table/sequence permissions for the broker user are applied post-migration via grants.
     users:
-      # Migration user (schema modification permissions)
+      # Migration user (database owner, no extra role attributes required)
       migration:
         # -- Migration user name (must be RFC 1123 compliant: lowercase, alphanumeric, hyphens only)
         name: broker-migration
-        # -- Migration user role attributes (superuser for schema changes)
-        permissions:
-          - superuser
-          - createdb
-      # Broker user (runtime data access)
+        # -- Migration user role attributes (no special attributes; DB ownership is set via databases config)
+        permissions: []
+      # Broker user (runtime data access; privileges granted post-migration)
       broker:
         # -- Broker user name (must be RFC 1123 compliant: lowercase, alphanumeric, hyphens only)
         name: broker
-        # -- Broker user role attributes (login + ownership via databases config)
-        permissions:
-          - login
+        # -- Broker user role attributes (no special attributes; grants are applied post-migration)
+        permissions: []
 
     # -- Secret name suffix for operator-managed credentials
     # Set to "" to omit the suffix entirely
@@ -308,6 +306,23 @@ migration:
     limits:
       cpu: 200m
       memory: 128Mi
+
+  # Database grants configuration
+  grants:
+    # -- Enable automatic privilege grants after migration completes
+    # When enabled, the migration Job runs schema migrations first (as an init container),
+    # then applies SQL grants to the broker application user (as the main container).
+    enabled: true
+    # -- PostgreSQL client image used to run the grants script
+    image: postgres:17-alpine
+    # -- Custom grants SQL script (optional)
+    # If empty, the default grants are applied:
+    #   GRANT CONNECT ON DATABASE ... TO <broker_user>
+    #   GRANT USAGE ON SCHEMA public TO <broker_user>
+    #   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO <broker_user>
+    #   GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO <broker_user>
+    # Use the psql variable :broker_user to reference the broker username.
+    sql: ""
 
 # Broker application configuration
 broker:
