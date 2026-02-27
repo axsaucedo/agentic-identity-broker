@@ -24,8 +24,8 @@ domain/
   oauth2session/   OAuth2SessionService — token vault, PKCE, JWE state tokens
   principal/       Principal extraction from X-Remote-User header
   server/          Server lifecycle config types
-  services/        ThirdpartyOAuth2ServiceProvider — service CRUD + encryption
-  storage/         Domain data models (Agent, UserGrant, ThirdpartyOAuth2Service, UserSession)
+  thirdparty/      ThirdpartyOAuth2ProviderService — provider CRUD + encryption (domain service)
+  storage/         Domain data models (Agent, UserGrant, UserSession) + endpoint discovery
   tokenexchange/   TokenExchangeService + CEL policy evaluation (RFC 8693)
 
 ports/             7 interface files defining ALL hexagonal boundaries
@@ -35,8 +35,8 @@ ports/             7 interface files defining ALL hexagonal boundaries
   jwks.go          JWKSPort
   oauth2.go        OAuth2Service interface
   server.go        HealthState
-  storage.go       AgentRepository, ThirdpartyOAuth2ServiceRepository,
-                   UserGrantRepository, UserSessionRepository, HealthChecker
+  storage.go       AgentRepository, UserGrantRepository, UserSessionRepository, HealthChecker
+  thirdparty_provider.go  ThirdpartyOAuth2ProviderRepository (uses model.ThirdpartyOAuth2ProviderEntity)
 
 adapters/
   encryption/
@@ -55,7 +55,7 @@ adapters/
     factory.go     Backend selection (memory vs postgres) from config
     memory/        In-memory storage (maps + sync.RWMutex)
     postgres/      PostgreSQL storage (sqlx + pgx v5)
-    noop/          NoOp encryption fallback
+    (no noop — encryption is mandatory, no fallback)
 
 app/
   builder.go       Builder pattern — all DI wiring
@@ -103,12 +103,12 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 
 These are **domain data models**, NOT database models. Adapter-specific records (e.g., postgres row structs) stay in adapter packages.
 
-| Type | Key Fields |
-|---|---|
-| `Agent` | ID, ClientID, DisplayName, Description, ServiceRequirements |
-| `ThirdpartyOAuth2Service` | ID, DisplayName, ClientID, ClientSecret (encrypted), Scopes, ProtectedResources |
-| `UserGrant` | ID, Principal, AgentID, DelegatedTokens, ValidUntil |
-| `UserSession` | ID, Principal, ServiceID, AccessToken (encrypted), RefreshToken (encrypted), ExpiresAt |
+| Type | Location | Key Fields |
+|---|---|---|
+| `Agent` | `domain/storage/` | ID, ClientID, DisplayName, Description, ServiceRequirements |
+| `ThirdpartyOAuth2ProviderEntity` | `domain/model/` | ID, DisplayName, ClientID, Secret (value object), Scopes, ProtectedResources |
+| `UserGrant` | `domain/storage/` | ID, Principal, AgentID, DelegatedTokens, ValidUntil |
+| `UserSession` | `domain/storage/` | ID, Principal, ServiceID, AccessToken (encrypted), RefreshToken (encrypted), ExpiresAt |
 
 ## Port Interfaces Quick Reference
 
@@ -117,7 +117,8 @@ These are **domain data models**, NOT database models. Adapter-specific records 
 | Encryption | `EncryptionPort` | `ports/encryption.go` |
 | Branch Key | `BranchKeyManager` (= `BranchKeyRepository`) | `ports/encryption.go` |
 | Config | `ConfigPort` | `ports/config.go` |
-| Storage | `AgentRepository`, `ThirdpartyOAuth2ServiceRepository`, `UserGrantRepository`, `UserSessionRepository` | `ports/storage.go` |
+| Storage | `AgentRepository`, `UserGrantRepository`, `UserSessionRepository` | `ports/storage.go` |
+| Provider Storage | `ThirdpartyOAuth2ProviderRepository` | `ports/thirdparty_provider.go` |
 | JWKS | `JWKSPort` | `ports/jwks.go` |
 | OAuth2 | `OAuth2Service` | `ports/oauth2.go` |
 | CEL | `CELCompilerPort` | `ports/cel.go` |

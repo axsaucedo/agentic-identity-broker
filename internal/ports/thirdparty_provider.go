@@ -16,7 +16,7 @@ import (
 //   - Output (Get/List/Find): Entity has Secret in encrypted state; the domain service decrypts it
 //   - The repository is unaware of encryption mechanics; it treats Secret as opaque ciphertext
 //
-// This interface replaces ThirdpartyOAuth2ServiceRepository for the new entity type.
+// All third-party OAuth2 provider storage operations use ThirdpartyOAuth2ProviderEntity.
 type ThirdpartyOAuth2ProviderRepository interface {
 	// Create stores a new provider entity.
 	// Entity.Secret must be in encrypted state before calling.

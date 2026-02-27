@@ -4,21 +4,43 @@
 Accepted
 
 ## Context
-The project uses OAuth2 tokens that require encryption at rest. Two approaches are possible:
+The project uses OAuth2 tokens and OAuth2 provider secrets that require encryption at rest.
+Two approaches are possible:
 
 1. **Adapter Encryption**: Repository adapter handles encryption/decryption
-   - Example: ThirdpartyServiceRepository (historical)
    - Adapter receives plaintext, returns plaintext
    - Repository has EncryptionPort dependency
 
 2. **Domain Encryption**: Domain service handles encryption/decryption
-   - Example: UserSessionRepository (current recommended)
    - Service encrypts before calling repository
-   - Repository operates on encrypted bytes
+   - Repository operates on encrypted bytes (opaque binary)
    - Repository has no crypto dependencies
 
 ## Decision
-Adopt "Domain Encryption" as the standard for all new features.
+Adopt "Domain Encryption" as the standard for all entities. This decision is now fully
+implemented across all sensitive data:
+
+- **ThirdpartyOAuth2Provider** — `ThirdpartyOAuth2ProviderService` owns all encrypt/decrypt.
+  The `Secret` value object (`internal/domain/model/secret.go`) enforces this at the type
+  level: adapters call `Secret.GetCiphertext()` which errors if the secret was never
+  encrypted, making plaintext persistence impossible.
+- **UserSession** — `OAuth2SessionService` encrypts/decrypts access and refresh tokens.
+
+Both repositories (`ThirdpartyOAuth2ProviderRepository`, `UserSessionRepository`) operate
+on opaque encrypted bytes and have no knowledge of encryption mechanics.
+
+## Secret Value Object
+The `model.Secret` value object (`internal/domain/model/secret.go`) provides type-level
+encryption safety:
+
+- `NewPlaintextSecret(s)` — constructs a secret in plaintext state (before encryption)
+- `NewEncryptedSecret(b)` — constructs a secret in ciphertext state (after encryption)
+- `GetPlaintext() (string, error)` — errors if secret is encrypted (forces explicit decrypt)
+- `GetCiphertext() ([]byte, error)` — errors if secret is plaintext (prevents storing before encrypt)
+- `Redacted() string` — always returns `"REDACTED"` regardless of state (safe for logs/API)
+
+This immutable two-state design makes it impossible to accidentally persist a plaintext secret
+or accidentally expose ciphertext as a string.
 
 ## Rationale
 
@@ -54,13 +76,15 @@ Adopt "Domain Encryption" as the standard for all new features.
 ✅ Repositories are infrastructure-agnostic
 ✅ Easy to swap storage backends
 ✅ Simpler error handling (no crypto logic in adapters)
+✅ Type-level encryption safety via `Secret` value object
+✅ Mandatory encryption at startup (no NoOp fallback)
 
-### Trade-offs
-⚠️  Requires Pattern A (ThirdpartyService) to migrate
-⚠️  Documentation needed (architecture not obvious)
-⚠️  Service layer becomes more complex
+### Constraints
+- Service layer becomes more complex (coordinates encrypt/decrypt with repo calls)
+- All consumer code must go through domain services, never raw repositories
 
 ## Related
 - ADR 004: Storage Layer Architecture (hexagonal pattern)
 - ADR 008: Encryption Context Optimization (service_id only)
+- ADR 009: Envelope Encryption Design (three-layer key hierarchy)
 - Feature 012: Token Vault (envelope encryption implementation)

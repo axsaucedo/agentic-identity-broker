@@ -612,7 +612,7 @@ func (s *OAuth2SessionService) HandleCallback(
 //
 // Parameters:
 //   - ctx: Context for cancellation and timeout control
-//   - service: The ThirdpartyOAuth2Service configuration containing token endpoint and credentials
+//   - entity: The ThirdpartyOAuth2ProviderEntity configuration containing token endpoint and credentials
 //   - refreshToken: The valid refresh token from the stored session
 //
 // Returns:

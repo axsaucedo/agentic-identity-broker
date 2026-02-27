@@ -373,7 +373,7 @@ func (s *Service) GetAgentDetail(ctx context.Context, agentID string) (*AgentDet
 		thirdpartyServices[i] = ThirdpartyService{
 			ServiceID:   svc.ID,
 			DisplayName: svc.DisplayName,
-			LogoURL:     nil, // TODO: add logo_url field to ThirdpartyOAuth2Service entity
+			LogoURL:     nil, // TODO: add logo_url field to ThirdpartyOAuth2ProviderEntity
 			Scopes:      scopes,
 		}
 	}

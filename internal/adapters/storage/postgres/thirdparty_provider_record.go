@@ -14,7 +14,7 @@ import (
 // third-party OAuth2 providers. It maps directly to the thirdparty_oauth2_services
 // table schema using db tags.
 //
-// Unlike the legacy ThirdpartyOAuth2Service, this record holds SecretCiphertext only —
+// Unlike the legacy storage struct, this record holds SecretCiphertext only —
 // there is no plaintext client_secret field. Plaintext secrets never touch this struct.
 //
 // This type is used exclusively within the postgres adapter; it is never exposed to

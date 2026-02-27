@@ -21,8 +21,6 @@ Three implementations of `ports.EncryptionPort`:
 - Hierarchical keyring: Go SDK has no Caching CMM — use Hierarchical Keyring with DynamoDB branch key store
 - Explicit wrapping keys: Always specify KMS key ARN. No discovery mode.
 
-### NoOp (`storage/noop/`)
-`NoOpEncryption` — pass-through that returns plaintext unchanged. **Development/testing only.** 
 
 ### HTTP (`http/`)
 Dual-server architecture (ADR 004): end-user `:8000` + admin `:14000`.
@@ -71,7 +69,7 @@ Factory pattern with backend selection:
 
 Each storage package implements these repository interfaces from `ports/storage.go`:
 - `AgentRepository` — CRUD + `GetByClientID()`
-- `ThirdpartyOAuth2ServiceRepository` — CRUD + `FindByProtectedResource()` + `CountGrantsReferencingService()`
+- `ThirdpartyOAuth2ProviderRepository` — CRUD + `FindByProtectedResource()` + `CountGrantsReferencingService()` (uses `model.ThirdpartyOAuth2ProviderEntity` with encrypted `Secret`)
 - `UserGrantRepository` — CRUD + `FindByPrincipalAndAgent()` + `ListByPrincipal()` + cascade operations
 - `UserSessionRepository` — CRUD + `FindByPrincipalAndService()` + `CountByService()`
 - `UserRepository` — basic CRUD (via adapter composite for memory)

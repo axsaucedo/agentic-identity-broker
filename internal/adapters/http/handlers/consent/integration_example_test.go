@@ -6,30 +6,64 @@ package consent_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encrypti
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	memorystorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/go-chi/chi/v5"
 )
 
+const integrationTestKEK = "ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA="
+
+func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2ProviderService {
+	t.Helper()
+	enc, _, err := awsencryption.NewAWSEncryption(integrationTestKEK, "", 0)
+	if err != nil {
+		t.Fatalf("failed to create encryption adapter: %v", err)
+	}
+	repo := memorystorage.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, enc, nil, slog.Default())
+}
+
+func newGitHubServiceEntity() *model.ThirdpartyOAuth2ProviderEntity {
+	return &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "github",
+		DisplayName: "GitHub",
+		ClientID:    "github-client-id",
+		Secret:      model.NewPlaintextSecret("github-client-secret"),
+		IssuerURI:   "https://github.com",
+		Discovery:   model.DiscoveryConfig{EnableDiscovery: false},
+		Endpoints: model.OAuth2Endpoints{
+			TokenEndpoint:     "https://github.com/oauth/token",
+			AuthorizeEndpoint: "https://github.com/oauth/authorize",
+		},
+		Scopes: []model.OAuthScope{
+			{ScopeValue: "read:user", Description: "Read user profile"},
+			{ScopeValue: "repo", Description: "Full control of repositories"},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+}
+
 // TestIntegration_GetAgentDetail demonstrates the GET /api/consent/agent/:agentId endpoint.
 func TestIntegration_GetAgentDetail(t *testing.T) {
-	// Setup in-memory repositories
 	agentRepo := memorystorage.NewAgentRepository()
-	serviceRepo := memorystorage.NewThirdpartyServiceRepository()
+	providerService := newIntegrationProviderService(t)
 	grantRepo := memorystorage.NewUserGrantRepository()
 
-	// Create test data
 	ctx := context.Background()
 
-	// Create an agent
 	govURL := "https://example.com/governance"
 	docsURL := "https://example.com/docs"
 	agent := &storage.Agent{
@@ -44,44 +78,21 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 	}
 	_ = agentRepo.Create(ctx, agent)
 
-	// Create a third-party service
-	service := &storage.ThirdpartyOAuth2Service{
-		ID:           "github",
-		DisplayName:  "GitHub",
-		ClientID:     "github-client-id",
-		ClientSecret: "github-client-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
-			EnableDiscovery: false,
-		},
-		Endpoints: storage.OAuth2Endpoints{
-			TokenEndpoint:     "https://github.com/oauth/token",
-			AuthorizeEndpoint: "https://github.com/oauth/authorize",
-		},
-		Scopes: []storage.OAuthScope{
-			{ScopeValue: "read:user", Description: "Read user profile"},
-			{ScopeValue: "repo", Description: "Full control of repositories"},
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	if err := providerService.Create(ctx, newGitHubServiceEntity()); err != nil {
+		t.Fatalf("failed to create service: %v", err)
 	}
-	_ = serviceRepo.Create(ctx, service)
 
-	// Create consent service and handler
-	consentSvc := consentservice.NewService(agentRepo, serviceRepo, grantRepo)
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo)
 	handler := consent.NewAgentDetailHandler(consentSvc, nil)
 
-	// Create request
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-123", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", "agent-123")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
-	// Execute request
 	rr := httptest.NewRecorder()
 	handler.GetAgentDetail(rr, req)
 
-	// Verify response
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
@@ -98,16 +109,13 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 
 // TestIntegration_GetAgentGrants demonstrates the GET /api/consent/agent/:agentId/grants endpoint.
 func TestIntegration_GetAgentGrants(t *testing.T) {
-	// Setup in-memory repositories
 	agentRepo := memorystorage.NewAgentRepository()
-	serviceRepo := memorystorage.NewThirdpartyServiceRepository()
+	providerService := newIntegrationProviderService(t)
 	grantRepo := memorystorage.NewUserGrantRepository()
 
-	// Create test data
 	ctx := context.Background()
 	principalValue := "user@example.com"
 
-	// Create an agent
 	agent := &storage.Agent{
 		ID:          "agent-456",
 		ClientID:    "client-456",
@@ -118,7 +126,6 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	}
 	_ = agentRepo.Create(ctx, agent)
 
-	// Create a grant
 	validUntil := time.Now().Add(30 * 24 * time.Hour)
 	grant := &storage.UserGrant{
 		ID:         "grant-001",
@@ -136,11 +143,9 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	}
 	_ = grantRepo.Create(ctx, grant)
 
-	// Create consent service and handler
-	consentSvc := consentservice.NewService(agentRepo, serviceRepo, grantRepo)
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo)
 	handler := consent.NewAgentGrantsHandler(consentSvc, nil)
 
-	// Create request with principal
 	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-456/grants", nil)
 	ctx = principal.WithPrincipal(ctx, principalValue)
 	rctx := chi.NewRouteContext()
@@ -148,11 +153,9 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
-	// Execute request
 	rr := httptest.NewRecorder()
 	handler.GetAgentGrants(rr, req)
 
-	// Verify response
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
@@ -171,15 +174,13 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 
 // TestIntegration_AgentDetailFlow tests the complete flow for User Story 2.
 func TestIntegration_AgentDetailFlow(t *testing.T) {
-	// Setup in-memory repositories
 	agentRepo := memorystorage.NewAgentRepository()
-	serviceRepo := memorystorage.NewThirdpartyServiceRepository()
+	providerService := newIntegrationProviderService(t)
 	grantRepo := memorystorage.NewUserGrantRepository()
 
 	ctx := context.Background()
 	principalValue := "alice@example.com"
 
-	// Create test agent
 	govURL := "https://myagent.ai/governance"
 	docsURL := "https://docs.myagent.ai"
 	interfaceURL := "https://chat.myagent.ai"
@@ -198,20 +199,19 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		t.Fatalf("failed to create agent: %v", err)
 	}
 
-	// Create third-party services
-	services := []*storage.ThirdpartyOAuth2Service{
+	services := []*model.ThirdpartyOAuth2ProviderEntity{
 		{
-			ID:           "github",
-			DisplayName:  "GitHub",
-			ClientID:     "github-client",
-			ClientSecret: "github-secret",
-			IssuerURI:    "https://github.com",
-			Discovery:    storage.DiscoveryConfig{EnableDiscovery: false},
-			Endpoints: storage.OAuth2Endpoints{
+			ID:          "github",
+			DisplayName: "GitHub",
+			ClientID:    "github-client",
+			Secret:      model.NewPlaintextSecret("github-secret"),
+			IssuerURI:   "https://github.com",
+			Discovery:   model.DiscoveryConfig{EnableDiscovery: false},
+			Endpoints: model.OAuth2Endpoints{
 				TokenEndpoint:     "https://github.com/oauth/token",
 				AuthorizeEndpoint: "https://github.com/oauth/authorize",
 			},
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "read:user", Description: "Read user profile"},
 				{ScopeValue: "repo", Description: "Full control of repositories"},
 			},
@@ -219,17 +219,17 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 			UpdatedAt: time.Now(),
 		},
 		{
-			ID:           "google",
-			DisplayName:  "Google",
-			ClientID:     "google-client",
-			ClientSecret: "google-secret",
-			IssuerURI:    "https://accounts.google.com",
-			Discovery:    storage.DiscoveryConfig{EnableDiscovery: false},
-			Endpoints: storage.OAuth2Endpoints{
+			ID:          "google",
+			DisplayName: "Google",
+			ClientID:    "google-client",
+			Secret:      model.NewPlaintextSecret("google-secret"),
+			IssuerURI:   "https://accounts.google.com",
+			Discovery:   model.DiscoveryConfig{EnableDiscovery: false},
+			Endpoints: model.OAuth2Endpoints{
 				TokenEndpoint:     "https://oauth2.googleapis.com/token",
 				AuthorizeEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
 			},
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "email", Description: "View email address"},
 				{ScopeValue: "profile", Description: "View basic profile info"},
 			},
@@ -239,12 +239,11 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 	}
 
 	for _, svc := range services {
-		if err := serviceRepo.Create(ctx, svc); err != nil {
+		if err := providerService.Create(ctx, svc); err != nil {
 			t.Fatalf("failed to create service %s: %v", svc.ID, err)
 		}
 	}
 
-	// Create an existing grant (user has already granted access to GitHub)
 	validUntil := time.Now().Add(30 * 24 * time.Hour)
 	existingGrant := &storage.UserGrant{
 		ID:         "grant-existing",
@@ -264,10 +263,8 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		t.Fatalf("failed to create grant: %v", err)
 	}
 
-	// Create consent service
-	consentSvc := consentservice.NewService(agentRepo, serviceRepo, grantRepo)
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo)
 
-	// Test 1: Get agent detail
 	t.Run("GetAgentDetail", func(t *testing.T) {
 		handler := consent.NewAgentDetailHandler(consentSvc, nil)
 		req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-789", nil)
@@ -287,7 +284,6 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		// Verify agent details
 		if response.Data.Agent.DisplayName != "MyAgent AI Assistant" {
 			t.Errorf("unexpected display name: %s", response.Data.Agent.DisplayName)
 		}
@@ -298,15 +294,14 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		t.Logf("Agent Detail Response: %+v", response)
 	})
 
-	// Test 2: Get user grants for this agent
 	t.Run("GetAgentGrants", func(t *testing.T) {
 		handler := consent.NewAgentGrantsHandler(consentSvc, nil)
 		req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-789/grants", nil)
-		ctx := principal.WithPrincipal(context.Background(), principalValue)
+		grantCtx := principal.WithPrincipal(context.Background(), principalValue)
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("agent-id", "agent-789")
-		ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
-		req = req.WithContext(ctx)
+		grantCtx = context.WithValue(grantCtx, chi.RouteCtxKey, rctx)
+		req = req.WithContext(grantCtx)
 
 		rr := httptest.NewRecorder()
 		handler.GetAgentGrants(rr, req)
@@ -320,7 +315,6 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
-		// Verify existing grant
 		if len(response.Data) != 1 {
 			t.Errorf("expected 1 grant, got %d", len(response.Data))
 		}

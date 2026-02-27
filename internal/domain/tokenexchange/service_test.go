@@ -70,7 +70,7 @@ func (m *MockAgentRepository) List(ctx context.Context) ([]*storagedomain.Agent,
 
 // MockOAuth2SessionService mocks the OAuth2SessionService for testing
 type MockOAuth2SessionService struct {
-	RefreshAccessTokenFn       func(ctx context.Context, service *storagedomain.ThirdpartyOAuth2Service, refreshToken string) (*oauth2.Token, error)
+	RefreshAccessTokenFn       func(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, refreshToken string) (*oauth2.Token, error)
 	UpdateSessionTokensFn      func(ctx context.Context, principal string, session *storagedomain.UserSession, newToken *oauth2.Token) error
 	DecryptAccessTokenFn       func(ctx context.Context, session *storagedomain.UserSession) (string, error)
 	DecryptRefreshTokenFn      func(ctx context.Context, session *storagedomain.UserSession) (string, error)
@@ -78,9 +78,9 @@ type MockOAuth2SessionService struct {
 	GetSessionWithValidTokenFn func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error)
 }
 
-func (m *MockOAuth2SessionService) RefreshAccessToken(ctx context.Context, service *storagedomain.ThirdpartyOAuth2Service, refreshToken string) (*oauth2.Token, error) {
+func (m *MockOAuth2SessionService) RefreshAccessToken(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, refreshToken string) (*oauth2.Token, error) {
 	if m.RefreshAccessTokenFn != nil {
-		return m.RefreshAccessTokenFn(ctx, service, refreshToken)
+		return m.RefreshAccessTokenFn(ctx, entity, refreshToken)
 	}
 	return nil, nil
 }

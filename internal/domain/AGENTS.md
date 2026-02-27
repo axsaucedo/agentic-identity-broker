@@ -15,8 +15,8 @@ Domain packages depend on `ports/` interfaces for infrastructure needs. All depe
 | `oauth2session/` | OAuth2 session lifecycle + token vault | `OAuth2SessionService` — PKCE, JWE state tokens, encrypted token storage |
 | `principal/` | Authenticated user identity context | `WithPrincipal()` / `FromContext()` — context-based principal propagation |
 | `server/` | Server lifecycle configuration types | `Config`, lifecycle helpers |
-| `services/` | Third-party service management | `ThirdpartyOAuth2ServiceProvider` — CRUD + branch key provisioning |
-| `storage/` | Domain data models (entities + value objects) | `Agent`, `ThirdpartyOAuth2Service`, `UserGrant`, `UserSession`, `OAuthScope`, etc. |
+| `thirdparty/` | Third-party OAuth2 provider management | `ThirdpartyOAuth2ProviderService` — CRUD + encryption/decryption of provider secrets |
+| `storage/` | Domain data models (entities + value objects) | `Agent`, `UserGrant`, `UserSession`, `OAuthScope`, etc. |
 | `tokenexchange/` | RFC 8693 token exchange + CEL evaluation | `TokenExchangeService` — JWT validation, CEL authorization, token retrieval |
 
 ## Critical Rules
@@ -63,7 +63,6 @@ The `storage/` package defines **domain entities** and **value objects** — the
 | Type | Description | Key Invariants |
 |---|---|---|
 | `Agent` | AI agent registered in the broker | `ClientID` unique, `DisplayName` required, URLs validated for HTTP(S) |
-| `ThirdpartyOAuth2Service` | External OAuth2 provider config | `ClientSecret` never serialized to JSON (`json:"-"`), endpoints discoverable via RFC 8414 |
 | `UserGrant` | User delegating scopes to an agent | One grant per (principal, agent) pair (upsert), must have ≥1 `DelegatedToken` |
 | `UserSession` | Authenticated OAuth2 session | One per (principal, service_id), tokens encrypted at rest, `EncryptionContext` simplified to `service_id` only (ADR 008) |
 | `User` | Basic user entity | ID + email, timestamps |

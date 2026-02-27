@@ -77,39 +77,6 @@ type UserRepository interface {
 	ListUsers(ctx context.Context, filter *UserFilter) ([]*User, error)
 }
 
-// ThirdpartyServiceManager defines domain service operations for third-party OAuth2 services.
-// Handles encryption/decryption of client secrets as part of the domain layer.
-// Clients use this manager instead of directly accessing the repository to ensure
-// they always get decrypted credentials needed for OAuth2 operations.
-// Following Domain Service Encryption pattern: encryption logic in domain layer, repository holds encrypted bytes.
-type ThirdpartyServiceManager interface {
-	// Get retrieves a service by ID with decrypted client secret.
-	// Returns error if service not found or decryption fails.
-	Get(ctx context.Context, serviceID string) (*storage.ThirdpartyOAuth2Service, error)
-
-	// List retrieves all services with decrypted client secrets.
-	// Returns empty slice if no services exist (not an error).
-	// Fails fast on first decryption error for operational visibility.
-	List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error)
-
-	// Create encrypts client secret and stores the service.
-	// ClientSecret in the input service object is encrypted before storage.
-	// Returns error if creation fails or encryption fails.
-	Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
-
-	// Update encrypts client secret (if changed) and stores the service.
-	// Returns error if update fails or encryption fails.
-	Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
-
-	// Delete removes a service from storage.
-	// It is safe to delete non-existent services (idempotent).
-	Delete(ctx context.Context, serviceID string) error
-
-	// FindByProtectedResource retrieves service by protected resource URI with decrypted secret.
-	// Returns error if service not found or decryption fails.
-	FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error)
-}
-
 // AgentRepository defines storage operations for agent entities.
 // Agents represent AI agents registered in the identity broker.
 // Following Interface Segregation Principle: focused interface for agent operations.
@@ -150,75 +117,6 @@ type AgentRepository interface {
 	// Returns StorageError with Kind=NotFound if agent not found.
 	// Returns StorageError for connection/timeout issues.
 	GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error)
-}
-
-// ThirdpartyOAuth2ServiceRepository defines storage operations for third-party OAuth2 service configurations.
-// These services represent external OAuth2 providers (GitHub, Google, etc.) that agents can access.
-//
-// IMPORTANT CONTRACT (Domain Layer Encryption):
-// - Input (Create/Update): Service with ClientSecretCiphertext (encrypted by caller)
-// - Output (Get/List): Service with ClientSecretCiphertext (encrypted bytes, opaque)
-// - Caller (ThirdpartyServiceManager) is responsible for encrypt/decrypt lifecycle
-//
-// The repository treats ClientSecretCiphertext as opaque binary data and MUST NOT
-// attempt to decrypt, re-encrypt, or make assumptions about its content. This maintains
-// hexagonal architecture purity where the storage adapter is unaware of encryption mechanics.
-type ThirdpartyOAuth2ServiceRepository interface {
-	// Create creates a new OAuth2 service configuration.
-	// The service ID should be generated before calling this method.
-	// Expects ClientSecretCiphertext to be pre-encrypted by ThirdpartyServiceManager.
-	// Returns error if:
-	// - Service ID already exists (StorageError with Kind=Conflict)
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Operation timeout (StorageError with Kind=Timeout)
-	Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
-
-	// Get retrieves an OAuth2 service configuration by ID.
-	// Returns ClientSecretCiphertext as opaque encrypted bytes.
-	// Returns StorageError with Kind=NotFound if service not found.
-	// Returns StorageError for connection/timeout issues.
-	Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error)
-
-	// Update updates an existing OAuth2 service configuration.
-	// Expects ClientSecretCiphertext to be pre-encrypted by ThirdpartyServiceManager.
-	// Returns error if:
-	// - Service ID not found (StorageError with Kind=NotFound)
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Operation timeout (StorageError with Kind=Timeout)
-	Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
-
-	// Delete deletes an OAuth2 service configuration by ID.
-	// Returns error if:
-	// - Active grants reference this service (StorageError with Kind=Conflict, per FR-022)
-	// - Storage operation fails
-	// It is safe to delete non-existent services (idempotent).
-	Delete(ctx context.Context, id string) error
-
-	// List retrieves all OAuth2 service configurations.
-	// Returns ClientSecretCiphertext as opaque encrypted bytes.
-	// Returns empty slice if no services exist (not an error).
-	// Returns StorageError for connection/timeout issues.
-	List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error)
-
-	// CountGrantsReferencingService returns the number of active grants that reference this service.
-	// Used to enforce FR-022 (block service deletion if grants exist).
-	// Returns 0 if no grants reference the service.
-	// Returns StorageError for connection/timeout issues.
-	CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error)
-
-	// FindByProtectedResource retrieves an OAuth2 service configuration by matching resource URI
-	// against protected_resources field. Used for resource-based service discovery in token exchange.
-	// The resourceURI parameter MUST be normalized before calling using tokenexchange.Normalize()
-	// to remove trailing slashes for consistent matching.
-	// Example: normalizedURI := tokenexchange.Normalize(requestURI)
-	// Returns the service whose protected_resources contains the resourceURI (case-sensitive match).
-	// Returns ClientSecretCiphertext as opaque encrypted bytes.
-	// Returns error if:
-	// - No service configured with matching protected_resources (InvalidTargetError: "No service configured for the requested resource")
-	// - Multiple services match the same resource (misconfiguration) (InvalidTargetError: "Multiple services configured for the same resource")
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Operation timeout (StorageError with Kind=Timeout)
-	FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error)
 }
 
 // UserGrantRepository defines storage operations for user grant entities.

@@ -6,8 +6,36 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 )
+
+// isAllowedScheme checks if a URL uses an allowed scheme.
+// HTTPS is always allowed. HTTP is allowed for localhost addresses in development
+// or when HTTPS validation is skipped (dev/test mode).
+func isAllowedScheme(urlStr string, skipHTTPSValidation bool) bool {
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return false
+	}
+
+	if parsed.Scheme == "https" {
+		return true
+	}
+
+	if skipHTTPSValidation && parsed.Scheme == "http" {
+		return true
+	}
+
+	if parsed.Scheme == "http" {
+		hostname := parsed.Hostname()
+		return hostname == "localhost" || hostname == "127.0.0.1"
+	}
+
+	return false
+}
 
 // defaultHTTPClient is the HTTP client used for discovery requests.
 // Can be overridden for testing via SetHTTPClientForTesting.
@@ -35,7 +63,7 @@ func SetHTTPClientForTesting(client *http.Client) {
 // Returns:
 //   - OAuth2Endpoints with token_endpoint and authorization_endpoint
 //   - Error if discovery fails, network timeout, invalid JSON, or missing required fields
-func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL *string, skipHTTPSValidation bool) (*OAuth2Endpoints, error) {
+func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL *string, skipHTTPSValidation bool) (*model.OAuth2Endpoints, error) {
 	// Validate issuer URI
 	if issuerURI == "" {
 		return nil, errors.New("issuer_uri cannot be empty")
@@ -118,7 +146,7 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 	}
 
 	// Return discovered endpoints
-	return &OAuth2Endpoints{
+	return &model.OAuth2Endpoints{
 		TokenEndpoint:     metadata.TokenEndpoint,
 		AuthorizeEndpoint: metadata.AuthorizationEndpoint,
 	}, nil

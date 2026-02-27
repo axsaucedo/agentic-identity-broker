@@ -63,17 +63,17 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string
 	return args.Get(0).(*storage.Agent), args.Error(1)
 }
 
-// MockThirdpartyOAuth2ServiceRepository is a mock implementation of ports.ThirdpartyOAuth2ProviderRepository
-type MockThirdpartyOAuth2ServiceRepository struct {
+// MockThirdpartyOAuth2ProviderRepository is a mock implementation of ports.ThirdpartyOAuth2ProviderRepository
+type MockThirdpartyOAuth2ProviderRepository struct {
 	mock.Mock
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+func (m *MockThirdpartyOAuth2ProviderRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	args := m.Called(ctx, entity)
 	return args.Error(0)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+func (m *MockThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -81,17 +81,17 @@ func (m *MockThirdpartyOAuth2ServiceRepository) Get(ctx context.Context, id stri
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
+func (m *MockThirdpartyOAuth2ProviderRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	args := m.Called(ctx, entity)
 	return args.Error(0)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) Delete(ctx context.Context, id string) error {
+func (m *MockThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
+func (m *MockThirdpartyOAuth2ProviderRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -99,12 +99,12 @@ func (m *MockThirdpartyOAuth2ServiceRepository) List(ctx context.Context) ([]*mo
 	return args.Get(0).([]*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
+func (m *MockThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
 	args := m.Called(ctx, serviceID)
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockThirdpartyOAuth2ServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+func (m *MockThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	args := m.Called(ctx, resourceURI)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -117,7 +117,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("successful creation", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
@@ -152,7 +152,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("with optional fields", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		externalID := "ext-123"
@@ -187,7 +187,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("invalid request body", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader([]byte("invalid json")))
@@ -206,7 +206,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("validation error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
@@ -238,7 +238,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 	t.Run("conflict error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
@@ -274,7 +274,7 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 
 	t.Run("successful retrieval", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		now := time.Now().UTC()
@@ -311,7 +311,7 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 
 	t.Run("agent not found", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		mockRepo.On("Get", mock.Anything, "non-existent").Return(
@@ -340,7 +340,7 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 
 	t.Run("empty agent ID", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/agents/", nil)
@@ -365,7 +365,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 	t.Run("successful update", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		now := time.Now().UTC()
@@ -413,7 +413,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 	t.Run("agent not found", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
@@ -445,7 +445,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 	t.Run("invalid request body", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/agents/agent-123", bytes.NewReader([]byte("invalid json")))
@@ -467,7 +467,7 @@ func TestAgentsHandler_DeleteAgent(t *testing.T) {
 
 	t.Run("successful deletion", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		mockRepo.On("Delete", mock.Anything, "agent-123").Return(nil)
@@ -489,7 +489,7 @@ func TestAgentsHandler_DeleteAgent(t *testing.T) {
 
 	t.Run("empty agent ID", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/agents/", nil)
@@ -509,7 +509,7 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 
 	t.Run("successful list", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		now := time.Now().UTC()
@@ -553,7 +553,7 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 
 	t.Run("empty list", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		mockRepo.On("List", mock.Anything).Return([]*storage.Agent{}, nil)
@@ -575,7 +575,7 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 
 	t.Run("storage error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		mockRepo.On("List", mock.Anything).Return(
@@ -600,7 +600,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("empty service requirements should pass", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		err := handler.validateServiceRequirements(context.Background(), []storage.ServiceRequirement{})
@@ -612,7 +612,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("nil service requirements should pass", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		err := handler.validateServiceRequirements(context.Background(), nil)
@@ -624,7 +624,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("valid service requirements should pass", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "service-123"
@@ -657,7 +657,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("multiple valid service requirements should pass", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		entity1 := &model.ThirdpartyOAuth2ProviderEntity{
@@ -704,7 +704,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("non-existent service_id should return validation error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "non-existent-service"
@@ -735,7 +735,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("invalid scope should return validation error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "github-123"
@@ -775,7 +775,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("second service requirement with invalid service should return error with index 1", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		entity1 := &model.ThirdpartyOAuth2ProviderEntity{
@@ -819,7 +819,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("case-sensitive scope validation", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "github-123"
@@ -858,7 +858,7 @@ func TestAgentsHandler_validateServiceRequirements(t *testing.T) {
 
 	t.Run("repository error other than not found should be returned as-is", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
-		mockServiceRepo := new(MockThirdpartyOAuth2ServiceRepository)
+		mockServiceRepo := new(MockThirdpartyOAuth2ProviderRepository)
 		handler := NewAgentsHandler(mockRepo, mockServiceRepo, logger)
 
 		serviceID := "github-123"
