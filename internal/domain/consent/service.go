@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -140,7 +142,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 	} else {
 		// Create new grant (FR-011)
 		grant = &storage.UserGrant{
-			ID:                    generateID(), // ID generation will be handled by repository
+			ID:                    uuid.New().String(),
 			Principal:             req.Principal,
 			AgentID:               req.AgentID,
 			ValidUntil:            req.ValidUntil,
@@ -470,11 +472,4 @@ func (s *Service) GetAgentDelegations(ctx context.Context, principal string) ([]
 	}
 
 	return delegations, nil
-}
-
-// generateID is a placeholder for ID generation.
-// In production, this would use UUID v4 generation.
-func generateID() string {
-	// This will be replaced by proper UUID generation in repository implementations
-	return ""
 }
