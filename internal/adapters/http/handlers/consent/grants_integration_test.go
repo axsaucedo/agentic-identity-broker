@@ -34,7 +34,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create providerService to handle encryption context binding (simulates domain layer)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
 
 	// Seed test data
 	ctx := context.Background()
@@ -266,7 +266,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create providerService to handle encryption context binding (simulates domain layer)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, slog.Default())
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
 
 	ctx := context.Background()
 

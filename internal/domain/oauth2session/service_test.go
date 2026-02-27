@@ -1041,6 +1041,7 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.In
 		serviceRepo,
 		encryption,
 		nil,
+		false,
 		slog.Default(),
 	)
 
@@ -1405,7 +1406,7 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 	encryption := newTestEncryption(t)
 
 	// Create ThirdpartyOAuth2ProviderService to handle encryption context binding (simulates domain layer)
-	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, encryption, nil, logger)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, encryption, nil, false, logger)
 
 	// Create service with capturing logger
 	config := oauth2session.DefaultConfig()

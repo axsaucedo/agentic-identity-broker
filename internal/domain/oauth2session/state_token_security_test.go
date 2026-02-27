@@ -248,6 +248,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 		serviceRepo1,
 		newTestEncryption(t),
 		nil,
+		false,
 		slog.Default(),
 	)
 
@@ -281,6 +282,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 		serviceRepo2,
 		newTestEncryption(t),
 		nil,
+		false,
 		slog.Default(),
 	)
 

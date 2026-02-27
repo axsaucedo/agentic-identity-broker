@@ -26,28 +26,33 @@ import (
 // The repository (ThirdpartyOAuth2ProviderRepository) is unaware of encryption mechanics
 // and treats Secret ciphertext as opaque binary data.
 type ThirdpartyOAuth2ProviderService struct {
-	repo             ports.ThirdpartyOAuth2ProviderRepository
-	encryption       ports.EncryptionPort
-	branchKeyManager ports.BranchKeyManager // may be nil
-	logger           *slog.Logger
+	repo                ports.ThirdpartyOAuth2ProviderRepository
+	encryption          ports.EncryptionPort
+	branchKeyManager    ports.BranchKeyManager // may be nil
+	skipHTTPSValidation bool
+	logger              *slog.Logger
 }
 
 // NewThirdpartyOAuth2ProviderService creates a new provider service.
 // branchKeyManager may be nil if no KMS backend is configured.
+// skipHTTPSValidation allows HTTP issuer/metadata URLs in development or test environments;
+// set from config.Security.SkipThirdpartyHTTPSValidation.
 func NewThirdpartyOAuth2ProviderService(
 	repo ports.ThirdpartyOAuth2ProviderRepository,
 	encryption ports.EncryptionPort,
 	branchKeyManager ports.BranchKeyManager,
+	skipHTTPSValidation bool,
 	logger *slog.Logger,
 ) *ThirdpartyOAuth2ProviderService {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ThirdpartyOAuth2ProviderService{
-		repo:             repo,
-		encryption:       encryption,
-		branchKeyManager: branchKeyManager,
-		logger:           logger,
+		repo:                repo,
+		encryption:          encryption,
+		branchKeyManager:    branchKeyManager,
+		skipHTTPSValidation: skipHTTPSValidation,
+		logger:              logger,
 	}
 }
 
@@ -58,6 +63,12 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 	ctx context.Context,
 	entity *model.ThirdpartyOAuth2ProviderEntity,
 ) error {
+	// Validate before any side effects: catches invalid entities before ID generation
+	// and branch key provisioning (branch keys cannot be rolled back once provisioned).
+	if err := entity.ValidateForCreate(s.skipHTTPSValidation); err != nil {
+		return fmt.Errorf("provider validation failed: %w", err)
+	}
+
 	// Generate ID before encryption so context binding matches persisted ID
 	if entity.ID == "" {
 		entity.ID = uuid.New().String()
@@ -144,6 +155,11 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 	ctx context.Context,
 	entity *model.ThirdpartyOAuth2ProviderEntity,
 ) error {
+	// Validate before encryption to prevent wasted KMS calls on invalid input.
+	if err := entity.ValidateForUpdate(s.skipHTTPSValidation); err != nil {
+		return fmt.Errorf("provider validation failed: %w", err)
+	}
+
 	if entity.Secret.IsPlaintext() {
 		plaintext, err := entity.Secret.GetPlaintext()
 		if err != nil {

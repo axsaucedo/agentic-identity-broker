@@ -47,6 +47,7 @@ func setupImplementedService(t *testing.T) (*oauth2session.OAuth2SessionService,
 		serviceRepo,
 		encryption,
 		nil,
+		false,
 		slog.Default(),
 	)
 

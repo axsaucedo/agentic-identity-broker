@@ -318,6 +318,7 @@ func setupTestService(t *testing.T) *oauth2session.OAuth2SessionService {
 		serviceRepo,
 		newTestEncryption(t),
 		nil,
+		false,
 		slog.Default(),
 	)
 

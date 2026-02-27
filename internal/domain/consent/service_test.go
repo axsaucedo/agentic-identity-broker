@@ -29,7 +29,7 @@ func (m *mockEncryption) Decrypt(_ context.Context, ciphertext []byte, _ map[str
 // newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
 // with passthrough encryption for use in domain-layer tests.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &mockEncryption{}, nil, nil)
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &mockEncryption{}, nil, false, nil)
 }
 
 // Mock implementations for testing

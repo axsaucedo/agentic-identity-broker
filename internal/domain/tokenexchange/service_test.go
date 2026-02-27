@@ -20,7 +20,7 @@ import (
 // newTestProviderService wraps a repository in a ThirdpartyOAuth2ProviderService
 // with passthrough encryption for use in domain-layer tests.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &MockEncryption{}, nil, nil)
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &MockEncryption{}, nil, false, nil)
 }
 
 // newMockConsentService creates a consent.Service with mock repositories for testing

@@ -33,7 +33,7 @@ func newTestEncryption() ports.EncryptionPort {
 // newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
 // with test encryption. Used in tests across the consent handler package.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, newTestEncryption(), nil, slog.Default())
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, newTestEncryption(), nil, false, slog.Default())
 }
 
 // encryptSecretForTest encrypts a plaintext secret using the test encryption adapter.

@@ -1593,6 +1593,7 @@ func createOAuth2SessionService(
 		serviceRepo,
 		encryption,
 		nil,
+		false,
 		slog.Default(),
 	)
 

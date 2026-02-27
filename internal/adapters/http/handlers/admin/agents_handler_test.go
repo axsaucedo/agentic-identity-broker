@@ -71,7 +71,7 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string
 // MockProviderRepository and newTestEncryption are defined in services_handler_test.go
 // and are available here because both files share the same package admin.
 func newAgentsHandlerForTest(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger) *AgentsHandler {
-	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, logger)
+	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
 	return NewAgentsHandler(mockRepo, svc, logger)
 }
 

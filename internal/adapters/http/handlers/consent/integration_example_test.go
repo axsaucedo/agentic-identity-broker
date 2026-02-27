@@ -32,7 +32,7 @@ func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2Pro
 		t.Fatalf("failed to create encryption adapter: %v", err)
 	}
 	repo := memorystorage.NewInMemoryThirdpartyOAuth2ProviderRepository()
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, enc, nil, slog.Default())
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, enc, nil, false, slog.Default())
 }
 
 func newGitHubServiceEntity() *model.ThirdpartyOAuth2ProviderEntity {

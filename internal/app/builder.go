@@ -195,6 +195,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.Services(),
 			encryptor,
 			b.branchKeyManager, // May be nil if no encryption backend configured
+			b.config.Security.SkipThirdpartyHTTPSValidation,
 			b.logger,
 		)
 	}
