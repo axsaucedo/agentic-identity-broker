@@ -243,7 +243,12 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get existing entity to preserve created_at and existing secret if not changed
+	if req.ClientSecret == "" {
+		h.writeError(w, http.StatusBadRequest, "validation failed", "client_secret is required")
+		return
+	}
+
+	// Get existing entity to preserve created_at
 	existing, err := h.providerService.Get(ctx, serviceID)
 	if err != nil {
 		h.handleStorageError(w, r, "UpdateService", err)
@@ -255,16 +260,8 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
 	}
 
-	// Build updated entity
-	var secret model.Secret
-	if req.ClientSecret != "" {
-		// New secret provided — use plaintext (will be encrypted by domain service)
-		secret = model.NewPlaintextSecret(req.ClientSecret)
-	} else {
-		// No new secret — preserve existing secret. Get() returns a decrypted entity
-		// (plaintext state), so pass it through directly; Update() will re-encrypt it.
-		secret = existing.Secret
-	}
+	// Build updated entity — client_secret is required and already validated above.
+	secret := model.NewPlaintextSecret(req.ClientSecret)
 
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:                 serviceID,

@@ -331,37 +331,19 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		mockRepo.AssertExpectations(t)
 	})
 
-	t.Run("successful update preserving existing secret", func(t *testing.T) {
+	t.Run("missing client_secret returns 400", func(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
-
-		existing := encryptedEntity("service-123", "GitHub", "github-client-id", "existing-secret", "https://github.com",
-			[]model.OAuthScope{{ScopeValue: "repo", Description: "Repo access"}})
 
 		reqBody := ServiceRequest{
 			DisplayName:  "GitHub Updated",
 			ClientID:     "github-client-id",
-			ClientSecret: "", // No new secret — preserve existing
+			ClientSecret: "", // Missing — must be rejected per OpenAPI contract
 			IssuerURI:    "https://github.com",
-			Discovery: DiscoveryConfigRequest{
-				EnableDiscovery: false,
-			},
-			Endpoints: &OAuth2EndpointsRequest{
-				TokenEndpoint:     "https://github.com/login/oauth/access_token",
-				AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
-			},
-			Scopes: []OAuthScopeRequest{
-				{ScopeValue: "repo", Description: "Repository access"},
-			},
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Scopes:       []OAuthScopeRequest{{ScopeValue: "repo", Description: "Repository access"}},
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
-
-		mockRepo.On("Get", mock.Anything, "service-123").Return(existing, nil)
-		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
-			// Secret must be encrypted and non-empty — the existing plaintext is re-encrypted by Update()
-			ct, err := e.Secret.GetCiphertext()
-			return e.ID == "service-123" && e.Secret.IsEncrypted() && err == nil && len(ct) > 0
-		})).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/service-123", bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
@@ -373,15 +355,17 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 		handler.UpdateService(w, req)
 
-		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 
-		var resp ServiceResponse
+		var resp ErrorResponse
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
-		assert.Equal(t, "GitHub Updated", resp.DisplayName)
-		assert.Equal(t, "REDACTED", resp.ClientSecret)
+		assert.Equal(t, "validation failed", resp.Error)
+		assert.Contains(t, resp.Message, "client_secret is required")
 
-		mockRepo.AssertExpectations(t)
+		// No repo calls must have been made
+		mockRepo.AssertNotCalled(t, "Get")
+		mockRepo.AssertNotCalled(t, "Update")
 	})
 }
 
