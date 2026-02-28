@@ -134,7 +134,8 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("agent created", "agent_id", agent.ID, "client_id", agent.ClientID, "service_requirements_count", len(agent.ServiceRequirements))
 
 	// Return created agent
-	resp, err := h.toResponse(ctx, agent)
+	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
+	resp, err := h.toResponseWithServiceMap(ctx, agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -159,7 +160,8 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.toResponse(ctx, agent)
+	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
+	resp, err := h.toResponseWithServiceMap(ctx, agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -231,7 +233,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("agent updated", "agent_id", agent.ID, "client_id", agent.ClientID, "service_requirements_count", len(agent.ServiceRequirements))
 
 	// Return updated agent
-	resp, err := h.toResponse(ctx, agent)
+	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
+	resp, err := h.toResponseWithServiceMap(ctx, agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -351,47 +354,6 @@ func (h *AgentsHandler) toResponseWithServiceMap(ctx context.Context, agent *sto
 			// Resolve service name from map (best effort)
 			if service, ok := serviceMap[sr.ServiceID]; ok {
 				respSR.ServiceName = service.DisplayName
-			}
-
-			resp.ServiceRequirements[i] = respSR
-		}
-	}
-
-	return resp, nil
-}
-
-// toResponse converts an Agent entity to AgentResponse.
-// Resolves service names for service requirements.
-func (h *AgentsHandler) toResponse(ctx context.Context, agent *storage.Agent) (AgentResponse, error) {
-	resp := AgentResponse{
-		ID:                   agent.ID,
-		ClientID:             agent.ClientID,
-		ExternalID:           agent.ExternalID,
-		DisplayName:          agent.DisplayName,
-		Description:          agent.Description,
-		GovernanceURL:        agent.GovernanceURL,
-		UserDocumentationURL: agent.UserDocumentationURL,
-		AgentInterfaceURL:    agent.AgentInterfaceURL,
-		CreatedAt:            agent.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:            agent.UpdatedAt.Format(time.RFC3339),
-	}
-
-	// Convert service requirements and resolve service names
-	if len(agent.ServiceRequirements) > 0 {
-		resp.ServiceRequirements = make([]ServiceRequirementResponse, len(agent.ServiceRequirements))
-		for i, sr := range agent.ServiceRequirements {
-			respSR := ServiceRequirementResponse{
-				ServiceID:       sr.ServiceID,
-				RequirementType: sr.RequirementType.String(),
-				RequiredScopes:  sr.RequiredScopes,
-			}
-
-			// Resolve service name (best effort - don't fail if service not found)
-			service, err := h.providerService.Get(ctx, sr.ServiceID)
-			if err == nil {
-				respSR.ServiceName = service.DisplayName
-			} else {
-				h.logger.Warn("failed to resolve service name", "service_id", sr.ServiceID, "error", err)
 			}
 
 			resp.ServiceRequirements[i] = respSR
