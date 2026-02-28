@@ -396,7 +396,6 @@ func (h *ServicesHandler) ListServices(w http.ResponseWriter, r *http.Request) {
 }
 
 // toResponse converts a ThirdpartyOAuth2ProviderEntity to ServiceResponse.
-// Assumes the entity has already been redacted.
 func (h *ServicesHandler) toResponse(entity *model.ThirdpartyOAuth2ProviderEntity) ServiceResponse {
 	scopes := make([]OAuthScopeResponse, len(entity.Scopes))
 	for i, scope := range entity.Scopes {
@@ -406,14 +405,11 @@ func (h *ServicesHandler) toResponse(entity *model.ThirdpartyOAuth2ProviderEntit
 		}
 	}
 
-	// Secret should be "REDACTED" for redacted copies
-	clientSecret, _ := entity.Secret.GetPlaintext()
-
 	return ServiceResponse{
 		ID:           entity.ID,
 		DisplayName:  entity.DisplayName,
 		ClientID:     entity.ClientID,
-		ClientSecret: clientSecret,
+		ClientSecret: entity.Secret.Redacted(),
 		IssuerURI:    entity.IssuerURI,
 		Discovery: DiscoveryConfigResponse{
 			EnableDiscovery: entity.Discovery.EnableDiscovery,
