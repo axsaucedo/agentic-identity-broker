@@ -136,7 +136,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Return created agent
 	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
-	resp, err := h.toResponseWithServiceMap(ctx, agent, serviceMap)
+	resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -162,7 +162,7 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
-	resp, err := h.toResponseWithServiceMap(ctx, agent, serviceMap)
+	resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -235,7 +235,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Return updated agent
 	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
-	resp, err := h.toResponseWithServiceMap(ctx, agent, serviceMap)
+	resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -282,7 +282,7 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 	// Convert to response format
 	responses := make([]AgentResponse, len(agents))
 	for i, agent := range agents {
-		resp, err := h.toResponseWithServiceMap(ctx, agent, serviceMap)
+		resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 		if err != nil {
 			h.logger.Error("failed to convert agent to response", "agent_id", agent.ID, "error", err)
 			// Continue with partial response
@@ -328,7 +328,7 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 
 // toResponseWithServiceMap converts an Agent entity to AgentResponse using a pre-loaded service map.
 // This avoids N+1 queries when converting multiple agents.
-func (h *AgentsHandler) toResponseWithServiceMap(ctx context.Context, agent *storage.Agent, serviceMap map[string]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
+func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMap map[string]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
 	resp := AgentResponse{
 		ID:                   agent.ID,
 		ClientID:             agent.ClientID,
