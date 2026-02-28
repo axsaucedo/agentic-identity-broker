@@ -63,9 +63,8 @@ Factory pattern with backend selection:
 | Package | Purpose | Key Details |
 |---|---|---|
 | `factory.go` | Backend selection factory | `NewAdapter(config)` → returns `Adapter` composite with all repositories. Selects `memory` or `postgres` based on config. |
-| `memory/` | In-memory storage | Maps + `sync.RWMutex` for thread safety. Implements all 5 repository interfaces. Used in dev/testing. |
-| `postgres/` | PostgreSQL storage | `sqlx` + `pgx v5` driver. Implements all 5 repository interfaces. Production backend. |
-| `noop/` | NoOp encryption adapter | See encryption section above. |
+| `memory/` | In-memory storage | Maps + `sync.RWMutex` for thread safety. Implements all repository interfaces. Used in dev/testing. |
+| `postgres/` | PostgreSQL storage | `sqlx` + `pgx v5` driver. Implements all repository interfaces. Production backend. |
 
 Each storage package implements these repository interfaces from `ports/storage.go`:
 - `AgentRepository` — CRUD + `GetByClientID()`
