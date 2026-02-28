@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -153,31 +154,29 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Update(ctx context.Context,
 		    protected_resources = $11,
 		    updated_at = $12
 		WHERE id = $1
+		RETURNING created_at
 	`
 
-	result, err := r.adapter.db.ExecContext(
+	var createdAt time.Time
+	err = r.adapter.db.QueryRowContext(
 		execCtx, query,
 		record.ID, record.DisplayName, record.ClientID, record.SecretCiphertext,
 		record.IssuerURI, record.EnableDiscovery, record.MetadataURL,
 		record.TokenEndpoint, record.AuthorizeEndpoint,
 		record.Scopes, pq.Array(record.ProtectedResources),
 		record.UpdatedAt,
-	)
+	).Scan(&createdAt)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return storage.NewStorageError("UpdateThirdpartyOAuth2Provider", storage.ErrorKindNotFound, ports.ErrNotFound, "provider not found")
+		}
 		if strings.Contains(err.Error(), "context deadline exceeded") {
 			return storage.NewStorageError("UpdateThirdpartyOAuth2Provider", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
 		return storage.NewStorageError("UpdateThirdpartyOAuth2Provider", storage.ErrorKindConnection, err, "failed to update provider")
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return storage.NewStorageError("UpdateThirdpartyOAuth2Provider", storage.ErrorKindConnection, err, "failed to get affected rows")
-	}
-	if rows == 0 {
-		return storage.NewStorageError("UpdateThirdpartyOAuth2Provider", storage.ErrorKindNotFound, ports.ErrNotFound, "provider not found")
-	}
-
+	entity.CreatedAt = createdAt
 	return nil
 }
 

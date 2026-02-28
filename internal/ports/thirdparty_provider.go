@@ -33,6 +33,7 @@ type ThirdpartyOAuth2ProviderRepository interface {
 
 	// Update updates an existing provider entity.
 	// Entity.Secret must be in encrypted state before calling.
+	// On success, entity.CreatedAt is populated with the value from storage (no extra round-trip).
 	// Returns StorageError with Kind=NotFound if provider not found.
 	Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error
 

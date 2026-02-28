@@ -284,9 +284,6 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
-		existing := encryptedEntity("service-123", "GitHub", "github-client-id", "old-secret", "https://github.com",
-			[]model.OAuthScope{{ScopeValue: "repo", Description: "Repo access"}})
-
 		reqBody := ServiceRequest{
 			DisplayName:  "GitHub Updated",
 			ClientID:     "github-client-id-new",
@@ -305,7 +302,6 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		mockRepo.On("Get", mock.Anything, "service-123").Return(existing, nil)
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
 			return e.ID == "service-123" && e.DisplayName == "GitHub Updated" && e.Secret.IsEncrypted()
 		})).Return(nil)

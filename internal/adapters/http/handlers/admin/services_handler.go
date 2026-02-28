@@ -248,30 +248,21 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get existing entity to preserve created_at
-	existing, err := h.providerService.Get(ctx, serviceID)
-	if err != nil {
-		h.handleStorageError(w, r, "UpdateService", err)
-		return
-	}
-
 	skipHTTPSValidation := false
 	if h.config != nil {
 		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
 	}
 
 	// Build updated entity — client_secret is required and already validated above.
-	secret := model.NewPlaintextSecret(req.ClientSecret)
-
+	// created_at is not set here; repo.Update() populates it from storage (no KMS decrypt needed).
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:                 serviceID,
 		DisplayName:        req.DisplayName,
 		ClientID:           req.ClientID,
-		Secret:             secret,
+		Secret:             model.NewPlaintextSecret(req.ClientSecret),
 		IssuerURI:          req.IssuerURI,
 		Discovery:          model.DiscoveryConfig{EnableDiscovery: req.Discovery.EnableDiscovery, MetadataURL: req.Discovery.MetadataURL},
 		ProtectedResources: req.ProtectedResources,
-		CreatedAt:          existing.CreatedAt,
 		UpdatedAt:          time.Now().UTC(),
 	}
 

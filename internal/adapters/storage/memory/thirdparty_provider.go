@@ -69,13 +69,18 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, id
 
 // Update updates an existing provider entity in memory.
 // Entity.Secret must be in encrypted state.
+// On success, entity.CreatedAt is set to the value from the stored entity.
 func (r *InMemoryThirdpartyOAuth2ProviderRepository) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.providers[entity.ID]; !exists {
+	existing, exists := r.providers[entity.ID]
+	if !exists {
 		return storage.NewStorageError("UpdateThirdpartyOAuth2Provider", storage.ErrorKindNotFound, ports.ErrNotFound, "provider not found")
 	}
+
+	// Preserve immutable created_at from storage — callers must not set it.
+	entity.CreatedAt = existing.CreatedAt
 
 	stored, err := providerEntityCopy(entity)
 	if err != nil {
