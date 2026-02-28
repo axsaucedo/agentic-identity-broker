@@ -407,6 +407,51 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 
 		mockRepo.AssertExpectations(t)
 	})
+
+	t.Run("validation error after valid client_secret - no Update called", func(t *testing.T) {
+		// Regression guard for KMS ordering: ValidateForUpdate must fire before
+		// providerService.Update (which triggers encryption). If Update is called
+		// despite a validation failure, the ordering is broken.
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		reqBody := ServiceRequest{
+			DisplayName:  "", // Invalid: triggers ValidateForUpdate error
+			ClientID:     "github-client-id",
+			ClientSecret: "valid-secret", // Valid: passes the early client_secret guard
+			IssuerURI:    "https://github.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://github.com/login/oauth/access_token",
+				AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+			},
+			Scopes: []OAuthScopeRequest{
+				{ScopeValue: "repo", Description: "Repository access"},
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/service-123", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("service-id", "service-123")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		handler.UpdateService(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "validation failed", resp.Error)
+		assert.Contains(t, resp.Message, "display_name is required")
+
+		// Validation must fire before any storage or encryption call.
+		mockRepo.AssertNotCalled(t, "Update")
+	})
 }
 
 func TestServicesHandler_DeleteService(t *testing.T) {
