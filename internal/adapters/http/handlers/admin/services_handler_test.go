@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,8 +120,8 @@ func encryptedEntity(id, displayName, clientID, clientSecret, issuerURI string, 
 		Secret:      model.NewEncryptedSecret(encryptSecretForTest(id, clientSecret)),
 		IssuerURI:   issuerURI,
 		Endpoints: model.OAuth2Endpoints{
-			TokenEndpoint:     "https://" + issuerURI[8:] + "/token",
-			AuthorizeEndpoint: "https://" + issuerURI[8:] + "/authorize",
+			TokenEndpoint:     "https://" + strings.TrimPrefix(issuerURI, "https://") + "/token",
+			AuthorizeEndpoint: "https://" + strings.TrimPrefix(issuerURI, "https://") + "/authorize",
 		},
 		Scopes:    scopes,
 		CreatedAt: now,
