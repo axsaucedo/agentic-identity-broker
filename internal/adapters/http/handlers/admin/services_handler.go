@@ -205,7 +205,7 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 	h.writeJSON(w, http.StatusCreated, resp)
 }
 
-// GetService handles GET /api/third-party/oauth2/clients/:client-id
+// GetService handles GET /api/services/{service-id}
 func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	serviceID := chi.URLParam(r, "service-id")
@@ -226,7 +226,7 @@ func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-// UpdateService handles PUT /api/services/:service-id
+// UpdateService handles PUT /api/services/{service-id}
 func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	serviceID := chi.URLParam(r, "service-id")

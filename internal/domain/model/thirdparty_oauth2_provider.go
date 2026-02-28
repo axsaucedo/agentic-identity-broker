@@ -32,8 +32,10 @@ func isAllowedHTTPSScheme(urlStr string, skipHTTPSValidation bool) bool {
 // agents can access on behalf of users (e.g., GitHub, Google, Databricks).
 //
 // The Secret field uses the Secret value object with two mutually exclusive states:
-// - Plaintext state: used when creating/updating a provider (before encryption)
-// - Encrypted state: used when the entity was loaded from storage (after decryption by a domain service)
+//   - Plaintext state: used when creating/updating a provider, and when returned from Get/List
+//     (the domain service decrypts the raw ciphertext before returning the entity to callers).
+//   - Encrypted state: used internally by the repository layer. Callers (handlers, other domain
+//     services) never observe an entity in encrypted state.
 //
 // Encryption and decryption happens exclusively in domain services, not in this entity.
 type ThirdpartyOAuth2ProviderEntity struct {
