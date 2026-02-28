@@ -153,9 +153,8 @@ func (s *ThirdpartyOAuth2ProviderService) Get(
 }
 
 // Update validates, encrypts the secret, and stores the updated entity.
-// entity.Secret must be in plaintext state on entry — callers must always supply
-// the secret in plaintext. Passing encrypted state is rejected by ValidateForUpdate
-// to prevent silent bypass of re-encryption (e.g. during future key rotation).
+// entity.Secret must be in plaintext state — the HTTP contract requires callers to
+// always supply the secret. Passing encrypted state is rejected by ValidateForUpdate.
 // On success, entity.Secret is in encrypted state.
 func (s *ThirdpartyOAuth2ProviderService) Update(
 	ctx context.Context,

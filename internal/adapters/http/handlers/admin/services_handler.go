@@ -253,7 +253,6 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
 	}
 
-	// Build updated entity — client_secret is required and already validated above.
 	// created_at is not set here; repo.Update() populates it from storage (no KMS decrypt needed).
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:                 serviceID,
