@@ -4,6 +4,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -389,8 +390,8 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 
 // handleStorageError converts storage errors to HTTP responses.
 func (h *AgentsHandler) handleStorageError(w http.ResponseWriter, r *http.Request, operation string, err error) {
-	storageErr, ok := err.(*storage.StorageError)
-	if !ok {
+	var storageErr *storage.StorageError
+	if !errors.As(err, &storageErr) {
 		h.logger.Error("unexpected error type", "operation", operation, "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
