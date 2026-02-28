@@ -363,6 +363,50 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		mockRepo.AssertNotCalled(t, "Get")
 		mockRepo.AssertNotCalled(t, "Update")
 	})
+
+	t.Run("service not found returns 404", func(t *testing.T) {
+		mockRepo := new(MockProviderRepository)
+		handler := setupHandler(t, mockRepo)
+
+		reqBody := ServiceRequest{
+			DisplayName:  "GitHub Updated",
+			ClientID:     "github-client-id",
+			ClientSecret: "new-secret",
+			IssuerURI:    "https://github.com",
+			Discovery:    DiscoveryConfigRequest{EnableDiscovery: false},
+			Endpoints: &OAuth2EndpointsRequest{
+				TokenEndpoint:     "https://github.com/login/oauth/access_token",
+				AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+			},
+			Scopes: []OAuthScopeRequest{
+				{ScopeValue: "repo", Description: "Repository access"},
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+			return e.ID == "nonexistent" && e.Secret.IsEncrypted()
+		})).Return(storage.NewStorageError("UpdateService", storage.ErrorKindNotFound, nil, "service not found"))
+
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/nonexistent", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("service-id", "nonexistent")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		handler.UpdateService(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+
+		var resp ErrorResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "service not found", resp.Error)
+
+		mockRepo.AssertExpectations(t)
+	})
 }
 
 func TestServicesHandler_DeleteService(t *testing.T) {
