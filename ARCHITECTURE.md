@@ -463,7 +463,30 @@ Token Decryption Flow:
 
 - **OAuth2SessionService**: Transparently encrypts tokens on CreateSession, decrypts on retrieval
 - **UserSessionRepository**: Stores EncryptedAccessToken and EncryptedRefreshToken as BYTEA columns
+- **ThirdpartyOAuth2ProviderService** (`internal/domain/thirdparty/`): Exclusively owns encryption/decryption of provider `client_secret` via the `Secret` value object (see below). No other layer touches `EncryptionPort` for provider secrets.
 - No manual encryption steps required in calling code - encryption is transparent
+
+**Secret Value Object** (`internal/domain/model/secret.go`):
+
+The `Secret` value object enforces encryption safety at the type level for provider credentials:
+
+```
+Create flow:
+  Handler → ThirdpartyOAuth2ProviderEntity{Secret: NewPlaintextSecret(req.ClientSecret)}
+  ThirdpartyOAuth2ProviderService.Create():
+    → Secret.GetPlaintext() → encrypt via EncryptionPort → NewEncryptedSecret(ciphertext)
+    → repo.Create(entity)  ← entity.Secret is now encrypted; plaintext is gone
+  Repository adapter:
+    → Secret.GetCiphertext() → store as BYTEA  ← fails if not encrypted first
+
+Retrieval flow:
+  Repository adapter → NewEncryptedSecret(row.SecretCiphertext)
+  ThirdpartyOAuth2ProviderService.Get():
+    → Secret.GetCiphertext() → decrypt via EncryptionPort → NewPlaintextSecret(plaintext)
+    → return entity  ← plaintext available to caller only through service boundary
+```
+
+**Mandatory Encryption**: Encryption is required in all environments. Builder returns a startup error if no encryption configuration is provided — there is no NoOp fallback. This is enforced in `internal/app/builder.go`.
 
 **Security Properties**:
 
@@ -510,7 +533,7 @@ Service Layer (OAuth2SessionService):
   ↓ Returns plaintext to caller
 ```
 
-**Example Implementation**: UserSessionRepository + OAuth2SessionService
+**Example Implementations**: UserSessionRepository + OAuth2SessionService (tokens); ThirdpartyOAuth2ProviderRepository + ThirdpartyOAuth2ProviderService (provider client_secret via `Secret` VO)
 
 **See Also**:
 - ADR 009: Envelope Encryption Design (cryptographic approach)
@@ -686,7 +709,9 @@ Define any project-specific terms or acronyms.)
 
 **Optional Service**: A third-party OAuth2 service marked with requirement_type="optional" in an agent's service requirements. Displayed in consent UI with visual distinction (neutral badge vs trust-deep for mandatory). Does not block authorization flow - if user lacks session or scopes, authorization proceeds anyway. Allows agents to degrade gracefully when optional integrations unavailable.
 
-**ThirdpartyOAuth2Service**: External OAuth2 provider (e.g., GitHub, Google, Microsoft) registered in the system. Each service defines a set of OAuth scopes that can be delegated to agents. Services have a client_id, client_secret (stored securely, redacted in responses), and display name.
+**ThirdpartyOAuth2Provider**: External OAuth2 provider (e.g., GitHub, Google, Microsoft) registered in the system. Each provider defines a set of OAuth scopes that can be delegated to agents. Providers have a client_id, client_secret (stored as a `Secret` value object — encrypted at rest, redacted in API responses), and display name. Represented as `model.ThirdpartyOAuth2ProviderEntity` in `internal/domain/model/`. All encryption and decryption of the client secret is owned exclusively by `ThirdpartyOAuth2ProviderService` in `internal/domain/thirdparty/`.
+
+**Secret**: Immutable value object in `internal/domain/model/` with two mutually exclusive states: plaintext (`NewPlaintextSecret(value)`) and encrypted (`NewEncryptedSecret(ciphertext)`). `GetPlaintext()` fails on encrypted state; `GetCiphertext()` fails on plaintext state. `Redacted()` always returns `"REDACTED"` regardless of state. Prevents accidental plaintext leakage at the type level — storage adapters can never accidentally persist unencrypted secrets because `GetCiphertext()` will error if encryption was not performed first.
 
 **OAuth Scope**: A specific permission defined by an OAuth2 provider (e.g., "repo", "user:email"). Each scope has a scope_value (the OAuth scope string) and a human-readable description. Scopes are defined per service and validated during grant creation.
 
@@ -744,7 +769,7 @@ Define any project-specific terms or acronyms.)
 
 **CEL Authorization**: Common Expression Language policy evaluation for privileged client authorization. Expression evaluated against client_assertion claims and request context. Expression must return boolean; defaults to "true" (allow all valid privileged clients). Enables flexible authorization policies beyond basic JWT validation.
 
-**Protected Resources**: Array of normalized resource URIs on ThirdpartyOAuth2Service that identify which resources map to that service for RFC 8693 token exchange. Used to discover correct service when processing token exchange requests. URIs are normalized (trailing slashes removed) for consistent matching. Stored as TEXT[] column in PostgreSQL with GIN index for efficient lookups.
+**Protected Resources**: Array of normalized resource URIs on ThirdpartyOAuth2Provider that identify which resources map to that provider for RFC 8693 token exchange. Used to discover correct service when processing token exchange requests. URIs are normalized (trailing slashes removed) for consistent matching. Stored as TEXT[] column in PostgreSQL with GIN index for efficient lookups.
 
 ### General Acronyms
 
