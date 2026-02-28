@@ -562,7 +562,9 @@ func TestHandleCallback_RetryExhausted(t *testing.T) {
 	})
 	defer mockServer.Close()
 
-	// Update service to use mock token endpoint
+	// Update service to use mock token endpoint.
+	// Reset secret to plaintext — Update() always requires plaintext state.
+	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
 	err = providerService.Update(ctx, thirdPartyService)
 	require.NoError(t, err)
@@ -613,7 +615,9 @@ func TestHandleCallback_ContextCancellationDuringRetry(t *testing.T) {
 	})
 	defer mockServer.Close()
 
-	// Update service to use mock token endpoint
+	// Update service to use mock token endpoint.
+	// Reset secret to plaintext — Update() always requires plaintext state.
+	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
 	err = providerService.Update(context.Background(), thirdPartyService)
 	require.NoError(t, err)
@@ -660,7 +664,9 @@ func TestHandleCallback_TokenEncryptionFailure(t *testing.T) {
 	})
 	defer mockServer.Close()
 
-	// Update service to use mock token endpoint
+	// Update service to use mock token endpoint.
+	// Reset secret to plaintext — Update() always requires plaintext state.
+	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
 	err = providerService.Update(ctx, thirdPartyService)
 	require.NoError(t, err)
@@ -782,7 +788,9 @@ func TestHandleCallback_PKCEValidationFailure(t *testing.T) {
 	})
 	defer mockServer.Close()
 
-	// Update service to use mock token endpoint
+	// Update service to use mock token endpoint.
+	// Reset secret to plaintext — Update() always requires plaintext state.
+	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
 	err = providerService.Update(ctx, thirdPartyService)
 	require.NoError(t, err)
@@ -1113,7 +1121,9 @@ func TestTerminateSession_SuccessfullyTerminatesExistingSession(t *testing.T) {
 	})
 	defer mockServer.Close()
 
-	// Update service to use mock token endpoint
+	// Update service to use mock token endpoint.
+	// Reset secret to plaintext — Update() always requires plaintext state.
+	thirdPartyService.Secret = model.NewPlaintextSecret("test-client-secret")
 	thirdPartyService.Endpoints.TokenEndpoint = mockServer.URL
 	err = providerService.Update(ctx, thirdPartyService)
 	require.NoError(t, err)

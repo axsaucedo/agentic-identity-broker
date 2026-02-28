@@ -23,8 +23,9 @@ import (
 //   - Create: validates entity, provisions branch key (if manager present),
 //     encrypts Secret{plaintext} → Secret{ciphertext}, stores entity
 //   - Get/List/Find: retrieves entity with Secret{ciphertext}, decrypts to Secret{plaintext}
-//   - Update: if Secret is plaintext (new secret), encrypts before storing;
-//     if Secret is encrypted (no change), stores as-is
+//   - Update: validates entity (requires plaintext Secret), encrypts Secret{plaintext} →
+//     Secret{ciphertext}, stores entity. Encrypted state is rejected to ensure re-encryption
+//     always runs (e.g. during key rotation).
 //
 // The repository (ThirdpartyOAuth2ProviderRepository) is unaware of encryption mechanics
 // and treats Secret ciphertext as opaque binary data.
@@ -151,9 +152,11 @@ func (s *ThirdpartyOAuth2ProviderService) Get(
 	return s.decryptSecret(ctx, entity)
 }
 
-// Update encrypts the secret if changed (plaintext) and stores the updated entity.
-// If entity.Secret is in plaintext state, it will be encrypted before storing.
-// If entity.Secret is in encrypted state (no change), it is stored as-is.
+// Update validates, encrypts the secret, and stores the updated entity.
+// entity.Secret must be in plaintext state on entry — callers must always supply
+// the secret in plaintext. Passing encrypted state is rejected by ValidateForUpdate
+// to prevent silent bypass of re-encryption (e.g. during future key rotation).
+// On success, entity.Secret is in encrypted state.
 func (s *ThirdpartyOAuth2ProviderService) Update(
 	ctx context.Context,
 	entity *model.ThirdpartyOAuth2ProviderEntity,
@@ -163,27 +166,25 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 		return fmt.Errorf("provider validation failed: %w", err)
 	}
 
-	if entity.Secret.IsPlaintext() {
-		plaintext, err := entity.Secret.GetPlaintext()
-		if err != nil {
-			return fmt.Errorf("failed to read plaintext secret for update: %w", err)
-		}
-
-		encContext := map[string]string{"service_id": entity.ID}
-		ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), encContext)
-		if err != nil {
-			s.logger.Error("encryption_failed",
-				"operation", "update_provider",
-				"service_id", entity.ID,
-				"reason", err)
-			return fmt.Errorf("failed to encrypt client secret: %w", err)
-		}
-
-		entity.Secret = model.NewEncryptedSecret(ciphertext)
-		s.logger.Info("service_secret_encrypted",
-			"operation", "update",
-			"service_id", entity.ID)
+	plaintext, err := entity.Secret.GetPlaintext()
+	if err != nil {
+		return fmt.Errorf("failed to read plaintext secret for update: %w", err)
 	}
+
+	encContext := map[string]string{"service_id": entity.ID}
+	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), encContext)
+	if err != nil {
+		s.logger.Error("encryption_failed",
+			"operation", "update_provider",
+			"service_id", entity.ID,
+			"reason", err)
+		return fmt.Errorf("failed to encrypt client secret: %w", err)
+	}
+
+	entity.Secret = model.NewEncryptedSecret(ciphertext)
+	s.logger.Info("service_secret_encrypted",
+		"operation", "update",
+		"service_id", entity.ID)
 
 	return s.repo.Update(ctx, entity)
 }

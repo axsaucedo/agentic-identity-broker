@@ -446,21 +446,23 @@ func TestThirdpartyOAuth2ProviderService_Update_WithNewSecret(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-func TestThirdpartyOAuth2ProviderService_Update_NoSecretChange(t *testing.T) {
+func TestThirdpartyOAuth2ProviderService_Update_EncryptedSecretFails(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	// Passing an already-encrypted secret must be rejected — callers must always supply
+	// plaintext so re-encryption always runs (prevents silent bypass during key rotation).
 	entity := minimalValidEntity("service-123", model.NewEncryptedSecret([]byte("existing-ciphertext")))
-
-	mockRepo.On("Update", ctx, entity).Return(nil)
 
 	err := svc.Update(ctx, entity)
 
-	require.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "provider validation failed")
+	assert.Contains(t, err.Error(), "client_secret is required for update")
 	mockEnc.AssertNotCalled(t, "Encrypt")
-	mockRepo.AssertExpectations(t)
+	mockRepo.AssertNotCalled(t, "Update")
 }
 
 // =============================================================================

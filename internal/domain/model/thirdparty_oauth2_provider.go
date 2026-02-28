@@ -143,7 +143,7 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 
 // ValidateForUpdate validates the entity for an update operation.
 // skipHTTPSValidation allows HTTP URLs for development/testing.
-// Requires ID and allows encrypted or plaintext Secret.
+// Requires ID and plaintext Secret (callers must always supply the new secret in plaintext).
 func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation bool) error {
 	if e.ID == "" {
 		return errors.New("provider ID cannot be empty")
@@ -158,9 +158,11 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 		return errors.New("client_id is required")
 	}
 
-	// Secret must have some value (plaintext for new secret, encrypted for no-change)
-	if !e.Secret.IsPlaintext() && !e.Secret.IsEncrypted() {
-		return errors.New("client_secret or existing encrypted secret is required")
+	// Secret must be in plaintext for update (will be re-encrypted by the domain service).
+	// Passing an already-encrypted secret is rejected to prevent silent bypass of re-encryption
+	// (e.g. during key rotation) and to enforce a single, predictable Update contract.
+	if !e.Secret.IsPlaintext() {
+		return errors.New("client_secret is required for update")
 	}
 
 	if e.IssuerURI == "" {
