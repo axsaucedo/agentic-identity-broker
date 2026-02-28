@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
@@ -104,7 +103,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate service requirements (referential integrity)
-	if err := h.validateServiceRequirements(ctx, serviceReqs); err != nil {
+	if err := h.providerService.ValidateServiceRequirements(ctx, serviceReqs); err != nil {
 		h.logger.Warn("service requirements validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
 		return
@@ -202,7 +201,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate service requirements (referential integrity)
-	if err := h.validateServiceRequirements(ctx, serviceReqs); err != nil {
+	if err := h.providerService.ValidateServiceRequirements(ctx, serviceReqs); err != nil {
 		h.logger.Warn("service requirements validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
 		return
@@ -424,57 +423,6 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 	}
 
 	return result, nil
-}
-
-// validateServiceRequirements validates service requirements for referential integrity.
-// Checks that:
-// - All referenced service_ids exist
-// - All required_scopes are valid for the referenced service
-func (h *AgentsHandler) validateServiceRequirements(ctx context.Context, serviceReqs []storage.ServiceRequirement) error {
-	if len(serviceReqs) == 0 {
-		return nil
-	}
-
-	for i, sr := range serviceReqs {
-		// Check if service exists
-		service, err := h.providerService.Get(ctx, sr.ServiceID)
-		if err != nil {
-			if storageErr, ok := err.(*storage.StorageError); ok && storageErr.Kind == storage.ErrorKindNotFound {
-				h.logger.Warn("service not found", "service_id", sr.ServiceID, "index", i)
-				return storage.NewStorageError(
-					"ValidateServiceRequirements",
-					storage.ErrorKindValidation,
-					nil,
-					"service_id "+sr.ServiceID+" not found (index "+strconv.Itoa(i)+")",
-				)
-			}
-			return err
-		}
-
-		// Validate that all required scopes exist in the service
-		serviceScopes := make(map[string]bool)
-		for _, scope := range service.Scopes {
-			serviceScopes[scope.ScopeValue] = true
-		}
-
-		for _, requiredScope := range sr.RequiredScopes {
-			if !serviceScopes[requiredScope] {
-				h.logger.Warn("invalid scope for service",
-					"service_id", sr.ServiceID,
-					"service_name", service.DisplayName,
-					"scope", requiredScope,
-					"index", i)
-				return storage.NewStorageError(
-					"ValidateServiceRequirements",
-					storage.ErrorKindValidation,
-					nil,
-					"scope "+requiredScope+" not found in service "+service.DisplayName+" (index "+strconv.Itoa(i)+")",
-				)
-			}
-		}
-	}
-
-	return nil
 }
 
 // handleStorageError converts storage errors to HTTP responses.

@@ -2,12 +2,15 @@ package thirdparty
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/google/uuid"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -239,6 +242,62 @@ func (s *ThirdpartyOAuth2ProviderService) CountGrantsReferencingService(
 	serviceID string,
 ) (int, error) {
 	return s.repo.CountGrantsReferencingService(ctx, serviceID)
+}
+
+// ValidateServiceRequirements validates that all service_ids in the requirements exist and
+// that all required_scopes are valid for the referenced service. This enforces referential
+// integrity between agents and their declared service requirements.
+//
+// Uses the repository directly to avoid unnecessary secret decryption — only Scopes and
+// DisplayName are needed for validation.
+func (s *ThirdpartyOAuth2ProviderService) ValidateServiceRequirements(
+	ctx context.Context,
+	serviceReqs []storage.ServiceRequirement,
+) error {
+	if len(serviceReqs) == 0 {
+		return nil
+	}
+
+	for i, sr := range serviceReqs {
+		entity, err := s.repo.Get(ctx, sr.ServiceID)
+		if err != nil {
+			var storageErr *storage.StorageError
+			if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
+				s.logger.Warn("service not found for requirement",
+					"service_id", sr.ServiceID, "index", i)
+				return storage.NewStorageError(
+					"ValidateServiceRequirements",
+					storage.ErrorKindValidation,
+					nil,
+					"service_id "+sr.ServiceID+" not found (index "+strconv.Itoa(i)+")",
+				)
+			}
+			return err
+		}
+
+		serviceScopes := make(map[string]bool)
+		for _, scope := range entity.Scopes {
+			serviceScopes[scope.ScopeValue] = true
+		}
+
+		for _, requiredScope := range sr.RequiredScopes {
+			if !serviceScopes[requiredScope] {
+				s.logger.Warn("invalid scope for service",
+					"service_id", sr.ServiceID,
+					"service_name", entity.DisplayName,
+					"scope", requiredScope,
+					"index", i)
+				return storage.NewStorageError(
+					"ValidateServiceRequirements",
+					storage.ErrorKindValidation,
+					nil,
+					"scope "+requiredScope+" not found in service "+entity.DisplayName+" (index "+strconv.Itoa(i)+")",
+				)
+			}
+		}
+	}
+
+	return nil
 }
 
 // decryptSecret decrypts the entity's Secret field in place (returns a copy with plaintext).
