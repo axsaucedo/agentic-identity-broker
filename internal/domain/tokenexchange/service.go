@@ -81,7 +81,7 @@ func NewTokenExchangeService(
 		return nil, fmt.Errorf("celEvaluator cannot be nil")
 	}
 	if providerService == nil {
-		return nil, fmt.Errorf("serviceRepository cannot be nil")
+		return nil, fmt.Errorf("providerService cannot be nil")
 	}
 	if oauth2SessionService == nil {
 		return nil, fmt.Errorf("oauth2SessionService cannot be nil")

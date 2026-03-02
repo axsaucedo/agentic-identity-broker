@@ -16,7 +16,7 @@ type UserSession struct {
 	ServiceID string `json:"service_id" db:"service_id"`
 
 	// EncryptedAccessToken contains the OAuth2 access token ENCRYPTED by OAuth2SessionService
-	// using envelope encryption with service_id and principal as Additional Authenticated Data (AAD).
+	// using envelope encryption with service_id as Additional Authenticated Data (AAD).
 	//
 	// IMPORTANT: This field contains encrypted bytes that MUST be decrypted by OAuth2SessionService
 	// using DecryptAccessToken(). Storage adapters treat this as opaque binary data and MUST NOT
