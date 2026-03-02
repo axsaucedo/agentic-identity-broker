@@ -10,6 +10,7 @@ import (
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 )
 
 // TestSessionData represents test data for OAuth2 sessions with known values
@@ -81,16 +82,10 @@ func TestKEKMaterial() string {
 }
 
 // TestKEKMaterialDeterministic returns deterministic KEK material for tests
-// that need the same KEK across test runs
+// that need the same KEK across test runs.
+// Delegates to testutil.TestKEKBase64 — single source of truth, no independent encoding.
 func TestKEKMaterialDeterministic() string {
-	// Known test KEK - DO NOT use in production
-	testKEK := []byte{
-		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-		0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
-		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-		0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
-	}
-	return base64.StdEncoding.EncodeToString(testKEK)
+	return testutil.TestKEKBase64
 }
 
 // TestEncryptionContexts provides various encryption contexts for testing
