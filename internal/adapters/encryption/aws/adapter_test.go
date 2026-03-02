@@ -215,6 +215,76 @@ func TestContextMismatchDetection(t *testing.T) {
 	}
 }
 
+// TestCancelledContextClassifiedAsKEKUnavailable verifies that a cancelled or
+// deadline-exceeded context is returned as ErrorKindKEKUnavailable — not as
+// ErrorKindContextMismatch.
+//
+// Regression guard: context.DeadlineExceeded and context.Canceled both produce
+// error strings that contain the word "context" (e.g. "context deadline exceeded").
+// Without the ctx.Err() guard these would be misclassified as AAD-mismatch errors,
+// signalling "do not retry" instead of "transient, retry after backoff".
+func TestCancelledContextClassifiedAsKEKUnavailable(t *testing.T) {
+	const testKEK = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+	adapter, _, err := NewAWSEncryption(testKEK, "", 0)
+	if err != nil {
+		t.Fatalf("failed to create adapter: %v", err)
+	}
+
+	plaintext := []byte("test-token")
+	encryptionContext := map[string]string{"service_id": "oauth2"}
+
+	// Produce valid ciphertext with a live context so decrypt tests have something to work with.
+	ciphertext, err := adapter.Encrypt(context.Background(), plaintext, encryptionContext)
+	if err != nil {
+		t.Fatalf("setup: encryption failed: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		ctx  func() context.Context
+	}{
+		{
+			name: "already cancelled",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+		},
+		{
+			name: "already expired deadline",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithTimeout(context.Background(), 0)
+				// cancel is called to release resources; the context is already expired.
+				t.Cleanup(cancel)
+				return ctx
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run("Encrypt/"+tt.name, func(t *testing.T) {
+			_, encErr := adapter.Encrypt(tt.ctx(), plaintext, encryptionContext)
+			if encErr == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !isKEKUnavailableError(encErr) {
+				t.Errorf("expected ErrorKindKEKUnavailable, got: %v (type %T)", encErr, encErr)
+			}
+		})
+
+		t.Run("Decrypt/"+tt.name, func(t *testing.T) {
+			_, decErr := adapter.Decrypt(tt.ctx(), ciphertext, encryptionContext)
+			if decErr == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !isKEKUnavailableError(decErr) {
+				t.Errorf("expected ErrorKindKEKUnavailable, got: %v (type %T)", decErr, decErr)
+			}
+		})
+	}
+}
+
 // TestUniqueEncryptionPerCall tests that same plaintext produces different ciphertexts
 func TestUniqueEncryptionPerCall(t *testing.T) {
 	// Setup: Create adapter with env var KEK

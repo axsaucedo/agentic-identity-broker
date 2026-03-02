@@ -234,6 +234,24 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 	// Extract service_id from context for logging (sanitized)
 	serviceID := encryptionContext["service_id"]
 
+	// Fail fast if the caller's context is already done before touching the SDK.
+	// Keyrings that perform no network I/O (raw AES) succeed even on a cancelled
+	// context, so without this pre-check the ctx.Err() guard in the error path
+	// would never fire for them.  The post-call guard below handles contexts that
+	// expire DURING a KMS network call.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		slog.Error("encryption_failed",
+			"operation", "encrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindKEKUnavailable,
+			"reason", "context_error",
+		)
+		return nil, encryption.NewKEKUnavailableError(
+			fmt.Sprintf("encryption cancelled: %v", ctxErr),
+			ctxErr,
+		)
+	}
+
 	// Encrypt using AWS Encryption SDK
 	// The SDK handles:
 	// - Fresh DEK generation per call
@@ -249,6 +267,25 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 	result, err := a.encryptionClient.Encrypt(ctx, encryptInput)
 
 	if err != nil {
+		// Classify context errors that materialised DURING the SDK call (e.g. KMS
+		// network timeout).  context.DeadlineExceeded → "context deadline exceeded"
+		// and context.Canceled → "context canceled" both contain the substring
+		// "context" and would otherwise be misclassified as ErrorKindContextMismatch
+		// (encryption context AAD mismatch), signalling "do not retry" to callers
+		// instead of the correct "transient, retry after backoff" semantics.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			slog.Error("encryption_failed",
+				"operation", "encrypt",
+				"service_id", serviceID,
+				"error_kind", encryption.ErrorKindKEKUnavailable,
+				"reason", "context_error",
+			)
+			return nil, encryption.NewKEKUnavailableError(
+				fmt.Sprintf("encryption cancelled: %v", ctxErr),
+				ctxErr,
+			)
+		}
+
 		// Map AWS SDK errors to domain error types
 		// Note: AWS Encryption SDK (Smithy-generated) does not expose typed error constants.
 		// Error classification is based on error message content analysis.
@@ -355,6 +392,24 @@ func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionC
 		return nil, encryption.NewDecryptionFailedError("ciphertext cannot be empty", nil)
 	}
 
+	// Fail fast if the caller's context is already done before touching the SDK.
+	// Keyrings that perform no network I/O (raw AES) succeed even on a cancelled
+	// context, so without this pre-check the ctx.Err() guard in the error path
+	// would never fire for them.  The post-call guard below handles contexts that
+	// expire DURING a KMS network call.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		slog.Error("decryption_failed",
+			"operation", "decrypt",
+			"service_id", serviceID,
+			"error_kind", encryption.ErrorKindKEKUnavailable,
+			"reason", "context_error",
+		)
+		return nil, encryption.NewKEKUnavailableError(
+			fmt.Sprintf("decryption cancelled: %v", ctxErr),
+			ctxErr,
+		)
+	}
+
 	// Decrypt using AWS Encryption SDK
 	// The SDK handles:
 	// - Envelope parsing (extract wrapped DEK, ciphertext, auth tag)
@@ -369,6 +424,25 @@ func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionC
 
 	result, err := a.encryptionClient.Decrypt(ctx, decryptInput)
 	if err != nil {
+		// Classify context errors that materialised DURING the SDK call (e.g. KMS
+		// network timeout).  context.DeadlineExceeded → "context deadline exceeded"
+		// and context.Canceled → "context canceled" both contain the substring
+		// "context" and would otherwise be misclassified as ErrorKindContextMismatch
+		// (encryption context AAD mismatch), signalling "do not retry" to callers
+		// instead of the correct "transient, retry after backoff" semantics.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			slog.Error("decryption_failed",
+				"operation", "decrypt",
+				"service_id", serviceID,
+				"error_kind", encryption.ErrorKindKEKUnavailable,
+				"reason", "context_error",
+			)
+			return nil, encryption.NewKEKUnavailableError(
+				fmt.Sprintf("decryption cancelled: %v", ctxErr),
+				ctxErr,
+			)
+		}
+
 		// Map AWS SDK errors to domain error types
 		// Note: AWS Encryption SDK (Smithy-generated) does not expose typed error constants.
 		// Error classification is based on error message content analysis.
