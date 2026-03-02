@@ -358,7 +358,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 			serviceRepo:          nil,
 			oauth2SessionService: &oauth2session.OAuth2SessionService{},
 			expectError:          true,
-			errorContains:        "serviceRepository",
+			errorContains:        "providerService",
 		},
 		{
 			name:                 "nil oauth2SessionService returns error",

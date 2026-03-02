@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	memorystorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
@@ -17,19 +16,14 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/go-chi/chi/v5"
 )
 
-const integrationTestKEK = "ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA="
-
 func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2ProviderService {
 	t.Helper()
-	enc, _, err := awsencryption.NewAWSEncryption(integrationTestKEK, "", 0)
-	if err != nil {
-		t.Fatalf("failed to create encryption adapter: %v", err)
-	}
 	repo := memorystorage.NewInMemoryThirdpartyOAuth2ProviderRepository()
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, enc, nil, false, slog.Default())
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, testutil.NewTestEncryptionAdapter(t), nil, false, slog.Default())
 }
 
 func newGitHubServiceEntity() *model.ThirdpartyOAuth2ProviderEntity {

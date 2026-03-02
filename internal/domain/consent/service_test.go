@@ -14,22 +14,37 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// mockEncryption is a passthrough EncryptionPort for testing.
-// All operations return the input bytes unchanged.
-type mockEncryption struct{}
+// testEncryption is a non-identity test double for EncryptionPort used in domain-layer
+// unit tests. It applies an invertible XOR transformation (key byte 0x55) so that
+// ciphertext ≠ plaintext, keeping the Secret value-object state machine honest without
+// importing any adapter package.
+//
+// This is NOT a production noop. The runtime noop fallback was removed in Phase 6.
+// Adapter-layer and integration tests should use testutil.NewTestEncryptionAdapter(t)
+// for real AES-256-GCM roundtrips.
+type testEncryption struct{}
 
-func (m *mockEncryption) Encrypt(_ context.Context, plaintext []byte, _ map[string]string) ([]byte, error) {
-	return plaintext, nil
+func (e *testEncryption) Encrypt(_ context.Context, plaintext []byte, _ map[string]string) ([]byte, error) {
+	out := make([]byte, len(plaintext))
+	for i, b := range plaintext {
+		out[i] = b ^ 0x55
+	}
+	return out, nil
 }
 
-func (m *mockEncryption) Decrypt(_ context.Context, ciphertext []byte, _ map[string]string) ([]byte, error) {
-	return ciphertext, nil
+func (e *testEncryption) Decrypt(_ context.Context, ciphertext []byte, _ map[string]string) ([]byte, error) {
+	out := make([]byte, len(ciphertext))
+	for i, b := range ciphertext {
+		out[i] = b ^ 0x55
+	}
+	return out, nil
 }
 
 // newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
-// with passthrough encryption for use in domain-layer tests.
+// with a non-identity test double for encryption. Used in domain-layer tests that exercise
+// consent business logic, not encryption correctness.
 func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thirdparty.ThirdpartyOAuth2ProviderService {
-	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &mockEncryption{}, nil, false, nil)
+	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, &testEncryption{}, nil, false, nil)
 }
 
 // Mock implementations for testing

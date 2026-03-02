@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 )
 
 // testConfig creates a minimal config for tests with HTTPS validation enabled (strict mode).
@@ -81,14 +81,9 @@ func (m *MockProviderRepository) FindByProtectedResource(ctx context.Context, re
 	return args.Get(0).(*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-// newTestEncryption creates a real encryption adapter using a deterministic test key.
-// Panics on error since the key is hardcoded and always valid.
+// newTestEncryption returns a real encryption adapter backed by the shared deterministic test key.
 func newTestEncryption() ports.EncryptionPort {
-	adapter, _, err := awsencryption.NewAWSEncryption("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=", "", 0)
-	if err != nil {
-		panic("newTestEncryption: failed to create test encryption adapter: " + err.Error())
-	}
-	return adapter
+	return testutil.NewPanicTestEncryptionAdapter()
 }
 
 // setupHandler creates a handler backed by a mock repository and test encryption.

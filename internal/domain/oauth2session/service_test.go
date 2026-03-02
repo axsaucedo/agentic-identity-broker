@@ -19,12 +19,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 )
 
 // =============================================================================
@@ -1012,12 +1012,10 @@ func createMockOAuth2TokenEndpoint(t *testing.T, config mockTokenConfig) *httpte
 	}))
 }
 
-// newTestEncryption creates a real encryption adapter using a deterministic test key.
+// newTestEncryption creates a real encryption adapter using the shared deterministic test key.
 func newTestEncryption(t *testing.T) ports.EncryptionPort {
 	t.Helper()
-	adapter, _, err := awsencryption.NewAWSEncryption("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=", "", 0)
-	require.NoError(t, err)
-	return adapter
+	return testutil.NewTestEncryptionAdapter(t)
 }
 
 func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.InMemoryThirdpartyOAuth2ProviderRepository, *thirdparty.ThirdpartyOAuth2ProviderService) {

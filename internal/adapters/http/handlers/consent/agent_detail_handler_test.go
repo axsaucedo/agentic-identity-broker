@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
@@ -17,17 +16,13 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/go-chi/chi/v5"
 )
 
-// newTestEncryption creates a real encryption adapter using a deterministic test key.
-// Panics on error since the key is hardcoded and always valid.
+// newTestEncryption returns a real encryption adapter backed by the shared deterministic test key.
 func newTestEncryption() ports.EncryptionPort {
-	adapter, _, err := awsencryption.NewAWSEncryption("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=", "", 0)
-	if err != nil {
-		panic("newTestEncryption: failed to create test encryption adapter: " + err.Error())
-	}
-	return adapter
+	return testutil.NewPanicTestEncryptionAdapter()
 }
 
 // newTestProviderService wraps a ThirdpartyOAuth2ProviderRepository in a domain service
