@@ -296,7 +296,7 @@ func (s *OAuth2SessionService) ValidateStateToken(
 func (s *OAuth2SessionService) buildOAuth2Config(
 	entity *model.ThirdpartyOAuth2ProviderEntity,
 	callbackURL string,
-) *oauth2.Config {
+) (*oauth2.Config, error) {
 	// Extract scopes from entity
 	scopes := make([]string, 0, len(entity.Scopes))
 	for _, scope := range entity.Scopes {
@@ -304,7 +304,10 @@ func (s *OAuth2SessionService) buildOAuth2Config(
 	}
 
 	// Get plaintext secret (already decrypted by ThirdpartyOAuth2ProviderService)
-	clientSecret, _ := entity.Secret.GetPlaintext()
+	clientSecret, err := entity.Secret.GetPlaintext()
+	if err != nil {
+		return nil, fmt.Errorf("provider secret not in plaintext state; ensure entity was fetched via ThirdpartyOAuth2ProviderService.Get: %w", err)
+	}
 
 	// Create OAuth2 config
 	return &oauth2.Config{
@@ -316,7 +319,7 @@ func (s *OAuth2SessionService) buildOAuth2Config(
 			AuthURL:  entity.Endpoints.AuthorizeEndpoint,
 			TokenURL: entity.Endpoints.TokenEndpoint,
 		},
-	}
+	}, nil
 }
 
 // exchangeCodeWithRetry exchanges authorization code for tokens with exponential backoff retry.
@@ -405,7 +408,11 @@ func (s *OAuth2SessionService) InitiateOAuth2Flow(
 
 	// Build OAuth2 config with callback URL
 	callbackURL := s.config.CallbackBaseURL + "/api/third-party/" + serviceID + "/oauth2/callback"
-	cfg := s.buildOAuth2Config(service, callbackURL)
+	cfg, err := s.buildOAuth2Config(service, callbackURL)
+	if err != nil {
+		s.logger.Error("failed to build oauth2 config", "service_id", serviceID, "err", err)
+		return nil, fmt.Errorf("failed to build oauth2 config: %w", err)
+	}
 
 	// Generate authorization URL with PKCE
 	authURL := cfg.AuthCodeURL(stateToken, oauth2.S256ChallengeOption(verifier))
@@ -552,7 +559,11 @@ func (s *OAuth2SessionService) HandleCallback(
 
 	// Build OAuth2 config
 	callbackURL := s.config.CallbackBaseURL + "/api/third-party/" + req.ServiceID + "/oauth2/callback"
-	cfg := s.buildOAuth2Config(service, callbackURL)
+	cfg, err := s.buildOAuth2Config(service, callbackURL)
+	if err != nil {
+		s.logger.Error("failed to build oauth2 config during callback", "service_id", req.ServiceID, "err", err)
+		return nil, fmt.Errorf("failed to build oauth2 config: %w", err)
+	}
 
 	// Exchange authorization code for tokens (with retry)
 	s.logger.Info("exchanging authorization code for token",
@@ -638,7 +649,10 @@ func (s *OAuth2SessionService) RefreshAccessToken(
 	}
 
 	// Get plaintext secret (already decrypted by ThirdpartyOAuth2ProviderService)
-	clientSecret, _ := entity.Secret.GetPlaintext()
+	clientSecret, err := entity.Secret.GetPlaintext()
+	if err != nil {
+		return nil, fmt.Errorf("provider secret not in plaintext state for refresh: %w", err)
+	}
 
 	// Prepare refresh token request per RFC 6749 Section 6
 	data := url.Values{}
