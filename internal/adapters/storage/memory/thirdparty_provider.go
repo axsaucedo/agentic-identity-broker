@@ -9,7 +9,6 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
-	"github.com/google/uuid"
 )
 
 // InMemoryThirdpartyOAuth2ProviderRepository implements ports.ThirdpartyOAuth2ProviderRepository
@@ -30,14 +29,16 @@ func NewInMemoryThirdpartyOAuth2ProviderRepository() *InMemoryThirdpartyOAuth2Pr
 }
 
 // Create stores a new provider entity in memory.
-// Generates a UUID for the entity if ID is empty.
+// Entity.ID must be set by the caller before storing (the domain service generates it before encrypting).
 // Entity.Secret must be in encrypted state.
 func (r *InMemoryThirdpartyOAuth2ProviderRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if entity.ID == "" {
-		entity.ID = uuid.New().String()
+		return storage.NewStorageError("CreateThirdpartyOAuth2Provider",
+			storage.ErrorKindValidation, nil,
+			"provider ID cannot be empty: caller must set ID before storing")
 	}
 
 	if _, exists := r.providers[entity.ID]; exists {
