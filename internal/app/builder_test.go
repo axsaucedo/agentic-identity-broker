@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -172,4 +173,34 @@ func TestBuilderMissingRequiredDependency(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when building without logger")
 	}
+
+	// Try to build with config + storage + logger but no encryption configured.
+	// This specifically exercises the encryption guard at builder.go:130-132 which
+	// fires after the nil-dependency checks. The test ensures that reordering or
+	// removing that guard would cause a failure here, not silently pass.
+	t.Run("missing encryption config", func(t *testing.T) {
+		storageAdapter, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend: "memory",
+			Timeouts: ports.StorageTimeouts{
+				Read:  5 * time.Second,
+				Write: 5 * time.Second,
+			},
+		})
+		if err != nil {
+			t.Fatalf("failed to create storage adapter: %v", err)
+		}
+
+		_, err = NewBuilder().
+			WithConfig(&ports.Config{}).
+			WithStorage(storageAdapter).
+			WithLogger(logger).
+			Build()
+
+		if err == nil {
+			t.Fatal("expected error when building without encryption configuration")
+		}
+		if !strings.Contains(err.Error(), "encryption configuration required") {
+			t.Errorf("expected error to contain %q, got: %v", "encryption configuration required", err)
+		}
+	})
 }
