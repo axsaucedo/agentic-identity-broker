@@ -65,8 +65,6 @@ type Builder struct {
 	config                 *ports.Config
 	storage                *storage.Adapter
 	logger                 *slog.Logger
-	encryption             ports.EncryptionPort   // Optional: custom encryption implementation
-	branchKeyManager       ports.BranchKeyManager // Optional: custom branch key manager
 	staticWebResourcesPath string
 }
 
@@ -92,22 +90,6 @@ func (b *Builder) WithStorage(storage *storage.Adapter) *Builder {
 // WithLogger sets the logger for the builder.
 func (b *Builder) WithLogger(logger *slog.Logger) *Builder {
 	b.logger = logger
-	return b
-}
-
-// WithEncryption sets a custom encryption implementation for the builder.
-// Use this to inject a test or production encryption adapter.
-// If not set, encryption must be configured via Config.Encryption (memory or aws_kms backend).
-func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
-	b.encryption = encryptor
-	return b
-}
-
-// WithBranchKeyManager sets a custom branch key manager for the builder.
-// If not set, defaults based on keyring type (AWS manager or in-memory).
-// Use this to inject a test or custom branch key manager.
-func (b *Builder) WithBranchKeyManager(mgr ports.BranchKeyManager) *Builder {
-	b.branchKeyManager = mgr
 	return b
 }
 
@@ -142,46 +124,33 @@ func (b *Builder) Build() (*App, error) {
 		Logger:  b.logger,
 	}
 
-	// Phase 1: Initialize encryption adapter (must happen before domain services)
-	// Constitution Principle VII: Configuration-Driven Design
-	var encryptor ports.EncryptionPort
-	if b.encryption != nil {
-		// Builder override takes precedence (for testing)
-		encryptor = b.encryption
-	} else if b.config.Encryption.AWSKMS != nil || b.config.Encryption.Memory != nil {
-		// Production/Development: Use new backend-explicit configuration factory
-		// The factory handles backend detection and validation automatically
-		adapter, branchKeyManager, err := awsencryption.NewEncryptionAdapter(&b.config.Encryption)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize encryption adapter: %w", err)
-		}
-		encryptor = adapter
-
-		// Wire branch key manager if available (for all backends except no-op)
-		if branchKeyManager != nil && b.branchKeyManager == nil {
-			b.branchKeyManager = branchKeyManager
-		}
-
-		// Log initialization with backend information
-		if b.config.Encryption.AWSKMS != nil {
-			b.logger.Info("AWS KMS encryption adapter initialized",
-				"dynamodb_table", b.config.Encryption.AWSKMS.DynamoDBTableName,
-				"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
-				"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
-				"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
-				"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
-				"branch_key_manager_wired", branchKeyManager != nil)
-		} else if b.config.Encryption.Memory != nil {
-			b.logger.Info("Memory encryption adapter initialized",
-				"branch_key_manager_wired", branchKeyManager != nil)
-		}
-	} else {
+	// Phase 1: Initialize encryption adapter (must happen before domain services).
+	// Encryption is mandatory — no fallback. Config must specify memory or aws_kms backend.
+	// Constitution Principle VII: Configuration-Driven Design.
+	if b.config.Encryption.AWSKMS == nil && b.config.Encryption.Memory == nil {
 		return nil, fmt.Errorf("encryption configuration required: set encryption.memory.raw_key or encryption.aws_kms in configuration (no fallback)")
 	}
 
-	// Assign BranchKeyManager to app if wired
-	if b.branchKeyManager != nil {
-		app.BranchKeyManager = b.branchKeyManager
+	encryptor, branchKeyManager, err := awsencryption.NewEncryptionAdapter(&b.config.Encryption)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize encryption adapter: %w", err)
+	}
+
+	if b.config.Encryption.AWSKMS != nil {
+		b.logger.Info("AWS KMS encryption adapter initialized",
+			"dynamodb_table", b.config.Encryption.AWSKMS.DynamoDBTableName,
+			"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
+			"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
+			"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
+			"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
+			"branch_key_manager_wired", branchKeyManager != nil)
+	} else {
+		b.logger.Info("Memory encryption adapter initialized",
+			"branch_key_manager_wired", branchKeyManager != nil)
+	}
+
+	if branchKeyManager != nil {
+		app.BranchKeyManager = branchKeyManager
 	}
 
 	// Phase 2: Create domain services
@@ -194,7 +163,7 @@ func (b *Builder) Build() (*App, error) {
 		app.ProviderService = thirdparty.NewThirdpartyOAuth2ProviderService(
 			b.storage.Services(),
 			encryptor,
-			b.branchKeyManager, // May be nil if no encryption backend configured
+			branchKeyManager, // May be nil if memory backend (no branch key store)
 			b.config.Security.SkipThirdpartyHTTPSValidation,
 			b.logger,
 		)
