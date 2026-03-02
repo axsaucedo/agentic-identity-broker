@@ -11,6 +11,13 @@ import "errors"
 // A plaintext Secret is created via NewPlaintextSecret and holds the raw secret string.
 // An encrypted Secret is created via NewEncryptedSecret and holds opaque ciphertext bytes.
 // State transitions produce new Secret instances — Secret is immutable.
+//
+// Zero value: var s Secret has ciphertext == nil, so IsPlaintext() returns true and
+// IsEncrypted() returns false. However, GetPlaintext() rejects it because plaintext is "".
+// This zero value is a third logical state — "uninitialized" — that is distinct from a
+// valid plaintext secret created with NewPlaintextSecret. IsPlaintext() returning true does
+// NOT guarantee that GetPlaintext() will succeed; it only means the secret has not been
+// encrypted. Always construct Secret values via NewPlaintextSecret or NewEncryptedSecret.
 type Secret struct {
 	plaintext  string
 	ciphertext []byte

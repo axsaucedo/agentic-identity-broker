@@ -191,15 +191,23 @@ func TestSecret_SecurityNoLeakage(t *testing.T) {
 }
 
 func TestSecret_ZeroValue(t *testing.T) {
+	// A zero-value Secret is "uninitialized": ciphertext is nil so it looks like plaintext
+	// state, but plaintext is "" so GetPlaintext() rejects it. IsPlaintext() returning true
+	// does NOT mean the secret is usable — always construct via NewPlaintextSecret or
+	// NewEncryptedSecret.
 	var s Secret
 
-	t.Run("zero value is plaintext state", func(t *testing.T) {
-		assert.False(t, s.IsEncrypted())
+	t.Run("IsPlaintext returns true for uninitialized secret", func(t *testing.T) {
 		assert.True(t, s.IsPlaintext())
+		assert.False(t, s.IsEncrypted())
 	})
 
-	t.Run("zero value GetPlaintext returns error for empty", func(t *testing.T) {
+	t.Run("uninitialized secret is not a valid plaintext: GetPlaintext returns error", func(t *testing.T) {
+		// IsPlaintext() is true, yet GetPlaintext() fails — this is the "uninitialized"
+		// state. Code of the form "if s.IsPlaintext() { use(s.GetPlaintext()) }" is
+		// unsound when s was never constructed via NewPlaintextSecret.
 		_, err := s.GetPlaintext()
 		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty")
 	})
 }

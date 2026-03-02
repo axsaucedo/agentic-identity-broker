@@ -112,6 +112,22 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 			wantErr: "secret plaintext is empty",
 		},
 		{
+			// A zero-value Secret (var s Secret / Secret{}) is the "uninitialized" state
+			// described in the Secret type comment. IsPlaintext() returns true for it, so
+			// callers who write "if s.IsPlaintext() { use(s.GetPlaintext()) }" would reach
+			// GetPlaintext() — which then errors. Validate() must catch this so that an
+			// entity that was never given a real secret is always rejected.
+			name: "zero-value Secret (uninitialized) is rejected by Validate",
+			entity: &ThirdpartyOAuth2ProviderEntity{
+				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				DisplayName: "GitHub",
+				ClientID:    "Iv1.abcd1234",
+				Secret:      Secret{}, // var s Secret — not constructed via NewPlaintextSecret
+				IssuerURI:   "https://github.com",
+			},
+			wantErr: "secret plaintext is empty",
+		},
+		{
 			name: "secret in encrypted state with empty ciphertext",
 			entity: &ThirdpartyOAuth2ProviderEntity{
 				ID:          "650e8400-e29b-41d4-a716-446655440001",
