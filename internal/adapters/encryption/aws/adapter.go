@@ -317,7 +317,7 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 	}
 
 	// Success audit logging
-	slog.Info("token_encrypted",
+	slog.Debug("token_encrypted",
 		"service_id", serviceID,
 		"operation", "encrypt",
 		"size_bytes", len(result.Ciphertext),
@@ -437,7 +437,7 @@ func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionC
 	}
 
 	// Success audit logging
-	slog.Info("token_decrypted",
+	slog.Debug("token_decrypted",
 		"service_id", serviceID,
 		"operation", "decrypt",
 		"size_bytes", len(result.Plaintext),
