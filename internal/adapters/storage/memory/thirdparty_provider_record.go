@@ -23,8 +23,8 @@ func providerEntityCopy(entity *model.ThirdpartyOAuth2ProviderEntity) (*model.Th
 		return nil, errors.New("entity cannot be nil")
 	}
 
-	if !entity.Secret.IsEncrypted() {
-		return nil, fmt.Errorf("entity secret must be encrypted before storing in memory adapter")
+	if _, err := entity.Secret.GetCiphertext(); err != nil {
+		return nil, fmt.Errorf("entity secret must be encrypted with non-empty ciphertext: %w", err)
 	}
 
 	return entity.Copy(), nil

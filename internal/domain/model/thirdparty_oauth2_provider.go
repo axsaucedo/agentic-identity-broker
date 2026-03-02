@@ -106,7 +106,7 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 		return errors.New("client_secret is required for create")
 	}
 	if _, err := e.Secret.GetPlaintext(); err != nil {
-		return fmt.Errorf("client_secret: %w", err)
+		return fmt.Errorf("client_secret is invalid: %w", err)
 	}
 
 	if e.IssuerURI == "" {
@@ -165,6 +165,9 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 	// (e.g. during key rotation) and to enforce a single, predictable Update contract.
 	if !e.Secret.IsPlaintext() {
 		return errors.New("client_secret is required for update")
+	}
+	if _, err := e.Secret.GetPlaintext(); err != nil {
+		return fmt.Errorf("client_secret is invalid: %w", err)
 	}
 
 	if e.IssuerURI == "" {
