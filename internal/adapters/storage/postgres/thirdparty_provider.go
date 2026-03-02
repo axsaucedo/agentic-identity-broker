@@ -11,7 +11,6 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq"
 )
@@ -29,7 +28,7 @@ func NewPostgresThirdpartyOAuth2ProviderRepository(adapter *Adapter) *PostgresTh
 }
 
 // Create stores a new provider entity in PostgreSQL.
-// Generates a UUID for the entity if ID is empty.
+// Entity.ID must be set by the caller before storing (the domain service generates it before encrypting).
 // Entity.Secret must be in encrypted state.
 func (r *PostgresThirdpartyOAuth2ProviderRepository) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	if r.adapter.db == nil {
@@ -38,9 +37,10 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Create(ctx context.Context,
 	if entity == nil {
 		return storage.NewStorageError("CreateThirdpartyOAuth2Provider", storage.ErrorKindValidation, nil, "entity cannot be nil")
 	}
-
 	if entity.ID == "" {
-		entity.ID = uuid.New().String()
+		return storage.NewStorageError("CreateThirdpartyOAuth2Provider",
+			storage.ErrorKindValidation, nil,
+			"provider ID cannot be empty: caller must set ID before storing")
 	}
 
 	record, err := entityToRecord(entity)
