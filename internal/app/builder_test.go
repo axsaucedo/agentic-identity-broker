@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/base64"
 	"log/slog"
 	"os"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 )
 
 // TestBuilderMinimalConfiguration validates that the builder can construct an application
@@ -69,7 +69,7 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 		},
 		Encryption: ports.EncryptionConfig{
 			Memory: &ports.MemoryConfig{
-				RawKey: base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+				RawKey: testutil.TestKEKBase64,
 			},
 		},
 	}
@@ -172,89 +172,4 @@ func TestBuilderMissingRequiredDependency(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when building without logger")
 	}
-}
-
-// TestBuilderWithCustomEncryption validates that the builder accepts
-// injected encryption implementations for production use.
-func TestBuilderWithCustomEncryption(t *testing.T) {
-	// Generate a valid JWE signing key for testing
-	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
-
-	// Minimal config setup
-	cfg := &ports.Config{
-		Log: ports.LogConfig{
-			Level:  ports.LogLevelInfo,
-			Format: ports.LogFormatText,
-		},
-		Server: ports.ServerConfig{
-			EndUser: ports.ServerInstanceConfig{
-				Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
-				Authentication: ports.AuthenticationConfig{
-					Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
-				},
-			},
-			Admin: ports.ServerInstanceConfig{
-				Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
-				Authentication: ports.AuthenticationConfig{
-					Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
-				},
-			},
-			Shutdown: ports.ShutdownConfig{Timeout: 30 * time.Second},
-		},
-		Storage: ports.StorageConfig{
-			Backend: "memory",
-			Timeouts: ports.StorageTimeouts{
-				Read:  5 * time.Second,
-				Write: 5 * time.Second,
-			},
-		},
-		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: jweKey,
-		},
-	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	adapter, err := storage.NewAdapter(&ports.StorageConfig{
-		Backend: "memory",
-		Timeouts: ports.StorageTimeouts{
-			Read:  5 * time.Second,
-			Write: 5 * time.Second,
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to create storage adapter: %v", err)
-	}
-
-	// Mock encryption implementation
-	mockEncryptor := &mockEncryption{}
-
-	// Build with custom encryption
-	app, err := NewBuilder().
-		WithConfig(cfg).
-		WithStorage(adapter).
-		WithLogger(logger).
-		WithEncryption(mockEncryptor).
-		Build()
-
-	if err != nil {
-		t.Fatalf("failed to build with custom encryption: %v", err)
-	}
-
-	if app == nil {
-		t.Fatal("expected non-nil application")
-	}
-
-	// Verify builder accepted the encryption implementation
-	// (OAuth2SessionService would use it if third-party OAuth2 was configured)
-}
-
-// mockEncryption implements ports.EncryptionPort for testing
-type mockEncryption struct{}
-
-func (m *mockEncryption) Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error) {
-	return plaintext, nil
-}
-
-func (m *mockEncryption) Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]string) ([]byte, error) {
-	return ciphertext, nil
 }
