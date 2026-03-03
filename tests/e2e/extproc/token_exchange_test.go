@@ -1,0 +1,531 @@
+// Package extproc_test contains E2E acceptance tests for the ExtProc Token Exchange Service.
+//
+// Each It() block maps 1:1 to an acceptance scenario from specs/015-extproc-token-exchange/spec.md.
+// Tests COMPILE but FAIL initially (red phase) — they will turn GREEN when the implementation
+// satisfies each acceptance scenario.
+//
+// Scenario Mapping:
+//   - US1 Scenario 1-3: Bearer token exchange and header replacement (3 tests)
+//   - US2 Scenario 1-2: Caching and cache expiry (2 tests)
+//   - US3 Scenario 1-2: Configuration and startup validation (2 tests)
+//   - Edge Cases:       no Bearer, empty URI, timeout, default TTL, singleflight (5 tests)
+//
+// Total: 12 acceptance test scenarios
+//
+// Test Execution (Red Phase):
+//
+//	cd tests/e2e/extproc && ginkgo -v ./...
+package extproc_test
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/extproc/bootstrap"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/extproc/fixtures"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/extproc/helpers"
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"google.golang.org/grpc"
+)
+
+var _ = Describe("ExtProc Token Exchange", func() {
+	var (
+		env    *bootstrap.TestEnvironment
+		client extprocv3.ExternalProcessorClient
+		conn   *grpc.ClientConn
+		logger = bootstrap.NewTestLogger()
+	)
+
+	// Fresh environment for each test — guarantees isolation (no shared cache state).
+	BeforeEach(func() {
+		cfg := fixtures.DefaultConfig()
+		env = bootstrap.NewTestEnvironment(cfg, logger)
+		env.Start()
+		client, conn = env.NewExtProcClient()
+	})
+
+	AfterEach(func() {
+		if conn != nil {
+			conn.Close() //nolint:errcheck
+		}
+		if env != nil {
+			env.Stop()
+		}
+	})
+
+	// ---------------------------------------------------------------------------
+	// User Story 1: Transparent Token Exchange for Agent Requests (P1)
+	// specs/015-extproc-token-exchange/spec.md — US1
+	// ---------------------------------------------------------------------------
+	Describe("US1: Transparent Token Exchange", func() {
+
+		// Spec: US1 Scenario 1
+		// Given an incoming request with an Authorization header using the Bearer scheme,
+		// When ExtProc receives request headers,
+		// Then it requests a token exchange using the incoming token as the subject token
+		// and the request URI as the resource.
+		It("should exchange the Bearer token using request URI as resource", func() {
+			// Spec: US1 Scenario 1
+
+			// Given: Mock token exchange endpoint captures the request parameters
+			env.MockTokenExchange.WithExchangedToken(fixtures.FreshExchangedToken)
+			expiresIn := fixtures.StandardExpiresIn
+			env.MockTokenExchange.WithExpiresIn(&expiresIn)
+
+			// When: ExtProc receives request headers with Bearer token and absolute URI path
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.ValidResourceURI).
+				WithBearerToken(fixtures.ValidBearerToken).
+				Build()
+
+			resp := helpers.SendRequestHeaders(context.Background(), client, req)
+
+			// Then: Token exchange was called with the subject token and resource URI
+			// The exchanged token appears in the Authorization header mutation
+			Expect(resp).NotTo(BeNil(), "expected ProcessingResponse, got nil")
+			exchangeCallCount := env.MockTokenExchange.CallCount()
+			Expect(exchangeCallCount).To(Equal(1),
+				"expected token exchange endpoint to be called exactly once")
+
+			// The request body should contain the subject_token and resource parameters
+			lastBody := env.MockTokenExchange.LastBody()
+			Expect(lastBody).To(ContainSubstring(fixtures.ValidBearerToken),
+				"token exchange request should contain the Bearer token as subject_token")
+			Expect(lastBody).To(ContainSubstring("resource"),
+				"token exchange request should contain the resource parameter")
+		})
+
+		// Spec: US1 Scenario 2
+		// Given a successful token exchange response,
+		// When ExtProc responds to Envoy,
+		// Then the Authorization header is replaced with the exchanged token and the request continues.
+		It("should replace the Authorization header with the exchanged token", func() {
+			// Spec: US1 Scenario 2
+
+			// Given: Mock returns a specific exchanged token
+			env.MockTokenExchange.WithExchangedToken(fixtures.FreshExchangedToken)
+			expiresIn := fixtures.StandardExpiresIn
+			env.MockTokenExchange.WithExpiresIn(&expiresIn)
+
+			// When: ExtProc processes a request with a Bearer token
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.ValidResourceURI).
+				WithBearerToken(fixtures.ValidBearerToken).
+				Build()
+
+			resp := helpers.SendRequestHeaders(context.Background(), client, req)
+
+			// Then: The Authorization header is replaced with the exchanged token
+			Expect(resp).NotTo(BeNil())
+			expectedAuthHeader := fmt.Sprintf("Bearer %s", fixtures.FreshExchangedToken)
+			Expect(resp).To(helpers.HaveReplacedAuthorizationHeader(expectedAuthHeader),
+				"Authorization header should be replaced with the exchanged token")
+		})
+
+		// Spec: US1 Scenario 3
+		// Given the token exchange request fails validation or authorization,
+		// When ExtProc processes the headers,
+		// Then the request is rejected with a failure response and the original token is not forwarded.
+		It("should reject with failure response when token exchange fails", func() {
+			// Spec: US1 Scenario 3
+
+			// Given: Token exchange endpoint returns 403 access_denied
+			env.MockTokenExchange.WithError(403, "access_denied")
+
+			// When: ExtProc processes a request with a Bearer token
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.ValidResourceURI).
+				WithBearerToken(fixtures.ValidBearerToken).
+				Build()
+
+			resp := helpers.SendRequestHeaders(context.Background(), client, req)
+
+			// Then: ExtProc returns an ImmediateResponse (not a header mutation)
+			// The original token is NOT forwarded (ImmediateResponse aborts the request)
+			Expect(resp).NotTo(BeNil())
+			// Per contracts/extproc-grpc.md, token exchange failure returns HTTP 500
+			Expect(resp).To(helpers.HaveImmediateResponseWithStatus(500),
+				"failed token exchange should result in HTTP 500 ImmediateResponse")
+
+			// The original Bearer token must not appear in any header mutation
+			mutatedAuth := helpers.ExtractMutatedAuthorizationHeader(resp)
+			Expect(mutatedAuth).To(BeEmpty(),
+				"original Bearer token must not be forwarded on exchange failure")
+		})
+	})
+
+	// ---------------------------------------------------------------------------
+	// User Story 2: Token Exchange Cache for Repeated Calls (P2)
+	// specs/015-extproc-token-exchange/spec.md — US2
+	// ---------------------------------------------------------------------------
+	Describe("US2: Token Exchange Cache", func() {
+
+		// Spec: US2 Scenario 1
+		// Given a valid exchanged token stored in cache,
+		// When a new request arrives with the same subject token and resource,
+		// Then ExtProc uses the cached token without calling token exchange.
+		It("should use cached token for same subject token and resource", func() {
+			// Spec: US2 Scenario 1
+
+			// Given: First request populates the cache
+			env.MockTokenExchange.WithExchangedToken(fixtures.CachedExchangedToken)
+			expiresIn := fixtures.StandardExpiresIn
+			env.MockTokenExchange.WithExpiresIn(&expiresIn)
+
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.ValidResourceURI).
+				WithBearerToken(fixtures.ValidBearerToken).
+				Build()
+
+			// First request — should call token exchange
+			resp1 := helpers.SendRequestHeaders(context.Background(), client, req)
+			Expect(resp1).NotTo(BeNil())
+			firstCallCount := env.MockTokenExchange.CallCount()
+			Expect(firstCallCount).To(Equal(1), "first request should call token exchange once")
+
+			// When: Second request with same token and resource
+			resp2 := helpers.SendRequestHeaders(context.Background(), client, req)
+			Expect(resp2).NotTo(BeNil())
+
+			// Then: Token exchange endpoint is NOT called again (cache hit)
+			secondCallCount := env.MockTokenExchange.CallCount()
+			Expect(secondCallCount).To(Equal(1),
+				"cache hit should not trigger a new token exchange call")
+
+			// The cached token is returned
+			expectedAuthHeader := fmt.Sprintf("Bearer %s", fixtures.CachedExchangedToken)
+			Expect(resp2).To(helpers.HaveReplacedAuthorizationHeader(expectedAuthHeader),
+				"second request should use the cached exchanged token")
+		})
+
+		// Spec: US2 Scenario 2
+		// Given a cached exchanged token is expired,
+		// When a new request arrives,
+		// Then ExtProc performs a fresh token exchange and updates the cache.
+		Context("when configured with a short cache TTL", func() {
+			BeforeEach(func() {
+				// Replace the default environment with one using a short cache TTL
+				if conn != nil {
+					conn.Close() //nolint:errcheck
+				}
+				if env != nil {
+					env.Stop()
+				}
+				shortTTLCfg := fixtures.ShortCacheTTLConfig()
+				env = bootstrap.NewTestEnvironment(shortTTLCfg, logger)
+				env.Start()
+				client, conn = env.NewExtProcClient()
+			})
+
+			It("should perform fresh exchange when cached token is expired", func() {
+				// Spec: US2 Scenario 2
+
+				// Given: First request populates the cache with a short TTL
+				initialToken := "short-lived-exchanged-token"
+				env.MockTokenExchange.WithExchangedToken(initialToken)
+				shortTTLSeconds := 0 // expires_in=0 triggers default_ttl path which is ShortTTL
+				env.MockTokenExchange.WithExpiresIn(&shortTTLSeconds)
+
+				req := helpers.NewRequestHeaders().
+					WithPath(fixtures.ValidResourceURI).
+					WithBearerToken(fixtures.ValidBearerToken).
+					Build()
+
+				resp1 := helpers.SendRequestHeaders(context.Background(), client, req)
+				Expect(resp1).NotTo(BeNil())
+				Expect(env.MockTokenExchange.CallCount()).To(Equal(1), "first request should call exchange")
+
+				// Wait for the cache entry to expire (ShortTTL + margin)
+				time.Sleep(fixtures.ShortTTL + 50*time.Millisecond)
+
+				// When: New request arrives after cache expiry
+				refreshedToken := fixtures.RefreshedExchangedToken
+				env.MockTokenExchange.WithExchangedToken(refreshedToken)
+				expiresIn := fixtures.StandardExpiresIn
+				env.MockTokenExchange.WithExpiresIn(&expiresIn)
+
+				resp2 := helpers.SendRequestHeaders(context.Background(), client, req)
+				Expect(resp2).NotTo(BeNil())
+
+				// Then: Token exchange is called again (cache miss after expiry)
+				Expect(env.MockTokenExchange.CallCount()).To(Equal(2),
+					"expired cache should trigger a fresh token exchange")
+
+				// The refreshed token is returned (not the old cached token)
+				expectedAuthHeader := fmt.Sprintf("Bearer %s", refreshedToken)
+				Expect(resp2).To(helpers.HaveReplacedAuthorizationHeader(expectedAuthHeader),
+					"response should contain the refreshed exchanged token after cache expiry")
+			})
+		})
+	})
+
+	// ---------------------------------------------------------------------------
+	// User Story 3: Operable Configuration and Startup Validation (P3)
+	// specs/015-extproc-token-exchange/spec.md — US3
+	// ---------------------------------------------------------------------------
+	Describe("US3: Configuration and Startup Validation", func() {
+
+		// Spec: US3 Scenario 1
+		// Given valid configuration for gRPC and token exchange settings,
+		// When the service starts,
+		// Then it binds to the configured host/port and logs a startup summary.
+		It("should bind to configured host/port and log startup summary", func() {
+			// Spec: US3 Scenario 1
+			// Note: The bootstrap.TestEnvironment.Start() already validates this —
+			// if the server doesn't bind, gRPC client connection fails.
+			// This test verifies the server is reachable and accepts connections.
+
+			// Given: Valid config (default test config)
+			// (env is started in BeforeEach)
+
+			// When: Client connects and makes a health check request
+			// A no-op request (pass-through) validates the server is running
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.ValidResourceURI).
+				WithoutAuthorizationHeader(). // no Bearer → pass-through response
+				Build()
+
+			resp := helpers.SendRequestHeaders(context.Background(), client, req)
+
+			// Then: Server responds (it bound successfully and is processing requests)
+			Expect(resp).NotTo(BeNil(),
+				"server should respond to requests when started with valid config")
+			// Pass-through response (no auth header) verifies server is running
+			Expect(resp).To(helpers.BePassThroughResponse(),
+				"request without Bearer should be passed through")
+		})
+
+		// Spec: US3 Scenario 2
+		// Given missing or invalid required configuration values,
+		// When the service starts,
+		// Then it exits with a configuration validation error.
+		It("should exit with validation error on invalid configuration", func() {
+			// Spec: US3 Scenario 2
+			// Test the config validation function directly — startup validation
+			// should reject invalid configs before attempting to bind.
+
+			// Given: Config with missing required fields
+			invalidCfg := fixtures.InvalidConfig()
+
+			// When: Attempting to validate/start the service with invalid config
+			err := extprocconfig.Validate(invalidCfg)
+
+			// Then: Validation returns an error
+			Expect(err).To(HaveOccurred(),
+				"invalid configuration should produce a validation error at startup")
+			Expect(err.Error()).To(ContainSubstring("token_endpoint"),
+				"error message should reference the missing token_endpoint field")
+		})
+	})
+
+	// ---------------------------------------------------------------------------
+	// Edge Cases (from specs/015-extproc-token-exchange/spec.md)
+	// ---------------------------------------------------------------------------
+	Describe("Edge Cases", func() {
+
+		// Edge Case: no Bearer token
+		// What happens when the Authorization header is missing or not a Bearer token?
+		// Expected: pass through unchanged (FR-009)
+		It("should pass through the request unchanged when no Bearer token", func() {
+			// Spec: Edge case — no Bearer token
+
+			// Given: Request without an Authorization header
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.ValidResourceURI).
+				WithoutAuthorizationHeader().
+				Build()
+
+			// When: ExtProc processes the request
+			resp := helpers.SendRequestHeaders(context.Background(), client, req)
+
+			// Then: Request is passed through unchanged (no token exchange, no modification)
+			Expect(resp).NotTo(BeNil())
+			Expect(resp).To(helpers.BePassThroughResponse(),
+				"request without Bearer token should be passed through unchanged")
+
+			// Token exchange endpoint must NOT be called
+			Expect(env.MockTokenExchange.CallCount()).To(Equal(0),
+				"no token exchange should occur when no Bearer token is present")
+		})
+
+		// Edge Case: empty URI
+		// What happens when the request URI is empty or cannot be used as a resource?
+		// Expected: reject with 503 (FR-013)
+		It("should reject with 503 response when request URI is empty or invalid", func() {
+			// Spec: Edge case — empty URI / invalid resource
+			// Note: :authority is cleared so buildResourceURI cannot produce a valid URI;
+			// this simulates the scenario where neither :path nor :authority provides a usable resource.
+
+			// Given: Request with an empty :path pseudo-header and no :authority
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.EmptyResourceURI).
+				WithHeader(":authority", "").
+				WithBearerToken(fixtures.ValidBearerToken).
+				Build()
+
+			// When: ExtProc processes the request
+			resp := helpers.SendRequestHeaders(context.Background(), client, req)
+
+			// Then: ExtProc rejects with 503 ImmediateResponse (FR-013)
+			Expect(resp).NotTo(BeNil())
+			Expect(resp).To(helpers.HaveImmediateResponseWithStatus(503),
+				"empty request URI should result in HTTP 503 ImmediateResponse")
+
+			// Also test relative path without :authority (cannot build absolute URI)
+			relativeReq := helpers.NewRequestHeaders().
+				WithPath(fixtures.RelativePathResourceURI).
+				WithHeader(":authority", "").
+				WithBearerToken(fixtures.ValidBearerToken).
+				Build()
+
+			relativeResp := helpers.SendRequestHeaders(context.Background(), client, relativeReq)
+			Expect(relativeResp).NotTo(BeNil())
+			Expect(relativeResp).To(helpers.HaveImmediateResponseWithStatus(503),
+				"relative path URI without authority should result in HTTP 503 ImmediateResponse")
+		})
+
+		// Edge Case: timeout
+		// How does the service handle token exchange timeouts or non-200 responses?
+		// Expected: return 500 response and log the failure (FR-010)
+		It("should return 500 response and log failure when token exchange times out", func() {
+			// Spec: Edge case — timeout / non-200 from authorization server
+
+			// Given: Token exchange endpoint returns 500 error
+			env.MockTokenExchange.WithError(500, "server_error")
+
+			// When: ExtProc processes a request
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.ValidResourceURI).
+				WithBearerToken(fixtures.ValidBearerToken).
+				Build()
+
+			resp := helpers.SendRequestHeaders(context.Background(), client, req)
+
+			// Then: ExtProc returns 500 ImmediateResponse (FR-010)
+			Expect(resp).NotTo(BeNil())
+			Expect(resp).To(helpers.HaveImmediateResponseWithStatus(500),
+				"token exchange failure should result in HTTP 500 ImmediateResponse")
+
+			// Body should contain the error field but NOT expose upstream error details (FR: info disclosure prevention)
+			body := helpers.ExtractImmediateResponseBody(resp)
+			Expect(body).To(ContainSubstring("token_exchange_failed"),
+				"error body should use generic error code, not upstream details")
+		})
+
+		// Edge Case: no expiry in exchange response
+		// When the exchanged token response lacks an expiration time,
+		// ExtProc should use the default cache TTL (FR-012).
+		It("should use the default cache TTL when exchanged token lacks expiry information", func() {
+			// Spec: Edge case — no expires_in in token exchange response
+
+			// Given: Token exchange returns a response WITHOUT expires_in
+			env.MockTokenExchange.WithExchangedToken(fixtures.DefaultExchangedToken)
+			env.MockTokenExchange.WithExpiresIn(nil) // nil = no expires_in field
+
+			// When: ExtProc processes a request
+			req := helpers.NewRequestHeaders().
+				WithPath(fixtures.ValidResourceURI).
+				WithBearerToken(fixtures.ValidBearerToken).
+				Build()
+
+			resp := helpers.SendRequestHeaders(context.Background(), client, req)
+
+			// Then: Token exchange succeeds and token is cached (using default TTL)
+			Expect(resp).NotTo(BeNil())
+			expectedAuthHeader := fmt.Sprintf("Bearer %s", fixtures.DefaultExchangedToken)
+			Expect(resp).To(helpers.HaveReplacedAuthorizationHeader(expectedAuthHeader),
+				"token without expiry should still be cached and returned successfully")
+
+			// Second request should use cache (proving default TTL was applied, not zero TTL)
+			resp2 := helpers.SendRequestHeaders(context.Background(), client, req)
+			Expect(resp2).NotTo(BeNil())
+			Expect(env.MockTokenExchange.CallCount()).To(Equal(1),
+				"token without expiry should use default_ttl and be cached for subsequent requests")
+		})
+
+		// Edge Case: singleflight
+		// How does the service handle concurrent requests that race to refresh an expired cache entry?
+		// Expected: only one token exchange occurs (FR-014)
+		Context("when configured with a short cache TTL for singleflight deduplication", func() {
+			BeforeEach(func() {
+				// Replace the default environment with one using a short cache TTL
+				if conn != nil {
+					conn.Close() //nolint:errcheck
+				}
+				if env != nil {
+					env.Stop()
+				}
+				shortCfg := fixtures.ShortCacheTTLConfig()
+				env = bootstrap.NewTestEnvironment(shortCfg, logger)
+				env.Start()
+				client, conn = env.NewExtProcClient()
+			})
+
+			It("should perform only one token exchange via singleflight for concurrent requests", func() {
+				// Spec: Edge case — singleflight refresh deduplication
+
+				// Given: Populate cache first with a short-lived token
+				initialToken := "singleflight-initial-token"
+				env.MockTokenExchange.WithExchangedToken(initialToken)
+				zeroExpiry := 0
+				env.MockTokenExchange.WithExpiresIn(&zeroExpiry) // triggers short default TTL
+
+				req := helpers.NewRequestHeaders().
+					WithPath(fixtures.ValidResourceURI).
+					WithBearerToken(fixtures.ValidBearerToken).
+					Build()
+
+				resp0 := helpers.SendRequestHeaders(context.Background(), client, req)
+				Expect(resp0).NotTo(BeNil())
+				Expect(env.MockTokenExchange.CallCount()).To(Equal(1))
+
+				// Wait for cache expiry
+				time.Sleep(fixtures.ShortTTL + 50*time.Millisecond)
+
+				// Set up refreshed token for the concurrent refresh requests
+				refreshedToken := "singleflight-refreshed-token"
+				env.MockTokenExchange.WithExchangedToken(refreshedToken)
+				longExpiry := fixtures.StandardExpiresIn
+				env.MockTokenExchange.WithExpiresIn(&longExpiry)
+
+				// When: N concurrent requests arrive simultaneously (all cache misses)
+				const numConcurrent = 10
+				var wg sync.WaitGroup
+				var successCount int64
+				wg.Add(numConcurrent)
+
+				for i := 0; i < numConcurrent; i++ {
+					go func() {
+						defer wg.Done()
+						// Each goroutine creates its own client connection for true concurrency
+						concurrentClient, concurrentConn := env.NewExtProcClient()
+						defer concurrentConn.Close() //nolint:errcheck
+
+						r := helpers.SendRequestHeaders(context.Background(), concurrentClient, req)
+						if r != nil {
+							atomic.AddInt64(&successCount, 1)
+						}
+					}()
+				}
+				wg.Wait()
+
+				// Then: All concurrent requests succeed
+				Expect(successCount).To(Equal(int64(numConcurrent)),
+					"all concurrent requests should succeed")
+
+				// Only ONE additional token exchange call should have been made (singleflight deduplication)
+				// Total calls = 1 (initial) + 1 (singleflight refresh) = 2
+				finalCallCount := env.MockTokenExchange.CallCount()
+				Expect(finalCallCount).To(Equal(2),
+					"singleflight should deduplicate concurrent token exchange refreshes to exactly one call")
+			})
+		})
+	})
+})

@@ -295,6 +295,7 @@ func (b *Builder) Build() (*App, error) {
 			app.ProviderService,
 			app.OAuth2SessionService,
 			app.ConsentService,
+			b.storage.Agents(),
 			&b.config.TokenExchange,
 		)
 		if err != nil {

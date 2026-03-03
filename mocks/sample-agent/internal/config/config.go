@@ -9,9 +9,15 @@ import (
 
 // Config holds the configuration for the sample OAuth2 client
 type Config struct {
-	Server     ServerConfig     `yaml:"server"`
-	OAuth2     OAuth2Config     `yaml:"oauth2"`
-	BrokerInfo BrokerInfoConfig `yaml:"broker"`
+	Server       ServerConfig       `yaml:"server"`
+	OAuth2       OAuth2Config       `yaml:"oauth2"`
+	BrokerInfo   BrokerInfoConfig   `yaml:"broker"`
+	AgentGateway AgentGatewayConfig `yaml:"agentgateway"`
+}
+
+// AgentGatewayConfig holds agentgateway connection settings
+type AgentGatewayConfig struct {
+	MCPURL string `yaml:"mcp_url"`
 }
 
 // ServerConfig holds HTTP server configuration
@@ -76,6 +82,9 @@ func Load(configDir string) (*Config, error) {
 	}
 	if len(cfg.OAuth2.Scopes) == 0 {
 		cfg.OAuth2.Scopes = []string{"openid", "profile", "email"}
+	}
+	if cfg.AgentGateway.MCPURL == "" {
+		cfg.AgentGateway.MCPURL = "http://localhost:4000/mcp"
 	}
 
 	return &cfg, nil

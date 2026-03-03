@@ -61,7 +61,8 @@ SERVICE_RESPONSE=$(curl -s -X POST "${ADMIN_API}/services" \
       {\"scope_value\": \"email\", \"description\": \"Access email address\"},
       {\"scope_value\": \"read\", \"description\": \"Read data\"},
       {\"scope_value\": \"write\", \"description\": \"Write data\"}
-    ]
+    ],
+    \"protected_resources\": [\"http://agentgateway:4000/mcp\"]
   }")
 
 HTTP_CODE=$(echo "$SERVICE_RESPONSE" | tail -n1)

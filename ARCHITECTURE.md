@@ -539,6 +539,196 @@ Service Layer (OAuth2SessionService):
 - ADR 009: Envelope Encryption Design (cryptographic approach)
 - ADR 012: Encryption Layer Separation (architectural pattern)
 
+### 3.2. Envoy External Processor (ExtProc) Token Exchange Service
+
+**Name**: extproc-token-exchange
+
+**Purpose**: Standalone gRPC microservice that implements the Envoy External Processor protocol for transparent OAuth2 token exchange. When deployed alongside agentgateway, the service intercepts incoming HTTP requests via Envoy's ExtProc filter, extracts Bearer tokens from request headers, performs RFC 8693 token exchange against the identity broker, and replaces the Authorization header with the exchanged token. Exchanged tokens are cached in-memory with singleflight deduplication to optimize performance.
+
+**Architecture**: Hexagonal (ports and adapters)
+
+**Components**:
+
+#### 3.2.1. Domain Model
+
+**Exchanger** (Port): Interface defining token exchange logic as a port. Implementations perform RFC 8693 token exchange and manage token caching independently of the gRPC protocol.
+
+**TokenExchanger** (Adapter): Concrete implementation of Exchanger. Manages:
+- In-memory token cache keyed by `(subjectToken, resourceURI)` struct
+- Background client assertion refresh goroutine (startup + 80% TTL/30s threshold)
+- Singleflight deduplication for concurrent exchange requests
+- HTTP client for RFC 8693 token exchange requests
+
+**CachedToken**: Value object representing a cached token with:
+- `accessToken`: The exchanged token value
+- `expiresAt`: Absolute expiration timestamp
+- Computed from `expires_in` response field (capped at `cache.max_ttl`, defaulting to `cache.default_ttl`)
+
+**TokenCacheKey**: Struct used as Go map key: `{subjectToken, resourceURI}`. Using struct keys prevents separator-injection attacks compared to string concatenation.
+
+#### 3.2.2. gRPC Server
+
+**Server**: Implements Envoy's `ExternalProcessorServer` interface with:
+- **Process RPC**: Streaming bidirectional RPC handling all Envoy ExtProc phases (RequestHeaders, RequestBody, ResponseHeaders, ResponseBody, RequestTrailers, ResponseTrailers)
+- **RequestHeaders Phase**: Primary processing phase where Bearer token extraction and exchange occurs
+- **Other Phases**: Pass-through responses with phase-specific response types
+- **ImmediateResponse**: Error response mechanism (500 on exchange failure, 503 on invalid URI)
+
+#### 3.2.3. Request Processing
+
+**RequestHeaders Processing**:
+1. Extract Bearer token from Authorization header (pass through if absent or non-Bearer)
+2. Extract resource URI from `:path` pseudo-header
+3. Validate URI (absolute, http/https scheme, non-empty host) — SSRF mitigation
+4. Call `Exchanger.Exchange()` with (token, uri)
+5. On success: replace Authorization header with `"Bearer " + exchangedToken`
+6. On failure: return 500 ImmediateResponse, reject request, log failure
+
+**Helper Functions**:
+- `extractBearerToken()`: Parse "Bearer <token>" format
+- `extractHeader()`: Case-insensitive header lookup
+- `validateResourceURI()`: URI parsing and scheme validation
+- `replaceAuthorizationHeader()`: Build HeadersResponse with header mutation
+- `immediateResponse()`: Build ImmediateResponse with status code and JSON body
+
+#### 3.2.4. Configuration
+
+**Configuration Subsystem**: Separate from broker config, uses `EXTPROC_` environment prefix.
+
+**Config Structure**:
+- **GRPCConfig**: `bind`, `port`, `max_concurrent_streams`
+- **OAuth2Config**: `issuer`, `token_endpoint`, `client_id`, `client_secret`, `client_credentials_endpoint`, `tls`
+- **TLSConfig**: `allow_http` (fail-closed unless true)
+- **CacheConfig**: `default_ttl`, `max_ttl`
+- **LogConfig**: `level`, `format`
+
+**Validation Rules** (10 rules, fail-fast at startup):
+1. Port in range [1, 65535]
+2. Bind address non-empty
+3. Token endpoint valid URL
+4. Issuer valid URL
+5. Client ID non-empty
+6. Client secret non-empty
+7. Default TTL > 0
+8. Token endpoint and issuer use https:// unless `allow_http: true`
+9. Max TTL > 0
+10. Exchange timeout > 0 (and ≤ 5s)
+
+**Configuration Loading**:
+- Viper-based loader with EXTPROC_ prefix
+- YAML file with `${VAR}` expansion for secret injection
+- Example config: `examples/config/extproc-token-exchange.yaml`
+
+#### 3.2.5. Security Features
+
+**Fail-Closed**: Exchange failures return 500 ImmediateResponse; original bearer token is never forwarded.
+
+**SSRF Mitigation**: `validateResourceURI()` enforces absolute URIs with http/https schemes only.
+
+**Token Redaction**: Bearer tokens and exchanged tokens absent from all logs and error responses.
+
+**Client Secret Protection**: client_secret stored in memory only (config), never logged (logged as `[REDACTED]`), redacted from error responses.
+
+**Client Assertion Refresh**: Background goroutine acquires ID token from client_credentials grant at startup (fail-fast), refreshes proactively within 30s of expiry, retries on failure.
+
+**Cache Expiry**: Tokens automatically expired and evicted; background goroutine sweeps every `cache.default_ttl / 2`.
+
+**TLS Enforcement**: Token endpoint and issuer must use https:// unless `oauth2.tls.allow_http: true` (development only).
+
+#### 3.2.6. Performance
+
+- **RequestHeaders processing**: <10ms typical (cache hit)
+- **Token exchange**: <200ms typical (cache miss, includes HTTP RPC)
+- **Singleflight deduplication**: Concurrent requests for same key trigger exactly one exchange
+- **Cache eviction**: Background goroutine runs non-blocking
+
+**Throughput**: Handles 1000s of requests/sec at typical latencies.
+
+#### 3.2.7. Deployment
+
+**Entry Point**: `cmd/extproc-token-exchange/main.go` with Cobra CLI
+
+**Binary**: `extproc-token-exchange` (single Go binary, ~24MB)
+
+**Containerization**: `Dockerfile` for Docker Compose integration
+
+**Lifecycle**:
+- Load configuration (fail-fast on invalid)
+- Initialize logger
+- Create TokenExchanger (acquires client assertion)
+- Create gRPC server
+- Register ExternalProcessorServer
+- Listen on configured bind/port
+- Handle graceful shutdown on signal
+
+#### 3.2.8. Testing
+
+**E2E Test Suite** (separate from main broker tests): `tests/e2e/extproc/`
+- 12 acceptance tests (1:1 mapping to spec scenarios)
+- Ginkgo/Gomega BDD framework
+- In-process bootstrap (gRPC server + mock OAuth2 servers)
+- Comprehensive coverage: token exchange, caching, singleflight, URI validation, startup validation
+
+**Unit Tests**: `internal/extproc/server/*_test.go`, `internal/extproc/config/*_test.go`
+- 50+ tests covering all paths
+- RFC 8693 request/response format validation
+- Client assertion acquisition and refresh
+- Cache TTL capping and eviction
+- Error handling and security features
+- Race detector clean
+
+**Coverage**: 79.9% (server + config packages)
+
+**Technologies**:
+- Ginkgo v2 (BDD test framework)
+- Gomega (assertion library)
+- `google.golang.org/grpc` (gRPC framework)
+- `github.com/envoyproxy/go-control-plane` (ExtProc protocol)
+- `golang.org/x/sync/singleflight` (concurrent request deduplication)
+
+#### 3.2.9. Dependencies
+
+**Direct**: google.golang.org/grpc, github.com/envoyproxy/go-control-plane, golang.org/x/sync/singleflight, spf13/cobra, spf13/viper
+
+**Testing**: github.com/onsi/ginkgo/v2, github.com/onsi/gomega, httptest (standard library)
+
+**Storage**: In-memory only (no database required)
+
+#### 3.2.10. Directory Structure
+
+```
+cmd/extproc-token-exchange/
+├── main.go                    # Entry point
+└── root.go                    # Cobra root command, gRPC server lifecycle
+
+internal/extproc/
+├── config/
+│   ├── config.go              # Configuration types
+│   ├── loader.go              # Viper loader + validation
+│   ├── validate.go            # Validation rules
+│   └── loader_test.go         # Config tests
+└── server/
+    ├── server.go              # ExtProc gRPC Process RPC
+    ├── exchanger.go           # TokenExchanger with cache & singleflight
+    ├── server_test.go         # Server unit tests
+    └── exchanger_test.go      # Exchange unit tests
+
+tests/e2e/extproc/
+├── extproc_suite_test.go      # Ginkgo suite runner
+├── token_exchange_test.go     # 12 acceptance tests
+├── bootstrap/
+│   └── bootstrap.go           # Server setup + mock servers
+├── helpers/
+│   ├── grpc_helpers.go        # gRPC utilities
+│   └── matchers.go            # Gomega matchers
+└── fixtures/
+    ├── tokens.go              # Test token fixtures
+    └── configs.go             # Configuration fixtures
+
+examples/config/
+└── extproc-token-exchange.yaml # Documented example config
+```
+
 ## 4. Data Stores
 
 (List and describe the databases and other persistent storage solutions used.)
@@ -770,6 +960,20 @@ Define any project-specific terms or acronyms.)
 **CEL Authorization**: Common Expression Language policy evaluation for privileged client authorization. Expression evaluated against client_assertion claims and request context. Expression must return boolean; defaults to "true" (allow all valid privileged clients). Enables flexible authorization policies beyond basic JWT validation.
 
 **Protected Resources**: Array of normalized resource URIs on ThirdpartyOAuth2Provider that identify which resources map to that provider for RFC 8693 token exchange. Used to discover correct service when processing token exchange requests. URIs are normalized (trailing slashes removed) for consistent matching. Stored as TEXT[] column in PostgreSQL with GIN index for efficient lookups.
+
+### ExtProc (Envoy External Processor) Domain
+
+**ExtProc**: Envoy's External Processor (ExtProc) gRPC protocol allowing a standalone microservice to intercept and modify HTTP requests/responses in real-time. The extproc-token-exchange service implements this protocol to transparently exchange OAuth2 tokens.
+
+**agentgateway**: Envoy-based reverse proxy deployed alongside the identity broker and ExtProc service. Configures Envoy's ExtProc filter to delegate token exchange decisions to the extproc-token-exchange microservice. Routes requests from agents through the ExtProc filter before forwarding to upstream services.
+
+**Exchanged Token**: OAuth2 access token obtained via RFC 8693 token exchange, scoped to a specific downstream service (resource URI). Replaces the original Bearer token in request headers. Used by agents to access third-party services without exposing their original credentials.
+
+**Singleflight Refresh**: Deduplication pattern preventing concurrent duplicate token exchange requests for identical (subjectToken, resourceURI) pairs. Uses `golang.org/x/sync/singleflight` to ensure exactly one exchange request completes while others wait for the result. Improves performance and reduces load on identity broker.
+
+**Client Assertion**: JWT containing privileged client credentials (API gateway or reverse proxy) used to authenticate the token exchange request to the identity broker. Generated via client_credentials grant at ExtProc startup. Automatically refreshed in background goroutine within 30 seconds of expiry.
+
+**MCP Streamable HTTP**: Model Context Protocol transport mode allowing JSON-RPC communication over HTTP with streaming capabilities. Used by ExtProc to forward tool calls to MCP servers while maintaining transparent token exchange for authentication.
 
 ### General Acronyms
 

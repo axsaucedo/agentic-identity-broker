@@ -2,17 +2,20 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/agentic-identity-broker/sample-agent/internal/config"
+	mcpclient "github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
+	"github.com/mark3labs/mcp-go/mcp"
 	"golang.org/x/oauth2"
 )
 
@@ -27,6 +30,7 @@ type Session struct {
 	UserInfo  *UserInfo
 	CreatedAt time.Time
 	ExpiresAt int64
+	CSRFState string // CSRF protection state
 }
 
 // Handlers handles HTTP requests
@@ -70,9 +74,8 @@ func (h *Handlers) Home(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		slog.Info("Displaying user info",
 			"sub", session.UserInfo.Sub,
-			"expiresAt", session.ExpiresAt,
-			"sessionID", sessionID)
-		fmt.Fprint(w, renderUserPage(session.UserInfo, session.ExpiresAt, sessionID))
+			"expiresAt", session.ExpiresAt)
+		fmt.Fprint(w, renderUserPage(session.UserInfo, session.ExpiresAt))
 		return
 	}
 
@@ -105,8 +108,9 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   86400,
 	})
 
-	// Store state in session
+	// Store CSRF state in session for validation in callback
 	h.sessionsMu.Lock()
+	h.sessions[sessionID].CSRFState = state
 	h.sessions[sessionID].UserInfo = &UserInfo{}
 	h.sessionsMu.Unlock()
 
@@ -150,7 +154,20 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("Received authorization code",
+	// Validate CSRF state
+	h.sessionsMu.RLock()
+	storedState := h.sessions[sessionID].CSRFState
+	h.sessionsMu.RUnlock()
+
+	if state != storedState {
+		slog.Error("CSRF state mismatch in callback",
+			"expected_state_length", len(storedState),
+			"received_state_length", len(state))
+		http.Error(w, "Invalid CSRF state", http.StatusBadRequest)
+		return
+	}
+
+	slog.Info("Received authorization code and valid CSRF state",
 		"code_length", len(code),
 		"state_length", len(state))
 
@@ -196,11 +213,10 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 		session.ExpiresAt = token.Expiry.Unix()
 		session.UserInfo.Sub = sub
 		slog.Info("Updated session in callback",
-			"sessionID", sessionID,
 			"sub", session.UserInfo.Sub,
 			"expiresAt", session.ExpiresAt)
 	} else {
-		slog.Error("Session not found in callback", "sessionID", sessionID)
+		slog.Error("Session not found in callback")
 	}
 	h.sessionsMu.Unlock()
 
@@ -229,6 +245,165 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// CallMCP handles MCP tool calls with transparent token exchange through agentgateway.
+// It uses the mcp-go client library for full MCP protocol compliance.
+func (h *Handlers) CallMCP(w http.ResponseWriter, r *http.Request) {
+	// Only allow POST requests
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "method_not_allowed",
+		})
+		return
+	}
+
+	// Extract session and validate token
+	sessionID := h.getSessionID(r)
+	if sessionID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":             "unauthorized",
+			"error_description": "session not found",
+		})
+		return
+	}
+
+	h.sessionsMu.RLock()
+	session, exists := h.sessions[sessionID]
+	h.sessionsMu.RUnlock()
+
+	if !exists || !session.Token.Valid() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":             "unauthorized",
+			"error_description": "session token invalid or expired",
+		})
+		return
+	}
+
+	// Get agentgateway URL from config
+	gatewayURL := h.cfg.AgentGateway.MCPURL
+	if gatewayURL == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "gateway_not_configured",
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	// Create mcp-go streamable HTTP client with Bearer token injection
+	accessToken := session.Token.AccessToken
+	mcpClient, err := mcpclient.NewStreamableHttpClient(gatewayURL,
+		transport.WithHTTPHeaderFunc(func(_ context.Context) map[string]string {
+			return map[string]string{
+				"Authorization": fmt.Sprintf("Bearer %s", accessToken),
+			}
+		}),
+		transport.WithHTTPTimeout(15*time.Second),
+	)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":             "mcp_call_failed",
+			"error_description": "failed to create MCP client",
+		})
+		slog.Error("Failed to create MCP client", "error", err.Error())
+		return
+	}
+	defer mcpClient.Close()
+
+	// Start the client transport
+	if err := mcpClient.Start(ctx); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":             "mcp_call_failed",
+			"error_description": "failed to start MCP client",
+		})
+		slog.Error("MCP client start failed", "error", err.Error())
+		return
+	}
+
+	// Step 1: initialize MCP session
+	initReq := mcp.InitializeRequest{}
+	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initReq.Params.ClientInfo = mcp.Implementation{
+		Name:    "sample-agent",
+		Version: "1.0",
+	}
+
+	_, err = mcpClient.Initialize(ctx, initReq)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":             "mcp_call_failed",
+			"error_description": "initialize request failed",
+		})
+		slog.Error("MCP initialize call failed", "error", err.Error())
+		return
+	}
+
+	// Step 2: call MCP tools - whoami tool to demonstrate token exchange
+	toolReq := mcp.CallToolRequest{}
+	toolReq.Params.Name = "whoami"
+
+	toolResult, err := mcpClient.CallTool(ctx, toolReq)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":             "mcp_call_failed",
+			"error_description": "tools/call request failed",
+		})
+		slog.Error("MCP tools/call failed", "error", err.Error())
+		return
+	}
+
+	// Extract result text and JWT claims from the tool response
+	var toolResultText string
+	var jwtClaims map[string]interface{}
+
+	if toolResult != nil && len(toolResult.Content) > 0 {
+		if tc, ok := mcp.AsTextContent(toolResult.Content[0]); ok {
+			toolResultText = tc.Text
+			slog.Info("MCP tool text content", "text", toolResultText)
+			// Parse jwt_claims embedded in the text: "auth_scheme=Bearer\njwt_claims={...}"
+			if idx := strings.Index(toolResultText, "\njwt_claims="); idx >= 0 {
+				claimsJSON := toolResultText[idx+len("\njwt_claims="):]
+				var claims map[string]interface{}
+				if err := json.Unmarshal([]byte(claimsJSON), &claims); err == nil {
+					jwtClaims = claims
+					slog.Info("JWT claims parsed from MCP tool text",
+						"claims_count", len(claims))
+				}
+			}
+		}
+	}
+
+	slog.Info("MCP call successful",
+		"tool", "whoami",
+		"has_jwt_claims", jwtClaims != nil)
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":     true,
+		"tool_result": toolResultText,
+		"gateway_url": gatewayURL,
+		"jwt_claims":  jwtClaims,
+	})
 }
 
 // getSessionID retrieves the session ID from cookies
@@ -281,12 +456,17 @@ func extractSubFromToken(accessToken string) (string, error) {
 	return sub, nil
 }
 
-// generateRandomString generates a random string of given length
+// generateRandomString generates a cryptographically secure random string of given length
 func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, length)
+	randomBytes := make([]byte, length)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// This should never happen in practice, but if it does, panic to avoid using weak randomness
+		panic(fmt.Sprintf("failed to read random bytes: %v", err))
+	}
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		b[i] = charset[randomBytes[i]%byte(len(charset))]
 	}
 	return string(b)
 }
@@ -399,12 +579,11 @@ func renderLoginPage() string {
 }
 
 // renderUserPage renders the user information page
-func renderUserPage(userInfo *UserInfo, expiresAt int64, sessionID string) string {
+func renderUserPage(userInfo *UserInfo, expiresAt int64) string {
 	expiresTime := time.Unix(expiresAt, 0).Format(time.RFC3339)
 	slog.Info("renderUserPage called with",
 		"sub", userInfo.Sub,
-		"expiresTime", expiresTime,
-		"sessionID", sessionID)
+		"expiresTime", expiresTime)
 	return fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
@@ -492,6 +671,42 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, sessionID string) strin
         .btn-logout:hover {
             background-color: #c0392b;
         }
+        .btn-mcp {
+            background-color: #27ae60;
+            color: white;
+            width: 100%%;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .btn-mcp:hover {
+            background-color: #219a52;
+        }
+        .btn-mcp:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .mcp-result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .mcp-result.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .mcp-result.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .mcp-result pre {
+            margin: 8px 0 0 0;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
@@ -514,18 +729,73 @@ func renderUserPage(userInfo *UserInfo, expiresAt int64, sessionID string) strin
                 <strong>Token Expires:</strong>
                 <span>%s</span>
             </div>
-            <div class="info-row">
-                <strong>Session ID:</strong>
-                <span style="font-family: monospace; font-size: 12px;">%s</span>
-            </div>
         </div>
+
+        <button id="mcp-btn" class="btn-mcp" onclick="callMCPTool()">
+            Call MCP Tool (Token Exchange)
+        </button>
+
+        <div id="mcp-result" class="mcp-result"></div>
 
         <div class="buttons">
             <a href="/" class="btn-home">Home</a>
             <a href="/logout" class="btn-logout">Logout</a>
         </div>
     </div>
+
+    <script>
+    function callMCPTool() {
+        var btn = document.getElementById('mcp-btn');
+        var result = document.getElementById('mcp-result');
+        btn.disabled = true;
+        btn.textContent = 'Calling...';
+        result.style.display = 'none';
+        result.className = 'mcp-result';
+
+        fetch('/call-mcp', {method: 'POST'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                result.style.display = 'block';
+                if (d.success) {
+                    result.classList.add('success');
+                    var html = '<strong>Token Exchange Successful!</strong>' +
+                        '<pre>Tool: whoami\nResult: ' + esc(d.tool_result) +
+                        '\nGateway: ' + esc(d.gateway_url);
+
+                    // Add JWT claims if available
+                    if (d.jwt_claims && Object.keys(d.jwt_claims).length > 0) {
+                        html += '\n\nJWT Claims:\n' + formatJSON(d.jwt_claims);
+                    }
+                    html += '</pre>';
+                    result.innerHTML = html;
+                } else {
+                    result.classList.add('error');
+                    result.innerHTML = '<strong>MCP Call Failed</strong>' +
+                        '<pre>' + esc(d.error) + '\nGateway: ' + esc(d.gateway_url) + '</pre>';
+                }
+            })
+            .catch(function(e) {
+                result.style.display = 'block';
+                result.classList.add('error');
+                result.innerHTML = '<strong>Request Failed</strong><pre>' + esc(String(e)) + '</pre>';
+            })
+            .finally(function() {
+                btn.disabled = false;
+                btn.textContent = 'Call MCP Tool (Token Exchange)';
+            });
+    }
+
+    function formatJSON(obj) {
+        return esc(JSON.stringify(obj, null, 2));
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    </script>
 </body>
 </html>
-`, userInfo.Sub, expiresTime, sessionID)
+`, userInfo.Sub, expiresTime)
 }

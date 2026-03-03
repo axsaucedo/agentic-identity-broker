@@ -50,6 +50,9 @@ type TokenExchangeService struct {
 	// consentService verifies user has granted agent access
 	consentService *consent.Service
 
+	// agentRepository resolves agent client_id to internal UUID
+	agentRepository ports.AgentRepository
+
 	// config provides token exchange configuration
 	config *ports.TokenExchangeConfig
 }
@@ -72,6 +75,7 @@ func NewTokenExchangeService(
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	oauth2SessionService *oauth2session.OAuth2SessionService,
 	consentService *consent.Service,
+	agentRepository ports.AgentRepository,
 	config *ports.TokenExchangeConfig,
 ) (*TokenExchangeService, error) {
 	if jwtValidator == nil {
@@ -89,6 +93,9 @@ func NewTokenExchangeService(
 	if consentService == nil {
 		return nil, fmt.Errorf("consentService cannot be nil")
 	}
+	if agentRepository == nil {
+		return nil, fmt.Errorf("agentRepository cannot be nil")
+	}
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
@@ -99,6 +106,7 @@ func NewTokenExchangeService(
 		providerService:      providerService,
 		oauth2SessionService: oauth2SessionService,
 		consentService:       consentService,
+		agentRepository:      agentRepository,
 		config:               config,
 	}, nil
 }
@@ -213,15 +221,26 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	// Only if grant exists but session is missing do we return invalid_grant (no session).
 	//
 	// T059: Agent client ID extracted from subject_token (already done in Step 5)
-	// T060: Look up Agent by agent_client_id (agent lookup deferred to future phase)
-	// T061-T065: Delegate grant verification to ConsentService
+	// T060: Look up Agent by agent_client_id to get internal UUID for grant lookup
+	// Grants are stored by internal agent UUID; client_id must be resolved first.
+	agent, err := s.agentRepository.GetByClientID(ctx, agentClientID)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil, NewAccessDeniedErrorWithDetails(
+				"user has not granted permission for this agent to access the requested service",
+				fmt.Sprintf("agent with client_id %q not found", agentClientID),
+			)
+		}
+		return nil, NewServerErrorWithCause("failed to lookup agent by client_id", err)
+	}
+	// T061-T065: Delegate grant verification to ConsentService using internal agent UUID
 	// ConsentService.VerifyAgentAccess checks:
-	// - T061: Query UserGrant by principal + agent_client_id
+	// - T061: Query UserGrant by principal + agent UUID
 	// - T062: Check grant status: active, not revoked, not expired
 	// - T063: Return error for missing grant
 	// - T064: Return error for revoked grant
 	// - T065: Return error for expired grant
-	_, err = s.consentService.VerifyAgentAccess(ctx, principal, agentClientID)
+	_, err = s.consentService.VerifyAgentAccess(ctx, principal, agent.ID)
 	if err != nil {
 		// Map ConsentService errors to TokenExchange errors
 		if errors.Is(err, consent.ErrAgentAccessDenied) {

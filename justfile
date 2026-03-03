@@ -7,8 +7,8 @@ VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
 # Prefer docker over podman when both are available for better multi-arch support
 CONTAINER_RUNTIME := `if [ -n "${CONTAINER_RUNTIME:-}" ]; then echo "$CONTAINER_RUNTIME"; elif command -v docker >/dev/null 2>&1; then echo "docker"; elif command -v podman >/dev/null 2>&1; then echo "podman"; else echo "Error: no container runtime found. Please install podman or docker, or set CONTAINER_RUNTIME." >&2; exit 1; fi`
 
-# Determine compose command (docker compose or podman-compose)
-COMPOSE_CMD := `if [ -n "${COMPOSE_CMD:-}" ]; then echo "$COMPOSE_CMD"; elif [ -n "${COMPOSE_TOOL:-}" ]; then echo "$COMPOSE_TOOL"; elif command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; elif command -v docker >/dev/null 2>&1; then echo "docker compose"; else echo "Error: no compose tool found. Please install podman-compose or Docker, or set COMPOSE_CMD." >&2; exit 1; fi`
+# Determine compose command (docker-compose or podman-compose)
+COMPOSE_CMD := `if [ -n "${COMPOSE_CMD:-}" ]; then echo "$COMPOSE_CMD"; elif [ -n "${COMPOSE_TOOL:-}" ]; then echo "$COMPOSE_TOOL"; elif command -v podman-compose >/dev/null 2>&1; then echo "podman-compose"; elif command -v docker-compose >/dev/null 2>&1; then echo "docker-compose"; else echo "docker compose"; fi`
 
 
 # Default recipe (shown when running `just` with no args)
@@ -249,6 +249,7 @@ test-all-junit:
     UNIT_EXIT=0
     INTEGRATION_EXIT=0
     E2E_EXIT=0
+    E2E_EXTPROC_EXIT=0
     E2E_FRONTEND_EXIT=0
     MERGER_EXIT=0
 
@@ -299,6 +300,22 @@ test-all-junit:
         fi
     fi
 
+    # ===== E2E EXTPROC TESTS =====
+    echo ""
+    echo "==> Running E2E ExtProc tests (Ginkgo)..."
+    if ! command -v ginkgo > /dev/null; then
+        echo "✗ ginkgo not installed"
+        echo "  Run 'just install-tools' to install required development tools"
+        E2E_EXTPROC_EXIT=1
+    else
+        if ginkgo run -v --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/; then
+            echo "✓ E2E ExtProc tests passed"
+        else
+            E2E_EXTPROC_EXIT=$?
+            echo "✗ E2E ExtProc tests failed (exit code: $E2E_EXTPROC_EXIT)"
+        fi
+    fi
+
     # ===== E2E FRONTEND TESTS =====
     echo ""
     echo "==> Running E2E frontend tests (Ginkgo)..."
@@ -337,12 +354,13 @@ test-all-junit:
     echo "Unit tests exit code: $UNIT_EXIT"
     echo "Integration tests exit code: $INTEGRATION_EXIT"
     echo "E2E tests exit code: $E2E_EXIT"
+    echo "E2E ExtProc tests exit code: $E2E_EXTPROC_EXIT"
     echo "E2E frontend tests exit code: $E2E_FRONTEND_EXIT"
     echo "JUnit XML merger exit code: $MERGER_EXIT"
     echo ""
 
     # Fail if any test suite failed
-    if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ] || [ $E2E_EXIT -ne 0 ] || [ $E2E_FRONTEND_EXIT -ne 0 ] || [ $MERGER_EXIT -ne 0 ]; then
+    if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ] || [ $E2E_EXIT -ne 0 ] || [ $E2E_EXTPROC_EXIT -ne 0 ] || [ $E2E_FRONTEND_EXIT -ne 0 ] || [ $MERGER_EXIT -ne 0 ]; then
         echo "✗ Some tests failed"
         exit 1
     fi
@@ -406,7 +424,7 @@ build-all: build web-build
 # =============================================================================
 
 # Create and push multi-architecture Docker images to registry
-# Builds broker and migrate images for linux/amd64 and linux/arm64 using docker buildx or podman build
+# Builds broker, migrate, and extproc images for linux/amd64 and linux/arm64 using docker buildx or podman build
 # Optional: set BUILDKIT_CONFIG to a buildx config file path (defaults to /etc/cdp-buildkitd.toml if present)
 docker-push: build-linux-amd64 build-linux-arm64 web-build
     @echo "Building and pushing multi-architecture images using {{CONTAINER_RUNTIME}}..."
@@ -415,6 +433,8 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
         docker_buildx build --rm -t "{{IMAGE_NAME}}:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --push .; \
         echo "Building migrate image: {{IMAGE_NAME}}-migrate:{{VERSION}}..."; \
         docker_buildx build --rm -t "{{IMAGE_NAME}}-migrate:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.migrate --push .; \
+        echo "Building extproc image: {{IMAGE_NAME}}-extproc:{{VERSION}}..."; \
+        docker_buildx build --rm -t "{{IMAGE_NAME}}-extproc:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.extproc --push .; \
     else \
         echo "Building broker image: {{IMAGE_NAME}}:{{VERSION}}..."; \
         podman rmi "{{IMAGE_NAME}}:{{VERSION}}" 2>/dev/null || true; \
@@ -430,15 +450,24 @@ docker-push: build-linux-amd64 build-linux-arm64 web-build
         podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}-migrate:{{VERSION}}" --file Dockerfile.migrate .; \
         podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}-migrate:{{VERSION}}" --file Dockerfile.migrate .; \
         podman manifest push --all "{{IMAGE_NAME}}-migrate:{{VERSION}}" "docker://{{IMAGE_NAME}}-migrate:{{VERSION}}"; \
+        echo "Building extproc image: {{IMAGE_NAME}}-extproc:{{VERSION}}..."; \
+        podman rmi "{{IMAGE_NAME}}-extproc:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest rm "{{IMAGE_NAME}}-extproc:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest create "{{IMAGE_NAME}}-extproc:{{VERSION}}"; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}-extproc:{{VERSION}}" --file Dockerfile.extproc .; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}-extproc:{{VERSION}}" --file Dockerfile.extproc .; \
+        podman manifest push --all "{{IMAGE_NAME}}-extproc:{{VERSION}}" "docker://{{IMAGE_NAME}}-extproc:{{VERSION}}"; \
     fi
     @echo "✓ Multi-architecture images pushed:"
     @echo "  - {{IMAGE_NAME}}:{{VERSION}}"
     @echo "  - {{IMAGE_NAME}}-migrate:{{VERSION}}"
+    @echo "  - {{IMAGE_NAME}}-extproc:{{VERSION}}"
 
 docker-promote:
     @echo "Promoting docker images to production channel..."
     cdp-promote-image {{IMAGE_NAME}}:{{VERSION}}
     cdp-promote-image {{IMAGE_NAME}}-migrate:{{VERSION}}
+    cdp-promote-image {{IMAGE_NAME}}-extproc:{{VERSION}}
 
 # Build multi-architecture migrate Docker image (validates both platforms, no output)
 docker-build-migrate:
@@ -468,8 +497,22 @@ docker-build-broker: build-linux-amd64 build-linux-arm64 web-build
     fi
     @echo "✓ Broker image validated: {{IMAGE_NAME}}:{{VERSION}}"
 
-# Build both broker and migrate images (validates both platforms, no output)
-docker-build-all: docker-build-broker docker-build-migrate
+# Build multi-architecture extproc Docker image (validates both platforms, no output)
+docker-build-extproc:
+    @echo "Building extproc image: {{IMAGE_NAME}}-extproc:{{VERSION}} using {{CONTAINER_RUNTIME}}..."
+    @if [ "{{CONTAINER_RUNTIME}}" = "docker" ]; then \
+        docker_buildx build --rm -t "{{IMAGE_NAME}}-extproc:{{VERSION}}" --build-arg VERSION="{{VERSION}}" --platform linux/amd64,linux/arm64 --file Dockerfile.extproc .; \
+    else \
+        podman rmi "{{IMAGE_NAME}}-extproc:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest rm "{{IMAGE_NAME}}-extproc:{{VERSION}}" 2>/dev/null || true; \
+        podman manifest create "{{IMAGE_NAME}}-extproc:{{VERSION}}"; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/amd64 --manifest "{{IMAGE_NAME}}-extproc:{{VERSION}}" --file Dockerfile.extproc .; \
+        podman build --rm --build-arg VERSION="{{VERSION}}" --platform linux/arm64 --manifest "{{IMAGE_NAME}}-extproc:{{VERSION}}" --file Dockerfile.extproc .; \
+    fi
+    @echo "✓ ExtProc image validated: {{IMAGE_NAME}}-extproc:{{VERSION}}"
+
+# Build broker, migrate, and extproc images (validates both platforms, no output)
+docker-build-all: docker-build-broker docker-build-migrate docker-build-extproc
     @echo "✓ All Docker images validated for linux/amd64,linux/arm64"
 
 # =============================================================================
@@ -668,6 +711,70 @@ docs: docs-install docs-build docs-preview
 # Deploy to GitHub Pages
 docs-deploy: docs-build
     cd assets/docusaurus && npm run deploy
+
+# =============================================================================
+# ExtProc Token Exchange Service Targets
+# =============================================================================
+
+# Build the extproc-token-exchange binary
+extproc-build:
+    @echo "Building extproc-token-exchange..."
+    @mkdir -p bin
+    go build -ldflags="-s -w" -o bin/extproc-token-exchange ./cmd/extproc-token-exchange
+    @echo "✓ Built: bin/extproc-token-exchange"
+
+# Run the extproc-token-exchange binary (requires EXTPROC_* env vars)
+extproc-run: extproc-build
+    @echo "Running extproc-token-exchange..."
+    @echo "Set EXTPROC_CONFIG_PATH or EXTPROC_OAUTH2_TOKEN_ENDPOINT etc. before running."
+    ./bin/extproc-token-exchange
+
+# Run unit tests for the extproc packages
+extproc-test:
+    @echo "Running extproc unit tests..."
+    go test -v -race ./internal/extproc/... ./cmd/extproc-token-exchange/...
+
+# Run extproc E2E tests (Ginkgo)
+extproc-test-e2e:
+    @echo "Running extproc E2E tests..."
+    @if command -v ginkgo > /dev/null; then \
+        ginkgo -v ./tests/e2e/extproc/; \
+    else \
+        echo "Error: ginkgo is not installed. Run: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
+        exit 1; \
+    fi
+
+# Build mock MCP server binary
+mock-mcp-server-build:
+    @echo "Building mock MCP server..."
+    @mkdir -p bin
+    cd mocks/mcp-server && go build -o ../../bin/mock-mcp-server cmd/mcp-server/main.go
+    @echo "✓ Built: ./bin/mock-mcp-server"
+
+# Run mock MCP server locally
+mock-mcp-server-start:
+    @echo "Starting mock MCP server on port 9003..."
+    cd mocks/mcp-server && go run cmd/mcp-server/main.go
+
+# Start the full ExtProc + agentgateway + MCP integration stack
+compose-extproc-up:
+    @echo "Starting ExtProc integration stack..."
+    @echo "Services:"
+    @echo "  - extproc-token-exchange (50051, container-internal)"
+    @echo "  - mcp-server-mock (9003)"
+    @echo "  - agentgateway (4000, 15000)"
+    @echo ""
+    @echo "Requires identity-broker and upstream-oauth2 to be running."
+    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up extproc-token-exchange mcp-server-mock agentgateway
+
+# Stop ExtProc integration services only
+compose-extproc-down:
+    @echo "Stopping ExtProc integration services..."
+    {{COMPOSE_CMD}} -f docker-compose.yml stop extproc-token-exchange mcp-server-mock agentgateway
+
+# Show logs from ExtProc integration services
+compose-extproc-logs:
+    {{COMPOSE_CMD}} -f docker-compose.yml logs -f extproc-token-exchange mcp-server-mock agentgateway
 
 # =============================================================================
 # Mock Third-Party OAuth2 Service Targets (Manual Testing)

@@ -52,6 +52,7 @@ func New(cfg *config.Config) (*Server, error) {
 	router.HandleFunc("/login", h.Login)
 	router.HandleFunc("/oauth2/callback", h.Callback)
 	router.HandleFunc("/logout", h.Logout)
+	router.HandleFunc("/call-mcp", h.CallMCP)
 
 	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.Port)

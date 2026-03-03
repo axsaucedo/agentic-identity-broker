@@ -19,3 +19,7 @@ broker:
   # Token and metadata endpoints use internal container DNS for server-to-server communication
   token_endpoint: "http://identity-broker:8000/oauth2/token"
   metadata_endpoint: "http://identity-broker:8000/.well-known/oauth-authorization-server"
+
+agentgateway:
+  # AgentGateway MCP endpoint — container DNS for server-to-server communication
+  mcp_url: "http://agentgateway:4000/mcp"

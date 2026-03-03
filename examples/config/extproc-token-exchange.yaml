@@ -1,0 +1,104 @@
+# ExtProc Token Exchange Service Configuration
+# Feature: 015-extproc-token-exchange
+# Reference: specs/015-extproc-token-exchange/contracts/configuration.md
+#
+# Environment variable mapping: EXTPROC_<SECTION>_<KEY>
+# Example: grpc.port → EXTPROC_GRPC_PORT
+# All string values support ${ENV_VAR} notation for secret injection.
+
+# gRPC server settings
+grpc:
+  # Bind address for the gRPC listener
+  # Default: "0.0.0.0"
+  # Env: EXTPROC_GRPC_BIND
+  bind: "0.0.0.0"
+
+  # Port for the gRPC listener (1-65535)
+  # Default: 50051
+  # Env: EXTPROC_GRPC_PORT
+  port: 50051
+
+  # Maximum number of concurrent gRPC streams
+  # Default: 100
+  # Env: EXTPROC_GRPC_MAX_CONCURRENT_STREAMS
+  max_concurrent_streams: 100
+
+# OAuth2 and token exchange settings
+oauth2:
+  # Identity broker's RFC 8693 token exchange endpoint (required)
+  # Env: EXTPROC_OAUTH2_TOKEN_ENDPOINT
+  token_endpoint: "https://identity-broker.example.com/oauth2/token"
+
+  # Upstream OAuth2 authorization server issuer (required)
+  # Used to derive the default client_credentials endpoint as {issuer}/oauth/token
+  # Env: EXTPROC_OAUTH2_ISSUER
+  issuer: "https://upstream-oauth2.example.com"
+
+  # Client ID for this ExtProc service (required)
+  # Env: EXTPROC_OAUTH2_CLIENT_ID
+  client_id: "extproc-gateway"
+
+  # Client secret for this ExtProc service (required, sensitive)
+  # Use ${ENV_VAR} notation to inject from environment
+  # Env: EXTPROC_OAUTH2_CLIENT_SECRET
+  client_secret: "${EXTPROC_OAUTH2_CLIENT_SECRET}"
+
+  # Timeout for outbound HTTP calls (token exchange + client_credentials)
+  # Default: "5s"
+  # Env: EXTPROC_OAUTH2_EXCHANGE_TIMEOUT
+  exchange_timeout: "5s"
+
+  # Explicit token endpoint for the client_credentials grant.
+  # Defaults to {issuer}/oauth/token (Auth0-compatible providers).
+  # Keycloak: "https://keycloak.example.com/realms/master/protocol/openid-connect/token"
+  # Env: EXTPROC_OAUTH2_CLIENT_CREDENTIALS_ENDPOINT
+  # client_credentials_endpoint: ""
+
+  # Token type to use as client assertion in RFC 8693 token exchange (id_token|access_token)
+  # Choose based on your upstream OAuth2 server's capabilities:
+  #   - "id_token": Use the ID token from client_credentials response (Auth0, typical OpenID providers)
+  #   - "access_token": Use the access token from client_credentials response (some providers)
+  # Default: "id_token"
+  # Env: EXTPROC_OAUTH2_CLIENT_ASSERTION_TYPE
+  client_assertion_type: "id_token"
+
+  # TLS configuration for outbound HTTP connections
+  tls:
+    # Skip TLS certificate verification — NEVER use in production
+    # Default: false
+    # Env: EXTPROC_OAUTH2_TLS_INSECURE_SKIP_VERIFY
+    insecure_skip_verify: false
+
+    # Path to custom CA bundle for self-signed certificates
+    # Default: "" (use system CA pool)
+    # Env: EXTPROC_OAUTH2_TLS_CA_BUNDLE_PATH
+    ca_bundle_path: ""
+
+    # Allow HTTP endpoints — DEV ONLY — disables TLS enforcement (SR-002)
+    # Default: false
+    # Env: EXTPROC_OAUTH2_TLS_ALLOW_HTTP
+    allow_http: false
+
+# Token cache settings
+cache:
+  # Default TTL for cached exchanged tokens when expires_in is absent
+  # Default: "5m"
+  # Env: EXTPROC_CACHE_DEFAULT_TTL
+  default_ttl: "5m"
+
+  # Maximum cache TTL regardless of expires_in — caps stale token lifetime
+  # Default: "1h"
+  # Env: EXTPROC_CACHE_MAX_TTL
+  max_ttl: "1h"
+
+# Logging configuration
+log:
+  # Log level (debug|info|warn|error)
+  # Default: "info"
+  # Env: EXTPROC_LOG_LEVEL
+  level: "info"
+
+  # Log format (text|json)
+  # Default: "text"
+  # Env: EXTPROC_LOG_FORMAT
+  format: "text"

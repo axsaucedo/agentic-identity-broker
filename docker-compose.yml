@@ -119,6 +119,64 @@ services:
       timeout: 2s
       retries: 3
 
+  # ExtProc Token Exchange Service (gRPC, container-internal only)
+  extproc-token-exchange:
+    build:
+      context: .
+      dockerfile: Dockerfile.extproc
+    container_name: aib-extproc
+    volumes:
+      - ./config.extproc.docker.yaml:/app/config.yaml:ro
+    environment:
+      - EXTPROC_CONFIG_PATH=/app/config.yaml
+      - EXTPROC_CLIENT_SECRET=${EXTPROC_CLIENT_SECRET:-extproc-dev-secret}
+      - EXTPROC_LOG_LEVEL=${EXTPROC_LOG_LEVEL:-debug}
+    networks:
+      - aib-network
+    depends_on:
+      identity-broker:
+        condition: service_healthy
+      upstream-oauth2:
+        condition: service_healthy
+
+  # MCP server mock (Streamable HTTP transport, port 9003)
+  mcp-server-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+      args:
+        SERVICE_PATH: mocks/mcp-server/cmd/mcp-server
+    container_name: aib-mcp-server
+    ports:
+      - "9003:9003"
+    volumes:
+      - ./mocks/mcp-server/config.yaml:/app/config.yaml:ro
+    networks:
+      - aib-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9003/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  # Agentgateway: routes MCP calls through ExtProc for transparent token exchange
+  agentgateway:
+    image: cr.agentgateway.dev/agentgateway:0.12.0
+    container_name: aib-agentgateway
+    ports:
+      - "4000:4000"
+      - "15000:15000"
+    volumes:
+      - ./mocks/agentgateway/config.yaml:/config.yaml:ro
+    command: ["-f", "/config.yaml"]
+    networks:
+      - aib-network
+    depends_on:
+      extproc-token-exchange:
+        condition: service_started
+      mcp-server-mock:
+        condition: service_healthy
+
   # Frontend: React + Vite with HMR
   frontend:
     build:

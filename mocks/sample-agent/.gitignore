@@ -28,3 +28,4 @@ vendor/
 
 # Go build cache
 *.o
+sample-agent

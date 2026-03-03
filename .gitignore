@@ -69,3 +69,6 @@ tests/e2e/frontend/coverage/
 
 infra/cdk/cdk
 infra/cdk/cdk.out
+bin/extproc-token-exchange
+extproc-token-exchange
+mocks/mcp-server/mcp-server

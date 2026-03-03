@@ -1,0 +1,54 @@
+# Dockerfile for the ExtProc Token Exchange Service.
+# Builds from the project root go.mod (unlike Dockerfile.mock which builds
+# from sub-module directories under mocks/).
+ARG BASE_IMAGE=default
+FROM registry.opensource.zalan.do/library/alpine-3:latest AS default
+
+# Builder stage
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache git ca-certificates
+
+# Download dependencies first (layer cache)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy full source
+COPY . .
+
+# Build extproc-token-exchange from the root module
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" \
+    -o /tmp/extproc-token-exchange \
+    ./cmd/extproc-token-exchange
+
+# Runtime stage
+FROM ${BASE_IMAGE}
+
+ARG VERSION
+
+# Image metadata labels
+LABEL org.opencontainers.image.title="Agentic Identity Broker - ExtProc Token Exchange"
+LABEL org.opencontainers.image.description="Envoy External Processing service for transparent Bearer token exchange"
+LABEL org.opencontainers.image.version=$VERSION
+LABEL org.opencontainers.image.vendor="Zalando SE"
+
+# Create non-root user for security (uid=1000, gid=1000)
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser
+
+WORKDIR /app
+
+RUN apk add --no-cache ca-certificates
+
+COPY --chown=1000:1000 --from=builder /tmp/extproc-token-exchange .
+
+# Expose gRPC port
+EXPOSE 50051
+
+# Switch to non-root user for container execution
+USER 1000:1000
+
+# config.yaml is volume-mounted by docker-compose at runtime
+CMD ["./extproc-token-exchange"]

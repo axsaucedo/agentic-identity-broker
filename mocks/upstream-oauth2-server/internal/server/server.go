@@ -1,10 +1,15 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -20,24 +25,48 @@ import (
 	"github.com/agentic-identity-broker/mock-upstream-oauth2-service/internal/jwt"
 )
 
-// responseCapture wraps http.ResponseWriter to capture what's written
-type responseCapture struct {
-	http.ResponseWriter
+// bufferingResponseWriter buffers response without writing until explicitly flushed
+type bufferingResponseWriter struct {
+	underlying http.ResponseWriter
 	statusCode int
-	body       []byte
+	header     http.Header
+	body       *bytes.Buffer
 	written    bool
 }
 
-func (r *responseCapture) WriteHeader(statusCode int) {
-	r.statusCode = statusCode
-	r.written = true
-	r.ResponseWriter.WriteHeader(statusCode)
+func newBufferingResponseWriter(w http.ResponseWriter) *bufferingResponseWriter {
+	return &bufferingResponseWriter{
+		underlying: w,
+		statusCode: http.StatusOK,
+		header:     http.Header{},
+		body:       &bytes.Buffer{},
+	}
 }
 
-func (r *responseCapture) Write(b []byte) (int, error) {
-	r.body = append(r.body, b...)
-	r.written = true
-	return r.ResponseWriter.Write(b)
+func (w *bufferingResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *bufferingResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.written = true
+}
+
+func (w *bufferingResponseWriter) Write(b []byte) (int, error) {
+	w.written = true
+	return w.body.Write(b)
+}
+
+func (w *bufferingResponseWriter) Flush() error {
+	// Write headers — assign slices directly to avoid duplicating headers
+	// that may already be set on the underlying writer (e.g. by middleware).
+	for k, vv := range w.header {
+		w.underlying.Header()[k] = vv
+	}
+	// Write status code and body
+	w.underlying.WriteHeader(w.statusCode)
+	_, err := w.underlying.Write(w.body.Bytes())
+	return err
 }
 
 // Server holds the OAuth2 server and router
@@ -46,6 +75,8 @@ type Server struct {
 	oauth2Srv  *server.Server
 	cfg        *config.Config
 	httpServer *http.Server
+	privateKey *rsa.PrivateKey
+	keyID      string
 }
 
 // New creates and configures a new OAuth2 server
@@ -78,6 +109,18 @@ func New(cfg *config.Config) (*Server, error) {
 		"access_token_ttl", cfg.OAuth2.AccessTokenTTL,
 		"refresh_token_ttl", cfg.OAuth2.RefreshTokenTTL)
 
+	// Also register ExtProc client for token exchange service (Phase 7)
+	extprocClient := &models.Client{
+		ID:     "extproc-gateway",
+		Secret: "extproc-dev-secret",
+		Domain: "localhost",
+	}
+	if err := clientStore.Set("extproc-gateway", extprocClient); err != nil {
+		return nil, fmt.Errorf("failed to store extproc client: %w", err)
+	}
+	slog.Info("ExtProc client registered",
+		"client_id", "extproc-gateway")
+
 	// Set client store
 	manager.MapClientStorage(clientStore)
 
@@ -89,8 +132,21 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 	manager.MapTokenStorage(tokenStore)
 
-	// Set JWT access generator to generate JWT tokens instead of opaque tokens
-	manager.MapAccessGenerate(jwt.NewJWTAccessGenerator([]byte("secret-key-for-jwt-signing")))
+	// Generate RSA key pair for RS256 JWT signing
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
+	}
+	const keyID = "upstream-oauth2-key-1"
+
+	// Set RS256 JWT access generator with proper iss/aud claims for token exchange validation
+	manager.MapAccessGenerate(jwt.NewRSAAccessGenerator(privateKey, "http://upstream-oauth2:9001", "token-exchange-broker", keyID))
+
+	// Set client authenticator for client credentials grant
+	// This validates client_id and client_secret for client credentials flow
+	manager.SetClientTokenCfg(&manage.Config{
+		AccessTokenExp: cfg.OAuth2.AccessTokenTTL,
+	})
 
 	// Create and configure OAuth2 server
 	oauth2Srv := server.NewDefaultServer(manager)
@@ -98,18 +154,28 @@ func New(cfg *config.Config) (*Server, error) {
 	// Configure allowed response and grant types
 	oauth2Srv.SetAllowedResponseType(oauth2.Code)
 	oauth2Srv.SetAllowGetAccessRequest(false)
-	oauth2Srv.SetAllowedGrantType(oauth2.AuthorizationCode, oauth2.Refreshing)
+	oauth2Srv.SetAllowedGrantType(oauth2.AuthorizationCode, oauth2.Refreshing, oauth2.ClientCredentials)
+	oauth2Srv.SetClientInfoHandler(server.ClientFormHandler)
 
 	// PKCE is enabled by default in v4
 
 	// Set the user authorization handler (consent screen)
 	oauth2Srv.SetUserAuthorizationHandler(handlers.NewUserAuthorizationHandler(cfg))
 
-	// Create router
+	// Create router and partial Server struct so method handlers can reference s.
 	router := http.NewServeMux()
+
+	s := &Server{
+		router:     router,
+		oauth2Srv:  oauth2Srv,
+		cfg:        cfg,
+		privateKey: privateKey,
+		keyID:      keyID,
+	}
 
 	// Register handlers
 	router.HandleFunc("/health", handlers.Health)
+	router.HandleFunc("/.well-known/jwks.json", s.handleJWKS)
 	router.HandleFunc("/oauth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		// Handle authorize requests with error recovery
 		// The oauth2 library may panic or return errors that need logging
@@ -155,13 +221,14 @@ func New(cfg *config.Config) (*Server, error) {
 		redirectURI := r.Form.Get("redirect_uri")
 		formClientID := r.Form.Get("client_id")
 		formClientSecret := r.Form.Get("client_secret")
+		grantType := r.Form.Get("grant_type")
 
 		slog.Info("token request full details",
 			"client_id_form", formClientID,
 			"client_secret_form", formClientSecret,
 			"client_id_basic_auth", basicAuthUser,
 			"client_secret_basic_auth", basicAuthSecret,
-			"grant_type", r.Form.Get("grant_type"),
+			"grant_type", grantType,
 			"code", code,
 			"code_length", len(code),
 			"code_verifier", verifier,
@@ -171,8 +238,8 @@ func New(cfg *config.Config) (*Server, error) {
 			"configured_client_id", cfg.OAuth2.ClientID,
 			"configured_client_secret", cfg.OAuth2.ClientSecret)
 
-		// Wrap response writer to capture what's being written
-		captureWriter := &responseCapture{ResponseWriter: w}
+		// Wrap response writer to buffer output
+		captureWriter := newBufferingResponseWriter(w)
 
 		if err := oauth2Srv.HandleTokenRequest(captureWriter, r); err != nil {
 			slog.Error("token request handler error",
@@ -180,23 +247,34 @@ func New(cfg *config.Config) (*Server, error) {
 				"error_type", fmt.Sprintf("%T", err),
 				"client_id_form", formClientID,
 				"client_id_basic_auth", basicAuthUser)
-			if !captureWriter.written {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+			if captureWriter.written {
+				// The oauth2 library already wrote an error response — flush it.
+				if flushErr := captureWriter.Flush(); flushErr != nil {
+					slog.Error("error flushing error response", "error", flushErr)
+				}
+			} else {
+				http.Error(w, "invalid token request", http.StatusBadRequest)
 			}
+			return
 		}
 
 		// Log what was written to response
-		if len(captureWriter.body) > 0 {
+		if captureWriter.body.Len() > 0 {
 			slog.Info("token response written",
-				"body_length", len(captureWriter.body),
+				"body_length", captureWriter.body.Len(),
 				"status", captureWriter.statusCode,
-				"body", string(captureWriter.body))
+				"body", captureWriter.body.String())
+		}
+
+		// Flush buffered response to actual http.ResponseWriter
+		if err := captureWriter.Flush(); err != nil {
+			slog.Error("error flushing response", "error", err)
 		}
 	})
 
 	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.Port)
-	httpServer := &http.Server{
+	s.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
@@ -204,12 +282,35 @@ func New(cfg *config.Config) (*Server, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &Server{
-		router:     router,
-		oauth2Srv:  oauth2Srv,
-		cfg:        cfg,
-		httpServer: httpServer,
-	}, nil
+	return s, nil
+}
+
+// handleJWKS serves the RSA public key as a JSON Web Key Set so that token consumers
+// can verify RS256-signed JWTs without a shared secret.
+func (s *Server) handleJWKS(w http.ResponseWriter, r *http.Request) {
+	pub := &s.privateKey.PublicKey
+
+	nEncoded := base64.RawURLEncoding.EncodeToString(pub.N.Bytes())
+	eBytes := big.NewInt(int64(pub.E)).Bytes()
+	eEncoded := base64.RawURLEncoding.EncodeToString(eBytes)
+
+	jwks := map[string]interface{}{
+		"keys": []map[string]interface{}{
+			{
+				"kty": "RSA",
+				"use": "sig",
+				"alg": "RS256",
+				"kid": s.keyID,
+				"n":   nEncoded,
+				"e":   eEncoded,
+			},
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(jwks); err != nil {
+		slog.Error("failed to encode JWKS response", "error", err)
+	}
 }
 
 // Start starts the HTTP server

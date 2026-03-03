@@ -60,6 +60,7 @@ oauth2_authorization_server:
   supported_grant_types:
     - authorization_code
     - refresh_token
+    - urn:ietf:params:oauth:grant-type:token-exchange
 
   # Upstream request timeout
   upstream_timeout_seconds: 10
@@ -81,3 +82,18 @@ encryption:
     # Generate with: openssl rand -base64 32
     # SECURITY: This field contains sensitive key material and will be redacted in logs
     raw_key: ${IDENTITY_BROKER_ENCRYPTION_KEY}
+
+# RFC 8693 Token Exchange configuration
+# Enables the ExtProc gateway to exchange user Bearer tokens for third-party service tokens
+token_exchange:
+  claim_extraction:
+    # Extract user principal from the subject_token's sub claim
+    principal_expression: "subject_token.sub"
+    # Extract agent client ID from the subject_token's azp (authorized party) claim
+    agent_client_id_expression: "subject_token.azp"
+  authorization:
+    type: "cel"
+    cel:
+      # Allow all agents with a valid client_assertion from the upstream OAuth2 server
+      expression: "true"
+      evaluation_timeout: "5s"

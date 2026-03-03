@@ -20,6 +20,6 @@ oauth2:
       description: "Access user group memberships"
 
 mock_user:
-  sub: "upstream-user@example.com"
+  sub: "dev@example.com"
   name: "Upstream Test User"
-  email: "upstream-user@example.com"
+  email: "dev@example.com"

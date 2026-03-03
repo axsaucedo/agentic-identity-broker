@@ -2,9 +2,13 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -17,6 +21,7 @@ import (
 
 	"github.com/agentic-identity-broker/mock-oauth2-service/internal/config"
 	"github.com/agentic-identity-broker/mock-oauth2-service/internal/handlers"
+	"github.com/agentic-identity-broker/mock-oauth2-service/internal/jwt"
 )
 
 // responseCapture wraps http.ResponseWriter to capture what's written
@@ -45,6 +50,8 @@ type Server struct {
 	oauth2Srv  *server.Server
 	cfg        *config.Config
 	httpServer *http.Server
+	privateKey *rsa.PrivateKey
+	keyID      string
 }
 
 // New creates and configures a new OAuth2 server
@@ -88,6 +95,16 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 	manager.MapTokenStorage(tokenStore)
 
+	// Generate RSA key pair for RS256 JWT signing
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
+	}
+	const keyID = "third-party-oauth2-key-1"
+
+	// Issue RS256 JWT access tokens so downstream consumers (e.g. MCP server) can inspect claims.
+	manager.MapAccessGenerate(jwt.NewRSAAccessGenerator(privateKey, "http://third-party-oauth2:9000", "mcp-server", keyID))
+
 	// Create and configure OAuth2 server
 	oauth2Srv := server.NewDefaultServer(manager)
 
@@ -101,11 +118,20 @@ func New(cfg *config.Config) (*Server, error) {
 	// Set the user authorization handler (consent screen)
 	oauth2Srv.SetUserAuthorizationHandler(handlers.NewUserAuthorizationHandler(cfg))
 
-	// Create router
+	// Create router and partial Server struct so method handlers can reference s.
 	router := http.NewServeMux()
+
+	s := &Server{
+		router:     router,
+		oauth2Srv:  oauth2Srv,
+		cfg:        cfg,
+		privateKey: privateKey,
+		keyID:      keyID,
+	}
 
 	// Register handlers
 	router.HandleFunc("/health", handlers.Health)
+	router.HandleFunc("/.well-known/jwks.json", s.handleJWKS)
 	router.HandleFunc("/oauth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		// Handle authorize requests with error recovery
 		// The oauth2 library may panic or return errors that need logging
@@ -192,7 +218,7 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.Port)
-	httpServer := &http.Server{
+	s.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
@@ -200,12 +226,34 @@ func New(cfg *config.Config) (*Server, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &Server{
-		router:     router,
-		oauth2Srv:  oauth2Srv,
-		cfg:        cfg,
-		httpServer: httpServer,
-	}, nil
+	return s, nil
+}
+
+// handleJWKS serves the RSA public key as a JSON Web Key Set.
+func (s *Server) handleJWKS(w http.ResponseWriter, r *http.Request) {
+	pub := &s.privateKey.PublicKey
+
+	nEncoded := base64.RawURLEncoding.EncodeToString(pub.N.Bytes())
+	eBytes := big.NewInt(int64(pub.E)).Bytes()
+	eEncoded := base64.RawURLEncoding.EncodeToString(eBytes)
+
+	jwks := map[string]interface{}{
+		"keys": []map[string]interface{}{
+			{
+				"kty": "RSA",
+				"use": "sig",
+				"alg": "RS256",
+				"kid": s.keyID,
+				"n":   nEncoded,
+				"e":   eEncoded,
+			},
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(jwks); err != nil {
+		slog.Error("failed to encode JWKS response", "error", err)
+	}
 }
 
 // Start starts the HTTP server

@@ -44,7 +44,7 @@ pipeline:
         - /go/pkg/mod
         - $HOME/.cache/go-build
     commands:
-      - desc: "Build and push Docker images (broker + migrate)"
+      - desc: "Build and push Docker images (broker + migrate + extproc)"
         cmd: |
           apt-get update
           apt-get --yes install just curl ca-certificates
