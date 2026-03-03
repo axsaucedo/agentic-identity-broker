@@ -12,6 +12,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -40,8 +41,8 @@ type TokenExchangeService struct {
 	// celEvaluator extracts claims and evaluates authorization policies
 	celEvaluator *CELEvaluator
 
-	// serviceRepository provides service discovery by protected resources
-	serviceRepository ports.ThirdpartyOAuth2ServiceRepository
+	// providerService provides service discovery by protected resources
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService
 
 	// oauth2SessionService handles OAuth2 session lifecycle including token refresh
 	oauth2SessionService *oauth2session.OAuth2SessionService
@@ -59,7 +60,7 @@ type TokenExchangeService struct {
 // Parameters:
 //   - jwtValidator: Validates JWT signatures and claims
 //   - celEvaluator: Extracts claims and evaluates authorization policies
-//   - serviceRepository: Looks up services by protected resource
+//   - providerService: Looks up services by protected resource
 //   - oauth2SessionService: Handles OAuth2 session lifecycle including token refresh
 //   - consentService: Verifies user grants and agent access
 //   - config: Token exchange configuration
@@ -68,7 +69,7 @@ type TokenExchangeService struct {
 func NewTokenExchangeService(
 	jwtValidator *JWTValidator,
 	celEvaluator *CELEvaluator,
-	serviceRepository ports.ThirdpartyOAuth2ServiceRepository,
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	oauth2SessionService *oauth2session.OAuth2SessionService,
 	consentService *consent.Service,
 	config *ports.TokenExchangeConfig,
@@ -79,8 +80,8 @@ func NewTokenExchangeService(
 	if celEvaluator == nil {
 		return nil, fmt.Errorf("celEvaluator cannot be nil")
 	}
-	if serviceRepository == nil {
-		return nil, fmt.Errorf("serviceRepository cannot be nil")
+	if providerService == nil {
+		return nil, fmt.Errorf("providerService cannot be nil")
 	}
 	if oauth2SessionService == nil {
 		return nil, fmt.Errorf("oauth2SessionService cannot be nil")
@@ -95,7 +96,7 @@ func NewTokenExchangeService(
 	return &TokenExchangeService{
 		jwtValidator:         jwtValidator,
 		celEvaluator:         celEvaluator,
-		serviceRepository:    serviceRepository,
+		providerService:      providerService,
 		oauth2SessionService: oauth2SessionService,
 		consentService:       consentService,
 		config:               config,
@@ -197,7 +198,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	normalizedResource := Normalize(req.Resource)
 
 	// Step 8: Lookup service by resource URI
-	service, err := s.serviceRepository.FindByProtectedResource(ctx, normalizedResource)
+	service, err := s.providerService.FindByProtectedResource(ctx, normalizedResource)
 	if err != nil {
 		if IsTokenExchangeError(err) {
 			// InvalidTarget error from repository

@@ -57,12 +57,19 @@ DTOs: `AuthorizationRequest`, `AuthorizationDecision`, `MetadataResponse`
 | `HealthChecker` | `HealthCheck()` | Storage backend health verification |
 | `UserRepository` | CRUD + `ListUsers()` | User entity persistence |
 | `AgentRepository` | CRUD + `GetByClientID()` | AI agent persistence, client_id lookup |
-| `ThirdpartyOAuth2ServiceRepository` | CRUD + `FindByProtectedResource()`, `CountGrantsReferencingService()` | OAuth2 provider config with encrypted secrets |
 | `UserGrantRepository` | CRUD + `FindByPrincipalAndAgent()`, `ListByPrincipal()`, `DeleteByAgent()`, `CountAgentsByServiceID()`, `ListByServiceID()` | User delegation grants |
 | `UserSessionRepository` | CRUD + `FindByPrincipalAndService()`, `ListByPrincipal()`, `DeleteByPrincipalAndService()`, `CountByService()` | Encrypted OAuth2 token sessions |
 
+**`thirdparty_provider.go`**
+| Interface | Key Methods | Purpose |
+|---|---|---|
+| `ThirdpartyOAuth2ProviderRepository` | CRUD + `FindByProtectedResource()`, `CountGrantsReferencingService()` | OAuth2 provider config storage (ciphertext-only, opaque bytes) |
+
+Uses `*model.ThirdpartyOAuth2ProviderEntity` with `Secret` in encrypted state. Adapters never decrypt.
+
 DTOs defined here: `User`, `UserFilter`
-DTOs from domain: Repositories reference `storage.Agent`, `storage.ThirdpartyOAuth2Service`, `storage.UserGrant`, `storage.UserSession` from `domain/storage/`.
+DTOs from domain: Repositories reference `storage.Agent`, `storage.UserGrant`, `storage.UserSession` from `domain/storage/`.
+Provider repository references `model.ThirdpartyOAuth2ProviderEntity` from `domain/model/`.
 
 Sentinel error: `ErrNotFound`
 

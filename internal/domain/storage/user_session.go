@@ -11,11 +11,28 @@ import (
 // This is an aggregate root - it owns the encrypted tokens and manages session lifecycle.
 // One session per (principal, service_id) pair, enforced by database unique constraint.
 type UserSession struct {
-	ID                    string            `json:"id" db:"id"`
-	Principal             string            `json:"principal" db:"principal"`
-	ServiceID             string            `json:"service_id" db:"service_id"`
-	EncryptedAccessToken  []byte            `json:"-" db:"encrypted_access_token"`
-	EncryptedRefreshToken []byte            `json:"-" db:"encrypted_refresh_token"`
+	ID        string `json:"id" db:"id"`
+	Principal string `json:"principal" db:"principal"`
+	ServiceID string `json:"service_id" db:"service_id"`
+
+	// EncryptedAccessToken contains the OAuth2 access token ENCRYPTED by OAuth2SessionService
+	// using envelope encryption with service_id as Additional Authenticated Data (AAD).
+	//
+	// IMPORTANT: This field contains encrypted bytes that MUST be decrypted by OAuth2SessionService
+	// using DecryptAccessToken(). Storage adapters treat this as opaque binary data and MUST NOT
+	// attempt to decrypt or re-encrypt this field.
+	//
+	// Encryption/Decryption Lifecycle:
+	// - Encryption: OAuth2SessionService.storeSession() encrypts plaintext token → UserSession
+	// - Storage: Repository stores encrypted bytes as BYTEA (opaque)
+	// - Retrieval: Repository returns encrypted bytes on Get()
+	// - Decryption: OAuth2SessionService.DecryptAccessToken() decrypts bytes → plaintext
+	EncryptedAccessToken []byte `json:"-" db:"encrypted_access_token"`
+
+	// EncryptedRefreshToken contains the OAuth2 refresh token ENCRYPTED by OAuth2SessionService.
+	// See EncryptedAccessToken for encryption lifecycle details.
+	EncryptedRefreshToken []byte `json:"-" db:"encrypted_refresh_token"`
+
 	TokenType             string            `json:"token_type" db:"token_type"`
 	AccessTokenExpiresAt  *time.Time        `json:"access_token_expires_at,omitempty" db:"access_token_expires_at"`
 	RefreshTokenExpiresAt *time.Time        `json:"refresh_token_expires_at,omitempty" db:"refresh_token_expires_at"`

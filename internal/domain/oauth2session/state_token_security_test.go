@@ -12,6 +12,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
 
 // T075: Security tests for state token expiration rejection
@@ -234,7 +235,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	err = key1.Set(jwk.AlgorithmKey, "A256GCM")
 	require.NoError(t, err)
 
-	serviceRepo1 := memory.NewThirdpartyServiceRepository()
+	serviceRepo1 := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	sessionRepo1 := memory.NewInMemoryUserSessionRepository()
 	grantRepo1 := memory.NewUserGrantRepository()
 	agentRepo1 := memory.NewAgentRepository()
@@ -242,8 +243,17 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	config := oauth2session.DefaultConfig()
 	config.CallbackBaseURL = "https://broker.example.com"
 
-	service1 := oauth2session.NewOAuth2SessionService(
+	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
+	providerService1 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo1,
+		newTestEncryption(t),
+		nil,
+		false,
+		slog.Default(),
+	)
+
+	service1 := oauth2session.NewOAuth2SessionService(
+		providerService1,
 		sessionRepo1,
 		grantRepo1,
 		agentRepo1,
@@ -262,13 +272,22 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	err = key2.Set(jwk.AlgorithmKey, "A256GCM")
 	require.NoError(t, err)
 
-	serviceRepo2 := memory.NewThirdpartyServiceRepository()
+	serviceRepo2 := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	sessionRepo2 := memory.NewInMemoryUserSessionRepository()
 	grantRepo2 := memory.NewUserGrantRepository()
 	agentRepo2 := memory.NewAgentRepository()
 
-	service2 := oauth2session.NewOAuth2SessionService(
+	// Create ThirdpartyOAuth2ProviderService for handling encryption/decryption of client secrets
+	providerService2 := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo2,
+		newTestEncryption(t),
+		nil,
+		false,
+		slog.Default(),
+	)
+
+	service2 := oauth2session.NewOAuth2SessionService(
+		providerService2,
 		sessionRepo2,
 		grantRepo2,
 		agentRepo2,

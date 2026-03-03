@@ -4,12 +4,14 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -17,20 +19,20 @@ import (
 
 // AgentsHandler handles HTTP requests for agent CRUD operations.
 type AgentsHandler struct {
-	repo        ports.AgentRepository
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository
-	logger      *slog.Logger
+	repo            ports.AgentRepository
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService
+	logger          *slog.Logger
 }
 
 // NewAgentsHandler creates a new agents handler.
-func NewAgentsHandler(repo ports.AgentRepository, serviceRepo ports.ThirdpartyOAuth2ServiceRepository, logger *slog.Logger) *AgentsHandler {
+func NewAgentsHandler(repo ports.AgentRepository, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger) *AgentsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentsHandler{
-		repo:        repo,
-		serviceRepo: serviceRepo,
-		logger:      logger,
+		repo:            repo,
+		providerService: providerService,
+		logger:          logger,
 	}
 }
 
@@ -102,7 +104,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate service requirements (referential integrity)
-	if err := h.validateServiceRequirements(ctx, serviceReqs); err != nil {
+	if err := h.providerService.ValidateServiceRequirements(ctx, serviceReqs); err != nil {
 		h.logger.Warn("service requirements validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
 		return
@@ -133,7 +135,8 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("agent created", "agent_id", agent.ID, "client_id", agent.ClientID, "service_requirements_count", len(agent.ServiceRequirements))
 
 	// Return created agent
-	resp, err := h.toResponse(ctx, agent)
+	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
+	resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -158,7 +161,8 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.toResponse(ctx, agent)
+	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
+	resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -200,7 +204,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate service requirements (referential integrity)
-	if err := h.validateServiceRequirements(ctx, serviceReqs); err != nil {
+	if err := h.providerService.ValidateServiceRequirements(ctx, serviceReqs); err != nil {
 		h.logger.Warn("service requirements validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
 		return
@@ -230,7 +234,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("agent updated", "agent_id", agent.ID, "client_id", agent.ClientID, "service_requirements_count", len(agent.ServiceRequirements))
 
 	// Return updated agent
-	resp, err := h.toResponse(ctx, agent)
+	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
+	resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 	if err != nil {
 		h.logger.Error("failed to convert agent to response", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
@@ -277,7 +282,7 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 	// Convert to response format
 	responses := make([]AgentResponse, len(agents))
 	for i, agent := range agents {
-		resp, err := h.toResponseWithServiceMap(ctx, agent, serviceMap)
+		resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 		if err != nil {
 			h.logger.Error("failed to convert agent to response", "agent_id", agent.ID, "error", err)
 			// Continue with partial response
@@ -298,7 +303,7 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 
 // batchLoadServices loads all unique services referenced by agents in a single batch.
 // Returns a map of service_id -> service for efficient lookup.
-func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage.Agent) map[string]*storage.ThirdpartyOAuth2Service {
+func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage.Agent) map[string]*model.ThirdpartyOAuth2ProviderEntity {
 	// Collect all unique service IDs
 	serviceIDs := make(map[string]bool)
 	for _, agent := range agents {
@@ -308,9 +313,9 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 	}
 
 	// Load all services
-	serviceMap := make(map[string]*storage.ThirdpartyOAuth2Service)
+	serviceMap := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
 	for serviceID := range serviceIDs {
-		service, err := h.serviceRepo.Get(ctx, serviceID)
+		service, err := h.providerService.Get(ctx, serviceID)
 		if err != nil {
 			h.logger.Warn("failed to load service for batch", "service_id", serviceID, "error", err)
 			continue
@@ -323,7 +328,7 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 
 // toResponseWithServiceMap converts an Agent entity to AgentResponse using a pre-loaded service map.
 // This avoids N+1 queries when converting multiple agents.
-func (h *AgentsHandler) toResponseWithServiceMap(ctx context.Context, agent *storage.Agent, serviceMap map[string]*storage.ThirdpartyOAuth2Service) (AgentResponse, error) {
+func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMap map[string]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
 	resp := AgentResponse{
 		ID:                   agent.ID,
 		ClientID:             agent.ClientID,
@@ -359,47 +364,6 @@ func (h *AgentsHandler) toResponseWithServiceMap(ctx context.Context, agent *sto
 	return resp, nil
 }
 
-// toResponse converts an Agent entity to AgentResponse.
-// Resolves service names for service requirements.
-func (h *AgentsHandler) toResponse(ctx context.Context, agent *storage.Agent) (AgentResponse, error) {
-	resp := AgentResponse{
-		ID:                   agent.ID,
-		ClientID:             agent.ClientID,
-		ExternalID:           agent.ExternalID,
-		DisplayName:          agent.DisplayName,
-		Description:          agent.Description,
-		GovernanceURL:        agent.GovernanceURL,
-		UserDocumentationURL: agent.UserDocumentationURL,
-		AgentInterfaceURL:    agent.AgentInterfaceURL,
-		CreatedAt:            agent.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:            agent.UpdatedAt.Format(time.RFC3339),
-	}
-
-	// Convert service requirements and resolve service names
-	if len(agent.ServiceRequirements) > 0 {
-		resp.ServiceRequirements = make([]ServiceRequirementResponse, len(agent.ServiceRequirements))
-		for i, sr := range agent.ServiceRequirements {
-			respSR := ServiceRequirementResponse{
-				ServiceID:       sr.ServiceID,
-				RequirementType: sr.RequirementType.String(),
-				RequiredScopes:  sr.RequiredScopes,
-			}
-
-			// Resolve service name (best effort - don't fail if service not found)
-			service, err := h.serviceRepo.Get(ctx, sr.ServiceID)
-			if err == nil {
-				respSR.ServiceName = service.DisplayName
-			} else {
-				h.logger.Warn("failed to resolve service name", "service_id", sr.ServiceID, "error", err)
-			}
-
-			resp.ServiceRequirements[i] = respSR
-		}
-	}
-
-	return resp, nil
-}
-
 // convertServiceRequirements converts request DTOs to domain models.
 func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRequest) ([]storage.ServiceRequirement, error) {
 	if len(reqSRs) == 0 {
@@ -424,61 +388,10 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 	return result, nil
 }
 
-// validateServiceRequirements validates service requirements for referential integrity.
-// Checks that:
-// - All referenced service_ids exist
-// - All required_scopes are valid for the referenced service
-func (h *AgentsHandler) validateServiceRequirements(ctx context.Context, serviceReqs []storage.ServiceRequirement) error {
-	if len(serviceReqs) == 0 {
-		return nil
-	}
-
-	for i, sr := range serviceReqs {
-		// Check if service exists
-		service, err := h.serviceRepo.Get(ctx, sr.ServiceID)
-		if err != nil {
-			if storageErr, ok := err.(*storage.StorageError); ok && storageErr.Kind == storage.ErrorKindNotFound {
-				h.logger.Warn("service not found", "service_id", sr.ServiceID, "index", i)
-				return storage.NewStorageError(
-					"ValidateServiceRequirements",
-					storage.ErrorKindValidation,
-					nil,
-					"service_id "+sr.ServiceID+" not found (index "+strconv.Itoa(i)+")",
-				)
-			}
-			return err
-		}
-
-		// Validate that all required scopes exist in the service
-		serviceScopes := make(map[string]bool)
-		for _, scope := range service.Scopes {
-			serviceScopes[scope.ScopeValue] = true
-		}
-
-		for _, requiredScope := range sr.RequiredScopes {
-			if !serviceScopes[requiredScope] {
-				h.logger.Warn("invalid scope for service",
-					"service_id", sr.ServiceID,
-					"service_name", service.DisplayName,
-					"scope", requiredScope,
-					"index", i)
-				return storage.NewStorageError(
-					"ValidateServiceRequirements",
-					storage.ErrorKindValidation,
-					nil,
-					"scope "+requiredScope+" not found in service "+service.DisplayName+" (index "+strconv.Itoa(i)+")",
-				)
-			}
-		}
-	}
-
-	return nil
-}
-
 // handleStorageError converts storage errors to HTTP responses.
 func (h *AgentsHandler) handleStorageError(w http.ResponseWriter, r *http.Request, operation string, err error) {
-	storageErr, ok := err.(*storage.StorageError)
-	if !ok {
+	var storageErr *storage.StorageError
+	if !errors.As(err, &storageErr) {
 		h.logger.Error("unexpected error type", "operation", operation, "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return

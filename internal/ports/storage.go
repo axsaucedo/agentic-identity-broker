@@ -119,69 +119,6 @@ type AgentRepository interface {
 	GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error)
 }
 
-// ThirdpartyOAuth2ServiceRepository defines storage operations for third-party OAuth2 service configurations.
-// These services represent external OAuth2 providers (GitHub, Google, etc.) that agents can access.
-// Client secrets are encrypted at rest using the EncryptionPort.
-type ThirdpartyOAuth2ServiceRepository interface {
-	// Create creates a new OAuth2 service configuration.
-	// The service ID should be generated before calling this method.
-	// Client secret will be encrypted using the configured EncryptionPort.
-	// Returns error if:
-	// - Service ID already exists (StorageError with Kind=Conflict)
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Encryption fails (StorageError with Kind=Internal)
-	// - Operation timeout (StorageError with Kind=Timeout)
-	Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
-
-	// Get retrieves an OAuth2 service configuration by ID.
-	// Client secret will be decrypted using the configured EncryptionPort.
-	// Returns StorageError with Kind=NotFound if service not found.
-	// Returns StorageError for connection/timeout/decryption issues.
-	Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error)
-
-	// Update updates an existing OAuth2 service configuration.
-	// Client secret will be encrypted using the configured EncryptionPort.
-	// Returns error if:
-	// - Service ID not found (StorageError with Kind=NotFound)
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Encryption fails (StorageError with Kind=Internal)
-	// - Operation timeout (StorageError with Kind=Timeout)
-	Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error
-
-	// Delete deletes an OAuth2 service configuration by ID.
-	// Returns error if:
-	// - Active grants reference this service (StorageError with Kind=Conflict, per FR-022)
-	// - Storage operation fails
-	// It is safe to delete non-existent services (idempotent).
-	Delete(ctx context.Context, id string) error
-
-	// List retrieves all OAuth2 service configurations.
-	// Client secrets will be decrypted for each service.
-	// Returns empty slice if no services exist (not an error).
-	// Returns StorageError for connection/timeout/decryption issues.
-	List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error)
-
-	// CountGrantsReferencingService returns the number of active grants that reference this service.
-	// Used to enforce FR-022 (block service deletion if grants exist).
-	// Returns 0 if no grants reference the service.
-	// Returns StorageError for connection/timeout issues.
-	CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error)
-
-	// FindByProtectedResource retrieves an OAuth2 service configuration by matching resource URI
-	// against protected_resources field. Used for resource-based service discovery in token exchange.
-	// The resourceURI parameter MUST be normalized before calling using tokenexchange.Normalize()
-	// to remove trailing slashes for consistent matching.
-	// Example: normalizedURI := tokenexchange.Normalize(requestURI)
-	// Returns the service whose protected_resources contains the resourceURI (case-sensitive match).
-	// Returns error if:
-	// - No service configured with matching protected_resources (InvalidTargetError: "No service configured for the requested resource")
-	// - Multiple services match the same resource (misconfiguration) (InvalidTargetError: "Multiple services configured for the same resource")
-	// - Storage connection fails (StorageError with Kind=Connection)
-	// - Operation timeout (StorageError with Kind=Timeout)
-	// Client secret will be decrypted using the configured EncryptionPort.
-	FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error)
-}
-
 // UserGrantRepository defines storage operations for user grant entities.
 // Grants represent users delegating permissions to agents for third-party services.
 // One grant per user-agent pair (upsert semantics).
@@ -248,7 +185,21 @@ type UserGrantRepository interface {
 	ListByServiceID(ctx context.Context, serviceID string) ([]string, error)
 }
 
-// UserSessionRepository defines storage operations for user OAuth2 sessions.
+// UserSessionRepository stores and retrieves user OAuth2 sessions.
+//
+// IMPORTANT: This repository operates on encrypted tokens. The contract is:
+// - Input (Create): UserSession with tokens ALREADY ENCRYPTED by caller (OAuth2SessionService)
+// - Output (Get): UserSession with tokens STILL ENCRYPTED (opaque binary data)
+// - Caller (OAuth2SessionService) is responsible for decrypt/encrypt lifecycle
+//
+// This design maintains hexagonal architecture purity: the storage adapter is unaware
+// of encryption concerns and focuses solely on persistence.
+//
+// Encryption Context (EncryptionContext field):
+// - Stored as JSONB for audit/debugging purposes
+// - Contains {"service_id": "<oauth2-service-id>"}
+// - Used by OAuth2SessionService.Decrypt* methods as Additional Authenticated Data (AAD)
+//
 // One session per (principal, service_id) pair.
 type UserSessionRepository interface {
 	// Create creates a new user session.

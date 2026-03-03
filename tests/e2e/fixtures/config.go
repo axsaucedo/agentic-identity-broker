@@ -71,6 +71,11 @@ func DefaultOAuth2Config() *ports.Config {
 			StateTokenTTL:      10 * time.Minute,
 			PKCEVerifierLength: 32,
 		},
+		Encryption: ports.EncryptionConfig{
+			Memory: &ports.MemoryConfig{
+				RawKey: TestKEKMaterialDeterministic(),
+			},
+		},
 		TokenExchange: ports.TokenExchangeConfig{
 			ClaimExtraction: ports.ClaimExtractionConfig{
 				PrincipalExpression:     "subject_token.sub",

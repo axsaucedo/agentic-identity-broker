@@ -8,8 +8,10 @@ import (
 	"net/http"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
@@ -37,7 +39,7 @@ type AgentDetailHandler struct {
 	consentService    ConsentService
 	agentRepository   ports.AgentRepository
 	sessionRepository ports.UserSessionRepository
-	serviceRepository ports.ThirdpartyOAuth2ServiceRepository
+	providerService   *thirdparty.ThirdpartyOAuth2ProviderService
 	logger            *slog.Logger
 }
 
@@ -66,10 +68,10 @@ func (h *AgentDetailHandler) WithSessionRepository(repo ports.UserSessionReposit
 	return h
 }
 
-// WithServiceRepository sets the service repository for this handler.
+// WithProviderService sets the provider service for this handler.
 // Used to lookup service metadata including display names and scope descriptions.
-func (h *AgentDetailHandler) WithServiceRepository(repo ports.ThirdpartyOAuth2ServiceRepository) *AgentDetailHandler {
-	h.serviceRepository = repo
+func (h *AgentDetailHandler) WithProviderService(svc *thirdparty.ThirdpartyOAuth2ProviderService) *AgentDetailHandler {
+	h.providerService = svc
 	return h
 }
 
@@ -205,16 +207,13 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 		return []ServiceRequirementForUser{}, nil
 	}
 
+	serviceMap := h.batchLoadServices(ctx, agent)
+
 	var results []ServiceRequirementForUser
 
 	for _, req := range agent.ServiceRequirements {
-		// Lookup service by ID
-		svc, err := h.serviceRepository.Get(ctx, req.ServiceID)
-		if err != nil {
-			// Service not found, skip or log
-			h.logger.Warn("Service not found during requirement building",
-				"service_id", req.ServiceID,
-				"error", err)
+		svc, ok := serviceMap[req.ServiceID]
+		if !ok {
 			continue
 		}
 
@@ -265,6 +264,29 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 	}
 
 	return results, nil
+}
+
+// batchLoadServices loads all unique services referenced by an agent's service requirements.
+// Returns a map of service_id -> service for efficient lookup, avoiding N KMS decryptions.
+func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *storage.Agent) map[string]*model.ThirdpartyOAuth2ProviderEntity {
+	serviceIDs := make(map[string]bool)
+	for _, sr := range agent.ServiceRequirements {
+		serviceIDs[sr.ServiceID] = true
+	}
+
+	serviceMap := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
+	for serviceID := range serviceIDs {
+		svc, err := h.providerService.Get(ctx, serviceID)
+		if err != nil {
+			h.logger.Warn("Service not found during requirement building",
+				"service_id", serviceID,
+				"error", err)
+			continue
+		}
+		serviceMap[serviceID] = svc
+	}
+
+	return serviceMap
 }
 
 // getAgent loads a full agent entity from storage.

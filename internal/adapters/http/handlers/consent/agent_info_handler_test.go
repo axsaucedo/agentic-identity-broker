@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -105,22 +106,24 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 		UpdatedAt:            time.Date(2025, 12, 17, 11, 0, 0, 0, time.UTC),
 	}
 
-	mockServices := []*storage.ThirdpartyOAuth2Service{
+	mockServices := []*model.ThirdpartyOAuth2ProviderEntity{
 		{
 			ID:          "service-github",
 			DisplayName: "GitHub",
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo", Description: "Full control of private repositories"},
 				{ScopeValue: "user:email", Description: "Access user emails"},
 			},
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("service-github", "test-client-secret")),
 		},
 		{
 			ID:          "service-google",
 			DisplayName: "Google",
-			Scopes: []storage.OAuthScope{
+			Scopes: []model.OAuthScope{
 				{ScopeValue: "openid", Description: "OpenID Connect"},
 				{ScopeValue: "email", Description: "Access email address"},
 			},
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("service-google", "test-client-secret")),
 		},
 	}
 
@@ -231,7 +234,7 @@ func TestGetAgentConsentInfo_EmptyServices(t *testing.T) {
 	// Empty services array
 	mockInfo := &consent.AgentConsentInfo{
 		Agent:                       mockAgent,
-		AvailableThirdpartyServices: []*storage.ThirdpartyOAuth2Service{},
+		AvailableThirdpartyServices: []*model.ThirdpartyOAuth2ProviderEntity{},
 	}
 
 	mockSvc := &mockConsentServiceWrapper{
@@ -302,7 +305,7 @@ func TestGetAgentConsentInfo_ContentType(t *testing.T) {
 
 	mockInfo := &consent.AgentConsentInfo{
 		Agent:                       mockAgent,
-		AvailableThirdpartyServices: []*storage.ThirdpartyOAuth2Service{},
+		AvailableThirdpartyServices: []*model.ThirdpartyOAuth2ProviderEntity{},
 	}
 
 	mockSvc := &mockConsentServiceWrapper{
@@ -338,7 +341,7 @@ func (m *mockConsentServiceWrapper) asService() *consent.Service {
 
 	// For now, we'll use a different approach: create a real service with mock repos
 	var agent *storage.Agent
-	var services []*storage.ThirdpartyOAuth2Service
+	var services []*model.ThirdpartyOAuth2ProviderEntity
 
 	if m.info != nil {
 		agent = m.info.Agent
@@ -349,7 +352,7 @@ func (m *mockConsentServiceWrapper) asService() *consent.Service {
 	mockServiceRepo := &mockServiceRepo{services: services, err: m.err}
 	mockGrantRepo := &mockGrantRepo{}
 
-	return consent.NewService(mockAgentRepo, mockServiceRepo, mockGrantRepo)
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo)
 }
 
 // Mock repository implementations
@@ -393,19 +396,19 @@ func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID string) (*st
 }
 
 type mockServiceRepo struct {
-	services []*storage.ThirdpartyOAuth2Service
+	services []*model.ThirdpartyOAuth2ProviderEntity
 	err      error
 }
 
-func (m *mockServiceRepo) Create(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (m *mockServiceRepo) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	return nil
 }
 
-func (m *mockServiceRepo) Get(ctx context.Context, id string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepo) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 
-func (m *mockServiceRepo) Update(ctx context.Context, service *storage.ThirdpartyOAuth2Service) error {
+func (m *mockServiceRepo) Update(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {
 	return nil
 }
 
@@ -413,7 +416,7 @@ func (m *mockServiceRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (m *mockServiceRepo) List(ctx context.Context) ([]*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepo) List(ctx context.Context) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -424,7 +427,7 @@ func (m *mockServiceRepo) CountGrantsReferencingService(ctx context.Context, ser
 	return 0, nil
 }
 
-func (m *mockServiceRepo) FindByProtectedResource(ctx context.Context, resourceURI string) (*storage.ThirdpartyOAuth2Service, error) {
+func (m *mockServiceRepo) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 

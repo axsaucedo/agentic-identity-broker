@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -27,28 +31,28 @@ var (
 // This service orchestrates between agent, service, and grant repositories
 // to implement consent workflows following FR-009 through FR-020.
 type Service struct {
-	agentRepo   ports.AgentRepository
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository
-	grantRepo   ports.UserGrantRepository
+	agentRepo       ports.AgentRepository
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService
+	grantRepo       ports.UserGrantRepository
 }
 
 // NewService creates a new ConsentService.
 func NewService(
 	agentRepo ports.AgentRepository,
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository,
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	grantRepo ports.UserGrantRepository,
 ) *Service {
 	return &Service{
-		agentRepo:   agentRepo,
-		serviceRepo: serviceRepo,
-		grantRepo:   grantRepo,
+		agentRepo:       agentRepo,
+		providerService: providerService,
+		grantRepo:       grantRepo,
 	}
 }
 
 // AgentConsentInfo contains all information needed for a user to make a consent decision.
 type AgentConsentInfo struct {
 	Agent                       *storage.Agent
-	AvailableThirdpartyServices []*storage.ThirdpartyOAuth2Service
+	AvailableThirdpartyServices []*model.ThirdpartyOAuth2ProviderEntity
 }
 
 // GetAgentConsentInfo retrieves agent metadata and all available third-party services.
@@ -65,13 +69,13 @@ func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID string) (*Age
 	}
 
 	// Fetch all available third-party services (FR-025: all services available to all agents)
-	services, err := s.serviceRepo.List(ctx)
+	services, err := s.providerService.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list third-party services: %w", err)
 	}
 
 	// Redact client secrets in response (SR-003)
-	redactedServices := make([]*storage.ThirdpartyOAuth2Service, len(services))
+	redactedServices := make([]*model.ThirdpartyOAuth2ProviderEntity, len(services))
 	for i, svc := range services {
 		redactedServices[i] = svc.RedactedCopy()
 	}
@@ -138,7 +142,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 	} else {
 		// Create new grant (FR-011)
 		grant = &storage.UserGrant{
-			ID:                    generateID(), // ID generation will be handled by repository
+			ID:                    uuid.New().String(),
 			Principal:             req.Principal,
 			AgentID:               req.AgentID,
 			ValidUntil:            req.ValidUntil,
@@ -254,7 +258,7 @@ func (s *Service) VerifyAgentAccess(ctx context.Context, principal string, agent
 func (s *Service) validateScopes(ctx context.Context, delegations []storage.DelegatedToken) error {
 	for i, delegation := range delegations {
 		// Fetch service
-		service, err := s.serviceRepo.Get(ctx, delegation.ThirdpartyOAuth2ServiceID)
+		service, err := s.providerService.Get(ctx, delegation.ThirdpartyOAuth2ServiceID)
 		if err != nil {
 			return fmt.Errorf("failed to get service %s: %w", delegation.ThirdpartyOAuth2ServiceID, err)
 		}
@@ -341,7 +345,7 @@ func (s *Service) GetAgentDetail(ctx context.Context, agentID string) (*AgentDet
 	}
 
 	// Fetch all available third-party services (FR-025: all services available to all agents)
-	services, err := s.serviceRepo.List(ctx)
+	services, err := s.providerService.List(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list third-party services: %w", err)
 	}
@@ -371,7 +375,7 @@ func (s *Service) GetAgentDetail(ctx context.Context, agentID string) (*AgentDet
 		thirdpartyServices[i] = ThirdpartyService{
 			ServiceID:   svc.ID,
 			DisplayName: svc.DisplayName,
-			LogoURL:     nil, // TODO: add logo_url field to ThirdpartyOAuth2Service entity
+			LogoURL:     nil, // TODO: add logo_url field to ThirdpartyOAuth2ProviderEntity
 			Scopes:      scopes,
 		}
 	}
@@ -468,11 +472,4 @@ func (s *Service) GetAgentDelegations(ctx context.Context, principal string) ([]
 	}
 
 	return delegations, nil
-}
-
-// generateID is a placeholder for ID generation.
-// In production, this would use UUID v4 generation.
-func generateID() string {
-	// This will be replaced by proper UUID generation in repository implementations
-	return ""
 }

@@ -14,19 +14,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 func TestListSessions_Success(t *testing.T) {
 	// Setup
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	ctx := context.Background()
 
@@ -34,17 +38,17 @@ func TestListSessions_Success(t *testing.T) {
 	serviceID := uuid.New().String()
 
 	// Create service first
-	service := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	service := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 	}
@@ -111,7 +115,7 @@ func TestListSessions_MissingPrincipal(t *testing.T) {
 	// Setup
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	grantRepo := memory.NewUserGrantRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 
 	service := createOAuth2SessionService(
 		t,
@@ -144,7 +148,7 @@ func TestListSessions_EmptySessions(t *testing.T) {
 	// Setup
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	grantRepo := memory.NewUserGrantRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 
 	service := createOAuth2SessionService(
 		t,
@@ -187,25 +191,25 @@ func TestAuthorizeEndpoint_Success(t *testing.T) {
 	// Setup
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create third-party service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -275,7 +279,7 @@ func TestAuthorizeEndpoint_Success(t *testing.T) {
 
 func TestAuthorizeEndpoint_MissingPrincipal(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	service := createOAuth2SessionService(
@@ -311,7 +315,7 @@ func TestAuthorizeEndpoint_MissingPrincipal(t *testing.T) {
 
 func TestAuthorizeEndpoint_ServiceNotFound(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	jweKey := createTestJWEKey(t)
 
@@ -353,25 +357,25 @@ func TestAuthorizeEndpoint_ServiceNotFound(t *testing.T) {
 func TestAuthorizeEndpoint_InvalidRedirectURI(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -421,25 +425,25 @@ func TestAuthorizeEndpoint_InvalidRedirectURI(t *testing.T) {
 func TestAuthorizeEndpoint_VerifyAuthorizationURL(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 			{ScopeValue: "user", Description: "User profile"},
 		},
@@ -520,25 +524,25 @@ func TestAuthorizeEndpoint_PKCEPresent(t *testing.T) {
 func TestCallbackEndpoint_Success(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Discovery: storage.DiscoveryConfig{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
 		},
-		Endpoints: storage.OAuth2Endpoints{
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -588,7 +592,7 @@ func TestCallbackEndpoint_Success(t *testing.T) {
 
 func TestCallbackEndpoint_MissingPrincipal(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	service := createOAuth2SessionService(t,
@@ -622,7 +626,7 @@ func TestCallbackEndpoint_MissingPrincipal(t *testing.T) {
 
 func TestCallbackEndpoint_InvalidStateToken(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	jweKey := createTestJWEKey(t)
 
@@ -690,7 +694,7 @@ func TestCallbackEndpoint_OAuth2Error(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sessionRepo := memory.NewInMemoryUserSessionRepository()
-			serviceRepo := memory.NewThirdpartyServiceRepository()
+			serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 			grantRepo := memory.NewUserGrantRepository()
 			jweKey := createTestJWEKey(t)
 
@@ -734,7 +738,7 @@ func TestCallbackEndpoint_OAuth2Error(t *testing.T) {
 
 func TestCallbackEndpoint_MissingCode(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	jweKey := createTestJWEKey(t)
 
@@ -770,7 +774,7 @@ func TestCallbackEndpoint_MissingCode(t *testing.T) {
 
 func TestCallbackEndpoint_MissingState(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	service := createOAuth2SessionService(t,
@@ -831,22 +835,22 @@ func TestCallbackEndpoint_TokenExchangeWithMockThirdParty(t *testing.T) {
 func TestDeleteSession_SuccessfullyTerminatesSessionWithStatusOK(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -901,7 +905,7 @@ func TestDeleteSession_SuccessfullyTerminatesSessionWithStatusOK(t *testing.T) {
 
 func TestDeleteSession_ReturnsNotFoundWhenSessionDoesntExist(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	jweKey := createTestJWEKey(t)
 
@@ -935,7 +939,7 @@ func TestDeleteSession_ReturnsNotFoundWhenSessionDoesntExist(t *testing.T) {
 
 func TestDeleteSession_ReturnsUnauthorizedWhenXRemoteUserMissing(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	service := createOAuth2SessionService(t,
@@ -968,22 +972,22 @@ func TestDeleteSession_ReturnsUnauthorizedWhenXRemoteUserMissing(t *testing.T) {
 func TestDeleteSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -1040,22 +1044,22 @@ func TestDeleteSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 func TestDeleteSession_VerifiesSessionDeletedFromDatabase(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -1109,22 +1113,22 @@ func TestDeleteSession_VerifiesSessionDeletedFromDatabase(t *testing.T) {
 func TestDeleteSession_VerifiesTokensDeleted(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -1183,22 +1187,22 @@ func TestDeleteSession_VerifiesTokensDeleted(t *testing.T) {
 func TestGetSession_ReturnsSessionDetailsWithDependentAgentList(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -1253,7 +1257,7 @@ func TestGetSession_ReturnsSessionDetailsWithDependentAgentList(t *testing.T) {
 
 func TestGetSession_ReturnsNotFoundWhenSessionDoesntExist(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 	jweKey := createTestJWEKey(t)
 
@@ -1287,7 +1291,7 @@ func TestGetSession_ReturnsNotFoundWhenSessionDoesntExist(t *testing.T) {
 
 func TestGetSession_ReturnsUnauthorizedWhenXRemoteUserMissing(t *testing.T) {
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	service := createOAuth2SessionService(t,
@@ -1320,22 +1324,22 @@ func TestGetSession_ReturnsUnauthorizedWhenXRemoteUserMissing(t *testing.T) {
 func TestGetSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -1391,22 +1395,22 @@ func TestGetSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 func TestGetSession_IncludesAgentCountInResponse(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -1462,22 +1466,22 @@ func TestGetSession_IncludesAgentCountInResponse(t *testing.T) {
 func TestGetSession_ValidatesJSONStructureMatchesSessionWithAgents(t *testing.T) {
 	ctx := context.Background()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
 	serviceID := uuid.New().String()
-	thirdPartyService := &storage.ThirdpartyOAuth2Service{
-		ID:           serviceID,
-		DisplayName:  "GitHub",
-		ClientID:     "test-client-id",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "test-client-id",
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Repository access"},
 		},
 		CreatedAt: time.Now(),
@@ -1551,9 +1555,25 @@ func setupTestRouter(handler *oauth2_sessions.Handler) *chi.Mux {
 	return router
 }
 
+// newTestEncryption creates a real encryption adapter using a deterministic test key.
+func newTestEncryption(t *testing.T) ports.EncryptionPort {
+	t.Helper()
+	adapter, _, err := awsencryption.NewAWSEncryption("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=", "", 0)
+	require.NoError(t, err)
+	return adapter
+}
+
+func encryptSecretForTest(t *testing.T, serviceID, secret string) []byte {
+	t.Helper()
+	enc := newTestEncryption(t)
+	ciphertext, err := enc.Encrypt(context.Background(), []byte(secret), map[string]string{"service_id": serviceID})
+	require.NoError(t, err)
+	return ciphertext
+}
+
 func createOAuth2SessionService(
 	t *testing.T,
-	serviceRepo ports.ThirdpartyOAuth2ServiceRepository,
+	serviceRepo ports.ThirdpartyOAuth2ProviderRepository,
 	sessionRepo ports.UserSessionRepository,
 	grantRepo ports.UserGrantRepository,
 	encryption ports.EncryptionPort,
@@ -1564,8 +1584,21 @@ func createOAuth2SessionService(
 
 	agentRepo := memory.NewAgentRepository()
 
-	return oauth2session.NewOAuth2SessionService(
+	// Create ServiceManager for handling encryption/decryption of client secrets
+	// Use test encryption if not provided
+	if encryption == nil {
+		encryption = newTestEncryption(t)
+	}
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(
 		serviceRepo,
+		encryption,
+		nil,
+		false,
+		slog.Default(),
+	)
+
+	return oauth2session.NewOAuth2SessionService(
+		providerService,
 		sessionRepo,
 		grantRepo,
 		agentRepo,

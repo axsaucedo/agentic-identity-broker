@@ -1,11 +1,16 @@
 package fixtures
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"time"
 
 	"github.com/google/uuid"
+
+	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 )
 
 // TestSessionData represents test data for OAuth2 sessions with known values
@@ -77,16 +82,10 @@ func TestKEKMaterial() string {
 }
 
 // TestKEKMaterialDeterministic returns deterministic KEK material for tests
-// that need the same KEK across test runs
+// that need the same KEK across test runs.
+// Delegates to testutil.TestKEKBase64 — single source of truth, no independent encoding.
 func TestKEKMaterialDeterministic() string {
-	// Known test KEK - DO NOT use in production
-	testKEK := []byte{
-		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-		0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
-		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-		0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
-	}
-	return base64.StdEncoding.EncodeToString(testKEK)
+	return testutil.TestKEKBase64
 }
 
 // TestEncryptionContexts provides various encryption contexts for testing
@@ -117,6 +116,40 @@ func TestTokenPairs() map[string][2]string {
 			"1//test_google_refresh_token_123456789abcdef",
 		},
 	}
+}
+
+// EncryptedToken encrypts a token string using the deterministic test key with service_id context.
+// Use this for EncryptedAccessToken and EncryptedRefreshToken fields in storage.UserSession fixtures
+// that are stored directly in the storage layer (bypassing the domain service).
+// The serviceID must match the session's ServiceID field.
+func EncryptedToken(serviceID, token string) []byte {
+	adapter, _, err := awsencryption.NewAWSEncryption(TestKEKMaterialDeterministic(), "", 0)
+	if err != nil {
+		panic("fixtures.EncryptedToken: failed to create encryption adapter: " + err.Error())
+	}
+	ciphertext, err := adapter.Encrypt(context.Background(), []byte(token), map[string]string{"service_id": serviceID})
+	if err != nil {
+		panic("fixtures.EncryptedToken: failed to encrypt: " + err.Error())
+	}
+	return ciphertext
+}
+
+// EncryptedSecret creates a properly encrypted model.Secret using the deterministic test key.
+// The secret is encrypted with the same key used by DefaultOAuth2Config(), ensuring that
+// services stored via testStorage.Services().Create() can be decrypted by the application.
+//
+// Use this in fixtures that return entities stored directly in the storage layer (bypassing
+// the domain service Create method). The serviceID must match the entity's ID field.
+func EncryptedSecret(serviceID, plaintext string) model.Secret {
+	adapter, _, err := awsencryption.NewAWSEncryption(TestKEKMaterialDeterministic(), "", 0)
+	if err != nil {
+		panic("fixtures.EncryptedSecret: failed to create encryption adapter: " + err.Error())
+	}
+	ciphertext, err := adapter.Encrypt(context.Background(), []byte(plaintext), map[string]string{"service_id": serviceID})
+	if err != nil {
+		panic("fixtures.EncryptedSecret: failed to encrypt: " + err.Error())
+	}
+	return model.NewEncryptedSecret(ciphertext)
 }
 
 // generateRandomSuffix generates a random suffix for test data uniqueness

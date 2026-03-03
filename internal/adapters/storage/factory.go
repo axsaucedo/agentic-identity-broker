@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/postgres"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -28,7 +27,7 @@ type Adapter struct {
 	lifecycle    lifecycleAdapter
 	users        ports.UserRepository
 	agents       ports.AgentRepository
-	services     ports.ThirdpartyOAuth2ServiceRepository
+	providers    ports.ThirdpartyOAuth2ProviderRepository
 	userGrants   ports.UserGrantRepository
 	userSessions ports.UserSessionRepository
 }
@@ -65,7 +64,7 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		lifecycle:    memAdapter,
 		users:        memAdapter,
 		agents:       memory.NewAgentRepository(),
-		services:     memory.NewThirdpartyServiceRepository(),
+		providers:    memory.NewInMemoryThirdpartyOAuth2ProviderRepository(),
 		userGrants:   memory.NewUserGrantRepository(),
 		userSessions: memory.NewInMemoryUserSessionRepository(),
 	}, nil
@@ -85,7 +84,7 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		lifecycle:    pgAdapter,
 		users:        pgAdapter,
 		agents:       postgres.NewAgentRepository(pgAdapter),
-		services:     postgres.NewThirdpartyServiceRepository(pgAdapter, noop.NewNoOpEncryption()),
+		providers:    postgres.NewPostgresThirdpartyOAuth2ProviderRepository(pgAdapter),
 		userGrants:   postgres.NewUserGrantRepository(pgAdapter),
 		userSessions: postgres.NewUserSessionRepository(pgAdapter),
 	}, nil
@@ -143,10 +142,10 @@ func (a *Adapter) Agents() ports.AgentRepository {
 	return a.agents
 }
 
-// Services returns the ThirdpartyOAuth2ServiceRepository interface implementation.
+// Services returns the ThirdpartyOAuth2ProviderRepository interface implementation.
 // Used for OAuth2 service configuration CRUD operations.
-func (a *Adapter) Services() ports.ThirdpartyOAuth2ServiceRepository {
-	return a.services
+func (a *Adapter) Services() ports.ThirdpartyOAuth2ProviderRepository {
+	return a.providers
 }
 
 // UserGrants returns the UserGrantRepository interface implementation.

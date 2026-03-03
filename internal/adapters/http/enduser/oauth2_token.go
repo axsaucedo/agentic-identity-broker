@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // OAuth2TokenHandler handles OAuth2 token endpoint requests
@@ -18,9 +17,8 @@ import (
 type OAuth2TokenHandler struct {
 	UpstreamTokenURL string
 	Client           *http.Client
-	Services         ports.ThirdpartyOAuth2ServiceRepository // For resource lookup in token exchange
-	TokenExchange    *tokenexchange.TokenExchangeService     // RFC 8693 token exchange service
-	Logger           *slog.Logger                            // For structured logging
+	TokenExchange    *tokenexchange.TokenExchangeService // RFC 8693 token exchange service
+	Logger           *slog.Logger                        // For structured logging
 }
 
 // ServeHTTP implements http.Handler for the token endpoint
@@ -289,15 +287,5 @@ func NewOAuth2TokenHandler(upstreamTokenURL string, client *http.Client) *OAuth2
 	return &OAuth2TokenHandler{
 		UpstreamTokenURL: upstreamTokenURL,
 		Client:           client,
-	}
-}
-
-// NewOAuth2TokenHandlerWithServices creates a new token handler with service repository
-// for RFC 8693 token exchange support
-func NewOAuth2TokenHandlerWithServices(upstreamTokenURL string, client *http.Client, services ports.ThirdpartyOAuth2ServiceRepository) *OAuth2TokenHandler {
-	return &OAuth2TokenHandler{
-		UpstreamTokenURL: upstreamTokenURL,
-		Client:           client,
-		Services:         services,
 	}
 }

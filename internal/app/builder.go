@@ -11,7 +11,6 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
-	encmemory "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
@@ -19,11 +18,10 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwks"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/noop"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/services"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -40,7 +38,7 @@ type App struct {
 
 	// Domain services
 	ConsentService       *consentservice.Service
-	AuthProvider         *services.ThirdpartyOAuth2ServiceProvider
+	ProviderService      *thirdparty.ThirdpartyOAuth2ProviderService
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
 	TokenExchangeService *tokenexchange.TokenExchangeService
@@ -67,8 +65,6 @@ type Builder struct {
 	config                 *ports.Config
 	storage                *storage.Adapter
 	logger                 *slog.Logger
-	encryption             ports.EncryptionPort   // Optional: custom encryption implementation
-	branchKeyManager       ports.BranchKeyManager // Optional: custom branch key manager
 	staticWebResourcesPath string
 }
 
@@ -94,22 +90,6 @@ func (b *Builder) WithStorage(storage *storage.Adapter) *Builder {
 // WithLogger sets the logger for the builder.
 func (b *Builder) WithLogger(logger *slog.Logger) *Builder {
 	b.logger = logger
-	return b
-}
-
-// WithEncryption sets a custom encryption implementation for the builder.
-// If not set, defaults to no-op encryption for development.
-// Use this to inject a production encryption adapter.
-func (b *Builder) WithEncryption(encryptor ports.EncryptionPort) *Builder {
-	b.encryption = encryptor
-	return b
-}
-
-// WithBranchKeyManager sets a custom branch key manager for the builder.
-// If not set, defaults based on keyring type (AWS manager or in-memory).
-// Use this to inject a test or custom branch key manager.
-func (b *Builder) WithBranchKeyManager(mgr ports.BranchKeyManager) *Builder {
-	b.branchKeyManager = mgr
 	return b
 }
 
@@ -144,24 +124,59 @@ func (b *Builder) Build() (*App, error) {
 		Logger:  b.logger,
 	}
 
-	// Phase 1: Create domain services
+	// Phase 1: Initialize encryption adapter (must happen before domain services).
+	// Encryption is mandatory — no fallback. Config must specify memory or aws_kms backend.
+	// Constitution Principle VII: Configuration-Driven Design.
+	if b.config.Encryption.AWSKMS == nil && b.config.Encryption.Memory == nil {
+		return nil, fmt.Errorf("encryption configuration required: set encryption.memory.raw_key or encryption.aws_kms in configuration (no fallback)")
+	}
+
+	encryptor, branchKeyManager, err := awsencryption.NewEncryptionAdapter(&b.config.Encryption)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize encryption adapter: %w", err)
+	}
+
+	if b.config.Encryption.AWSKMS != nil {
+		b.logger.Info("AWS KMS encryption adapter initialized",
+			"dynamodb_table", b.config.Encryption.AWSKMS.DynamoDBTableName,
+			"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
+			"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
+			"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
+			"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
+			"branch_key_manager_wired", branchKeyManager != nil)
+	} else {
+		b.logger.Info("Memory encryption adapter initialized",
+			"branch_key_manager_wired", branchKeyManager != nil)
+	}
+
+	if branchKeyManager != nil {
+		app.BranchKeyManager = branchKeyManager
+	}
+
+	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
 
-	// Create consent service if repositories available
-	if b.storage.Agents() != nil && b.storage.Services() != nil && b.storage.UserGrants() != nil {
-		app.ConsentService = consentservice.NewService(
-			b.storage.Agents(),
+	// Create ThirdpartyOAuth2ProviderService (handles encryption, decryption, and branch key provisioning).
+	// This consolidated domain service replaces the previous ServiceManager + AuthProvider split.
+	// encryptor is guaranteed to be initialized from Phase 1.
+	if b.storage.Services() != nil {
+		app.ProviderService = thirdparty.NewThirdpartyOAuth2ProviderService(
 			b.storage.Services(),
-			b.storage.UserGrants(),
+			encryptor,
+			branchKeyManager, // May be nil if memory backend (no branch key store)
+			b.config.Security.SkipThirdpartyHTTPSValidation,
+			b.logger,
 		)
 	}
 
-	// Create auth provider service if services repository available
-	if b.storage.Services() != nil {
-		app.AuthProvider = services.NewAuthProvider(
-			b.storage.Services(),
-			b.branchKeyManager, // May be nil if no encryption backend configured
-			b.logger,
+	// Create consent service if repositories available.
+	// ConsentService depends on ProviderService (not raw repository) so all service access
+	// goes through the domain service layer including encryption/decryption.
+	if b.storage.Agents() != nil && app.ProviderService != nil && b.storage.UserGrants() != nil {
+		app.ConsentService = consentservice.NewService(
+			b.storage.Agents(),
+			app.ProviderService,
+			b.storage.UserGrants(),
 		)
 	}
 
@@ -186,6 +201,11 @@ func (b *Builder) Build() (*App, error) {
 	// which is marked as REQUIRED in config validation (internal/config/validator.go).
 	// The application will fail to start if JWESigningKey is not provided, so we can
 	// safely create OAuth2SessionService unconditionally here.
+	//
+	// Note: OAuth2SessionService requires a providerService for decrypting client secrets.
+	// If services repository is not available, providerService will be nil and OAuth2SessionService
+	// will fail to fetch services. This is acceptable since the application is non-functional
+	// without the services repository anyway.
 
 	// Decode JWE signing key
 	keyBytes, err := base64.StdEncoding.DecodeString(b.config.ThirdPartyOAuth2.JWESigningKey)
@@ -203,55 +223,6 @@ func (b *Builder) Build() (*App, error) {
 	// Constitution Principle VII: Configuration-Driven Design
 	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
 
-	// Initialize encryption adapter based on configuration or builder override
-	// Constitution Principle VII: Configuration-Driven Design
-	var encryptor ports.EncryptionPort
-	if b.encryption != nil {
-		// Builder override takes precedence (for testing)
-		encryptor = b.encryption
-	} else if b.config.Encryption.AWSKMS != nil || b.config.Encryption.Memory != nil {
-		// Production/Development: Use new backend-explicit configuration factory
-		// The factory handles backend detection and validation automatically
-		adapter, branchKeyManager, err := awsencryption.NewEncryptionAdapter(&b.config.Encryption)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize encryption adapter: %w", err)
-		}
-		encryptor = adapter
-
-		// Wire branch key manager if available (for all backends except no-op)
-		if branchKeyManager != nil && b.branchKeyManager == nil {
-			b.branchKeyManager = branchKeyManager
-		}
-
-		// Log initialization with backend information
-		if b.config.Encryption.AWSKMS != nil {
-			b.logger.Info("AWS KMS encryption adapter initialized",
-				"dynamodb_table", b.config.Encryption.AWSKMS.DynamoDBTableName,
-				"dynamodb_region", b.config.Encryption.AWSKMS.DynamoDBRegion,
-				"branch_key_ttl", b.config.Encryption.AWSKMS.BranchKeyTTL,
-				"dynamodb_read_timeout", b.config.Encryption.AWSKMS.DynamoDBReadTimeout,
-				"dynamodb_write_timeout", b.config.Encryption.AWSKMS.DynamoDBWriteTimeout,
-				"branch_key_manager_wired", branchKeyManager != nil)
-		} else if b.config.Encryption.Memory != nil {
-			b.logger.Info("Memory encryption adapter initialized",
-				"branch_key_manager_wired", branchKeyManager != nil)
-		}
-	} else {
-		encryptor = noop.NewNoOpEncryption()
-		b.logger.Info("No-op encryption enabled (development mode)")
-
-		// Wire in-memory BranchKeyManager for development if not already set
-		if b.branchKeyManager == nil {
-			b.branchKeyManager = encmemory.NewInMemoryBranchKeyRepository()
-			b.logger.Info("BranchKeyManager wired from in-memory implementation (development mode)")
-		}
-	}
-
-	// Assign BranchKeyManager to app if wired
-	if b.branchKeyManager != nil {
-		app.BranchKeyManager = b.branchKeyManager
-	}
-
 	// Create HTTP client for token endpoint with configured timeout
 	// Created early to support both OAuth2SessionService and TokenExchangeService
 	upstreamClient := &http.Client{
@@ -259,7 +230,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(
-		b.storage.Services(),
+		app.ProviderService,
 		b.storage.UserSessions(),
 		b.storage.UserGrants(),
 		b.storage.Agents(),
@@ -316,12 +287,12 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		// Create token exchange service
-		// Per Constitution Principle VI: service depends on ports (repository interfaces)
+		// Per Constitution Principle VI: service depends on domain service, not raw repository
 		// SessionRepository is no longer needed - token lifecycle is managed through OAuth2SessionService
 		tokenExchangeService, err := tokenexchange.NewTokenExchangeService(
 			jwtValidator,
 			celEvaluator,
-			b.storage.Services(),
+			app.ProviderService,
 			app.OAuth2SessionService,
 			app.ConsentService,
 			&b.config.TokenExchange,
@@ -333,19 +304,19 @@ func (b *Builder) Build() (*App, error) {
 		app.TokenExchangeService = tokenExchangeService
 	}
 
-	// Phase 2: Create handler instances
+	// Phase 3: Create handler instances
 
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
-		Agents:   admin.NewAgentsHandler(b.storage.Agents(), b.storage.Services(), b.logger),
-		Services: admin.NewServicesHandler(app.AuthProvider, b.config, b.logger),
+		Agents:   admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger),
+		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
 	// Create agent detail handler with repository dependencies for service requirements (Phase 6)
 	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger).
 		WithAgentRepository(b.storage.Agents()).
 		WithSessionRepository(b.storage.UserSessions()).
-		WithServiceRepository(b.storage.Services())
+		WithProviderService(app.ProviderService)
 
 	// Enduser handlers
 	app.EnduserHandlers = &EnduserHandlers{
@@ -361,7 +332,6 @@ func (b *Builder) Build() (*App, error) {
 		OAuth2Token: &enduser.OAuth2TokenHandler{
 			UpstreamTokenURL: b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
 			Client:           upstreamClient,
-			Services:         b.storage.Services(), // For RFC 8693 token exchange (resource lookup)
 			TokenExchange:    app.TokenExchangeService,
 			Logger:           b.logger,
 		},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,8 +12,10 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,8 +30,11 @@ import (
 func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	// Setup real repositories
 	agentRepo := memory.NewAgentRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
+
+	// Create providerService to handle encryption context binding (simulates domain layer)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
 
 	// Seed test data
 	ctx := context.Background()
@@ -45,52 +51,48 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	err := agentRepo.Create(ctx, agent)
 	require.NoError(t, err)
 
-	// Create GitHub service
-	githubService := &storage.ThirdpartyOAuth2Service{
-		ID:           "github",
-		DisplayName:  "GitHub",
-		ClientID:     "github-client",
-		ClientSecret: "github-secret",
-		IssuerURI:    "https://github.com",
-		Endpoints: storage.OAuth2Endpoints{
+	// Create GitHub service via providerService
+	githubService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "github",
+		DisplayName: "GitHub",
+		ClientID:    "github-client",
+		Secret:      model.NewPlaintextSecret("github-secret"),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://github.com/login/oauth/access_token",
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo", Description: "Full control of private repositories"},
 			{ScopeValue: "user:email", Description: "Access user email addresses"},
 			{ScopeValue: "read:user", Description: "Read user profile data"},
 		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
 	}
-	err = serviceRepo.Create(ctx, githubService)
+	err = providerService.Create(ctx, githubService)
 	require.NoError(t, err)
 
-	// Create Google service
-	googleService := &storage.ThirdpartyOAuth2Service{
-		ID:           "google",
-		DisplayName:  "Google",
-		ClientID:     "google-client",
-		ClientSecret: "google-secret",
-		IssuerURI:    "https://accounts.google.com",
-		Endpoints: storage.OAuth2Endpoints{
+	// Create Google service via providerService
+	googleService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "google",
+		DisplayName: "Google",
+		ClientID:    "google-client",
+		Secret:      model.NewPlaintextSecret("google-secret"),
+		IssuerURI:   "https://accounts.google.com",
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://oauth2.googleapis.com/token",
 			AuthorizeEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "openid", Description: "OpenID Connect"},
 			{ScopeValue: "email", Description: "View email address"},
 			{ScopeValue: "profile", Description: "View basic profile info"},
 		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
 	}
-	err = serviceRepo.Create(ctx, googleService)
+	err = providerService.Create(ctx, googleService)
 	require.NoError(t, err)
 
 	// Create consent service
-	consentService := consent.NewService(agentRepo, serviceRepo, grantRepo)
+	consentService := consent.NewService(agentRepo, providerService, grantRepo)
 
 	// Create handler
 	handler := NewGrantsHandler(consentService, nil)
@@ -260,8 +262,11 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 func TestGrantsIntegration_Validation(t *testing.T) {
 	// Setup repositories
 	agentRepo := memory.NewAgentRepository()
-	serviceRepo := memory.NewThirdpartyServiceRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 	grantRepo := memory.NewUserGrantRepository()
+
+	// Create providerService to handle encryption context binding (simulates domain layer)
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
 
 	ctx := context.Background()
 
@@ -277,28 +282,26 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	err := agentRepo.Create(ctx, agent)
 	require.NoError(t, err)
 
-	// Create service with limited scopes
-	service := &storage.ThirdpartyOAuth2Service{
-		ID:           "test-service",
-		DisplayName:  "Test Service",
-		ClientID:     "test-client",
-		ClientSecret: "test-secret",
-		IssuerURI:    "https://example.com",
-		Endpoints: storage.OAuth2Endpoints{
+	// Create service with limited scopes via providerService
+	service := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          "test-service",
+		DisplayName: "Test Service",
+		ClientID:    "test-client",
+		Secret:      model.NewPlaintextSecret("test-secret"),
+		IssuerURI:   "https://example.com",
+		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://example.com/token",
 			AuthorizeEndpoint: "https://example.com/auth",
 		},
-		Scopes: []storage.OAuthScope{
+		Scopes: []model.OAuthScope{
 			{ScopeValue: "read", Description: "Read access"},
 			{ScopeValue: "write", Description: "Write access"},
 		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
 	}
-	err = serviceRepo.Create(ctx, service)
+	err = providerService.Create(ctx, service)
 	require.NoError(t, err)
 
-	consentService := consent.NewService(agentRepo, serviceRepo, grantRepo)
+	consentService := consent.NewService(agentRepo, providerService, grantRepo)
 	handler := NewGrantsHandler(consentService, nil)
 
 	tests := []struct {
