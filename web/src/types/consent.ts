@@ -14,6 +14,9 @@ export interface UserInfo {
   /** Human-readable display name */
   displayName: string;
 
+  /** Optional email address extracted from JWT claims */
+  email?: string;
+
   /** URL to user's profile picture/avatar */
   pictureUrl?: string;
 }

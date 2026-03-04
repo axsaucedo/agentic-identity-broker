@@ -63,8 +63,76 @@ type AuthenticationConfig struct {
 	// Preauth holds configuration for pre-authentication (reverse proxy) mode
 	Preauth PreauthConfig `mapstructure:"preauth"`
 
-	// Future: JWT configuration can be added here without breaking changes
-	// JWT JWTConfig `mapstructure:"jwt"`
+	// JWT holds optional configuration for JWT-based pre-authentication.
+	// When configured, JWTs are validated (signed or unsigned) and claims
+	// are extracted to derive the principal and optional profile attributes.
+	// Nil means JWT pre-auth is not enabled (backward-compatible).
+	JWT *JWTConfig `mapstructure:"jwt"`
+}
+
+// JWTConfig holds configuration for JWT-based pre-authentication.
+// This is an additive, opt-in capability alongside the existing plain-header pre-auth.
+// When present, JWTs from a configured HTTP header are parsed, validated, and claims
+// extracted via CEL expressions to derive principal and optional profile attributes.
+type JWTConfig struct {
+	// HeaderName is the HTTP header containing the JWT.
+	// When set to "Authorization" (default), the "Bearer " prefix is automatically stripped.
+	// For any other header name, the raw header value is used as the JWT directly.
+	// Default: "Authorization"
+	HeaderName string `mapstructure:"header_name"`
+
+	// Verification controls JWT signature verification behavior.
+	// "jwks" (default): Signature verified against JWKS endpoint (requires JWKSURI).
+	// "none": Unsigned JWTs accepted (for trusted upstream/service mesh environments).
+	// Mutually exclusive with JWKSURI when set to "none".
+	// Default: "jwks"
+	Verification string `mapstructure:"verification"`
+
+	// JWKSURI is the URL of the JWKS endpoint for signature verification.
+	// Required when Verification is "jwks" (or omitted). Must be HTTPS unless
+	// Security.SkipThirdpartyHTTPSValidation is true.
+	// MUST NOT be set when Verification is "none".
+	JWKSURI string `mapstructure:"jwks_uri"`
+
+	// ExpectedAudience is the expected value in the JWT aud claim.
+	// If set, JWTs without this audience are rejected with 401.
+	// Optional.
+	ExpectedAudience string `mapstructure:"expected_audience"`
+
+	// ExpectedIssuer is the expected value in the JWT iss claim.
+	// If set, JWTs with a non-matching issuer are rejected with 401.
+	// Optional.
+	ExpectedIssuer string `mapstructure:"expected_issuer"`
+
+	// ClaimExtraction holds CEL expressions for extracting principal and
+	// optional profile attributes from JWT claims.
+	ClaimExtraction JWTClaimExtractionConfig `mapstructure:"claim_extraction"`
+}
+
+// JWTClaimExtractionConfig holds CEL expressions for extracting principal and
+// optional profile attributes from JWT claims. All expressions receive a single
+// variable "claims" of type map(string, any) — the JWT claims map.
+// This follows the pattern from ADR 009 (CEL for Authorization Policies).
+type JWTClaimExtractionConfig struct {
+	// PrincipalExpression is a CEL expression to extract the principal from JWT claims.
+	// Must evaluate to a non-empty string. Authentication fails if extraction fails.
+	// Default: "claims.sub"
+	PrincipalExpression string `mapstructure:"principal_expression"`
+
+	// DisplayNameExpression is an optional CEL expression to extract the user's display name.
+	// If not configured or evaluates to non-string, display name falls back to principal.
+	// Example: "claims.name"
+	DisplayNameExpression string `mapstructure:"display_name_expression"`
+
+	// EmailExpression is an optional CEL expression to extract the user's email address.
+	// If not configured or evaluates to non-string, email is nil in the profile.
+	// Example: "claims.email"
+	EmailExpression string `mapstructure:"email_expression"`
+
+	// PictureURLExpression is an optional CEL expression to extract the user's profile picture URL.
+	// If not configured or evaluates to non-string, picture URL is nil in the profile.
+	// Example: "claims.picture"
+	PictureURLExpression string `mapstructure:"picture_url_expression"`
 }
 
 // PreauthConfig holds configuration for reverse proxy pre-authentication.

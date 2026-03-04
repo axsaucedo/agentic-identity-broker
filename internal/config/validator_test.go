@@ -180,6 +180,171 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+// TestValidateJWTConfig tests JWT pre-authentication configuration validation.
+// Covers mutual exclusivity checks, required fields, defaults application,
+// and CEL expression validation per FR-003a and SR-004.
+func TestValidateJWTConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		jwt      *ports.JWTConfig
+		security *ports.SecurityConfig
+		wantErr  bool
+		errMsg   string
+	}{
+		{
+			name: "valid signed JWT config with JWKS URI",
+			jwt: &ports.JWTConfig{
+				HeaderName:   "Authorization",
+				Verification: "jwks",
+				JWKSURI:      "https://auth.example.com/.well-known/jwks.json",
+				ClaimExtraction: ports.JWTClaimExtractionConfig{
+					PrincipalExpression: "claims.sub",
+				},
+			},
+			security: nil,
+			wantErr:  false,
+		},
+		{
+			name: "valid unsigned JWT config",
+			jwt: &ports.JWTConfig{
+				HeaderName:   "X-JWT-Claims",
+				Verification: "none",
+				ClaimExtraction: ports.JWTClaimExtractionConfig{
+					PrincipalExpression: "claims.sub",
+				},
+			},
+			security: nil,
+			wantErr:  false,
+		},
+		{
+			name: "defaults applied when fields are empty",
+			jwt: &ports.JWTConfig{
+				JWKSURI: "https://auth.example.com/.well-known/jwks.json",
+			},
+			security: nil,
+			wantErr:  false,
+		},
+		{
+			name: "mutual exclusivity: verification none + jwks_uri",
+			jwt: &ports.JWTConfig{
+				Verification: "none",
+				JWKSURI:      "https://auth.example.com/.well-known/jwks.json",
+			},
+			security: nil,
+			wantErr:  true,
+			errMsg:   "mutually exclusive",
+		},
+		{
+			name: "missing jwks_uri when verification is jwks",
+			jwt: &ports.JWTConfig{
+				Verification: "jwks",
+				JWKSURI:      "",
+			},
+			security: nil,
+			wantErr:  true,
+			errMsg:   "jwks_uri",
+		},
+		{
+			name: "invalid verification mode",
+			jwt: &ports.JWTConfig{
+				Verification: "custom",
+			},
+			security: nil,
+			wantErr:  true,
+			errMsg:   "'jwks' or 'none'",
+		},
+		{
+			name: "HTTPS required for JWKS URI by default",
+			jwt: &ports.JWTConfig{
+				Verification: "jwks",
+				JWKSURI:      "http://auth.example.com/.well-known/jwks.json",
+			},
+			security: nil,
+			wantErr:  true,
+			errMsg:   "HTTPS",
+		},
+		{
+			name: "HTTP allowed when skip_thirdparty_https_validation is true",
+			jwt: &ports.JWTConfig{
+				Verification: "jwks",
+				JWKSURI:      "http://auth.example.com/.well-known/jwks.json",
+			},
+			security: &ports.SecurityConfig{
+				SkipThirdpartyHTTPSValidation: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid JWKS URI scheme (ftp)",
+			jwt: &ports.JWTConfig{
+				Verification: "jwks",
+				JWKSURI:      "ftp://auth.example.com/jwks.json",
+			},
+			security: nil,
+			wantErr:  true,
+			errMsg:   "HTTP or HTTPS URL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateJWTConfig(tt.jwt, "server.enduser.authentication.jwt", tt.security)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateJWTConfig() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if err != nil && tt.errMsg != "" {
+				errStr := err.Error()
+				if !strings.Contains(errStr, tt.errMsg) {
+					t.Errorf("validateJWTConfig() error = %v, want error containing %q", err, tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateJWTConfig_DefaultsApplied verifies that defaults are correctly
+// set when JWT config fields are empty.
+func TestValidateJWTConfig_DefaultsApplied(t *testing.T) {
+	jwt := &ports.JWTConfig{
+		JWKSURI: "https://auth.example.com/.well-known/jwks.json",
+	}
+
+	err := validateJWTConfig(jwt, "server.enduser.authentication.jwt", nil)
+	if err != nil {
+		t.Fatalf("validateJWTConfig() unexpected error: %v", err)
+	}
+
+	if jwt.HeaderName != "Authorization" {
+		t.Errorf("expected HeaderName default 'Authorization', got %q", jwt.HeaderName)
+	}
+	if jwt.Verification != "jwks" {
+		t.Errorf("expected Verification default 'jwks', got %q", jwt.Verification)
+	}
+	if jwt.ClaimExtraction.PrincipalExpression != "claims.sub" {
+		t.Errorf("expected PrincipalExpression default 'claims.sub', got %q",
+			jwt.ClaimExtraction.PrincipalExpression)
+	}
+}
+
+// TestValidate_WithJWTConfig tests that full config validation includes JWT
+// validation when JWT config is present.
+func TestValidate_WithJWTConfig(t *testing.T) {
+	cfg := validTestConfig()
+	cfg.Server.EndUser.Authentication.JWT = &ports.JWTConfig{
+		Verification: "none",
+		JWKSURI:      "https://should-not-be-set.example.com",
+	}
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for mutual exclusivity, got nil")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected 'mutually exclusive' in error, got: %v", err)
+	}
+}
+
 func TestValidateThirdPartyOAuth2Config(t *testing.T) {
 	tests := []struct {
 		name    string

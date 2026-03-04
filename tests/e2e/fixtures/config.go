@@ -174,3 +174,130 @@ func TokenExchangeConfigWithClaimExtraction(principalExpr, agentExpr string) *po
 	config.TokenExchange.ClaimExtraction.AgentClientIDExpression = agentExpr
 	return config
 }
+
+// ============ JWT Pre-Authentication Config Fixtures ============
+
+// SignedJWTConfig returns a config with signed JWT pre-authentication enabled.
+// The jwksURL must point to a JWKS endpoint serving the public key matching
+// the key used to sign test JWTs (typically from MockJWKSServer.JWKSURL()).
+//
+// Configuration:
+//   - JWT verification: jwks (signed, requires JWKS URI)
+//   - JWT header: Authorization (Bearer prefix auto-stripped)
+//   - Principal CEL expression: claims.sub
+//   - Display name CEL expression: claims.name
+//   - Email CEL expression: claims.email
+//   - Picture URL CEL expression: claims.picture
+//   - Expected audience: agentic-identity-broker
+//   - Expected issuer: https://auth.example.com
+//   - Plain header fallback: X-Remote-User
+//
+// All other settings match DefaultOAuth2Config().
+func SignedJWTConfig(jwksURL string) *ports.Config {
+	config := DefaultOAuth2Config()
+	// Allow HTTP JWKS URIs in tests (mock servers use HTTP)
+	config.Security.SkipThirdpartyHTTPSValidation = true
+	config.Server.EndUser.Authentication.JWT = &ports.JWTConfig{
+		HeaderName:       "Authorization",
+		Verification:     "jwks",
+		JWKSURI:          jwksURL,
+		ExpectedAudience: "agentic-identity-broker",
+		ExpectedIssuer:   "https://auth.example.com",
+		ClaimExtraction: ports.JWTClaimExtractionConfig{
+			PrincipalExpression:   "claims.sub",
+			DisplayNameExpression: "claims.name",
+			EmailExpression:       "claims.email",
+			PictureURLExpression:  "claims.picture",
+		},
+	}
+	return config
+}
+
+// SignedJWTConfigMinimal returns a config with signed JWT pre-auth using only principal extraction.
+// No display name, email, or picture URL expressions configured.
+// Useful for testing fallback behavior when optional profile expressions are absent.
+func SignedJWTConfigMinimal(jwksURL string) *ports.Config {
+	config := DefaultOAuth2Config()
+	// Allow HTTP JWKS URIs in tests (mock servers use HTTP)
+	config.Security.SkipThirdpartyHTTPSValidation = true
+	config.Server.EndUser.Authentication.JWT = &ports.JWTConfig{
+		HeaderName:       "Authorization",
+		Verification:     "jwks",
+		JWKSURI:          jwksURL,
+		ExpectedAudience: "agentic-identity-broker",
+		ExpectedIssuer:   "https://auth.example.com",
+		ClaimExtraction: ports.JWTClaimExtractionConfig{
+			PrincipalExpression: "claims.sub",
+		},
+	}
+	return config
+}
+
+// UnsignedJWTConfig returns a config with unsigned JWT pre-authentication enabled.
+// Used for testing service mesh environments where the upstream injects unsigned JWTs.
+//
+// Configuration:
+//   - JWT verification: none (unsigned, no JWKS URI)
+//   - JWT header: X-JWT-Claims (custom header, raw JWT value)
+//   - Principal CEL expression: claims.sub
+//   - Display name CEL expression: claims.preferred_username
+//   - Email CEL expression: claims.email
+//   - No audience/issuer validation (trusted upstream)
+//   - Plain header fallback: X-Remote-User
+//
+// All other settings match DefaultOAuth2Config().
+func UnsignedJWTConfig() *ports.Config {
+	config := DefaultOAuth2Config()
+	config.Server.EndUser.Authentication.JWT = &ports.JWTConfig{
+		HeaderName:   "X-JWT-Claims",
+		Verification: "none",
+		ClaimExtraction: ports.JWTClaimExtractionConfig{
+			PrincipalExpression:   "claims.sub",
+			DisplayNameExpression: "claims.preferred_username",
+			EmailExpression:       "claims.email",
+		},
+	}
+	return config
+}
+
+// NoJWTConfig returns a config with no JWT pre-authentication (plain header only).
+// This is the default/backward-compatible configuration where only the X-Remote-User
+// header is used for principal extraction.
+//
+// All other settings match DefaultOAuth2Config().
+func NoJWTConfig() *ports.Config {
+	// DefaultOAuth2Config already has no JWT config (JWT field is nil)
+	return DefaultOAuth2Config()
+}
+
+// MutuallyExclusiveJWTConfig returns a config with both verification: none and jwks_uri set.
+// This is an INVALID configuration that should cause startup failure (FR-003a).
+// Used to test mutual exclusivity validation at startup.
+func MutuallyExclusiveJWTConfig(jwksURL string) *ports.Config {
+	config := DefaultOAuth2Config()
+	config.Server.EndUser.Authentication.JWT = &ports.JWTConfig{
+		HeaderName:   "Authorization",
+		Verification: "none",
+		JWKSURI:      jwksURL,
+		ClaimExtraction: ports.JWTClaimExtractionConfig{
+			PrincipalExpression: "claims.sub",
+		},
+	}
+	return config
+}
+
+// SignedJWTConfigWithAudience returns a signed JWT config with a custom expected audience.
+// Useful for testing audience validation scenarios.
+func SignedJWTConfigWithAudience(jwksURL, audience string) *ports.Config {
+	config := SignedJWTConfig(jwksURL)
+	config.Server.EndUser.Authentication.JWT.ExpectedAudience = audience
+	return config
+}
+
+// SignedJWTConfigWithIssuer returns a signed JWT config with a custom expected issuer.
+// Useful for testing issuer validation scenarios.
+func SignedJWTConfigWithIssuer(jwksURL, issuer string) *ports.Config {
+	config := SignedJWTConfig(jwksURL)
+	config.Server.EndUser.Authentication.JWT.ExpectedIssuer = issuer
+	return config
+}

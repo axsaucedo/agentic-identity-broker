@@ -1441,6 +1441,17 @@ components:
 
             '
           example: https://cdn.example.com/users/jane.jpg
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: 'Optional email address extracted from JWT claims via CEL expression.
+
+            Only present when JWT pre-authentication is configured with an email_expression
+            and the JWT contains a matching claim. Null/absent when not available.
+
+            '
+          example: jane.doe@example.com
     GetUserInfoResponse:
       type: object
       required:

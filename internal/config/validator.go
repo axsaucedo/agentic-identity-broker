@@ -7,7 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
+	domconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -24,8 +25,8 @@ func Validate(cfg *ports.Config) error {
 		return formatValidationError("log.format", string(cfg.Log.Format), "text or json", err)
 	}
 
-	// Validate server configuration
-	if err := validateServerConfig(&cfg.Server); err != nil {
+	// Validate server configuration (pass security config for HTTPS validation)
+	if err := validateServerConfig(&cfg.Server, &cfg.Security); err != nil {
 		return err
 	}
 
@@ -54,14 +55,14 @@ func Validate(cfg *ports.Config) error {
 
 // validateServerConfig validates the server configuration for all instances.
 // Ensures required authentication settings are properly configured.
-func validateServerConfig(sc *ports.ServerConfig) error {
+func validateServerConfig(sc *ports.ServerConfig, security *ports.SecurityConfig) error {
 	// Validate EndUser server
-	if err := validateServerInstance(&sc.EndUser, "server.enduser"); err != nil {
+	if err := validateServerInstance(&sc.EndUser, "server.enduser", security); err != nil {
 		return err
 	}
 
 	// Validate Admin server
-	if err := validateServerInstance(&sc.Admin, "server.admin"); err != nil {
+	if err := validateServerInstance(&sc.Admin, "server.admin", security); err != nil {
 		return err
 	}
 
@@ -69,7 +70,7 @@ func validateServerConfig(sc *ports.ServerConfig) error {
 }
 
 // validateServerInstanceAuth validates authentication configuration for a server instance.
-func validateServerInstanceAuth(sic *ports.ServerInstanceConfig, prefix string) error {
+func validateServerInstanceAuth(sic *ports.ServerInstanceConfig, prefix string, security *ports.SecurityConfig) error {
 	// Validate preauth principal header name
 	if sic.Authentication.Preauth.PrincipalHeaderName == "" {
 		return formatValidationError(
@@ -80,11 +81,18 @@ func validateServerInstanceAuth(sic *ports.ServerInstanceConfig, prefix string) 
 		)
 	}
 
+	// Validate JWT configuration if present
+	if sic.Authentication.JWT != nil {
+		if err := validateJWTConfig(sic.Authentication.JWT, prefix+".authentication.jwt", security); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 // validateServerInstanceConfig validates a server instance configuration.
-func validateServerInstance(sic *ports.ServerInstanceConfig, prefix string) error {
+func validateServerInstance(sic *ports.ServerInstanceConfig, prefix string, security *ports.SecurityConfig) error {
 	// Validate port
 	if sic.Port < 1 || sic.Port > 65535 {
 		return formatValidationError(
@@ -128,7 +136,7 @@ func validateServerInstance(sic *ports.ServerInstanceConfig, prefix string) erro
 	}
 
 	// Validate authentication
-	if err := validateServerInstanceAuth(sic, prefix); err != nil {
+	if err := validateServerInstanceAuth(sic, prefix, security); err != nil {
 		return err
 	}
 
@@ -194,14 +202,14 @@ func isValidPostgresURL(s string) bool {
 // validateLogLevel validates the log level value.
 // Fast, zero-allocation validation using domain type.
 func validateLogLevel(level ports.LogLevel) error {
-	domainLevel := config.LogLevel(level)
+	domainLevel := domconfig.LogLevel(level)
 	return domainLevel.Validate()
 }
 
 // validateLogFormat validates the log format value.
 // Fast, zero-allocation validation using domain type.
 func validateLogFormat(format ports.LogFormat) error {
-	domainFormat := config.LogFormat(format)
+	domainFormat := domconfig.LogFormat(format)
 	return domainFormat.Validate()
 }
 
@@ -297,7 +305,7 @@ func validateOAuth2AuthServerConfig(cfg *ports.OAuth2AuthServerConfig) error {
 
 // formatValidationError converts validation errors to ConfigError with context.
 func formatValidationError(field string, value string, expected string, err error) error {
-	return &config.ConfigError{
+	return &domconfig.ConfigError{
 		Field:    field,
 		Value:    value,
 		Expected: expected,
@@ -417,6 +425,102 @@ func validateMemoryConfig(cfg *ports.MemoryConfig) error {
 			fmt.Sprintf("%d bytes", len(keyBytes)),
 			"exactly 32 bytes when decoded (AES-256)",
 			nil,
+		)
+	}
+
+	return nil
+}
+
+// validateJWTConfig validates JWT pre-authentication configuration.
+// Applies defaults for HeaderName, Verification, and PrincipalExpression when not set.
+// Enforces mutual exclusivity between verification: none and jwks_uri.
+// Enforces HTTPS for JWKS URI per SR-004.
+func validateJWTConfig(jwt *ports.JWTConfig, prefix string, security *ports.SecurityConfig) error {
+	// Apply defaults for fields that have default values
+	if jwt.HeaderName == "" {
+		jwt.HeaderName = "Authorization"
+	}
+	if jwt.Verification == "" {
+		jwt.Verification = "jwks"
+	}
+	if jwt.ClaimExtraction.PrincipalExpression == "" {
+		jwt.ClaimExtraction.PrincipalExpression = "claims.sub"
+	}
+
+	// Validate verification mode
+	if jwt.Verification != "jwks" && jwt.Verification != "none" {
+		return formatValidationError(
+			prefix+".verification",
+			jwt.Verification,
+			"'jwks' or 'none'",
+			nil,
+		)
+	}
+
+	// Mutual exclusivity: verification: none + jwks_uri → startup error (FR-003a)
+	if jwt.Verification == "none" && jwt.JWKSURI != "" {
+		return formatValidationError(
+			prefix,
+			"verification: none with jwks_uri: "+jwt.JWKSURI,
+			"verification 'none' and jwks_uri are mutually exclusive",
+			nil,
+		)
+	}
+
+	// Required jwks_uri when verification is jwks
+	if jwt.Verification == "jwks" && jwt.JWKSURI == "" {
+		return formatValidationError(
+			prefix+".jwks_uri",
+			"",
+			"non-empty JWKS URI (required when verification is 'jwks')",
+			nil,
+		)
+	}
+
+	// HTTPS enforcement for JWKS URI (SR-004)
+	if jwt.JWKSURI != "" {
+		u, err := url.Parse(jwt.JWKSURI)
+		if err != nil {
+			return formatValidationError(
+				prefix+".jwks_uri",
+				jwt.JWKSURI,
+				"valid URL",
+				err,
+			)
+		}
+		skipHTTPS := security != nil && security.SkipThirdpartyHTTPSValidation
+		if u.Scheme == "http" && !skipHTTPS {
+			return formatValidationError(
+				prefix+".jwks_uri",
+				jwt.JWKSURI,
+				"HTTPS URL (set security.skip_thirdparty_https_validation to allow HTTP in development)",
+				nil,
+			)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return formatValidationError(
+				prefix+".jwks_uri",
+				jwt.JWKSURI,
+				"HTTP or HTTPS URL",
+				nil,
+			)
+		}
+	}
+
+	// Validate CEL claim extraction expressions by attempting compilation.
+	// This catches syntax/type errors at startup rather than at request time.
+	_, err := jwtauth.NewCELEvaluator(jwtauth.CELEvaluatorConfig{
+		PrincipalExpression:   jwt.ClaimExtraction.PrincipalExpression,
+		DisplayNameExpression: jwt.ClaimExtraction.DisplayNameExpression,
+		EmailExpression:       jwt.ClaimExtraction.EmailExpression,
+		PictureURLExpression:  jwt.ClaimExtraction.PictureURLExpression,
+	}, nil)
+	if err != nil {
+		return formatValidationError(
+			prefix+".claim_extraction",
+			err.Error(),
+			"valid CEL expressions for principal_expression, display_name_expression, email_expression, picture_url_expression",
+			err,
 		)
 	}
 

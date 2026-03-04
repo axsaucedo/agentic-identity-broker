@@ -9,6 +9,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -16,6 +17,11 @@ import (
 type EnduserRouteConfig struct {
 	// AuthenticationConfig for principal extraction
 	Authentication ports.AuthenticationConfig
+
+	// JWTAuthenticator is an optional JWT authenticator for JWT-based pre-authentication.
+	// When nil, only plain-header pre-auth is used (backward-compatible).
+	// When set, the middleware will attempt JWT authentication before falling back to plain header.
+	JWTAuthenticator jwtauth.JWTAuthenticator
 
 	// Logger for middleware
 	Logger *slog.Logger
@@ -57,7 +63,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 		// Create subrouter for authenticated routes
 		r.Route("/", func(authRouter chi.Router) {
 			// Apply authentication middleware FIRST, before registering any routes
-			authRouter.Use(middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.Logger))
+			authRouter.Use(middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.Logger, cfg.JWTAuthenticator))
 
 			// Register user info endpoint (GET /api/me)
 			authRouter.Get("/me", http.HandlerFunc(h.UserInfo.GetUserInfo).ServeHTTP)
@@ -90,7 +96,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 		// GET /oauth2/authorize
 		r.With(
 			middleware.OAuth2AuditMiddleware(cfg.Logger),
-			middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.Logger),
+			middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.Logger, cfg.JWTAuthenticator),
 		).Get("/oauth2/authorize", h.OAuth2Authorize.ServeHTTP)
 
 		// T034: Token endpoint (no authentication required, proxies to upstream)

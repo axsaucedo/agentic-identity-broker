@@ -102,7 +102,7 @@ function Header() {
                     {userInfo.displayName}
                   </p>
                   <p className="text-xs text-slate-600 truncate">
-                    {userInfo.principal}
+                    {userInfo.email || userInfo.principal}
                   </p>
                 </div>
               </div>

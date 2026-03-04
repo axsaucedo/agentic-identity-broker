@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -148,4 +150,120 @@ func GenerateJWKSFromPublicKey(publicKeyPEM string) (map[string]interface{}, err
 	}
 
 	return jwksSet, nil
+}
+
+// CreateUnsignedJWT creates an unsigned JWT (alg: "none") with the provided claims.
+// Used for testing unsigned JWT pre-auth in service mesh environments.
+// Returns the JWT string in the format: base64(header).base64(payload).
+func CreateUnsignedJWT(claims map[string]interface{}) (string, error) {
+	encoding := base64.RawURLEncoding
+
+	// Header: {"alg":"none","typ":"JWT"}
+	header := map[string]string{"alg": "none", "typ": "JWT"}
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal header: %w", err)
+	}
+	headerEncoded := encoding.EncodeToString(headerJSON)
+
+	// Payload: claims
+	payloadJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
+	}
+	payloadEncoded := encoding.EncodeToString(payloadJSON)
+
+	// Unsigned JWT: header.payload. (empty signature)
+	return headerEncoded + "." + payloadEncoded + ".", nil
+}
+
+// JWTClaimsBuilder provides a fluent interface for building JWT claims maps.
+// It generates standard claims and allows customization for various test scenarios.
+type JWTClaimsBuilder struct {
+	claims map[string]interface{}
+}
+
+// NewJWTClaims creates a JWTClaimsBuilder with standard claims for testing.
+// Default claims: sub, iss, aud, exp (1 hour from now), iat (now).
+func NewJWTClaims() *JWTClaimsBuilder {
+	now := time.Now()
+	return &JWTClaimsBuilder{
+		claims: map[string]interface{}{
+			"sub": "user@example.com",
+			"iss": "https://auth.example.com",
+			"aud": "agentic-identity-broker",
+			"exp": now.Add(1 * time.Hour).Unix(),
+			"iat": now.Unix(),
+		},
+	}
+}
+
+// WithSubject sets the sub claim.
+func (b *JWTClaimsBuilder) WithSubject(sub string) *JWTClaimsBuilder {
+	b.claims["sub"] = sub
+	return b
+}
+
+// WithIssuer sets the iss claim.
+func (b *JWTClaimsBuilder) WithIssuer(iss string) *JWTClaimsBuilder {
+	b.claims["iss"] = iss
+	return b
+}
+
+// WithAudience sets the aud claim.
+func (b *JWTClaimsBuilder) WithAudience(aud string) *JWTClaimsBuilder {
+	b.claims["aud"] = aud
+	return b
+}
+
+// WithExpiry sets the exp claim to a specific time.
+func (b *JWTClaimsBuilder) WithExpiry(exp time.Time) *JWTClaimsBuilder {
+	b.claims["exp"] = exp.Unix()
+	return b
+}
+
+// WithExpired sets the exp claim to 1 hour in the past (expired token).
+func (b *JWTClaimsBuilder) WithExpired() *JWTClaimsBuilder {
+	b.claims["exp"] = time.Now().Add(-1 * time.Hour).Unix()
+	return b
+}
+
+// WithoutExpiry removes the exp claim (for testing missing expiry rejection).
+func (b *JWTClaimsBuilder) WithoutExpiry() *JWTClaimsBuilder {
+	delete(b.claims, "exp")
+	return b
+}
+
+// WithName sets the name claim (display name).
+func (b *JWTClaimsBuilder) WithName(name string) *JWTClaimsBuilder {
+	b.claims["name"] = name
+	return b
+}
+
+// WithEmail sets the email claim.
+func (b *JWTClaimsBuilder) WithEmail(email string) *JWTClaimsBuilder {
+	b.claims["email"] = email
+	return b
+}
+
+// WithPicture sets the picture claim (profile picture URL).
+func (b *JWTClaimsBuilder) WithPicture(pictureURL string) *JWTClaimsBuilder {
+	b.claims["picture"] = pictureURL
+	return b
+}
+
+// WithClaim sets an arbitrary claim.
+func (b *JWTClaimsBuilder) WithClaim(key string, value interface{}) *JWTClaimsBuilder {
+	b.claims[key] = value
+	return b
+}
+
+// Build returns the claims map.
+func (b *JWTClaimsBuilder) Build() map[string]interface{} {
+	// Return a copy to prevent mutation
+	result := make(map[string]interface{}, len(b.claims))
+	for k, v := range b.claims {
+		result[k] = v
+	}
+	return result
 }

@@ -32,6 +32,9 @@ type GetUserInfoResponse struct {
 
 // GetUserInfo handles GET /api/me
 // Returns information about the currently authenticated user.
+// When a PrincipalProfile is available (from JWT pre-auth), returns enriched user info
+// with display name, email, and picture URL. Falls back to principal-only info for
+// plain header pre-auth (backward-compatible).
 //
 // Response codes:
 // - 200 OK: Returns user info
@@ -39,7 +42,29 @@ type GetUserInfoResponse struct {
 func (h *UserInfoHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Extract principal from request context
+	// Try enriched profile first (set by JWT pre-auth middleware)
+	if profile, ok := principal.ProfileFromContext(ctx); ok && profile.Principal() != "" {
+		userInfo := consent.UserInfo{
+			Principal:   profile.Principal(),
+			DisplayName: profile.DisplayName(),
+			Email:       profile.Email(),
+			PictureURL:  profile.PictureURL(),
+		}
+
+		h.logger.Info("user info retrieved from profile",
+			"principal", profile.Principal(),
+			"has_email", profile.Email() != nil,
+			"has_picture_url", profile.PictureURL() != nil)
+
+		response := GetUserInfoResponse{
+			Data: userInfo,
+		}
+
+		h.writeJSON(w, http.StatusOK, response)
+		return
+	}
+
+	// Fall back to plain principal (backward-compatible)
 	principalValue, ok := principal.FromContext(ctx)
 	if !ok || principalValue == "" {
 		h.logger.Warn("principal not found in context")
@@ -47,13 +72,10 @@ func (h *UserInfoHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Construct UserInfo from principal
-	// For now, we use the principal as the display name
-	// In a future implementation, this could be enriched with user profile data
 	userInfo := consent.UserInfo{
 		Principal:   principalValue,
-		DisplayName: principalValue, // Use principal as display name for now
-		PictureURL:  nil,            // No picture URL available yet
+		DisplayName: principalValue,
+		PictureURL:  nil,
 	}
 
 	h.logger.Info("user info retrieved",

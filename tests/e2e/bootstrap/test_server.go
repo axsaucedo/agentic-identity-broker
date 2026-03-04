@@ -199,8 +199,9 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		app.EnduserHandlers.SPA = nil
 
 		routing.SetupEnduserRoutes(router, app.EnduserHandlers, routing.EnduserRouteConfig{
-			Authentication: app.Config.Server.EndUser.Authentication,
-			Logger:         logger,
+			Authentication:   app.Config.Server.EndUser.Authentication,
+			JWTAuthenticator: app.JWTAuthenticator,
+			Logger:           logger,
 		})
 
 		// Mount SPA handler at root (/*) as catch-all for History API fallback
@@ -678,8 +679,9 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 	// Step 6: Register production routes on the existing mux
 	// This adds all the actual endpoints while keeping the same httptest server
 	routing.SetupEnduserRoutes(router, appInstance.EnduserHandlers, routing.EnduserRouteConfig{
-		Authentication: appInstance.Config.Server.EndUser.Authentication,
-		Logger:         b.logger,
+		Authentication:   appInstance.Config.Server.EndUser.Authentication,
+		JWTAuthenticator: appInstance.JWTAuthenticator,
+		Logger:           b.logger,
 	})
 
 	b.logger.Info("Test server created and configured", "url", testServer.URL)

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -504,6 +506,261 @@ func TestWriteErrorJSON(t *testing.T) {
 			assert.Equal(t, tt.errorMessage, resp.Error)
 		})
 	}
+}
+
+// --- JWT Backward Compatibility Tests (Phase 4: US5) ---
+
+// mockJWTAuthenticator implements domjwtauth.JWTAuthenticator for testing.
+type mockJWTAuthenticator struct {
+	result *domjwtauth.AuthResult
+	err    error
+}
+
+func (m *mockJWTAuthenticator) Authenticate(_ context.Context, _ string) (*domjwtauth.AuthResult, error) {
+	return m.result, m.err
+}
+
+// TestRequirePrincipalMiddleware_PlainHeaderOnlyConfig tests that plain-header-only
+// config works unchanged when no JWT block is configured (US5 backward compatibility).
+func TestRequirePrincipalMiddleware_PlainHeaderOnlyConfig(t *testing.T) {
+	logger := createTestLogger()
+	// No JWT config — plain-header only
+	authConfig := testAuthConfig("X-Remote-User")
+
+	var capturedPrincipal string
+	handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPrincipal, _ = principal.FromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("X-Remote-User", "alice@example.com")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "alice@example.com", capturedPrincipal)
+}
+
+// TestRequirePrincipalMiddleware_JWTPrefersOverPlainHeader tests that JWT is preferred
+// over plain header when both are configured and JWT header is present.
+func TestRequirePrincipalMiddleware_JWTPrefersOverPlainHeader(t *testing.T) {
+	logger := createTestLogger()
+	authConfig := ports.AuthenticationConfig{
+		Preauth: ports.PreauthConfig{
+			PrincipalHeaderName: "X-Remote-User",
+		},
+		JWT: &ports.JWTConfig{
+			HeaderName: "Authorization",
+		},
+	}
+
+	mockAuth := &mockJWTAuthenticator{
+		result: &domjwtauth.AuthResult{
+			Principal: "jwt-user@example.com",
+			Claims:    map[string]interface{}{"sub": "jwt-user@example.com"},
+		},
+	}
+
+	var capturedPrincipal string
+	handler := RequirePrincipalMiddleware(authConfig, logger, mockAuth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPrincipal, _ = principal.FromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer some.jwt.token")
+	req.Header.Set("X-Remote-User", "header-user@example.com")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "jwt-user@example.com", capturedPrincipal, "JWT should be preferred over plain header")
+}
+
+// TestRequirePrincipalMiddleware_FallbackToPlainHeaderWhenJWTAbsent tests that middleware
+// falls back to plain header when JWT header is absent but plain header is present.
+func TestRequirePrincipalMiddleware_FallbackToPlainHeaderWhenJWTAbsent(t *testing.T) {
+	logger := createTestLogger()
+	authConfig := ports.AuthenticationConfig{
+		Preauth: ports.PreauthConfig{
+			PrincipalHeaderName: "X-Remote-User",
+		},
+		JWT: &ports.JWTConfig{
+			HeaderName: "Authorization",
+		},
+	}
+
+	mockAuth := &mockJWTAuthenticator{
+		result: &domjwtauth.AuthResult{
+			Principal: "jwt-user@example.com",
+			Claims:    map[string]interface{}{"sub": "jwt-user@example.com"},
+		},
+	}
+
+	var capturedPrincipal string
+	handler := RequirePrincipalMiddleware(authConfig, logger, mockAuth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPrincipal, _ = principal.FromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	// Only set plain header, no Authorization/JWT header
+	req.Header.Set("X-Remote-User", "header-user@example.com")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "header-user@example.com", capturedPrincipal, "should fall back to plain header when JWT absent")
+}
+
+// TestRequirePrincipalMiddleware_RejectInvalidJWTNoFallback tests fail-closed behavior:
+// when JWT header is present but invalid, reject with 401 even when plain header is present (FR-013).
+func TestRequirePrincipalMiddleware_RejectInvalidJWTNoFallback(t *testing.T) {
+	logger := createTestLogger()
+	authConfig := ports.AuthenticationConfig{
+		Preauth: ports.PreauthConfig{
+			PrincipalHeaderName: "X-Remote-User",
+		},
+		JWT: &ports.JWTConfig{
+			HeaderName: "Authorization",
+		},
+	}
+
+	mockAuth := &mockJWTAuthenticator{
+		err: domjwtauth.ErrInvalidSignature,
+	}
+
+	handlerCalled := false
+	handler := RequirePrincipalMiddleware(authConfig, logger, mockAuth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer invalid.jwt.token")
+	req.Header.Set("X-Remote-User", "fallback-user@example.com")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code, "should reject with 401 when JWT is invalid")
+	assert.False(t, handlerCalled, "handler should not be called when JWT is invalid")
+
+	var errResp ErrorResponse
+	err := json.Unmarshal(rr.Body.Bytes(), &errResp)
+	require.NoError(t, err)
+	assert.Contains(t, errResp.Error, "signature")
+}
+
+// TestRequirePrincipalMiddleware_NilJWTAuthenticator tests that builder creates no JWT
+// authenticator when JWT config is nil — backward compatible behavior.
+func TestRequirePrincipalMiddleware_NilJWTAuthenticator(t *testing.T) {
+	logger := createTestLogger()
+	// JWT config is present but no authenticator was injected (nil)
+	authConfig := ports.AuthenticationConfig{
+		Preauth: ports.PreauthConfig{
+			PrincipalHeaderName: "X-Remote-User",
+		},
+		JWT: &ports.JWTConfig{
+			HeaderName: "Authorization",
+		},
+	}
+
+	var capturedPrincipal string
+	// Pass nil authenticator explicitly
+	handler := RequirePrincipalMiddleware(authConfig, logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPrincipal, _ = principal.FromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("X-Remote-User", "alice@example.com")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "alice@example.com", capturedPrincipal, "should work with nil authenticator")
+}
+
+// TestRequirePrincipalMiddleware_JWTSetsProfile tests that JWT auth sets PrincipalProfile in context.
+func TestRequirePrincipalMiddleware_JWTSetsProfile(t *testing.T) {
+	logger := createTestLogger()
+	email := "alice@corp.com"
+	pictureURL := "https://cdn.example.com/alice.jpg"
+	displayName := "Alice Smith"
+
+	authConfig := ports.AuthenticationConfig{
+		Preauth: ports.PreauthConfig{
+			PrincipalHeaderName: "X-Remote-User",
+		},
+		JWT: &ports.JWTConfig{
+			HeaderName: "Authorization",
+		},
+	}
+
+	mockAuth := &mockJWTAuthenticator{
+		result: &domjwtauth.AuthResult{
+			Principal:   "alice@example.com",
+			DisplayName: &displayName,
+			Email:       &email,
+			PictureURL:  &pictureURL,
+			Claims:      map[string]interface{}{"sub": "alice@example.com"},
+		},
+	}
+
+	var capturedProfile principal.PrincipalProfile
+	var profileOk bool
+	handler := RequirePrincipalMiddleware(authConfig, logger, mockAuth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedProfile, profileOk = principal.ProfileFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer some.jwt.token")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, profileOk, "profile should be in context")
+	assert.Equal(t, "alice@example.com", capturedProfile.Principal())
+	assert.Equal(t, "Alice Smith", capturedProfile.DisplayName())
+	assert.NotNil(t, capturedProfile.Email())
+	assert.Equal(t, "alice@corp.com", *capturedProfile.Email())
+	assert.NotNil(t, capturedProfile.PictureURL())
+	assert.Equal(t, "https://cdn.example.com/alice.jpg", *capturedProfile.PictureURL())
+}
+
+// TestRequirePrincipalMiddleware_PlainHeaderSetsBasicProfile tests that plain header mode
+// sets a basic PrincipalProfile with display name = principal.
+func TestRequirePrincipalMiddleware_PlainHeaderSetsBasicProfile(t *testing.T) {
+	logger := createTestLogger()
+	authConfig := testAuthConfig("X-Remote-User")
+
+	var capturedProfile principal.PrincipalProfile
+	var profileOk bool
+	handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedProfile, profileOk = principal.ProfileFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("X-Remote-User", "alice@example.com")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, profileOk, "profile should be in context for plain header")
+	assert.Equal(t, "alice@example.com", capturedProfile.Principal())
+	assert.Equal(t, "alice@example.com", capturedProfile.DisplayName(), "display name should default to principal")
+	assert.Nil(t, capturedProfile.Email(), "email should be nil for plain header")
+	assert.Nil(t, capturedProfile.PictureURL(), "picture URL should be nil for plain header")
 }
 
 // BenchmarkRequirePrincipalMiddleware benchmarks the performance of RequirePrincipalMiddleware.

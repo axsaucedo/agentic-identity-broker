@@ -132,6 +132,37 @@ export IDENTITY_BROKER_JWE_SIGNING_KEY="$(openssl rand -base64 32)"
 **Security Note:** The JWE signing key MUST be kept secret. It protects OAuth2 state
 tokens during the authorization flow. Compromise allows state token forgery and CSRF attacks.
 
+### `jwt-preauth.yaml`
+
+JWT Pre-Authentication configuration. Demonstrates:
+- Signed JWT validation with JWKS endpoint (production recommended)
+- Unsigned JWT support for service mesh environments (`verification: none`)
+- CEL expressions for principal and profile attribute extraction (display name, email, picture URL)
+- Backward-compatible configuration with plain-header fallback
+- Mutual exclusivity enforcement (`verification: none` + `jwks_uri` → startup error)
+
+**Usage:**
+```bash
+# Include jwt section in your main configuration file under server.enduser.authentication
+# See jwt-preauth.yaml for complete examples of signed, unsigned, and fallback configurations
+server:
+  enduser:
+    authentication:
+      jwt:
+        jwks_uri: https://auth.example.com/.well-known/jwks.json
+        claim_extraction:
+          principal_expression: "claims.sub"
+          email_expression: "claims.email"
+```
+
+**Key Features:**
+- Cryptographic JWT signature verification via JWKS (default mode)
+- Optional unsigned JWT support for trusted environments (explicit opt-in)
+- CEL-based claim extraction for principal, display name, email, and picture URL
+- Enriched `/api/me` response with profile attributes
+- Fail-closed security: invalid JWTs always rejected, no silent fallback
+- Bearer token auto-detection for Authorization header
+
 ### `token-exchange.yaml`
 
 RFC 8693 OAuth 2.0 Token Exchange configuration. Demonstrates:

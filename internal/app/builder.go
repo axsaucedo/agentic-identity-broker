@@ -17,8 +17,10 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwks"
+	jwtauthadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -42,6 +44,9 @@ type App struct {
 	OAuth2SessionService *oauth2session.OAuth2SessionService
 	OAuth2Service        ports.OAuth2Service
 	TokenExchangeService *tokenexchange.TokenExchangeService
+
+	// JWT pre-authentication (optional, nil when not configured)
+	JWTAuthenticator domjwtauth.JWTAuthenticator
 
 	// Handler groups for routing
 	AdminHandlers   *AdminHandlers
@@ -303,6 +308,48 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		app.TokenExchangeService = tokenExchangeService
+	}
+
+	// Create JWT pre-authentication adapter if configured
+	// Per Constitution Principle VII: Configuration-Driven Design — only create when JWT block present
+	if b.config.Server.EndUser.Authentication.JWT != nil {
+		jwtCfg := b.config.Server.EndUser.Authentication.JWT
+
+		// Validate JWT config mutual exclusivity (defense-in-depth, also checked by config validator)
+		if jwtCfg.Verification == "none" && jwtCfg.JWKSURI != "" {
+			return nil, fmt.Errorf("authentication.jwt: verification 'none' and jwks_uri are mutually exclusive")
+		}
+
+		// Create CEL evaluator for JWT claim extraction (domain layer)
+		celConfig := domjwtauth.CELEvaluatorConfig{
+			PrincipalExpression:   jwtCfg.ClaimExtraction.PrincipalExpression,
+			DisplayNameExpression: jwtCfg.ClaimExtraction.DisplayNameExpression,
+			EmailExpression:       jwtCfg.ClaimExtraction.EmailExpression,
+			PictureURLExpression:  jwtCfg.ClaimExtraction.PictureURLExpression,
+		}
+		celEval, err := domjwtauth.NewCELEvaluator(celConfig, b.logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CEL evaluator for JWT pre-auth: %w", err)
+		}
+
+		// Create JWT authenticator adapter (uses lestrrat-go/jwx v3)
+		jwtAuthenticator, err := jwtauthadapter.NewJWXAuthenticator(jwtauthadapter.JWXAuthenticatorConfig{
+			JWTConfig:    jwtCfg,
+			CELEvaluator: celEval,
+			HTTPClient:   &http.Client{Timeout: 10 * time.Second},
+			Logger:       b.logger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWT authenticator: %w", err)
+		}
+
+		app.JWTAuthenticator = jwtAuthenticator
+		b.logger.Info("JWT pre-authentication enabled",
+			"header_name", jwtCfg.HeaderName,
+			"verification", jwtCfg.Verification,
+			"has_audience", jwtCfg.ExpectedAudience != "",
+			"has_issuer", jwtCfg.ExpectedIssuer != "",
+		)
 	}
 
 	// Phase 3: Create handler instances

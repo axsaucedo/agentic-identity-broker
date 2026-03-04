@@ -9,6 +9,11 @@ type UserInfo struct {
 	// DisplayName is a human-readable name for the user
 	DisplayName string `json:"displayName"`
 
+	// Email is an optional email address extracted from JWT claims.
+	// Available when JWT pre-authentication is configured with an email CEL expression.
+	// Nil when using plain header pre-auth or when the JWT does not contain an email claim.
+	Email *string `json:"email,omitempty"`
+
 	// PictureURL is an optional URL to the user's profile picture/avatar
 	PictureURL *string `json:"pictureUrl,omitempty"`
 }

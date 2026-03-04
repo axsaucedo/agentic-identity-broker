@@ -19,6 +19,9 @@ func TestGetUserInfo_Success(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
+	// Set profile to test the enriched path (handler reads profile first, then falls back to principal)
+	profile := principal.NewProfile(principalValue)
+	ctx = principal.WithProfile(ctx, profile)
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
@@ -32,7 +35,8 @@ func TestGetUserInfo_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, principalValue, resp.Data.Principal)
-	assert.Equal(t, principalValue, resp.Data.DisplayName) // For now, display name = principal
+	assert.Equal(t, principalValue, resp.Data.DisplayName) // Display name defaults to principal
+	assert.Nil(t, resp.Data.Email)
 	assert.Nil(t, resp.Data.PictureURL)
 }
 
@@ -130,7 +134,7 @@ func TestGetUserInfo_ContentType(t *testing.T) {
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 }
 
-// TestGetUserInfo_ResponseStructure tests the response structure.
+// TestGetUserInfo_ResponseStructure tests the response envelope structure with enriched profile.
 func TestGetUserInfo_ResponseStructure(t *testing.T) {
 	principalValue := "test@example.com"
 
@@ -138,6 +142,8 @@ func TestGetUserInfo_ResponseStructure(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
+	profile := principal.NewProfile(principalValue)
+	ctx = principal.WithProfile(ctx, profile)
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
@@ -154,6 +160,162 @@ func TestGetUserInfo_ResponseStructure(t *testing.T) {
 	assert.NotEmpty(t, resp.Data.Principal)
 	assert.NotEmpty(t, resp.Data.DisplayName)
 
-	// Optional field should be nil for now
+	// Optional fields should be nil when not enriched
+	assert.Nil(t, resp.Data.Email)
+	assert.Nil(t, resp.Data.PictureURL)
+}
+
+// --- Enriched Profile Tests (Phase 6: US3) ---
+
+// TestGetUserInfo_EnrichedProfile tests that enriched profile from JWT is returned.
+func TestGetUserInfo_EnrichedProfile(t *testing.T) {
+	handler := NewUserInfoHandler(nil)
+
+	email := "alice@corp.com"
+	pictureURL := "https://cdn.example.com/alice.jpg"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
+	profile := principal.NewProfile("alice@example.com").
+		WithDisplayName("Alice Smith").
+		WithEmail(&email).
+		WithPictureURL(&pictureURL)
+	ctx = principal.WithProfile(ctx, profile)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.GetUserInfo(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp GetUserInfoResponse
+	err := json.NewDecoder(rec.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	assert.Equal(t, "alice@example.com", resp.Data.Principal)
+	assert.Equal(t, "Alice Smith", resp.Data.DisplayName)
+	assert.NotNil(t, resp.Data.Email)
+	assert.Equal(t, "alice@corp.com", *resp.Data.Email)
+	assert.NotNil(t, resp.Data.PictureURL)
+	assert.Equal(t, "https://cdn.example.com/alice.jpg", *resp.Data.PictureURL)
+}
+
+// TestGetUserInfo_PartialProfile tests enriched profile with only some fields.
+func TestGetUserInfo_PartialProfile(t *testing.T) {
+	handler := NewUserInfoHandler(nil)
+
+	email := "alice@corp.com"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
+	profile := principal.NewProfile("alice@example.com").
+		WithDisplayName("Alice Smith").
+		WithEmail(&email)
+	// No PictureURL
+	ctx = principal.WithProfile(ctx, profile)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.GetUserInfo(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp GetUserInfoResponse
+	err := json.NewDecoder(rec.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	assert.Equal(t, "alice@example.com", resp.Data.Principal)
+	assert.Equal(t, "Alice Smith", resp.Data.DisplayName)
+	assert.NotNil(t, resp.Data.Email)
+	assert.Equal(t, "alice@corp.com", *resp.Data.Email)
+	assert.Nil(t, resp.Data.PictureURL, "pictureUrl should be nil when not extracted")
+}
+
+// TestGetUserInfo_PlainHeaderProfile tests that plain header mode returns principal-only profile.
+func TestGetUserInfo_PlainHeaderProfile(t *testing.T) {
+	handler := NewUserInfoHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
+	// Plain header: profile has principal as display name, no email/picture
+	profile := principal.NewProfile("user@example.com")
+	ctx = principal.WithProfile(ctx, profile)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.GetUserInfo(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp GetUserInfoResponse
+	err := json.NewDecoder(rec.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	assert.Equal(t, "user@example.com", resp.Data.Principal)
+	assert.Equal(t, "user@example.com", resp.Data.DisplayName, "display name should equal principal for plain header")
+	assert.Nil(t, resp.Data.Email, "email should be nil for plain header")
+	assert.Nil(t, resp.Data.PictureURL, "pictureUrl should be nil for plain header")
+}
+
+// TestGetUserInfo_EmailOmittedInJSON tests that email field is omitted from JSON when nil.
+func TestGetUserInfo_EmailOmittedInJSON(t *testing.T) {
+	handler := NewUserInfoHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
+	profile := principal.NewProfile("user@example.com")
+	ctx = principal.WithProfile(ctx, profile)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.GetUserInfo(rec, req)
+
+	// Verify email is not present in JSON when nil (omitempty)
+	body := rec.Body.String()
+	assert.NotContains(t, body, `"email"`, "email field should be omitted when nil")
+}
+
+// TestGetUserInfo_EmailPresentInJSON tests that email field is present in JSON when set.
+func TestGetUserInfo_EmailPresentInJSON(t *testing.T) {
+	handler := NewUserInfoHandler(nil)
+
+	email := "alice@corp.com"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
+	profile := principal.NewProfile("alice@example.com").WithEmail(&email)
+	ctx = principal.WithProfile(ctx, profile)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.GetUserInfo(rec, req)
+
+	body := rec.Body.String()
+	assert.Contains(t, body, `"email"`, "email field should be present when set")
+	assert.Contains(t, body, "alice@corp.com")
+}
+
+// TestGetUserInfo_BackwardCompatWithPrincipalOnly tests backward compat when only
+// the principal string is in context (no profile).
+func TestGetUserInfo_BackwardCompatWithPrincipalOnly(t *testing.T) {
+	handler := NewUserInfoHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	// Only set principal, no profile (simulates old middleware)
+	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.GetUserInfo(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp GetUserInfoResponse
+	err := json.NewDecoder(rec.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	assert.Equal(t, "user@example.com", resp.Data.Principal)
+	assert.Equal(t, "user@example.com", resp.Data.DisplayName)
+	assert.Nil(t, resp.Data.Email)
 	assert.Nil(t, resp.Data.PictureURL)
 }

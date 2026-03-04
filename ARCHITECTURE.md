@@ -986,3 +986,15 @@ Define any project-specific terms or acronyms.)
 **TLS**: Transport Layer Security
 
 **RBAC**: Role-Based Access Control
+
+### JWT Pre-Authentication
+
+**PrincipalProfile**: Enriched user identity value object containing principal identifier, display name, email, and picture URL. Extracted from pre-authentication source (JWT or plain header). Request-scoped, immutable. Stored in request context via `principal.WithProfile()` alongside the existing string principal for backward compatibility. Located in `internal/domain/principal/profile.go`.
+
+**JWTAuthConfig**: Configuration value object defining JWT-based pre-authentication behavior: HTTP header name, verification mode (`jwks` or `none`), JWKS endpoint, audience/issuer constraints, and CEL claim extraction expressions. Validated at startup with mutual exclusivity rules (`verification: none` + `jwks_uri` → startup error). Located in `internal/ports/config.go` as `JWTConfig`.
+
+**JWTAuthenticator**: Port interface for JWT authentication in the pre-auth layer. Abstracts JWT parsing, signature verification (JWKS or none), temporal validation, and CEL-based claim extraction. Returns `AuthResult` containing extracted principal and optional profile attributes. Implemented by jwx adapter in `internal/adapters/jwtauth/`. Located in `internal/domain/jwtauth/authenticator.go`.
+
+**JWTVerificationMode**: String enum (`"jwks"` or `"none"`) controlling JWT signature verification behavior. `"jwks"` (default) requires JWKS URI and validates cryptographic signatures against published key sets. `"none"` accepts unsigned JWTs (alg: "none") for trusted upstream environments such as service meshes. Unsigned mode requires explicit opt-in and is mutually exclusive with `jwks_uri`.
+
+**JWTValidationFailed**: Domain event emitted when JWT pre-authentication fails. Contains failure reason (e.g., `invalid_signature`, `token_expired`, `audience_mismatch`), header name, and remote address. Logged as structured audit data for security monitoring per FR-020/SR-005. Not persisted — emitted as structured log entries.
