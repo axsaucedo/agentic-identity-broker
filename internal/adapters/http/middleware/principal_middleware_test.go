@@ -104,7 +104,7 @@ func TestRequirePrincipalMiddleware_ValidPrincipal(t *testing.T) {
 			authConfig := testAuthConfig(tt.headerName)
 
 			// Create a test handler that retrieves the principal from context
-			handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := RequirePrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				p, ok := principal.FromContext(r.Context())
 				assert.True(t, ok, "principal should be in context")
 				assert.Equal(t, tt.expectedPrincipal, p)
@@ -164,7 +164,7 @@ func TestRequirePrincipalMiddleware_MissingPrincipal(t *testing.T) {
 			logger := createTestLogger()
 			authConfig := testAuthConfig(tt.headerName)
 
-			handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := RequirePrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}))
 
@@ -217,7 +217,7 @@ func TestRequirePrincipalMiddleware_PrincipalTooLong(t *testing.T) {
 			logger := createTestLogger()
 			authConfig := testAuthConfig("X-Remote-User")
 
-			handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := RequirePrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}))
 
@@ -249,7 +249,7 @@ func TestRequirePrincipalMiddleware_HandlerNotCalled(t *testing.T) {
 	authConfig := testAuthConfig("X-Remote-User")
 
 	handlerCalled := false
-	handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequirePrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -304,7 +304,7 @@ func TestOptionalPrincipalMiddleware_ValidPrincipal(t *testing.T) {
 			var capturedPrincipal string
 			var capturedOk bool
 
-			handler := OptionalPrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := OptionalPrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				capturedPrincipal, capturedOk = principal.FromContext(r.Context())
 				w.WriteHeader(http.StatusOK)
 			}))
@@ -359,7 +359,7 @@ func TestOptionalPrincipalMiddleware_MissingPrincipal(t *testing.T) {
 			var capturedPrincipal string
 			var capturedOk bool
 
-			handler := OptionalPrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := OptionalPrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				handlerCalled = true
 				capturedPrincipal, capturedOk = principal.FromContext(r.Context())
 				w.WriteHeader(http.StatusOK)
@@ -391,7 +391,7 @@ func TestOptionalPrincipalMiddleware_PrincipalTooLong(t *testing.T) {
 	var capturedPrincipal string
 	var capturedOk bool
 
-	handler := OptionalPrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := OptionalPrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
 		capturedPrincipal, capturedOk = principal.FromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
@@ -450,7 +450,7 @@ func TestOptionalPrincipalMiddleware_NoRejection(t *testing.T) {
 			logger := createTestLogger()
 			authConfig := testAuthConfig("X-Remote-User")
 
-			handler := OptionalPrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := OptionalPrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			}))
 
@@ -528,7 +528,7 @@ func TestRequirePrincipalMiddleware_PlainHeaderOnlyConfig(t *testing.T) {
 	authConfig := testAuthConfig("X-Remote-User")
 
 	var capturedPrincipal string
-	handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequirePrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedPrincipal, _ = principal.FromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -564,7 +564,7 @@ func TestRequirePrincipalMiddleware_JWTPrefersOverPlainHeader(t *testing.T) {
 	}
 
 	var capturedPrincipal string
-	handler := RequirePrincipalMiddleware(authConfig, logger, mockAuth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequirePrincipalMiddleware(authConfig, mockAuth, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedPrincipal, _ = principal.FromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -580,9 +580,9 @@ func TestRequirePrincipalMiddleware_JWTPrefersOverPlainHeader(t *testing.T) {
 	assert.Equal(t, "jwt-user@example.com", capturedPrincipal, "JWT should be preferred over plain header")
 }
 
-// TestRequirePrincipalMiddleware_FallbackToPlainHeaderWhenJWTAbsent tests that middleware
-// falls back to plain header when JWT header is absent but plain header is present.
-func TestRequirePrincipalMiddleware_FallbackToPlainHeaderWhenJWTAbsent(t *testing.T) {
+// TestRequirePrincipalMiddleware_RejectsWhenJWTConfiguredAndJWTHeaderAbsent tests that middleware
+// rejects with 401 when JWT is configured but JWT header is absent (fail-closed, no fallback).
+func TestRequirePrincipalMiddleware_RejectsWhenJWTConfiguredAndJWTHeaderAbsent(t *testing.T) {
 	logger := createTestLogger()
 	authConfig := ports.AuthenticationConfig{
 		Preauth: ports.PreauthConfig{
@@ -601,7 +601,7 @@ func TestRequirePrincipalMiddleware_FallbackToPlainHeaderWhenJWTAbsent(t *testin
 	}
 
 	var capturedPrincipal string
-	handler := RequirePrincipalMiddleware(authConfig, logger, mockAuth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequirePrincipalMiddleware(authConfig, mockAuth, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedPrincipal, _ = principal.FromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -613,8 +613,26 @@ func TestRequirePrincipalMiddleware_FallbackToPlainHeaderWhenJWTAbsent(t *testin
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "header-user@example.com", capturedPrincipal, "should fall back to plain header when JWT absent")
+	assert.Equal(t, http.StatusUnauthorized, rr.Code, "should reject with 401 when JWT is configured but JWT header is absent")
+	assert.Equal(t, "", capturedPrincipal, "handler should not set a principal when JWT is absent")
+}
+
+// TestRequirePrincipalMiddleware_PanicsWhenJWTConfiguredButAuthenticatorNil ensures the middleware
+// factory panics at startup when JWT is configured but no JWTAuthenticator is injected.
+func TestRequirePrincipalMiddleware_PanicsWhenJWTConfiguredButAuthenticatorNil(t *testing.T) {
+	logger := createTestLogger()
+	authConfig := ports.AuthenticationConfig{
+		Preauth: ports.PreauthConfig{
+			PrincipalHeaderName: "X-Remote-User",
+		},
+		JWT: &ports.JWTConfig{
+			HeaderName: "Authorization",
+		},
+	}
+
+	require.Panics(t, func() {
+		_ = RequirePrincipalMiddleware(authConfig, nil, logger)
+	}, "middleware factory should panic when JWT is configured but JWTAuthenticator is nil")
 }
 
 // TestRequirePrincipalMiddleware_RejectInvalidJWTNoFallback tests fail-closed behavior:
@@ -635,7 +653,7 @@ func TestRequirePrincipalMiddleware_RejectInvalidJWTNoFallback(t *testing.T) {
 	}
 
 	handlerCalled := false
-	handler := RequirePrincipalMiddleware(authConfig, logger, mockAuth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequirePrincipalMiddleware(authConfig, mockAuth, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -654,37 +672,6 @@ func TestRequirePrincipalMiddleware_RejectInvalidJWTNoFallback(t *testing.T) {
 	err := json.Unmarshal(rr.Body.Bytes(), &errResp)
 	require.NoError(t, err)
 	assert.Contains(t, errResp.Error, "signature")
-}
-
-// TestRequirePrincipalMiddleware_NilJWTAuthenticator tests that builder creates no JWT
-// authenticator when JWT config is nil — backward compatible behavior.
-func TestRequirePrincipalMiddleware_NilJWTAuthenticator(t *testing.T) {
-	logger := createTestLogger()
-	// JWT config is present but no authenticator was injected (nil)
-	authConfig := ports.AuthenticationConfig{
-		Preauth: ports.PreauthConfig{
-			PrincipalHeaderName: "X-Remote-User",
-		},
-		JWT: &ports.JWTConfig{
-			HeaderName: "Authorization",
-		},
-	}
-
-	var capturedPrincipal string
-	// Pass nil authenticator explicitly
-	handler := RequirePrincipalMiddleware(authConfig, logger, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPrincipal, _ = principal.FromContext(r.Context())
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.Header.Set("X-Remote-User", "alice@example.com")
-
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "alice@example.com", capturedPrincipal, "should work with nil authenticator")
 }
 
 // TestRequirePrincipalMiddleware_JWTSetsProfile tests that JWT auth sets PrincipalProfile in context.
@@ -715,7 +702,7 @@ func TestRequirePrincipalMiddleware_JWTSetsProfile(t *testing.T) {
 
 	var capturedProfile principal.PrincipalProfile
 	var profileOk bool
-	handler := RequirePrincipalMiddleware(authConfig, logger, mockAuth)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequirePrincipalMiddleware(authConfig, mockAuth, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedProfile, profileOk = principal.ProfileFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -744,7 +731,7 @@ func TestRequirePrincipalMiddleware_PlainHeaderSetsBasicProfile(t *testing.T) {
 
 	var capturedProfile principal.PrincipalProfile
 	var profileOk bool
-	handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequirePrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedProfile, profileOk = principal.ProfileFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -768,7 +755,7 @@ func BenchmarkRequirePrincipalMiddleware(b *testing.B) {
 	logger := createTestLogger()
 	authConfig := testAuthConfig("X-Remote-User")
 
-	handler := RequirePrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequirePrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -787,7 +774,7 @@ func BenchmarkOptionalPrincipalMiddleware(b *testing.B) {
 	logger := createTestLogger()
 	authConfig := testAuthConfig("X-Remote-User")
 
-	handler := OptionalPrincipalMiddleware(authConfig, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := OptionalPrincipalMiddleware(authConfig, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

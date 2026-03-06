@@ -134,7 +134,7 @@ func TestValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "missing enduser principal header name",
+			name: "missing enduser principal header name without JWT fails",
 			cfg: func() *ports.Config {
 				cfg := validTestConfig()
 				cfg.Server.EndUser.Authentication.Preauth.PrincipalHeaderName = ""
@@ -143,13 +143,28 @@ func TestValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "missing admin principal header name",
+			name: "missing admin principal header name without JWT fails",
 			cfg: func() *ports.Config {
 				cfg := validTestConfig()
 				cfg.Server.Admin.Authentication.Preauth.PrincipalHeaderName = ""
 				return cfg
 			}(),
 			wantErr: true,
+		},
+		{
+			name: "missing enduser principal header name with JWT configured is valid",
+			cfg: func() *ports.Config {
+				cfg := validTestConfig()
+				cfg.Server.EndUser.Authentication.Preauth.PrincipalHeaderName = ""
+				cfg.Server.EndUser.Authentication.JWT = &ports.JWTConfig{
+					Verification: "none",
+					ClaimExtraction: ports.JWTClaimExtractionConfig{
+						PrincipalExpression: "claims.sub",
+					},
+				}
+				return cfg
+			}(),
+			wantErr: false,
 		},
 		{
 			name: "custom principal header names pass validation",

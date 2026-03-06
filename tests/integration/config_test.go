@@ -163,9 +163,11 @@ encryption:
 			t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_BIND", "")
 			t.Setenv("IDENTITY_BROKER_SERVER_SHUTDOWN_TIMEOUT", "")
 
-			// Set mandatory JWESigningKey and encryption key for all tests
+			// Set mandatory JWESigningKey, encryption key, and principal headers for all tests
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
 			t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", testEncryptionKey)
+			t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+			t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
 
 			// Create YAML config file if content is provided
 			var configPath string

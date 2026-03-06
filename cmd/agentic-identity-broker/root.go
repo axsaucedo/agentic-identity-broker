@@ -90,8 +90,9 @@ func run(cmd *cobra.Command, args []string) error {
 	// Create route setup function for enduser server
 	enduserRouteSetup := func(r chi.Router) {
 		routing.SetupEnduserRoutes(r, application.EnduserHandlers, routing.EnduserRouteConfig{
-			Authentication: cfg.Server.EndUser.Authentication,
-			Logger:         logger,
+			Authentication:   application.Config.Server.EndUser.Authentication,
+			JWTAuthenticator: application.JWTAuthenticator,
+			Logger:           logger,
 		})
 	}
 
@@ -109,10 +110,11 @@ func run(cmd *cobra.Command, args []string) error {
 
 	enduserServer := httpAdapter.NewServer(
 		httpAdapter.ServerConfig{
-			Port:           cfg.Server.EndUser.Port,
-			Bind:           cfg.Server.EndUser.Bind,
-			PublicURL:      cfg.Server.EndUser.PublicURL,
-			Authentication: cfg.Server.EndUser.Authentication,
+			Port:             cfg.Server.EndUser.Port,
+			Bind:             cfg.Server.EndUser.Bind,
+			PublicURL:        cfg.Server.EndUser.PublicURL,
+			Authentication:   cfg.Server.EndUser.Authentication,
+			JWTAuthenticator: application.JWTAuthenticator,
 		},
 		enduserRouteSetup,
 		logger,

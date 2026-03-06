@@ -34,7 +34,7 @@ func TestPrincipalMiddlewareExtraction(t *testing.T) {
 	}
 
 	// Apply optional principal middleware globally
-	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, logger))
+	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, nil, logger))
 
 	// Create protected route that requires principal
 	router.Post("/protected", func(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +163,7 @@ func TestPrincipalMiddlewareValidation(t *testing.T) {
 
 	// Create a protected group that requires principal
 	router.Group(func(r chi.Router) {
-		r.Use(middleware.RequirePrincipalMiddleware(authConfig, logger))
+		r.Use(middleware.RequirePrincipalMiddleware(authConfig, nil, logger))
 
 		r.Get("/admin/users", func(w http.ResponseWriter, r *http.Request) {
 			p, _ := principal.FromContext(r.Context())
@@ -261,7 +261,7 @@ func TestPrincipalMiddlewareUnicodeSupport(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, logger))
+	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, nil, logger))
 
 	router.Get("/user", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := principal.FromContext(r.Context())
@@ -347,7 +347,7 @@ func TestPrincipalMiddlewareWhitespaceHandling(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, logger))
+	router.Use(middleware.OptionalPrincipalMiddleware(authConfig, nil, logger))
 
 	router.Get("/principal", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := principal.FromContext(r.Context())
@@ -444,7 +444,7 @@ func TestPrincipalMiddlewareCustomHeader(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	router.Use(middleware.RequirePrincipalMiddleware(authConfig, logger))
+	router.Use(middleware.RequirePrincipalMiddleware(authConfig, nil, logger))
 
 	router.Get("/verify", func(w http.ResponseWriter, r *http.Request) {
 		p, _ := principal.FromContext(r.Context())

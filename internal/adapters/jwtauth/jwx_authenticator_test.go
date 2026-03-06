@@ -552,3 +552,56 @@ func TestJWXAuthenticator_ExpiredJWTRejectedEvenWhenVerificationNone(t *testing.
 	require.Error(t, err)
 	assert.ErrorIs(t, err, jwtauth.ErrTokenExpired, "expired JWT should be rejected even in 'none' mode")
 }
+
+func TestJWXAuthenticator_NoExpAcceptedWhenVerificationNone(t *testing.T) {
+	celConfig := jwtauth.CELEvaluatorConfig{
+		PrincipalExpression: "claims.sub",
+	}
+	celEvaluator, err := jwtauth.NewCELEvaluator(celConfig, testLogger())
+	require.NoError(t, err)
+
+	auth, err := NewJWXAuthenticator(JWXAuthenticatorConfig{
+		JWTConfig: &ports.JWTConfig{
+			HeaderName:   "Authorization",
+			Verification: "none",
+			ClaimExtraction: ports.JWTClaimExtractionConfig{
+				PrincipalExpression: "claims.sub",
+			},
+		},
+		CELEvaluator: celEvaluator,
+		Logger:       testLogger(),
+	})
+	require.NoError(t, err)
+
+	// JWT without exp claim — accepted in "none" mode (exp is optional)
+	tokenStr := createUnsignedJWT(t, map[string]interface{}{
+		"sub": "alice@example.com",
+	})
+
+	result, err := auth.Authenticate(context.Background(), tokenStr)
+	require.NoError(t, err, "JWT without exp should be accepted when verification is none")
+	assert.Equal(t, "alice@example.com", result.Principal)
+}
+
+func TestJWXAuthenticator_NoExpRejectedWhenVerificationJWKS(t *testing.T) {
+	_, jwksBytes, signingKey := generateTestKeyPair(t)
+	jwksServer := startMockJWKSServer(t, jwksBytes)
+
+	auth := newTestAuthenticator(t, jwksServer.URL, signingKey, &ports.JWTConfig{
+		HeaderName:   "Authorization",
+		Verification: "jwks",
+		JWKSURI:      jwksServer.URL,
+		ClaimExtraction: ports.JWTClaimExtractionConfig{
+			PrincipalExpression: "claims.sub",
+		},
+	})
+
+	// JWT without exp claim — rejected in "jwks" mode (exp is mandatory)
+	tokenStr := createSignedJWT(t, map[string]interface{}{
+		"sub": "alice@example.com",
+	}, signingKey)
+
+	_, err := auth.Authenticate(context.Background(), tokenStr)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, jwtauth.ErrMissingExpiry, "JWT without exp should be rejected when verification is jwks")
+}

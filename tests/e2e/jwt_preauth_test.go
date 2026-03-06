@@ -298,6 +298,25 @@ var _ = Describe("JWT Pre-Authentication", func() {
 				Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			})
 
+			// Scenario: JWT without exp accepted when verification is none
+			It("should accept JWT without exp claim when verification is none", func() {
+				claims := helpers.NewJWTClaims().
+					WithSubject(principal).
+					WithoutExpiry().
+					Build()
+
+				tokenWithoutExp, err := helpers.CreateUnsignedJWT(claims)
+				Expect(err).NotTo(HaveOccurred())
+
+				resp, err := enduserServer.DirectRequest("GET", "/api/me", "", map[string]string{
+					"X-JWT-Claims": tokenWithoutExp,
+				}, nil)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = resp.Body.Close() }()
+
+				Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			})
+
 			// Scenario 2.4 from specs/016-jwt-preauth/spec.md (User Story 2)
 			It("should reject expired JWT even when verification is none", func() {
 				claims := helpers.NewJWTClaims().
@@ -824,23 +843,14 @@ var _ = Describe("JWT Pre-Authentication", func() {
 			})
 
 			// Scenario 5.3 from specs/016-jwt-preauth/spec.md (User Story 5)
-			It("should fall back to plain header when JWT header absent but plain header present", func() {
+			It("should reject with 401 when JWT is configured but JWT header is absent", func() {
 				plainPrincipal := "plain-user@example.com"
 
 				resp, err := enduserServer.AuthenticatedGET("/api/me", plainPrincipal)
 				Expect(err).NotTo(HaveOccurred())
 				defer func() { _ = resp.Body.Close() }()
 
-				Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-				body, err := io.ReadAll(resp.Body)
-				Expect(err).NotTo(HaveOccurred())
-
-				var apiResp jwtPreauthAPIResponse
-				err = json.Unmarshal(body, &apiResp)
-				Expect(err).NotTo(HaveOccurred())
-
-				Expect(apiResp.Data.Principal).To(Equal(plainPrincipal))
+				Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
 			})
 		})
 	})

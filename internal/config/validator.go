@@ -70,19 +70,25 @@ func validateServerConfig(sc *ports.ServerConfig, security *ports.SecurityConfig
 }
 
 // validateServerInstanceAuth validates authentication configuration for a server instance.
+// At least one authentication method must be configured: either JWT or preauth (principal header).
+// When JWT is configured, it is the sole authentication mechanism (fail-closed, no fallback).
+// When JWT is NOT configured, PrincipalHeaderName is required for plain-header preauth.
 func validateServerInstanceAuth(sic *ports.ServerInstanceConfig, prefix string, security *ports.SecurityConfig) error {
-	// Validate preauth principal header name
-	if sic.Authentication.Preauth.PrincipalHeaderName == "" {
+	hasJWT := sic.Authentication.JWT != nil
+	hasPreauth := sic.Authentication.Preauth.PrincipalHeaderName != ""
+
+	// At least one authentication method must be configured
+	if !hasJWT && !hasPreauth {
 		return formatValidationError(
-			prefix+".authentication.preauth.principal_header_name",
+			prefix+".authentication",
 			"",
-			"non-empty HTTP header name",
+			"at least one authentication method (jwt or preauth.principal_header_name)",
 			nil,
 		)
 	}
 
 	// Validate JWT configuration if present
-	if sic.Authentication.JWT != nil {
+	if hasJWT {
 		if err := validateJWTConfig(sic.Authentication.JWT, prefix+".authentication.jwt", security); err != nil {
 			return err
 		}

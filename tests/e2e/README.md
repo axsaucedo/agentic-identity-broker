@@ -28,7 +28,7 @@ This directory contains comprehensive end-to-end (E2E) tests for the Agentic Ide
 - `test_server.go` - Wraps httptest.Server with authenticated request methods
   - `NewEndUserTestServer()` - Creates end-user server (OAuth2, consent routes)
   - `NewAdminTestServer()` - Creates admin server (agent/service management routes)
-  - `NewTestServerV2()` - Flexible server creation with options pattern
+  - `NewTestServer()` - Flexible server creation with options pattern
   - `AuthenticatedGET/POST()` - Makes requests with X-Remote-User injection
   - `PublicGET()` - Makes unauthenticated requests
   - `DirectRequest()` - Advanced request control

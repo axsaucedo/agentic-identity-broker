@@ -26,21 +26,25 @@ type ErrorResponse struct {
 // RequirePrincipalMiddleware returns middleware that requires a valid principal to be present.
 // When a JWTAuthenticator is configured, it first attempts JWT-based authentication from the
 // configured JWT header. If a JWT header is present, authentication is via JWT only (fail-closed,
-// no fallback to plain header). If the JWT header is absent, falls back to plain header extraction.
+// no fallback to plain header). If the JWT header is absent, the request is rejected with 401
+// (fail-closed — no fallback to plain header when JWT is configured).
 // If no JWTAuthenticator is configured, behavior is identical to the original plain-header mode.
+//
+// jwtAuth may be nil when JWT authentication is not configured.
 //
 // Returns:
 // - 401 Unauthorized: When no authentication source provides a valid principal
 // - 400 Bad Request: When the principal exceeds maximum length
 // - Continues to next handler: When principal is valid
-func RequirePrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *slog.Logger, jwtAuth ...domjwtauth.JWTAuthenticator) func(next http.Handler) http.Handler {
+func RequirePrincipalMiddleware(authConfig ports.AuthenticationConfig, jwtAuth domjwtauth.JWTAuthenticator, logger *slog.Logger) func(next http.Handler) http.Handler {
 	headerName := authConfig.Preauth.PrincipalHeaderName
 
-	// Extract optional JWT authenticator (variadic for backward compatibility)
-	var authenticator domjwtauth.JWTAuthenticator
-	if len(jwtAuth) > 0 && jwtAuth[0] != nil {
-		authenticator = jwtAuth[0]
+	// Panic early if JWT is configured but no authenticator was injected — surface wiring bugs at startup.
+	if authConfig.JWT != nil && jwtAuth == nil {
+		panic("JWT authentication is configured but no JWTAuthenticator was injected: check server/app wiring")
 	}
+
+	authenticator := jwtAuth
 
 	// Determine JWT header name from config
 	jwtHeaderName := ""
@@ -119,7 +123,14 @@ func RequirePrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *s
 					next.ServeHTTP(w, r)
 					return
 				}
-				// JWT header absent — fall through to plain header extraction
+				// JWT configured but header absent — fail closed, no fallback to plain header
+				missingErr := principal.NewMissingPrincipalError(jwtHeaderName)
+				logger.Warn("JWT authentication configured but JWT header absent (401 REJECT)",
+					"header", jwtHeaderName,
+					"remote_addr", r.RemoteAddr,
+					"path", r.URL.Path)
+				writeErrorJSON(w, http.StatusUnauthorized, missingErr.Error())
+				return
 			}
 
 			// Plain header extraction path (original behavior)
@@ -169,19 +180,18 @@ func RequirePrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *s
 // When a JWTAuthenticator is configured, it first attempts JWT-based authentication.
 // If the JWT header is present and valid, the enriched profile is set in context.
 // If the JWT header is present but invalid, the request continues without a principal.
-// If the JWT header is absent, falls back to plain header extraction.
+// If the JWT header is absent and JWT is configured, continues without principal (no fallback to plain header).
+// If no JWTAuthenticator is configured, uses plain header extraction.
 // This middleware never rejects requests - it only adds principals if they are valid.
+//
+// jwtAuth may be nil when JWT authentication is not configured.
 //
 // Returns:
 // - Continues to next handler: In all cases (principal may or may not be in context)
-func OptionalPrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *slog.Logger, jwtAuth ...domjwtauth.JWTAuthenticator) func(next http.Handler) http.Handler {
+func OptionalPrincipalMiddleware(authConfig ports.AuthenticationConfig, jwtAuth domjwtauth.JWTAuthenticator, logger *slog.Logger) func(next http.Handler) http.Handler {
 	headerName := authConfig.Preauth.PrincipalHeaderName
 
-	// Extract optional JWT authenticator
-	var authenticator domjwtauth.JWTAuthenticator
-	if len(jwtAuth) > 0 && jwtAuth[0] != nil {
-		authenticator = jwtAuth[0]
-	}
+	authenticator := jwtAuth
 
 	// Determine JWT header name from config
 	jwtHeaderName := ""
@@ -236,7 +246,9 @@ func OptionalPrincipalMiddleware(authConfig ports.AuthenticationConfig, logger *
 					next.ServeHTTP(w, r)
 					return
 				}
-				// JWT header absent — fall through to plain header
+				// JWT configured but header absent — continue without principal, no fallback to plain header
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			// Plain header extraction path

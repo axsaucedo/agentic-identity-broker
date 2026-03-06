@@ -20,7 +20,7 @@ type EnduserRouteConfig struct {
 
 	// JWTAuthenticator is an optional JWT authenticator for JWT-based pre-authentication.
 	// When nil, only plain-header pre-auth is used (backward-compatible).
-	// When set, the middleware will attempt JWT authentication before falling back to plain header.
+	// When set, JWT is used for authentication; absent JWT header is rejected with 401 (fail-closed).
 	JWTAuthenticator jwtauth.JWTAuthenticator
 
 	// Logger for middleware
@@ -63,7 +63,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 		// Create subrouter for authenticated routes
 		r.Route("/", func(authRouter chi.Router) {
 			// Apply authentication middleware FIRST, before registering any routes
-			authRouter.Use(middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.Logger, cfg.JWTAuthenticator))
+			authRouter.Use(middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.JWTAuthenticator, cfg.Logger))
 
 			// Register user info endpoint (GET /api/me)
 			authRouter.Get("/me", http.HandlerFunc(h.UserInfo.GetUserInfo).ServeHTTP)
@@ -96,7 +96,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 		// GET /oauth2/authorize
 		r.With(
 			middleware.OAuth2AuditMiddleware(cfg.Logger),
-			middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.Logger, cfg.JWTAuthenticator),
+			middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.JWTAuthenticator, cfg.Logger),
 		).Get("/oauth2/authorize", h.OAuth2Authorize.ServeHTTP)
 
 		// T034: Token endpoint (no authentication required, proxies to upstream)

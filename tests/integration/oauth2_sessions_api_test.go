@@ -1547,7 +1547,7 @@ func setupTestRouter(handler *oauth2_sessions.Handler) *chi.Mux {
 			PrincipalHeaderName: "X-Remote-User",
 		},
 	}
-	router.Use(middleware.OptionalPrincipalMiddleware(config, slog.Default()))
+	router.Use(middleware.OptionalPrincipalMiddleware(config, nil, slog.Default()))
 	// Mount routes under /api to match production setup
 	router.Route("/api", func(r chi.Router) {
 		handler.RegisterRoutes(r)

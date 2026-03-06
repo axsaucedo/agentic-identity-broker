@@ -89,7 +89,7 @@ Operators currently using the plain-header pre-auth mode (principal extracted fr
 
 1. **Given** a server configured with only `authentication.preauth.principal_header_name` (no `authentication.jwt` section), **When** a request arrives with the principal header, **Then** the principal is extracted from the header and the request succeeds (identical to current behavior).
 2. **Given** a server configured with both `authentication.preauth.principal_header_name` and `authentication.jwt`, **When** a request arrives with the JWT header present, **Then** the JWT is used for authentication (JWT takes precedence over the plain header).
-3. **Given** a server configured with both `authentication.preauth.principal_header_name` and `authentication.jwt`, **When** a request arrives without the JWT header but with the plain principal header, **Then** the plain principal header is used as fallback.
+3. **Given** a server configured with both `authentication.preauth.principal_header_name` and `authentication.jwt`, **When** a request arrives without the JWT header but with the plain principal header, **Then** the request is rejected with 401 Unauthorized (fail-closed — no fallback to the plain header when JWT is configured).
 
 ---
 
@@ -100,7 +100,7 @@ Operators currently using the plain-header pre-auth mode (principal extracted fr
 - What happens when a CEL expression for a profile attribute evaluates to a non-string value? The attribute is ignored (treated as absent) and a warning is logged.
 - What happens when the JWT header contains a value that is not a valid JWT? The request is rejected with 401 Unauthorized.
 - What happens when a JWT has a `kid` not in the cached JWKS? The system relies on `lestrrat-go/jwx`'s built-in refresh behavior. If the key is still not found after any library-initiated refresh, the request is rejected with 401 Unauthorized.
-- What happens when the JWT contains no `exp` claim? The JWT is rejected with 401 Unauthorized (expiry is mandatory for security).
+- What happens when the JWT contains no `exp` claim? When `verification` is `jwks` (or unset), the JWT is rejected with 401 Unauthorized (expiry is mandatory). When `verification` is `none`, a missing `exp` is accepted (unsigned JWTs from trusted upstreams may omit it); if `exp` is present, it is still enforced.
 - What happens when both JWT and plain header are configured but the JWT is invalid? The request is rejected with 401 Unauthorized. The system does not silently fall back to the plain header when a JWT is present but invalid (fail-closed).
 
 ## Requirements *(mandatory)*
@@ -112,14 +112,14 @@ Operators currently using the plain-header pre-auth mode (principal extracted fr
 - **FR-003**: System MUST accept unsigned JWTs (alg: "none") when `verification` is explicitly set to `none`. Unsigned JWTs MUST be rejected when `verification` is `jwks` or not specified.
 - **FR-003a**: System MUST reject startup (fail closed) if `verification: none` and `jwks_uri` are both present in `authentication.jwt`, as these options are mutually exclusive and represent contradictory intent. The error message MUST state which keys conflict.
 - **FR-004**: System MUST extract the principal from the JWT using a configurable CEL expression (`principal_expression`), defaulting to `claims.sub`.
-- **FR-005**: System MUST validate the JWT `exp` claim and reject expired JWTs with 401 Unauthorized, regardless of signature verification mode. No clock skew tolerance is applied (zero tolerance, library default); operators must ensure clock synchronization via NTP.
+- **FR-005**: System MUST validate the JWT `exp` claim and reject expired JWTs with 401 Unauthorized. When `verification` is `jwks` (the default), `exp` MUST be present; absent `exp` is rejected with 401. When `verification` is `none`, `exp` is optional — if present, it MUST be valid (not expired); if absent, it is accepted. No clock skew tolerance is applied in either mode; operators must ensure clock synchronization via NTP.
 - **FR-006**: System MUST optionally validate the JWT `aud` claim against a configured `expected_audience` value. If configured and the JWT `aud` does not contain the expected value, the request MUST be rejected with 401 Unauthorized.
 - **FR-007**: System MUST optionally validate the JWT `iss` claim against a configured `expected_issuer` value. If configured and the JWT `iss` does not match, the request MUST be rejected with 401 Unauthorized.
 - **FR-008**: System MUST support optional CEL expressions for extracting profile attributes from JWT claims: `display_name_expression`, `email_expression`, and `picture_url_expression`.
 - **FR-009**: When profile attribute CEL expressions are configured and the JWT contains matching claims, the `/api/me` endpoint MUST return the extracted `displayName`, `email`, and `pictureUrl` values.
 - **FR-010**: When profile attribute CEL expressions are not configured or the JWT claims do not match, the corresponding fields MUST be absent (null/omitted) in the `/api/me` response, except `displayName` which falls back to the principal value (preserving current behavior).
 - **FR-011**: The existing plain-header pre-auth configuration (`authentication.preauth.principal_header_name`) MUST continue to work without modification when no `authentication.jwt` block is present.
-- **FR-012**: When both `authentication.jwt` and `authentication.preauth.principal_header_name` are configured, the JWT takes precedence. If the JWT header is present in the request, it is used (and validated). If the JWT header is absent, the plain principal header is used as fallback.
+- **FR-012**: When both `authentication.jwt` and `authentication.preauth.principal_header_name` are configured, the JWT takes precedence. If the JWT header is present in the request, it is used (and validated). If the JWT header is absent, the request is rejected with 401 Unauthorized (fail-closed — no fallback to the plain header).
 - **FR-013**: When both `authentication.jwt` and `authentication.preauth.principal_header_name` are configured and a JWT is present but invalid (bad signature, expired, etc.), the request MUST be rejected with 401 Unauthorized. The system MUST NOT silently fall back to the plain header.
 - **FR-014**: All CEL expressions (principal and profile attributes) MUST be validated at startup. Invalid CEL expressions MUST cause startup failure with a descriptive error message.
 - **FR-015**: The JWKS endpoint MUST be fetched and validated at startup when `verification` is `jwks`. Unreachable JWKS endpoints MUST cause startup failure.

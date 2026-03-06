@@ -233,16 +233,21 @@ func (a *JWXAuthenticator) parseAndVerify(ctx context.Context, tokenStr string) 
 	return token, nil
 }
 
-// validateClaims validates temporal claims (exp) and optional aud/iss claims.
+// validateClaims validates the expiration claim (exp) and optional aud/iss claims.
+// When verification is "none", exp is validated only if present in the token.
+// When verification is "jwks" (or the default), exp must be present.
 func (a *JWXAuthenticator) validateClaims(token jwt.Token) error {
-	// Check for exp claim existence (mandatory)
 	exp, hasExp := token.Expiration()
-	if !hasExp || exp.IsZero() {
-		return jwtauth.ErrMissingExpiry
-	}
 
-	// Validate expiration
-	if time.Now().After(exp) {
+	// In "none" mode, exp is optional — only validate if the claim is present.
+	// In signed ("jwks") mode, exp is mandatory.
+	if !hasExp || exp.IsZero() {
+		if a.config.Verification != "none" {
+			return jwtauth.ErrMissingExpiry
+		}
+		// none mode + no exp: skip expiry check
+	} else if time.Now().After(exp) {
+		// exp is present and the token has expired — reject regardless of mode
 		return jwtauth.ErrTokenExpired
 	}
 

@@ -137,10 +137,11 @@ type JWTClaimExtractionConfig struct {
 
 // PreauthConfig holds configuration for reverse proxy pre-authentication.
 type PreauthConfig struct {
-	// PrincipalHeaderName is the HTTP header from which principals are extracted
+	// PrincipalHeaderName is the HTTP header from which principals are extracted.
 	// This header is set by a trusted reverse proxy after authentication.
 	// Example values: "X-Remote-User", "X-Authenticated-User", "Remote-User"
-	// Default: "X-Remote-User"
+	// REQUIRED: Must be explicitly configured. No default is provided to prevent
+	// accidental exposure of a trust boundary.
 	PrincipalHeaderName string `mapstructure:"principal_header_name" validate:"required,min=1"`
 }
 
@@ -156,21 +157,11 @@ func DefaultServerConfig() ServerConfig {
 			Port:      8000,
 			Bind:      "::",                    // Dual-stack (IPv6 with IPv4 fallback)
 			PublicURL: "http://localhost:8000", // Default for local development
-			Authentication: AuthenticationConfig{
-				Preauth: PreauthConfig{
-					PrincipalHeaderName: "X-Remote-User",
-				},
-			},
 		},
 		Admin: ServerInstanceConfig{
 			Port:      14000,
 			Bind:      "::",
 			PublicURL: "http://localhost:14000", // Default for local development
-			Authentication: AuthenticationConfig{
-				Preauth: PreauthConfig{
-					PrincipalHeaderName: "X-Remote-User",
-				},
-			},
 		},
 		Shutdown: ShutdownConfig{
 			Timeout: 30 * time.Second,

@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
 	httpMiddleware "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
@@ -169,56 +170,53 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		return nil, fmt.Errorf("invalid options: %w", err)
 	}
 
-	// Create chi router with production middleware setup
-	router := chi.NewRouter()
+	// Determine route setup and server config based on server type.
+	// Use production NewHandler to align bootstrap with production server path.
+	var routeSetup func(chi.Router)
+	serverCfg := httpAdapter.ServerConfig{
+		Authentication:   app.Config.Server.EndUser.Authentication,
+		JWTAuthenticator: app.JWTAuthenticator,
+	}
 
-	// Add standard middleware
-	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
-	router.Use(middleware.Logger)
-	router.Use(middleware.Recoverer)
+	switch options.serverType {
+	case ServerTypeEndUser:
+		// Temporarily disable SPA so SetupEnduserRoutes skips /consent/* registration,
+		// then add a catch-all /* instead for test flexibility.
+		spaSaved := app.EnduserHandlers.SPA
+		app.EnduserHandlers.SPA = nil
+		defer func() { app.EnduserHandlers.SPA = spaSaved }()
+		routeSetup = func(r chi.Router) {
+			routing.SetupEnduserRoutes(r, app.EnduserHandlers, routing.EnduserRouteConfig{
+				Authentication:   app.Config.Server.EndUser.Authentication,
+				JWTAuthenticator: app.JWTAuthenticator,
+				Logger:           logger,
+			})
+			if spaSaved != nil {
+				r.Handle("/*", spaSaved)
+			}
+		}
 
-	// Apply optional principal middleware to all routes (matches production)
-	// This allows routes to optionally extract principal from X-Remote-User header
-	// Public routes like /oauth2/token can ignore it, authenticated routes require it
-	router.Use(httpMiddleware.OptionalPrincipalMiddleware(app.Config.Server.EndUser.Authentication, logger))
+	case ServerTypeAdmin:
+		if app.AdminHandlers == nil {
+			return nil, fmt.Errorf("admin handlers not available: ensure app was built with admin handlers enabled")
+		}
+		routeSetup = func(r chi.Router) {
+			routing.SetupAdminRoutes(r, app.AdminHandlers)
+		}
 
-	// Health endpoint (public)
+	default:
+		return nil, fmt.Errorf("unknown server type: %d", options.serverType)
+	}
+
+	// Build router using the production NewHandler (same middleware stack as production).
+	router := httpAdapter.NewHandler(serverCfg, routeSetup, logger)
+
+	// Add simple health endpoint (tests don't need lifecycle-aware health state).
 	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"healthy"}`))
 	})
-
-	// Register routes based on server type
-	switch options.serverType {
-	case ServerTypeEndUser:
-		// Register production end-user routes
-		// Temporarily disable SPA in production routing
-		spaSaved := app.EnduserHandlers.SPA
-		app.EnduserHandlers.SPA = nil
-
-		routing.SetupEnduserRoutes(router, app.EnduserHandlers, routing.EnduserRouteConfig{
-			Authentication:   app.Config.Server.EndUser.Authentication,
-			JWTAuthenticator: app.JWTAuthenticator,
-			Logger:           logger,
-		})
-
-		// Mount SPA handler at root (/*) as catch-all for History API fallback
-		if spaSaved != nil {
-			router.Handle("/*", spaSaved)
-		}
-
-	case ServerTypeAdmin:
-		// Register production admin routes
-		if app.AdminHandlers == nil {
-			return nil, fmt.Errorf("admin handlers not available: ensure app was built with admin handlers enabled")
-		}
-		routing.SetupAdminRoutes(router, app.AdminHandlers)
-
-	default:
-		return nil, fmt.Errorf("unknown server type: %d", options.serverType)
-	}
 
 	// Create httptest server with appropriate port configuration
 	var server *httptest.Server
@@ -643,9 +641,10 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 
-	// Apply optional principal middleware to all routes (matches production)
-	// This allows routes to optionally extract principal from X-Remote-User header
-	router.Use(httpMiddleware.OptionalPrincipalMiddleware(b.config.Server.EndUser.Authentication, b.logger))
+	// Apply optional principal middleware to all routes.
+	// Must be added before any route registration (chi requires Use() before Get()/Post()/etc.).
+	// TestServerBuilderImpl is used only for tests without JWT config, so nil JWTAuthenticator is safe.
+	router.Use(httpMiddleware.OptionalPrincipalMiddleware(b.config.Server.EndUser.Authentication, nil, b.logger))
 
 	// Add health endpoint (available immediately)
 	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {

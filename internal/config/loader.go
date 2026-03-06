@@ -107,11 +107,11 @@ func (l *Loader) setDefaults() {
 	l.v.SetDefault("server.enduser.port", serverDefaults.EndUser.Port)
 	l.v.SetDefault("server.enduser.bind", serverDefaults.EndUser.Bind)
 	l.v.SetDefault("server.enduser.public_url", serverDefaults.EndUser.PublicURL)
-	l.v.SetDefault("server.enduser.authentication.preauth.principal_header_name", serverDefaults.EndUser.Authentication.Preauth.PrincipalHeaderName)
+	// No default for principal_header_name — must be explicitly configured to avoid trust boundary exposure
 	l.v.SetDefault("server.admin.port", serverDefaults.Admin.Port)
 	l.v.SetDefault("server.admin.bind", serverDefaults.Admin.Bind)
 	l.v.SetDefault("server.admin.public_url", serverDefaults.Admin.PublicURL)
-	l.v.SetDefault("server.admin.authentication.preauth.principal_header_name", serverDefaults.Admin.Authentication.Preauth.PrincipalHeaderName)
+	// No default for principal_header_name — must be explicitly configured to avoid trust boundary exposure
 	l.v.SetDefault("server.shutdown.timeout", serverDefaults.Shutdown.Timeout)
 
 	// Storage configuration defaults
@@ -178,9 +178,7 @@ func (l *Loader) setDefaults() {
 		Keys: []string{
 			"log.level", "log.format",
 			"server.enduser.port", "server.enduser.bind", "server.enduser.public_url",
-			"server.enduser.authentication.preauth.principal_header_name",
 			"server.admin.port", "server.admin.bind", "server.admin.public_url",
-			"server.admin.authentication.preauth.principal_header_name",
 			"server.shutdown.timeout",
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
 			"third_party_oauth2.state_token_ttl", "third_party_oauth2.pkce_verifier_length",

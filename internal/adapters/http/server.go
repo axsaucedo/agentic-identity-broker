@@ -11,16 +11,18 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
+	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
 // ServerConfig contains the configuration for a Server instance.
 type ServerConfig struct {
-	Port           int
-	Bind           string
-	PublicURL      string
-	Authentication ports.AuthenticationConfig
+	Port             int
+	Bind             string
+	PublicURL        string
+	Authentication   ports.AuthenticationConfig
+	JWTAuthenticator domjwtauth.JWTAuthenticator // nil when JWT not configured
 }
 
 // Server implements HTTP server lifecycle management using the chi router framework.
@@ -36,7 +38,6 @@ type ServerConfig struct {
 // - Public health endpoint (/health)
 type Server struct {
 	config      ServerConfig       // Server configuration (port, bind address, auth)
-	router      *chi.Mux           // Chi router for request routing
 	routeSetup  func(r chi.Router) // Route registration function (provided by caller)
 	httpServer  *http.Server       // Underlying HTTP server
 	healthState int32              // Atomic health state
@@ -57,7 +58,6 @@ type Server struct {
 func NewServer(config ServerConfig, routeSetup func(r chi.Router), logger *slog.Logger) *Server {
 	return &Server{
 		config:      config,
-		router:      chi.NewRouter(),
 		routeSetup:  routeSetup,
 		healthState: int32(HealthStateStarting),
 		logger:      logger,
@@ -110,16 +110,29 @@ func (s *Server) Listen() (net.Listener, error) {
 	return listener, nil
 }
 
+// NewHandler assembles the chi router with standard middleware and application routes.
+// Does not register /health — the caller adds a context-appropriate health endpoint.
+// Used by Server.Serve() and directly by tests.
+func NewHandler(config ServerConfig, routeSetup func(chi.Router), logger *slog.Logger) *chi.Mux {
+	router := chi.NewRouter()
+	router.Use(RecoveryMiddleware(logger))
+	router.Use(LoggingMiddleware(logger))
+	router.Use(middleware.OptionalPrincipalMiddleware(config.Authentication, config.JWTAuthenticator, logger))
+	routeSetup(router)
+	return router
+}
+
 // Serve starts serving HTTP requests on the provided listener.
 // This is a blocking call that runs until the server is shut down or encounters an error.
 // The context can be used to cancel the server operation.
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
-	// Setup routes and middleware
-	s.setupRoutes()
+	// Build router via NewHandler, then add lifecycle-aware health endpoint
+	router := NewHandler(s.config, s.routeSetup, s.logger)
+	router.Get("/health", s.handleHealth())
 
 	// Create HTTP server
 	s.httpServer = &http.Server{
-		Handler:      s.router,
+		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -168,29 +181,4 @@ func (s *Server) Shutdown(parentCtx context.Context, timeout time.Duration) erro
 // This is a fast, non-blocking operation using atomic reads.
 func (s *Server) HealthStatus() ports.HealthState {
 	return ports.HealthState(atomic.LoadInt32(&s.healthState))
-}
-
-// setupRoutes configures the router with middleware and routes.
-func (s *Server) setupRoutes() {
-	// Add middleware (recovery must be first to catch panics in other middleware)
-	s.router.Use(RecoveryMiddleware(s.logger))
-	s.router.Use(LoggingMiddleware(s.logger))
-
-	// Apply optional principal middleware to all routes
-	// This extracts principal if present, but doesn't reject requests without one
-	s.router.Use(middleware.OptionalPrincipalMiddleware(s.config.Authentication, s.logger))
-
-	// Register public health endpoint (no principal required)
-	s.router.Get("/health", s.handleHealth())
-
-	// Call the provided route setup function to register application routes
-	s.routeSetup(s.router)
-
-	s.logger.Debug("Routes configured")
-}
-
-// Router returns the underlying chi router.
-// This is useful for registering additional routes from outside the server package.
-func (s *Server) Router() *chi.Mux {
-	return s.router
 }
