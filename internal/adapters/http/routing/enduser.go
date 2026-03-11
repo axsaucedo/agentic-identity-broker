@@ -25,6 +25,9 @@ type EnduserRouteConfig struct {
 
 	// Logger for middleware
 	Logger *slog.Logger
+
+	// CORS configuration for API routes
+	CORS ports.CORSConfig
 }
 
 // SetupEnduserRoutes registers all end-user API routes and optional SPA serving.
@@ -57,8 +60,8 @@ type EnduserRouteConfig struct {
 func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteConfig) {
 	// Register API routes with CORS middleware
 	r.Route("/api", func(r chi.Router) {
-		// Apply CORS middleware to all API routes
-		r.Use(middleware.CORSMiddleware())
+		// Apply CORS middleware (no-op if AllowedOrigins empty)
+		r.Use(middleware.CORSMiddleware(cfg.CORS))
 
 		// Create subrouter for authenticated routes
 		r.Route("/", func(authRouter chi.Router) {

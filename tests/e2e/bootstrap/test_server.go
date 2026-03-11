@@ -190,6 +190,7 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 				Authentication:   app.Config.Server.EndUser.Authentication,
 				JWTAuthenticator: app.JWTAuthenticator,
 				Logger:           logger,
+				CORS:             app.Config.Server.EndUser.CORS,
 			})
 			if spaSaved != nil {
 				r.Handle("/*", spaSaved)
@@ -201,7 +202,9 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 			return nil, fmt.Errorf("admin handlers not available: ensure app was built with admin handlers enabled")
 		}
 		routeSetup = func(r chi.Router) {
-			routing.SetupAdminRoutes(r, app.AdminHandlers)
+			routing.SetupAdminRoutes(r, app.AdminHandlers, routing.AdminRouteConfig{
+				CORS: app.Config.Server.Admin.CORS,
+			})
 		}
 
 	default:

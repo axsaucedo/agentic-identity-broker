@@ -432,3 +432,115 @@ func TestValidateThirdPartyOAuth2Config(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateCORSConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     ports.CORSConfig
+		prefix  string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "empty config (secure default) passes",
+			cfg:     ports.CORSConfig{},
+			prefix:  "server.enduser.cors",
+			wantErr: false,
+		},
+		{
+			name:    "wildcard origin passes",
+			cfg:     ports.CORSConfig{AllowedOrigins: []string{"*"}},
+			prefix:  "server.enduser.cors",
+			wantErr: false,
+		},
+		{
+			name: "specific origin with full options passes",
+			cfg: ports.CORSConfig{
+				AllowedOrigins: []string{"https://app.example.com"},
+				AllowedMethods: []string{"GET", "POST"},
+				AllowedHeaders: []string{"Content-Type"},
+				MaxAge:         3600,
+			},
+			prefix:  "server.enduser.cors",
+			wantErr: false,
+		},
+		{
+			name: "empty string in allowed_origins fails",
+			cfg: ports.CORSConfig{
+				AllowedOrigins: []string{"https://valid.com", ""},
+			},
+			prefix:  "server.enduser.cors",
+			wantErr: true,
+			errMsg:  "allowed_origins",
+		},
+		{
+			name: "empty string in allowed_methods fails",
+			cfg: ports.CORSConfig{
+				AllowedOrigins: []string{"https://valid.com"},
+				AllowedMethods: []string{"GET", ""},
+			},
+			prefix:  "server.enduser.cors",
+			wantErr: true,
+			errMsg:  "allowed_methods",
+		},
+		{
+			name: "empty string in allowed_headers fails",
+			cfg: ports.CORSConfig{
+				AllowedOrigins: []string{"https://valid.com"},
+				AllowedHeaders: []string{"", "Content-Type"},
+			},
+			prefix:  "server.enduser.cors",
+			wantErr: true,
+			errMsg:  "allowed_headers",
+		},
+		{
+			name: "negative max_age fails",
+			cfg: ports.CORSConfig{
+				AllowedOrigins: []string{"https://valid.com"},
+				MaxAge:         -1,
+			},
+			prefix:  "server.enduser.cors",
+			wantErr: true,
+			errMsg:  "max_age",
+		},
+		{
+			name: "zero max_age passes (browser default)",
+			cfg: ports.CORSConfig{
+				AllowedOrigins: []string{"https://valid.com"},
+				MaxAge:         0,
+			},
+			prefix:  "server.enduser.cors",
+			wantErr: false,
+		},
+		{
+			name: "error message contains server-specific prefix (admin server)",
+			cfg: ports.CORSConfig{
+				AllowedOrigins: []string{""},
+			},
+			prefix:  "server.admin.cors",
+			wantErr: true,
+			errMsg:  "server.admin.cors",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateCORSConfig(&tt.cfg, tt.prefix)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateCORSConfig() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if err != nil && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("validateCORSConfig() error = %v, want error containing %q", err, tt.errMsg)
+				}
+			}
+
+			if err != nil {
+				if _, ok := err.(*config.ConfigError); !ok {
+					t.Errorf("validateCORSConfig() error type = %T, want *config.ConfigError", err)
+				}
+			}
+		})
+	}
+}

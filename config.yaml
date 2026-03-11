@@ -18,6 +18,10 @@ server:
     authentication:
       preauth:
         principal_header_name: X-Remote-User
+    # CORS configuration for local development (allows all origins)
+    cors:
+      allowed_origins:
+        - "*"
 
   # Admin server (internal management API)
   admin:

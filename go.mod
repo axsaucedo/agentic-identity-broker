@@ -13,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
 	github.com/go-chi/chi/v5 v5.2.5
+	github.com/go-chi/cors v1.2.2
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/cel-go v0.27.0
 	github.com/google/uuid v1.6.0

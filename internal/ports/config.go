@@ -56,6 +56,29 @@ type ServerInstanceConfig struct {
 	Bind           string               `mapstructure:"bind" validate:"required"`
 	PublicURL      string               `mapstructure:"public_url" validate:"required_if=Port 8000,http_url"`
 	Authentication AuthenticationConfig `mapstructure:"authentication"`
+	CORS           CORSConfig           `mapstructure:"cors"`
+}
+
+// CORSConfig contains CORS (Cross-Origin Resource Sharing) configuration.
+// When AllowedOrigins is empty, CORS headers are not added (production default — secure by default).
+// For development, set AllowedOrigins to ["*"] to allow all origins.
+type CORSConfig struct {
+	// AllowedOrigins lists origins allowed for cross-origin requests.
+	// Use ["*"] to allow all origins (development only).
+	// Leave empty to disable CORS headers (production default).
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
+
+	// AllowedMethods lists HTTP methods allowed for cross-origin requests.
+	// Defaults to ["GET", "POST", "PUT", "DELETE", "OPTIONS"] when CORS is enabled.
+	AllowedMethods []string `mapstructure:"allowed_methods"`
+
+	// AllowedHeaders lists request headers allowed for cross-origin requests.
+	// Defaults to ["Content-Type", "Authorization", "X-Custom-Principal"] when CORS is enabled.
+	AllowedHeaders []string `mapstructure:"allowed_headers"`
+
+	// MaxAge sets the cache duration for preflight responses in seconds.
+	// Defaults to 86400 (24 hours) when CORS is enabled.
+	MaxAge int `mapstructure:"max_age"`
 }
 
 // AuthenticationConfig holds authentication configuration for a server.

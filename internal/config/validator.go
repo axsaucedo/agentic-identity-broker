@@ -146,6 +146,67 @@ func validateServerInstance(sic *ports.ServerInstanceConfig, prefix string, secu
 		return err
 	}
 
+	// Validate CORS configuration (only when AllowedOrigins is non-empty)
+	if err := validateCORSConfig(&sic.CORS, prefix+".cors"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateCORSConfig validates CORS configuration for a server instance.
+// When AllowedOrigins is empty, CORS is disabled and no further validation is performed
+// (this is the production-safe default). Validation only applies when CORS is explicitly enabled.
+func validateCORSConfig(cfg *ports.CORSConfig, prefix string) error {
+	// Empty AllowedOrigins = CORS disabled (secure default). Nothing to validate.
+	if len(cfg.AllowedOrigins) == 0 {
+		return nil
+	}
+
+	// When CORS is enabled, validate that no entry is an empty string.
+	for i, origin := range cfg.AllowedOrigins {
+		if origin == "" {
+			return formatValidationError(
+				fmt.Sprintf("%s.allowed_origins[%d]", prefix, i),
+				"",
+				"non-empty origin value",
+				nil,
+			)
+		}
+	}
+
+	for i, method := range cfg.AllowedMethods {
+		if method == "" {
+			return formatValidationError(
+				fmt.Sprintf("%s.allowed_methods[%d]", prefix, i),
+				"",
+				"non-empty HTTP method value",
+				nil,
+			)
+		}
+	}
+
+	for i, header := range cfg.AllowedHeaders {
+		if header == "" {
+			return formatValidationError(
+				fmt.Sprintf("%s.allowed_headers[%d]", prefix, i),
+				"",
+				"non-empty header name value",
+				nil,
+			)
+		}
+	}
+
+	// MaxAge must be non-negative (0 means no explicit max-age / use browser default).
+	if cfg.MaxAge < 0 {
+		return formatValidationError(
+			prefix+".max_age",
+			fmt.Sprintf("%d", cfg.MaxAge),
+			"non-negative integer (seconds)",
+			nil,
+		)
+	}
+
 	return nil
 }
 

@@ -84,15 +84,18 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Create route setup function for admin server
 	adminRouteSetup := func(r chi.Router) {
-		routing.SetupAdminRoutes(r, application.AdminHandlers)
+		routing.SetupAdminRoutes(r, application.AdminHandlers, routing.AdminRouteConfig{
+			CORS: cfg.Server.Admin.CORS,
+		})
 	}
 
 	// Create route setup function for enduser server
 	enduserRouteSetup := func(r chi.Router) {
 		routing.SetupEnduserRoutes(r, application.EnduserHandlers, routing.EnduserRouteConfig{
-			Authentication:   application.Config.Server.EndUser.Authentication,
+			Authentication:   cfg.Server.EndUser.Authentication,
 			JWTAuthenticator: application.JWTAuthenticator,
 			Logger:           logger,
+			CORS:             cfg.Server.EndUser.CORS,
 		})
 	}
 
