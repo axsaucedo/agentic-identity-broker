@@ -346,8 +346,23 @@ broker:
       # Authentication
       authentication:
         preauth:
-          # -- Header name containing authenticated principal
-          principalHeaderName: X-Remote-User
+          # -- Header name containing authenticated principal (omit to disable plain-header pre-auth)
+          principalHeaderName: ""
+        # -- JWT pre-authentication configuration (optional)
+        # Extracts the principal and profile attributes from a JWT provided by an
+        # upstream reverse proxy, API gateway, or service mesh.
+        # See examples/config/jwt-preauth.yaml for full documentation.
+        # jwt:
+        #   header_name: Authorization
+        #   verification: jwks          # "jwks" or "none"
+        #   jwks_uri: ""                # Required when verification is "jwks"
+        #   expected_audience: ""
+        #   expected_issuer: ""
+        #   claim_extraction:
+        #     principal_expression: "claims.sub"
+        #     display_name_expression: "claims.name"
+        #     email_expression: "claims.email"
+        #     picture_url_expression: "claims.picture"
 
     # Admin server
     admin:
@@ -360,8 +375,8 @@ broker:
       # Authentication
       authentication:
         preauth:
-          # -- Header name containing authenticated principal
-          principalHeaderName: X-Remote-User
+          # -- Header name containing authenticated principal (omit to disable plain-header pre-auth)
+          principalHeaderName: ""
 
     # Graceful shutdown
     shutdown:

@@ -57,6 +57,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Pod template labels (selector labels merged with commonLabels)
+*/}}
+{{- define "agentic-identity-broker.podLabels" -}}
+{{- $selector := fromYaml (include "agentic-identity-broker.selectorLabels" .) -}}
+{{- $common := .Values.commonLabels | default dict -}}
+{{- toYaml (merge $selector $common) -}}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "agentic-identity-broker.serviceAccountName" -}}

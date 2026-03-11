@@ -24,9 +24,19 @@ data:
         {{- if .Values.broker.server.enduser.publicUrl }}
         public_url: {{ .Values.broker.server.enduser.publicUrl }}
         {{- end }}
+        {{- $enduserPreauth := .Values.broker.server.enduser.authentication.preauth.principalHeaderName }}
+        {{- $enduserJwt := .Values.broker.server.enduser.authentication.jwt }}
+        {{- if or $enduserPreauth $enduserJwt }}
         authentication:
+          {{- if $enduserPreauth }}
           preauth:
-            principal_header_name: {{ .Values.broker.server.enduser.authentication.preauth.principalHeaderName }}
+            principal_header_name: {{ $enduserPreauth }}
+          {{- end }}
+          {{- if $enduserJwt }}
+          jwt:
+            {{- toYaml $enduserJwt | nindent 12 }}
+          {{- end }}
+        {{- end }}
 
       # Admin API
       admin:
@@ -35,9 +45,19 @@ data:
         {{- if .Values.broker.server.admin.publicUrl }}
         public_url: {{ .Values.broker.server.admin.publicUrl }}
         {{- end }}
+        {{- $adminPreauth := .Values.broker.server.admin.authentication.preauth.principalHeaderName }}
+        {{- $adminJwt := .Values.broker.server.admin.authentication.jwt }}
+        {{- if or $adminPreauth $adminJwt }}
         authentication:
+          {{- if $adminPreauth }}
           preauth:
-            principal_header_name: {{ .Values.broker.server.admin.authentication.preauth.principalHeaderName }}
+            principal_header_name: {{ $adminPreauth }}
+          {{- end }}
+          {{- if $adminJwt }}
+          jwt:
+            {{- toYaml $adminJwt | nindent 12 }}
+          {{- end }}
+        {{- end }}
 
       # Graceful shutdown
       shutdown:

@@ -20,7 +20,7 @@ spec:
     metadata:
       name: {{ include "agentic-identity-broker.fullname" . }}-migrate
       labels:
-        {{- include "agentic-identity-broker.selectorLabels" . | nindent 8 }}
+        {{- include "agentic-identity-broker.podLabels" . | nindent 8 }}
         app.kubernetes.io/component: migration
     spec:
       restartPolicy: Never

@@ -20,10 +20,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "agentic-identity-broker.selectorLabels" . | nindent 8 }}
-        {{- range $key, $value := .Values.commonLabels }}
-        {{ $key }}: {{ $value }}
-        {{- end }}
+        {{- include "agentic-identity-broker.podLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
