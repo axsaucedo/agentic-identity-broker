@@ -40,7 +40,7 @@ spec:
       {{- if .Values.postgresql.operator.enabled }}
       # Init container to wait for PostgreSQL to be ready
       - name: wait-for-postgres
-        image: postgres:17-alpine
+        image: {{ .Values.migration.grants.image | quote }}
         command:
           - sh
           - -c
@@ -111,7 +111,7 @@ spec:
           capabilities:
             drop:
               - ALL
-        image: {{ .Values.migration.grants.image }}
+        image: {{ .Values.migration.grants.image | quote }}
         imagePullPolicy: IfNotPresent
         command: ["sh", "-c"]
         args:
