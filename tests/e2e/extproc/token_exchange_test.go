@@ -458,6 +458,9 @@ var _ = Describe("ExtProc Token Exchange", func() {
 
 		// When no scopes are configured, the client_credentials grant defaults to ["openid"].
 		Context("when no client_credentials_scopes are configured", func() {
+			// Spec: US3 Scenario 3
+			// Given no client_credentials_scopes are configured, when the ExtProc service
+			// acquires a client assertion, then it sends scope=openid to the client_credentials endpoint.
 			It("should send scope=openid as the default to the client_credentials endpoint", func() {
 				// DefaultConfig has no ClientCredentialsScopes set.
 				// Start() already populated env with DefaultConfig, so just use env directly.
@@ -494,6 +497,9 @@ var _ = Describe("ExtProc Token Exchange", func() {
 				client, conn = env.NewExtProcClient()
 			})
 
+			// Spec: US3 Scenario 4
+			// Given client_credentials_scopes are configured, when the ExtProc service
+			// acquires a client assertion, then it sends the configured scopes to the client_credentials endpoint.
 			It("should send the configured scopes to the client_credentials endpoint", func() {
 				// Trigger a token exchange to ensure the client assertion was acquired.
 				req := helpers.NewRequestHeaders().

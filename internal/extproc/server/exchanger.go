@@ -387,12 +387,19 @@ func (te *TokenExchanger) maybeRefreshAssertion() {
 }
 
 // clientCredentialsScopes returns the OAuth2 scopes for the client_credentials grant.
-// When no scopes are configured it falls back to ["openid"] to obtain an id_token.
+// When no scopes are configured, or when all configured entries are blank after trimming,
+// it falls back to ["openid"] to obtain an id_token.
 func clientCredentialsScopes(configured []string) []string {
-	if len(configured) == 0 {
+	filtered := make([]string, 0, len(configured))
+	for _, s := range configured {
+		if trimmed := strings.TrimSpace(s); trimmed != "" {
+			filtered = append(filtered, trimmed)
+		}
+	}
+	if len(filtered) == 0 {
 		return []string{"openid"}
 	}
-	return configured
+	return filtered
 }
 
 // buildHTTPClient constructs an http.Client respecting the TLS configuration.
