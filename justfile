@@ -213,9 +213,9 @@ install-tools:
     @echo "Installing go-junit-report for CI/CD test reporting..."
     go install github.com/jstemmer/go-junit-report/v2@v2.1.0
     @echo "Installing ginkgo for E2E testing..."
-    go install github.com/onsi/ginkgo/v2/ginkgo@v2.27.3
+    go install github.com/onsi/ginkgo/v2/ginkgo@v2.28.1
     @echo "Installing Playwright Go binary..."
-    go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 install --with-deps
+    go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps
     @echo "Tools installation complete"
 
 # Setup git hooks for quality checks
