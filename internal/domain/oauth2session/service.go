@@ -28,12 +28,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"golang.org/x/oauth2"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -155,11 +155,11 @@ type InitiateFlowResult struct {
 
 // HandleCallbackRequest contains parameters from the OAuth2 callback.
 type HandleCallbackRequest struct {
-	ServiceID string // From URL path
-	Code      string // Authorization code from query
-	State     string // JWE state token from query
-	Error     string // OAuth2 error code (optional)
-	ErrorDesc string // OAuth2 error description (optional)
+	ServiceID id.ServiceID // From URL path
+	Code      string       // Authorization code from query
+	State     string       // JWE state token from query
+	Error     string       // OAuth2 error code (optional)
+	ErrorDesc string       // OAuth2 error description (optional)
 }
 
 // HandleCallbackResult contains the result of processing an OAuth2 callback.
@@ -170,8 +170,8 @@ type HandleCallbackResult struct {
 
 // AgentInfo represents an agent with display information.
 type AgentInfo struct {
-	ID          string `json:"id"`           // Agent's unique identifier
-	DisplayName string `json:"display_name"` // Agent's display name for UI presentation
+	ID          id.AgentID `json:"id"`           // Agent's unique identifier
+	DisplayName string     `json:"display_name"` // Agent's display name for UI presentation
 }
 
 // SessionWithAgents represents a session with information about dependent agents.
@@ -215,8 +215,8 @@ func (s *OAuth2SessionService) CreateStateToken(claims *OAuth2StateTokenClaims) 
 // to fail due to GCM authentication tag verification.
 func (s *OAuth2SessionService) ValidateStateToken(
 	tokenString string,
-	currentPrincipal string,
-	expectedServiceID string,
+	currentPrincipal id.Principal,
+	expectedServiceID id.ServiceID,
 ) (*OAuth2StateTokenClaims, error) {
 	// Input validation
 	if tokenString == "" {
@@ -311,7 +311,7 @@ func (s *OAuth2SessionService) buildOAuth2Config(
 
 	// Create OAuth2 config
 	return &oauth2.Config{
-		ClientID:     entity.ClientID,
+		ClientID:     entity.ClientID.String(),
 		ClientSecret: clientSecret,
 		RedirectURL:  callbackURL,
 		Scopes:       scopes,
@@ -372,8 +372,8 @@ func (s *OAuth2SessionService) exchangeCodeWithRetry(
 // Creates PKCE verifier/challenge, generates JWE state token, returns auth URL.
 func (s *OAuth2SessionService) InitiateOAuth2Flow(
 	ctx context.Context,
-	principal string,
-	serviceID string,
+	principal id.Principal,
+	serviceID id.ServiceID,
 	redirectURI string,
 ) (*InitiateFlowResult, error) {
 	s.logger.Info("initiating OAuth2 flow", "principal", principal, "service_id", serviceID)
@@ -407,7 +407,7 @@ func (s *OAuth2SessionService) InitiateOAuth2Flow(
 	}
 
 	// Build OAuth2 config with callback URL
-	callbackURL := s.config.CallbackBaseURL + "/api/third-party/" + serviceID + "/oauth2/callback"
+	callbackURL := s.config.CallbackBaseURL + "/api/third-party/" + serviceID.String() + "/oauth2/callback"
 	cfg, err := s.buildOAuth2Config(service, callbackURL)
 	if err != nil {
 		s.logger.Error("failed to build oauth2 config", "service_id", serviceID, "err", err)
@@ -434,8 +434,8 @@ func (s *OAuth2SessionService) InitiateOAuth2Flow(
 // Uses upsert semantics: if session exists for (principal, service_id), updates tokens while preserving CreatedAt.
 func (s *OAuth2SessionService) createSession(
 	ctx context.Context,
-	principal string,
-	serviceID string,
+	principal id.Principal,
+	serviceID id.ServiceID,
 	token *oauth2.Token,
 	scope []string,
 ) (*storage.UserSession, error) {
@@ -452,7 +452,7 @@ func (s *OAuth2SessionService) createSession(
 	// Create encryption context for this session bound to service (cryptographic service isolation)
 	// This ensures tokens encrypted for one service cannot be decrypted with another service's context
 	encryptionContext := map[string]string{
-		"service_id": serviceID,
+		"service_id": serviceID.String(),
 	}
 
 	// Encrypt access token
@@ -485,7 +485,7 @@ func (s *OAuth2SessionService) createSession(
 
 	// Create or update session
 	now := time.Now()
-	var sessionID string
+	var sessionID id.SessionID
 	var createdAt time.Time
 	var initiatedAt time.Time
 
@@ -496,7 +496,7 @@ func (s *OAuth2SessionService) createSession(
 		initiatedAt = existingSession.InitiatedAt
 	} else {
 		// Create new session
-		sessionID = uuid.New().String()
+		sessionID = id.NewSessionID()
 		createdAt = now
 		initiatedAt = now
 	}
@@ -528,7 +528,7 @@ func (s *OAuth2SessionService) createSession(
 // HandleCallback processes the OAuth2 callback, exchanges code for tokens, stores session.
 func (s *OAuth2SessionService) HandleCallback(
 	ctx context.Context,
-	principal string,
+	principal id.Principal,
 	req *HandleCallbackRequest,
 ) (*HandleCallbackResult, error) {
 	s.logger.Debug("processing OAuth2 callback", "service_id", req.ServiceID, "principal", principal)
@@ -558,7 +558,7 @@ func (s *OAuth2SessionService) HandleCallback(
 	}
 
 	// Build OAuth2 config
-	callbackURL := s.config.CallbackBaseURL + "/api/third-party/" + req.ServiceID + "/oauth2/callback"
+	callbackURL := s.config.CallbackBaseURL + "/api/third-party/" + req.ServiceID.String() + "/oauth2/callback"
 	cfg, err := s.buildOAuth2Config(service, callbackURL)
 	if err != nil {
 		s.logger.Error("failed to build oauth2 config during callback", "service_id", req.ServiceID, "err", err)
@@ -658,7 +658,7 @@ func (s *OAuth2SessionService) RefreshAccessToken(
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
-	data.Set("client_id", entity.ClientID)
+	data.Set("client_id", entity.ClientID.String())
 	data.Set("client_secret", clientSecret)
 
 	// Create POST request to token endpoint
@@ -737,7 +737,7 @@ func (s *OAuth2SessionService) RefreshAccessToken(
 // Encryption context binds tokens to service_id per ADR 008 for performance optimization.
 func (s *OAuth2SessionService) UpdateSessionTokens(
 	ctx context.Context,
-	principal string,
+	principal id.Principal,
 	session *storage.UserSession,
 	newToken *oauth2.Token,
 ) error {
@@ -751,7 +751,7 @@ func (s *OAuth2SessionService) UpdateSessionTokens(
 
 	// Build encryption context for this session - uses service_id only
 	encContext := map[string]string{
-		"service_id": session.ServiceID,
+		"service_id": session.ServiceID.String(),
 	}
 
 	// Encrypt new access token
@@ -817,7 +817,7 @@ func (s *OAuth2SessionService) DecryptAccessToken(
 	}
 
 	encContext := map[string]string{
-		"service_id": session.ServiceID,
+		"service_id": session.ServiceID.String(),
 	}
 
 	accessToken, err := s.encryption.Decrypt(ctx, session.EncryptedAccessToken, encContext)
@@ -844,7 +844,7 @@ func (s *OAuth2SessionService) DecryptRefreshToken(
 	}
 
 	encContext := map[string]string{
-		"service_id": session.ServiceID,
+		"service_id": session.ServiceID.String(),
 	}
 
 	refreshToken, err := s.encryption.Decrypt(ctx, session.EncryptedRefreshToken, encContext)
@@ -858,7 +858,7 @@ func (s *OAuth2SessionService) DecryptRefreshToken(
 // ListUserSessions returns all sessions for a principal with summary info.
 func (s *OAuth2SessionService) ListUserSessions(
 	ctx context.Context,
-	principal string,
+	principal id.Principal,
 ) ([]*storage.UserSessionSummary, error) {
 	// Fetch all sessions for principal
 	sessions, err := s.sessionRepo.ListByPrincipal(ctx, principal)
@@ -894,8 +894,8 @@ func (s *OAuth2SessionService) ListUserSessions(
 // TerminateSession deletes a session and its encrypted tokens.
 func (s *OAuth2SessionService) TerminateSession(
 	ctx context.Context,
-	principal string,
-	serviceID string,
+	principal id.Principal,
+	serviceID id.ServiceID,
 ) error {
 	// Audit log: Session termination initiated
 	s.logger.Info("oauth2_session_termination_initiated",
@@ -973,8 +973,8 @@ func (s *OAuth2SessionService) TerminateSession(
 // GetSessionWithAgents returns session details including list of dependent agents.
 func (s *OAuth2SessionService) GetSessionWithAgents(
 	ctx context.Context,
-	principal string,
-	serviceID string,
+	principal id.Principal,
+	serviceID id.ServiceID,
 ) (*SessionWithAgents, error) {
 	s.logger.Debug("retrieving session with agents",
 		"principal", principal,
@@ -1005,7 +1005,7 @@ func (s *OAuth2SessionService) GetSessionWithAgents(
 	agentIDs, err := s.grantRepo.ListByServiceID(ctx, serviceID)
 	if err != nil {
 		s.logger.Warn("failed to list dependent agent IDs", "service_id", serviceID, "err", err)
-		agentIDs = []string{} // Return empty list on error
+		agentIDs = []id.AgentID{} // Return empty list on error
 	}
 
 	// Step 4: Fetch agent display names for each dependent agent
@@ -1017,7 +1017,7 @@ func (s *OAuth2SessionService) GetSessionWithAgents(
 			// Fall back to using agent ID if agent not found
 			dependentAgents = append(dependentAgents, AgentInfo{
 				ID:          agentID,
-				DisplayName: agentID, // Use ID as fallback
+				DisplayName: agentID.String(), // Use ID as fallback
 			})
 			continue
 		}
@@ -1069,8 +1069,8 @@ func (s *OAuth2SessionService) GetSessionWithAgents(
 // Only metadata (service, expiration times) is included.
 func (s *OAuth2SessionService) GetValidAccessToken(
 	ctx context.Context,
-	principal string,
-	serviceID string,
+	principal id.Principal,
+	serviceID id.ServiceID,
 ) (*storage.UserSession, string, error) {
 	// Step 1: Fetch session from repository
 	// This is the ONLY repository access in this flow.
@@ -1204,8 +1204,8 @@ func (s *OAuth2SessionService) GetValidAccessToken(
 // The session's AccessTokenExpiresAt and UpdatedAt fields reflect the latest state.
 func (s *OAuth2SessionService) GetSessionWithValidToken(
 	ctx context.Context,
-	principal string,
-	serviceID string,
+	principal id.Principal,
+	serviceID id.ServiceID,
 ) (*storage.UserSession, string, error) {
 	// Step 1: Get valid token with session metadata (this handles all refresh logic transparently)
 	// GetValidAccessToken now returns both the session and token in a single call,

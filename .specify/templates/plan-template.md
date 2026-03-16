@@ -37,6 +37,7 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](.spe
 
 - [ ] **Domain Model**: Have entities, aggregates, value objects been identified and documented?
 - [ ] **Domain Concepts**: Will new domain terms be added to ARCHITECTURE.md Glossary?
+- [ ] **Entity IDs**: For each new domain entity with a UUID primary key, will a typed ID (`type XxxID uuid.UUID`) be added to `internal/domain/id/` via `gen_ids.go` and documented in `internal/domain/id/AGENTS.md`? (ADR 013)
 - [ ] **Configuration Design**: Have all config requirements been identified with YAML examples?
 - [ ] **Config Examples**: Will example YAML snippets be added to examples/config/?
 - [ ] **API Design First**: Will APIs be designed (OpenAPI spec) and confirmed BEFORE implementation?

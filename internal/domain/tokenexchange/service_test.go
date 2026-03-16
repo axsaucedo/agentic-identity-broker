@@ -10,6 +10,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -30,9 +31,9 @@ func newMockConsentService() *consent.Service {
 		newTestProviderService(&MockServiceRepository{}),
 		&MockGrantRepository{
 			grant: &storagedomain.UserGrant{
-				ID:         "test-grant-id",
-				Principal:  "test-principal",
-				AgentID:    "test-agent-id",
+				ID:         id.NewGrantID(),
+				Principal:  id.Principal("test-principal"),
+				AgentID:    id.NewAgentID(),
 				ValidUntil: func() *time.Time { t := time.Now().Add(24 * time.Hour); return &t }(),
 				CreatedAt:  time.Now(),
 				UpdatedAt:  time.Now(),
@@ -44,11 +45,11 @@ func newMockConsentService() *consent.Service {
 // MockAgentRepository mocks the AgentRepository for consent service testing
 type MockAgentRepository struct{}
 
-func (m *MockAgentRepository) Get(ctx context.Context, id string) (*storagedomain.Agent, error) {
+func (m *MockAgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storagedomain.Agent, error) {
 	return nil, nil
 }
 
-func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string) (*storagedomain.Agent, error) {
+func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storagedomain.Agent, error) {
 	return nil, nil
 }
 
@@ -60,7 +61,7 @@ func (m *MockAgentRepository) Update(ctx context.Context, agent *storagedomain.A
 	return nil
 }
 
-func (m *MockAgentRepository) Delete(ctx context.Context, id string) error {
+func (m *MockAgentRepository) Delete(ctx context.Context, agentID id.AgentID) error {
 	return nil
 }
 
@@ -71,11 +72,11 @@ func (m *MockAgentRepository) List(ctx context.Context) ([]*storagedomain.Agent,
 // MockOAuth2SessionService mocks the OAuth2SessionService for testing
 type MockOAuth2SessionService struct {
 	RefreshAccessTokenFn       func(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, refreshToken string) (*oauth2.Token, error)
-	UpdateSessionTokensFn      func(ctx context.Context, principal string, session *storagedomain.UserSession, newToken *oauth2.Token) error
+	UpdateSessionTokensFn      func(ctx context.Context, principal id.Principal, session *storagedomain.UserSession, newToken *oauth2.Token) error
 	DecryptAccessTokenFn       func(ctx context.Context, session *storagedomain.UserSession) (string, error)
 	DecryptRefreshTokenFn      func(ctx context.Context, session *storagedomain.UserSession) (string, error)
-	GetValidAccessTokenFn      func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error)
-	GetSessionWithValidTokenFn func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error)
+	GetValidAccessTokenFn      func(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storagedomain.UserSession, string, error)
+	GetSessionWithValidTokenFn func(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storagedomain.UserSession, string, error)
 }
 
 func (m *MockOAuth2SessionService) RefreshAccessToken(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, refreshToken string) (*oauth2.Token, error) {
@@ -85,7 +86,7 @@ func (m *MockOAuth2SessionService) RefreshAccessToken(ctx context.Context, entit
 	return nil, nil
 }
 
-func (m *MockOAuth2SessionService) UpdateSessionTokens(ctx context.Context, principal string, session *storagedomain.UserSession, newToken *oauth2.Token) error {
+func (m *MockOAuth2SessionService) UpdateSessionTokens(ctx context.Context, principal id.Principal, session *storagedomain.UserSession, newToken *oauth2.Token) error {
 	if m.UpdateSessionTokensFn != nil {
 		return m.UpdateSessionTokensFn(ctx, principal, session, newToken)
 	}
@@ -106,13 +107,13 @@ func (m *MockOAuth2SessionService) DecryptRefreshToken(ctx context.Context, sess
 	return "", nil
 }
 
-func (m *MockOAuth2SessionService) GetValidAccessToken(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error) {
+func (m *MockOAuth2SessionService) GetValidAccessToken(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storagedomain.UserSession, string, error) {
 	if m.GetValidAccessTokenFn != nil {
 		return m.GetValidAccessTokenFn(ctx, principal, serviceID)
 	}
 	// Return a mock session and token
 	session := &storagedomain.UserSession{
-		ID:        "mock-session-id",
+		ID:        id.NewSessionID(),
 		Principal: principal,
 		ServiceID: serviceID,
 		TokenType: "Bearer",
@@ -121,13 +122,13 @@ func (m *MockOAuth2SessionService) GetValidAccessToken(ctx context.Context, prin
 	return session, "mock-access-token", nil
 }
 
-func (m *MockOAuth2SessionService) GetSessionWithValidToken(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error) {
+func (m *MockOAuth2SessionService) GetSessionWithValidToken(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storagedomain.UserSession, string, error) {
 	if m.GetSessionWithValidTokenFn != nil {
 		return m.GetSessionWithValidTokenFn(ctx, principal, serviceID)
 	}
 	// Return a mock session and token
 	session := &storagedomain.UserSession{
-		ID:        "mock-session-id",
+		ID:        id.NewSessionID(),
 		Principal: principal,
 		ServiceID: serviceID,
 		TokenType: "Bearer",
@@ -150,7 +151,7 @@ func (m *MockServiceRepository) Create(ctx context.Context, entity *model.Thirdp
 	return nil
 }
 
-func (m *MockServiceRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+func (m *MockServiceRepository) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 
@@ -158,11 +159,11 @@ func (m *MockServiceRepository) Update(ctx context.Context, entity *model.Thirdp
 	return nil
 }
 
-func (m *MockServiceRepository) Delete(ctx context.Context, id string) error {
+func (m *MockServiceRepository) Delete(ctx context.Context, serviceID id.ServiceID) error {
 	return nil
 }
 
-func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
+func (m *MockServiceRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	return 0, nil
 }
 
@@ -175,7 +176,7 @@ type MockGrantRepository struct {
 	err   error
 }
 
-func (m *MockGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal, agentClientID string) (*storagedomain.UserGrant, error) {
+func (m *MockGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) (*storagedomain.UserGrant, error) {
 	return m.grant, m.err
 }
 
@@ -183,15 +184,7 @@ func (m *MockGrantRepository) Create(ctx context.Context, grant *storagedomain.U
 	return nil
 }
 
-func (m *MockGrantRepository) Get(ctx context.Context, id string) (*storagedomain.UserGrant, error) {
-	return nil, nil
-}
-
-func (m *MockGrantRepository) FindAllForPrincipal(ctx context.Context, principal string) ([]*storagedomain.UserGrant, error) {
-	return nil, nil
-}
-
-func (m *MockGrantRepository) FindAllForAgent(ctx context.Context, agentClientID string) ([]*storagedomain.UserGrant, error) {
+func (m *MockGrantRepository) Get(ctx context.Context, grantID id.GrantID) (*storagedomain.UserGrant, error) {
 	return nil, nil
 }
 
@@ -199,31 +192,27 @@ func (m *MockGrantRepository) Update(ctx context.Context, grant *storagedomain.U
 	return nil
 }
 
-func (m *MockGrantRepository) Delete(ctx context.Context, id string) error {
+func (m *MockGrantRepository) Delete(ctx context.Context, grantID id.GrantID) error {
 	return nil
 }
 
-func (m *MockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
+func (m *MockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	return 0, nil
 }
 
-func (m *MockGrantRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
-	return 0, nil
-}
-
-func (m *MockGrantRepository) DeleteByAgent(ctx context.Context, agentClientID string) error {
+func (m *MockGrantRepository) DeleteByAgent(ctx context.Context, agentID id.AgentID) error {
 	return nil
 }
 
-func (m *MockGrantRepository) ListByPrincipal(ctx context.Context, principal string) ([]storagedomain.UserGrant, error) {
+func (m *MockGrantRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storagedomain.UserGrant, error) {
 	return nil, nil
 }
 
-func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
+func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	return nil, nil
 }
 
-func (m *MockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal, agentID string) ([]*storagedomain.UserGrant, error) {
+func (m *MockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storagedomain.UserGrant, error) {
 	return nil, nil
 }
 
@@ -244,7 +233,7 @@ func (m *MockEncryption) Decrypt(ctx context.Context, ciphertext []byte, context
 	return ciphertext, m.err
 }
 
-func (m *MockSessionRepository) FindByPrincipalAndService(ctx context.Context, principal, serviceID string) (*storagedomain.UserSession, error) {
+func (m *MockSessionRepository) FindByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storagedomain.UserSession, error) {
 	return m.session, m.err
 }
 
@@ -252,35 +241,23 @@ func (m *MockSessionRepository) Create(ctx context.Context, session *storagedoma
 	return nil
 }
 
-func (m *MockSessionRepository) Get(ctx context.Context, id string) (*storagedomain.UserSession, error) {
+func (m *MockSessionRepository) Get(ctx context.Context, sessionID id.SessionID) (*storagedomain.UserSession, error) {
 	return nil, nil
 }
 
-func (m *MockSessionRepository) FindAllForPrincipal(ctx context.Context, principal string) ([]*storagedomain.UserSession, error) {
-	return nil, nil
-}
-
-func (m *MockSessionRepository) Update(ctx context.Context, session *storagedomain.UserSession) error {
+func (m *MockSessionRepository) Delete(ctx context.Context, sessionID id.SessionID) error {
 	return nil
 }
 
-func (m *MockSessionRepository) Delete(ctx context.Context, id string) error {
-	return nil
-}
-
-func (m *MockSessionRepository) CountByService(ctx context.Context, serviceID string) (int, error) {
+func (m *MockSessionRepository) CountByService(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	return 0, nil
 }
 
-func (m *MockSessionRepository) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
-	return []string{}, nil
-}
-
-func (m *MockSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal, serviceID string) error {
+func (m *MockSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) error {
 	return nil
 }
 
-func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal string) ([]*storagedomain.UserSession, error) {
+func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storagedomain.UserSession, error) {
 	return nil, nil
 }
 
@@ -596,12 +573,12 @@ func TestGrantVerification_ExpiredGrant(t *testing.T) {
 	// Create an expired grant
 	expiredTime := time.Now().UTC().Add(-1 * time.Hour)
 	expiredGrant := &storagedomain.UserGrant{
-		Principal:  "user@example.com",
-		AgentID:    "agent-123",
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    id.NewAgentID(),
 		ValidUntil: &expiredTime,
 		DelegatedOAuth2Tokens: []storagedomain.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "service-1",
+				ThirdpartyOAuth2ServiceID: id.NewServiceID(),
 				Scopes:                    []string{"read", "write"},
 			},
 		},
@@ -633,12 +610,12 @@ func TestGrantVerification_ActiveGrant(t *testing.T) {
 	// Create an active (non-expired) grant
 	futureTime := time.Now().UTC().Add(24 * time.Hour)
 	activeGrant := &storagedomain.UserGrant{
-		Principal:  "user@example.com",
-		AgentID:    "agent-123",
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    id.NewAgentID(),
 		ValidUntil: &futureTime,
 		DelegatedOAuth2Tokens: []storagedomain.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "service-1",
+				ThirdpartyOAuth2ServiceID: id.NewServiceID(),
 				Scopes:                    []string{"read", "write"},
 			},
 		},
@@ -669,55 +646,57 @@ func TestGrantVerification_ActiveGrant(t *testing.T) {
 func TestMockOAuth2SessionService_NewMethods(t *testing.T) {
 	mock := &MockOAuth2SessionService{}
 	ctx := context.Background()
+	testSvcID := id.NewServiceID()
 
 	t.Run("GetValidAccessToken with default behavior", func(t *testing.T) {
-		session, token, err := mock.GetValidAccessToken(ctx, "user@example.com", "service-123")
+		session, token, err := mock.GetValidAccessToken(ctx, id.Principal("user@example.com"), testSvcID)
 		assert.NoError(t, err)
 		assert.Equal(t, "mock-access-token", token)
 		assert.NotNil(t, session)
-		assert.Equal(t, "user@example.com", session.Principal)
-		assert.Equal(t, "service-123", session.ServiceID)
+		assert.Equal(t, id.Principal("user@example.com"), session.Principal)
+		assert.Equal(t, testSvcID, session.ServiceID)
 	})
 
 	t.Run("GetValidAccessToken with custom function", func(t *testing.T) {
 		customSession := &storagedomain.UserSession{
-			ID:        "custom-session-id",
-			Principal: "user@example.com",
-			ServiceID: "service-123",
+			ID:        id.NewSessionID(),
+			Principal: id.Principal("user@example.com"),
+			ServiceID: testSvcID,
 			TokenType: "Custom",
 			Scope:     []string{"custom"},
 		}
-		mock.GetValidAccessTokenFn = func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error) {
+		mock.GetValidAccessTokenFn = func(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storagedomain.UserSession, string, error) {
 			return customSession, "custom-token", nil
 		}
-		session, token, err := mock.GetValidAccessToken(ctx, "user@example.com", "service-123")
+		session, token, err := mock.GetValidAccessToken(ctx, id.Principal("user@example.com"), testSvcID)
 		assert.NoError(t, err)
 		assert.Equal(t, "custom-token", token)
 		assert.Equal(t, customSession, session)
 	})
 
 	t.Run("GetSessionWithValidToken with default behavior", func(t *testing.T) {
-		session, token, err := mock.GetSessionWithValidToken(ctx, "user@example.com", "service-123")
+		mock.GetValidAccessTokenFn = nil // reset
+		session, token, err := mock.GetSessionWithValidToken(ctx, id.Principal("user@example.com"), testSvcID)
 		assert.NoError(t, err)
 		assert.Equal(t, "mock-access-token", token)
 		assert.NotNil(t, session)
-		assert.Equal(t, "user@example.com", session.Principal)
-		assert.Equal(t, "service-123", session.ServiceID)
+		assert.Equal(t, id.Principal("user@example.com"), session.Principal)
+		assert.Equal(t, testSvcID, session.ServiceID)
 		assert.Equal(t, "Bearer", session.TokenType)
 	})
 
 	t.Run("GetSessionWithValidToken with custom function", func(t *testing.T) {
 		customSession := &storagedomain.UserSession{
-			ID:        "custom-session-id",
-			Principal: "custom@example.com",
-			ServiceID: "custom-service",
+			ID:        id.NewSessionID(),
+			Principal: id.Principal("custom@example.com"),
+			ServiceID: testSvcID,
 			TokenType: "Custom",
 			Scope:     []string{"custom"},
 		}
-		mock.GetSessionWithValidTokenFn = func(ctx context.Context, principal string, serviceID string) (*storagedomain.UserSession, string, error) {
+		mock.GetSessionWithValidTokenFn = func(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storagedomain.UserSession, string, error) {
 			return customSession, "custom-token", nil
 		}
-		session, token, err := mock.GetSessionWithValidToken(ctx, "user@example.com", "service-123")
+		session, token, err := mock.GetSessionWithValidToken(ctx, id.Principal("user@example.com"), testSvcID)
 		assert.NoError(t, err)
 		assert.Equal(t, "custom-token", token)
 		assert.Equal(t, customSession, session)

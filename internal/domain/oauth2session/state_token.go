@@ -3,6 +3,8 @@ package oauth2session
 import (
 	"errors"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // OAuth2StateTokenClaims contains the claims embedded in a JWE state token.
@@ -10,7 +12,7 @@ import (
 type OAuth2StateTokenClaims struct {
 	// Principal is the authenticated user who initiated the OAuth2 flow.
 	// Must match the principal at callback time (CSRF protection).
-	Principal string `json:"principal"`
+	Principal id.Principal `json:"principal"`
 
 	// PKCEVerifier is the PKCE code verifier for token exchange.
 	// Base64url-encoded, 32-128 bytes per RFC 7636.
@@ -18,7 +20,7 @@ type OAuth2StateTokenClaims struct {
 
 	// ServiceID is the third-party service being authorized.
 	// Must match the serviceId path parameter at callback.
-	ServiceID string `json:"service_id"`
+	ServiceID id.ServiceID `json:"service_id"`
 
 	// RedirectURI is where to redirect after flow completes.
 	// Must be same-origin with the authorize request.
@@ -33,13 +35,13 @@ type OAuth2StateTokenClaims struct {
 
 // Validate checks that all required claims are present.
 func (c *OAuth2StateTokenClaims) Validate() error {
-	if c.Principal == "" {
+	if c.Principal.IsZero() {
 		return errors.New("principal is required")
 	}
 	if c.PKCEVerifier == "" {
 		return errors.New("pkce_verifier is required")
 	}
-	if c.ServiceID == "" {
+	if c.ServiceID.IsZero() {
 		return errors.New("service_id is required")
 	}
 	if c.RedirectURI == "" {

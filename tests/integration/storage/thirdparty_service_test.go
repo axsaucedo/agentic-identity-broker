@@ -14,6 +14,7 @@ import (
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/postgres"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -188,17 +189,19 @@ func findProjectRoot() (string, error) {
 
 // createTestService is a helper to create a test service entity with specified properties.
 // Returned entity has Secret in plaintext state, ready for providerService.Create().
-func createTestService(id, displayName string, protectedResources []string) *model.ThirdpartyOAuth2ProviderEntity {
+func createTestService(serviceNameOrID, displayName string, protectedResources []string) *model.ThirdpartyOAuth2ProviderEntity {
 	// If id looks like a UUID, use it; otherwise generate a deterministic UUID from the id string
-	serviceID := id
-	if !isValidUUID(id) {
-		serviceID = generateUUIDFromString(id)
+	var parsedID id.ServiceID
+	if parsed, err := id.ParseServiceID(serviceNameOrID); err == nil {
+		parsedID = parsed
+	} else {
+		parsedID = id.ServiceID(uuid.NewSHA1(uuid.Nil, []byte(serviceNameOrID)))
 	}
 
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          parsedID,
 		DisplayName: displayName,
-		ClientID:    id + "-client",
+		ClientID:    id.ClientID(serviceNameOrID + "-client"),
 		Secret:      model.NewPlaintextSecret("test-secret"),
 		IssuerURI:   "https://oauth.example.com",
 		Discovery: model.DiscoveryConfig{
@@ -215,17 +218,6 @@ func createTestService(id, displayName string, protectedResources []string) *mod
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
 	}
-}
-
-// isValidUUID checks if a string is a valid UUID
-func isValidUUID(id string) bool {
-	_, err := uuid.Parse(id)
-	return err == nil
-}
-
-// generateUUIDFromString creates a deterministic UUID from a string
-func generateUUIDFromString(s string) string {
-	return uuid.NewSHA1(uuid.Nil, []byte(s)).String()
 }
 
 // TestFindByProtectedResource_SingleMatch tests the happy path: single matching service
@@ -473,7 +465,7 @@ func TestFindByProtectedResource_MultipleServicesNonOverlapping(t *testing.T) {
 	// Find each service by its resource
 	tests := []struct {
 		resource     string
-		expectedID   string
+		expectedID   id.ServiceID
 		expectedName string
 	}{
 		{
@@ -658,7 +650,7 @@ func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
 		name          string
 		resource      string
 		shouldSucceed bool
-		expectedID    string
+		expectedID    id.ServiceID
 	}{
 		{
 			name:          "Find service 1",
@@ -682,7 +674,7 @@ func TestFindByProtectedResource_MixedScenarios(t *testing.T) {
 			name:          "Service 2 has no resources",
 			resource:      "https://some.resource.com",
 			shouldSucceed: false,
-			expectedID:    "",
+			expectedID:    id.ServiceID{},
 		},
 	}
 

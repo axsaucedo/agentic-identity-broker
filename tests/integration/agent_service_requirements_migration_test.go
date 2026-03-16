@@ -95,10 +95,10 @@ func TestAgentServiceRequirementsMigration(t *testing.T) {
 	})
 
 	t.Run("existing agents have NULL service_requirements", func(t *testing.T) {
-		// Create test agent
+		// Create test agent - id must be provided explicitly since it's a UUID PRIMARY KEY without default
 		insertSQL := `
-			INSERT INTO agents (client_id, display_name, description, created_at, updated_at)
-			VALUES ('test-client', 'Test Agent', 'Test Description', NOW(), NOW())
+			INSERT INTO agents (id, client_id, display_name, description, created_at, updated_at)
+			VALUES (uuid_generate_v4(), 'test-client', 'Test Agent', 'Test Description', NOW(), NOW())
 			RETURNING id;
 		`
 		exitCode, agentIDReader, err := container.Exec(ctx, []string{

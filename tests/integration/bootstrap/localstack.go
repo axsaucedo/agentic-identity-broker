@@ -18,6 +18,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // LocalStackContainer manages LocalStack KMS + DynamoDB for E2E encryption tests
@@ -201,7 +202,14 @@ func (ls *LocalStackContainer) Terminate(ctx context.Context) error {
 // Branch keys must exist in DynamoDB before the hierarchical keyring can use them.
 // This function uses the AWS Encryption SDK KeyStore to create proper branch key records.
 func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dynamoClient *dynamodb.Client, keyID string) error {
-	testServices := []string{"oauth2", "github", "google"}
+	// Test service IDs (UUIDs) — must match the constants in encryption_vault_keyring_test.go
+	// (testServiceOAuth2, testServiceGitHub, testServiceGoogle) and fixtures.TestServices().
+	// The encryption context "service_id" uses the UUID string form.
+	testServiceIDs := []id.ServiceID{
+		id.MustParseServiceID("01234567-89ab-cdef-0123-456789abcdef"), // oauth2
+		id.MustParseServiceID("12345678-9abc-def0-1234-56789abcdef0"), // github
+		id.MustParseServiceID("23456789-abcd-ef01-2345-6789abcdef01"), // google
+	}
 
 	// Create KeyStore client
 	kmsARN := fmt.Sprintf("arn:aws:kms:eu-central-1:000000000000:key/%s", keyID)
@@ -222,17 +230,17 @@ func preBranchKeysForLocalStack(ctx context.Context, kmsClient *kms.Client, dyna
 
 	// Create branch keys for each test service using centralized ID generation
 	branchKeyIdProvider := &awsencryption.BranchKeyIdSupplier{}
-	for _, service := range testServices {
-		branchKeyID := branchKeyIdProvider.GenerateBranchKeyId(service)
+	for _, serviceID := range testServiceIDs {
+		branchKeyID := branchKeyIdProvider.GenerateBranchKeyId(serviceID)
 		encryptionCtx := map[string]string{
-			"service_id": service,
+			"service_id": serviceID.String(),
 		}
 		_, err := keystoreClient.CreateKey(ctx, keystoretypes.CreateKeyInput{
 			BranchKeyIdentifier: &branchKeyID,
 			EncryptionContext:   encryptionCtx,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create branch key for service %s: %w", service, err)
+			return fmt.Errorf("failed to create branch key for service %s: %w", serviceID, err)
 		}
 	}
 

@@ -6,14 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // UserGrant represents a user delegating specific permissions to an agent
 // for one or more third-party OAuth2 services.
 type UserGrant struct {
-	ID                    string           `json:"id" db:"id"`
-	Principal             string           `json:"principal" db:"principal"`
-	AgentID               string           `json:"agent_id" db:"agent_id"`
+	ID                    id.GrantID       `json:"id" db:"id"`
+	Principal             id.Principal     `json:"principal" db:"principal"`
+	AgentID               id.AgentID       `json:"agent_id" db:"agent_id"`
 	ValidUntil            *time.Time       `json:"valid_until,omitempty" db:"valid_until"`
 	DelegatedOAuth2Tokens []DelegatedToken `json:"delegated_oauth2_tokens" db:"delegated_oauth2_tokens"`
 	CreatedAt             time.Time        `json:"created_at" db:"created_at"`
@@ -22,20 +24,20 @@ type UserGrant struct {
 
 // DelegatedToken represents delegation of specific scopes to a third-party service.
 type DelegatedToken struct {
-	ThirdpartyOAuth2ServiceID string   `json:"thirdparty_oauth2_service_id"`
-	Scopes                    []string `json:"scopes"`
+	ThirdpartyOAuth2ServiceID id.ServiceID `json:"thirdparty_oauth2_service_id"`
+	Scopes                    []string     `json:"scopes"`
 }
 
 // Validate performs validation on the UserGrant entity.
 func (g *UserGrant) Validate() error {
 	// Required fields
-	if g.ID == "" {
+	if g.ID.IsZero() {
 		return errors.New("grant ID cannot be empty")
 	}
-	if g.Principal == "" {
+	if g.Principal.IsZero() {
 		return errors.New("principal is required")
 	}
-	if g.AgentID == "" {
+	if g.AgentID.IsZero() {
 		return errors.New("agent_id is required")
 	}
 
@@ -51,7 +53,7 @@ func (g *UserGrant) Validate() error {
 
 	// Validate each delegation
 	for i, token := range g.DelegatedOAuth2Tokens {
-		if token.ThirdpartyOAuth2ServiceID == "" {
+		if token.ThirdpartyOAuth2ServiceID.IsZero() {
 			return fmt.Errorf("delegation %d: thirdparty_oauth2_service_id is required", i)
 		}
 		if len(token.Scopes) == 0 {
@@ -73,10 +75,10 @@ func (g *UserGrant) Validate() error {
 
 // ValidateForCreate validates a grant before creation.
 func (g *UserGrant) ValidateForCreate() error {
-	if g.Principal == "" {
+	if g.Principal.IsZero() {
 		return errors.New("principal is required")
 	}
-	if g.AgentID == "" {
+	if g.AgentID.IsZero() {
 		return errors.New("agent_id is required")
 	}
 
@@ -89,7 +91,7 @@ func (g *UserGrant) ValidateForCreate() error {
 	}
 
 	for i, token := range g.DelegatedOAuth2Tokens {
-		if token.ThirdpartyOAuth2ServiceID == "" {
+		if token.ThirdpartyOAuth2ServiceID.IsZero() {
 			return fmt.Errorf("delegation %d: thirdparty_oauth2_service_id is required", i)
 		}
 		if len(token.Scopes) == 0 {

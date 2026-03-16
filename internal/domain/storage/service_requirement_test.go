@@ -3,6 +3,7 @@ package storage
 import (
 	"testing"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "valid mandatory requirement",
 			sr: &ServiceRequirement{
-				ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+				ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  []string{"repo", "user:email"},
 			},
@@ -26,7 +27,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "valid optional requirement",
 			sr: &ServiceRequirement{
-				ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+				ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				RequirementType: RequirementTypeOptional,
 				RequiredScopes:  []string{"read:user"},
 			},
@@ -44,7 +45,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "invalid requirement_type",
 			sr: &ServiceRequirement{
-				ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+				ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				RequirementType: RequirementType("invalid"),
 				RequiredScopes:  []string{"repo"},
 			},
@@ -54,7 +55,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "empty required_scopes",
 			sr: &ServiceRequirement{
-				ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+				ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  []string{},
 			},
@@ -64,7 +65,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "empty scope in required_scopes",
 			sr: &ServiceRequirement{
-				ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+				ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  []string{"repo", "", "user:email"},
 			},
@@ -88,7 +89,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 
 func TestServiceRequirement_HasScope(t *testing.T) {
 	sr := &ServiceRequirement{
-		ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+		ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 		RequirementType: RequirementTypeMandatory,
 		RequiredScopes:  []string{"repo", "user:email"},
 	}
@@ -101,12 +102,12 @@ func TestServiceRequirement_HasScope(t *testing.T) {
 
 func TestServiceRequirement_IsMandatory(t *testing.T) {
 	mandatory := &ServiceRequirement{
-		ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+		ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 		RequirementType: RequirementTypeMandatory,
 		RequiredScopes:  []string{"repo"},
 	}
 	optional := &ServiceRequirement{
-		ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+		ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 		RequirementType: RequirementTypeOptional,
 		RequiredScopes:  []string{"repo"},
 	}
@@ -117,12 +118,12 @@ func TestServiceRequirement_IsMandatory(t *testing.T) {
 
 func TestServiceRequirement_IsOptional(t *testing.T) {
 	mandatory := &ServiceRequirement{
-		ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+		ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 		RequirementType: RequirementTypeMandatory,
 		RequiredScopes:  []string{"repo"},
 	}
 	optional := &ServiceRequirement{
-		ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+		ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 		RequirementType: RequirementTypeOptional,
 		RequiredScopes:  []string{"repo"},
 	}

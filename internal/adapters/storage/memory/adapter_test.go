@@ -2,15 +2,23 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	userID1        = id.MustParseUserID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
+	userID2        = id.MustParseUserID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12")
+	nonexistentUID = id.MustParseUserID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99")
 )
 
 func TestInitialize(t *testing.T) {
@@ -81,7 +89,7 @@ func TestCreateUser(t *testing.T) {
 		{
 			name: "valid user",
 			user: &ports.User{
-				ID:        "user123",
+				ID:        userID1,
 				Email:     "test@example.com",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -95,9 +103,9 @@ func TestCreateUser(t *testing.T) {
 			errKind: storage.ErrorKindValidation,
 		},
 		{
-			name: "empty ID",
+			name: "zero ID",
 			user: &ports.User{
-				ID:        "",
+				ID:        id.UserID{},
 				Email:     "test@example.com",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -108,7 +116,7 @@ func TestCreateUser(t *testing.T) {
 		{
 			name: "empty email",
 			user: &ports.User{
-				ID:        "user123",
+				ID:        userID2,
 				Email:     "",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -148,7 +156,7 @@ func TestCreateUser_Duplicate(t *testing.T) {
 	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID1,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -173,7 +181,7 @@ func TestGetUser(t *testing.T) {
 	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID1,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -181,7 +189,7 @@ func TestGetUser(t *testing.T) {
 
 	_ = adapter.CreateUser(ctx, user)
 
-	retrieved, err := adapter.GetUser(ctx, "user123")
+	retrieved, err := adapter.GetUser(ctx, userID1)
 	assert.NoError(t, err)
 	assert.NotNil(t, retrieved)
 	assert.Equal(t, user.ID, retrieved.ID)
@@ -195,7 +203,7 @@ func TestGetUser_NotFound(t *testing.T) {
 
 	_ = adapter.Initialize(ctx)
 
-	_, err := adapter.GetUser(ctx, "nonexistent")
+	_, err := adapter.GetUser(ctx, nonexistentUID)
 	assert.Error(t, err)
 	if storErr, ok := err.(*storage.StorageError); ok {
 		assert.Equal(t, storage.ErrorKindNotFound, storErr.Kind)
@@ -210,7 +218,7 @@ func TestUpdateUser(t *testing.T) {
 	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID1,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -226,7 +234,7 @@ func TestUpdateUser(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify update
-	retrieved, _ := adapter.GetUser(ctx, "user123")
+	retrieved, _ := adapter.GetUser(ctx, userID1)
 	assert.Equal(t, "newemail@example.com", retrieved.Email)
 }
 
@@ -238,7 +246,7 @@ func TestUpdateUser_NotFound(t *testing.T) {
 	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
-		ID:        "nonexistent",
+		ID:        nonexistentUID,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -259,7 +267,7 @@ func TestDeleteUser(t *testing.T) {
 	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID1,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -267,11 +275,11 @@ func TestDeleteUser(t *testing.T) {
 
 	_ = adapter.CreateUser(ctx, user)
 
-	err := adapter.DeleteUser(ctx, "user123")
+	err := adapter.DeleteUser(ctx, userID1)
 	assert.NoError(t, err)
 
 	// Verify deletion
-	_, err = adapter.GetUser(ctx, "user123")
+	_, err = adapter.GetUser(ctx, userID1)
 	assert.Error(t, err)
 }
 
@@ -283,7 +291,7 @@ func TestDeleteUser_Idempotent(t *testing.T) {
 	_ = adapter.Initialize(ctx)
 
 	// Delete non-existent user (should not error)
-	err := adapter.DeleteUser(ctx, "nonexistent")
+	err := adapter.DeleteUser(ctx, nonexistentUID)
 	assert.NoError(t, err)
 }
 
@@ -297,8 +305,8 @@ func TestListUsers(t *testing.T) {
 	// Create multiple users
 	for i := 1; i <= 3; i++ {
 		user := &ports.User{
-			ID:        "user" + string(rune(48+i)),
-			Email:     "test" + string(rune(48+i)) + "@example.com",
+			ID:        id.NewUserID(),
+			Email:     fmt.Sprintf("test%d@example.com", i),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -320,8 +328,8 @@ func TestListUsers_WithPagination(t *testing.T) {
 	// Create 10 users
 	for i := 1; i <= 10; i++ {
 		user := &ports.User{
-			ID:        "user" + string(rune(48+i%10)),
-			Email:     "test" + string(rune(48+i%10)) + "@example.com",
+			ID:        id.NewUserID(),
+			Email:     fmt.Sprintf("test%d@example.com", i),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -347,7 +355,7 @@ func TestConcurrentReads(t *testing.T) {
 	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID1,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -362,7 +370,7 @@ func TestConcurrentReads(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := adapter.GetUser(ctx, "user123")
+			_, err := adapter.GetUser(ctx, userID1)
 			if err == nil {
 				atomic.AddInt32(&successCount, 1)
 			}
@@ -384,13 +392,19 @@ func TestConcurrentWritesAndReads(t *testing.T) {
 	var writeErrors int32
 	var readErrors int32
 
+	// Pre-generate user IDs for concurrent access
+	concUserIDs := make([]id.UserID, 10)
+	for i := range concUserIDs {
+		concUserIDs[i] = id.NewUserID()
+	}
+
 	// Start 10 concurrent writes
-	for i := 1; i <= 10; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		go func(id int) {
+		go func(idx int) {
 			defer wg.Done()
 			user := &ports.User{
-				ID:        "user" + string(rune(48+(id%10))),
+				ID:        concUserIDs[idx],
 				Email:     "test@example.com",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -406,9 +420,9 @@ func TestConcurrentWritesAndReads(t *testing.T) {
 	// Start 50 concurrent reads
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
-		go func(id int) {
+		go func(idx int) {
 			defer wg.Done()
-			_, err := adapter.GetUser(ctx, "user"+string(rune(48+(id%10))))
+			_, err := adapter.GetUser(ctx, concUserIDs[idx%10])
 			if err != nil {
 				atomic.AddInt32(&readErrors, 1)
 			}
@@ -428,7 +442,7 @@ func TestContextCancellation(t *testing.T) {
 	_ = adapter.Initialize(context.Background())
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID1,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -440,7 +454,7 @@ func TestContextCancellation(t *testing.T) {
 	cancel()
 
 	// Operations should fail with context error
-	_, err := adapter.GetUser(ctx, "user123")
+	_, err := adapter.GetUser(ctx, userID1)
 	assert.Error(t, err)
 	if storErr, ok := err.(*storage.StorageError); ok {
 		assert.Equal(t, storage.ErrorKindTimeout, storErr.Kind)
@@ -459,7 +473,7 @@ func TestDataIsolation(t *testing.T) {
 	_ = adapter2.Initialize(ctx2)
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID1,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -468,7 +482,7 @@ func TestDataIsolation(t *testing.T) {
 	_ = adapter1.CreateUser(ctx1, user)
 
 	// User should not exist in adapter2 (different instances)
-	_, err := adapter2.GetUser(ctx2, "user123")
+	_, err := adapter2.GetUser(ctx2, userID1)
 	assert.Error(t, err)
 }
 
@@ -481,7 +495,7 @@ func BenchmarkCreateUser(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		user := &ports.User{
-			ID:        "user" + string(rune(48+(i%1000))),
+			ID:        id.NewUserID(),
 			Email:     "test@example.com",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
@@ -496,7 +510,7 @@ func BenchmarkGetUser(b *testing.B) {
 	_ = adapter.Initialize(ctx)
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID1,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -505,7 +519,7 @@ func BenchmarkGetUser(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = adapter.GetUser(ctx, "user123")
+		_, _ = adapter.GetUser(ctx, userID1)
 	}
 }
 
@@ -517,7 +531,7 @@ func BenchmarkListUsers(b *testing.B) {
 	// Create 1000 users
 	for i := 1; i <= 1000; i++ {
 		user := &ports.User{
-			ID:        "user" + string(rune(48+(i%1000))),
+			ID:        id.NewUserID(),
 			Email:     "test@example.com",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),

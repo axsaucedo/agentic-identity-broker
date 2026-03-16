@@ -14,6 +14,7 @@ import (
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	storagememory "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -119,7 +120,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// NOTE: Grant must use agent.ID (internal UUID) because token exchange service
 		// resolves agent client_id (from JWT "azp" claim) to agent UUID via AgentRepository,
 		// then looks up grants by principal + agent.ID.
-		grant := fixtures.ActiveGrant(principal, agent.ID, githubService.ID, []string{"repo", "user"})
+		grant := fixtures.ActiveGrant(principal, agent.ID.String(), githubService.ID.String(), []string{"repo", "user"})
 		err = testStorage.UserGrants().Create(ctx, grant)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -426,11 +427,12 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: Multiple services configured with same protected_resource (creates ambiguous mapping)
 			ctx := context.Background()
 			// Create a second service with the same protected_resource as GitHub
+			ambiguousServiceID := id.NewServiceID()
 			ambiguousService := &model.ThirdpartyOAuth2ProviderEntity{
-				ID:          "ambiguous-service",
+				ID:          ambiguousServiceID,
 				DisplayName: "Ambiguous Service",
 				ClientID:    "ambiguous-client-id",
-				Secret:      fixtures.EncryptedSecret("ambiguous-service", "ambiguous-client-secret"),
+				Secret:      fixtures.EncryptedSecret(ambiguousServiceID.String(), "ambiguous-client-secret"),
 				IssuerURI:   "https://ambiguous.example.com",
 				Discovery: model.DiscoveryConfig{
 					EnableDiscovery: false,
@@ -505,7 +507,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Delete the grant that was created in BeforeEach so this principal has no grant
 			ctx := context.Background()
 			// Get the active grant first to delete it
-			activeGrants, err := testStorage.UserGrants().ListByPrincipalAndAgent(ctx, principal, agent.ID)
+			activeGrants, err := testStorage.UserGrants().ListByPrincipalAndAgent(ctx, id.Principal(principal), agent.ID)
 			Expect(err).NotTo(HaveOccurred())
 			// Delete each active grant for this principal+agent combination
 			for _, g := range activeGrants {
@@ -542,14 +544,14 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Replace the active grant with a revoked one (ValidUntil set to past)
 			ctx := context.Background()
 			// First delete the active grant created in BeforeEach
-			activeGrants, err := testStorage.UserGrants().ListByPrincipalAndAgent(ctx, principal, agent.ID)
+			activeGrants, err := testStorage.UserGrants().ListByPrincipalAndAgent(ctx, id.Principal(principal), agent.ID)
 			Expect(err).NotTo(HaveOccurred())
 			for _, g := range activeGrants {
 				err := testStorage.UserGrants().Delete(ctx, g.ID)
 				Expect(err).NotTo(HaveOccurred())
 			}
 			// Create expired grant using CreateTestGrant to bypass validation
-			revokedGrant := fixtures.ExpiredGrant(principal, agent.ID, "github-service", []string{"repo", "user"})
+			revokedGrant := fixtures.ExpiredGrant(principal, agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"repo", "user"})
 			memRepo, ok := testStorage.UserGrants().(*storagememory.UserGrantRepository)
 			Expect(ok).To(BeTrue(), "test requires memory storage for CreateTestGrant method")
 			err = memRepo.CreateTestGrant(ctx, revokedGrant)
@@ -583,14 +585,14 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Given: User with expired grant
 			ctx := context.Background()
 			// First delete the active grant created in BeforeEach
-			activeGrants, err := testStorage.UserGrants().ListByPrincipalAndAgent(ctx, principal, agent.ID)
+			activeGrants, err := testStorage.UserGrants().ListByPrincipalAndAgent(ctx, id.Principal(principal), agent.ID)
 			Expect(err).NotTo(HaveOccurred())
 			for _, g := range activeGrants {
 				err := testStorage.UserGrants().Delete(ctx, g.ID)
 				Expect(err).NotTo(HaveOccurred())
 			}
 			// Create expired grant using CreateTestGrant to bypass validation
-			expiredGrant := fixtures.ExpiredGrant(principal, agent.ID, "github-service", []string{"repo", "user"})
+			expiredGrant := fixtures.ExpiredGrant(principal, agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"repo", "user"})
 			memRepo, ok := testStorage.UserGrants().(*storagememory.UserGrantRepository)
 			Expect(ok).To(BeTrue(), "test requires memory storage for CreateTestGrant method")
 			err = memRepo.CreateTestGrant(ctx, expiredGrant)
@@ -813,7 +815,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Also create grant for the other principal so the error is about session, not grant
-			grantForOther := fixtures.ActiveGrant(anotherPrincipal, agent.ID, "github-service", []string{"repo", "user"})
+			grantForOther := fixtures.ActiveGrant(anotherPrincipal, agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"repo", "user"})
 			err = testStorage.UserGrants().Create(ctx, grantForOther)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -844,7 +846,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		It("[US5-S2] should return 400 invalid_grant when tokens fully expired", func() {
 			// Given: Both access and refresh tokens expired
 			ctx := context.Background()
-			fullyExpiredSession := fixtures.FullyExpiredSessionForPrincipal(principal, "github-service")
+			fullyExpiredSession := fixtures.FullyExpiredSessionForPrincipal(principal, fixtures.GitHubService().ID.String())
 			err := testStorage.UserSessions().Create(ctx, fullyExpiredSession)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -891,7 +893,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Create grant for admin so error is specifically about session
-			grantForAdmin := fixtures.ActiveGrant(anotherPrincipal, agent.ID, "github-service", []string{"repo", "user"})
+			grantForAdmin := fixtures.ActiveGrant(anotherPrincipal, agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"repo", "user"})
 			err = testStorage.UserGrants().Create(ctx, grantForAdmin)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -991,7 +993,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// When: Admin updates service with new protected_resources via PUT
-			resp, err := adminServer.DirectRequest("PUT", "/api/services/github-service", principal, map[string]string{"Content-Type": "application/json"}, strings.NewReader(string(body)))
+			resp, err := adminServer.DirectRequest("PUT", "/api/services/"+fixtures.GitHubService().ID.String(), principal, map[string]string{"Content-Type": "application/json"}, strings.NewReader(string(body)))
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
@@ -1088,7 +1090,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		It("[US6-S5] should include protected_resources in GET /api/services/{id} response", func() {
 			// Given: Service exists with protected_resources stored (GitHub service from BeforeEach)
 			// When: Admin retrieves service details via GET /api/services/{id}
-			resp, err := adminServer.AuthenticatedGET("/api/services/github-service", principal)
+			resp, err := adminServer.AuthenticatedGET("/api/services/"+fixtures.GitHubService().ID.String(), principal)
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 

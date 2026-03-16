@@ -2,6 +2,8 @@ package storage
 
 import (
 	"fmt"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // ServiceRequirement represents a third-party OAuth2 service that an agent requires or can optionally use.
@@ -16,7 +18,7 @@ import (
 // - RequiredScopes must contain at least one scope
 // - Each scope name must be non-empty
 type ServiceRequirement struct {
-	ServiceID       string          `json:"service_id" db:"service_id"`
+	ServiceID       id.ServiceID    `json:"service_id" db:"service_id"`
 	RequirementType RequirementType `json:"requirement_type" db:"requirement_type"`
 	RequiredScopes  []string        `json:"required_scopes" db:"required_scopes"`
 }
@@ -28,7 +30,7 @@ type ServiceRequirement struct {
 // - RequiredScopes is empty
 // - Any scope is empty
 func (sr *ServiceRequirement) Validate() error {
-	if sr.ServiceID == "" {
+	if sr.ServiceID.IsZero() {
 		return fmt.Errorf("service_id is required")
 	}
 

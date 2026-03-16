@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"context"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -28,10 +29,10 @@ var _ = Describe("Consent Flow", func() {
 		// Step 1: Create a third-party OAuth2 service with scopes
 		// This provides the scopes that can be delegated by the user
 		service := &model.ThirdpartyOAuth2ProviderEntity{
-			ID:          "github-service",
+			ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 			DisplayName: "GitHub",
-			ClientID:    "github-client-id",
-			Secret:      fixtures.EncryptedSecret("github-service", "github-client-secret"),
+			ClientID:    id.ClientID("github-client-id"),
+			Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440000", "github-client-secret"),
 			IssuerURI:   "https://github.com",
 			Endpoints: model.OAuth2Endpoints{
 				AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -48,10 +49,10 @@ var _ = Describe("Consent Flow", func() {
 		// Step 2: Create a test agent with service requirements
 		// The agent's service requirements define what services can be delegated to it
 		agent := fixtures.ValidAgent()
-		testAgentID = agent.ID
+		testAgentID = agent.ID.String()
 		agent.ServiceRequirements = []storage.ServiceRequirement{
 			{
-				ServiceID:       "github-service",
+				ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				RequirementType: storage.RequirementTypeMandatory,
 				RequiredScopes:  []string{"repo", "user"},
 			},
@@ -62,7 +63,7 @@ var _ = Describe("Consent Flow", func() {
 		// Step 3: Create a grant linking the agent to the current user
 		// This makes the agent appear in the user's consent page with delegated services/scopes
 		principal := fixtures.DefaultPrincipal().String()
-		grant := fixtures.IndefiniteGrant(principal, testAgentID, "github-service", []string{"repo", "user"})
+		grant := fixtures.IndefiniteGrant(principal, testAgentID, "550e8400-e29b-41d4-a716-446655440000", []string{"repo", "user"})
 		err = GetTestStorage().UserGrants().Create(ctx, grant)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create test grant")
 

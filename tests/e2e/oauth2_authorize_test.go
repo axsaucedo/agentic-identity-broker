@@ -87,7 +87,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Given: Valid agent registered
 			// When: Authorization request with valid client_id (authenticated as default user)
 			resp, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+agent.ClientID+"&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz",
+				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -135,7 +135,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 
 		It("should redirect to consent UI with full original request URL preserved", func() {
 			// Given: Valid agent but no grant
-			originalURL := "/oauth2/authorize?client_id=" + agent.ClientID + "&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid"
+			originalURL := "/oauth2/authorize?client_id=" + string(agent.ClientID) + "&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid"
 
 			// When: Authorization request (authenticated as default user)
 			resp, err := server.AuthenticatedGET(originalURL, fixtures.DefaultPrincipal().String())
@@ -143,13 +143,13 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Redirects to consent UI
-			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID))
+			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID.String()))
 
 			// And: Original URL preserved in redirect_uri parameter
 			redirectURL, err := helpers.ExtractRedirectURL(resp)
 			Expect(err).ToNot(HaveOccurred())
 			redirectURIParam := redirectURL.Query().Get("redirect_uri")
-			Expect(redirectURIParam).To(ContainSubstring(agent.ClientID))
+			Expect(redirectURIParam).To(ContainSubstring(string(agent.ClientID)))
 			Expect(redirectURIParam).To(ContainSubstring("state=xyz"))
 		})
 	})
@@ -164,7 +164,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create active grant for default principal
-			grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
+			grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"read", "write"})
 			err = testStorage.UserGrants().Create(context.Background(), grant)
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -173,7 +173,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Given: Active grant exists
 			// When: Authorization request with multiple OAuth2 parameters (authenticated as default user)
 			resp, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+agent.ClientID+"&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid+profile&code_challenge=abc&code_challenge_method=S256",
+				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid+profile&code_challenge=abc&code_challenge_method=S256",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -195,7 +195,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Check key parameters are preserved
-			Expect(redirectURL.Query().Get("client_id")).To(Equal(agent.ClientID))
+			Expect(redirectURL.Query().Get("client_id")).To(Equal(string(agent.ClientID)))
 			Expect(redirectURL.Query().Get("redirect_uri")).To(Equal("https://client.example.com/cb"))
 			Expect(redirectURL.Query().Get("response_type")).To(Equal("code"))
 			Expect(redirectURL.Query().Get("state")).To(Equal("xyz"))
@@ -215,7 +215,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create expired grant using test method that bypasses validation
-			expiredGrant := fixtures.ExpiredGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
+			expiredGrant := fixtures.ExpiredGrant(fixtures.DefaultPrincipal().String(), agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"read", "write"})
 			memRepo, ok := testStorage.UserGrants().(*storagememory.UserGrantRepository)
 			if !ok {
 				Skip("Test requires memory storage for CreateTestGrant method")
@@ -228,14 +228,14 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Given: Expired grant exists
 			// When: Authorization request (authenticated as default user)
 			resp, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+agent.ClientID+"&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
 			// Then: Redirects to consent UI (not upstream)
-			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID))
+			Expect(resp).To(matchers.HaveOAuth2Redirect("/consent/agent/" + agent.ID.String()))
 		})
 	})
 
@@ -253,7 +253,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Given: Valid agent and no X-Remote-User header (unauthenticated)
 			// When: Authorization request without principal (using PublicGET)
 			resp, err := server.PublicGET(
-				"/oauth2/authorize?client_id=" + agent.ClientID + "&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id=" + string(agent.ClientID) + "&redirect_uri=https://client.example.com/cb&response_type=code",
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -278,7 +278,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create active grant
-			grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
+			grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"read", "write"})
 			err = testStorage.UserGrants().Create(context.Background(), grant)
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -290,7 +290,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// When: Authorization request with valid redirect_uri
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz",
-					agent.ClientID, redirectURI),
+					string(agent.ClientID), redirectURI),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -326,7 +326,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				// When: Authorization request with state parameter
 				resp, err := server.AuthenticatedGET(
 					fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=%s",
-						agent.ClientID, stateValue),
+						string(agent.ClientID), stateValue),
 					fixtures.DefaultPrincipal().String(),
 				)
 				Expect(err).ToNot(HaveOccurred())
@@ -349,7 +349,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 
 		Context("and active grant exists (proxy to upstream)", func() {
 			BeforeEach(func() {
-				grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
+				grant := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"read", "write"})
 				err := testStorage.UserGrants().Create(context.Background(), grant)
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -361,7 +361,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				// When: Authorization request with state parameter
 				resp, err := server.AuthenticatedGET(
 					fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=%s",
-						agent.ClientID, stateValue),
+						string(agent.ClientID), stateValue),
 					fixtures.DefaultPrincipal().String(),
 				)
 				Expect(err).ToNot(HaveOccurred())
@@ -391,7 +391,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create grant only for default principal
-			grantDefault := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID, "test-service", []string{"read", "write"})
+			grantDefault := fixtures.ActiveGrant(fixtures.DefaultPrincipal().String(), agent.ID.String(), fixtures.GitHubService().ID.String(), []string{"read", "write"})
 			err = testStorage.UserGrants().Create(context.Background(), grantDefault)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -403,7 +403,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 
 			// When: Default principal makes request
 			resp1, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+agent.ClientID+"&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -419,7 +419,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 
 			// When: Another principal makes request
 			resp2, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+agent.ClientID+"&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code",
 				fixtures.AnotherPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())

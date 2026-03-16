@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/branchkey"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // InMemoryBranchKeyRepository implements BranchKeyRepository and BranchKeyIdProvider interfaces for testing and development.
@@ -26,11 +27,11 @@ func NewInMemoryBranchKeyRepository() *InMemoryBranchKeyRepository {
 // Create creates a branch key for a service (in-memory).
 // The branch key ID follows the pattern: service_{service_id}_branch_key
 // Returns the generated branch key ID or error if validation fails.
-func (r *InMemoryBranchKeyRepository) Create(ctx context.Context, serviceID string) (string, error) {
+func (r *InMemoryBranchKeyRepository) Create(ctx context.Context, serviceID id.ServiceID) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if serviceID == "" {
+	if serviceID.IsZero() {
 		return "", fmt.Errorf("service_id cannot be empty")
 	}
 
@@ -41,11 +42,11 @@ func (r *InMemoryBranchKeyRepository) Create(ctx context.Context, serviceID stri
 
 // Get retrieves a branch key ID for the given service (in-memory).
 // Returns the branch key ID if provisioned, error if not found or validation fails.
-func (r *InMemoryBranchKeyRepository) Get(ctx context.Context, serviceID string) (string, error) {
+func (r *InMemoryBranchKeyRepository) Get(ctx context.Context, serviceID id.ServiceID) (string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if serviceID == "" {
+	if serviceID.IsZero() {
 		return "", fmt.Errorf("service_id cannot be empty")
 	}
 
@@ -59,8 +60,8 @@ func (r *InMemoryBranchKeyRepository) Get(ctx context.Context, serviceID string)
 // GenerateBranchKeyId generates a deterministic branch key ID from a service ID.
 // Format: service_{service_id}_branch_key
 // Example: service_oauth2_branch_key, service_github_branch_key
-func (r *InMemoryBranchKeyRepository) GenerateBranchKeyId(serviceID string) string {
-	return branchkey.GenerateBranchKeyId(serviceID)
+func (r *InMemoryBranchKeyRepository) GenerateBranchKeyId(serviceID id.ServiceID) string {
+	return branchkey.GenerateBranchKeyId(serviceID.String())
 }
 
 // ExtractServiceIdFromBranchKey extracts the service ID from a branch key ID.
@@ -68,10 +69,14 @@ func (r *InMemoryBranchKeyRepository) GenerateBranchKeyId(serviceID string) stri
 // Format: service_{service_id}_branch_key -> service_id
 // Example: service_oauth2_branch_key -> oauth2
 // Returns empty string if parsing fails.
-func (r *InMemoryBranchKeyRepository) ExtractServiceIdFromBranchKey(branchKeyID string) string {
+func (r *InMemoryBranchKeyRepository) ExtractServiceIdFromBranchKey(branchKeyID string) id.ServiceID {
 	serviceID, err := branchkey.ExtractServiceID(branchKeyID)
 	if err != nil {
-		return "" // Interface contract: return empty string on parsing failure
+		return id.ServiceID{} // Interface contract: return empty string on parsing failure
 	}
-	return serviceID
+	parsed, pErr := id.ParseServiceID(serviceID)
+	if pErr != nil {
+		return id.ServiceID{}
+	}
+	return parsed
 }

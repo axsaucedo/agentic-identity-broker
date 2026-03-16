@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
@@ -18,9 +19,9 @@ func TestUserSession_Validate(t *testing.T) {
 		{
 			name: "valid session",
 			session: &storage.UserSession{
-				ID:                   "id-123",
-				Principal:            "user@example.com",
-				ServiceID:            "service-uuid",
+				ID:                   id.NewSessionID(),
+				Principal:            id.Principal("user@example.com"),
+				ServiceID:            id.NewServiceID(),
 				EncryptedAccessToken: []byte("encrypted-token"),
 				TokenType:            "Bearer",
 			},
@@ -29,8 +30,8 @@ func TestUserSession_Validate(t *testing.T) {
 		{
 			name: "empty ID",
 			session: &storage.UserSession{
-				Principal:            "user@example.com",
-				ServiceID:            "service-uuid",
+				Principal:            id.Principal("user@example.com"),
+				ServiceID:            id.NewServiceID(),
 				EncryptedAccessToken: []byte("token"),
 				TokenType:            "Bearer",
 			},
@@ -39,8 +40,8 @@ func TestUserSession_Validate(t *testing.T) {
 		{
 			name: "empty principal",
 			session: &storage.UserSession{
-				ID:                   "id-123",
-				ServiceID:            "service-uuid",
+				ID:                   id.NewSessionID(),
+				ServiceID:            id.NewServiceID(),
 				EncryptedAccessToken: []byte("token"),
 				TokenType:            "Bearer",
 			},
@@ -49,9 +50,9 @@ func TestUserSession_Validate(t *testing.T) {
 		{
 			name: "principal exceeds 200 chars",
 			session: &storage.UserSession{
-				ID:                   "id-123",
-				Principal:            string(make([]byte, 201)),
-				ServiceID:            "service-uuid",
+				ID:                   id.NewSessionID(),
+				Principal:            id.Principal(string(make([]byte, 201))),
+				ServiceID:            id.NewServiceID(),
 				EncryptedAccessToken: []byte("token"),
 				TokenType:            "Bearer",
 			},
@@ -60,8 +61,8 @@ func TestUserSession_Validate(t *testing.T) {
 		{
 			name: "empty service ID",
 			session: &storage.UserSession{
-				ID:                   "id-123",
-				Principal:            "user@example.com",
+				ID:                   id.NewSessionID(),
+				Principal:            id.Principal("user@example.com"),
 				EncryptedAccessToken: []byte("token"),
 				TokenType:            "Bearer",
 			},
@@ -70,9 +71,9 @@ func TestUserSession_Validate(t *testing.T) {
 		{
 			name: "empty encrypted token",
 			session: &storage.UserSession{
-				ID:        "id-123",
-				Principal: "user@example.com",
-				ServiceID: "service-uuid",
+				ID:        id.NewSessionID(),
+				Principal: id.Principal("user@example.com"),
+				ServiceID: id.NewServiceID(),
 				TokenType: "Bearer",
 			},
 			wantErr: true,
@@ -80,9 +81,9 @@ func TestUserSession_Validate(t *testing.T) {
 		{
 			name: "empty token type",
 			session: &storage.UserSession{
-				ID:                   "id-123",
-				Principal:            "user@example.com",
-				ServiceID:            "service-uuid",
+				ID:                   id.NewSessionID(),
+				Principal:            id.Principal("user@example.com"),
+				ServiceID:            id.NewServiceID(),
 				EncryptedAccessToken: []byte("token"),
 			},
 			wantErr: true,

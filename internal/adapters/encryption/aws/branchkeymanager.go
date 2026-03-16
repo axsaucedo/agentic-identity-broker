@@ -5,6 +5,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/branchkey"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // AWSBranchKeyManager implements ports.BranchKeyManager for AWS hierarchical keyring.
@@ -28,18 +29,18 @@ func NewAWSBranchKeyManager(keyStore *KeyStore) *AWSBranchKeyManager {
 
 // Create creates a branch key for the service in DynamoDB.
 // Implements BranchKeyRepository.Create()
-func (m *AWSBranchKeyManager) Create(ctx context.Context, serviceID string) (string, error) {
+func (m *AWSBranchKeyManager) Create(ctx context.Context, serviceID id.ServiceID) (string, error) {
 	if m == nil || m.keyStore == nil {
 		return "", encryption.NewKEKUnavailableError("branch key manager not properly initialized", nil)
 	}
 
 	// 1. Validate service_id (non-empty)
-	if serviceID == "" {
+	if serviceID.IsZero() {
 		return "", encryption.NewKEKUnavailableError("service_id cannot be empty", nil)
 	}
 
 	// 2. Generate deterministic branch key ID (same format used at runtime)
-	branchKeyID := branchkey.GenerateBranchKeyId(serviceID)
+	branchKeyID := branchkey.GenerateBranchKeyId(serviceID.String())
 
 	// 3. Provision in DynamoDB via KeyStore
 	provisioned, err := m.keyStore.CreateBranchKey(ctx, branchKeyID)

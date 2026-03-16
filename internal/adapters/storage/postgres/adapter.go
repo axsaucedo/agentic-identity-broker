@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -257,7 +258,7 @@ func (a *Adapter) CreateUser(ctx context.Context, user *ports.User) error {
 		)
 	}
 
-	if user.ID == "" {
+	if user.ID.IsZero() {
 		return storage.NewStorageError(
 			"CreateUser",
 			storage.ErrorKindValidation,
@@ -316,7 +317,7 @@ func (a *Adapter) CreateUser(ctx context.Context, user *ports.User) error {
 
 // GetUser retrieves a user entity by ID.
 // Satisfies ports.UserRepository interface.
-func (a *Adapter) GetUser(ctx context.Context, id string) (*ports.User, error) {
+func (a *Adapter) GetUser(ctx context.Context, userID id.UserID) (*ports.User, error) {
 	if a.db == nil {
 		return nil, storage.NewStorageError(
 			"GetUser",
@@ -326,7 +327,7 @@ func (a *Adapter) GetUser(ctx context.Context, id string) (*ports.User, error) {
 		)
 	}
 
-	if id == "" {
+	if userID.IsZero() {
 		return nil, storage.NewStorageError(
 			"GetUser",
 			storage.ErrorKindValidation,
@@ -345,13 +346,13 @@ func (a *Adapter) GetUser(ctx context.Context, id string) (*ports.User, error) {
 		WHERE id = $1
 	`
 
-	if err := a.db.GetContext(queryCtx, user, query, id); err != nil {
+	if err := a.db.GetContext(queryCtx, user, query, userID); err != nil {
 		if err.Error() == "sql: no rows in result set" {
 			return nil, storage.NewStorageError(
 				"GetUser",
 				storage.ErrorKindNotFound,
 				err,
-				fmt.Sprintf("user with ID %q not found", id),
+				fmt.Sprintf("user with ID %q not found", userID),
 			)
 		}
 		if err.Error() == "context deadline exceeded" {
@@ -394,7 +395,7 @@ func (a *Adapter) UpdateUser(ctx context.Context, user *ports.User) error {
 		)
 	}
 
-	if user.ID == "" {
+	if user.ID.IsZero() {
 		return storage.NewStorageError(
 			"UpdateUser",
 			storage.ErrorKindValidation,
@@ -463,7 +464,7 @@ func (a *Adapter) UpdateUser(ctx context.Context, user *ports.User) error {
 
 // DeleteUser deletes a user entity by ID.
 // Satisfies ports.UserRepository interface.
-func (a *Adapter) DeleteUser(ctx context.Context, id string) error {
+func (a *Adapter) DeleteUser(ctx context.Context, userID id.UserID) error {
 	if a.db == nil {
 		return storage.NewStorageError(
 			"DeleteUser",
@@ -473,7 +474,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, id string) error {
 		)
 	}
 
-	if id == "" {
+	if userID.IsZero() {
 		return storage.NewStorageError(
 			"DeleteUser",
 			storage.ErrorKindValidation,
@@ -487,7 +488,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, id string) error {
 
 	query := `DELETE FROM users WHERE id = $1`
 
-	_, err := a.db.ExecContext(execCtx, query, id)
+	_, err := a.db.ExecContext(execCtx, query, userID)
 	if err != nil {
 		if err.Error() == "context deadline exceeded" {
 			return storage.NewStorageError(

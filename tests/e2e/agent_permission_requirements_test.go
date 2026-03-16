@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
@@ -135,9 +136,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 		BeforeEach(func() {
 			// Create test third-party service for reference in service requirements
 			githubService = &model.ThirdpartyOAuth2ProviderEntity{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
+				ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				DisplayName: "GitHub",
-				ClientID:    "github-client",
+				ClientID:    id.ClientID("github-client"),
 				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440000", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
@@ -269,9 +270,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 
 			// Verify agent data
 			Expect(responseBody).To(HaveKey("id"))
-			Expect(responseBody["id"]).To(Equal(agent.ID))
+			Expect(responseBody["id"]).To(Equal(agent.ID.String()))
 			Expect(responseBody).To(HaveKey("client_id"))
-			Expect(responseBody["client_id"]).To(Equal(agent.ClientID))
+			Expect(responseBody["client_id"]).To(Equal(agent.ClientID.String()))
 
 			// Verify service requirements
 			serviceReqs, ok := responseBody["service_requirements"].([]interface{})
@@ -279,7 +280,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(serviceReqs).To(HaveLen(1))
 
 			firstReq := serviceReqs[0].(map[string]interface{})
-			Expect(firstReq["service_id"]).To(Equal(githubService.ID))
+			Expect(firstReq["service_id"]).To(Equal(githubService.ID.String()))
 			Expect(firstReq["service_name"]).To(Equal("GitHub"), "service_name should be resolved from service display_name")
 			Expect(firstReq["requirement_type"]).To(Equal("mandatory"))
 			Expect(firstReq["required_scopes"]).To(ConsistOf("repo", "user:email"))
@@ -401,9 +402,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 		BeforeEach(func() {
 			// Create test third-party service
 			githubService = &model.ThirdpartyOAuth2ProviderEntity{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
+				ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				DisplayName: "GitHub",
-				ClientID:    "github-client",
+				ClientID:    id.ClientID("github-client"),
 				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440000", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
@@ -460,7 +461,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			location := resp.Header.Get("Location")
 			Expect(location).ToNot(BeEmpty(), "Redirect should have Location header")
 			Expect(location).To(ContainSubstring("/consent/agent/"))
-			Expect(location).To(ContainSubstring(agent.ID))
+			Expect(location).To(ContainSubstring(agent.ID.String()))
 		})
 
 		// Scenario 2: spec.md User Story 2, Scenario 2
@@ -480,7 +481,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 
 			// And: User has grant with partial scopes
 			grantWithPartialScopes := &storage.UserGrant{
-				Principal: userPrincipal,
+				Principal: id.Principal(userPrincipal),
 				AgentID:   agent.ID,
 				DelegatedOAuth2Tokens: []storage.DelegatedToken{
 					{
@@ -529,7 +530,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 
 			// And: User has grant with all required scopes
 			grantWithRequiredScopes := &storage.UserGrant{
-				Principal: userPrincipal,
+				Principal: id.Principal(userPrincipal),
 				AgentID:   agent.ID,
 				DelegatedOAuth2Tokens: []storage.DelegatedToken{
 					{
@@ -596,7 +597,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			location := resp.Header.Get("Location")
 			Expect(location).ToNot(BeEmpty(), "Redirect should have Location header")
 			Expect(location).To(ContainSubstring("/consent/agent/"))
-			Expect(location).To(ContainSubstring(agent.ID))
+			Expect(location).To(ContainSubstring(agent.ID.String()))
 		})
 
 		// Scenario 5: spec.md User Story 2, Scenario 5
@@ -616,7 +617,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 
 			// And: User has grant without all required scopes
 			grantWithoutEmail := &storage.UserGrant{
-				Principal: userPrincipal,
+				Principal: id.Principal(userPrincipal),
 				AgentID:   agent.ID,
 				DelegatedOAuth2Tokens: []storage.DelegatedToken{
 					{
@@ -694,7 +695,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 
 				// And: User has a grant
 				grantWithoutServiceRequirements := &storage.UserGrant{
-					Principal: userPrincipal,
+					Principal: id.Principal(userPrincipal),
 					AgentID:   agent.ID,
 					DelegatedOAuth2Tokens: []storage.DelegatedToken{
 						{
@@ -739,9 +740,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 		BeforeEach(func() {
 			// Create test third-party service
 			githubService = &model.ThirdpartyOAuth2ProviderEntity{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
+				ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 				DisplayName: "GitHub",
-				ClientID:    "github-client",
+				ClientID:    id.ClientID("github-client"),
 				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440000", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
@@ -888,9 +889,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 		It("should list mandatory services before optional services in response", func() {
 			// Given: Agent with both mandatory and optional service requirements
 			optionalService := &model.ThirdpartyOAuth2ProviderEntity{
-				ID:          "550e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "GitLab",
-				ClientID:    "gitlab-client",
+				ClientID:    id.ClientID("gitlab-client"),
 				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440001", "gitlab-secret"),
 				IssuerURI:   "https://gitlab.com",
 				Endpoints: model.OAuth2Endpoints{
@@ -990,9 +991,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 		BeforeEach(func() {
 			// Create test third-party service with scopes
 			githubService = &model.ThirdpartyOAuth2ProviderEntity{
-				ID:          "550e8400-e29b-41d4-a716-446655440002",
+				ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440002"),
 				DisplayName: "GitHub",
-				ClientID:    "github-client",
+				ClientID:    id.ClientID("github-client"),
 				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440002", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{
@@ -1228,9 +1229,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 		BeforeEach(func() {
 			// Create test third-party service
 			githubService = &model.ThirdpartyOAuth2ProviderEntity{
-				ID:          "550e8400-e29b-41d4-a716-446655440006",
+				ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440006"),
 				DisplayName: "GitHub",
-				ClientID:    "github-client",
+				ClientID:    id.ClientID("github-client"),
 				Secret:      fixtures.EncryptedSecret("550e8400-e29b-41d4-a716-446655440006", "github-secret"),
 				IssuerURI:   "https://github.com",
 				Endpoints: model.OAuth2Endpoints{

@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"net/url"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // Agent represents an AI agent registered in the identity broker.
 // An agent can request delegated permissions from users to access third-party services.
 type Agent struct {
-	ID                   string               `json:"id" db:"id"`
-	ClientID             string               `json:"client_id" db:"client_id"`
-	ExternalID           *string              `json:"external_id,omitempty" db:"external_id"`
+	ID                   id.AgentID           `json:"id" db:"id"`
+	ClientID             id.ClientID          `json:"client_id" db:"client_id"`
+	ExternalID           *id.ExternalID       `json:"external_id,omitempty" db:"external_id"`
 	DisplayName          string               `json:"display_name" db:"display_name"`
 	Description          string               `json:"description" db:"description"`
 	GovernanceURL        *string              `json:"governance_url,omitempty" db:"governance_url"`
@@ -27,10 +29,10 @@ type Agent struct {
 // Returns an error if any validation rules are violated.
 func (a *Agent) Validate() error {
 	// Required fields
-	if a.ID == "" {
+	if a.ID.IsZero() {
 		return errors.New("agent ID cannot be empty")
 	}
-	if a.ClientID == "" {
+	if a.ClientID.IsZero() {
 		return errors.New("client_id is required")
 	}
 	if a.DisplayName == "" {
@@ -124,7 +126,7 @@ func (a *Agent) Copy() *Agent {
 // ValidateForCreate validates an agent before creation.
 // ID will be generated, so it may be empty.
 func (a *Agent) ValidateForCreate() error {
-	if a.ClientID == "" {
+	if a.ClientID.IsZero() {
 		return errors.New("client_id is required")
 	}
 	if a.DisplayName == "" {
@@ -176,7 +178,7 @@ func (a *Agent) ValidateServiceRequirements() error {
 	}
 
 	// Check for duplicate service_id (domain invariant)
-	seen := make(map[string]int)
+	seen := make(map[id.ServiceID]int)
 	for i, sr := range a.ServiceRequirements {
 		if prevIdx, exists := seen[sr.ServiceID]; exists {
 			return fmt.Errorf("duplicate service_id %q found at indices %d and %d", sr.ServiceID, prevIdx, i)

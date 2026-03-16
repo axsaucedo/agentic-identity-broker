@@ -20,6 +20,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -35,14 +36,14 @@ func TestListSessions_Success(t *testing.T) {
 	ctx := context.Background()
 
 	principal := "user@example.com"
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 
 	// Create service first
 	service := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -57,9 +58,9 @@ func TestListSessions_Success(t *testing.T) {
 
 	// Create a session
 	session := &storage.UserSession{
-		ID:                   uuid.New().String(),
-		Principal:            principal,
-		ServiceID:            serviceID,
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(principal),
+		ServiceID:            serviceUUID,
 		EncryptedAccessToken: []byte("token"),
 		TokenType:            "Bearer",
 		Scope:                []string{"repo", "user"},
@@ -105,8 +106,8 @@ func TestListSessions_Success(t *testing.T) {
 
 	// Verify session data
 	sessionData := resp.Data.Sessions[0]
-	assert.Equal(t, session.ID, sessionData["id"])
-	assert.Equal(t, serviceID, sessionData["service_id"])
+	assert.Equal(t, session.ID.String(), sessionData["id"])
+	assert.Equal(t, serviceUUID.String(), sessionData["service_id"])
 	assert.Equal(t, "GitHub", sessionData["service_display_name"])
 	assert.Equal(t, "Bearer", sessionData["token_type"])
 }
@@ -195,12 +196,12 @@ func TestAuthorizeEndpoint_Success(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create third-party service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
@@ -242,7 +243,7 @@ func TestAuthorizeEndpoint_Success(t *testing.T) {
 	// Make request
 	principal := "user@example.com"
 	redirectURI := "https://broker.example.com/sessions"
-	reqURL := "/api/third-party/" + serviceID + "/oauth2/authorize?redirect_uri=" + url.QueryEscape(redirectURI)
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/oauth2/authorize?redirect_uri=" + url.QueryEscape(redirectURI)
 
 	req := httptest.NewRequest("GET", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
@@ -336,7 +337,7 @@ func TestAuthorizeEndpoint_ServiceNotFound(t *testing.T) {
 
 	// Make request for non-existent service
 	principal := "user@example.com"
-	serviceID := "non-existent-service-id"
+	serviceID := "00000000-0000-0000-0000-000000000000"
 	reqURL := "/api/third-party/" + serviceID + "/oauth2/authorize?redirect_uri=https://broker.example.com/callback"
 
 	req := httptest.NewRequest("GET", reqURL, nil)
@@ -361,12 +362,12 @@ func TestAuthorizeEndpoint_InvalidRedirectURI(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
@@ -404,7 +405,7 @@ func TestAuthorizeEndpoint_InvalidRedirectURI(t *testing.T) {
 	// Make request with redirect_uri on different host
 	principal := "user@example.com"
 	redirectURI := "https://evil.com/callback"
-	reqURL := "/api/third-party/" + serviceID + "/oauth2/authorize?redirect_uri=" + url.QueryEscape(redirectURI)
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/oauth2/authorize?redirect_uri=" + url.QueryEscape(redirectURI)
 
 	req := httptest.NewRequest("GET", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
@@ -429,12 +430,12 @@ func TestAuthorizeEndpoint_VerifyAuthorizationURL(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
@@ -472,7 +473,7 @@ func TestAuthorizeEndpoint_VerifyAuthorizationURL(t *testing.T) {
 
 	principal := "user@example.com"
 	redirectURI := "https://broker.example.com/sessions"
-	reqURL := "/api/third-party/" + serviceID + "/oauth2/authorize?redirect_uri=" + url.QueryEscape(redirectURI)
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/oauth2/authorize?redirect_uri=" + url.QueryEscape(redirectURI)
 
 	req := httptest.NewRequest("GET", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
@@ -528,12 +529,12 @@ func TestCallbackEndpoint_Success(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,
@@ -574,7 +575,7 @@ func TestCallbackEndpoint_Success(t *testing.T) {
 	stateToken := "dummy-state-token"
 
 	// Make callback request
-	url := "/api/third-party/" + serviceID + "/oauth2/callback?code=auth-code-123&state=" + stateToken
+	url := "/api/third-party/" + serviceUUID.String() + "/oauth2/callback?code=auth-code-123&state=" + stateToken
 
 	req := httptest.NewRequest("GET", url, nil)
 	req.Header.Set("X-Remote-User", principal)
@@ -839,12 +840,12 @@ func TestDeleteSession_SuccessfullyTerminatesSessionWithStatusOK(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -862,9 +863,9 @@ func TestDeleteSession_SuccessfullyTerminatesSessionWithStatusOK(t *testing.T) {
 	// Create session
 	principal := "user@example.com"
 	session := &storage.UserSession{
-		ID:                   uuid.New().String(),
-		Principal:            principal,
-		ServiceID:            serviceID,
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(principal),
+		ServiceID:            serviceUUID,
 		EncryptedAccessToken: []byte("encrypted-token"),
 		TokenType:            "Bearer",
 		Scope:                []string{"repo"},
@@ -889,7 +890,7 @@ func TestDeleteSession_SuccessfullyTerminatesSessionWithStatusOK(t *testing.T) {
 	router := setupTestRouter(handler)
 
 	// Make DELETE request
-	reqURL := "/api/third-party/" + serviceID + "/session"
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/session"
 	req := httptest.NewRequest("DELETE", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
 	w := httptest.NewRecorder()
@@ -922,7 +923,7 @@ func TestDeleteSession_ReturnsNotFoundWhenSessionDoesntExist(t *testing.T) {
 	router := setupTestRouter(handler)
 
 	principal := "user@example.com"
-	serviceID := "non-existent-service-id"
+	serviceID := "00000000-0000-0000-0000-000000000000"
 	reqURL := "/api/third-party/" + serviceID + "/session"
 
 	req := httptest.NewRequest("DELETE", reqURL, nil)
@@ -976,12 +977,12 @@ func TestDeleteSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -999,9 +1000,9 @@ func TestDeleteSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 	// Create session for user1
 	owner := "owner@example.com"
 	session := &storage.UserSession{
-		ID:                   uuid.New().String(),
-		Principal:            owner,
-		ServiceID:            serviceID,
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(owner),
+		ServiceID:            serviceUUID,
 		EncryptedAccessToken: []byte("encrypted-token"),
 		TokenType:            "Bearer",
 		Scope:                []string{"repo"},
@@ -1026,7 +1027,7 @@ func TestDeleteSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 
 	// Try to delete as different user
 	attacker := "attacker@example.com"
-	reqURL := "/api/third-party/" + serviceID + "/session"
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/session"
 
 	req := httptest.NewRequest("DELETE", reqURL, nil)
 	req.Header.Set("X-Remote-User", attacker)
@@ -1048,12 +1049,12 @@ func TestDeleteSession_VerifiesSessionDeletedFromDatabase(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1071,9 +1072,9 @@ func TestDeleteSession_VerifiesSessionDeletedFromDatabase(t *testing.T) {
 	// Create session
 	principal := "user@example.com"
 	session := &storage.UserSession{
-		ID:                   uuid.New().String(),
-		Principal:            principal,
-		ServiceID:            serviceID,
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(principal),
+		ServiceID:            serviceUUID,
 		EncryptedAccessToken: []byte("encrypted-token"),
 		TokenType:            "Bearer",
 		Scope:                []string{"repo"},
@@ -1097,7 +1098,7 @@ func TestDeleteSession_VerifiesSessionDeletedFromDatabase(t *testing.T) {
 	router := setupTestRouter(handler)
 
 	// Make DELETE request
-	reqURL := "/api/third-party/" + serviceID + "/session"
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/session"
 	req := httptest.NewRequest("DELETE", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
 	w := httptest.NewRecorder()
@@ -1117,12 +1118,12 @@ func TestDeleteSession_VerifiesTokensDeleted(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1140,9 +1141,9 @@ func TestDeleteSession_VerifiesTokensDeleted(t *testing.T) {
 	// Create session with encrypted tokens
 	principal := "user@example.com"
 	session := &storage.UserSession{
-		ID:                    uuid.New().String(),
-		Principal:             principal,
-		ServiceID:             serviceID,
+		ID:                    id.NewSessionID(),
+		Principal:             id.Principal(principal),
+		ServiceID:             serviceUUID,
 		EncryptedAccessToken:  []byte("encrypted-access-token"),
 		EncryptedRefreshToken: []byte("encrypted-refresh-token"),
 		TokenType:             "Bearer",
@@ -1167,7 +1168,7 @@ func TestDeleteSession_VerifiesTokensDeleted(t *testing.T) {
 	router := setupTestRouter(handler)
 
 	// Make DELETE request
-	reqURL := "/api/third-party/" + serviceID + "/session"
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/session"
 	req := httptest.NewRequest("DELETE", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
 	w := httptest.NewRecorder()
@@ -1191,12 +1192,12 @@ func TestGetSession_ReturnsSessionDetailsWithDependentAgentList(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1214,9 +1215,9 @@ func TestGetSession_ReturnsSessionDetailsWithDependentAgentList(t *testing.T) {
 	// Create session
 	principal := "user@example.com"
 	session := &storage.UserSession{
-		ID:                   uuid.New().String(),
-		Principal:            principal,
-		ServiceID:            serviceID,
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(principal),
+		ServiceID:            serviceUUID,
 		EncryptedAccessToken: []byte("encrypted-token"),
 		TokenType:            "Bearer",
 		Scope:                []string{"repo"},
@@ -1242,7 +1243,7 @@ func TestGetSession_ReturnsSessionDetailsWithDependentAgentList(t *testing.T) {
 	router := setupTestRouter(handler)
 
 	// Make GET request
-	reqURL := "/api/third-party/" + serviceID + "/session"
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/session"
 	req := httptest.NewRequest("GET", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
 	w := httptest.NewRecorder()
@@ -1274,7 +1275,7 @@ func TestGetSession_ReturnsNotFoundWhenSessionDoesntExist(t *testing.T) {
 	router := setupTestRouter(handler)
 
 	principal := "user@example.com"
-	serviceID := "non-existent-service-id"
+	serviceID := "00000000-0000-0000-0000-000000000000"
 	reqURL := "/api/third-party/" + serviceID + "/session"
 
 	req := httptest.NewRequest("GET", reqURL, nil)
@@ -1328,12 +1329,12 @@ func TestGetSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1351,9 +1352,9 @@ func TestGetSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 	// Create session for user1
 	owner := "owner@example.com"
 	session := &storage.UserSession{
-		ID:                   uuid.New().String(),
-		Principal:            owner,
-		ServiceID:            serviceID,
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(owner),
+		ServiceID:            serviceUUID,
 		EncryptedAccessToken: []byte("encrypted-token"),
 		TokenType:            "Bearer",
 		Scope:                []string{"repo"},
@@ -1378,7 +1379,7 @@ func TestGetSession_ReturnsForbiddenWhenPrincipalDoesntMatch(t *testing.T) {
 
 	// Try to get session as different user
 	attacker := "attacker@example.com"
-	reqURL := "/api/third-party/" + serviceID + "/session"
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/session"
 
 	req := httptest.NewRequest("GET", reqURL, nil)
 	req.Header.Set("X-Remote-User", attacker)
@@ -1399,12 +1400,12 @@ func TestGetSession_IncludesAgentCountInResponse(t *testing.T) {
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1422,9 +1423,9 @@ func TestGetSession_IncludesAgentCountInResponse(t *testing.T) {
 	// Create session
 	principal := "user@example.com"
 	session := &storage.UserSession{
-		ID:                   uuid.New().String(),
-		Principal:            principal,
-		ServiceID:            serviceID,
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(principal),
+		ServiceID:            serviceUUID,
 		EncryptedAccessToken: []byte("encrypted-token"),
 		TokenType:            "Bearer",
 		Scope:                []string{"repo"},
@@ -1450,7 +1451,7 @@ func TestGetSession_IncludesAgentCountInResponse(t *testing.T) {
 	router := setupTestRouter(handler)
 
 	// Make GET request
-	reqURL := "/api/third-party/" + serviceID + "/session"
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/session"
 	req := httptest.NewRequest("GET", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
 	w := httptest.NewRecorder()
@@ -1470,12 +1471,12 @@ func TestGetSession_ValidatesJSONStructureMatchesSessionWithAgents(t *testing.T)
 	grantRepo := memory.NewUserGrantRepository()
 
 	// Create service
-	serviceID := uuid.New().String()
+	serviceUUID := id.NewServiceID()
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          serviceID,
+		ID:          serviceUUID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceID, "test-secret")),
+		ClientID:    id.NewClientID("test-client-id"),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(t, serviceUUID.String(), "test-secret")),
 		IssuerURI:   "https://github.com",
 		Endpoints: model.OAuth2Endpoints{
 			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
@@ -1493,9 +1494,9 @@ func TestGetSession_ValidatesJSONStructureMatchesSessionWithAgents(t *testing.T)
 	// Create session
 	principal := "user@example.com"
 	session := &storage.UserSession{
-		ID:                   uuid.New().String(),
-		Principal:            principal,
-		ServiceID:            serviceID,
+		ID:                   id.NewSessionID(),
+		Principal:            id.Principal(principal),
+		ServiceID:            serviceUUID,
 		EncryptedAccessToken: []byte("encrypted-token"),
 		TokenType:            "Bearer",
 		Scope:                []string{"repo"},
@@ -1519,7 +1520,7 @@ func TestGetSession_ValidatesJSONStructureMatchesSessionWithAgents(t *testing.T)
 	router := setupTestRouter(handler)
 
 	// Make GET request
-	reqURL := "/api/third-party/" + serviceID + "/session"
+	reqURL := "/api/third-party/" + serviceUUID.String() + "/session"
 	req := httptest.NewRequest("GET", reqURL, nil)
 	req.Header.Set("X-Remote-User", principal)
 	w := httptest.NewRecorder()

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,13 +21,13 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "valid grant with expiration",
 			grant: &UserGrant{
-				ID:         "750e8400-e29b-41d4-a716-446655440002",
-				Principal:  "user123@example.com",
-				AgentID:    "550e8400-e29b-41d4-a716-446655440000",
+				ID:         id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal:  id.Principal("user123@example.com"),
+				AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				ValidUntil: &future,
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo", "user:email"},
 					},
 				},
@@ -36,13 +37,13 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "valid grant without expiration (indefinite)",
 			grant: &UserGrant{
-				ID:         "750e8400-e29b-41d4-a716-446655440002",
-				Principal:  "user123@example.com",
-				AgentID:    "550e8400-e29b-41d4-a716-446655440000",
+				ID:         id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal:  id.Principal("user123@example.com"),
+				AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				ValidUntil: nil,
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo"},
 					},
 				},
@@ -52,16 +53,16 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "multiple delegations",
 			grant: &UserGrant{
-				ID:        "750e8400-e29b-41d4-a716-446655440002",
-				Principal: "user123@example.com",
-				AgentID:   "550e8400-e29b-41d4-a716-446655440000",
+				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal: id.Principal("user123@example.com"),
+				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo"},
 					},
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440003",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440003"),
 						Scopes:                    []string{"read:user", "read:org"},
 					},
 				},
@@ -71,11 +72,11 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "missing ID",
 			grant: &UserGrant{
-				Principal: "user123@example.com",
-				AgentID:   "550e8400-e29b-41d4-a716-446655440000",
+				Principal: id.Principal("user123@example.com"),
+				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo"},
 					},
 				},
@@ -85,11 +86,11 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "missing principal",
 			grant: &UserGrant{
-				ID:      "750e8400-e29b-41d4-a716-446655440002",
-				AgentID: "550e8400-e29b-41d4-a716-446655440000",
+				ID:      id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				AgentID: id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo"},
 					},
 				},
@@ -99,11 +100,11 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "missing agent_id",
 			grant: &UserGrant{
-				ID:        "750e8400-e29b-41d4-a716-446655440002",
-				Principal: "user123@example.com",
+				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal: id.Principal("user123@example.com"),
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo"},
 					},
 				},
@@ -113,13 +114,13 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "valid_until in the past",
 			grant: &UserGrant{
-				ID:         "750e8400-e29b-41d4-a716-446655440002",
-				Principal:  "user123@example.com",
-				AgentID:    "550e8400-e29b-41d4-a716-446655440000",
+				ID:         id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal:  id.Principal("user123@example.com"),
+				AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				ValidUntil: &past,
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo"},
 					},
 				},
@@ -129,9 +130,9 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "no delegations",
 			grant: &UserGrant{
-				ID:                    "750e8400-e29b-41d4-a716-446655440002",
-				Principal:             "user123@example.com",
-				AgentID:               "550e8400-e29b-41d4-a716-446655440000",
+				ID:                    id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal:             id.Principal("user123@example.com"),
+				AgentID:               id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{},
 			},
 			wantErr: "at least one delegated service is required",
@@ -139,9 +140,9 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "delegation missing service_id",
 			grant: &UserGrant{
-				ID:        "750e8400-e29b-41d4-a716-446655440002",
-				Principal: "user123@example.com",
-				AgentID:   "550e8400-e29b-41d4-a716-446655440000",
+				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal: id.Principal("user123@example.com"),
+				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
 						Scopes: []string{"repo"},
@@ -153,12 +154,12 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "delegation with no scopes",
 			grant: &UserGrant{
-				ID:        "750e8400-e29b-41d4-a716-446655440002",
-				Principal: "user123@example.com",
-				AgentID:   "550e8400-e29b-41d4-a716-446655440000",
+				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal: id.Principal("user123@example.com"),
+				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{},
 					},
 				},
@@ -168,12 +169,12 @@ func TestUserGrant_Validate(t *testing.T) {
 		{
 			name: "delegation with duplicate scopes",
 			grant: &UserGrant{
-				ID:        "750e8400-e29b-41d4-a716-446655440002",
-				Principal: "user123@example.com",
-				AgentID:   "550e8400-e29b-41d4-a716-446655440000",
+				ID:        id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+				Principal: id.Principal("user123@example.com"),
+				AgentID:   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo", "user:email", "repo"},
 					},
 				},
@@ -238,17 +239,17 @@ func TestUserGrant_Copy(t *testing.T) {
 	future := time.Now().Add(24 * time.Hour)
 
 	original := &UserGrant{
-		ID:         "750e8400-e29b-41d4-a716-446655440002",
-		Principal:  "user123@example.com",
-		AgentID:    "550e8400-e29b-41d4-a716-446655440000",
+		ID:         id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
+		Principal:  id.Principal("user123@example.com"),
+		AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 		ValidUntil: &future,
 		DelegatedOAuth2Tokens: []DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				Scopes:                    []string{"repo", "user:email"},
 			},
 			{
-				ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440003",
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440003"),
 				Scopes:                    []string{"read:user"},
 			},
 		},
@@ -289,12 +290,12 @@ func TestUserGrant_ValidateForCreate(t *testing.T) {
 		{
 			name: "valid grant for creation",
 			grant: &UserGrant{
-				Principal:  "user123@example.com",
-				AgentID:    "550e8400-e29b-41d4-a716-446655440000",
+				Principal:  id.Principal("user123@example.com"),
+				AgentID:    id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				ValidUntil: &future,
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo"},
 					},
 				},
@@ -304,10 +305,10 @@ func TestUserGrant_ValidateForCreate(t *testing.T) {
 		{
 			name: "missing principal",
 			grant: &UserGrant{
-				AgentID: "550e8400-e29b-41d4-a716-446655440000",
+				AgentID: id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{
 					{
-						ThirdpartyOAuth2ServiceID: "650e8400-e29b-41d4-a716-446655440001",
+						ThirdpartyOAuth2ServiceID: id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 						Scopes:                    []string{"repo"},
 					},
 				},

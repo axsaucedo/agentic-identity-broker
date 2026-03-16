@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 )
@@ -45,7 +46,7 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch sessions from service
-	summaries, err := h.service.ListUserSessions(ctx, principalValue)
+	summaries, err := h.service.ListUserSessions(ctx, id.Principal(principalValue))
 	if err != nil {
 		h.logger.Error("failed to list sessions", "principal", principalValue, "err", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -90,8 +91,8 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract serviceId from URL path parameter
-	serviceID := chi.URLParam(r, "serviceId")
-	if serviceID == "" {
+	serviceIDStr := chi.URLParam(r, "serviceId")
+	if serviceIDStr == "" {
 		h.logger.Warn("missing serviceId in URL path")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -102,10 +103,22 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedServiceID, err := id.ParseServiceID(serviceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid serviceId format in URL path", "service_id", serviceIDStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "invalid_request",
+			"message": "serviceId must be a valid UUID",
+		})
+		return
+	}
+
 	// Extract redirect_uri from query parameters
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	if redirectURI == "" {
-		h.logger.Warn("missing redirect_uri query parameter", "service_id", serviceID)
+		h.logger.Warn("missing redirect_uri query parameter", "service_id", serviceIDStr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{
@@ -151,7 +164,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("redirect_uri origin mismatch",
 			"redirect_host", redirectURL.Host,
 			"configured_host", callbackURL.Host,
-			"service_id", serviceID)
+			"service_id", serviceIDStr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{
@@ -162,11 +175,11 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Initiate OAuth2 flow via service
-	result, err := h.service.InitiateOAuth2Flow(ctx, principalValue, serviceID, redirectURI)
+	result, err := h.service.InitiateOAuth2Flow(ctx, id.Principal(principalValue), parsedServiceID, redirectURI)
 	if err != nil {
 		// Check for specific error types
 		if errors.Is(err, oauth2session.ErrServiceNotFound) {
-			h.logger.Warn("service not found", "service_id", serviceID)
+			h.logger.Warn("service not found", "service_id", serviceIDStr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
 			_ = json.NewEncoder(w).Encode(map[string]string{
@@ -178,7 +191,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 
 		h.logger.Error("failed to initiate OAuth2 flow",
 			"principal", principalValue,
-			"service_id", serviceID,
+			"service_id", serviceIDStr,
 			"error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -191,7 +204,7 @@ func (h *Handler) InitiateFlow(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("OAuth2 flow initiated",
 		"principal", principalValue,
-		"service_id", serviceID,
+		"service_id", serviceIDStr,
 		"auth_url_domain", extractDomain(result.AuthorizationURL))
 
 	// Redirect to authorization URL
@@ -225,8 +238,8 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract serviceId from URL path parameter
-	serviceID := chi.URLParam(r, "serviceId")
-	if serviceID == "" {
+	serviceIDStr := chi.URLParam(r, "serviceId")
+	if serviceIDStr == "" {
 		h.logger.Warn("missing serviceId in callback URL path")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -237,10 +250,22 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedServiceID, err := id.ParseServiceID(serviceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid serviceId format in callback URL path", "service_id", serviceIDStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "invalid_request",
+			"message": "serviceId must be a valid UUID",
+		})
+		return
+	}
+
 	// Extract callback parameters from query
 	query := r.URL.Query()
 	callbackReq := &oauth2session.HandleCallbackRequest{
-		ServiceID: serviceID,
+		ServiceID: parsedServiceID,
 		Code:      query.Get("code"),
 		State:     query.Get("state"),
 		Error:     query.Get("error"),
@@ -250,7 +275,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// T060: Handle OAuth2 error responses
 	if callbackReq.Error != "" {
 		h.logger.Warn("OAuth2 error in callback",
-			"service_id", serviceID,
+			"service_id", serviceIDStr,
 			"error", callbackReq.Error,
 			"error_description", callbackReq.ErrorDesc)
 
@@ -266,7 +291,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// Validate that code and state are present
 	if callbackReq.Code == "" || callbackReq.State == "" {
 		h.logger.Warn("missing code or state in callback",
-			"service_id", serviceID,
+			"service_id", serviceIDStr,
 			"has_code", callbackReq.Code != "",
 			"has_state", callbackReq.State != "")
 
@@ -277,12 +302,12 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process the callback via service
-	result, err := h.service.HandleCallback(ctx, principalValue, callbackReq)
+	result, err := h.service.HandleCallback(ctx, id.Principal(principalValue), callbackReq)
 	if err != nil {
 		// Check for specific error types
 		if errors.Is(err, oauth2session.ErrPrincipalMismatch) {
 			h.logger.Error("principal mismatch in OAuth2 callback",
-				"service_id", serviceID,
+				"service_id", serviceIDStr,
 				"error", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
@@ -296,7 +321,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		// Check for service_id mismatch (cross-service attack attempt)
 		if errors.Is(err, oauth2session.ErrServiceIDMismatch) {
 			h.logger.Error("service_id mismatch in OAuth2 callback - possible cross-service attack",
-				"service_id", serviceID,
+				"service_id", serviceIDStr,
 				"error", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -310,7 +335,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		// Check for state token validation errors
 		if errors.Is(err, oauth2session.ErrStateTokenExpired) {
 			h.logger.Warn("state token expired in callback",
-				"service_id", serviceID,
+				"service_id", serviceIDStr,
 				"error", err)
 
 			redirectURL := "/consent/sessions?error=expired_token&error_description=" +
@@ -321,7 +346,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 		if errors.Is(err, oauth2session.ErrInvalidStateToken) {
 			h.logger.Warn("state token validation failed in callback",
-				"service_id", serviceID,
+				"service_id", serviceIDStr,
 				"error", err)
 
 			redirectURL := "/consent/sessions?error=invalid_state&error_description=" +
@@ -333,7 +358,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		// Generic callback error - log and redirect
 		h.logger.Error("failed to handle OAuth2 callback",
 			"principal", principalValue,
-			"service_id", serviceID,
+			"service_id", serviceIDStr,
 			"error", err)
 
 		redirectURL := "/consent/sessions?error=callback_failed&error_description=" +
@@ -344,7 +369,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("OAuth2 callback successful",
 		"principal", principalValue,
-		"service_id", serviceID,
+		"service_id", serviceIDStr,
 		"session_id", result.Session.ID)
 
 	// Redirect to the original page that initiated the OAuth2 flow
@@ -368,7 +393,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	// Add success parameters to query
 	redirectQuery := redirectURL.Query()
 	redirectQuery.Set("success", "true")
-	redirectQuery.Set("service_id", serviceID)
+	redirectQuery.Set("service_id", serviceIDStr)
 	redirectURL.RawQuery = redirectQuery.Encode()
 
 	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
@@ -393,8 +418,8 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract serviceId from URL path parameter
-	serviceID := chi.URLParam(r, "serviceId")
-	if serviceID == "" {
+	serviceIDStr := chi.URLParam(r, "serviceId")
+	if serviceIDStr == "" {
 		h.logger.Warn("missing serviceId in URL path")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -405,12 +430,24 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedServiceID, err := id.ParseServiceID(serviceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid serviceId format in URL path", "service_id", serviceIDStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "invalid_request",
+			"message": "serviceId must be a valid UUID",
+		})
+		return
+	}
+
 	// Fetch session details via service
-	sessionWithAgents, err := h.service.GetSessionWithAgents(ctx, principalValue, serviceID)
+	sessionWithAgents, err := h.service.GetSessionWithAgents(ctx, id.Principal(principalValue), parsedServiceID)
 	if err != nil {
 		// Check for specific error types
 		if errors.Is(err, oauth2session.ErrSessionNotFound) {
-			h.logger.Warn("session not found", "service_id", serviceID, "principal", principalValue)
+			h.logger.Warn("session not found", "service_id", serviceIDStr, "principal", principalValue)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
 			_ = json.NewEncoder(w).Encode(map[string]string{
@@ -422,7 +459,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 
 		if errors.Is(err, oauth2session.ErrUnauthorized) {
 			h.logger.Error("unauthorized access to session",
-				"service_id", serviceID,
+				"service_id", serviceIDStr,
 				"principal", principalValue,
 				"error", err)
 			w.Header().Set("Content-Type", "application/json")
@@ -437,7 +474,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 		// Generic error
 		h.logger.Error("failed to get session details",
 			"principal", principalValue,
-			"service_id", serviceID,
+			"service_id", serviceIDStr,
 			"error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -450,7 +487,7 @@ func (h *Handler) GetSessionDetails(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("retrieved session details",
 		"principal", principalValue,
-		"service_id", serviceID,
+		"service_id", serviceIDStr,
 		"dependent_agents", len(sessionWithAgents.DependentAgents))
 
 	// Return response
@@ -486,8 +523,8 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract serviceId from URL path parameter
-	serviceID := chi.URLParam(r, "serviceId")
-	if serviceID == "" {
+	serviceIDStr := chi.URLParam(r, "serviceId")
+	if serviceIDStr == "" {
 		h.logger.Warn("missing serviceId in URL path")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -498,12 +535,24 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedServiceID, err := id.ParseServiceID(serviceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid serviceId format in URL path", "service_id", serviceIDStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "invalid_request",
+			"message": "serviceId must be a valid UUID",
+		})
+		return
+	}
+
 	// Terminate session via service
-	err := h.service.TerminateSession(ctx, principalValue, serviceID)
+	err = h.service.TerminateSession(ctx, id.Principal(principalValue), parsedServiceID)
 	if err != nil {
 		// Check for specific error types
 		if errors.Is(err, oauth2session.ErrSessionNotFound) {
-			h.logger.Warn("session not found for termination", "service_id", serviceID, "principal", principalValue)
+			h.logger.Warn("session not found for termination", "service_id", serviceIDStr, "principal", principalValue)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
 			_ = json.NewEncoder(w).Encode(map[string]string{
@@ -515,7 +564,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 
 		if errors.Is(err, oauth2session.ErrUnauthorized) {
 			h.logger.Error("unauthorized termination attempt",
-				"service_id", serviceID,
+				"service_id", serviceIDStr,
 				"principal", principalValue,
 				"error", err)
 			w.Header().Set("Content-Type", "application/json")
@@ -530,7 +579,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 		// Generic error
 		h.logger.Error("failed to terminate session",
 			"principal", principalValue,
-			"service_id", serviceID,
+			"service_id", serviceIDStr,
 			"error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -543,7 +592,7 @@ func (h *Handler) TerminateSession(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("session terminated successfully",
 		"principal", principalValue,
-		"service_id", serviceID)
+		"service_id", serviceIDStr)
 
 	// Return 200 OK with empty success message
 	w.Header().Set("Content-Type", "application/json")

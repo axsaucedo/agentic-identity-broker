@@ -11,6 +11,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -223,7 +224,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	// T059: Agent client ID extracted from subject_token (already done in Step 5)
 	// T060: Look up Agent by agent_client_id to get internal UUID for grant lookup
 	// Grants are stored by internal agent UUID; client_id must be resolved first.
-	agent, err := s.agentRepository.GetByClientID(ctx, agentClientID)
+	agent, err := s.agentRepository.GetByClientID(ctx, id.NewClientID(agentClientID))
 	if err != nil {
 		if errors.Is(err, ports.ErrNotFound) {
 			return nil, NewAccessDeniedErrorWithDetails(
@@ -240,7 +241,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	// - T063: Return error for missing grant
 	// - T064: Return error for revoked grant
 	// - T065: Return error for expired grant
-	_, err = s.consentService.VerifyAgentAccess(ctx, principal, agent.ID)
+	_, err = s.consentService.VerifyAgentAccess(ctx, id.Principal(principal), agent.ID)
 	if err != nil {
 		// Map ConsentService errors to TokenExchange errors
 		if errors.Is(err, consent.ErrAgentAccessDenied) {
@@ -270,7 +271,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	//
 	// Per T075: invalid_grant if session doesn't exist
 	// Per T076: invalid_grant if both tokens are expired
-	sessionObj, accessToken, err := s.oauth2SessionService.GetValidAccessToken(ctx, principal, service.ID)
+	sessionObj, accessToken, err := s.oauth2SessionService.GetValidAccessToken(ctx, id.Principal(principal), service.ID)
 	if err != nil {
 		// Map oauth2session errors to RFC 8693 token exchange errors
 		if errors.Is(err, oauth2session.ErrSessionNotFound) {

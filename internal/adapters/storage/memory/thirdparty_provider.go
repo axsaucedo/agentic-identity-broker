@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
@@ -18,13 +19,13 @@ import (
 // The domain service encrypts before storing and decrypts after retrieving.
 type InMemoryThirdpartyOAuth2ProviderRepository struct {
 	mu        sync.RWMutex
-	providers map[string]*model.ThirdpartyOAuth2ProviderEntity
+	providers map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity
 }
 
 // NewInMemoryThirdpartyOAuth2ProviderRepository creates a new in-memory provider repository.
 func NewInMemoryThirdpartyOAuth2ProviderRepository() *InMemoryThirdpartyOAuth2ProviderRepository {
 	return &InMemoryThirdpartyOAuth2ProviderRepository{
-		providers: make(map[string]*model.ThirdpartyOAuth2ProviderEntity),
+		providers: make(map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity),
 	}
 }
 
@@ -35,7 +36,7 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Create(ctx context.Context,
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if entity.ID == "" {
+	if entity.ID.IsZero() {
 		return storage.NewStorageError("CreateThirdpartyOAuth2Provider",
 			storage.ErrorKindValidation, nil,
 			"provider ID cannot be empty: caller must set ID before storing")
@@ -56,11 +57,11 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Create(ctx context.Context,
 
 // Get retrieves a provider entity by ID.
 // Returns entity with Secret in encrypted state.
-func (r *InMemoryThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+func (r *InMemoryThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	entity, exists := r.providers[id]
+	entity, exists := r.providers[serviceID]
 	if !exists {
 		return nil, storage.NewStorageError("GetThirdpartyOAuth2Provider", storage.ErrorKindNotFound, ports.ErrNotFound, "provider not found")
 	}
@@ -94,11 +95,11 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) Update(ctx context.Context,
 
 // Delete removes a provider entity by ID.
 // Idempotent: returns nil if provider doesn't exist.
-func (r *InMemoryThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context, id string) error {
+func (r *InMemoryThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context, serviceID id.ServiceID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	delete(r.providers, id)
+	delete(r.providers, serviceID)
 	return nil
 }
 
@@ -118,7 +119,7 @@ func (r *InMemoryThirdpartyOAuth2ProviderRepository) List(ctx context.Context) (
 
 // CountGrantsReferencingService always returns 0.
 // The in-memory adapter does not track grants.
-func (r *InMemoryThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(_ context.Context, _ string) (int, error) {
+func (r *InMemoryThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(_ context.Context, _ id.ServiceID) (int, error) {
 	return 0, nil
 }
 

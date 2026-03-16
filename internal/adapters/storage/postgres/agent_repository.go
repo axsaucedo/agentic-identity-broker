@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -59,8 +59,8 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 	}
 
 	// Generate ID if not provided
-	if agent.ID == "" {
-		agent.ID = uuid.New().String()
+	if agent.ID.IsZero() {
+		agent.ID = id.NewAgentID()
 	}
 
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
@@ -149,7 +149,7 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 
 // Get retrieves an agent entity by ID from PostgreSQL.
 // Returns StorageError with Kind=NotFound if agent not found.
-func (r *AgentRepository) Get(ctx context.Context, id string) (*storage.Agent, error) {
+func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"GetAgent",
@@ -159,7 +159,7 @@ func (r *AgentRepository) Get(ctx context.Context, id string) (*storage.Agent, e
 		)
 	}
 
-	if id == "" {
+	if agentID.IsZero() {
 		return nil, storage.NewStorageError(
 			"GetAgent",
 			storage.ErrorKindValidation,
@@ -184,7 +184,7 @@ func (r *AgentRepository) Get(ctx context.Context, id string) (*storage.Agent, e
 	`
 
 	agent := &storage.Agent{}
-	err := r.adapter.db.QueryRowContext(queryCtx, query, id).Scan(
+	err := r.adapter.db.QueryRowContext(queryCtx, query, agentID).Scan(
 		&agent.ID,
 		&agent.ClientID,
 		&agent.ExternalID,
@@ -373,7 +373,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 // Delete deletes an agent entity by ID from PostgreSQL.
 // Idempotent: returns nil if agent doesn't exist.
 // Associated grants are CASCADE deleted per FR-021.
-func (r *AgentRepository) Delete(ctx context.Context, id string) error {
+func (r *AgentRepository) Delete(ctx context.Context, agentID id.AgentID) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError(
 			"DeleteAgent",
@@ -383,7 +383,7 @@ func (r *AgentRepository) Delete(ctx context.Context, id string) error {
 		)
 	}
 
-	if id == "" {
+	if agentID.IsZero() {
 		return storage.NewStorageError(
 			"DeleteAgent",
 			storage.ErrorKindValidation,
@@ -397,7 +397,7 @@ func (r *AgentRepository) Delete(ctx context.Context, id string) error {
 
 	query := `DELETE FROM agents WHERE id = $1`
 
-	_, err := r.adapter.db.ExecContext(execCtx, query, id)
+	_, err := r.adapter.db.ExecContext(execCtx, query, agentID)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
 			return storage.NewStorageError(
@@ -471,7 +471,7 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 
 // GetByClientID retrieves an agent entity by client_id from PostgreSQL.
 // Returns StorageError with Kind=NotFound if agent not found.
-func (r *AgentRepository) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"GetAgentByClientID",
@@ -481,7 +481,7 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID string) (*
 		)
 	}
 
-	if clientID == "" {
+	if clientID.IsZero() {
 		return nil, storage.NewStorageError(
 			"GetAgentByClientID",
 			storage.ErrorKindValidation,

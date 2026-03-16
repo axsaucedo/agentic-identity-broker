@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,9 +16,9 @@ var testCiphertext = []byte("encrypted-secret-bytes")
 func newTestEntity() *model.ThirdpartyOAuth2ProviderEntity {
 	metaURL := "https://example.com/.well-known/openid-configuration"
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "test-id",
+		ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 		DisplayName: "Test Provider",
-		ClientID:    "client-123",
+		ClientID:    id.ClientID("client-123"),
 		Secret:      model.NewEncryptedSecret(testCiphertext),
 		IssuerURI:   "https://example.com",
 		Discovery: model.DiscoveryConfig{
@@ -44,9 +45,9 @@ func TestEntityToRecord_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, record)
 
-	assert.Equal(t, entity.ID, record.ID)
+	assert.Equal(t, entity.ID.String(), record.ID)
 	assert.Equal(t, entity.DisplayName, record.DisplayName)
-	assert.Equal(t, entity.ClientID, record.ClientID)
+	assert.Equal(t, string(entity.ClientID), record.ClientID)
 	assert.Equal(t, testCiphertext, record.SecretCiphertext)
 	assert.Equal(t, entity.IssuerURI, record.IssuerURI)
 	assert.Equal(t, entity.Discovery.EnableDiscovery, record.EnableDiscovery)
@@ -113,7 +114,8 @@ func TestRecordToEntity_Success(t *testing.T) {
 	record, err := entityToRecord(entity)
 	require.NoError(t, err)
 
-	roundTripped := recordToEntity(record)
+	roundTripped, err := recordToEntity(record)
+	require.NoError(t, err)
 	require.NotNil(t, roundTripped)
 
 	assert.Equal(t, entity.ID, roundTripped.ID)
@@ -139,13 +141,14 @@ func TestRecordToEntity_Success(t *testing.T) {
 }
 
 func TestRecordToEntity_NilRecord(t *testing.T) {
-	result := recordToEntity(nil)
+	result, err := recordToEntity(nil)
+	require.NoError(t, err)
 	assert.Nil(t, result)
 }
 
 func TestRecordToEntity_SecretIsEncryptedState(t *testing.T) {
 	record := &ThirdpartyOAuth2ProviderRecord{
-		ID:               "id-1",
+		ID:               "550e8400-e29b-41d4-a716-446655440099",
 		DisplayName:      "Provider",
 		ClientID:         "client-1",
 		SecretCiphertext: []byte("ciphertext"),
@@ -154,7 +157,8 @@ func TestRecordToEntity_SecretIsEncryptedState(t *testing.T) {
 		UpdatedAt:        time.Now(),
 	}
 
-	entity := recordToEntity(record)
+	entity, err := recordToEntity(record)
+	require.NoError(t, err)
 	require.NotNil(t, entity)
 	assert.True(t, entity.Secret.IsEncrypted())
 	assert.False(t, entity.Secret.IsPlaintext())

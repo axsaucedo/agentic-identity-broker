@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -53,7 +54,7 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	// Build authorization request
 	authReq := &ports.AuthorizationRequest{
-		ClientID:            clientID,
+		ClientID:            id.ClientID(clientID),
 		RedirectURI:         redirectURI,
 		ResponseType:        responseType,
 		Scope:               scope,
@@ -177,7 +178,7 @@ func (h *OAuth2AuthorizeHandler) validateMandatoryRequirements(
 		}
 
 		// Verify user has active session for this service
-		session, err := h.sessionRepository.FindByPrincipalAndService(ctx, principal, req.ServiceID)
+		session, err := h.sessionRepository.FindByPrincipalAndService(ctx, id.Principal(principal), req.ServiceID)
 		if err != nil {
 			// Session not found
 			if h.logger != nil {
@@ -192,9 +193,9 @@ func (h *OAuth2AuthorizeHandler) validateMandatoryRequirements(
 			return &MandatoryRequirementError{
 				Code:      "session_required",
 				Message:   "User does not have an active session for required service",
-				ServiceID: req.ServiceID,
+				ServiceID: req.ServiceID.String(),
 				UserID:    principal,
-				AgentID:   agent.ID,
+				AgentID:   agent.ID.String(),
 			}
 		}
 
@@ -212,9 +213,9 @@ func (h *OAuth2AuthorizeHandler) validateMandatoryRequirements(
 			return &MandatoryRequirementError{
 				Code:      "session_expired",
 				Message:   "User's session for required service has expired",
-				ServiceID: req.ServiceID,
+				ServiceID: req.ServiceID.String(),
 				UserID:    principal,
-				AgentID:   agent.ID,
+				AgentID:   agent.ID.String(),
 			}
 		}
 
@@ -234,9 +235,9 @@ func (h *OAuth2AuthorizeHandler) validateMandatoryRequirements(
 			return &MandatoryRequirementError{
 				Code:      "scope_mismatch",
 				Message:   "User's session lacks required scopes for service",
-				ServiceID: req.ServiceID,
+				ServiceID: req.ServiceID.String(),
 				UserID:    principal,
-				AgentID:   agent.ID,
+				AgentID:   agent.ID.String(),
 			}
 		}
 	}

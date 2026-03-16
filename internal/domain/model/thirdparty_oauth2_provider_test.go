@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,9 +20,9 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		{
 			name: "valid entity with plaintext secret",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "GitHub",
-				ClientID:    "Iv1.abcd1234",
+				ClientID:    id.ClientID("Iv1.abcd1234"),
 				Secret:      NewPlaintextSecret("super-secret"),
 				IssuerURI:   "https://github.com",
 				Discovery: DiscoveryConfig{
@@ -43,9 +44,9 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		{
 			name: "valid entity with encrypted secret",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "GitHub",
-				ClientID:    "Iv1.abcd1234",
+				ClientID:    id.ClientID("Iv1.abcd1234"),
 				Secret:      NewEncryptedSecret([]byte{1, 2, 3, 4}),
 				IssuerURI:   "https://github.com",
 				Discovery:   DiscoveryConfig{EnableDiscovery: true},
@@ -63,7 +64,7 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 			name: "missing ID",
 			entity: &ThirdpartyOAuth2ProviderEntity{
 				DisplayName: "GitHub",
-				ClientID:    "Iv1.abcd1234",
+				ClientID:    id.ClientID("Iv1.abcd1234"),
 				Secret:      NewPlaintextSecret("secret"),
 				IssuerURI:   "https://github.com",
 			},
@@ -72,8 +73,8 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		{
 			name: "missing display_name",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:        "650e8400-e29b-41d4-a716-446655440001",
-				ClientID:  "Iv1.abcd1234",
+				ID:        id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
+				ClientID:  id.ClientID("Iv1.abcd1234"),
 				Secret:    NewPlaintextSecret("secret"),
 				IssuerURI: "https://github.com",
 			},
@@ -82,9 +83,9 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		{
 			name: "display_name too long",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-				ClientID:    "Iv1.abcd1234",
+				ClientID:    id.ClientID("Iv1.abcd1234"),
 				Secret:      NewPlaintextSecret("secret"),
 				IssuerURI:   "https://github.com",
 			},
@@ -93,7 +94,7 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		{
 			name: "missing client_id",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "GitHub",
 				Secret:      NewPlaintextSecret("secret"),
 				IssuerURI:   "https://github.com",
@@ -103,9 +104,9 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		{
 			name: "secret in plaintext state with empty value",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "GitHub",
-				ClientID:    "Iv1.abcd1234",
+				ClientID:    id.ClientID("Iv1.abcd1234"),
 				Secret:      NewPlaintextSecret(""),
 				IssuerURI:   "https://github.com",
 			},
@@ -119,9 +120,9 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 			// entity that was never given a real secret is always rejected.
 			name: "zero-value Secret (uninitialized) is rejected by Validate",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "GitHub",
-				ClientID:    "Iv1.abcd1234",
+				ClientID:    id.ClientID("Iv1.abcd1234"),
 				Secret:      Secret{}, // var s Secret — not constructed via NewPlaintextSecret
 				IssuerURI:   "https://github.com",
 			},
@@ -130,9 +131,9 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		{
 			name: "secret in encrypted state with empty ciphertext",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "GitHub",
-				ClientID:    "Iv1.abcd1234",
+				ClientID:    id.ClientID("Iv1.abcd1234"),
 				Secret:      NewEncryptedSecret([]byte{}),
 				IssuerURI:   "https://github.com",
 			},
@@ -141,9 +142,9 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		{
 			name: "missing issuer_uri",
 			entity: &ThirdpartyOAuth2ProviderEntity{
-				ID:          "650e8400-e29b-41d4-a716-446655440001",
+				ID:          id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				DisplayName: "GitHub",
-				ClientID:    "Iv1.abcd1234",
+				ClientID:    id.ClientID("Iv1.abcd1234"),
 				Secret:      NewPlaintextSecret("secret"),
 			},
 			wantErr: "issuer_uri is required",

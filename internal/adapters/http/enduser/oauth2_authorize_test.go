@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -152,8 +153,9 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_InvalidClient(t *testing.T) {
 // TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent tests redirect to consent UI when no active grant
 func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T) {
 	agentRepo := newMockAgentRepo()
+	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          "agent-1",
+		ID:          agentID,
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
@@ -184,14 +186,16 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 	// Should redirect to consent UI
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
-	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/agent-1")
+	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agentID.String())
 }
 
 // TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream tests redirect to upstream with active grant
 func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *testing.T) {
 	agentRepo := newMockAgentRepo()
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
 	agent := &storage.Agent{
-		ID:          "agent-1",
+		ID:          agentID,
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
@@ -199,12 +203,12 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 
 	grantRepo := newMockGrantRepo()
 	grant := &storage.UserGrant{
-		ID:         "grant-1",
-		Principal:  "user@example.com",
-		AgentID:    "agent-1",
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    agentID,
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+			{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
 		},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
@@ -246,8 +250,10 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 // TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters tests all OAuth2 parameters preserved
 func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T) {
 	agentRepo := newMockAgentRepo()
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
 	agent := &storage.Agent{
-		ID:          "agent-1",
+		ID:          agentID,
 		ClientID:    "client-1",
 		DisplayName: "Test Client",
 	}
@@ -255,12 +261,12 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 
 	grantRepo := newMockGrantRepo()
 	grant := &storage.UserGrant{
-		ID:         "grant-1",
-		Principal:  "user@example.com",
-		AgentID:    "agent-1",
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    agentID,
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+			{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
 		},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
@@ -344,12 +350,12 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
 // Helper functions for test setup
 
 type mockAgentRepository struct {
-	agents map[string]*storage.Agent
+	agents map[id.AgentID]*storage.Agent
 }
 
 func newMockAgentRepo() *mockAgentRepository {
 	return &mockAgentRepository{
-		agents: make(map[string]*storage.Agent),
+		agents: make(map[id.AgentID]*storage.Agent),
 	}
 }
 
@@ -358,8 +364,8 @@ func (m *mockAgentRepository) Create(ctx context.Context, agent *storage.Agent) 
 	return nil
 }
 
-func (m *mockAgentRepository) Get(ctx context.Context, id string) (*storage.Agent, error) {
-	agent, ok := m.agents[id]
+func (m *mockAgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
+	agent, ok := m.agents[agentID]
 	if !ok {
 		return nil, ports.ErrNotFound
 	}
@@ -374,8 +380,8 @@ func (m *mockAgentRepository) Update(ctx context.Context, agent *storage.Agent) 
 	return nil
 }
 
-func (m *mockAgentRepository) Delete(ctx context.Context, id string) error {
-	delete(m.agents, id)
+func (m *mockAgentRepository) Delete(ctx context.Context, agentID id.AgentID) error {
+	delete(m.agents, agentID)
 	return nil
 }
 
@@ -387,7 +393,7 @@ func (m *mockAgentRepository) List(ctx context.Context) ([]*storage.Agent, error
 	return agents, nil
 }
 
-func (m *mockAgentRepository) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+func (m *mockAgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, agent := range m.agents {
 		if agent.ClientID == clientID {
 			return agent, nil
@@ -402,12 +408,12 @@ func (m *mockAgentRepository) GetByClientID(ctx context.Context, clientID string
 }
 
 type mockGrantRepository struct {
-	grants map[string]*storage.UserGrant
+	grants map[id.GrantID]*storage.UserGrant
 }
 
 func newMockGrantRepo() *mockGrantRepository {
 	return &mockGrantRepository{
-		grants: make(map[string]*storage.UserGrant),
+		grants: make(map[id.GrantID]*storage.UserGrant),
 	}
 }
 
@@ -416,8 +422,8 @@ func (m *mockGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 	return nil
 }
 
-func (m *mockGrantRepository) Get(ctx context.Context, id string) (*storage.UserGrant, error) {
-	grant, ok := m.grants[id]
+func (m *mockGrantRepository) Get(ctx context.Context, grantID id.GrantID) (*storage.UserGrant, error) {
+	grant, ok := m.grants[grantID]
 	if !ok {
 		return nil, ports.ErrNotFound
 	}
@@ -432,12 +438,12 @@ func (m *mockGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 	return nil
 }
 
-func (m *mockGrantRepository) Delete(ctx context.Context, id string) error {
-	delete(m.grants, id)
+func (m *mockGrantRepository) Delete(ctx context.Context, grantID id.GrantID) error {
+	delete(m.grants, grantID)
 	return nil
 }
 
-func (m *mockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+func (m *mockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	var grants []*storage.UserGrant
 	for _, grant := range m.grants {
 		if grant.Principal == principal && grant.AgentID == agentID && grant.IsActive() {
@@ -447,7 +453,7 @@ func (m *mockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 	return grants, nil
 }
 
-func (m *mockGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal, agentID string) (*storage.UserGrant, error) {
+func (m *mockGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) (*storage.UserGrant, error) {
 	for _, grant := range m.grants {
 		if grant.Principal == principal && grant.AgentID == agentID {
 			return grant, nil
@@ -456,16 +462,16 @@ func (m *mockGrantRepository) FindByPrincipalAndAgent(ctx context.Context, princ
 	return nil, nil
 }
 
-func (m *mockGrantRepository) DeleteByAgent(ctx context.Context, agentID string) error {
-	for id, grant := range m.grants {
+func (m *mockGrantRepository) DeleteByAgent(ctx context.Context, agentID id.AgentID) error {
+	for grantID, grant := range m.grants {
 		if grant.AgentID == agentID {
-			delete(m.grants, id)
+			delete(m.grants, grantID)
 		}
 	}
 	return nil
 }
 
-func (m *mockGrantRepository) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+func (m *mockGrantRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storage.UserGrant, error) {
 	var grants []storage.UserGrant
 	for _, grant := range m.grants {
 		if grant.Principal == principal && grant.IsActive() {
@@ -475,8 +481,8 @@ func (m *mockGrantRepository) ListByPrincipal(ctx context.Context, principal str
 	return grants, nil
 }
 
-func (m *mockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
-	agents := make(map[string]bool)
+func (m *mockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
+	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
 		for _, token := range grant.DelegatedOAuth2Tokens {
 			if token.ThirdpartyOAuth2ServiceID == serviceID {
@@ -488,8 +494,8 @@ func (m *mockGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 	return len(agents), nil
 }
 
-func (m *mockGrantRepository) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
-	agents := make(map[string]bool)
+func (m *mockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
+	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
 		for _, token := range grant.DelegatedOAuth2Tokens {
 			if token.ThirdpartyOAuth2ServiceID == serviceID {
@@ -498,7 +504,7 @@ func (m *mockGrantRepository) ListByServiceID(ctx context.Context, serviceID str
 			}
 		}
 	}
-	var agentIDs []string
+	var agentIDs []id.AgentID
 	for agentID := range agents {
 		agentIDs = append(agentIDs, agentID)
 	}
@@ -523,29 +529,29 @@ func newMockSessionRepository() *mockSessionRepository {
 }
 
 func (m *mockSessionRepository) Create(ctx context.Context, session *storage.UserSession) error {
-	key := session.Principal + ":" + session.ServiceID
+	key := session.Principal.String() + ":" + session.ServiceID.String()
 	m.sessions[key] = session
 	return nil
 }
 
-func (m *mockSessionRepository) Get(ctx context.Context, id string) (*storage.UserSession, error) {
+func (m *mockSessionRepository) Get(ctx context.Context, sessionID id.SessionID) (*storage.UserSession, error) {
 	for _, session := range m.sessions {
-		if session.ID == id {
+		if session.ID == sessionID {
 			return session, nil
 		}
 	}
 	return nil, ports.ErrNotFound
 }
 
-func (m *mockSessionRepository) FindByPrincipalAndService(ctx context.Context, principal, serviceID string) (*storage.UserSession, error) {
-	key := principal + ":" + serviceID
+func (m *mockSessionRepository) FindByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storage.UserSession, error) {
+	key := principal.String() + ":" + serviceID.String()
 	if session, exists := m.sessions[key]; exists {
 		return session, nil
 	}
 	return nil, ports.ErrNotFound
 }
 
-func (m *mockSessionRepository) ListByPrincipal(ctx context.Context, principal string) ([]*storage.UserSession, error) {
+func (m *mockSessionRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
 	var sessions []*storage.UserSession
 	for _, session := range m.sessions {
 		if session.Principal == principal {
@@ -555,9 +561,9 @@ func (m *mockSessionRepository) ListByPrincipal(ctx context.Context, principal s
 	return sessions, nil
 }
 
-func (m *mockSessionRepository) Delete(ctx context.Context, id string) error {
+func (m *mockSessionRepository) Delete(ctx context.Context, sessionID id.SessionID) error {
 	for key, session := range m.sessions {
-		if session.ID == id {
+		if session.ID == sessionID {
 			delete(m.sessions, key)
 			break
 		}
@@ -565,13 +571,13 @@ func (m *mockSessionRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (m *mockSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal, serviceID string) error {
-	key := principal + ":" + serviceID
+func (m *mockSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) error {
+	key := principal.String() + ":" + serviceID.String()
 	delete(m.sessions, key)
 	return nil
 }
 
-func (m *mockSessionRepository) CountByService(ctx context.Context, serviceID string) (int, error) {
+func (m *mockSessionRepository) CountByService(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	count := 0
 	for _, session := range m.sessions {
 		if session.ServiceID == serviceID {
@@ -680,6 +686,10 @@ func TestHasRequiredScopes(t *testing.T) {
 
 // TestValidateMandatoryRequirements tests the validateMandatoryRequirements method
 func TestValidateMandatoryRequirements(t *testing.T) {
+	agentID := id.NewAgentID()
+	serviceID1 := id.NewServiceID()
+	serviceID2 := id.NewServiceID()
+
 	tests := []struct {
 		name                  string
 		setupFn               func() (*OAuth2AuthorizeHandler, *mockAgentRepository, *mockSessionRepository)
@@ -696,7 +706,7 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 				return handler, newMockAgentRepository(), newMockSessionRepository()
 			},
 			principal:     "user@example.com",
-			agent:         &storage.Agent{ID: "agent-1", ServiceRequirements: []storage.ServiceRequirement{}},
+			agent:         &storage.Agent{ID: agentID, ServiceRequirements: []storage.ServiceRequirement{}},
 			expectedError: false,
 			description:   "Agent with no service requirements should pass validation",
 		},
@@ -709,10 +719,10 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 			},
 			principal: "user@example.com",
 			agent: &storage.Agent{
-				ID: "agent-1",
+				ID: agentID,
 				ServiceRequirements: []storage.ServiceRequirement{
 					{
-						ServiceID:       "service-1",
+						ServiceID:       serviceID1,
 						RequirementType: storage.RequirementTypeOptional,
 						RequiredScopes:  []string{"read:repo"},
 					},
@@ -727,9 +737,9 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 				handler := &OAuth2AuthorizeHandler{}
 				sessionRepo := newMockSessionRepository()
 				session := &storage.UserSession{
-					ID:        "session-1",
-					Principal: "user@example.com",
-					ServiceID: "service-1",
+					ID:        id.NewSessionID(),
+					Principal: id.Principal("user@example.com"),
+					ServiceID: serviceID1,
 					Scope:     []string{"repo", "user:email"},
 				}
 				_ = sessionRepo.Create(context.Background(), session)
@@ -737,10 +747,10 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 			},
 			principal: "user@example.com",
 			agent: &storage.Agent{
-				ID: "agent-1",
+				ID: agentID,
 				ServiceRequirements: []storage.ServiceRequirement{
 					{
-						ServiceID:       "service-1",
+						ServiceID:       serviceID1,
 						RequirementType: storage.RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo", "user:email"},
 					},
@@ -757,10 +767,10 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 			},
 			principal: "user@example.com",
 			agent: &storage.Agent{
-				ID: "agent-1",
+				ID: agentID,
 				ServiceRequirements: []storage.ServiceRequirement{
 					{
-						ServiceID:       "service-1",
+						ServiceID:       serviceID1,
 						RequirementType: storage.RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo"},
 					},
@@ -776,9 +786,9 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 				handler := &OAuth2AuthorizeHandler{}
 				sessionRepo := newMockSessionRepository()
 				session := &storage.UserSession{
-					ID:        "session-1",
-					Principal: "user@example.com",
-					ServiceID: "service-1",
+					ID:        id.NewSessionID(),
+					Principal: id.Principal("user@example.com"),
+					ServiceID: serviceID1,
 					Scope:     []string{"repo"}, // Missing user:email
 				}
 				_ = sessionRepo.Create(context.Background(), session)
@@ -786,10 +796,10 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 			},
 			principal: "user@example.com",
 			agent: &storage.Agent{
-				ID: "agent-1",
+				ID: agentID,
 				ServiceRequirements: []storage.ServiceRequirement{
 					{
-						ServiceID:       "service-1",
+						ServiceID:       serviceID1,
 						RequirementType: storage.RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo", "user:email"},
 					},
@@ -806,9 +816,9 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 				sessionRepo := newMockSessionRepository()
 				expiredTime := time.Now().Add(-1 * time.Hour)
 				session := &storage.UserSession{
-					ID:                    "session-1",
-					Principal:             "user@example.com",
-					ServiceID:             "service-1",
+					ID:                    id.NewSessionID(),
+					Principal:             id.Principal("user@example.com"),
+					ServiceID:             serviceID1,
 					Scope:                 []string{"repo"},
 					RefreshTokenExpiresAt: &expiredTime,
 				}
@@ -817,10 +827,10 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 			},
 			principal: "user@example.com",
 			agent: &storage.Agent{
-				ID: "agent-1",
+				ID: agentID,
 				ServiceRequirements: []storage.ServiceRequirement{
 					{
-						ServiceID:       "service-1",
+						ServiceID:       serviceID1,
 						RequirementType: storage.RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo"},
 					},
@@ -836,9 +846,9 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 				handler := &OAuth2AuthorizeHandler{}
 				sessionRepo := newMockSessionRepository()
 				session := &storage.UserSession{
-					ID:        "session-1",
-					Principal: "user@example.com",
-					ServiceID: "service-1",
+					ID:        id.NewSessionID(),
+					Principal: id.Principal("user@example.com"),
+					ServiceID: serviceID1,
 					Scope:     []string{"repo"},
 				}
 				_ = sessionRepo.Create(context.Background(), session)
@@ -846,15 +856,15 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 			},
 			principal: "user@example.com",
 			agent: &storage.Agent{
-				ID: "agent-1",
+				ID: agentID,
 				ServiceRequirements: []storage.ServiceRequirement{
 					{
-						ServiceID:       "service-1",
+						ServiceID:       serviceID1,
 						RequirementType: storage.RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo"},
 					},
 					{
-						ServiceID:       "service-2",
+						ServiceID:       serviceID2,
 						RequirementType: storage.RequirementTypeMandatory,
 						RequiredScopes:  []string{"write:org"},
 					},
@@ -870,15 +880,15 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 				handler := &OAuth2AuthorizeHandler{}
 				sessionRepo := newMockSessionRepository()
 				session1 := &storage.UserSession{
-					ID:        "session-1",
-					Principal: "user@example.com",
-					ServiceID: "service-1",
+					ID:        id.NewSessionID(),
+					Principal: id.Principal("user@example.com"),
+					ServiceID: serviceID1,
 					Scope:     []string{"repo"},
 				}
 				session2 := &storage.UserSession{
-					ID:        "session-2",
-					Principal: "user@example.com",
-					ServiceID: "service-2",
+					ID:        id.NewSessionID(),
+					Principal: id.Principal("user@example.com"),
+					ServiceID: serviceID2,
 					Scope:     []string{"write:org"},
 				}
 				_ = sessionRepo.Create(context.Background(), session1)
@@ -887,15 +897,15 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 			},
 			principal: "user@example.com",
 			agent: &storage.Agent{
-				ID: "agent-1",
+				ID: agentID,
 				ServiceRequirements: []storage.ServiceRequirement{
 					{
-						ServiceID:       "service-1",
+						ServiceID:       serviceID1,
 						RequirementType: storage.RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo"},
 					},
 					{
-						ServiceID:       "service-2",
+						ServiceID:       serviceID2,
 						RequirementType: storage.RequirementTypeMandatory,
 						RequiredScopes:  []string{"write:org"},
 					},

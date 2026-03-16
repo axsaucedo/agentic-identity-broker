@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -16,14 +17,14 @@ import (
 // using in-memory storage with sync.RWMutex for thread-safety.
 type Adapter struct {
 	mu    sync.RWMutex
-	users map[string]*ports.User
+	users map[id.UserID]*ports.User
 }
 
 // NewAdapter creates a new in-memory storage adapter.
 // Returns immediately (no I/O or initialization required).
 func NewAdapter() *Adapter {
 	return &Adapter{
-		users: make(map[string]*ports.User),
+		users: make(map[id.UserID]*ports.User),
 	}
 }
 
@@ -44,7 +45,7 @@ func (a *Adapter) Initialize(ctx context.Context) error {
 	defer a.mu.Unlock()
 
 	if a.users == nil {
-		a.users = make(map[string]*ports.User)
+		a.users = make(map[id.UserID]*ports.User)
 	}
 
 	return nil
@@ -65,7 +66,7 @@ func (a *Adapter) Close(ctx context.Context) error {
 	defer a.mu.Unlock()
 
 	// Clear all data
-	a.users = make(map[string]*ports.User)
+	a.users = make(map[id.UserID]*ports.User)
 
 	return nil
 }
@@ -123,7 +124,7 @@ func (a *Adapter) CreateUser(ctx context.Context, user *ports.User) error {
 		)
 	}
 
-	if user.ID == "" {
+	if user.ID.IsZero() {
 		return storage.NewStorageError(
 			"CreateUser",
 			storage.ErrorKindValidation,
@@ -164,7 +165,7 @@ func (a *Adapter) CreateUser(ctx context.Context, user *ports.User) error {
 // GetUser retrieves a user entity by ID.
 // Satisfies ports.UserRepository interface.
 // Returns StorageError with Kind=NotFound if user not found.
-func (a *Adapter) GetUser(ctx context.Context, id string) (*ports.User, error) {
+func (a *Adapter) GetUser(ctx context.Context, userID id.UserID) (*ports.User, error) {
 	// Check context for cancellation
 	select {
 	case <-ctx.Done():
@@ -177,7 +178,7 @@ func (a *Adapter) GetUser(ctx context.Context, id string) (*ports.User, error) {
 	default:
 	}
 
-	if id == "" {
+	if userID.IsZero() {
 		return nil, storage.NewStorageError(
 			"GetUser",
 			storage.ErrorKindValidation,
@@ -189,13 +190,13 @@ func (a *Adapter) GetUser(ctx context.Context, id string) (*ports.User, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	user, exists := a.users[id]
+	user, exists := a.users[userID]
 	if !exists {
 		return nil, storage.NewStorageError(
 			"GetUser",
 			storage.ErrorKindNotFound,
 			nil,
-			fmt.Sprintf("user with ID %q not found", id),
+			fmt.Sprintf("user with ID %q not found", userID),
 		)
 	}
 
@@ -230,7 +231,7 @@ func (a *Adapter) UpdateUser(ctx context.Context, user *ports.User) error {
 		)
 	}
 
-	if user.ID == "" {
+	if user.ID.IsZero() {
 		return storage.NewStorageError(
 			"UpdateUser",
 			storage.ErrorKindValidation,
@@ -271,7 +272,7 @@ func (a *Adapter) UpdateUser(ctx context.Context, user *ports.User) error {
 // DeleteUser deletes a user entity by ID.
 // Satisfies ports.UserRepository interface.
 // Idempotent: safe to delete non-existent users.
-func (a *Adapter) DeleteUser(ctx context.Context, id string) error {
+func (a *Adapter) DeleteUser(ctx context.Context, userID id.UserID) error {
 	// Check context for cancellation
 	select {
 	case <-ctx.Done():
@@ -284,7 +285,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, id string) error {
 	default:
 	}
 
-	if id == "" {
+	if userID.IsZero() {
 		return storage.NewStorageError(
 			"DeleteUser",
 			storage.ErrorKindValidation,
@@ -297,7 +298,7 @@ func (a *Adapter) DeleteUser(ctx context.Context, id string) error {
 	defer a.mu.Unlock()
 
 	// Remove if exists (idempotent - no error if not found)
-	delete(a.users, id)
+	delete(a.users, userID)
 
 	return nil
 }

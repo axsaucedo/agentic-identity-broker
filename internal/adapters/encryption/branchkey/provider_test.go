@@ -1,29 +1,37 @@
 package branchkey
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+)
+
+const (
+	testUUID1 = "550e8400-e29b-41d4-a716-446655440001"
+	testUUID2 = "550e8400-e29b-41d4-a716-446655440002"
+	testUUID3 = "550e8400-e29b-41d4-a716-446655440003"
+	testUUID4 = "550e8400-e29b-41d4-a716-446655440004"
+	testUUID5 = "550e8400-e29b-41d4-a716-446655440005"
+	testUUID6 = "550e8400-e29b-41d4-a716-446655440006"
+)
 
 func TestDefaultProvider_GenerateBranchKeyId(t *testing.T) {
 	provider := NewDefaultProvider()
 
 	tests := []struct {
 		name      string
-		serviceID string
+		serviceID id.ServiceID
 		expected  string
 	}{
 		{
-			name:      "oauth2 service",
-			serviceID: "oauth2",
-			expected:  "service_oauth2_branch_key",
+			name:      "first service",
+			serviceID: id.MustParseServiceID(testUUID1),
+			expected:  "service_" + testUUID1 + "_branch_key",
 		},
 		{
-			name:      "github service",
-			serviceID: "github",
-			expected:  "service_github_branch_key",
-		},
-		{
-			name:      "empty service ID",
-			serviceID: "",
-			expected:  "service__branch_key",
+			name:      "second service",
+			serviceID: id.MustParseServiceID(testUUID2),
+			expected:  "service_" + testUUID2 + "_branch_key",
 		},
 	}
 
@@ -43,42 +51,47 @@ func TestDefaultProvider_ExtractServiceIdFromBranchKey(t *testing.T) {
 	tests := []struct {
 		name        string
 		branchKeyID string
-		expected    string
+		expected    id.ServiceID
 	}{
 		{
-			name:        "valid oauth2 service",
-			branchKeyID: "service_oauth2_branch_key",
-			expected:    "oauth2",
+			name:        "valid first service",
+			branchKeyID: "service_" + testUUID1 + "_branch_key",
+			expected:    id.MustParseServiceID(testUUID1),
 		},
 		{
-			name:        "valid github service",
-			branchKeyID: "service_github_branch_key",
-			expected:    "github",
+			name:        "valid second service",
+			branchKeyID: "service_" + testUUID2 + "_branch_key",
+			expected:    id.MustParseServiceID(testUUID2),
 		},
 		{
-			name:        "invalid format returns empty string",
+			name:        "invalid format returns zero",
 			branchKeyID: "invalid_format",
-			expected:    "",
+			expected:    id.ServiceID{},
 		},
 		{
-			name:        "missing prefix returns empty string",
-			branchKeyID: "oauth2_branch_key",
-			expected:    "",
+			name:        "missing prefix returns zero",
+			branchKeyID: testUUID1 + "_branch_key",
+			expected:    id.ServiceID{},
 		},
 		{
-			name:        "missing suffix returns empty string",
-			branchKeyID: "service_oauth2",
-			expected:    "",
+			name:        "missing suffix returns zero",
+			branchKeyID: "service_" + testUUID1,
+			expected:    id.ServiceID{},
 		},
 		{
-			name:        "empty service ID returns empty string",
+			name:        "non-uuid service ID returns zero",
+			branchKeyID: "service_not-a-uuid_branch_key",
+			expected:    id.ServiceID{},
+		},
+		{
+			name:        "empty service ID returns zero",
 			branchKeyID: "service__branch_key",
-			expected:    "",
+			expected:    id.ServiceID{},
 		},
 		{
-			name:        "empty string returns empty string",
+			name:        "empty string returns zero",
 			branchKeyID: "",
-			expected:    "",
+			expected:    id.ServiceID{},
 		},
 	}
 
@@ -96,16 +109,16 @@ func TestDefaultProvider_ExtractServiceIdFromBranchKey(t *testing.T) {
 func TestDefaultProvider_SymmetricOperations(t *testing.T) {
 	provider := NewDefaultProvider()
 
-	testServiceIDs := []string{
-		"oauth2",
-		"github",
-		"api123",
-		"user-service",
-		"a",
+	testServiceIDs := []id.ServiceID{
+		id.MustParseServiceID(testUUID1),
+		id.MustParseServiceID(testUUID2),
+		id.MustParseServiceID(testUUID3),
+		id.MustParseServiceID(testUUID4),
+		id.MustParseServiceID(testUUID5),
 	}
 
 	for _, serviceID := range testServiceIDs {
-		t.Run(serviceID, func(t *testing.T) {
+		t.Run(serviceID.String(), func(t *testing.T) {
 			// Generate -> Extract should return original service ID
 			branchKeyID := provider.GenerateBranchKeyId(serviceID)
 			extractedID := provider.ExtractServiceIdFromBranchKey(branchKeyID)
@@ -125,9 +138,10 @@ func TestNewDefaultProvider(t *testing.T) {
 	}
 
 	// Test that the provider works correctly
-	result := provider.GenerateBranchKeyId("test")
-	expected := "service_test_branch_key"
+	testID := id.MustParseServiceID(testUUID6)
+	result := provider.GenerateBranchKeyId(testID)
+	expected := "service_" + testUUID6 + "_branch_key"
 	if result != expected {
-		t.Errorf("New provider GenerateBranchKeyId(\"test\") = %q, expected %q", result, expected)
+		t.Errorf("New provider GenerateBranchKeyId(%q) = %q, expected %q", testID, result, expected)
 	}
 }

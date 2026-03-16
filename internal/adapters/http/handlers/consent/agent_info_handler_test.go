@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
@@ -22,17 +23,17 @@ import (
 //
 //nolint:unused // Used in tests
 type mockConsentService struct {
-	getAgentConsentInfoFunc func(ctx context.Context, agentID string) (*consent.AgentConsentInfo, error)
-	getActiveGrantsFunc     func(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error)
+	getAgentConsentInfoFunc func(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error)
+	getActiveGrantsFunc     func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 	grantConsentFunc        func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
-	revokeConsentFunc       func(ctx context.Context, principal, agentID string) error
-	getAgentDelegationsFunc func(ctx context.Context, principal string) ([]consent.AgentDelegation, error)
-	getAgentDetailFunc      func(ctx context.Context, agentID string) (*consent.AgentDetail, []consent.ThirdpartyService, error)
-	getUserGrantsFunc       func(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error)
+	revokeConsentFunc       func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
+	getAgentDelegationsFunc func(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error)
+	getAgentDetailFunc      func(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error)
+	getUserGrantsFunc       func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 }
 
 //nolint:unused // Used in tests
-func (m *mockConsentService) GetAgentConsentInfo(ctx context.Context, agentID string) (*consent.AgentConsentInfo, error) {
+func (m *mockConsentService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error) {
 	if m.getAgentConsentInfoFunc != nil {
 		return m.getAgentConsentInfoFunc(ctx, agentID)
 	}
@@ -40,7 +41,7 @@ func (m *mockConsentService) GetAgentConsentInfo(ctx context.Context, agentID st
 }
 
 //nolint:unused // Used in tests
-func (m *mockConsentService) GetActiveGrants(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error) {
+func (m *mockConsentService) GetActiveGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	if m.getActiveGrantsFunc != nil {
 		return m.getActiveGrantsFunc(ctx, principal, agentID)
 	}
@@ -56,7 +57,7 @@ func (m *mockConsentService) GrantConsent(ctx context.Context, req *consent.Gran
 }
 
 //nolint:unused // Used in tests
-func (m *mockConsentService) RevokeConsent(ctx context.Context, principal, agentID string) error {
+func (m *mockConsentService) RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
 	if m.revokeConsentFunc != nil {
 		return m.revokeConsentFunc(ctx, principal, agentID)
 	}
@@ -64,7 +65,7 @@ func (m *mockConsentService) RevokeConsent(ctx context.Context, principal, agent
 }
 
 //nolint:unused // Used in tests
-func (m *mockConsentService) GetAgentDelegations(ctx context.Context, principal string) ([]consent.AgentDelegation, error) {
+func (m *mockConsentService) GetAgentDelegations(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error) {
 	if m.getAgentDelegationsFunc != nil {
 		return m.getAgentDelegationsFunc(ctx, principal)
 	}
@@ -72,7 +73,7 @@ func (m *mockConsentService) GetAgentDelegations(ctx context.Context, principal 
 }
 
 //nolint:unused // Used in tests
-func (m *mockConsentService) GetAgentDetail(ctx context.Context, agentID string) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
+func (m *mockConsentService) GetAgentDetail(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
 	if m.getAgentDetailFunc != nil {
 		return m.getAgentDetailFunc(ctx, agentID)
 	}
@@ -80,7 +81,7 @@ func (m *mockConsentService) GetAgentDetail(ctx context.Context, agentID string)
 }
 
 //nolint:unused // Used in tests
-func (m *mockConsentService) GetUserGrants(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error) {
+func (m *mockConsentService) GetUserGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	if m.getUserGrantsFunc != nil {
 		return m.getUserGrantsFunc(ctx, principal, agentID)
 	}
@@ -89,14 +90,14 @@ func (m *mockConsentService) GetUserGrants(ctx context.Context, principal, agent
 
 func TestGetAgentConsentInfo_Success(t *testing.T) {
 	// Setup mock data
-	agentID := "agent-123"
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-aaa000000123")
 	govURL := "https://example.com/governance"
 	docURL := "https://example.com/docs"
 	interfaceURL := "https://example.com/interface"
 
 	mockAgent := &storage.Agent{
 		ID:                   agentID,
-		ClientID:             "client-github",
+		ClientID:             id.ClientID("client-github"),
 		DisplayName:          "GitHub Assistant",
 		Description:          "AI assistant for GitHub",
 		GovernanceURL:        &govURL,
@@ -108,22 +109,22 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 
 	mockServices := []*model.ThirdpartyOAuth2ProviderEntity{
 		{
-			ID:          "service-github",
+			ID:          id.MustParseServiceID("00000000-0000-0000-0000-ccc000000001"),
 			DisplayName: "GitHub",
 			Scopes: []model.OAuthScope{
 				{ScopeValue: "repo", Description: "Full control of private repositories"},
 				{ScopeValue: "user:email", Description: "Access user emails"},
 			},
-			Secret: model.NewEncryptedSecret(encryptSecretForTest("service-github", "test-client-secret")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("00000000-0000-0000-0000-ccc000000001", "test-client-secret")),
 		},
 		{
-			ID:          "service-google",
+			ID:          id.MustParseServiceID("00000000-0000-0000-0000-ccc000000002"),
 			DisplayName: "Google",
 			Scopes: []model.OAuthScope{
 				{ScopeValue: "openid", Description: "OpenID Connect"},
 				{ScopeValue: "email", Description: "Access email address"},
 			},
-			Secret: model.NewEncryptedSecret(encryptSecretForTest("service-google", "test-client-secret")),
+			Secret: model.NewEncryptedSecret(encryptSecretForTest("00000000-0000-0000-0000-ccc000000002", "test-client-secret")),
 		},
 	}
 
@@ -144,9 +145,9 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 	handler := NewAgentInfoHandler(mockSvc.asService(), logger)
 
 	// Create request
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String(), nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	// Execute request
@@ -162,7 +163,7 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify agent metadata
-	assert.Equal(t, agentID, resp.Agent.ID)
+	assert.Equal(t, agentID.String(), resp.Agent.ID)
 	assert.Equal(t, "client-github", resp.Agent.ClientID)
 	assert.Equal(t, "GitHub Assistant", resp.Agent.DisplayName)
 	assert.Equal(t, "AI assistant for GitHub", resp.Agent.Description)
@@ -178,7 +179,7 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 
 	// Check GitHub service
 	githubSvc := resp.RequestedServices[0]
-	assert.Equal(t, "service-github", githubSvc.ID)
+	assert.Equal(t, "00000000-0000-0000-0000-ccc000000001", githubSvc.ID)
 	assert.Equal(t, "GitHub", githubSvc.DisplayName)
 	assert.Len(t, githubSvc.Scopes, 2)
 	assert.Equal(t, "repo", githubSvc.Scopes[0].ScopeValue)
@@ -186,13 +187,13 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 
 	// Check Google service
 	googleSvc := resp.RequestedServices[1]
-	assert.Equal(t, "service-google", googleSvc.ID)
+	assert.Equal(t, "00000000-0000-0000-0000-ccc000000002", googleSvc.ID)
 	assert.Equal(t, "Google", googleSvc.DisplayName)
 	assert.Len(t, googleSvc.Scopes, 2)
 }
 
 func TestGetAgentConsentInfo_AgentNotFound(t *testing.T) {
-	agentID := "nonexistent-agent"
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-bbb000000000")
 
 	mockSvc := &mockConsentServiceWrapper{
 		info: nil,
@@ -202,9 +203,9 @@ func TestGetAgentConsentInfo_AgentNotFound(t *testing.T) {
 	logger := slog.Default()
 	handler := NewAgentInfoHandler(mockSvc.asService(), logger)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String(), nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	rec := httptest.NewRecorder()
@@ -220,11 +221,11 @@ func TestGetAgentConsentInfo_AgentNotFound(t *testing.T) {
 }
 
 func TestGetAgentConsentInfo_EmptyServices(t *testing.T) {
-	agentID := "agent-123"
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-aaa000000123")
 
 	mockAgent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    "client-test",
+		ClientID:    id.ClientID("client-test"),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now(),
@@ -245,9 +246,9 @@ func TestGetAgentConsentInfo_EmptyServices(t *testing.T) {
 	logger := slog.Default()
 	handler := NewAgentInfoHandler(mockSvc.asService(), logger)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String(), nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	rec := httptest.NewRecorder()
@@ -259,12 +260,12 @@ func TestGetAgentConsentInfo_EmptyServices(t *testing.T) {
 	err := json.NewDecoder(rec.Body).Decode(&resp)
 	require.NoError(t, err)
 
-	assert.Equal(t, agentID, resp.Agent.ID)
+	assert.Equal(t, agentID.String(), resp.Agent.ID)
 	assert.Empty(t, resp.RequestedServices)
 }
 
 func TestGetAgentConsentInfo_ServiceError(t *testing.T) {
-	agentID := "agent-123"
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-aaa000000123")
 
 	mockSvc := &mockConsentServiceWrapper{
 		info: nil,
@@ -274,9 +275,9 @@ func TestGetAgentConsentInfo_ServiceError(t *testing.T) {
 	logger := slog.Default()
 	handler := NewAgentInfoHandler(mockSvc.asService(), logger)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String(), nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	rec := httptest.NewRecorder()
@@ -292,11 +293,11 @@ func TestGetAgentConsentInfo_ServiceError(t *testing.T) {
 }
 
 func TestGetAgentConsentInfo_ContentType(t *testing.T) {
-	agentID := "agent-123"
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-aaa000000123")
 
 	mockAgent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    "client-test",
+		ClientID:    id.ClientID("client-test"),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now(),
@@ -316,9 +317,9 @@ func TestGetAgentConsentInfo_ContentType(t *testing.T) {
 	logger := slog.Default()
 	handler := NewAgentInfoHandler(mockSvc.asService(), logger)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String(), nil)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	rec := httptest.NewRecorder()
@@ -365,7 +366,7 @@ func (m *mockAgentRepo) Create(ctx context.Context, agent *storage.Agent) error 
 	return nil
 }
 
-func (m *mockAgentRepo) Get(ctx context.Context, id string) (*storage.Agent, error) {
+func (m *mockAgentRepo) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
 	if m.err != nil {
 		// For ErrAgentNotFound, we return nil agent
 		return nil, m.err
@@ -380,7 +381,7 @@ func (m *mockAgentRepo) Update(ctx context.Context, agent *storage.Agent) error 
 	return nil
 }
 
-func (m *mockAgentRepo) Delete(ctx context.Context, id string) error {
+func (m *mockAgentRepo) Delete(ctx context.Context, agentID id.AgentID) error {
 	return nil
 }
 
@@ -388,8 +389,8 @@ func (m *mockAgentRepo) List(ctx context.Context) ([]*storage.Agent, error) {
 	return nil, nil
 }
 
-func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
-	if m.agent != nil && m.agent.ClientID == clientID {
+func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
+	if m.agent != nil && string(m.agent.ClientID) == string(clientID) {
 		return m.agent, nil
 	}
 	return nil, m.err
@@ -404,7 +405,7 @@ func (m *mockServiceRepo) Create(ctx context.Context, entity *model.ThirdpartyOA
 	return nil
 }
 
-func (m *mockServiceRepo) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+func (m *mockServiceRepo) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 
@@ -412,7 +413,7 @@ func (m *mockServiceRepo) Update(ctx context.Context, entity *model.ThirdpartyOA
 	return nil
 }
 
-func (m *mockServiceRepo) Delete(ctx context.Context, id string) error {
+func (m *mockServiceRepo) Delete(ctx context.Context, serviceID id.ServiceID) error {
 	return nil
 }
 
@@ -423,7 +424,7 @@ func (m *mockServiceRepo) List(ctx context.Context) ([]*model.ThirdpartyOAuth2Pr
 	return m.services, nil
 }
 
-func (m *mockServiceRepo) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
+func (m *mockServiceRepo) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	return 0, nil
 }
 
@@ -437,7 +438,7 @@ func (m *mockGrantRepo) Create(ctx context.Context, grant *storage.UserGrant) er
 	return nil
 }
 
-func (m *mockGrantRepo) Get(ctx context.Context, id string) (*storage.UserGrant, error) {
+func (m *mockGrantRepo) Get(ctx context.Context, grantID id.GrantID) (*storage.UserGrant, error) {
 	return nil, nil
 }
 
@@ -445,30 +446,30 @@ func (m *mockGrantRepo) Update(ctx context.Context, grant *storage.UserGrant) er
 	return nil
 }
 
-func (m *mockGrantRepo) Delete(ctx context.Context, id string) error {
+func (m *mockGrantRepo) Delete(ctx context.Context, grantID id.GrantID) error {
 	return nil
 }
 
-func (m *mockGrantRepo) ListByPrincipalAndAgent(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+func (m *mockGrantRepo) ListByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	return nil, nil
 }
 
-func (m *mockGrantRepo) FindByPrincipalAndAgent(ctx context.Context, principal string, agentID string) (*storage.UserGrant, error) {
+func (m *mockGrantRepo) FindByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) (*storage.UserGrant, error) {
 	return nil, nil
 }
 
-func (m *mockGrantRepo) DeleteByAgent(ctx context.Context, agentID string) error {
+func (m *mockGrantRepo) DeleteByAgent(ctx context.Context, agentID id.AgentID) error {
 	return nil
 }
 
-func (m *mockGrantRepo) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+func (m *mockGrantRepo) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storage.UserGrant, error) {
 	return nil, nil
 }
 
-func (m *mockGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
+func (m *mockGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	return 0, nil
 }
 
-func (m *mockGrantRepo) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
-	return []string{}, nil
+func (m *mockGrantRepo) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
+	return []id.AgentID{}, nil
 }

@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // UserSession represents an authenticated OAuth2 session between a user and a third-party service.
 // This is an aggregate root - it owns the encrypted tokens and manages session lifecycle.
 // One session per (principal, service_id) pair, enforced by database unique constraint.
 type UserSession struct {
-	ID        string `json:"id" db:"id"`
-	Principal string `json:"principal" db:"principal"`
-	ServiceID string `json:"service_id" db:"service_id"`
+	ID        id.SessionID `json:"id" db:"id"`
+	Principal id.Principal `json:"principal" db:"principal"`
+	ServiceID id.ServiceID `json:"service_id" db:"service_id"`
 
 	// EncryptedAccessToken contains the OAuth2 access token ENCRYPTED by OAuth2SessionService
 	// using envelope encryption with service_id as Additional Authenticated Data (AAD).
@@ -47,7 +49,7 @@ type UserSession struct {
 // This is stored in JSONB and included as AAD (Additional Authenticated Data).
 // Simplified to service_id-only for performance optimization (ADR 008).
 type EncryptionContext struct {
-	ServiceID string `json:"service_id"` // OAuth service identifier
+	ServiceID id.ServiceID `json:"service_id"` // OAuth service identifier
 }
 
 // Value implements driver.Valuer for EncryptionContext (JSONB serialization).
@@ -69,16 +71,16 @@ func (ec *EncryptionContext) Scan(value any) error {
 
 // Validate performs domain validation on UserSession.
 func (s *UserSession) Validate() error {
-	if s.ID == "" {
+	if s.ID.IsZero() {
 		return errors.New("session ID cannot be empty")
 	}
-	if s.Principal == "" {
+	if s.Principal.IsZero() {
 		return errors.New("principal is required")
 	}
-	if len(s.Principal) > 200 {
+	if len(s.Principal.String()) > 200 {
 		return errors.New("principal exceeds 200 characters")
 	}
-	if s.ServiceID == "" {
+	if s.ServiceID.IsZero() {
 		return errors.New("service_id is required")
 	}
 	if len(s.EncryptedAccessToken) == 0 {
@@ -122,17 +124,17 @@ func (s *UserSession) CanRefresh() bool {
 // UserSessionSummary is a read model for displaying session information.
 // Includes computed fields like dependent agent count.
 type UserSessionSummary struct {
-	ID                    string     `json:"id"`
-	ServiceID             string     `json:"service_id"`
-	ServiceDisplayName    string     `json:"service_display_name"`
-	TokenType             string     `json:"token_type"`
-	Scope                 []string   `json:"scope"`
-	InitiatedAt           time.Time  `json:"initiated_at"`
-	IsExpired             bool       `json:"is_expired"`
-	AccessTokenExpired    bool       `json:"access_token_expired"`
-	RefreshTokenExpiresAt *time.Time `json:"refresh_token_expires_at,omitempty"`
-	DependentAgentCount   int        `json:"dependent_agent_count"`
-	IsEncrypted           bool       `json:"is_encrypted"` // Always true
+	ID                    id.SessionID `json:"id"`
+	ServiceID             id.ServiceID `json:"service_id"`
+	ServiceDisplayName    string       `json:"service_display_name"`
+	TokenType             string       `json:"token_type"`
+	Scope                 []string     `json:"scope"`
+	InitiatedAt           time.Time    `json:"initiated_at"`
+	IsExpired             bool         `json:"is_expired"`
+	AccessTokenExpired    bool         `json:"access_token_expired"`
+	RefreshTokenExpiresAt *time.Time   `json:"refresh_token_expires_at,omitempty"`
+	DependentAgentCount   int          `json:"dependent_agent_count"`
+	IsEncrypted           bool         `json:"is_encrypted"` // Always true
 }
 
 // NewUserSessionSummary creates a summary from a UserSession.

@@ -5,16 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // AgentsHandler handles HTTP requests for agent CRUD operations.
@@ -113,9 +114,9 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	// Create agent entity
 	now := time.Now().UTC()
 	agent := &storage.Agent{
-		ID:                   uuid.New().String(),
-		ClientID:             req.ClientID,
-		ExternalID:           req.ExternalID,
+		ID:                   id.NewAgentID(),
+		ClientID:             id.ClientID(req.ClientID),
+		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
 		GovernanceURL:        req.GovernanceURL,
@@ -155,7 +156,13 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agent, err := h.repo.Get(ctx, agentID)
+	parsedAgentID, parseErr := id.ParseAgentID(agentID)
+	if parseErr != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid agent ID", parseErr.Error())
+		return
+	}
+
+	agent, err := h.repo.Get(ctx, parsedAgentID)
 	if err != nil {
 		h.handleStorageError(w, r, "GetAgent", err)
 		return
@@ -181,6 +188,12 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedAgentID, parseErr := id.ParseAgentID(agentID)
+	if parseErr != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid agent ID", parseErr.Error())
+		return
+	}
+
 	var req AgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.Warn("failed to decode request body", "error", err)
@@ -189,7 +202,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get existing agent to preserve created_at
-	existing, err := h.repo.Get(ctx, agentID)
+	existing, err := h.repo.Get(ctx, parsedAgentID)
 	if err != nil {
 		h.handleStorageError(w, r, "UpdateAgent", err)
 		return
@@ -212,9 +225,9 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Update agent entity
 	agent := &storage.Agent{
-		ID:                   agentID,
-		ClientID:             req.ClientID,
-		ExternalID:           req.ExternalID,
+		ID:                   parsedAgentID,
+		ClientID:             id.ClientID(req.ClientID),
+		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
 		GovernanceURL:        req.GovernanceURL,
@@ -255,7 +268,13 @@ func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete from repository
-	if err := h.repo.Delete(ctx, agentID); err != nil {
+	parsedID, parseErr := id.ParseAgentID(agentID)
+	if parseErr != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid agent ID", parseErr.Error())
+		return
+	}
+
+	if err := h.repo.Delete(ctx, parsedID); err != nil {
 		h.handleStorageError(w, r, "DeleteAgent", err)
 		return
 	}
@@ -287,8 +306,8 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("failed to convert agent to response", "agent_id", agent.ID, "error", err)
 			// Continue with partial response
 			resp = AgentResponse{
-				ID:          agent.ID,
-				ClientID:    agent.ClientID,
+				ID:          agent.ID.String(),
+				ClientID:    agent.ClientID.String(),
 				DisplayName: agent.DisplayName,
 				Description: agent.Description,
 				CreatedAt:   agent.CreatedAt.Format(time.RFC3339),
@@ -303,9 +322,9 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 
 // batchLoadServices loads all unique services referenced by agents in a single batch.
 // Returns a map of service_id -> service for efficient lookup.
-func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage.Agent) map[string]*model.ThirdpartyOAuth2ProviderEntity {
+func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage.Agent) map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity {
 	// Collect all unique service IDs
-	serviceIDs := make(map[string]bool)
+	serviceIDs := make(map[id.ServiceID]bool)
 	for _, agent := range agents {
 		for _, sr := range agent.ServiceRequirements {
 			serviceIDs[sr.ServiceID] = true
@@ -313,7 +332,7 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 	}
 
 	// Load all services
-	serviceMap := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
+	serviceMap := make(map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity)
 	for serviceID := range serviceIDs {
 		service, err := h.providerService.Get(ctx, serviceID)
 		if err != nil {
@@ -328,11 +347,11 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 
 // toResponseWithServiceMap converts an Agent entity to AgentResponse using a pre-loaded service map.
 // This avoids N+1 queries when converting multiple agents.
-func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMap map[string]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
+func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMap map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
 	resp := AgentResponse{
-		ID:                   agent.ID,
-		ClientID:             agent.ClientID,
-		ExternalID:           agent.ExternalID,
+		ID:                   agent.ID.String(),
+		ClientID:             agent.ClientID.String(),
+		ExternalID:           convertExternalIDToString(agent.ExternalID),
 		DisplayName:          agent.DisplayName,
 		Description:          agent.Description,
 		GovernanceURL:        agent.GovernanceURL,
@@ -347,7 +366,7 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 		resp.ServiceRequirements = make([]ServiceRequirementResponse, len(agent.ServiceRequirements))
 		for i, sr := range agent.ServiceRequirements {
 			respSR := ServiceRequirementResponse{
-				ServiceID:       sr.ServiceID,
+				ServiceID:       sr.ServiceID.String(),
 				RequirementType: sr.RequirementType.String(),
 				RequiredScopes:  sr.RequiredScopes,
 			}
@@ -378,8 +397,13 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 			return nil, err
 		}
 
+		parsedSvcID, err := id.ParseServiceID(req.ServiceID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid service_id %q: %w", req.ServiceID, err)
+		}
+
 		result[i] = storage.ServiceRequirement{
-			ServiceID:       req.ServiceID,
+			ServiceID:       parsedSvcID,
 			RequirementType: reqType,
 			RequiredScopes:  req.RequiredScopes,
 		}
@@ -428,4 +452,22 @@ func (h *AgentsHandler) writeError(w http.ResponseWriter, statusCode int, error 
 		Message: message,
 	}
 	h.writeJSON(w, statusCode, resp)
+}
+
+// convertExternalID converts *string to *id.ExternalID.
+func convertExternalID(s *string) *id.ExternalID {
+	if s == nil {
+		return nil
+	}
+	eid := id.ExternalID(*s)
+	return &eid
+}
+
+// convertExternalIDToString converts *id.ExternalID to *string.
+func convertExternalIDToString(eid *id.ExternalID) *string {
+	if eid == nil {
+		return nil
+	}
+	s := string(*eid)
+	return &s
 }

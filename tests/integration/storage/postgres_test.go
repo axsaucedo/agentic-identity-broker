@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/postgres"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -215,7 +216,7 @@ func TestPostgresAdapter_CreateUser_ValidationErrors(t *testing.T) {
 		{
 			name: "empty ID",
 			user: &ports.User{
-				ID:        "",
+				ID:        id.UserID{},
 				Email:     "test@example.com",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -226,7 +227,7 @@ func TestPostgresAdapter_CreateUser_ValidationErrors(t *testing.T) {
 		{
 			name: "empty email",
 			user: &ports.User{
-				ID:        "user123",
+				ID:        id.MustParseUserID("12345678-1234-1234-1234-123456789012"),
 				Email:     "",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -270,7 +271,7 @@ func TestPostgresAdapter_ContextCancellation(t *testing.T) {
 	cancel()
 
 	// Operations on cancelled context should fail gracefully
-	_, err = adapter.GetUser(ctx, "user123")
+	_, err = adapter.GetUser(ctx, id.MustParseUserID("12345678-1234-1234-1234-123456789012"))
 	assert.Error(t, err)
 }
 
@@ -353,7 +354,7 @@ func TestPostgresAdapter_CRUD_Operations_Simulation(t *testing.T) {
 	defer cancel()
 
 	user := &ports.User{
-		ID:        "user123",
+		ID:        id.MustParseUserID("12345678-1234-1234-1234-123456789012"),
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -368,7 +369,7 @@ func TestPostgresAdapter_CRUD_Operations_Simulation(t *testing.T) {
 		assert.Equal(t, storage.ErrorKindConnection, storErr.Kind)
 	}
 
-	_, err = adapter.GetUser(ctx, "user123")
+	_, err = adapter.GetUser(ctx, id.MustParseUserID("12345678-1234-1234-1234-123456789012"))
 	assert.Error(t, err)
 	if storErr, ok := err.(*storage.StorageError); ok {
 		assert.Equal(t, storage.ErrorKindConnection, storErr.Kind)
@@ -377,7 +378,7 @@ func TestPostgresAdapter_CRUD_Operations_Simulation(t *testing.T) {
 	err = adapter.UpdateUser(ctx, user)
 	assert.Error(t, err)
 
-	err = adapter.DeleteUser(ctx, "user123")
+	err = adapter.DeleteUser(ctx, id.MustParseUserID("12345678-1234-1234-1234-123456789012"))
 	assert.Error(t, err)
 
 	_, err = adapter.ListUsers(ctx, nil)

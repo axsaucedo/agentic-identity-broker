@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
@@ -20,10 +21,11 @@ import (
 
 // TestStateTokenSecurityExpiration_RejectedAtBoundary tests token rejection at expiration boundary.
 func TestStateTokenSecurityExpiration_RejectedAtBoundary(t *testing.T) {
+	testServiceID := id.NewServiceID()
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now().Add(-5 * time.Minute),
 		ExpiresAt:    time.Now().Add(-100 * time.Millisecond), // Expired 100ms ago (reliable boundary)
@@ -35,10 +37,11 @@ func TestStateTokenSecurityExpiration_RejectedAtBoundary(t *testing.T) {
 
 // TestStateTokenSecurityExpiration_ValidJustBeforeExpiry tests token is valid just before expiry.
 func TestStateTokenSecurityExpiration_ValidJustBeforeExpiry(t *testing.T) {
+	testServiceID := id.NewServiceID()
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now().Add(-5 * time.Minute),
 		ExpiresAt:    time.Now().Add(100 * time.Millisecond), // Expires in 100ms (reliable boundary)
@@ -50,10 +53,11 @@ func TestStateTokenSecurityExpiration_ValidJustBeforeExpiry(t *testing.T) {
 
 // TestStateTokenSecurityExpiration_LongExpiredToken tests very old expired tokens.
 func TestStateTokenSecurityExpiration_LongExpiredToken(t *testing.T) {
+	testServiceID := id.NewServiceID()
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now().Add(-1 * time.Hour),
 		ExpiresAt:    time.Now().Add(-30 * time.Minute), // Expired 30 minutes ago
@@ -68,10 +72,11 @@ func TestStateTokenSecurityExpiration_LongExpiredToken(t *testing.T) {
 
 // TestStateTokenSecurityCSRF_PrincipalValidation tests principal claim validation.
 func TestStateTokenSecurityCSRF_PrincipalValidation(t *testing.T) {
+	testServiceID := id.NewServiceID()
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -85,10 +90,11 @@ func TestStateTokenSecurityCSRF_PrincipalValidation(t *testing.T) {
 
 // TestStateTokenSecurityCSRF_EmptyPrincipal tests rejection of missing principal.
 func TestStateTokenSecurityCSRF_EmptyPrincipal(t *testing.T) {
+	testServiceID := id.NewServiceID()
 	claims := &oauth2session.OAuth2StateTokenClaims{
 		Principal:    "", // Missing principal - CSRF vulnerability!
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -101,19 +107,20 @@ func TestStateTokenSecurityCSRF_EmptyPrincipal(t *testing.T) {
 
 // TestStateTokenSecurityCSRF_PrincipalMismatchDetection tests that different principals are detectable.
 func TestStateTokenSecurityCSRF_PrincipalMismatchDetection(t *testing.T) {
+	testServiceID := id.NewServiceID()
 	claims1 := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user1@example.com",
+		Principal:    id.Principal("user1@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
 	}
 
 	claims2 := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user2@example.com", // Different principal
+		Principal:    id.Principal("user2@example.com"), // Different principal
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -132,10 +139,11 @@ func TestStateTokenSecurityCSRF_PrincipalMismatchDetection(t *testing.T) {
 
 // TestStateTokenSecurityServiceID_Validation tests service ID claim validation.
 func TestStateTokenSecurityServiceID_Validation(t *testing.T) {
+	testServiceID := id.NewServiceID()
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "github-service",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -150,9 +158,9 @@ func TestStateTokenSecurityServiceID_Validation(t *testing.T) {
 // TestStateTokenSecurityServiceID_EmptyServiceID tests rejection of missing service ID.
 func TestStateTokenSecurityServiceID_EmptyServiceID(t *testing.T) {
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "", // Missing service ID!
+		ServiceID:    id.ServiceID{}, // Missing service ID!
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -165,19 +173,21 @@ func TestStateTokenSecurityServiceID_EmptyServiceID(t *testing.T) {
 
 // TestStateTokenSecurityServiceID_MismatchDetection tests that different service IDs are detectable.
 func TestStateTokenSecurityServiceID_MismatchDetection(t *testing.T) {
+	githubServiceID := id.NewServiceID()
+	googleServiceID := id.NewServiceID()
 	claims1 := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "github-service", // GitHub
+		ServiceID:    githubServiceID, // GitHub
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
 	}
 
 	claims2 := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "google-service", // Google - different service
+		ServiceID:    googleServiceID, // Google - different service
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -196,31 +206,31 @@ func TestStateTokenSecurityServiceID_MismatchDetection(t *testing.T) {
 
 // TestStateTokenSecurityTampered_InvalidToken tests rejection of completely invalid tokens.
 func TestStateTokenSecurityTampered_InvalidToken(t *testing.T) {
-	service := setupTestService(t)
+	service, testServiceID := setupTestService(t)
 
 	// Try to validate completely invalid token
-	_, err := service.ValidateStateToken("invalid-token-xyz", "user@example.com", "service-123")
+	_, err := service.ValidateStateToken("invalid-token-xyz", id.Principal("user@example.com"), testServiceID)
 	assert.Error(t, err, "invalid token should fail validation")
 	assert.ErrorIs(t, err, oauth2session.ErrInvalidStateToken, "should return ErrInvalidStateToken")
 }
 
 // TestStateTokenSecurityTampered_CorruptedJWE tests rejection of corrupted JWE format.
 func TestStateTokenSecurityTampered_CorruptedJWE(t *testing.T) {
-	service := setupTestService(t)
+	service, testServiceID := setupTestService(t)
 
 	// Try to validate token with invalid JWE format
 	corrupted := "eyJhbGciOiJBMjU2R0NNS1ciLCJlbmMiOiJBMjU2R0NNIn0." + // Invalid segments
 		"invalid.corrupted.token"
 
-	_, err := service.ValidateStateToken(corrupted, "user@example.com", "service-123")
+	_, err := service.ValidateStateToken(corrupted, id.Principal("user@example.com"), testServiceID)
 	assert.Error(t, err, "corrupted JWE should fail validation")
 }
 
 // TestStateTokenSecurityTampered_EmptyToken tests rejection of empty state token.
 func TestStateTokenSecurityTampered_EmptyToken(t *testing.T) {
-	service := setupTestService(t)
+	service, testServiceID := setupTestService(t)
 
-	_, err := service.ValidateStateToken("", "user@example.com", "service-123")
+	_, err := service.ValidateStateToken("", id.Principal("user@example.com"), testServiceID)
 	assert.Error(t, err, "empty token should fail validation")
 }
 
@@ -299,10 +309,11 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	)
 
 	// Create token with service1's key
+	testServiceID := id.NewServiceID()
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -313,7 +324,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 	require.NotEmpty(t, token, "token should not be empty")
 
 	// Try to validate with service2's key (should fail)
-	_, err = service2.ValidateStateToken(token, "user@example.com", "service-123")
+	_, err = service2.ValidateStateToken(token, id.Principal("user@example.com"), testServiceID)
 	assert.Error(t, err, "token encrypted with key1 should not decrypt with key2")
 }
 
@@ -321,13 +332,13 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 // This test validates that the JWE authentication tag prevents acceptance of tampered tokens.
 // It uses deterministic tampering strategies that reliably modify the authentication tag.
 func TestStateTokenSecurityTampered_ModifiedToken(t *testing.T) {
-	service := setupTestService(t)
+	service, testServiceID := setupTestService(t)
 
 	// Create a valid token
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -338,7 +349,7 @@ func TestStateTokenSecurityTampered_ModifiedToken(t *testing.T) {
 	require.NotEmpty(t, token, "token should not be empty")
 
 	// Verify original token is valid first
-	_, err = service.ValidateStateToken(token, "user@example.com", "service-123")
+	_, err = service.ValidateStateToken(token, id.Principal("user@example.com"), testServiceID)
 	require.NoError(t, err, "original token should validate successfully")
 
 	// Strategy: Modify a character in the middle of the token (ciphertext/payload part)
@@ -361,7 +372,7 @@ func TestStateTokenSecurityTampered_ModifiedToken(t *testing.T) {
 	require.NotEqual(t, originalByte, tokenBytes[middleIdx], "byte at middle index should be different")
 
 	// Try to validate modified token - must fail
-	_, err = service.ValidateStateToken(modifiedToken, "user@example.com", "service-123")
+	_, err = service.ValidateStateToken(modifiedToken, id.Principal("user@example.com"), testServiceID)
 	assert.Error(t, err, "modified token should always fail validation - JWE authentication tag should reject any tampering")
 }
 
@@ -371,12 +382,12 @@ func TestStateTokenSecurityTampered_ModifiedToken(t *testing.T) {
 // TestStateTokenSecurityEncryption_UsesAuthenticatedEncryption verifies JWE uses A256GCMKW + A256GCM.
 func TestStateTokenSecurityEncryption_UsesAuthenticatedEncryption(t *testing.T) {
 	// This test verifies that state tokens are created with authenticated encryption
-	service := setupTestService(t)
+	service, testServiceID := setupTestService(t)
 
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -398,7 +409,7 @@ func TestStateTokenSecurityEncryption_UsesAuthenticatedEncryption(t *testing.T) 
 	assert.NotEmpty(t, token, "token should not be empty")
 
 	// Verify token can be decrypted successfully
-	decrypted, err := service.ValidateStateToken(token, "user@example.com", "service-123")
+	decrypted, err := service.ValidateStateToken(token, id.Principal("user@example.com"), testServiceID)
 	require.NoError(t, err, "token should decrypt successfully with authenticated encryption")
 	assert.Equal(t, claims.Principal, decrypted.Principal)
 }
@@ -424,10 +435,11 @@ func TestStateTokenSecurityTTL_DefaultIsLessThan15Minutes(t *testing.T) {
 func TestStateTokenSecurityTTL_TokenExpired(t *testing.T) {
 	// Create claims with short TTL for testing
 	now := time.Now()
+	testServiceID := id.NewServiceID()
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     now,
 		ExpiresAt:    now.Add(5 * time.Minute), // 5 minute TTL
@@ -437,9 +449,9 @@ func TestStateTokenSecurityTTL_TokenExpired(t *testing.T) {
 
 	// Simulate token expiration
 	expiredClaims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     now.Add(-10 * time.Minute),
 		ExpiresAt:    now.Add(-5 * time.Minute), // Already expired
@@ -453,13 +465,13 @@ func TestStateTokenSecurityTTL_TokenExpired(t *testing.T) {
 
 // TestStateTokenSecurityValidation_PrincipalMismatchError tests principal mismatch error.
 func TestStateTokenSecurityValidation_PrincipalMismatchError(t *testing.T) {
-	service := setupTestService(t)
+	service, testServiceID := setupTestService(t)
 
 	// Create token for user1
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user1@example.com",
+		Principal:    id.Principal("user1@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -469,7 +481,7 @@ func TestStateTokenSecurityValidation_PrincipalMismatchError(t *testing.T) {
 	require.NoError(t, err, "CreateStateToken should succeed")
 
 	// Try to validate as user2 (CSRF attack)
-	_, err = service.ValidateStateToken(token, "user2@example.com", "service-123")
+	_, err = service.ValidateStateToken(token, id.Principal("user2@example.com"), testServiceID)
 	assert.Error(t, err, "should reject token with mismatched principal")
 	assert.ErrorIs(t, err, oauth2session.ErrPrincipalMismatch,
 		"should return ErrPrincipalMismatch for CSRF attacks")
@@ -479,13 +491,13 @@ func TestStateTokenSecurityValidation_PrincipalMismatchError(t *testing.T) {
 
 // TestStateTokenSecurityValidation_ServiceIDMismatchError tests service ID mismatch error.
 func TestStateTokenSecurityValidation_ServiceIDMismatchError(t *testing.T) {
-	service := setupTestService(t)
+	service, testServiceID := setupTestService(t)
 
 	// Create token for service1
 	claims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
+		Principal:    id.Principal("user@example.com"),
 		PKCEVerifier: "test-verifier",
-		ServiceID:    "service-123",
+		ServiceID:    testServiceID,
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     time.Now(),
 		ExpiresAt:    time.Now().Add(10 * time.Minute),
@@ -495,7 +507,8 @@ func TestStateTokenSecurityValidation_ServiceIDMismatchError(t *testing.T) {
 	require.NoError(t, err, "CreateStateToken should succeed")
 
 	// Try to validate for service2 (cross-service attack)
-	_, err = service.ValidateStateToken(token, "user@example.com", "service-999")
+	wrongServiceID := id.NewServiceID()
+	_, err = service.ValidateStateToken(token, id.Principal("user@example.com"), wrongServiceID)
 	assert.Error(t, err, "should reject token with mismatched service ID")
 	assert.Contains(t, err.Error(), "service_id", "error should indicate service ID mismatch")
 }

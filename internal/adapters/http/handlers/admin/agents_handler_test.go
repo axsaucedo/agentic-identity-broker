@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -29,8 +30,8 @@ func (m *MockAgentRepository) Create(ctx context.Context, agent *storage.Agent) 
 	return args.Error(0)
 }
 
-func (m *MockAgentRepository) Get(ctx context.Context, id string) (*storage.Agent, error) {
-	args := m.Called(ctx, id)
+func (m *MockAgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
+	args := m.Called(ctx, agentID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -42,8 +43,8 @@ func (m *MockAgentRepository) Update(ctx context.Context, agent *storage.Agent) 
 	return args.Error(0)
 }
 
-func (m *MockAgentRepository) Delete(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
+func (m *MockAgentRepository) Delete(ctx context.Context, agentID id.AgentID) error {
+	args := m.Called(ctx, agentID)
 	return args.Error(0)
 }
 
@@ -55,7 +56,7 @@ func (m *MockAgentRepository) List(ctx context.Context) ([]*storage.Agent, error
 	return args.Get(0).([]*storage.Agent), args.Error(1)
 }
 
-func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	args := m.Called(ctx, clientID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -239,9 +240,10 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
+		agentID := id.NewAgentID()
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ID:          "agent-123",
+			ID:          agentID,
 			ClientID:    "test-client",
 			DisplayName: "Test Agent",
 			Description: "Test description",
@@ -249,11 +251,11 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 			UpdatedAt:   now,
 		}
 
-		mockRepo.On("Get", mock.Anything, "agent-123").Return(agent, nil)
+		mockRepo.On("Get", mock.Anything, agentID).Return(agent, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/agents/agent-123", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/agents/"+agentID.String(), nil)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-123")
+		rctx.URLParams.Add("agent-id", agentID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
@@ -265,7 +267,7 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 		var resp AgentResponse
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
-		assert.Equal(t, "agent-123", resp.ID)
+		assert.Equal(t, agentID.String(), resp.ID)
 		assert.Equal(t, "test-client", resp.ClientID)
 
 		mockRepo.AssertExpectations(t)
@@ -276,14 +278,15 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
-		mockRepo.On("Get", mock.Anything, "non-existent").Return(
+		notFoundID := id.NewAgentID()
+		mockRepo.On("Get", mock.Anything, notFoundID).Return(
 			nil,
 			storage.NewStorageError("GetAgent", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found"),
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/agents/non-existent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/agents/"+notFoundID.String(), nil)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "non-existent")
+		rctx.URLParams.Add("agent-id", notFoundID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
@@ -330,9 +333,10 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
+		agentID := id.NewAgentID()
 		now := time.Now().UTC()
 		existingAgent := &storage.Agent{
-			ID:          "agent-123",
+			ID:          agentID,
 			ClientID:    "test-client",
 			DisplayName: "Old Name",
 			Description: "Old description",
@@ -347,15 +351,15 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		mockRepo.On("Get", mock.Anything, "agent-123").Return(existingAgent, nil)
+		mockRepo.On("Get", mock.Anything, agentID).Return(existingAgent, nil)
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
-			return a.ID == "agent-123" && a.DisplayName == "Updated Name"
+			return a.ID == agentID && a.DisplayName == "Updated Name"
 		})).Return(nil)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/agents/agent-123", bytes.NewReader(bodyBytes))
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-123")
+		rctx.URLParams.Add("agent-id", agentID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
@@ -367,7 +371,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		var resp AgentResponse
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
-		assert.Equal(t, "agent-123", resp.ID)
+		assert.Equal(t, agentID.String(), resp.ID)
 		assert.Equal(t, "Updated Name", resp.DisplayName)
 
 		mockRepo.AssertExpectations(t)
@@ -378,6 +382,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
+		notFoundID := id.NewAgentID()
 		reqBody := AgentRequest{
 			ClientID:    "test-client",
 			DisplayName: "Test Agent",
@@ -385,15 +390,15 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		mockRepo.On("Get", mock.Anything, "non-existent").Return(
+		mockRepo.On("Get", mock.Anything, notFoundID).Return(
 			nil,
 			storage.NewStorageError("GetAgent", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found"),
 		)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/agents/non-existent", bytes.NewReader(bodyBytes))
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+notFoundID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "non-existent")
+		rctx.URLParams.Add("agent-id", notFoundID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
@@ -410,10 +415,11 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/agents/agent-123", bytes.NewReader([]byte("invalid json")))
+		agentID := id.NewAgentID()
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-123")
+		rctx.URLParams.Add("agent-id", agentID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
@@ -432,11 +438,12 @@ func TestAgentsHandler_DeleteAgent(t *testing.T) {
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
-		mockRepo.On("Delete", mock.Anything, "agent-123").Return(nil)
+		agentID := id.NewAgentID()
+		mockRepo.On("Delete", mock.Anything, agentID).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/agents/agent-123", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/agents/"+agentID.String(), nil)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-123")
+		rctx.URLParams.Add("agent-id", agentID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
@@ -474,10 +481,12 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
+		agentID1 := id.NewAgentID()
+		agentID2 := id.NewAgentID()
 		now := time.Now().UTC()
 		agents := []*storage.Agent{
 			{
-				ID:          "agent-1",
+				ID:          agentID1,
 				ClientID:    "client-1",
 				DisplayName: "Agent 1",
 				Description: "First agent",
@@ -485,7 +494,7 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 				UpdatedAt:   now,
 			},
 			{
-				ID:          "agent-2",
+				ID:          agentID2,
 				ClientID:    "client-2",
 				DisplayName: "Agent 2",
 				Description: "Second agent",
@@ -507,8 +516,8 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
 		assert.Len(t, resp, 2)
-		assert.Equal(t, "agent-1", resp[0].ID)
-		assert.Equal(t, "agent-2", resp[1].ID)
+		assert.Equal(t, agentID1.String(), resp[0].ID)
+		assert.Equal(t, agentID2.String(), resp[1].ID)
 
 		mockRepo.AssertExpectations(t)
 	})

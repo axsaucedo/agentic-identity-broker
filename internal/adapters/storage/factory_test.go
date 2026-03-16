@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -100,8 +101,9 @@ func TestBackendSwitching(t *testing.T) {
 	defer cancel()
 
 	// Create user in memory adapter
+	userID := id.MustParseUserID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 	user := &ports.User{
-		ID:        "user123",
+		ID:        userID,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -110,9 +112,9 @@ func TestBackendSwitching(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify user exists in memory adapter
-	retrieved, err := memAdapter.Users().GetUser(ctx, "user123")
+	retrieved, err := memAdapter.Users().GetUser(ctx, userID)
 	require.NoError(t, err)
-	assert.Equal(t, "user123", retrieved.ID)
+	assert.Equal(t, userID, retrieved.ID)
 
 	// Memory adapter implements all repository interfaces
 	assert.NotNil(t, memAdapter.Users())

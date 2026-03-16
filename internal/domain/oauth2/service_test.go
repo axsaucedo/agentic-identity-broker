@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -14,12 +15,12 @@ import (
 
 // MockAgentRepository is a test double for AgentRepository
 type MockAgentRepository struct {
-	agents map[string]*storage.Agent
+	agents map[id.AgentID]*storage.Agent
 }
 
 func NewMockAgentRepository() *MockAgentRepository {
 	return &MockAgentRepository{
-		agents: make(map[string]*storage.Agent),
+		agents: make(map[id.AgentID]*storage.Agent),
 	}
 }
 
@@ -28,8 +29,8 @@ func (m *MockAgentRepository) Create(ctx context.Context, agent *storage.Agent) 
 	return nil
 }
 
-func (m *MockAgentRepository) Get(ctx context.Context, id string) (*storage.Agent, error) {
-	agent, ok := m.agents[id]
+func (m *MockAgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
+	agent, ok := m.agents[agentID]
 	if !ok {
 		return nil, ports.ErrNotFound
 	}
@@ -44,8 +45,8 @@ func (m *MockAgentRepository) Update(ctx context.Context, agent *storage.Agent) 
 	return nil
 }
 
-func (m *MockAgentRepository) Delete(ctx context.Context, id string) error {
-	delete(m.agents, id)
+func (m *MockAgentRepository) Delete(ctx context.Context, agentID id.AgentID) error {
+	delete(m.agents, agentID)
 	return nil
 }
 
@@ -57,7 +58,7 @@ func (m *MockAgentRepository) List(ctx context.Context) ([]*storage.Agent, error
 	return agents, nil
 }
 
-func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, agent := range m.agents {
 		if agent.ClientID == clientID {
 			return agent, nil
@@ -68,12 +69,12 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID string
 
 // MockGrantRepository is a test double for UserGrantRepository
 type MockGrantRepository struct {
-	grants map[string]*storage.UserGrant
+	grants map[id.GrantID]*storage.UserGrant
 }
 
 func NewMockGrantRepository() *MockGrantRepository {
 	return &MockGrantRepository{
-		grants: make(map[string]*storage.UserGrant),
+		grants: make(map[id.GrantID]*storage.UserGrant),
 	}
 }
 
@@ -82,8 +83,8 @@ func (m *MockGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 	return nil
 }
 
-func (m *MockGrantRepository) Get(ctx context.Context, id string) (*storage.UserGrant, error) {
-	grant, ok := m.grants[id]
+func (m *MockGrantRepository) Get(ctx context.Context, grantID id.GrantID) (*storage.UserGrant, error) {
+	grant, ok := m.grants[grantID]
 	if !ok {
 		return nil, ports.ErrNotFound
 	}
@@ -98,12 +99,12 @@ func (m *MockGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 	return nil
 }
 
-func (m *MockGrantRepository) Delete(ctx context.Context, id string) error {
-	delete(m.grants, id)
+func (m *MockGrantRepository) Delete(ctx context.Context, grantID id.GrantID) error {
+	delete(m.grants, grantID)
 	return nil
 }
 
-func (m *MockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+func (m *MockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	var grants []*storage.UserGrant
 	for _, grant := range m.grants {
 		if grant.Principal == principal && grant.AgentID == agentID && grant.IsActive() {
@@ -113,7 +114,7 @@ func (m *MockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 	return grants, nil
 }
 
-func (m *MockGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal, agentID string) (*storage.UserGrant, error) {
+func (m *MockGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) (*storage.UserGrant, error) {
 	for _, grant := range m.grants {
 		if grant.Principal == principal && grant.AgentID == agentID {
 			return grant, nil
@@ -122,16 +123,16 @@ func (m *MockGrantRepository) FindByPrincipalAndAgent(ctx context.Context, princ
 	return nil, nil
 }
 
-func (m *MockGrantRepository) DeleteByAgent(ctx context.Context, agentID string) error {
-	for id, grant := range m.grants {
+func (m *MockGrantRepository) DeleteByAgent(ctx context.Context, agentID id.AgentID) error {
+	for grantKey, grant := range m.grants {
 		if grant.AgentID == agentID {
-			delete(m.grants, id)
+			delete(m.grants, grantKey)
 		}
 	}
 	return nil
 }
 
-func (m *MockGrantRepository) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+func (m *MockGrantRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storage.UserGrant, error) {
 	var grants []storage.UserGrant
 	for _, grant := range m.grants {
 		if grant.Principal == principal && grant.IsActive() {
@@ -141,8 +142,8 @@ func (m *MockGrantRepository) ListByPrincipal(ctx context.Context, principal str
 	return grants, nil
 }
 
-func (m *MockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
-	agents := make(map[string]bool)
+func (m *MockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
+	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
 		for _, token := range grant.DelegatedOAuth2Tokens {
 			if token.ThirdpartyOAuth2ServiceID == serviceID {
@@ -154,8 +155,8 @@ func (m *MockGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 	return len(agents), nil
 }
 
-func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
-	agents := make(map[string]bool)
+func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
+	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
 		for _, token := range grant.DelegatedOAuth2Tokens {
 			if token.ThirdpartyOAuth2ServiceID == serviceID {
@@ -164,7 +165,7 @@ func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID str
 			}
 		}
 	}
-	var agentIDs []string
+	var agentIDs []id.AgentID
 	for agentID := range agents {
 		agentIDs = append(agentIDs, agentID)
 	}
@@ -173,6 +174,9 @@ func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID str
 
 // TestService_HandleAuthorization tests the HandleAuthorization method with table-driven tests
 func TestService_HandleAuthorization(t *testing.T) {
+	testAgentID := id.NewAgentID()
+	testServiceID := id.NewServiceID()
+
 	tests := []struct {
 		name       string
 		setupAgent func(*MockAgentRepository)
@@ -186,7 +190,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 			setupAgent: func(r *MockAgentRepository) {},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     "unknown-client",
+				ClientID:     id.ClientID("unknown-client"),
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
@@ -198,15 +202,15 @@ func TestService_HandleAuthorization(t *testing.T) {
 			name: "valid client_id with no grant redirects to consent UI",
 			setupAgent: func(r *MockAgentRepository) {
 				agent := &storage.Agent{
-					ID:          "agent-1",
-					ClientID:    "client-1",
+					ID:          testAgentID,
+					ClientID:    id.ClientID("client-1"),
 					DisplayName: "Test Client",
 				}
 				_ = r.Create(context.Background(), agent)
 			},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     "client-1",
+				ClientID:     id.ClientID("client-1"),
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
@@ -219,26 +223,26 @@ func TestService_HandleAuthorization(t *testing.T) {
 			name: "valid client_id with active grant redirects to upstream",
 			setupAgent: func(r *MockAgentRepository) {
 				agent := &storage.Agent{
-					ID:          "agent-1",
-					ClientID:    "client-1",
+					ID:          testAgentID,
+					ClientID:    id.ClientID("client-1"),
 					DisplayName: "Test Client",
 				}
 				_ = r.Create(context.Background(), agent)
 			},
 			setupGrant: func(r *MockGrantRepository) {
 				grant := &storage.UserGrant{
-					ID:         "grant-1",
-					Principal:  "user@example.com",
-					AgentID:    "agent-1",
+					ID:         id.NewGrantID(),
+					Principal:  id.Principal("user@example.com"),
+					AgentID:    testAgentID,
 					ValidUntil: nil,
 					DelegatedOAuth2Tokens: []storage.DelegatedToken{
-						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+						{ThirdpartyOAuth2ServiceID: testServiceID, Scopes: []string{"openid"}},
 					},
 				}
 				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     "client-1",
+				ClientID:     id.ClientID("client-1"),
 				RedirectURI:  "https://client.example.com/callback",
 				Scope:        "openid profile",
 				State:        "xyz123",
@@ -251,8 +255,8 @@ func TestService_HandleAuthorization(t *testing.T) {
 			name: "expired grant redirects to consent UI",
 			setupAgent: func(r *MockAgentRepository) {
 				agent := &storage.Agent{
-					ID:          "agent-1",
-					ClientID:    "client-1",
+					ID:          testAgentID,
+					ClientID:    id.ClientID("client-1"),
 					DisplayName: "Test Client",
 				}
 				_ = r.Create(context.Background(), agent)
@@ -260,18 +264,18 @@ func TestService_HandleAuthorization(t *testing.T) {
 			setupGrant: func(r *MockGrantRepository) {
 				expiredTime := time.Now().Add(-1 * time.Hour)
 				grant := &storage.UserGrant{
-					ID:         "grant-1",
-					Principal:  "user@example.com",
-					AgentID:    "agent-1",
+					ID:         id.NewGrantID(),
+					Principal:  id.Principal("user@example.com"),
+					AgentID:    testAgentID,
 					ValidUntil: &expiredTime,
 					DelegatedOAuth2Tokens: []storage.DelegatedToken{
-						{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+						{ThirdpartyOAuth2ServiceID: testServiceID, Scopes: []string{"openid"}},
 					},
 				}
 				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     "client-1",
+				ClientID:     id.ClientID("client-1"),
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
@@ -313,18 +317,21 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	agentRepo := NewMockAgentRepository()
 	grantRepo := NewMockGrantRepository()
 
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+
 	// Add agent
-	agent := &storage.Agent{ID: "agent-1", ClientID: "client-1"}
+	agent := &storage.Agent{ID: agentID, ClientID: id.ClientID("client-1")}
 	_ = agentRepo.Create(context.Background(), agent)
 
 	// Add active grant
 	grant := &storage.UserGrant{
-		ID:         "grant-1",
-		Principal:  "user@example.com",
-		AgentID:    "agent-1",
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    agentID,
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+			{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
 		},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
@@ -335,7 +342,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	})
 
 	authReq := &ports.AuthorizationRequest{
-		ClientID:            "client-1",
+		ClientID:            id.ClientID("client-1"),
 		RedirectURI:         "https://client.example.com/callback",
 		Scope:               "openid profile email",
 		State:               "state123",

@@ -3,6 +3,8 @@ package fixtures
 import (
 	"testing"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // TestPrincipalFixtures verifies all principal fixtures work correctly.
@@ -46,7 +48,7 @@ func TestAgentFixtures(t *testing.T) {
 		if a == nil {
 			t.Fatal("ValidAgent returned nil")
 		}
-		if a.ID == "" {
+		if a.ID.IsZero() {
 			t.Error("agent ID is empty")
 		}
 		if a.ClientID != "test-client-valid" {
@@ -90,20 +92,21 @@ func TestAgentFixtures(t *testing.T) {
 // TestGrantFixtures verifies all grant fixtures generate valid grants.
 func TestGrantFixtures(t *testing.T) {
 	principalEmail := "test@example.com"
-	agentID := "agent-123"
+	agentID := id.NewAgentID().String()
+	serviceID := id.NewServiceID().String()
 
 	t.Run("ActiveGrant", func(t *testing.T) {
-		g := ActiveGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
+		g := ActiveGrant(principalEmail, agentID, serviceID, []string{"read", "write"})
 		if g == nil {
 			t.Fatal("ActiveGrant returned nil")
 		}
 		if !g.IsActive() {
 			t.Error("ActiveGrant should be active")
 		}
-		if g.Principal != principalEmail {
+		if g.Principal.String() != principalEmail {
 			t.Errorf("got Principal %q, want %q", g.Principal, principalEmail)
 		}
-		if g.AgentID != agentID {
+		if g.AgentID.String() != agentID {
 			t.Errorf("got AgentID %q, want %q", g.AgentID, agentID)
 		}
 		if err := g.Validate(); err != nil {
@@ -112,30 +115,30 @@ func TestGrantFixtures(t *testing.T) {
 	})
 
 	t.Run("ExpiredGrant", func(t *testing.T) {
-		g := ExpiredGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
+		g := ExpiredGrant(principalEmail, agentID, serviceID, []string{"read", "write"})
 		if g == nil {
 			t.Fatal("ExpiredGrant returned nil")
 		}
 		if g.IsActive() {
 			t.Error("ExpiredGrant should not be active")
 		}
-		if g.Principal != principalEmail {
+		if g.Principal.String() != principalEmail {
 			t.Errorf("got Principal %q, want %q", g.Principal, principalEmail)
 		}
-		if g.AgentID != agentID {
+		if g.AgentID.String() != agentID {
 			t.Errorf("got AgentID %q, want %q", g.AgentID, agentID)
 		}
 	})
 
 	t.Run("GrantExpiringIn", func(t *testing.T) {
-		g := GrantExpiringIn(principalEmail, agentID, "test-service", []string{"read", "write"}, 24*time.Hour)
+		g := GrantExpiringIn(principalEmail, agentID, serviceID, []string{"read", "write"}, 24*time.Hour)
 		if g == nil {
 			t.Fatal("GrantExpiringIn returned nil")
 		}
 		if !g.IsActive() {
 			t.Error("GrantExpiringIn should be active")
 		}
-		if g.Principal != principalEmail {
+		if g.Principal.String() != principalEmail {
 			t.Errorf("got Principal %q, want %q", g.Principal, principalEmail)
 		}
 		if err := g.Validate(); err != nil {
@@ -144,7 +147,7 @@ func TestGrantFixtures(t *testing.T) {
 	})
 
 	t.Run("IndefiniteGrant", func(t *testing.T) {
-		g := IndefiniteGrant(principalEmail, agentID, "test-service", []string{"read", "write"})
+		g := IndefiniteGrant(principalEmail, agentID, serviceID, []string{"read", "write"})
 		if g == nil {
 			t.Fatal("IndefiniteGrant returned nil")
 		}
@@ -154,7 +157,7 @@ func TestGrantFixtures(t *testing.T) {
 		if g.ValidUntil != nil {
 			t.Error("IndefiniteGrant should have nil ValidUntil")
 		}
-		if g.Principal != principalEmail {
+		if g.Principal.String() != principalEmail {
 			t.Errorf("got Principal %q, want %q", g.Principal, principalEmail)
 		}
 		if err := g.Validate(); err != nil {
@@ -255,8 +258,10 @@ func TestFixtureDeterminism(t *testing.T) {
 	}
 
 	// Grants should get fresh UUIDs each time
-	g1 := ActiveGrant("user@example.com", "agent-1", "test-service", []string{"read"})
-	g2 := ActiveGrant("user@example.com", "agent-1", "test-service", []string{"read"})
+	grantAgentID := id.NewAgentID().String()
+	grantServiceID := id.NewServiceID().String()
+	g1 := ActiveGrant("user@example.com", grantAgentID, grantServiceID, []string{"read"})
+	g2 := ActiveGrant("user@example.com", grantAgentID, grantServiceID, []string{"read"})
 	if g1.ID == g2.ID {
 		t.Error("ActiveGrant should generate fresh UUIDs, but got same ID twice")
 	}

@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -49,8 +49,8 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 	}
 
 	// Generate ID if not provided
-	if grant.ID == "" {
-		grant.ID = uuid.New().String()
+	if grant.ID.IsZero() {
+		grant.ID = id.NewGrantID()
 	}
 
 	// Validate before storing
@@ -92,7 +92,7 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 		RETURNING id
 	`
 
-	var returnedID string
+	var returnedID id.GrantID
 	err = r.adapter.db.QueryRowContext(
 		ctxTimeout,
 		query,
@@ -117,7 +117,7 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 
 // Get retrieves a user grant by ID.
 // Returns StorageError with Kind=NotFound if grant not found.
-func (r *UserGrantRepository) Get(ctx context.Context, id string) (*storage.UserGrant, error) {
+func (r *UserGrantRepository) Get(ctx context.Context, grantID id.GrantID) (*storage.UserGrant, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"GetUserGrant",
@@ -140,7 +140,7 @@ func (r *UserGrantRepository) Get(ctx context.Context, id string) (*storage.User
 	var grant storage.UserGrant
 	var tokensJSON []byte
 
-	err := r.adapter.db.QueryRowContext(ctxTimeout, query, id).Scan(
+	err := r.adapter.db.QueryRowContext(ctxTimeout, query, grantID).Scan(
 		&grant.ID,
 		&grant.Principal,
 		&grant.AgentID,
@@ -266,7 +266,7 @@ func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 
 // Delete deletes a user grant by ID.
 // Idempotent: returns nil if grant doesn't exist.
-func (r *UserGrantRepository) Delete(ctx context.Context, id string) error {
+func (r *UserGrantRepository) Delete(ctx context.Context, grantID id.GrantID) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError(
 			"DeleteUserGrant",
@@ -282,7 +282,7 @@ func (r *UserGrantRepository) Delete(ctx context.Context, id string) error {
 
 	query := `DELETE FROM user_grants WHERE id = $1`
 
-	_, err := r.adapter.db.ExecContext(ctxTimeout, query, id)
+	_, err := r.adapter.db.ExecContext(ctxTimeout, query, grantID)
 	if err != nil {
 		return r.handlePostgresError("DeleteUserGrant", err)
 	}
@@ -294,7 +294,7 @@ func (r *UserGrantRepository) Delete(ctx context.Context, id string) error {
 // ListByPrincipalAndAgent retrieves all grants for a principal and specific agent.
 // Includes expired grants (filtering happens in service layer).
 // Returns empty slice if no grants exist (not an error).
-func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"ListUserGrants",
@@ -372,7 +372,7 @@ func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 
 // FindByPrincipalAndAgent retrieves the grant for a principal and agent pair.
 // Returns StorageError with Kind=NotFound if grant not found.
-func (r *UserGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal string, agentID string) (*storage.UserGrant, error) {
+func (r *UserGrantRepository) FindByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) (*storage.UserGrant, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"FindUserGrant",
@@ -434,7 +434,7 @@ func (r *UserGrantRepository) FindByPrincipalAndAgent(ctx context.Context, princ
 // DeleteByAgent deletes all grants associated with an agent.
 // Used during cascade deletion when agent is deleted (FR-021).
 // Idempotent: returns nil if agent has no grants.
-func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID string) error {
+func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID id.AgentID) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError(
 			"DeleteGrantsByAgent",
@@ -462,7 +462,7 @@ func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID string)
 // ListByPrincipal retrieves all active grants for a principal across all agents.
 // Filters expired grants (valid_until < NOW()).
 // Returns empty slice if no active grants exist (not an error).
-func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storage.UserGrant, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"ListByPrincipal",
@@ -542,7 +542,7 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal str
 // CountAgentsByServiceID counts how many agents have delegated OAuth2 tokens for a given service.
 // This is used to show dependent agent count when terminating a session.
 // Returns the count of distinct agents with delegated_oauth2_tokens JSONB entries for the service.
-func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
+func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	if r.adapter.db == nil {
 		return 0, storage.NewStorageError(
 			"CountAgentsByServiceID",
@@ -575,7 +575,7 @@ func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 // This is used to show the actual dependent agents when terminating a session.
 // Returns the list of distinct agent IDs with delegated_oauth2_tokens entries for the service.
 // Returns empty slice if no agents have delegated tokens for the service.
-func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
+func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"ListByServiceID",
@@ -606,10 +606,10 @@ func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID str
 	}
 	defer func() { _ = rows.Close() }()
 
-	var agentIDs []string
+	var agentIDs []id.AgentID
 
 	for rows.Next() {
-		var agentID string
+		var agentID id.AgentID
 		err := rows.Scan(&agentID)
 		if err != nil {
 			return nil, storage.NewStorageError(

@@ -3,13 +3,15 @@ package storage
 import (
 	"fmt"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // User represents a user entity stored in the storage layer.
 // This is a pure domain entity - implementation-agnostic.
 // Database column mappings are in adapters, not here.
 type User struct {
-	ID        string    `db:"id"`
+	ID        id.UserID `db:"id"`
 	Email     string    `db:"email"`
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
@@ -18,7 +20,7 @@ type User struct {
 // Validate performs validation on User entity.
 // Returns error if entity violates domain constraints.
 func (u *User) Validate() error {
-	if u.ID == "" {
+	if u.ID.IsZero() {
 		return fmt.Errorf("user ID cannot be empty")
 	}
 	if u.Email == "" {

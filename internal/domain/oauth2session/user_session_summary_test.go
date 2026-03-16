@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
@@ -14,8 +15,8 @@ func TestNewUserSessionSummary(t *testing.T) {
 	refreshExp := now.Add(24 * time.Hour)
 
 	session := &storage.UserSession{
-		ID:                    "session-123",
-		ServiceID:             "service-uuid",
+		ID:                    id.NewSessionID(),
+		ServiceID:             id.NewServiceID(),
 		TokenType:             "Bearer",
 		Scope:                 []string{"repo", "user"},
 		InitiatedAt:           now.Add(-1 * time.Hour),
@@ -24,8 +25,8 @@ func TestNewUserSessionSummary(t *testing.T) {
 
 	summary := storage.NewUserSessionSummary(session, "GitHub", 3)
 
-	assert.Equal(t, "session-123", summary.ID)
-	assert.Equal(t, "service-uuid", summary.ServiceID)
+	assert.Equal(t, session.ID, summary.ID)
+	assert.Equal(t, session.ServiceID, summary.ServiceID)
 	assert.Equal(t, "GitHub", summary.ServiceDisplayName)
 	assert.Equal(t, "Bearer", summary.TokenType)
 	assert.Equal(t, []string{"repo", "user"}, summary.Scope)
@@ -39,8 +40,8 @@ func TestUserSessionSummary_WithExpiredSession(t *testing.T) {
 	refreshExp := now.Add(-1 * time.Hour) // Expired
 
 	session := &storage.UserSession{
-		ID:                    "session-123",
-		ServiceID:             "service-uuid",
+		ID:                    id.NewSessionID(),
+		ServiceID:             id.NewServiceID(),
 		RefreshTokenExpiresAt: &refreshExp,
 	}
 
@@ -55,8 +56,8 @@ func TestUserSessionSummary_WithExpiredAccessToken(t *testing.T) {
 	refreshExp := now.Add(24 * time.Hour) // Valid refresh token
 
 	session := &storage.UserSession{
-		ID:                    "session-123",
-		ServiceID:             "service-uuid",
+		ID:                    id.NewSessionID(),
+		ServiceID:             id.NewServiceID(),
 		AccessTokenExpiresAt:  &accessExp,
 		RefreshTokenExpiresAt: &refreshExp,
 	}

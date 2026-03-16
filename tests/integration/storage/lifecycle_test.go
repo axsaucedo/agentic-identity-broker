@@ -2,10 +2,12 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,14 +38,16 @@ func TestMemoryAdapter_FullLifecycle(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create users
+	userID1 := id.NewUserID()
+	userID2 := id.NewUserID()
 	user1 := &ports.User{
-		ID:        "user1",
+		ID:        userID1,
 		Email:     "user1@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 	user2 := &ports.User{
-		ID:        "user2",
+		ID:        userID2,
 		Email:     "user2@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -56,9 +60,9 @@ func TestMemoryAdapter_FullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read user
-	retrieved, err := users.GetUser(ctx, "user1")
+	retrieved, err := users.GetUser(ctx, userID1)
 	require.NoError(t, err)
-	assert.Equal(t, "user1", retrieved.ID)
+	assert.Equal(t, userID1, retrieved.ID)
 	assert.Equal(t, "user1@example.com", retrieved.Email)
 
 	// List users
@@ -73,16 +77,16 @@ func TestMemoryAdapter_FullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify update
-	updated, err := users.GetUser(ctx, "user1")
+	updated, err := users.GetUser(ctx, userID1)
 	require.NoError(t, err)
 	assert.Equal(t, "newemail@example.com", updated.Email)
 
 	// Delete user
-	err = users.DeleteUser(ctx, "user2")
+	err = users.DeleteUser(ctx, userID2)
 	require.NoError(t, err)
 
 	// Verify deletion
-	_, err = users.GetUser(ctx, "user2")
+	_, err = users.GetUser(ctx, userID2)
 	assert.Error(t, err)
 
 	// List should have only 1 user
@@ -122,10 +126,10 @@ func TestMemoryAdapter_ConcurrentOperations(t *testing.T) {
 	errCh := make(chan error, 100)
 
 	for i := 0; i < 100; i++ {
-		go func(id int) {
+		go func(idx int) {
 			defer func() { done <- struct{}{} }()
 			user := &ports.User{
-				ID:        string(rune(48 + id%10)),
+				ID:        id.NewUserID(),
 				Email:     "test@example.com",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -180,7 +184,7 @@ func TestMemoryAdapter_TimeoutHandling(t *testing.T) {
 	users := adapter.Users()
 
 	user := &ports.User{
-		ID:        "user1",
+		ID:        id.NewUserID(),
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -212,7 +216,7 @@ func TestMemoryAdapter_PaginationSupport(t *testing.T) {
 	// Create 25 users with unique IDs
 	for i := 1; i <= 25; i++ {
 		user := &ports.User{
-			ID:        "user" + string(rune(48+((i-1)/10))) + string(rune(48+((i-1)%10))),
+			ID:        id.MustParseUserID(fmt.Sprintf("00000000-0000-0000-0000-%012d", i)),
 			Email:     "test@example.com",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
@@ -266,8 +270,9 @@ func TestMemoryAdapter_ErrorRecovery(t *testing.T) {
 	users := adapter.Users()
 
 	// Try to create duplicate user
+	dupUserID := id.NewUserID()
 	user1 := &ports.User{
-		ID:        "user1",
+		ID:        dupUserID,
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -282,7 +287,7 @@ func TestMemoryAdapter_ErrorRecovery(t *testing.T) {
 
 	// Try to update non-existent user
 	user2 := &ports.User{
-		ID:        "nonexistent",
+		ID:        id.NewUserID(),
 		Email:     "test@example.com",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -292,7 +297,7 @@ func TestMemoryAdapter_ErrorRecovery(t *testing.T) {
 	assert.Error(t, err)
 
 	// Try to delete non-existent user (should be idempotent)
-	err = users.DeleteUser(ctx, "nonexistent")
+	err = users.DeleteUser(ctx, id.NewUserID())
 	assert.NoError(t, err)
 
 	// Adapter should still be healthy

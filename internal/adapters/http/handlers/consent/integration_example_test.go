@@ -12,6 +12,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
 	memorystorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -28,7 +29,7 @@ func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2Pro
 
 func newGitHubServiceEntity() *model.ThirdpartyOAuth2ProviderEntity {
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "github",
+		ID:          id.NewServiceID(),
 		DisplayName: "GitHub",
 		ClientID:    "github-client-id",
 		Secret:      model.NewPlaintextSecret("github-client-secret"),
@@ -56,11 +57,12 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 
 	ctx := context.Background()
 	principalValue := "user@example.com"
+	testAgentID := id.NewAgentID()
 
 	govURL := "https://example.com/governance"
 	docsURL := "https://example.com/docs"
 	agent := &storage.Agent{
-		ID:                   "agent-123",
+		ID:                   testAgentID,
 		ClientID:             "client-123",
 		DisplayName:          "Example AI Agent",
 		Description:          "An example AI agent for demonstrations",
@@ -83,10 +85,10 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 
 	reqCtx := principal.WithPrincipal(ctx, principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", "agent-123")
+	rctx.URLParams.Add("agent-id", testAgentID.String())
 	reqCtx = context.WithValue(reqCtx, chi.RouteCtxKey, rctx)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-123", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+testAgentID.String(), nil)
 	req = req.WithContext(reqCtx)
 
 	rr := httptest.NewRecorder()
@@ -101,8 +103,8 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if response.Data.Agent.AgentID != "agent-123" {
-		t.Errorf("expected agent ID %q, got %q", "agent-123", response.Data.Agent.AgentID)
+	if response.Data.Agent.AgentID != testAgentID {
+		t.Errorf("expected agent ID %q, got %q", testAgentID, response.Data.Agent.AgentID)
 	}
 	if response.Data.Agent.DisplayName != "Example AI Agent" {
 		t.Errorf("expected display name %q, got %q", "Example AI Agent", response.Data.Agent.DisplayName)
@@ -124,9 +126,12 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 
 	ctx := context.Background()
 	principalValue := "user@example.com"
+	testAgentID := id.NewAgentID()
+	testGrantID := id.NewGrantID()
+	githubServiceID := id.NewServiceID()
 
 	agent := &storage.Agent{
-		ID:          "agent-456",
+		ID:          testAgentID,
 		ClientID:    "client-456",
 		DisplayName: "Example Agent",
 		Description: "An example agent",
@@ -139,13 +144,13 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 
 	validUntil := time.Now().Add(30 * 24 * time.Hour)
 	grant := &storage.UserGrant{
-		ID:         "grant-001",
-		Principal:  principalValue,
-		AgentID:    "agent-456",
+		ID:         testGrantID,
+		Principal:  id.Principal(principalValue),
+		AgentID:    testAgentID,
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "github",
+				ThirdpartyOAuth2ServiceID: githubServiceID,
 				Scopes:                    []string{"read:user", "repo"},
 			},
 		},
@@ -161,10 +166,10 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 
 	reqCtx := principal.WithPrincipal(ctx, principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", "agent-456")
+	rctx.URLParams.Add("agent-id", testAgentID.String())
 	reqCtx = context.WithValue(reqCtx, chi.RouteCtxKey, rctx)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-456/grants", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 	req = req.WithContext(reqCtx)
 
 	rr := httptest.NewRecorder()
@@ -182,8 +187,8 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	if response.Data == nil {
 		t.Fatal("expected a grant in response, got nil")
 	}
-	if response.Data.AgentID != "agent-456" {
-		t.Errorf("expected agent ID %q, got %q", "agent-456", response.Data.AgentID)
+	if response.Data.AgentID != testAgentID.String() {
+		t.Errorf("expected agent ID %q, got %q", testAgentID.String(), response.Data.AgentID)
 	}
 	if response.Data.Principal != principalValue {
 		t.Errorf("expected principal %q, got %q", principalValue, response.Data.Principal)
@@ -191,8 +196,8 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 	if len(response.Data.DelegatedOAuth2Tokens) != 1 {
 		t.Fatalf("expected 1 delegated token, got %d", len(response.Data.DelegatedOAuth2Tokens))
 	}
-	if response.Data.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID != "github" {
-		t.Errorf("expected service ID %q, got %q", "github", response.Data.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+	if response.Data.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID != githubServiceID.String() {
+		t.Errorf("expected service ID %q, got %q", githubServiceID.String(), response.Data.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
 	}
 }
 
@@ -204,12 +209,16 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 
 	ctx := context.Background()
 	principalValue := "alice@example.com"
+	testAgentID := id.NewAgentID()
+	githubServiceID := id.NewServiceID()
+	googleServiceID := id.NewServiceID()
+	testGrantID := id.NewGrantID()
 
 	govURL := "https://myagent.ai/governance"
 	docsURL := "https://docs.myagent.ai"
 	interfaceURL := "https://chat.myagent.ai"
 	agent := &storage.Agent{
-		ID:                   "agent-789",
+		ID:                   testAgentID,
 		ClientID:             "client-789",
 		DisplayName:          "MyAgent AI Assistant",
 		Description:          "A helpful AI assistant that can access your data",
@@ -225,7 +234,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 
 	services := []*model.ThirdpartyOAuth2ProviderEntity{
 		{
-			ID:          "github",
+			ID:          githubServiceID,
 			DisplayName: "GitHub",
 			ClientID:    "github-client",
 			Secret:      model.NewPlaintextSecret("github-secret"),
@@ -243,7 +252,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 			UpdatedAt: time.Now(),
 		},
 		{
-			ID:          "google",
+			ID:          googleServiceID,
 			DisplayName: "Google",
 			ClientID:    "google-client",
 			Secret:      model.NewPlaintextSecret("google-secret"),
@@ -270,13 +279,13 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 
 	validUntil := time.Now().Add(30 * 24 * time.Hour)
 	existingGrant := &storage.UserGrant{
-		ID:         "grant-existing",
-		Principal:  principalValue,
-		AgentID:    "agent-789",
+		ID:         testGrantID,
+		Principal:  id.Principal(principalValue),
+		AgentID:    testAgentID,
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "github",
+				ThirdpartyOAuth2ServiceID: githubServiceID,
 				Scopes:                    []string{"read:user"},
 			},
 		},
@@ -295,10 +304,10 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 
 		reqCtx := principal.WithPrincipal(context.Background(), principalValue)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-789")
+		rctx.URLParams.Add("agent-id", testAgentID.String())
 		reqCtx = context.WithValue(reqCtx, chi.RouteCtxKey, rctx)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-789", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+testAgentID.String(), nil)
 		req = req.WithContext(reqCtx)
 
 		rr := httptest.NewRecorder()
@@ -316,8 +325,8 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		if response.Data.Agent.DisplayName != "MyAgent AI Assistant" {
 			t.Errorf("unexpected display name: %s", response.Data.Agent.DisplayName)
 		}
-		if response.Data.Agent.AgentID != "agent-789" {
-			t.Errorf("expected agent ID %q, got %q", "agent-789", response.Data.Agent.AgentID)
+		if response.Data.Agent.AgentID != testAgentID {
+			t.Errorf("expected agent ID %q, got %q", testAgentID, response.Data.Agent.AgentID)
 		}
 		// Agent has no ServiceRequirements, so no services are returned.
 		if len(response.Data.Services) != 0 {
@@ -330,10 +339,10 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 
 		reqCtx := principal.WithPrincipal(context.Background(), principalValue)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-789")
+		rctx.URLParams.Add("agent-id", testAgentID.String())
 		reqCtx = context.WithValue(reqCtx, chi.RouteCtxKey, rctx)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/agent-789/grants", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 		req = req.WithContext(reqCtx)
 
 		rr := httptest.NewRecorder()
@@ -351,8 +360,8 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		if response.Data == nil {
 			t.Fatal("expected a grant, got nil")
 		}
-		if response.Data.AgentID != "agent-789" {
-			t.Errorf("expected agent ID %q, got %q", "agent-789", response.Data.AgentID)
+		if response.Data.AgentID != testAgentID.String() {
+			t.Errorf("expected agent ID %q, got %q", testAgentID.String(), response.Data.AgentID)
 		}
 		if len(response.Data.DelegatedOAuth2Tokens) != 1 {
 			t.Fatalf("expected 1 delegated token, got %d", len(response.Data.DelegatedOAuth2Tokens))

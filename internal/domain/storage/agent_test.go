@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,8 +22,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "valid agent with all fields",
 			agent: &Agent{
-				ID:                   "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:             "test-client",
+				ID:                   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:             id.ClientID("test-client"),
 				DisplayName:          "Test Agent",
 				Description:          "A test agent for validation",
 				GovernanceURL:        &validGovernanceURL,
@@ -34,8 +35,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "valid agent with minimal fields",
 			agent: &Agent{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:    "test-client",
+				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:    id.ClientID("test-client"),
 				DisplayName: "Test Agent",
 				Description: "A test agent",
 			},
@@ -44,7 +45,7 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "missing ID",
 			agent: &Agent{
-				ClientID:    "test-client",
+				ClientID:    id.ClientID("test-client"),
 				DisplayName: "Test Agent",
 				Description: "A test agent",
 			},
@@ -53,7 +54,7 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "missing client_id",
 			agent: &Agent{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
+				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DisplayName: "Test Agent",
 				Description: "A test agent",
 			},
@@ -62,8 +63,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "missing display_name",
 			agent: &Agent{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:    "test-client",
+				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:    id.ClientID("test-client"),
 				Description: "A test agent",
 			},
 			wantErr: "display_name is required",
@@ -71,8 +72,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "display_name too long",
 			agent: &Agent{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:    "test-client",
+				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:    id.ClientID("test-client"),
 				DisplayName: strings.Repeat("a", 256),
 				Description: "A test agent",
 			},
@@ -81,8 +82,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "missing description",
 			agent: &Agent{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:    "test-client",
+				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:    id.ClientID("test-client"),
 				DisplayName: "Test Agent",
 			},
 			wantErr: "description is required",
@@ -90,8 +91,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "description too long",
 			agent: &Agent{
-				ID:          "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:    "test-client",
+				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:    id.ClientID("test-client"),
 				DisplayName: "Test Agent",
 				Description: strings.Repeat("a", 1001),
 			},
@@ -100,8 +101,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "invalid governance_url",
 			agent: &Agent{
-				ID:            "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:      "test-client",
+				ID:            id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:      id.ClientID("test-client"),
 				DisplayName:   "Test Agent",
 				Description:   "A test agent",
 				GovernanceURL: stringPtr("not-a-url"),
@@ -111,8 +112,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "invalid user_documentation_url",
 			agent: &Agent{
-				ID:                   "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:             "test-client",
+				ID:                   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:             id.ClientID("test-client"),
 				DisplayName:          "Test Agent",
 				Description:          "A test agent",
 				UserDocumentationURL: stringPtr("ftp://invalid.com"),
@@ -122,8 +123,8 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "invalid agent_interface_url",
 			agent: &Agent{
-				ID:                "550e8400-e29b-41d4-a716-446655440000",
-				ClientID:          "test-client",
+				ID:                id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+				ClientID:          id.ClientID("test-client"),
 				DisplayName:       "Test Agent",
 				Description:       "A test agent",
 				AgentInterfaceURL: stringPtr("javascript:alert(1)"),
@@ -156,7 +157,7 @@ func TestAgent_ValidateForCreate(t *testing.T) {
 		{
 			name: "valid agent for creation",
 			agent: &Agent{
-				ClientID:      "test-client",
+				ClientID:      id.ClientID("test-client"),
 				DisplayName:   "Test Agent",
 				Description:   "A test agent",
 				GovernanceURL: &validGovernanceURL,
@@ -174,7 +175,7 @@ func TestAgent_ValidateForCreate(t *testing.T) {
 		{
 			name: "display_name exceeds limit with character count",
 			agent: &Agent{
-				ClientID:    "test-client",
+				ClientID:    id.ClientID("test-client"),
 				DisplayName: strings.Repeat("a", 256),
 				Description: "A test agent",
 			},
@@ -196,14 +197,14 @@ func TestAgent_ValidateForCreate(t *testing.T) {
 }
 
 func TestAgent_Copy(t *testing.T) {
-	externalID := "ext-123"
+	externalID := id.ExternalID("ext-123")
 	governanceURL := "https://governance.example.com"
 	userDocURL := "https://docs.example.com"
 	agentURL := "https://chat.example.com"
 
 	original := &Agent{
-		ID:                   "550e8400-e29b-41d4-a716-446655440000",
-		ClientID:             "test-client",
+		ID:                   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+		ClientID:             id.ClientID("test-client"),
 		ExternalID:           &externalID,
 		DisplayName:          "Test Agent",
 		Description:          "A test agent",
@@ -226,9 +227,9 @@ func TestAgent_Copy(t *testing.T) {
 	assert.Equal(t, *original.GovernanceURL, *copy.GovernanceURL)
 
 	// Verify deep copy (modifying copy doesn't affect original)
-	*copy.ExternalID = "modified"
-	assert.Equal(t, "ext-123", *original.ExternalID)
-	assert.Equal(t, "modified", *copy.ExternalID)
+	*copy.ExternalID = id.ExternalID("modified")
+	assert.Equal(t, id.ExternalID("ext-123"), *original.ExternalID)
+	assert.Equal(t, id.ExternalID("modified"), *copy.ExternalID)
 }
 
 func TestAgent_Copy_Nil(t *testing.T) {
@@ -266,7 +267,7 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
-						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 						RequirementType: RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo", "user:email"},
 					},
@@ -279,7 +280,7 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
-						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 						RequirementType: RequirementTypeOptional,
 						RequiredScopes:  []string{"read:user"},
 					},
@@ -292,12 +293,12 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
-						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 						RequirementType: RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo"},
 					},
 					{
-						ServiceID:       "660e8400-e29b-41d4-a716-446655440001",
+						ServiceID:       id.MustParseServiceID("660e8400-e29b-41d4-a716-446655440001"),
 						RequirementType: RequirementTypeOptional,
 						RequiredScopes:  []string{"profile"},
 					},
@@ -310,7 +311,6 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
-						ServiceID:       "", // Missing
 						RequirementType: RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo"},
 					},
@@ -323,7 +323,7 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
-						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 						RequirementType: RequirementType("invalid"),
 						RequiredScopes:  []string{"repo"},
 					},
@@ -336,7 +336,7 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
-						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 						RequirementType: RequirementTypeMandatory,
 						RequiredScopes:  []string{}, // Empty
 					},
@@ -349,12 +349,12 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
-						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 						RequirementType: RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo"},
 					},
 					{
-						ServiceID:       "550e8400-e29b-41d4-a716-446655440000", // Duplicate
+						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"), // Duplicate
 						RequirementType: RequirementTypeOptional,
 						RequiredScopes:  []string{"user:email"},
 					},
@@ -367,12 +367,11 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 			agent: &Agent{
 				ServiceRequirements: []ServiceRequirement{
 					{
-						ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+						ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 						RequirementType: RequirementTypeMandatory,
 						RequiredScopes:  []string{"repo"},
 					},
 					{
-						ServiceID:       "", // Invalid - missing service_id
 						RequirementType: RequirementTypeMandatory,
 						RequiredScopes:  []string{"user:email"},
 					},
@@ -398,13 +397,13 @@ func TestAgent_ValidateServiceRequirements(t *testing.T) {
 func TestAgent_ValidateServiceRequirements_IntegrationWithValidate(t *testing.T) {
 	t.Run("Validate() calls ValidateServiceRequirements()", func(t *testing.T) {
 		agent := &Agent{
-			ID:          "550e8400-e29b-41d4-a716-446655440000",
-			ClientID:    "test-client",
+			ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 			ServiceRequirements: []ServiceRequirement{
 				{
-					ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+					ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 					RequirementType: RequirementTypeMandatory,
 					RequiredScopes:  []string{}, // Invalid - empty scopes
 				},
@@ -419,12 +418,12 @@ func TestAgent_ValidateServiceRequirements_IntegrationWithValidate(t *testing.T)
 
 	t.Run("ValidateForCreate() calls ValidateServiceRequirements()", func(t *testing.T) {
 		agent := &Agent{
-			ClientID:    "test-client",
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 			ServiceRequirements: []ServiceRequirement{
 				{
-					ServiceID:       "550e8400-e29b-41d4-a716-446655440000",
+					ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440000"),
 					RequirementType: RequirementType("invalid"), // Invalid type
 					RequiredScopes:  []string{"repo"},
 				},
@@ -441,18 +440,18 @@ func TestAgent_ValidateServiceRequirements_IntegrationWithValidate(t *testing.T)
 func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
 	t.Run("copies service requirements with deep copy", func(t *testing.T) {
 		original := &Agent{
-			ID:          "550e8400-e29b-41d4-a716-446655440000",
-			ClientID:    "test-client",
+			ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 			ServiceRequirements: []ServiceRequirement{
 				{
-					ServiceID:       "660e8400-e29b-41d4-a716-446655440001",
+					ServiceID:       id.MustParseServiceID("660e8400-e29b-41d4-a716-446655440001"),
 					RequirementType: RequirementTypeMandatory,
 					RequiredScopes:  []string{"repo", "user:email"},
 				},
 				{
-					ServiceID:       "770e8400-e29b-41d4-a716-446655440002",
+					ServiceID:       id.MustParseServiceID("770e8400-e29b-41d4-a716-446655440002"),
 					RequirementType: RequirementTypeOptional,
 					RequiredScopes:  []string{"read:user"},
 				},
@@ -474,7 +473,7 @@ func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
 
 		// Verify modifying copy array doesn't affect original
 		copy.ServiceRequirements = append(copy.ServiceRequirements, ServiceRequirement{
-			ServiceID:       "880e8400-e29b-41d4-a716-446655440003",
+			ServiceID:       id.MustParseServiceID("880e8400-e29b-41d4-a716-446655440003"),
 			RequirementType: RequirementTypeMandatory,
 			RequiredScopes:  []string{"new"},
 		})
@@ -484,8 +483,8 @@ func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
 
 	t.Run("handles nil service requirements", func(t *testing.T) {
 		original := &Agent{
-			ID:                  "550e8400-e29b-41d4-a716-446655440000",
-			ClientID:            "test-client",
+			ID:                  id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+			ClientID:            id.ClientID("test-client"),
 			DisplayName:         "Test Agent",
 			Description:         "A test agent",
 			ServiceRequirements: nil,
@@ -497,8 +496,8 @@ func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
 
 	t.Run("handles empty service requirements", func(t *testing.T) {
 		original := &Agent{
-			ID:                  "550e8400-e29b-41d4-a716-446655440000",
-			ClientID:            "test-client",
+			ID:                  id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
+			ClientID:            id.ClientID("test-client"),
 			DisplayName:         "Test Agent",
 			Description:         "A test agent",
 			ServiceRequirements: []ServiceRequirement{},

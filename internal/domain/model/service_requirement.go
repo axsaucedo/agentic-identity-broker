@@ -1,6 +1,10 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+)
 
 // RequirementType defines whether a service is mandatory or optional for an agent.
 // Mandatory services block authorization if requirements aren't met.
@@ -57,7 +61,7 @@ func (rt RequirementType) IsOptional() bool {
 // - RequiredScopes must contain at least one scope
 // - Each scope name must be non-empty
 type ServiceRequirement struct {
-	ServiceID       string
+	ServiceID       id.ServiceID
 	RequirementType RequirementType
 	RequiredScopes  []string
 }
@@ -69,7 +73,7 @@ type ServiceRequirement struct {
 // - RequiredScopes is empty
 // - Any scope is empty
 func (sr *ServiceRequirement) Validate() error {
-	if sr.ServiceID == "" {
+	if sr.ServiceID.IsZero() {
 		return fmt.Errorf("service_id is required")
 	}
 

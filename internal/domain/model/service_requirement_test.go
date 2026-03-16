@@ -3,6 +3,7 @@ package model
 import (
 	"testing"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -86,7 +87,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "valid mandatory requirement",
 			sr: ServiceRequirement{
-				ServiceID:       "650e8400-e29b-41d4-a716-446655440001",
+				ServiceID:       id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  []string{"repo", "user:email"},
 			},
@@ -95,7 +96,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "valid optional requirement",
 			sr: ServiceRequirement{
-				ServiceID:       "650e8400-e29b-41d4-a716-446655440002",
+				ServiceID:       id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440002"),
 				RequirementType: RequirementTypeOptional,
 				RequiredScopes:  []string{"read:org"},
 			},
@@ -112,7 +113,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "invalid requirement_type",
 			sr: ServiceRequirement{
-				ServiceID:       "650e8400-e29b-41d4-a716-446655440001",
+				ServiceID:       id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				RequirementType: RequirementType("unknown"),
 				RequiredScopes:  []string{"repo"},
 			},
@@ -121,7 +122,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "empty required_scopes",
 			sr: ServiceRequirement{
-				ServiceID:       "650e8400-e29b-41d4-a716-446655440001",
+				ServiceID:       id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  []string{},
 			},
@@ -130,7 +131,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "nil required_scopes",
 			sr: ServiceRequirement{
-				ServiceID:       "650e8400-e29b-41d4-a716-446655440001",
+				ServiceID:       id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  nil,
 			},
@@ -139,7 +140,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 		{
 			name: "empty scope in required_scopes",
 			sr: ServiceRequirement{
-				ServiceID:       "650e8400-e29b-41d4-a716-446655440001",
+				ServiceID:       id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 				RequirementType: RequirementTypeMandatory,
 				RequiredScopes:  []string{"repo", ""},
 			},
@@ -162,7 +163,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 
 func TestServiceRequirement_HasScope(t *testing.T) {
 	sr := ServiceRequirement{
-		ServiceID:       "svc-1",
+		ServiceID:       id.NewServiceID(),
 		RequirementType: RequirementTypeMandatory,
 		RequiredScopes:  []string{"repo", "user:email", "read:org"},
 	}
@@ -176,13 +177,15 @@ func TestServiceRequirement_HasScope(t *testing.T) {
 }
 
 func TestServiceRequirement_Predicates(t *testing.T) {
+	svcID1 := id.NewServiceID()
+	svcID2 := id.NewServiceID()
 	mandatory := ServiceRequirement{
-		ServiceID:       "svc-1",
+		ServiceID:       svcID1,
 		RequirementType: RequirementTypeMandatory,
 		RequiredScopes:  []string{"repo"},
 	}
 	optional := ServiceRequirement{
-		ServiceID:       "svc-2",
+		ServiceID:       svcID2,
 		RequirementType: RequirementTypeOptional,
 		RequiredScopes:  []string{"repo"},
 	}
@@ -195,7 +198,7 @@ func TestServiceRequirement_Predicates(t *testing.T) {
 
 func TestServiceRequirement_Copy(t *testing.T) {
 	original := &ServiceRequirement{
-		ServiceID:       "650e8400-e29b-41d4-a716-446655440001",
+		ServiceID:       id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 		RequirementType: RequirementTypeMandatory,
 		RequiredScopes:  []string{"repo", "user:email"},
 	}
@@ -212,7 +215,7 @@ func TestServiceRequirement_Copy(t *testing.T) {
 
 	t.Run("nil scopes copy", func(t *testing.T) {
 		sr := &ServiceRequirement{
-			ServiceID:       "svc-1",
+			ServiceID:       id.NewServiceID(),
 			RequirementType: RequirementTypeOptional,
 			RequiredScopes:  nil,
 		}

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -94,7 +95,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	}
 
 	// Step 2: Check if user has active grant for this agent
-	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agent.ID)
+	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, id.Principal(principal), agent.ID)
 	if err != nil && !errors.Is(err, ports.ErrNotFound) {
 		// Only treat as error if it's not a "not found" condition (which is valid)
 		return &ports.AuthorizationDecision{
@@ -157,7 +158,7 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest) str
 	q := u.Query()
 
 	// Add required parameters
-	q.Set("client_id", req.ClientID)
+	q.Set("client_id", req.ClientID.String())
 	q.Set("redirect_uri", req.RedirectURI)
 	q.Set("response_type", req.ResponseType)
 
@@ -214,7 +215,7 @@ func (s *Service) validateMandatoryRequirements(
 		}
 
 		// Verify user has active session for this service
-		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, req.ServiceID)
+		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, id.Principal(principal), req.ServiceID)
 		if err != nil {
 			// Session not found
 			if s.logger != nil {

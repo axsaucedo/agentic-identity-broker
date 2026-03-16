@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 )
 
 // isAllowedHTTPSScheme checks if a URL uses an allowed scheme.
@@ -39,9 +41,9 @@ func isAllowedHTTPSScheme(urlStr string, skipHTTPSValidation bool) bool {
 //
 // Encryption and decryption happens exclusively in domain services, not in this entity.
 type ThirdpartyOAuth2ProviderEntity struct {
-	ID                  string
+	ID                  id.ServiceID
 	DisplayName         string
-	ClientID            string
+	ClientID            id.ClientID
 	Secret              Secret
 	IssuerURI           string
 	Discovery           DiscoveryConfig
@@ -56,7 +58,7 @@ type ThirdpartyOAuth2ProviderEntity struct {
 // Validate performs basic validation on the entity.
 // It checks that required fields are present and the secret is in a valid state.
 func (e *ThirdpartyOAuth2ProviderEntity) Validate() error {
-	if e.ID == "" {
+	if e.ID.IsZero() {
 		return errors.New("provider ID cannot be empty")
 	}
 	if e.DisplayName == "" {
@@ -65,7 +67,7 @@ func (e *ThirdpartyOAuth2ProviderEntity) Validate() error {
 	if len(e.DisplayName) > 255 {
 		return errors.New("display_name exceeds 255 characters")
 	}
-	if e.ClientID == "" {
+	if e.ClientID.IsZero() {
 		return errors.New("client_id is required")
 	}
 
@@ -97,7 +99,7 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 	if len(e.DisplayName) > 255 {
 		return fmt.Errorf("display_name exceeds 255 characters (got %d)", len(e.DisplayName))
 	}
-	if e.ClientID == "" {
+	if e.ClientID.IsZero() {
 		return errors.New("client_id is required")
 	}
 
@@ -147,7 +149,7 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 // skipHTTPSValidation allows HTTP URLs for development/testing.
 // Requires ID and plaintext Secret (callers must always supply the new secret in plaintext).
 func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation bool) error {
-	if e.ID == "" {
+	if e.ID.IsZero() {
 		return errors.New("provider ID cannot be empty")
 	}
 	if e.DisplayName == "" {
@@ -156,7 +158,7 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 	if len(e.DisplayName) > 255 {
 		return fmt.Errorf("display_name exceeds 255 characters (got %d)", len(e.DisplayName))
 	}
-	if e.ClientID == "" {
+	if e.ClientID.IsZero() {
 		return errors.New("client_id is required")
 	}
 

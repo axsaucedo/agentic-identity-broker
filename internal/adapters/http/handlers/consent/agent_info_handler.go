@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -78,8 +79,14 @@ func (h *AgentInfoHandler) GetAgentConsentInfo(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	parsedAgentID, parseErr := id.ParseAgentID(agentID)
+	if parseErr != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid agent ID", parseErr.Error())
+		return
+	}
+
 	// Call consent service to get agent info
-	info, err := h.consentService.GetAgentConsentInfo(ctx, agentID)
+	info, err := h.consentService.GetAgentConsentInfo(ctx, parsedAgentID)
 	if err != nil {
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found", "agent_id", agentID)
@@ -108,8 +115,8 @@ func (h *AgentInfoHandler) GetAgentConsentInfo(w http.ResponseWriter, r *http.Re
 func (h *AgentInfoHandler) toResponse(info *consent.AgentConsentInfo) AgentConsentInfoResponse {
 	// Convert agent metadata
 	agentMeta := AgentMetadata{
-		ID:                   info.Agent.ID,
-		ClientID:             info.Agent.ClientID,
+		ID:                   info.Agent.ID.String(),
+		ClientID:             info.Agent.ClientID.String(),
 		DisplayName:          info.Agent.DisplayName,
 		Description:          info.Agent.Description,
 		GovernanceURL:        info.Agent.GovernanceURL,
@@ -131,7 +138,7 @@ func (h *AgentInfoHandler) toResponse(info *consent.AgentConsentInfo) AgentConse
 		}
 
 		requestedServices[i] = RequestedService{
-			ID:          svc.ID,
+			ID:          svc.ID.String(),
 			DisplayName: svc.DisplayName,
 			Scopes:      scopes,
 		}

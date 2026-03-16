@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -42,8 +43,8 @@ func (m *MockProviderRepository) Create(ctx context.Context, entity *model.Third
 	return args.Error(0)
 }
 
-func (m *MockProviderRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
-	args := m.Called(ctx, id)
+func (m *MockProviderRepository) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	args := m.Called(ctx, serviceID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -55,8 +56,8 @@ func (m *MockProviderRepository) Update(ctx context.Context, entity *model.Third
 	return args.Error(0)
 }
 
-func (m *MockProviderRepository) Delete(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
+func (m *MockProviderRepository) Delete(ctx context.Context, serviceID id.ServiceID) error {
+	args := m.Called(ctx, serviceID)
 	return args.Error(0)
 }
 
@@ -68,7 +69,7 @@ func (m *MockProviderRepository) List(ctx context.Context) ([]*model.ThirdpartyO
 	return args.Get(0).([]*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
+func (m *MockProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	args := m.Called(ctx, serviceID)
 	return args.Int(0), args.Error(1)
 }
@@ -106,13 +107,13 @@ func encryptSecretForTest(serviceID, secret string) []byte {
 
 // encryptedEntity creates an entity with encrypted secret (as it would come from the repository).
 // The secret is properly encrypted with the test key so the domain service can decrypt it.
-func encryptedEntity(id, displayName, clientID, clientSecret, issuerURI string, scopes []model.OAuthScope) *model.ThirdpartyOAuth2ProviderEntity {
+func encryptedEntity(serviceID id.ServiceID, displayName string, clientID id.ClientID, clientSecret, issuerURI string, scopes []model.OAuthScope) *model.ThirdpartyOAuth2ProviderEntity {
 	now := time.Now()
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          id,
+		ID:          serviceID,
 		DisplayName: displayName,
 		ClientID:    clientID,
-		Secret:      model.NewEncryptedSecret(encryptSecretForTest(id, clientSecret)),
+		Secret:      model.NewEncryptedSecret(encryptSecretForTest(serviceID.String(), clientSecret)),
 		IssuerURI:   issuerURI,
 		Endpoints: model.OAuth2Endpoints{
 			TokenEndpoint:     "https://" + strings.TrimPrefix(issuerURI, "https://") + "/token",
@@ -226,16 +227,16 @@ func TestServicesHandler_GetService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
-		// Repo returns entity with encrypted secret; domain service decrypts (NoOp = identity).
-		entity := encryptedEntity("service-123", "GitHub", "github-client-id", "secret", "https://github.com",
+		serviceID := id.NewServiceID()
+		entity := encryptedEntity(serviceID, "GitHub", "github-client-id", "secret", "https://github.com",
 			[]model.OAuthScope{{ScopeValue: "repo", Description: "Repository access"}})
-		mockRepo.On("Get", mock.Anything, "service-123").Return(entity, nil)
+		mockRepo.On("Get", mock.Anything, serviceID).Return(entity, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/service-123", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/"+serviceID.String(), nil)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "service-123")
+		rctx.URLParams.Add("service-id", serviceID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)
@@ -245,7 +246,7 @@ func TestServicesHandler_GetService(t *testing.T) {
 		var resp ServiceResponse
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
-		assert.Equal(t, "service-123", resp.ID)
+		assert.Equal(t, serviceID.String(), resp.ID)
 		assert.Equal(t, "GitHub", resp.DisplayName)
 		assert.Equal(t, "REDACTED", resp.ClientSecret) // Secret must be redacted
 	})
@@ -254,14 +255,15 @@ func TestServicesHandler_GetService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
-		mockRepo.On("Get", mock.Anything, "nonexistent").Return(nil,
+		notFoundID := id.NewServiceID()
+		mockRepo.On("Get", mock.Anything, notFoundID).Return(nil,
 			storage.NewStorageError("GetService", storage.ErrorKindNotFound, nil, "service not found"))
 
-		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/nonexistent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/third-party/oauth2/clients/"+notFoundID.String(), nil)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "nonexistent")
+		rctx.URLParams.Add("service-id", notFoundID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)
@@ -280,6 +282,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
+		serviceID := id.NewServiceID()
 		reqBody := ServiceRequest{
 			DisplayName:  "GitHub Updated",
 			ClientID:     "github-client-id-new",
@@ -299,15 +302,15 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		bodyBytes, _ := json.Marshal(reqBody)
 
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
-			return e.ID == "service-123" && e.DisplayName == "GitHub Updated" && e.Secret.IsEncrypted()
+			return e.ID == serviceID && e.DisplayName == "GitHub Updated" && e.Secret.IsEncrypted()
 		})).Return(nil)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/service-123", bytes.NewReader(bodyBytes))
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "service-123")
+		rctx.URLParams.Add("service-id", serviceID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.UpdateService(w, req)
@@ -327,6 +330,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
+		serviceID := id.NewServiceID()
 		reqBody := ServiceRequest{
 			DisplayName:  "GitHub Updated",
 			ClientID:     "github-client-id",
@@ -337,12 +341,12 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/service-123", bytes.NewReader(bodyBytes))
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "service-123")
+		rctx.URLParams.Add("service-id", serviceID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.UpdateService(w, req)
@@ -364,6 +368,7 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
+		nonexistentID := id.NewServiceID()
 		reqBody := ServiceRequest{
 			DisplayName:  "GitHub Updated",
 			ClientID:     "github-client-id",
@@ -381,15 +386,15 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		bodyBytes, _ := json.Marshal(reqBody)
 
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
-			return e.ID == "nonexistent" && e.Secret.IsEncrypted()
+			return e.ID == nonexistentID && e.Secret.IsEncrypted()
 		})).Return(storage.NewStorageError("UpdateService", storage.ErrorKindNotFound, nil, "service not found"))
 
-		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/nonexistent", bytes.NewReader(bodyBytes))
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+nonexistentID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "nonexistent")
+		rctx.URLParams.Add("service-id", nonexistentID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.UpdateService(w, req)
@@ -427,12 +432,13 @@ func TestServicesHandler_UpdateService(t *testing.T) {
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/service-123", bytes.NewReader(bodyBytes))
+		serviceID := id.NewServiceID()
+		req := httptest.NewRequest(http.MethodPut, "/api/third-party/oauth2/clients/"+serviceID.String(), bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "service-123")
+		rctx.URLParams.Add("service-id", serviceID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.UpdateService(w, req)
@@ -455,13 +461,14 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
-		mockRepo.On("Delete", mock.Anything, "service-123").Return(nil)
+		serviceID := id.NewServiceID()
+		mockRepo.On("Delete", mock.Anything, serviceID).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/service-123", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/"+serviceID.String(), nil)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "service-123")
+		rctx.URLParams.Add("service-id", serviceID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -474,15 +481,15 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
-		// The domain service's Delete wraps errors, so the handler uses errors.As.
-		mockRepo.On("Delete", mock.Anything, "service-123").Return(
+		serviceID := id.NewServiceID()
+		mockRepo.On("Delete", mock.Anything, serviceID).Return(
 			storage.NewStorageError("DeleteService", storage.ErrorKindConflict, nil, "cannot delete service: 5 grants reference it"))
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/service-123", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/"+serviceID.String(), nil)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "service-123")
+		rctx.URLParams.Add("service-id", serviceID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -502,14 +509,15 @@ func TestServicesHandler_DeleteService(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
-		mockRepo.On("Delete", mock.Anything, "nonexistent").Return(
+		notFoundID := id.NewServiceID()
+		mockRepo.On("Delete", mock.Anything, notFoundID).Return(
 			storage.NewStorageError("DeleteService", storage.ErrorKindNotFound, nil, "service not found"))
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/nonexistent", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/third-party/oauth2/clients/"+notFoundID.String(), nil)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "nonexistent")
+		rctx.URLParams.Add("service-id", notFoundID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.DeleteService(w, req)
@@ -525,10 +533,12 @@ func TestServicesHandler_ListServices(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
+		serviceID1 := id.NewServiceID()
+		serviceID2 := id.NewServiceID()
 		entities := []*model.ThirdpartyOAuth2ProviderEntity{
-			encryptedEntity("service-1", "GitHub", "github-client", "secret1", "https://github.com",
+			encryptedEntity(serviceID1, "GitHub", "github-client", "secret1", "https://github.com",
 				[]model.OAuthScope{{ScopeValue: "repo", Description: "Repository access"}}),
-			encryptedEntity("service-2", "Google", "google-client", "secret2", "https://accounts.google.com",
+			encryptedEntity(serviceID2, "Google", "google-client", "secret2", "https://accounts.google.com",
 				[]model.OAuthScope{{ScopeValue: "email", Description: "Email access"}}),
 		}
 
@@ -580,17 +590,18 @@ func TestServicesHandler_SecretRedaction(t *testing.T) {
 		mockRepo := new(MockProviderRepository)
 		handler := setupHandler(t, mockRepo)
 
-		entity := encryptedEntity("service-123", "Test Service", "test-client", "super-secret-value", "https://example.com",
+		svcID := id.NewServiceID()
+		entity := encryptedEntity(svcID, "Test Service", id.ClientID("test-client"), "super-secret-value", "https://example.com",
 			[]model.OAuthScope{{ScopeValue: "read", Description: "Read access"}})
 
 		// Test Get endpoint
-		mockRepo.On("Get", mock.Anything, "service-123").Return(entity, nil)
+		mockRepo.On("Get", mock.Anything, svcID).Return(entity, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/services/service-123", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/services/"+svcID.String(), nil)
 		w := httptest.NewRecorder()
 
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("service-id", "service-123")
+		rctx.URLParams.Add("service-id", svcID.String())
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		handler.GetService(w, req)

@@ -40,6 +40,7 @@ domain/                          # Pure business logic, NO infrastructure import
   config/                        # Config domain types + validation (LogLevel, LogFormat)
   consent/                       # ConsentService
   encryption/                    # Encryption domain errors
+  id/                            # Strongly typed entity IDs — see internal/domain/id/AGENTS.md
   oauth2/                        # OAuth2AuthorizationService
   oauth2session/                 # oauth2session.Service (token vault, PKCE, JWE state)
   principal/                     # User identity context (from X-Remote-User header)
@@ -58,6 +59,15 @@ app/                             # DI wiring: Builder pattern (builder.go)
 ```
 
 **Import rules**: `domain/` → never imports `adapters/` or `app/`. `ports/` → interfaces + DTOs only. `adapters/` → may import `ports/` and `domain/`, never other adapters. All dependency arrows flow inward.
+
+### Typed Entity IDs (`internal/domain/id/`)
+
+Full rules: [`internal/domain/id/AGENTS.md`](internal/domain/id/AGENTS.md) | ADR: [`adrs/013-strongly-typed-entity-ids.md`](adrs/013-strongly-typed-entity-ids.md)
+
+The `id` package provides one named type per entity with a UUID primary key (`AgentID`, `ServiceID`, `GrantID`, `SessionID`, `UserID`) and named string types for non-UUID identifiers (`ClientID`, `ExternalID`, `Principal`). Named types give compile-time safety — the compiler rejects passing a `ServiceID` where an `AgentID` is expected. **Key rules**:
+- Use `ParseXxxID` (returns error) in all production code; `MustParseXxxID` (panics) in test fixtures only.
+- Check principal (401) *before* UUID format validation (400) in every HTTP handler.
+- Every new domain entity with a UUID PK must add its type to `gen_ids.go` and document it in `internal/domain/id/AGENTS.md`.
 
 ## ADR Decision Index
 
@@ -78,6 +88,7 @@ Read full ADRs in `adrs/` before implementing in their domain.
 | 009 (encryption) | Three-layer envelope encryption: KEK → Branch Key → DEK via AWS KMS Hierarchical Keyring |
 | 009 (migration) | Separate migration Docker image to minimize production attack surface |
 | 010 | AWS CDK (Go) for KMS keys, DynamoDB key store, IAM roles as IaC |
+| 013 | Strongly typed entity IDs (`type XxxID uuid.UUID`) in `internal/domain/id/` — compile-time cross-entity ID safety |
 
 ## Domain Glossary
 

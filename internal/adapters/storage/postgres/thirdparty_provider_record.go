@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
 // ThirdpartyOAuth2ProviderRecord is the adapter-local database record struct for
@@ -103,9 +105,9 @@ func entityToRecord(entity *model.ThirdpartyOAuth2ProviderEntity) (*ThirdpartyOA
 	}
 
 	record := &ThirdpartyOAuth2ProviderRecord{
-		ID:                entity.ID,
+		ID:                entity.ID.String(),
 		DisplayName:       entity.DisplayName,
-		ClientID:          entity.ClientID,
+		ClientID:          entity.ClientID.String(),
 		SecretCiphertext:  ciphertext,
 		IssuerURI:         entity.IssuerURI,
 		EnableDiscovery:   entity.Discovery.EnableDiscovery,
@@ -132,15 +134,26 @@ func entityToRecord(entity *model.ThirdpartyOAuth2ProviderEntity) (*ThirdpartyOA
 // recordToEntity converts a ThirdpartyOAuth2ProviderRecord to a ThirdpartyOAuth2ProviderEntity.
 // The resulting entity's Secret is in encrypted state. The domain service must decrypt it
 // before the entity can be used for OAuth2 operations.
-func recordToEntity(record *ThirdpartyOAuth2ProviderRecord) *model.ThirdpartyOAuth2ProviderEntity {
+// Returns an error if the stored ID is not a valid UUID (data integrity violation).
+func recordToEntity(record *ThirdpartyOAuth2ProviderRecord) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	if record == nil {
-		return nil
+		return nil, nil
+	}
+
+	serviceID, err := id.ParseServiceID(record.ID)
+	if err != nil {
+		return nil, storage.NewStorageError(
+			"recordToEntity",
+			storage.ErrorKindValidation,
+			err,
+			fmt.Sprintf("invalid service ID in database record: %s", record.ID),
+		)
 	}
 
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          record.ID,
+		ID:          serviceID,
 		DisplayName: record.DisplayName,
-		ClientID:    record.ClientID,
+		ClientID:    id.ClientID(record.ClientID),
 		Secret:      model.NewEncryptedSecret(record.SecretCiphertext),
 		IssuerURI:   record.IssuerURI,
 		Discovery: model.DiscoveryConfig{
@@ -169,5 +182,5 @@ func recordToEntity(record *ThirdpartyOAuth2ProviderRecord) *model.ThirdpartyOAu
 		copy(entity.ProtectedResources, record.ProtectedResources)
 	}
 
-	return entity
+	return entity, nil
 }

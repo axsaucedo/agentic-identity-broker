@@ -3,8 +3,8 @@ package fixtures
 import (
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/google/uuid"
 )
 
 // ValidAgent returns a valid test agent with all required fields.
@@ -14,8 +14,8 @@ import (
 func ValidAgent() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
-		ID:          uuid.New().String(),
-		ClientID:    "test-client-valid",
+		ID:          id.NewAgentID(),
+		ClientID:    id.ClientID("test-client-valid"),
 		DisplayName: "Test Agent Valid",
 		Description: "A valid test agent for E2E testing with all required fields",
 		CreatedAt:   now,
@@ -30,8 +30,8 @@ func ValidAgent() *storage.Agent {
 func AnotherAgent() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
-		ID:          uuid.New().String(),
-		ClientID:    "test-client-another",
+		ID:          id.NewAgentID(),
+		ClientID:    id.ClientID("test-client-another"),
 		DisplayName: "Test Agent Another",
 		Description: "Another valid test agent for E2E testing with different client ID",
 		CreatedAt:   now,
@@ -44,8 +44,8 @@ func AnotherAgent() *storage.Agent {
 func AgentWithClientID(clientID string) *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
-		ID:          uuid.New().String(),
-		ClientID:    clientID,
+		ID:          id.NewAgentID(),
+		ClientID:    id.ClientID(clientID),
 		DisplayName: "Test Agent " + clientID,
 		Description: "Test agent with custom client ID: " + clientID,
 		CreatedAt:   now,
@@ -62,8 +62,8 @@ func AgentWithURLs() *storage.Agent {
 	agentInterfaceURL := "https://agent.example.com"
 
 	return &storage.Agent{
-		ID:                   uuid.New().String(),
-		ClientID:             "test-client-with-urls",
+		ID:                   id.NewAgentID(),
+		ClientID:             id.ClientID("test-client-with-urls"),
 		DisplayName:          "Agent With URLs",
 		Description:          "Test agent with all URL fields populated for documentation and governance",
 		GovernanceURL:        &governanceURL,

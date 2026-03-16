@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -25,7 +26,7 @@ func TestGetAgentDelegations_Success(t *testing.T) {
 
 	mockDelegations := []consent.AgentDelegation{
 		{
-			AgentID:          "agent-1",
+			AgentID:          id.MustParseAgentID("00000000-0000-0000-0000-000000000001"),
 			DisplayName:      "Data Analysis Assistant",
 			LogoURL:          nil,
 			ActiveGrantCount: 3,
@@ -33,7 +34,7 @@ func TestGetAgentDelegations_Success(t *testing.T) {
 			ExpiresAt:        nil,
 		},
 		{
-			AgentID:          "agent-2",
+			AgentID:          id.MustParseAgentID("00000000-0000-0000-0000-000000000002"),
 			DisplayName:      "Document Processor",
 			LogoURL:          nil,
 			ActiveGrantCount: 2,
@@ -74,18 +75,18 @@ func TestGetAgentDelegations_Success(t *testing.T) {
 	// Build a map for easier lookup
 	delegationMap := make(map[string]consent.AgentDelegation)
 	for _, d := range resp.Data {
-		delegationMap[d.AgentID] = d
+		delegationMap[d.AgentID.String()] = d
 	}
 
 	// Verify agent-1
-	agent1, ok := delegationMap["agent-1"]
+	agent1, ok := delegationMap["00000000-0000-0000-0000-000000000001"]
 	require.True(t, ok, "agent-1 should be in response")
 	assert.Equal(t, "Data Analysis Assistant", agent1.DisplayName)
 	assert.Equal(t, 3, agent1.ActiveGrantCount)
 	assert.Nil(t, agent1.ExpiresAt)
 
 	// Verify agent-2
-	agent2, ok := delegationMap["agent-2"]
+	agent2, ok := delegationMap["00000000-0000-0000-0000-000000000002"]
 	require.True(t, ok, "agent-2 should be in response")
 	assert.Equal(t, "Document Processor", agent2.DisplayName)
 	assert.Equal(t, 2, agent2.ActiveGrantCount)
@@ -197,7 +198,7 @@ func (m *mockAgentsService) asService() *consent.Service {
 	// Create mock agent repo that returns agents with proper display names
 	agentMap := make(map[string]*storage.Agent)
 	for _, delegation := range m.delegations {
-		agentMap[delegation.AgentID] = &storage.Agent{
+		agentMap[delegation.AgentID.String()] = &storage.Agent{
 			ID:          delegation.AgentID,
 			DisplayName: delegation.DisplayName,
 		}
@@ -224,14 +225,14 @@ func (m *mockAgentRepoForAgents) Create(ctx context.Context, agent *storage.Agen
 	return nil
 }
 
-func (m *mockAgentRepoForAgents) Get(ctx context.Context, id string) (*storage.Agent, error) {
+func (m *mockAgentRepoForAgents) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
 	// Return agent from map if exists, otherwise return a dummy
-	if agent, ok := m.agents[id]; ok {
+	if agent, ok := m.agents[agentID.String()]; ok {
 		return agent, nil
 	}
 	return &storage.Agent{
-		ID:          id,
-		DisplayName: "Agent " + id,
+		ID:          agentID,
+		DisplayName: "Agent " + agentID.String(),
 	}, nil
 }
 
@@ -239,7 +240,7 @@ func (m *mockAgentRepoForAgents) Update(ctx context.Context, agent *storage.Agen
 	return nil
 }
 
-func (m *mockAgentRepoForAgents) Delete(ctx context.Context, id string) error {
+func (m *mockAgentRepoForAgents) Delete(ctx context.Context, agentID id.AgentID) error {
 	return nil
 }
 
@@ -247,9 +248,9 @@ func (m *mockAgentRepoForAgents) List(ctx context.Context) ([]*storage.Agent, er
 	return nil, nil
 }
 
-func (m *mockAgentRepoForAgents) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+func (m *mockAgentRepoForAgents) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, agent := range m.agents {
-		if agent.ClientID == clientID {
+		if string(agent.ClientID) == string(clientID) {
 			return agent, nil
 		}
 	}
@@ -262,7 +263,7 @@ func (m *mockServiceRepoForAgents) Create(ctx context.Context, entity *model.Thi
 	return nil
 }
 
-func (m *mockServiceRepoForAgents) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+func (m *mockServiceRepoForAgents) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	return nil, nil
 }
 
@@ -270,7 +271,7 @@ func (m *mockServiceRepoForAgents) Update(ctx context.Context, entity *model.Thi
 	return nil
 }
 
-func (m *mockServiceRepoForAgents) Delete(ctx context.Context, id string) error {
+func (m *mockServiceRepoForAgents) Delete(ctx context.Context, serviceID id.ServiceID) error {
 	return nil
 }
 
@@ -278,7 +279,7 @@ func (m *mockServiceRepoForAgents) List(ctx context.Context) ([]*model.Thirdpart
 	return nil, nil
 }
 
-func (m *mockServiceRepoForAgents) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
+func (m *mockServiceRepoForAgents) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	return 0, nil
 }
 
@@ -295,7 +296,7 @@ func (m *mockGrantRepoForAgents) Create(ctx context.Context, grant *storage.User
 	return nil
 }
 
-func (m *mockGrantRepoForAgents) Get(ctx context.Context, id string) (*storage.UserGrant, error) {
+func (m *mockGrantRepoForAgents) Get(ctx context.Context, grantID id.GrantID) (*storage.UserGrant, error) {
 	return nil, nil
 }
 
@@ -303,23 +304,23 @@ func (m *mockGrantRepoForAgents) Update(ctx context.Context, grant *storage.User
 	return nil
 }
 
-func (m *mockGrantRepoForAgents) Delete(ctx context.Context, id string) error {
+func (m *mockGrantRepoForAgents) Delete(ctx context.Context, grantID id.GrantID) error {
 	return nil
 }
 
-func (m *mockGrantRepoForAgents) ListByPrincipalAndAgent(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+func (m *mockGrantRepoForAgents) ListByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	return nil, nil
 }
 
-func (m *mockGrantRepoForAgents) FindByPrincipalAndAgent(ctx context.Context, principal string, agentID string) (*storage.UserGrant, error) {
+func (m *mockGrantRepoForAgents) FindByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) (*storage.UserGrant, error) {
 	return nil, nil
 }
 
-func (m *mockGrantRepoForAgents) DeleteByAgent(ctx context.Context, agentID string) error {
+func (m *mockGrantRepoForAgents) DeleteByAgent(ctx context.Context, agentID id.AgentID) error {
 	return nil
 }
 
-func (m *mockGrantRepoForAgents) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+func (m *mockGrantRepoForAgents) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storage.UserGrant, error) {
 	// This is the method that GetAgentDelegations calls
 	// We need to return grants that will result in the expected delegations
 	if m.err != nil {
@@ -331,14 +332,14 @@ func (m *mockGrantRepoForAgents) ListByPrincipal(ctx context.Context, principal 
 	var grants []storage.UserGrant
 	for _, delegation := range m.delegations {
 		grant := storage.UserGrant{
-			ID:         "grant-" + delegation.AgentID,
+			ID:         id.NewGrantID(),
 			Principal:  principal,
 			AgentID:    delegation.AgentID,
 			ValidUntil: delegation.ExpiresAt,
 			UpdatedAt:  delegation.LastModifiedAt,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-1",
+					ThirdpartyOAuth2ServiceID: id.MustParseServiceID("00000000-0000-0000-0000-ddd000000001"),
 					Scopes:                    []string{"scope1"},
 				},
 			},
@@ -352,10 +353,10 @@ func (m *mockGrantRepoForAgents) ListByPrincipal(ctx context.Context, principal 
 	return grants, nil
 }
 
-func (m *mockGrantRepoForAgents) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
+func (m *mockGrantRepoForAgents) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	return 0, nil
 }
 
-func (m *mockGrantRepoForAgents) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
-	return []string{}, nil
+func (m *mockGrantRepoForAgents) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
+	return []id.AgentID{}, nil
 }

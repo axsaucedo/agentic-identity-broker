@@ -13,6 +13,15 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/integration/bootstrap"
 )
 
+// Test service UUIDs — must match the IDs provisioned in bootstrap/localstack.go:preBranchKeysForLocalStack
+// and the UUIDs in fixtures.TestServices(). These replace the former string-based service names
+// ("oauth2", "github", "google") to be consistent with the typed ID system (id.ServiceID backed by uuid.UUID).
+const (
+	testServiceOAuth2 = "01234567-89ab-cdef-0123-456789abcdef"
+	testServiceGitHub = "12345678-9abc-def0-1234-56789abcdef0"
+	testServiceGoogle = "23456789-abcd-ef01-2345-6789abcdef01"
+)
+
 // TestLocalStackKMSEncryptDecryptRoundtrip tests encryption/decryption using LocalStack KMS
 // This test creates a real KMS key in LocalStack and validates the entire envelope encryption flow.
 // Run with: DOCKER_HOST=unix:///run/podman/podman.sock go test -v -tags=integration ./tests/integration -run "LocalStack"
@@ -38,7 +47,7 @@ func TestLocalStackKMSEncryptDecryptRoundtrip(t *testing.T) {
 
 	// Test encryption/decryption roundtrip
 	plaintext := []byte("test-oauth2-token-from-localstack")
-	encryptionContext := map[string]string{"service_id": "oauth2"}
+	encryptionContext := map[string]string{"service_id": testServiceOAuth2}
 
 	// Encrypt
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encryptionContext)
@@ -81,7 +90,7 @@ func TestLocalStackContextMismatchDetection(t *testing.T) {
 
 	// Encrypt with service_id "oauth2"
 	encryptionContext := map[string]string{
-		"service_id": "oauth2",
+		"service_id": testServiceOAuth2,
 	}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encryptionContext)
@@ -89,7 +98,7 @@ func TestLocalStackContextMismatchDetection(t *testing.T) {
 
 	// Try to decrypt with different service_id "github"
 	wrongContext := map[string]string{
-		"service_id": "github",
+		"service_id": testServiceGitHub,
 	}
 
 	decrypted, err := adapter.Decrypt(ctx, ciphertext, wrongContext)
@@ -126,7 +135,7 @@ func TestLocalStackUniqueEncryptionPerCall(t *testing.T) {
 
 	plaintext := []byte("same-token-value")
 	encryptionContext := map[string]string{
-		"service_id": "oauth2",
+		"service_id": testServiceOAuth2,
 	}
 
 	// Encrypt same plaintext twice
@@ -173,7 +182,7 @@ func TestLocalStackTamperedCiphertextDetection(t *testing.T) {
 
 	plaintext := []byte("test-token-value")
 	encryptionContext := map[string]string{
-		"service_id": "oauth2",
+		"service_id": testServiceOAuth2,
 	}
 
 	// Encrypt
@@ -225,8 +234,8 @@ func TestLocalStackMultipleServices(t *testing.T) {
 	oauthToken := []byte("oauth2-access-token")
 	githubToken := []byte("github-access-token")
 
-	oauthContext := map[string]string{"service_id": "oauth2"}
-	githubContext := map[string]string{"service_id": "github"}
+	oauthContext := map[string]string{"service_id": testServiceOAuth2}
+	githubContext := map[string]string{"service_id": testServiceGitHub}
 
 	// Encrypt both tokens
 	oauthCiphertext, err := adapter.Encrypt(ctx, oauthToken, oauthContext)
@@ -285,7 +294,7 @@ func TestHierarchicalKeyringInitialization(t *testing.T) {
 
 	// Test basic encrypt/decrypt to verify hierarchical keyring is functional
 	plaintext := []byte("test-hierarchical-keyring")
-	context := map[string]string{"service_id": "oauth2"}
+	context := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, context)
 	require.NoError(t, err, "encryption with hierarchical keyring failed")
@@ -314,7 +323,7 @@ func TestBranchKeyProvisioningAndCaching(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	// Pre-provisioned branch keys from LocalStack setup: oauth2, github, google
-	services := []string{"oauth2", "github", "google"}
+	services := []string{testServiceOAuth2, testServiceGitHub, testServiceGoogle}
 
 	// Test that each service can encrypt/decrypt (verifies branch keys exist)
 	for _, svc := range services {
@@ -350,7 +359,7 @@ func TestBranchKeyRetrievalFromCache(t *testing.T) {
 	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err, "failed to create adapter")
 
-	service := "oauth2"
+	service := testServiceOAuth2
 	encCtx := map[string]string{"service_id": service}
 
 	// Multiple encryptions with same service should use cached branch key
@@ -386,7 +395,7 @@ func TestDynamoDBInteraction(t *testing.T) {
 
 	// Verify DynamoDB table operations work by doing encrypt/decrypt with different services
 	// This ensures the branch key table is properly configured
-	services := []string{"oauth2", "github"}
+	services := []string{testServiceOAuth2, testServiceGitHub}
 
 	for _, svc := range services {
 		plaintext := []byte("dynamodb-test-" + svc)
@@ -425,9 +434,9 @@ func TestBranchKeySupplierMapping(t *testing.T) {
 
 	// Test that each service maps to correct branch key by verifying cross-service decryption fails
 	services := map[string][]byte{
-		"oauth2": []byte("oauth2-token"),
-		"github": []byte("github-token"),
-		"google": []byte("google-token"),
+		testServiceOAuth2: []byte("oauth2-token"),
+		testServiceGitHub: []byte("github-token"),
+		testServiceGoogle: []byte("google-token"),
 	}
 
 	ciphertexts := make(map[string][]byte)
@@ -480,7 +489,7 @@ func TestContextBindingAtDEKLayer(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-dek-context-binding")
-	oauthContext := map[string]string{"service_id": "oauth2"}
+	oauthContext := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, oauthContext)
 	require.NoError(t, err, "encryption failed")
@@ -492,7 +501,7 @@ func TestContextBindingAtDEKLayer(t *testing.T) {
 	assert.Equal(t, string(plaintext), string(decrypted), "plaintext mismatch")
 
 	// Decryption with wrong context should fail at DEK layer
-	githubContext := map[string]string{"service_id": "github"}
+	githubContext := map[string]string{"service_id": testServiceGitHub}
 	_, err = adapter.Decrypt(ctx, ciphertext, githubContext)
 
 	require.Error(t, err, "expected decryption to fail with mismatched context at DEK layer")
@@ -518,13 +527,13 @@ func TestContextBindingAtKEKLayer(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-kek-context-binding")
-	oauthContext := map[string]string{"service_id": "oauth2"}
+	oauthContext := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, oauthContext)
 	require.NoError(t, err, "encryption failed")
 
 	// DEK is wrapped with context at KEK layer; trying to unwrap with wrong context should fail
-	githubContext := map[string]string{"service_id": "github"}
+	githubContext := map[string]string{"service_id": testServiceGitHub}
 	decrypted, err := adapter.Decrypt(ctx, ciphertext, githubContext)
 
 	require.Error(t, err, "expected decryption to fail at KEK layer with mismatched context")
@@ -555,8 +564,8 @@ func TestContextBindingThroughBothLayers(t *testing.T) {
 	token1 := []byte("oauth2-token")
 	token2 := []byte("github-token")
 
-	oauthContext := map[string]string{"service_id": "oauth2"}
-	githubContext := map[string]string{"service_id": "github"}
+	oauthContext := map[string]string{"service_id": testServiceOAuth2}
+	githubContext := map[string]string{"service_id": testServiceGitHub}
 
 	// Encrypt token1 with oauth2 context (both DEK and KEK wrapped with oauth2)
 	cipher1, err := adapter.Encrypt(ctx, token1, oauthContext)
@@ -594,7 +603,7 @@ func TestAADInclusionInEncryption(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-aad-inclusion")
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err, "encryption failed")
@@ -606,7 +615,7 @@ func TestAADInclusionInEncryption(t *testing.T) {
 	assert.Equal(t, string(plaintext), string(decrypted), "plaintext mismatch")
 
 	// Any modification to context should cause AAD verification to fail
-	modifiedContext := map[string]string{"service_id": "github"}
+	modifiedContext := map[string]string{"service_id": testServiceGitHub}
 	_, err = adapter.Decrypt(ctx, ciphertext, modifiedContext)
 	require.Error(t, err, "expected AAD verification to fail when context changed")
 }
@@ -629,13 +638,13 @@ func TestContextMismatchFailureAtBothLayers(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-dual-layer-mismatch")
-	oauthContext := map[string]string{"service_id": "oauth2"}
+	oauthContext := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, oauthContext)
 	require.NoError(t, err, "encryption failed")
 
 	// Attempt decryption with wrong context at both layers
-	githubContext := map[string]string{"service_id": "github"}
+	githubContext := map[string]string{"service_id": testServiceGitHub}
 	_, err = adapter.Decrypt(ctx, ciphertext, githubContext)
 
 	require.Error(t, err, "expected decryption to fail at both layers")
@@ -668,7 +677,7 @@ func TestLargeTokenEncryption(t *testing.T) {
 		largeToken[i] = byte(i % 256)
 	}
 
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, largeToken, encCtx)
 	if err != nil {
@@ -701,7 +710,7 @@ func TestEmptyPlaintextTokenEncryption(t *testing.T) {
 
 	// Empty token should fail validation - OAuth tokens cannot be empty
 	emptyToken := []byte{}
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, emptyToken, encCtx)
 	// Encryption may succeed, but decryption of empty plaintext should fail
@@ -731,7 +740,7 @@ func TestPartialCiphertextTampering(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-tampering-detection")
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err, "encryption failed")
@@ -781,7 +790,7 @@ func TestUnknownServiceContextDecryption(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-unknown-service")
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err, "encryption failed")
@@ -815,12 +824,12 @@ func TestContextMismatchErrorCascade(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-error-cascade")
-	oauthContext := map[string]string{"service_id": "oauth2"}
+	oauthContext := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, oauthContext)
 	require.NoError(t, err, "encryption failed")
 
-	githubContext := map[string]string{"service_id": "github"}
+	githubContext := map[string]string{"service_id": testServiceGitHub}
 	_, err = adapter.Decrypt(ctx, ciphertext, githubContext)
 
 	require.Error(t, err, "expected error cascade for context mismatch")
@@ -852,7 +861,7 @@ func TestDEKSecureDeletion(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-dek-deletion")
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	// Encrypt (DEK created in memory)
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
@@ -886,7 +895,7 @@ func TestPlaintextTokenMemoryManagement(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("sensitive-token-data")
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err, "encryption failed")
@@ -917,13 +926,13 @@ func TestErrorMessagesSanitization(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("test-error-sanitization")
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err, "encryption failed")
 
 	// Trigger error by using wrong context
-	wrongContext := map[string]string{"service_id": "github"}
+	wrongContext := map[string]string{"service_id": testServiceGitHub}
 	_, err = adapter.Decrypt(ctx, ciphertext, wrongContext)
 
 	require.Error(t, err, "expected error")
@@ -966,7 +975,7 @@ func TestMemoryLockingIntegration(t *testing.T) {
 	// Multiple encrypt/decrypt operations to stress memory protection
 	for i := range 5 {
 		plaintext := []byte("memory-lock-test-" + string(rune(i)))
-		encCtx := map[string]string{"service_id": "oauth2"}
+		encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 		ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 		require.NoError(t, err, "encryption iteration %d failed", i)
@@ -997,7 +1006,7 @@ func TestBranchKeyIsolationPerService(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	// Services with pre-provisioned branch keys
-	services := []string{"oauth2", "github", "google"}
+	services := []string{testServiceOAuth2, testServiceGitHub, testServiceGoogle}
 
 	// Verify each service can be used independently
 	for _, svc := range services {
@@ -1047,7 +1056,7 @@ func TestDEKVarianceAcrossServices(t *testing.T) {
 
 	// Encrypt same plaintext with different service contexts
 	ciphertexts := make(map[string][]byte)
-	for _, svc := range []string{"oauth2", "github", "google"} {
+	for _, svc := range []string{testServiceOAuth2, testServiceGitHub, testServiceGoogle} {
 		encCtx := map[string]string{"service_id": svc}
 		ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 		if err != nil {
@@ -1057,7 +1066,7 @@ func TestDEKVarianceAcrossServices(t *testing.T) {
 	}
 
 	// Verify all ciphertexts are different (context binding enforced)
-	services := []string{"oauth2", "github", "google"}
+	services := []string{testServiceOAuth2, testServiceGitHub, testServiceGoogle}
 	for i, svc1 := range services {
 		for _, svc2 := range services[i+1:] {
 			assert.NotEqual(t, string(ciphertexts[svc1]), string(ciphertexts[svc2]), "DEK variance failed: same ciphertext for %s and %s", svc1, svc2)
@@ -1082,11 +1091,11 @@ func TestCrossServiceDecryptionAttack(t *testing.T) {
 	adapter, _, err := awsencryption.NewAWSEncryption(kmsARN, "IdentityBrokerEncryptionBranchKeys", 0)
 	require.NoError(t, err, "failed to create adapter")
 
-	services := []string{"oauth2", "github", "google"}
+	services := []string{testServiceOAuth2, testServiceGitHub, testServiceGoogle}
 	tokens := map[string][]byte{
-		"oauth2": []byte("oauth2-token"),
-		"github": []byte("github-token"),
-		"google": []byte("google-token"),
+		testServiceOAuth2: []byte("oauth2-token"),
+		testServiceGitHub: []byte("github-token"),
+		testServiceGoogle: []byte("google-token"),
 	}
 
 	ciphertexts := make(map[string][]byte)
@@ -1147,7 +1156,7 @@ func TestServiceContextInAAD(t *testing.T) {
 	plaintext := []byte("test-aad-service-binding")
 
 	// Encrypt with specific service_id in context
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err, "encryption failed")
 
@@ -1158,7 +1167,7 @@ func TestServiceContextInAAD(t *testing.T) {
 	assert.Equal(t, string(plaintext), string(decrypted), "plaintext mismatch")
 
 	// Decryption with different service_id should fail (AAD verification)
-	wrongCtx := map[string]string{"service_id": "github"}
+	wrongCtx := map[string]string{"service_id": testServiceGitHub}
 	_, err = adapter.Decrypt(ctx, ciphertext, wrongCtx)
 	require.Error(t, err, "decryption with wrong service_id should fail (AAD mismatch)")
 }
@@ -1193,7 +1202,7 @@ func TestBranchKeyCacheForensics(t *testing.T) {
 	}
 
 	// Verify provisioned services work
-	for _, svc := range []string{"oauth2", "github", "google"} {
+	for _, svc := range []string{testServiceOAuth2, testServiceGitHub, testServiceGoogle} {
 		encCtx := map[string]string{"service_id": svc}
 		ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 		require.NoError(t, err, "provisioned service %s encryption failed", svc)
@@ -1258,7 +1267,7 @@ func TestBranchKeyPrePopulationValidation(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	// Verify pre-populated branch keys work
-	expectedServices := []string{"oauth2", "github", "google"}
+	expectedServices := []string{testServiceOAuth2, testServiceGitHub, testServiceGoogle}
 
 	for _, svc := range expectedServices {
 		plaintext := []byte("pre-pop-test-" + svc)
@@ -1321,7 +1330,7 @@ func TestBranchKeyCacheHitRate(t *testing.T) {
 	// Pattern: oauth2, oauth2, oauth2, github, github, oauth2
 	// Expected: Cache hits on 2nd and 3rd oauth2, 2nd github, 4th oauth2
 
-	operations := []string{"oauth2", "oauth2", "oauth2", "github", "github", "oauth2"}
+	operations := []string{testServiceOAuth2, testServiceOAuth2, testServiceOAuth2, testServiceGitHub, testServiceGitHub, testServiceOAuth2}
 	successCount := 0
 
 	for i, svc := range operations {
@@ -1359,7 +1368,7 @@ func TestConcurrentServiceEncryption(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	// Simple sequential test (concurrent goroutines would require additional coordination)
-	services := []string{"oauth2", "github", "google"}
+	services := []string{testServiceOAuth2, testServiceGitHub, testServiceGoogle}
 	errors := make([]error, 0)
 
 	for _, svc := range services {
@@ -1412,7 +1421,7 @@ func TestEncryptionTransparencyInSessionRepository(t *testing.T) {
 	// 3. Retrieve and decrypt
 
 	plaintext := []byte("session-access-token")
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	// Encrypt (simulating repository.Create)
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
@@ -1487,7 +1496,7 @@ func TestKMSKeyRotationBackwardCompatibility(t *testing.T) {
 	require.NoError(t, err, "failed to create adapter")
 
 	plaintext := []byte("oauth2-token-encrypted-before-rotation")
-	encCtx := map[string]string{"service_id": "oauth2"}
+	encCtx := map[string]string{"service_id": testServiceOAuth2}
 
 	ciphertext, err := adapter.Encrypt(ctx, plaintext, encCtx)
 	require.NoError(t, err, "encryption with key v1 failed")

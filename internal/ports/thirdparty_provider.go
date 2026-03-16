@@ -4,6 +4,7 @@ package ports
 import (
 	"context"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 )
 
@@ -29,7 +30,7 @@ type ThirdpartyOAuth2ProviderRepository interface {
 	// Get retrieves a provider entity by ID.
 	// Returns entity with Secret in encrypted state.
 	// Returns StorageError with Kind=NotFound if provider not found.
-	Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error)
+	Get(ctx context.Context, id id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error)
 
 	// Update updates an existing provider entity.
 	// Entity.Secret must be in encrypted state before calling.
@@ -39,7 +40,7 @@ type ThirdpartyOAuth2ProviderRepository interface {
 
 	// Delete removes a provider entity by ID.
 	// Idempotent: returns nil if provider doesn't exist.
-	Delete(ctx context.Context, id string) error
+	Delete(ctx context.Context, id id.ServiceID) error
 
 	// List retrieves all provider entities.
 	// Returns entities with Secret in encrypted state.
@@ -49,7 +50,7 @@ type ThirdpartyOAuth2ProviderRepository interface {
 	// CountGrantsReferencingService returns the number of active grants referencing this provider.
 	// Used to enforce FR-022 (block deletion if grants exist).
 	// Returns 0 if no grants reference the provider.
-	CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error)
+	CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error)
 
 	// FindByProtectedResource retrieves a provider by matching resource URI against
 	// protected_resources field. The resourceURI must be normalized (trailing slashes removed).

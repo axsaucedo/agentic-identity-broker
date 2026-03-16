@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
@@ -67,13 +68,7 @@ func (h *AgentGrantsHandler) GetAgentGrants(w http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 	agentID := chi.URLParam(r, "agent-id")
 
-	if agentID == "" {
-		h.logger.Warn("agent ID is missing in request")
-		h.writeError(w, http.StatusBadRequest, "bad request", "agent ID is required")
-		return
-	}
-
-	// Extract principal from request context
+	// Extract principal from request context first (authentication before input validation)
 	principalValue, ok := principal.FromContext(ctx)
 	if !ok || principalValue == "" {
 		h.logger.Warn("principal not found in context")
@@ -81,9 +76,22 @@ func (h *AgentGrantsHandler) GetAgentGrants(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if agentID == "" {
+		h.logger.Warn("agent ID is missing in request")
+		h.writeError(w, http.StatusBadRequest, "bad request", "agent ID is required")
+		return
+	}
+
+	parsedAgentID, err := id.ParseAgentID(agentID)
+	if err != nil {
+		h.logger.Warn("invalid agent ID format", "agent_id", agentID)
+		h.writeError(w, http.StatusBadRequest, "bad request", "agent ID must be a valid UUID")
+		return
+	}
+
 	// Call consent service to get user grants
 	// Note: Due to unique constraint (principal, agent_id), there is at most one grant
-	grants, err := h.consentService.GetUserGrants(ctx, principalValue, agentID)
+	grants, err := h.consentService.GetUserGrants(ctx, id.Principal(principalValue), parsedAgentID)
 	if err != nil {
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found",
@@ -126,15 +134,15 @@ func (h *AgentGrantsHandler) toUserGrantDTO(grant *storage.UserGrant) UserGrantD
 	tokens := make([]DelegatedTokenDTO, len(grant.DelegatedOAuth2Tokens))
 	for i, token := range grant.DelegatedOAuth2Tokens {
 		tokens[i] = DelegatedTokenDTO{
-			ThirdpartyOAuth2ServiceID: token.ThirdpartyOAuth2ServiceID,
+			ThirdpartyOAuth2ServiceID: token.ThirdpartyOAuth2ServiceID.String(),
 			Scopes:                    token.Scopes,
 		}
 	}
 
 	return UserGrantDTO{
-		ID:                    grant.ID,
-		Principal:             grant.Principal,
-		AgentID:               grant.AgentID,
+		ID:                    grant.ID.String(),
+		Principal:             grant.Principal.String(),
+		AgentID:               grant.AgentID.String(),
 		ValidUntil:            grant.ValidUntil,
 		DelegatedOAuth2Tokens: tokens,
 		CreatedAt:             grant.CreatedAt.Format(time.RFC3339),

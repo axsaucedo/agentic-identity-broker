@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 )
 
@@ -51,7 +52,7 @@ func (h *AgentsHandler) GetAgentDelegations(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Call consent service to get agent delegations
-	delegations, err := h.consentService.GetAgentDelegations(ctx, principalValue)
+	delegations, err := h.consentService.GetAgentDelegations(ctx, id.Principal(principalValue))
 	if err != nil {
 		h.logger.Error("failed to get agent delegations",
 			"principal", principalValue,

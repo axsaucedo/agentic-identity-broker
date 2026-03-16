@@ -4,24 +4,24 @@ import (
 	"context"
 	"sync"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
-	"github.com/google/uuid"
 )
 
 // AgentRepository provides in-memory storage for Agent entities.
 // Thread-safe implementation using sync.RWMutex.
 type AgentRepository struct {
 	mu         sync.RWMutex
-	agents     map[string]*storage.Agent // ID -> Agent
-	byClientID map[string]string         // ClientID -> ID
+	agents     map[id.AgentID]*storage.Agent // ID -> Agent
+	byClientID map[id.ClientID]id.AgentID    // ClientID -> ID
 }
 
 // NewAgentRepository creates a new in-memory agent repository.
 func NewAgentRepository() *AgentRepository {
 	return &AgentRepository{
-		agents:     make(map[string]*storage.Agent),
-		byClientID: make(map[string]string),
+		agents:     make(map[id.AgentID]*storage.Agent),
+		byClientID: make(map[id.ClientID]id.AgentID),
 	}
 }
 
@@ -33,8 +33,8 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 	defer r.mu.Unlock()
 
 	// Generate ID if not provided
-	if agent.ID == "" {
-		agent.ID = uuid.New().String()
+	if agent.ID.IsZero() {
+		agent.ID = id.NewAgentID()
 	}
 
 	// Check for duplicate ID
@@ -76,11 +76,11 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 
 // Get retrieves an agent entity by ID.
 // Returns StorageError with Kind=NotFound if agent not found.
-func (r *AgentRepository) Get(ctx context.Context, id string) (*storage.Agent, error) {
+func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	agent, exists := r.agents[id]
+	agent, exists := r.agents[agentID]
 	if !exists {
 		return nil, storage.NewStorageError(
 			"GetAgent",
@@ -144,14 +144,14 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 
 // Delete deletes an agent entity by ID.
 // Idempotent: returns nil if agent doesn't exist.
-func (r *AgentRepository) Delete(ctx context.Context, id string) error {
+func (r *AgentRepository) Delete(ctx context.Context, agentID id.AgentID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// Get agent to clean up indexes
-	if agent, exists := r.agents[id]; exists {
+	if agent, exists := r.agents[agentID]; exists {
 		delete(r.byClientID, agent.ClientID)
-		delete(r.agents, id)
+		delete(r.agents, agentID)
 	}
 
 	return nil
@@ -173,7 +173,7 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 
 // GetByClientID retrieves an agent entity by client_id.
 // Returns StorageError with Kind=NotFound if agent not found.
-func (r *AgentRepository) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

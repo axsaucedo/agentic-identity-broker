@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
@@ -16,14 +17,14 @@ func TestAgentRepository_Create(t *testing.T) {
 	t.Run("success with generated ID", func(t *testing.T) {
 		repo := NewAgentRepository()
 		agent := &storage.Agent{
-			ClientID:    "test-client",
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 		}
 
 		err := repo.Create(ctx, agent)
 		require.NoError(t, err)
-		assert.NotEmpty(t, agent.ID) // ID should be generated
+		assert.False(t, agent.ID.IsZero()) // ID should be generated
 
 		// Verify agent was stored
 		retrieved, err := repo.Get(ctx, agent.ID)
@@ -33,29 +34,31 @@ func TestAgentRepository_Create(t *testing.T) {
 
 	t.Run("success with provided ID", func(t *testing.T) {
 		repo := NewAgentRepository()
+		customID := id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01")
 		agent := &storage.Agent{
-			ID:          "custom-id",
-			ClientID:    "test-client",
+			ID:          customID,
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 		}
 
 		err := repo.Create(ctx, agent)
 		require.NoError(t, err)
-		assert.Equal(t, "custom-id", agent.ID)
+		assert.Equal(t, customID, agent.ID)
 	})
 
 	t.Run("duplicate ID conflict", func(t *testing.T) {
 		repo := NewAgentRepository()
+		dupID := id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a02")
 		agent1 := &storage.Agent{
-			ID:          "duplicate-id",
-			ClientID:    "client-1",
+			ID:          dupID,
+			ClientID:    id.ClientID("client-1"),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 		}
 		agent2 := &storage.Agent{
-			ID:          "duplicate-id",
-			ClientID:    "client-2",
+			ID:          dupID,
+			ClientID:    id.ClientID("client-2"),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 		}
@@ -71,12 +74,12 @@ func TestAgentRepository_Create(t *testing.T) {
 	t.Run("duplicate client_id conflict", func(t *testing.T) {
 		repo := NewAgentRepository()
 		agent1 := &storage.Agent{
-			ClientID:    "duplicate-client",
+			ClientID:    id.ClientID("duplicate-client"),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 		}
 		agent2 := &storage.Agent{
-			ClientID:    "duplicate-client",
+			ClientID:    id.ClientID("duplicate-client"),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 		}
@@ -92,7 +95,7 @@ func TestAgentRepository_Create(t *testing.T) {
 	t.Run("validation failure", func(t *testing.T) {
 		repo := NewAgentRepository()
 		agent := &storage.Agent{
-			ClientID: "test-client",
+			ClientID: id.ClientID("test-client"),
 			// Missing required DisplayName
 			Description: "A test agent",
 		}
@@ -108,9 +111,10 @@ func TestAgentRepository_Get(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		repo := NewAgentRepository()
+		testAgentID := id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a10")
 		agent := &storage.Agent{
-			ID:          "test-id",
-			ClientID:    "test-client",
+			ID:          testAgentID,
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 		}
@@ -118,16 +122,16 @@ func TestAgentRepository_Get(t *testing.T) {
 		err := repo.Create(ctx, agent)
 		require.NoError(t, err)
 
-		retrieved, err := repo.Get(ctx, "test-id")
+		retrieved, err := repo.Get(ctx, testAgentID)
 		require.NoError(t, err)
-		assert.Equal(t, "test-id", retrieved.ID)
-		assert.Equal(t, "test-client", retrieved.ClientID)
+		assert.Equal(t, testAgentID, retrieved.ID)
+		assert.Equal(t, id.ClientID("test-client"), retrieved.ClientID)
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		repo := NewAgentRepository()
 
-		retrieved, err := repo.Get(ctx, "nonexistent")
+		retrieved, err := repo.Get(ctx, id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"))
 		require.Error(t, err)
 		assert.Nil(t, retrieved)
 		assert.Contains(t, err.Error(), "not found")
@@ -135,9 +139,10 @@ func TestAgentRepository_Get(t *testing.T) {
 
 	t.Run("returns copy prevents external mutation", func(t *testing.T) {
 		repo := NewAgentRepository()
+		testAgentID := id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a10")
 		agent := &storage.Agent{
-			ID:          "test-id",
-			ClientID:    "test-client",
+			ID:          testAgentID,
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Original Name",
 			Description: "A test agent",
 		}
@@ -146,12 +151,12 @@ func TestAgentRepository_Get(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get and modify
-		retrieved, err := repo.Get(ctx, "test-id")
+		retrieved, err := repo.Get(ctx, testAgentID)
 		require.NoError(t, err)
 		retrieved.DisplayName = "Modified Name"
 
 		// Original should be unchanged
-		original, err := repo.Get(ctx, "test-id")
+		original, err := repo.Get(ctx, testAgentID)
 		require.NoError(t, err)
 		assert.Equal(t, "Original Name", original.DisplayName)
 	})
@@ -162,9 +167,10 @@ func TestAgentRepository_Update(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		repo := NewAgentRepository()
+		testAgentID := id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a10")
 		agent := &storage.Agent{
-			ID:          "test-id",
-			ClientID:    "test-client",
+			ID:          testAgentID,
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Original Name",
 			Description: "Original description",
 		}
@@ -179,7 +185,7 @@ func TestAgentRepository_Update(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify update
-		updated, err := repo.Get(ctx, "test-id")
+		updated, err := repo.Get(ctx, testAgentID)
 		require.NoError(t, err)
 		assert.Equal(t, "Updated Name", updated.DisplayName)
 		assert.Equal(t, "Updated description", updated.Description)
@@ -188,8 +194,8 @@ func TestAgentRepository_Update(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		repo := NewAgentRepository()
 		agent := &storage.Agent{
-			ID:          "nonexistent",
-			ClientID:    "test-client",
+			ID:          id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"),
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 		}
@@ -203,14 +209,14 @@ func TestAgentRepository_Update(t *testing.T) {
 		repo := NewAgentRepository()
 
 		agent1 := &storage.Agent{
-			ID:          "agent-1",
-			ClientID:    "client-1",
+			ID:          id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a21"),
+			ClientID:    id.ClientID("client-1"),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 		}
 		agent2 := &storage.Agent{
-			ID:          "agent-2",
-			ClientID:    "client-2",
+			ID:          id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"),
+			ClientID:    id.ClientID("client-2"),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 		}
@@ -221,7 +227,7 @@ func TestAgentRepository_Update(t *testing.T) {
 		require.NoError(t, err)
 
 		// Try to update agent2 with agent1's client_id
-		agent2.ClientID = "client-1"
+		agent2.ClientID = id.ClientID("client-1")
 		err = repo.Update(ctx, agent2)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "client_id already exists")
@@ -229,9 +235,10 @@ func TestAgentRepository_Update(t *testing.T) {
 
 	t.Run("validation failure", func(t *testing.T) {
 		repo := NewAgentRepository()
+		testAgentID := id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a10")
 		agent := &storage.Agent{
-			ID:          "test-id",
-			ClientID:    "test-client",
+			ID:          testAgentID,
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 		}
@@ -252,9 +259,10 @@ func TestAgentRepository_Delete(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		repo := NewAgentRepository()
+		testAgentID := id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a10")
 		agent := &storage.Agent{
-			ID:          "test-id",
-			ClientID:    "test-client",
+			ID:          testAgentID,
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 		}
@@ -262,26 +270,27 @@ func TestAgentRepository_Delete(t *testing.T) {
 		err := repo.Create(ctx, agent)
 		require.NoError(t, err)
 
-		err = repo.Delete(ctx, "test-id")
+		err = repo.Delete(ctx, testAgentID)
 		require.NoError(t, err)
 
 		// Verify deletion
-		_, err = repo.Get(ctx, "test-id")
+		_, err = repo.Get(ctx, testAgentID)
 		require.Error(t, err)
 	})
 
 	t.Run("idempotent - nonexistent agent", func(t *testing.T) {
 		repo := NewAgentRepository()
 
-		err := repo.Delete(ctx, "nonexistent")
+		err := repo.Delete(ctx, id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"))
 		require.NoError(t, err) // Should not error
 	})
 
 	t.Run("cleans up client_id index", func(t *testing.T) {
 		repo := NewAgentRepository()
+		testAgentID := id.MustParseAgentID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a10")
 		agent := &storage.Agent{
-			ID:          "test-id",
-			ClientID:    "test-client",
+			ID:          testAgentID,
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 		}
@@ -289,12 +298,12 @@ func TestAgentRepository_Delete(t *testing.T) {
 		err := repo.Create(ctx, agent)
 		require.NoError(t, err)
 
-		err = repo.Delete(ctx, "test-id")
+		err = repo.Delete(ctx, testAgentID)
 		require.NoError(t, err)
 
 		// Should be able to reuse client_id
 		newAgent := &storage.Agent{
-			ClientID:    "test-client",
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "New Agent",
 			Description: "A new agent",
 		}
@@ -310,12 +319,12 @@ func TestAgentRepository_List(t *testing.T) {
 		repo := NewAgentRepository()
 
 		agent1 := &storage.Agent{
-			ClientID:    "client-1",
+			ClientID:    id.ClientID("client-1"),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 		}
 		agent2 := &storage.Agent{
-			ClientID:    "client-2",
+			ClientID:    id.ClientID("client-2"),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 		}
@@ -342,7 +351,7 @@ func TestAgentRepository_List(t *testing.T) {
 	t.Run("returns copies prevent external mutation", func(t *testing.T) {
 		repo := NewAgentRepository()
 		agent := &storage.Agent{
-			ClientID:    "test-client",
+			ClientID:    id.ClientID("test-client"),
 			DisplayName: "Original Name",
 			Description: "A test agent",
 		}

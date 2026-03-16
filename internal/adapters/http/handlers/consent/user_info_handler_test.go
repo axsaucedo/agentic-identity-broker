@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +35,7 @@ func TestGetUserInfo_Success(t *testing.T) {
 	err := json.NewDecoder(rec.Body).Decode(&resp)
 	require.NoError(t, err)
 
-	assert.Equal(t, principalValue, resp.Data.Principal)
+	assert.Equal(t, id.Principal(principalValue), resp.Data.Principal)
 	assert.Equal(t, principalValue, resp.Data.DisplayName) // Display name defaults to principal
 	assert.Nil(t, resp.Data.Email)
 	assert.Nil(t, resp.Data.PictureURL)
@@ -77,7 +78,7 @@ func TestGetUserInfo_DifferentPrincipals(t *testing.T) {
 			err := json.NewDecoder(rec.Body).Decode(&resp)
 			require.NoError(t, err)
 
-			assert.Equal(t, tc.principal, resp.Data.Principal)
+			assert.Equal(t, id.Principal(tc.principal), resp.Data.Principal)
 			assert.Equal(t, tc.principal, resp.Data.DisplayName)
 		})
 	}
@@ -192,7 +193,7 @@ func TestGetUserInfo_EnrichedProfile(t *testing.T) {
 	err := json.NewDecoder(rec.Body).Decode(&resp)
 	require.NoError(t, err)
 
-	assert.Equal(t, "alice@example.com", resp.Data.Principal)
+	assert.Equal(t, id.Principal("alice@example.com"), resp.Data.Principal)
 	assert.Equal(t, "Alice Smith", resp.Data.DisplayName)
 	assert.NotNil(t, resp.Data.Email)
 	assert.Equal(t, "alice@corp.com", *resp.Data.Email)
@@ -224,7 +225,7 @@ func TestGetUserInfo_PartialProfile(t *testing.T) {
 	err := json.NewDecoder(rec.Body).Decode(&resp)
 	require.NoError(t, err)
 
-	assert.Equal(t, "alice@example.com", resp.Data.Principal)
+	assert.Equal(t, id.Principal("alice@example.com"), resp.Data.Principal)
 	assert.Equal(t, "Alice Smith", resp.Data.DisplayName)
 	assert.NotNil(t, resp.Data.Email)
 	assert.Equal(t, "alice@corp.com", *resp.Data.Email)
@@ -251,7 +252,7 @@ func TestGetUserInfo_PlainHeaderProfile(t *testing.T) {
 	err := json.NewDecoder(rec.Body).Decode(&resp)
 	require.NoError(t, err)
 
-	assert.Equal(t, "user@example.com", resp.Data.Principal)
+	assert.Equal(t, id.Principal("user@example.com"), resp.Data.Principal)
 	assert.Equal(t, "user@example.com", resp.Data.DisplayName, "display name should equal principal for plain header")
 	assert.Nil(t, resp.Data.Email, "email should be nil for plain header")
 	assert.Nil(t, resp.Data.PictureURL, "pictureUrl should be nil for plain header")
@@ -314,7 +315,7 @@ func TestGetUserInfo_BackwardCompatWithPrincipalOnly(t *testing.T) {
 	err := json.NewDecoder(rec.Body).Decode(&resp)
 	require.NoError(t, err)
 
-	assert.Equal(t, "user@example.com", resp.Data.Principal)
+	assert.Equal(t, id.Principal("user@example.com"), resp.Data.Principal)
 	assert.Equal(t, "user@example.com", resp.Data.DisplayName)
 	assert.Nil(t, resp.Data.Email)
 	assert.Nil(t, resp.Data.PictureURL)

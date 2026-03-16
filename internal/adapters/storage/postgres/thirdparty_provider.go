@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
@@ -37,7 +38,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Create(ctx context.Context,
 	if entity == nil {
 		return storage.NewStorageError("CreateThirdpartyOAuth2Provider", storage.ErrorKindValidation, nil, "entity cannot be nil")
 	}
-	if entity.ID == "" {
+	if entity.ID.IsZero() {
 		return storage.NewStorageError("CreateThirdpartyOAuth2Provider",
 			storage.ErrorKindValidation, nil,
 			"provider ID cannot be empty: caller must set ID before storing")
@@ -82,11 +83,11 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Create(ctx context.Context,
 
 // Get retrieves a provider entity by ID from PostgreSQL.
 // Returns entity with Secret in encrypted state.
-func (r *PostgresThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+func (r *PostgresThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError("GetThirdpartyOAuth2Provider", storage.ErrorKindConnection, nil, "database not initialized")
 	}
-	if id == "" {
+	if serviceID.IsZero() {
 		return nil, storage.NewStorageError("GetThirdpartyOAuth2Provider", storage.ErrorKindValidation, nil, "provider ID cannot be empty")
 	}
 
@@ -102,7 +103,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, id
 	`
 
 	var record ThirdpartyOAuth2ProviderRecord
-	err := r.adapter.db.QueryRowContext(queryCtx, query, id).Scan(
+	err := r.adapter.db.QueryRowContext(queryCtx, query, serviceID).Scan(
 		&record.ID, &record.DisplayName, &record.ClientID, &record.SecretCiphertext,
 		&record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL,
 		&record.TokenEndpoint, &record.AuthorizeEndpoint,
@@ -119,7 +120,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, id
 		return nil, storage.NewStorageError("GetThirdpartyOAuth2Provider", storage.ErrorKindConnection, err, "failed to get provider")
 	}
 
-	return recordToEntity(&record), nil
+	return recordToEntity(&record)
 }
 
 // Update updates an existing provider entity in PostgreSQL.
@@ -182,15 +183,15 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Update(ctx context.Context,
 
 // Delete removes a provider entity by ID from PostgreSQL.
 // Returns Conflict error if grants reference this provider (FR-022).
-func (r *PostgresThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context, id string) error {
+func (r *PostgresThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context, serviceID id.ServiceID) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError("DeleteThirdpartyOAuth2Provider", storage.ErrorKindConnection, nil, "database not initialized")
 	}
-	if id == "" {
+	if serviceID.IsZero() {
 		return storage.NewStorageError("DeleteThirdpartyOAuth2Provider", storage.ErrorKindValidation, nil, "provider ID cannot be empty")
 	}
 
-	count, err := r.CountGrantsReferencingService(ctx, id)
+	count, err := r.CountGrantsReferencingService(ctx, serviceID)
 	if err != nil {
 		return err
 	}
@@ -206,7 +207,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Delete(ctx context.Context,
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
-	_, err = r.adapter.db.ExecContext(execCtx, `DELETE FROM thirdparty_oauth2_services WHERE id = $1`, id)
+	_, err = r.adapter.db.ExecContext(execCtx, `DELETE FROM thirdparty_oauth2_services WHERE id = $1`, serviceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
 			return storage.NewStorageError("DeleteThirdpartyOAuth2Provider", storage.ErrorKindTimeout, err, "operation exceeded timeout")
@@ -263,7 +264,11 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) List(ctx context.Context) (
 				fmt.Sprintf("failed to scan provider row: %v", err),
 			)
 		}
-		entities = append(entities, recordToEntity(&record))
+		entity, err := recordToEntity(&record)
+		if err != nil {
+			return nil, err
+		}
+		entities = append(entities, entity)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -275,7 +280,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) List(ctx context.Context) (
 
 // CountGrantsReferencingService returns the count of grants referencing this provider.
 // Used to enforce FR-022 (block deletion if grants exist).
-func (r *PostgresThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
+func (r *PostgresThirdpartyOAuth2ProviderRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	if r.adapter.db == nil {
 		return 0, storage.NewStorageError("CountGrantsReferencingProvider", storage.ErrorKindConnection, nil, "database not initialized")
 	}
@@ -348,7 +353,11 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx
 				fmt.Sprintf("failed to scan provider row: %v", err),
 			)
 		}
-		entities = append(entities, recordToEntity(&record))
+		entity, err := recordToEntity(&record)
+		if err != nil {
+			return nil, err
+		}
+		entities = append(entities, entity)
 	}
 
 	if err := rows.Err(); err != nil {

@@ -7,8 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 
-	"github.com/google/uuid"
-
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -74,8 +73,8 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 	}
 
 	// Generate ID before encryption so context binding matches persisted ID
-	if entity.ID == "" {
-		entity.ID = uuid.New().String()
+	if entity.ID.IsZero() {
+		entity.ID = id.NewServiceID()
 	}
 
 	// Provision branch key before creating service (fail-fast on error)
@@ -100,7 +99,7 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 	}
 
 	// Build encryption context with service_id only (ADR 008)
-	encContext := map[string]string{"service_id": entity.ID}
+	encContext := map[string]string{"service_id": entity.ID.String()}
 
 	// Encrypt secret
 	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), encContext)
@@ -134,7 +133,7 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 // Returns entity with Secret in plaintext state.
 func (s *ThirdpartyOAuth2ProviderService) Get(
 	ctx context.Context,
-	serviceID string,
+	serviceID id.ServiceID,
 ) (*model.ThirdpartyOAuth2ProviderEntity, error) {
 	entity, err := s.repo.Get(ctx, serviceID)
 	if err != nil {
@@ -170,7 +169,7 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 		return fmt.Errorf("failed to read plaintext secret for update: %w", err)
 	}
 
-	encContext := map[string]string{"service_id": entity.ID}
+	encContext := map[string]string{"service_id": entity.ID.String()}
 	ciphertext, err := s.encryption.Encrypt(ctx, []byte(plaintext), encContext)
 	if err != nil {
 		s.logger.Error("encryption_failed",
@@ -213,7 +212,7 @@ func (s *ThirdpartyOAuth2ProviderService) List(
 // Delete removes a provider from storage.
 func (s *ThirdpartyOAuth2ProviderService) Delete(
 	ctx context.Context,
-	serviceID string,
+	serviceID id.ServiceID,
 ) error {
 	if err := s.repo.Delete(ctx, serviceID); err != nil {
 		return fmt.Errorf("failed to delete provider: %w", err)
@@ -239,7 +238,7 @@ func (s *ThirdpartyOAuth2ProviderService) FindByProtectedResource(
 // CountGrantsReferencingService returns the number of grants referencing this provider.
 func (s *ThirdpartyOAuth2ProviderService) CountGrantsReferencingService(
 	ctx context.Context,
-	serviceID string,
+	serviceID id.ServiceID,
 ) (int, error) {
 	return s.repo.CountGrantsReferencingService(ctx, serviceID)
 }
@@ -269,7 +268,7 @@ func (s *ThirdpartyOAuth2ProviderService) ValidateServiceRequirements(
 					"ValidateServiceRequirements",
 					storage.ErrorKindValidation,
 					nil,
-					"service_id "+sr.ServiceID+" not found (index "+strconv.Itoa(i)+")",
+					"service_id "+sr.ServiceID.String()+" not found (index "+strconv.Itoa(i)+")",
 				)
 			}
 			return err
@@ -310,7 +309,7 @@ func (s *ThirdpartyOAuth2ProviderService) decryptSecret(
 		return nil, fmt.Errorf("entity has no encrypted secret: %w", err)
 	}
 
-	encContext := map[string]string{"service_id": entity.ID}
+	encContext := map[string]string{"service_id": entity.ID.String()}
 
 	plaintext, err := s.encryption.Decrypt(ctx, ciphertext, encContext)
 	if err != nil {

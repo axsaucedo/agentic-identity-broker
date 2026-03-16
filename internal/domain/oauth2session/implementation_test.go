@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -71,14 +71,14 @@ func TestImplementation_InitiateOAuth2Flow_Success(t *testing.T) {
 	service, providerService := setupImplementedService(t)
 
 	// Create a third-party service
-	principal := "user@example.com"
-	serviceID := uuid.New().String()
+	principal := id.Principal("user@example.com")
+	serviceID := id.NewServiceID()
 	redirectURI := "https://example.com/sessions"
 
 	thirdPartyService := &model.ThirdpartyOAuth2ProviderEntity{
 		ID:          serviceID,
 		DisplayName: "GitHub",
-		ClientID:    "test-client-id",
+		ClientID:    id.ClientID("test-client-id"),
 		Secret:      model.NewPlaintextSecret("test-secret"),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
@@ -125,8 +125,8 @@ func TestImplementation_StateTokenValidation_Success(t *testing.T) {
 	ctx := context.Background()
 	service, providerService := setupImplementedService(t)
 
-	principal := "user@example.com"
-	serviceID := uuid.New().String()
+	principal := id.Principal("user@example.com")
+	serviceID := id.NewServiceID()
 	redirectURI := "https://example.com/sessions"
 
 	// Create service
@@ -158,9 +158,9 @@ func TestImplementation_StateTokenValidation_PrincipalMismatch(t *testing.T) {
 	ctx := context.Background()
 	service, providerService := setupImplementedService(t)
 
-	principal1 := "user1@example.com"
-	principal2 := "user2@example.com"
-	serviceID := uuid.New().String()
+	principal1 := id.Principal("user1@example.com")
+	principal2 := id.Principal("user2@example.com")
+	serviceID := id.NewServiceID()
 	redirectURI := "https://example.com/sessions"
 
 	// Create service
@@ -181,9 +181,9 @@ func TestImplementation_StateTokenValidation_ServiceIDMismatch(t *testing.T) {
 	ctx := context.Background()
 	service, providerService := setupImplementedService(t)
 
-	principal := "user@example.com"
-	serviceID1 := uuid.New().String()
-	serviceID2 := uuid.New().String()
+	principal := id.Principal("user@example.com")
+	serviceID1 := id.NewServiceID()
+	serviceID2 := id.NewServiceID()
 	redirectURI := "https://example.com/sessions"
 
 	// Create two services
@@ -208,8 +208,8 @@ func TestImplementation_StateTokenValidation_ServiceIDMismatch(t *testing.T) {
 func TestImplementation_StateTokenValidation_InvalidToken(t *testing.T) {
 	service, _ := setupImplementedService(t)
 
-	principal := "user@example.com"
-	serviceID := uuid.New().String()
+	principal := id.Principal("user@example.com")
+	serviceID := id.NewServiceID()
 
 	// Try to validate invalid token
 	_, err := service.ValidateStateToken("invalid-token-xyz", principal, serviceID)
@@ -221,8 +221,8 @@ func TestImplementation_InitiateOAuth2Flow_ServiceNotFound(t *testing.T) {
 	ctx := context.Background()
 	service, _ := setupImplementedService(t)
 
-	principal := "user@example.com"
-	serviceID := "non-existent-service-id"
+	principal := id.Principal("user@example.com")
+	serviceID := id.NewServiceID()
 	redirectURI := "https://example.com/sessions"
 
 	result, err := service.InitiateOAuth2Flow(ctx, principal, serviceID, redirectURI)
@@ -238,8 +238,8 @@ func TestImplementation_StateToken_RoundTrip(t *testing.T) {
 	// Create claims
 	now := time.Now()
 	originalClaims := &oauth2session.OAuth2StateTokenClaims{
-		Principal:    "user@example.com",
-		ServiceID:    uuid.New().String(),
+		Principal:    id.Principal("user@example.com"),
+		ServiceID:    id.NewServiceID(),
 		PKCEVerifier: "test-verifier-1234567890",
 		RedirectURI:  "https://example.com/callback",
 		IssuedAt:     now,

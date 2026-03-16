@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
@@ -17,21 +18,21 @@ import (
 
 // mockAgentGrantsService is a mock implementation of consent.Service for testing.
 type mockAgentGrantsService struct {
-	getUserGrantsFunc func(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error)
+	getUserGrantsFunc func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 }
 
-func (m *mockAgentGrantsService) GetUserGrants(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error) {
+func (m *mockAgentGrantsService) GetUserGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	if m.getUserGrantsFunc != nil {
 		return m.getUserGrantsFunc(ctx, principal, agentID)
 	}
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockAgentGrantsService) GetAgentDetail(ctx context.Context, agentID string) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
+func (m *mockAgentGrantsService) GetAgentDetail(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
 	return nil, nil, errors.New("not implemented")
 }
 
-func (m *mockAgentGrantsService) GetAgentConsentInfo(ctx context.Context, agentID string) (*consent.AgentConsentInfo, error) {
+func (m *mockAgentGrantsService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -39,27 +40,29 @@ func (m *mockAgentGrantsService) GrantConsent(ctx context.Context, req *consent.
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockAgentGrantsService) RevokeConsent(ctx context.Context, principal, agentID string) error {
+func (m *mockAgentGrantsService) RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
 	return errors.New("not implemented")
 }
 
-func (m *mockAgentGrantsService) GetActiveGrants(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error) {
+func (m *mockAgentGrantsService) GetActiveGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockAgentGrantsService) GetAgentDelegations(ctx context.Context, principal string) ([]consent.AgentDelegation, error) {
+func (m *mockAgentGrantsService) GetAgentDelegations(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error) {
 	return nil, errors.New("not implemented")
 }
 
 func TestGetAgentGrants_Success(t *testing.T) {
 	// Setup
 	principalValue := "user@example.com"
-	agentID := "agent-123"
+	agentID := id.NewAgentID()
+	grantID := id.NewGrantID()
+	serviceID := id.NewServiceID()
 	validUntil := time.Now().Add(24 * time.Hour)
 
 	mockService := &mockAgentGrantsService{
-		getUserGrantsFunc: func(ctx context.Context, p, agID string) ([]*storage.UserGrant, error) {
-			if p != principalValue {
+		getUserGrantsFunc: func(ctx context.Context, p id.Principal, agID id.AgentID) ([]*storage.UserGrant, error) {
+			if p != id.Principal(principalValue) {
 				t.Errorf("expected principal %s, got %s", principalValue, p)
 			}
 			if agID != agentID {
@@ -68,13 +71,13 @@ func TestGetAgentGrants_Success(t *testing.T) {
 
 			return []*storage.UserGrant{
 				{
-					ID:         "grant-1",
-					Principal:  principalValue,
+					ID:         grantID,
+					Principal:  id.Principal(principalValue),
 					AgentID:    agentID,
 					ValidUntil: &validUntil,
 					DelegatedOAuth2Tokens: []storage.DelegatedToken{
 						{
-							ThirdpartyOAuth2ServiceID: "github",
+							ThirdpartyOAuth2ServiceID: serviceID,
 							Scopes:                    []string{"read:user", "repo"},
 						},
 					},
@@ -88,10 +91,10 @@ func TestGetAgentGrants_Success(t *testing.T) {
 	handler := NewAgentGrantsHandler(mockService, nil)
 
 	// Create request with principal in context
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String()+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -117,8 +120,8 @@ func TestGetAgentGrants_Success(t *testing.T) {
 	}
 
 	// Verify grant details
-	if response.Data.ID != "grant-1" {
-		t.Errorf("expected grant ID 'grant-1', got %s", response.Data.ID)
+	if response.Data.ID != grantID.String() {
+		t.Errorf("expected grant ID '%s', got %s", grantID.String(), response.Data.ID)
 	}
 	if response.Data.Principal != principalValue {
 		t.Errorf("expected principal %s, got %s", principalValue, response.Data.Principal)
@@ -134,10 +137,10 @@ func TestGetAgentGrants_Success(t *testing.T) {
 func TestGetAgentGrants_EmptyGrants(t *testing.T) {
 	// Setup - user hasn't granted this agent access yet
 	principalValue := "user@example.com"
-	agentID := "agent-123"
+	agentID := id.NewAgentID()
 
 	mockService := &mockAgentGrantsService{
-		getUserGrantsFunc: func(ctx context.Context, p, agID string) ([]*storage.UserGrant, error) {
+		getUserGrantsFunc: func(ctx context.Context, p id.Principal, agID id.AgentID) ([]*storage.UserGrant, error) {
 			return []*storage.UserGrant{}, nil // Empty grants
 		},
 	}
@@ -145,10 +148,10 @@ func TestGetAgentGrants_EmptyGrants(t *testing.T) {
 	handler := NewAgentGrantsHandler(mockService, nil)
 
 	// Create request with principal in context
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String()+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -243,10 +246,10 @@ func TestGetAgentGrants_MissingAgentID(t *testing.T) {
 func TestGetAgentGrants_AgentNotFound(t *testing.T) {
 	// Setup
 	principalValue := "user@example.com"
-	agentID := "nonexistent-agent"
+	agentID := id.NewAgentID()
 
 	mockService := &mockAgentGrantsService{
-		getUserGrantsFunc: func(ctx context.Context, p, agID string) ([]*storage.UserGrant, error) {
+		getUserGrantsFunc: func(ctx context.Context, p id.Principal, agID id.AgentID) ([]*storage.UserGrant, error) {
 			return nil, consent.ErrAgentNotFound
 		},
 	}
@@ -254,10 +257,10 @@ func TestGetAgentGrants_AgentNotFound(t *testing.T) {
 	handler := NewAgentGrantsHandler(mockService, nil)
 
 	// Create request with principal in context
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String()+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -285,10 +288,10 @@ func TestGetAgentGrants_AgentNotFound(t *testing.T) {
 func TestGetAgentGrants_ServiceError(t *testing.T) {
 	// Setup
 	principalValue := "user@example.com"
-	agentID := "agent-123"
+	agentID := id.NewAgentID()
 
 	mockService := &mockAgentGrantsService{
-		getUserGrantsFunc: func(ctx context.Context, p, agID string) ([]*storage.UserGrant, error) {
+		getUserGrantsFunc: func(ctx context.Context, p id.Principal, agID id.AgentID) ([]*storage.UserGrant, error) {
 			return nil, errors.New("database connection failed")
 		},
 	}
@@ -296,10 +299,10 @@ func TestGetAgentGrants_ServiceError(t *testing.T) {
 	handler := NewAgentGrantsHandler(mockService, nil)
 
 	// Create request with principal in context
-	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String()+"/grants", nil)
 	ctx := principal.WithPrincipal(req.Context(), principalValue)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID)
+	rctx.URLParams.Add("agent-id", agentID.String())
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
 	req = req.WithContext(ctx)
 
@@ -326,18 +329,21 @@ func TestGetAgentGrants_ServiceError(t *testing.T) {
 
 func TestToUserGrantDTO_Conversion(t *testing.T) {
 	// Setup
+	grantID := id.NewGrantID()
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
 	validUntil := time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC)
 	createdAt := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 
 	grant := &storage.UserGrant{
-		ID:         "grant-123",
-		Principal:  "user@example.com",
-		AgentID:    "agent-456",
+		ID:         grantID,
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    agentID,
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "github",
+				ThirdpartyOAuth2ServiceID: serviceID,
 				Scopes:                    []string{"read:user", "repo"},
 			},
 		},
@@ -352,14 +358,14 @@ func TestToUserGrantDTO_Conversion(t *testing.T) {
 	dto := handler.toUserGrantDTO(grant)
 
 	// Assert
-	if dto.ID != "grant-123" {
-		t.Errorf("expected ID 'grant-123', got %s", dto.ID)
+	if dto.ID != grantID.String() {
+		t.Errorf("expected ID '%s', got %s", grantID.String(), dto.ID)
 	}
 	if dto.Principal != "user@example.com" {
 		t.Errorf("expected principal 'user@example.com', got %s", dto.Principal)
 	}
-	if dto.AgentID != "agent-456" {
-		t.Errorf("expected agentID 'agent-456', got %s", dto.AgentID)
+	if dto.AgentID != agentID.String() {
+		t.Errorf("expected agentID '%s', got %s", agentID.String(), dto.AgentID)
 	}
 	if dto.ValidUntil == nil {
 		t.Fatal("expected ValidUntil to be set")
@@ -370,8 +376,8 @@ func TestToUserGrantDTO_Conversion(t *testing.T) {
 	if len(dto.DelegatedOAuth2Tokens) != 1 {
 		t.Errorf("expected 1 delegated token, got %d", len(dto.DelegatedOAuth2Tokens))
 	}
-	if dto.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID != "github" {
-		t.Errorf("expected service ID 'github', got %s", dto.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+	if dto.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID != serviceID.String() {
+		t.Errorf("expected service ID '%s', got %s", serviceID.String(), dto.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
 	}
 	if len(dto.DelegatedOAuth2Tokens[0].Scopes) != 2 {
 		t.Errorf("expected 2 scopes, got %d", len(dto.DelegatedOAuth2Tokens[0].Scopes))
@@ -388,7 +394,5 @@ func TestToUserGrantDTO_Conversion(t *testing.T) {
 	}
 }
 
-// Ensure mockAgentGrantsService implements the required interface methods
-var _ interface {
-	GetUserGrants(ctx context.Context, principal, agentID string) ([]*storage.UserGrant, error)
-} = (*mockAgentGrantsService)(nil)
+// Ensure mockAgentGrantsService implements the ConsentService interface
+var _ ConsentService = (*mockAgentGrantsService)(nil)

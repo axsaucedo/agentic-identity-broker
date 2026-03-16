@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -12,14 +13,14 @@ import (
 // InMemoryUserSessionRepository is an in-memory implementation for testing/development.
 type InMemoryUserSessionRepository struct {
 	mu       sync.RWMutex
-	sessions map[string]*storage.UserSession // Key: session ID
-	index    map[string]*storage.UserSession // Key: "{principal}#{serviceID}"
+	sessions map[id.SessionID]*storage.UserSession // Key: session ID
+	index    map[string]*storage.UserSession       // Key: "{principal}#{serviceID}"
 }
 
 // NewInMemoryUserSessionRepository creates a new in-memory repository.
 func NewInMemoryUserSessionRepository() ports.UserSessionRepository {
 	return &InMemoryUserSessionRepository{
-		sessions: make(map[string]*storage.UserSession),
+		sessions: make(map[id.SessionID]*storage.UserSession),
 		index:    make(map[string]*storage.UserSession),
 	}
 }
@@ -51,15 +52,15 @@ func (r *InMemoryUserSessionRepository) Create(ctx context.Context, session *sto
 }
 
 // Get retrieves a session by ID.
-func (r *InMemoryUserSessionRepository) Get(ctx context.Context, id string) (*storage.UserSession, error) {
-	if id == "" {
+func (r *InMemoryUserSessionRepository) Get(ctx context.Context, sessionID id.SessionID) (*storage.UserSession, error) {
+	if sessionID.IsZero() {
 		return nil, errors.New("session ID cannot be empty")
 	}
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	session, ok := r.sessions[id]
+	session, ok := r.sessions[sessionID]
 	if !ok {
 		return nil, storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "session not found")
 	}
@@ -67,8 +68,8 @@ func (r *InMemoryUserSessionRepository) Get(ctx context.Context, id string) (*st
 }
 
 // FindByPrincipalAndService retrieves the session for a principal and service.
-func (r *InMemoryUserSessionRepository) FindByPrincipalAndService(ctx context.Context, principal, serviceID string) (*storage.UserSession, error) {
-	if principal == "" || serviceID == "" {
+func (r *InMemoryUserSessionRepository) FindByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storage.UserSession, error) {
+	if principal.IsZero() || serviceID.IsZero() {
 		return nil, errors.New("principal and serviceID required")
 	}
 
@@ -84,8 +85,8 @@ func (r *InMemoryUserSessionRepository) FindByPrincipalAndService(ctx context.Co
 }
 
 // ListByPrincipal retrieves all sessions for a principal.
-func (r *InMemoryUserSessionRepository) ListByPrincipal(ctx context.Context, principal string) ([]*storage.UserSession, error) {
-	if principal == "" {
+func (r *InMemoryUserSessionRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
+	if principal.IsZero() {
 		return nil, errors.New("principal required")
 	}
 
@@ -102,17 +103,17 @@ func (r *InMemoryUserSessionRepository) ListByPrincipal(ctx context.Context, pri
 }
 
 // Delete deletes a session by ID.
-func (r *InMemoryUserSessionRepository) Delete(ctx context.Context, id string) error {
-	if id == "" {
+func (r *InMemoryUserSessionRepository) Delete(ctx context.Context, sessionID id.SessionID) error {
+	if sessionID.IsZero() {
 		return errors.New("session ID cannot be empty")
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	session, ok := r.sessions[id]
+	session, ok := r.sessions[sessionID]
 	if ok {
-		delete(r.sessions, id)
+		delete(r.sessions, sessionID)
 		key := principalServiceKey(session.Principal, session.ServiceID)
 		delete(r.index, key)
 	}
@@ -120,8 +121,8 @@ func (r *InMemoryUserSessionRepository) Delete(ctx context.Context, id string) e
 }
 
 // DeleteByPrincipalAndService deletes the session for a principal and service.
-func (r *InMemoryUserSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal, serviceID string) error {
-	if principal == "" || serviceID == "" {
+func (r *InMemoryUserSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) error {
+	if principal.IsZero() || serviceID.IsZero() {
 		return errors.New("principal and serviceID required")
 	}
 
@@ -138,8 +139,8 @@ func (r *InMemoryUserSessionRepository) DeleteByPrincipalAndService(ctx context.
 }
 
 // CountByService counts sessions referencing a service.
-func (r *InMemoryUserSessionRepository) CountByService(ctx context.Context, serviceID string) (int, error) {
-	if serviceID == "" {
+func (r *InMemoryUserSessionRepository) CountByService(ctx context.Context, serviceID id.ServiceID) (int, error) {
+	if serviceID.IsZero() {
 		return 0, errors.New("serviceID required")
 	}
 
@@ -156,6 +157,6 @@ func (r *InMemoryUserSessionRepository) CountByService(ctx context.Context, serv
 }
 
 // Helper function
-func principalServiceKey(principal, serviceID string) string {
-	return principal + "#" + serviceID
+func principalServiceKey(principal id.Principal, serviceID id.ServiceID) string {
+	return principal.String() + "#" + serviceID.String()
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -39,9 +40,13 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	// Seed test data
 	ctx := context.Background()
 
+	testAgentID := id.NewAgentID()
+	githubServiceID := id.NewServiceID()
+	googleServiceID := id.NewServiceID()
+
 	// Create agent
 	agent := &storage.Agent{
-		ID:          "agent-test-123",
+		ID:          testAgentID,
 		ClientID:    "client-test",
 		DisplayName: "Test Agent",
 		Description: "Integration test agent",
@@ -53,7 +58,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 	// Create GitHub service via providerService
 	githubService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "github",
+		ID:          githubServiceID,
 		DisplayName: "GitHub",
 		ClientID:    "github-client",
 		Secret:      model.NewPlaintextSecret("github-secret"),
@@ -73,7 +78,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 	// Create Google service via providerService
 	googleService := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "google",
+		ID:          googleServiceID,
 		DisplayName: "Google",
 		ClientID:    "google-client",
 		Secret:      model.NewPlaintextSecret("google-secret"),
@@ -104,17 +109,17 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 			ValidUntil: &futureTime,
 			DelegatedOAuth2Tokens: []DelegatedTokenRequest{
 				{
-					ThirdpartyOAuth2ServiceID: "github",
+					ThirdpartyOAuth2ServiceID: githubServiceID.String(),
 					Scopes:                    []string{"repo", "user:email"},
 				},
 			},
 		}
 
 		jsonBody, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest("POST", "/api/consent/agent/agent-test-123/grants", bytes.NewBuffer(jsonBody))
+		req := httptest.NewRequest("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", bytes.NewBuffer(jsonBody))
 		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-test-123")
+		rctx.URLParams.Add("agent-id", testAgentID.String())
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
 
 		rr := httptest.NewRecorder()
@@ -132,10 +137,10 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 		assert.NotEmpty(t, response.ID)
 		assert.Equal(t, "alice@example.com", response.Principal)
-		assert.Equal(t, "agent-test-123", response.AgentID)
+		assert.Equal(t, testAgentID.String(), response.AgentID)
 		assert.NotNil(t, response.ValidUntil)
 		assert.Len(t, response.DelegatedOAuth2Tokens, 1)
-		assert.Equal(t, "github", response.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+		assert.Equal(t, githubServiceID.String(), response.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
 		assert.ElementsMatch(t, []string{"repo", "user:email"}, response.DelegatedOAuth2Tokens[0].Scopes)
 	})
 
@@ -146,22 +151,22 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 			ValidUntil: &futureTime,
 			DelegatedOAuth2Tokens: []DelegatedTokenRequest{
 				{
-					ThirdpartyOAuth2ServiceID: "github",
+					ThirdpartyOAuth2ServiceID: githubServiceID.String(),
 					Scopes:                    []string{"repo", "user:email", "read:user"},
 				},
 				{
-					ThirdpartyOAuth2ServiceID: "google",
+					ThirdpartyOAuth2ServiceID: googleServiceID.String(),
 					Scopes:                    []string{"openid", "email"},
 				},
 			},
 		}
 
 		jsonBody, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest("POST", "/api/consent/agent/agent-test-123/grants", bytes.NewBuffer(jsonBody))
+		req := httptest.NewRequest("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", bytes.NewBuffer(jsonBody))
 		//nolint:staticcheck // Using string key for test simplicity
 		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-test-123")
+		rctx.URLParams.Add("agent-id", testAgentID.String())
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
 
 		rr := httptest.NewRecorder()
@@ -179,17 +184,17 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 		// Grant was updated, not created (same principal+agent)
 		assert.Equal(t, "alice@example.com", response.Principal)
-		assert.Equal(t, "agent-test-123", response.AgentID)
+		assert.Equal(t, testAgentID.String(), response.AgentID)
 		assert.Len(t, response.DelegatedOAuth2Tokens, 2)
 	})
 
 	// Test 3: Retrieve grants
 	t.Run("get_grants", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/consent/agent/agent-test-123/grants", nil)
+		req := httptest.NewRequest("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 		//nolint:staticcheck // Using string key for test simplicity
 		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-test-123")
+		rctx.URLParams.Add("agent-id", testAgentID.String())
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
 
 		rr := httptest.NewRecorder()
@@ -207,7 +212,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 		assert.Len(t, response, 1) // Only one grant (upserted)
 		assert.Equal(t, "alice@example.com", response[0].Principal)
-		assert.Equal(t, "agent-test-123", response[0].AgentID)
+		assert.Equal(t, testAgentID.String(), response[0].AgentID)
 		assert.Len(t, response[0].DelegatedOAuth2Tokens, 2)
 	})
 
@@ -218,11 +223,11 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		}
 
 		jsonBody, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest("POST", "/api/consent/agent/agent-test-123/grants", bytes.NewBuffer(jsonBody))
+		req := httptest.NewRequest("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", bytes.NewBuffer(jsonBody))
 		//nolint:staticcheck // Using string key for test simplicity
 		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-test-123")
+		rctx.URLParams.Add("agent-id", testAgentID.String())
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
 
 		rr := httptest.NewRecorder()
@@ -234,11 +239,11 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 	// Test 5: Verify grant is gone
 	t.Run("verify_revoked", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/consent/agent/agent-test-123/grants", nil)
+		req := httptest.NewRequest("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 		//nolint:staticcheck // Using string key for test simplicity
 		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", "agent-test-123")
+		rctx.URLParams.Add("agent-id", testAgentID.String())
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
 
 		rr := httptest.NewRecorder()
@@ -270,9 +275,12 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 
 	ctx := context.Background()
 
+	testAgentID := id.NewAgentID()
+	testServiceID := id.NewServiceID()
+
 	// Create agent
 	agent := &storage.Agent{
-		ID:          "agent-validate",
+		ID:          testAgentID,
 		ClientID:    "client-validate",
 		DisplayName: "Validation Test Agent",
 		Description: "Test validation",
@@ -284,7 +292,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 
 	// Create service with limited scopes via providerService
 	service := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "test-service",
+		ID:          testServiceID,
 		DisplayName: "Test Service",
 		ClientID:    "test-client",
 		Secret:      model.NewPlaintextSecret("test-secret"),
@@ -313,11 +321,11 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	}{
 		{
 			name:    "invalid_scope",
-			agentID: "agent-validate",
+			agentID: testAgentID.String(),
 			reqBody: GrantRequest{
 				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
 					{
-						ThirdpartyOAuth2ServiceID: "test-service",
+						ThirdpartyOAuth2ServiceID: testServiceID.String(),
 						Scopes:                    []string{"invalid-scope"},
 					},
 				},
@@ -327,11 +335,11 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 		},
 		{
 			name:    "nonexistent_service",
-			agentID: "agent-validate",
+			agentID: testAgentID.String(),
 			reqBody: GrantRequest{
 				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
 					{
-						ThirdpartyOAuth2ServiceID: "nonexistent-service",
+						ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
 						Scopes:                    []string{"read"},
 					},
 				},
@@ -341,11 +349,11 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 		},
 		{
 			name:    "nonexistent_agent",
-			agentID: "nonexistent-agent",
+			agentID: id.NewAgentID().String(),
 			reqBody: GrantRequest{
 				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
 					{
-						ThirdpartyOAuth2ServiceID: "test-service",
+						ThirdpartyOAuth2ServiceID: testServiceID.String(),
 						Scopes:                    []string{"read"},
 					},
 				},
@@ -355,11 +363,11 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 		},
 		{
 			name:    "valid_request",
-			agentID: "agent-validate",
+			agentID: testAgentID.String(),
 			reqBody: GrantRequest{
 				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
 					{
-						ThirdpartyOAuth2ServiceID: "test-service",
+						ThirdpartyOAuth2ServiceID: testServiceID.String(),
 						Scopes:                    []string{"read", "write"},
 					},
 				},

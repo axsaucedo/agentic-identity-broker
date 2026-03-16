@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
@@ -16,14 +16,14 @@ func TestUserSessionRepository_ListByPrincipal(t *testing.T) {
 	repo := memory.NewInMemoryUserSessionRepository()
 	ctx := context.Background()
 
-	principal := "user@example.com"
+	principal := id.Principal("user@example.com")
 
 	// Create 3 sessions for same principal, different services
 	for i := 1; i <= 3; i++ {
 		session := &storage.UserSession{
-			ID:                   uuid.New().String(),
+			ID:                   id.NewSessionID(),
 			Principal:            principal,
-			ServiceID:            uuid.New().String(),
+			ServiceID:            id.NewServiceID(),
 			EncryptedAccessToken: []byte("token"),
 			TokenType:            "Bearer",
 			CreatedAt:            time.Now(),
@@ -47,7 +47,7 @@ func TestUserSessionRepository_ListByPrincipal_Empty(t *testing.T) {
 	repo := memory.NewInMemoryUserSessionRepository()
 	ctx := context.Background()
 
-	sessions, err := repo.ListByPrincipal(ctx, "nonexistent@example.com")
+	sessions, err := repo.ListByPrincipal(ctx, id.Principal("nonexistent@example.com"))
 	assert.NoError(t, err)
 	assert.Empty(t, sessions)
 }
@@ -56,15 +56,15 @@ func TestUserSessionRepository_ListByPrincipal_MultiplePrincipals(t *testing.T) 
 	repo := memory.NewInMemoryUserSessionRepository()
 	ctx := context.Background()
 
-	principal1 := "user1@example.com"
-	principal2 := "user2@example.com"
+	principal1 := id.Principal("user1@example.com")
+	principal2 := id.Principal("user2@example.com")
 
 	// Create sessions for two different principals
 	for i := 1; i <= 2; i++ {
 		session1 := &storage.UserSession{
-			ID:                   uuid.New().String(),
+			ID:                   id.NewSessionID(),
 			Principal:            principal1,
-			ServiceID:            uuid.New().String(),
+			ServiceID:            id.NewServiceID(),
 			EncryptedAccessToken: []byte("token"),
 			TokenType:            "Bearer",
 			CreatedAt:            time.Now(),
@@ -73,9 +73,9 @@ func TestUserSessionRepository_ListByPrincipal_MultiplePrincipals(t *testing.T) 
 		assert.NoError(t, err)
 
 		session2 := &storage.UserSession{
-			ID:                   uuid.New().String(),
+			ID:                   id.NewSessionID(),
 			Principal:            principal2,
-			ServiceID:            uuid.New().String(),
+			ServiceID:            id.NewServiceID(),
 			EncryptedAccessToken: []byte("token"),
 			TokenType:            "Bearer",
 			CreatedAt:            time.Now(),

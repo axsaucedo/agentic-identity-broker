@@ -1,7 +1,11 @@
 // Package ports defines the ports (interfaces) for OAuth2 functionality.
 package ports
 
-import "context"
+import (
+	"context"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+)
 
 // OAuth2Service defines the domain service interface for OAuth2 authorization,
 // token proxying, and metadata discovery.
@@ -18,7 +22,7 @@ type OAuth2Service interface {
 // Fields are parsed from HTTP query parameters.
 type AuthorizationRequest struct {
 	// REQUIRED: OAuth2 client identifier (maps to registered Agent.ClientID)
-	ClientID string
+	ClientID id.ClientID
 
 	// REQUIRED: Client's callback URL for authorization code
 	RedirectURI string

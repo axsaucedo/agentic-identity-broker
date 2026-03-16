@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -120,9 +120,9 @@ func (h *ServicesHandler) CreateService(w http.ResponseWriter, r *http.Request) 
 	// Build entity from request
 	now := time.Now().UTC()
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:                 uuid.New().String(),
+		ID:                 id.NewServiceID(),
 		DisplayName:        req.DisplayName,
-		ClientID:           req.ClientID,
+		ClientID:           id.ClientID(req.ClientID),
 		Secret:             model.NewPlaintextSecret(req.ClientSecret),
 		IssuerURI:          req.IssuerURI,
 		Discovery:          model.DiscoveryConfig{EnableDiscovery: req.Discovery.EnableDiscovery, MetadataURL: req.Discovery.MetadataURL},
@@ -215,7 +215,13 @@ func (h *ServicesHandler) GetService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entity, err := h.providerService.Get(ctx, serviceID)
+	parsedSvcID, parseErr := id.ParseServiceID(serviceID)
+	if parseErr != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid service ID", parseErr.Error())
+		return
+	}
+
+	entity, err := h.providerService.Get(ctx, parsedSvcID)
 	if err != nil {
 		h.handleStorageError(w, r, "GetService", err)
 		return
@@ -253,11 +259,17 @@ func (h *ServicesHandler) UpdateService(w http.ResponseWriter, r *http.Request) 
 		skipHTTPSValidation = h.config.Security.SkipThirdpartyHTTPSValidation
 	}
 
+	parsedSvcID, parseErr := id.ParseServiceID(serviceID)
+	if parseErr != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid service ID", parseErr.Error())
+		return
+	}
+
 	// created_at is not set here; repo.Update() populates it from storage (no KMS decrypt needed).
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:                 serviceID,
+		ID:                 parsedSvcID,
 		DisplayName:        req.DisplayName,
-		ClientID:           req.ClientID,
+		ClientID:           id.ClientID(req.ClientID),
 		Secret:             model.NewPlaintextSecret(req.ClientSecret),
 		IssuerURI:          req.IssuerURI,
 		Discovery:          model.DiscoveryConfig{EnableDiscovery: req.Discovery.EnableDiscovery, MetadataURL: req.Discovery.MetadataURL},
@@ -353,7 +365,13 @@ func (h *ServicesHandler) DeleteService(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Delete via domain service
-	if err := h.providerService.Delete(ctx, serviceID); err != nil {
+	parsedSvcID, parseErr := id.ParseServiceID(serviceID)
+	if parseErr != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid service ID", parseErr.Error())
+		return
+	}
+
+	if err := h.providerService.Delete(ctx, parsedSvcID); err != nil {
 		// Special handling for conflict errors (grants exist); use errors.As for wrapped errors
 		var conflictErr *storage.StorageError
 		if errors.As(err, &conflictErr) && conflictErr.Kind == storage.ErrorKindConflict {
@@ -405,9 +423,9 @@ func (h *ServicesHandler) toResponse(entity *model.ThirdpartyOAuth2ProviderEntit
 	}
 
 	return ServiceResponse{
-		ID:           entity.ID,
+		ID:           entity.ID.String(),
 		DisplayName:  entity.DisplayName,
-		ClientID:     entity.ClientID,
+		ClientID:     entity.ClientID.String(),
 		ClientSecret: entity.Secret.Redacted(),
 		IssuerURI:    entity.IssuerURI,
 		Discovery: DiscoveryConfigResponse{

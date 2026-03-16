@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -115,7 +116,14 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Call consent service to get agent detail (used for basic agent info)
-	agentDetail, _, err := h.consentService.GetAgentDetail(ctx, agentID)
+	parsedAgentID, parseErr := id.ParseAgentID(agentID)
+	if parseErr != nil {
+		h.logger.Warn("invalid agent ID format", "agent_id", agentID, "error", parseErr)
+		h.writeError(w, http.StatusBadRequest, "bad request", "invalid agent ID format")
+		return
+	}
+
+	agentDetail, _, err := h.consentService.GetAgentDetail(ctx, parsedAgentID)
 	if err != nil {
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found", "agent_id", agentID)
@@ -131,7 +139,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Load full agent entity to access service requirements
-	agent, err := h.getAgent(ctx, agentID)
+	agent, err := h.getAgent(ctx, parsedAgentID)
 	if err != nil {
 		h.logger.Error("failed to load agent",
 			"agent_id", agentID,
@@ -141,7 +149,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Build service requirements enriched with user session status
-	serviceRequirements, err := h.buildServiceRequirementsForUser(ctx, userID, agent)
+	serviceRequirements, err := h.buildServiceRequirementsForUser(ctx, id.Principal(userID), agent)
 	if err != nil {
 		h.logger.Error("failed to build service requirements",
 			"agent_id", agentID,
@@ -202,7 +210,7 @@ func (h *AgentDetailHandler) writeError(w http.ResponseWriter, statusCode int, e
 // - If service not found: Log warning and skip (service may have been removed)
 // - If session lookup fails: Treat as "not_connected"
 // - Return partial results if some services unavailable (fail-open for fetch)
-func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context, userID string, agent *storage.Agent) ([]ServiceRequirementForUser, error) {
+func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context, userID id.Principal, agent *storage.Agent) ([]ServiceRequirementForUser, error) {
 	if len(agent.ServiceRequirements) == 0 {
 		return []ServiceRequirementForUser{}, nil
 	}
@@ -212,7 +220,7 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 	var results []ServiceRequirementForUser
 
 	for _, req := range agent.ServiceRequirements {
-		svc, ok := serviceMap[req.ServiceID]
+		svc, ok := serviceMap[req.ServiceID.String()]
 		if !ok {
 			continue
 		}
@@ -254,7 +262,7 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 		}
 
 		result := ServiceRequirementForUser{
-			ServiceID:        req.ServiceID,
+			ServiceID:        req.ServiceID.String(),
 			ServiceName:      svc.DisplayName,
 			RequirementType:  string(req.RequirementType),
 			RequiredScopes:   scopes,
@@ -269,7 +277,7 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 // batchLoadServices loads all unique services referenced by an agent's service requirements.
 // Returns a map of service_id -> service for efficient lookup, avoiding N KMS decryptions.
 func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *storage.Agent) map[string]*model.ThirdpartyOAuth2ProviderEntity {
-	serviceIDs := make(map[string]bool)
+	serviceIDs := make(map[id.ServiceID]bool)
 	for _, sr := range agent.ServiceRequirements {
 		serviceIDs[sr.ServiceID] = true
 	}
@@ -283,7 +291,7 @@ func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *stora
 				"error", err)
 			continue
 		}
-		serviceMap[serviceID] = svc
+		serviceMap[serviceID.String()] = svc
 	}
 
 	return serviceMap
@@ -291,7 +299,7 @@ func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *stora
 
 // getAgent loads a full agent entity from storage.
 // This is used to access service requirements which are not available in AgentDetail DTO.
-func (h *AgentDetailHandler) getAgent(ctx context.Context, agentID string) (*storage.Agent, error) {
+func (h *AgentDetailHandler) getAgent(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
 	// We need an agent repository. For now, we'll use a workaround by checking if we have access to it
 	// through the consentService. Since we don't have direct access, we need to add it to the handler.
 	// This will be injected via builder or a new method.

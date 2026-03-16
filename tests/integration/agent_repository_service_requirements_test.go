@@ -9,6 +9,7 @@ import (
 	"time"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domainStorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -36,8 +37,11 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
+		agentID := id.MustParseAgentID("a1234567-0001-0001-0001-000000000001")
+		serviceID := id.MustParseServiceID("c1234567-0001-0001-0001-000000000001")
+
 		agent := &domainStorage.Agent{
-			ID:          "agent-123",
+			ID:          agentID,
 			ClientID:    "client-sr-1",
 			DisplayName: "Service Requirements Agent",
 			Description: "Agent with service requirements",
@@ -45,7 +49,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 			UpdatedAt:   time.Now().UTC(),
 			ServiceRequirements: []domainStorage.ServiceRequirement{
 				{
-					ServiceID:       "service-123",
+					ServiceID:       serviceID,
 					RequirementType: domainStorage.RequirementTypeMandatory,
 					RequiredScopes:  []string{"repo", "user:email"},
 				},
@@ -61,7 +65,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		require.NotNil(t, retrieved)
 		assert.Equal(t, agent.ClientID, retrieved.ClientID)
 		assert.Len(t, retrieved.ServiceRequirements, 1)
-		assert.Equal(t, "service-123", retrieved.ServiceRequirements[0].ServiceID)
+		assert.Equal(t, serviceID, retrieved.ServiceRequirements[0].ServiceID)
 		assert.Equal(t, domainStorage.RequirementTypeMandatory, retrieved.ServiceRequirements[0].RequirementType)
 		assert.Equal(t, []string{"repo", "user:email"}, retrieved.ServiceRequirements[0].RequiredScopes)
 	})
@@ -70,9 +74,13 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
+		agentID := id.MustParseAgentID("a1234567-0002-0002-0002-000000000002")
+		serviceID1 := id.MustParseServiceID("c1234567-0001-0001-0001-000000000001")
+		serviceID2 := id.MustParseServiceID("c1234567-0002-0002-0002-000000000002")
+
 		// Create initial agent with one requirement
 		agent := &domainStorage.Agent{
-			ID:          "agent-456",
+			ID:          agentID,
 			ClientID:    "client-sr-2",
 			DisplayName: "Update Test Agent",
 			Description: "Agent for update testing",
@@ -80,7 +88,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 			UpdatedAt:   time.Now().UTC(),
 			ServiceRequirements: []domainStorage.ServiceRequirement{
 				{
-					ServiceID:       "service-123",
+					ServiceID:       serviceID1,
 					RequirementType: domainStorage.RequirementTypeMandatory,
 					RequiredScopes:  []string{"repo"},
 				},
@@ -93,7 +101,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		// Update with different requirements
 		agent.ServiceRequirements = []domainStorage.ServiceRequirement{
 			{
-				ServiceID:       "service-456",
+				ServiceID:       serviceID2,
 				RequirementType: domainStorage.RequirementTypeOptional,
 				RequiredScopes:  []string{"read:user"},
 			},
@@ -107,7 +115,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		retrieved, err := adapter.Agents().Get(ctx, agent.ID)
 		require.NoError(t, err)
 		assert.Len(t, retrieved.ServiceRequirements, 1)
-		assert.Equal(t, "service-456", retrieved.ServiceRequirements[0].ServiceID)
+		assert.Equal(t, serviceID2, retrieved.ServiceRequirements[0].ServiceID)
 		assert.Equal(t, domainStorage.RequirementTypeOptional, retrieved.ServiceRequirements[0].RequirementType)
 	})
 
@@ -117,7 +125,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 
 		// Create agent without service requirements
 		agent := &domainStorage.Agent{
-			ID:          "agent-789",
+			ID:          id.MustParseAgentID("a1234567-0003-0003-0003-000000000003"),
 			ClientID:    "client-sr-3",
 			DisplayName: "Legacy Agent",
 			Description: "Agent without service requirements",
@@ -140,7 +148,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		defer cancel()
 
 		agent := &domainStorage.Agent{
-			ID:                  "agent-empty",
+			ID:                  id.MustParseAgentID("a1234567-0004-0004-0004-000000000004"),
 			ClientID:            "client-sr-4",
 			DisplayName:         "Empty Requirements Agent",
 			Description:         "Agent with empty requirements array",
@@ -162,8 +170,12 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
+		githubSvcID := id.MustParseServiceID("c1234567-1111-1111-1111-111111111111")
+		gitlabSvcID := id.MustParseServiceID("c1234567-2222-2222-2222-222222222222")
+		slackSvcID := id.MustParseServiceID("c1234567-3333-3333-3333-333333333333")
+
 		agent := &domainStorage.Agent{
-			ID:          "agent-multi",
+			ID:          id.MustParseAgentID("a1234567-0005-0005-0005-000000000005"),
 			ClientID:    "client-sr-5",
 			DisplayName: "Multi Service Agent",
 			Description: "Agent with multiple service requirements",
@@ -171,17 +183,17 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 			UpdatedAt:   time.Now().UTC(),
 			ServiceRequirements: []domainStorage.ServiceRequirement{
 				{
-					ServiceID:       "github-service",
+					ServiceID:       githubSvcID,
 					RequirementType: domainStorage.RequirementTypeMandatory,
 					RequiredScopes:  []string{"repo", "user:email"},
 				},
 				{
-					ServiceID:       "gitlab-service",
+					ServiceID:       gitlabSvcID,
 					RequirementType: domainStorage.RequirementTypeOptional,
 					RequiredScopes:  []string{"api", "read_user"},
 				},
 				{
-					ServiceID:       "slack-service",
+					ServiceID:       slackSvcID,
 					RequirementType: domainStorage.RequirementTypeMandatory,
 					RequiredScopes:  []string{"users:read"},
 				},

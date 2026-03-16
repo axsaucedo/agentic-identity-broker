@@ -3,6 +3,7 @@ package memory
 import (
 	"testing"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,9 +12,9 @@ import (
 func TestProviderEntityCopy_Success(t *testing.T) {
 	ciphertext := []byte("encrypted-bytes")
 	original := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "svc-1",
+		ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440001"),
 		DisplayName: "Test Provider",
-		ClientID:    "client-abc",
+		ClientID:    id.ClientID("client-abc"),
 		Secret:      model.NewEncryptedSecret(ciphertext),
 		IssuerURI:   "https://issuer.example.com",
 		Scopes: []model.OAuthScope{
@@ -43,9 +44,9 @@ func TestProviderEntityCopy_NilEntityFails(t *testing.T) {
 
 func TestProviderEntityCopy_PlaintextSecretFails(t *testing.T) {
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "svc-1",
+		ID:          id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440001"),
 		DisplayName: "Provider",
-		ClientID:    "client-1",
+		ClientID:    id.ClientID("client-1"),
 		Secret:      model.NewPlaintextSecret("plain-secret"),
 		IssuerURI:   "https://issuer.example.com",
 	}
@@ -57,9 +58,9 @@ func TestProviderEntityCopy_PlaintextSecretFails(t *testing.T) {
 
 func TestProviderEntityCopy_IsolatesFromOriginal(t *testing.T) {
 	original := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:                 "svc-1",
+		ID:                 id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440001"),
 		DisplayName:        "Original",
-		ClientID:           "client-1",
+		ClientID:           id.ClientID("client-1"),
 		Secret:             model.NewEncryptedSecret([]byte("ct")),
 		IssuerURI:          "https://issuer.example.com",
 		ProtectedResources: []string{"https://resource.example.com"},

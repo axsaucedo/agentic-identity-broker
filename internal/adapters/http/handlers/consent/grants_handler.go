@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
@@ -77,8 +78,15 @@ func (h *GrantsHandler) GetGrants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedAgentID, err := id.ParseAgentID(agentID)
+	if err != nil {
+		h.logger.Warn("invalid agent ID format", "agent_id", agentID)
+		h.writeError(w, http.StatusBadRequest, "bad request", "agent ID must be a valid UUID")
+		return
+	}
+
 	ctx := r.Context()
-	grants, err := h.consentService.GetActiveGrants(ctx, principalValue, agentID)
+	grants, err := h.consentService.GetActiveGrants(ctx, id.Principal(principalValue), parsedAgentID)
 	if err != nil {
 		// Check if it's an agent not found error
 		if errors.Is(err, consent.ErrAgentNotFound) {
@@ -136,6 +144,13 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedAgentID, err := id.ParseAgentID(agentID)
+	if err != nil {
+		h.logger.Warn("invalid agent ID format", "agent_id", agentID)
+		h.writeError(w, http.StatusBadRequest, "bad request", "agent ID must be a valid UUID")
+		return
+	}
+
 	// Parse request
 	var req GrantRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -149,7 +164,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 
 	// Special case: empty tokens = revoke
 	if len(req.DelegatedOAuth2Tokens) == 0 {
-		err := h.consentService.RevokeConsent(r.Context(), principalValue, agentID)
+		err := h.consentService.RevokeConsent(r.Context(), id.Principal(principalValue), parsedAgentID)
 		if err != nil {
 			h.logger.Error("failed to revoke consent",
 				"agent_id", agentID,
@@ -207,16 +222,25 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	// Convert request to domain tokens
 	tokens := make([]storage.DelegatedToken, len(req.DelegatedOAuth2Tokens))
 	for i, token := range req.DelegatedOAuth2Tokens {
+		parsedServiceID, err := id.ParseServiceID(token.ThirdpartyOAuth2ServiceID)
+		if err != nil {
+			h.logger.Warn("invalid service ID format in grant request",
+				"service_id", token.ThirdpartyOAuth2ServiceID,
+				"principal", principalValue,
+				"agent_id", agentID)
+			h.writeError(w, http.StatusBadRequest, "invalid request", fmt.Sprintf("service ID %q must be a valid UUID", token.ThirdpartyOAuth2ServiceID))
+			return
+		}
 		tokens[i] = storage.DelegatedToken{
-			ThirdpartyOAuth2ServiceID: token.ThirdpartyOAuth2ServiceID,
+			ThirdpartyOAuth2ServiceID: parsedServiceID,
 			Scopes:                    token.Scopes,
 		}
 	}
 
 	// Create grant request
 	grantReq := &consent.GrantRequest{
-		Principal:             principalValue,
-		AgentID:               agentID,
+		Principal:             id.Principal(principalValue),
+		AgentID:               parsedAgentID,
 		ValidUntil:            req.ValidUntil,
 		DelegatedOAuth2Tokens: tokens,
 	}
@@ -333,15 +357,15 @@ func (h *GrantsHandler) toGrantResponse(grant *storage.UserGrant) GrantResponse 
 	tokens := make([]DelegatedTokenRequest, len(grant.DelegatedOAuth2Tokens))
 	for i, token := range grant.DelegatedOAuth2Tokens {
 		tokens[i] = DelegatedTokenRequest{
-			ThirdpartyOAuth2ServiceID: token.ThirdpartyOAuth2ServiceID,
+			ThirdpartyOAuth2ServiceID: token.ThirdpartyOAuth2ServiceID.String(),
 			Scopes:                    token.Scopes,
 		}
 	}
 
 	return GrantResponse{
-		ID:                    grant.ID,
-		Principal:             grant.Principal,
-		AgentID:               grant.AgentID,
+		ID:                    grant.ID.String(),
+		Principal:             grant.Principal.String(),
+		AgentID:               grant.AgentID.String(),
 		ValidUntil:            grant.ValidUntil,
 		DelegatedOAuth2Tokens: tokens,
 		CreatedAt:             grant.CreatedAt.Format(time.RFC3339),

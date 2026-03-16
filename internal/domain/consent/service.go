@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
-
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -58,7 +57,7 @@ type AgentConsentInfo struct {
 // GetAgentConsentInfo retrieves agent metadata and all available third-party services.
 // This provides the information a user needs to make an informed consent decision (FR-009, FR-010, FR-025).
 // Returns ErrAgentNotFound if the agent doesn't exist.
-func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID string) (*AgentConsentInfo, error) {
+func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*AgentConsentInfo, error) {
 	// Fetch agent
 	agent, err := s.agentRepo.Get(ctx, agentID)
 	if err != nil {
@@ -88,8 +87,8 @@ func (s *Service) GetAgentConsentInfo(ctx context.Context, agentID string) (*Age
 
 // GrantRequest represents a request to grant or update permissions.
 type GrantRequest struct {
-	Principal             string
-	AgentID               string
+	Principal             id.Principal
+	AgentID               id.AgentID
 	ValidUntil            *time.Time
 	DelegatedOAuth2Tokens []storage.DelegatedToken
 }
@@ -142,7 +141,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 	} else {
 		// Create new grant (FR-011)
 		grant = &storage.UserGrant{
-			ID:                    uuid.New().String(),
+			ID:                    id.NewGrantID(),
 			Principal:             req.Principal,
 			AgentID:               req.AgentID,
 			ValidUntil:            req.ValidUntil,
@@ -165,7 +164,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 
 // RevokeConsent deletes a user grant (FR-014).
 // Idempotent: returns nil if grant doesn't exist.
-func (s *Service) RevokeConsent(ctx context.Context, principal string, agentID string) error {
+func (s *Service) RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
 	// Find grant
 	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agentID)
 	if err != nil && !errors.Is(err, ports.ErrNotFound) {
@@ -188,7 +187,7 @@ func (s *Service) RevokeConsent(ctx context.Context, principal string, agentID s
 // GetActiveGrants retrieves all active grants for a principal and agent.
 // Filters expired grants per FR-019.
 // Returns empty slice if no active grants exist (not an error per FR-012).
-func (s *Service) GetActiveGrants(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+func (s *Service) GetActiveGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	grants, err := s.grantRepo.ListByPrincipalAndAgent(ctx, principal, agentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list grants: %w", err)
@@ -217,14 +216,14 @@ func (s *Service) GetActiveGrants(ctx context.Context, principal string, agentID
 // This method is used by token exchange flows to verify authorization before
 // issuing delegated tokens. Per Constitution Principle I (Security-First),
 // fails closed with access denied for any ambiguous state.
-func (s *Service) VerifyAgentAccess(ctx context.Context, principal string, agentClientID string) (*storage.UserGrant, error) {
+func (s *Service) VerifyAgentAccess(ctx context.Context, principal id.Principal, agentID id.AgentID) (*storage.UserGrant, error) {
 	// Look up grant by principal and agent
-	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agentClientID)
+	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agentID)
 	if err != nil {
 		// Check if it's a NotFound error
 		if errors.Is(err, ports.ErrNotFound) {
 			return nil, fmt.Errorf("%w: user has not granted permission for agent (principal: %s, agent: %s)",
-				ErrAgentAccessDenied, principal, agentClientID)
+				ErrAgentAccessDenied, principal, agentID)
 		}
 		return nil, fmt.Errorf("failed to verify user grant: %w", err)
 	}
@@ -232,13 +231,13 @@ func (s *Service) VerifyAgentAccess(ctx context.Context, principal string, agent
 	// Defensive check: ensure grant is not nil
 	if grant == nil {
 		return nil, fmt.Errorf("%w: user has not granted permission for agent (principal: %s, agent: %s)",
-			ErrAgentAccessDenied, principal, agentClientID)
+			ErrAgentAccessDenied, principal, agentID)
 	}
 
 	// Check grant is active (not expired)
 	if !grant.IsActive() {
 		return nil, fmt.Errorf("%w: user grant expired at %s (principal: %s, agent: %s)",
-			ErrGrantExpired, grant.ValidUntil.Format(time.RFC3339), principal, agentClientID)
+			ErrGrantExpired, grant.ValidUntil.Format(time.RFC3339), principal, agentID)
 	}
 
 	// Check grant is not revoked
@@ -246,7 +245,7 @@ func (s *Service) VerifyAgentAccess(ctx context.Context, principal string, agent
 	// For now, assume no revocation field exists. When revoked field is added:
 	// if grant.Revoked {
 	//   return nil, fmt.Errorf("%w: user grant has been revoked (principal: %s, agent: %s)",
-	//     ErrAgentAccessDenied, principal, agentClientID)
+	//     ErrAgentAccessDenied, principal, agentID)
 	// }
 
 	// Return copy to prevent external mutation
@@ -292,7 +291,7 @@ func (s *Service) validateScopes(ctx context.Context, delegations []storage.Dele
 // AgentDelegation represents aggregated information about grants for a specific agent.
 // This is used for the consent management UI to display active delegations.
 type AgentDelegation struct {
-	AgentID          string     `json:"agentId"`
+	AgentID          id.AgentID `json:"agentId"`
 	DisplayName      string     `json:"displayName"`
 	LogoURL          *string    `json:"logoUrl,omitempty"`
 	ActiveGrantCount int        `json:"activeGrantCount"`
@@ -303,13 +302,13 @@ type AgentDelegation struct {
 // AgentDetail represents detailed information about an agent for User Story 2.
 // This provides all metadata needed for the agent-specific grants view.
 type AgentDetail struct {
-	AgentID              string  `json:"agentId"`
-	DisplayName          string  `json:"displayName"`
-	Description          string  `json:"description"`
-	LogoURL              *string `json:"logoUrl,omitempty"`
-	GovernanceURL        *string `json:"governanceUrl,omitempty"`
-	UserDocumentationURL *string `json:"userDocumentationUrl,omitempty"`
-	AgentInterfaceURL    *string `json:"agentInterfaceUrl,omitempty"`
+	AgentID              id.AgentID `json:"agentId"`
+	DisplayName          string     `json:"displayName"`
+	Description          string     `json:"description"`
+	LogoURL              *string    `json:"logoUrl,omitempty"`
+	GovernanceURL        *string    `json:"governanceUrl,omitempty"`
+	UserDocumentationURL *string    `json:"userDocumentationUrl,omitempty"`
+	AgentInterfaceURL    *string    `json:"agentInterfaceUrl,omitempty"`
 }
 
 // ServiceScope represents a permission scope within a third-party service.
@@ -321,7 +320,7 @@ type ServiceScope struct {
 // ThirdpartyService represents a third-party service with its available scopes.
 // This is used in the agent detail view to show what services an agent can request.
 type ThirdpartyService struct {
-	ServiceID   string         `json:"serviceId"`
+	ServiceID   id.ServiceID   `json:"serviceId"`
 	DisplayName string         `json:"displayName"`
 	LogoURL     *string        `json:"logoUrl,omitempty"`
 	Scopes      []ServiceScope `json:"scopes"`
@@ -331,7 +330,7 @@ type ThirdpartyService struct {
 // This is used for User Story 2: Review Agent-Specific Grants.
 // Returns agent metadata and all available third-party services with their scopes.
 // Returns ErrAgentNotFound if the agent doesn't exist.
-func (s *Service) GetAgentDetail(ctx context.Context, agentID string) (*AgentDetail, []ThirdpartyService, error) {
+func (s *Service) GetAgentDetail(ctx context.Context, agentID id.AgentID) (*AgentDetail, []ThirdpartyService, error) {
 	// Fetch agent
 	agent, err := s.agentRepo.Get(ctx, agentID)
 	if err != nil {
@@ -387,7 +386,7 @@ func (s *Service) GetAgentDetail(ctx context.Context, agentID string) (*AgentDet
 // This is used for User Story 2 to display what permissions the user has already granted to an agent.
 // Returns empty slice if no grants exist (not an error).
 // Returns ErrAgentNotFound if the agent doesn't exist.
-func (s *Service) GetUserGrants(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+func (s *Service) GetUserGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	// Verify agent exists first
 	agent, err := s.agentRepo.Get(ctx, agentID)
 	if err != nil {
@@ -418,7 +417,7 @@ func (s *Service) GetUserGrants(ctx context.Context, principal string, agentID s
 // GetAgentDelegations retrieves all agent delegations for a principal.
 // Groups grants by agent_id and returns summary information for each agent.
 // Returns empty slice if no grants exist (not an error).
-func (s *Service) GetAgentDelegations(ctx context.Context, principal string) ([]AgentDelegation, error) {
+func (s *Service) GetAgentDelegations(ctx context.Context, principal id.Principal) ([]AgentDelegation, error) {
 	// Fetch all active grants for this principal
 	grants, err := s.grantRepo.ListByPrincipal(ctx, principal)
 	if err != nil {
@@ -426,7 +425,7 @@ func (s *Service) GetAgentDelegations(ctx context.Context, principal string) ([]
 	}
 
 	// Group grants by agent_id
-	agentMap := make(map[string]*AgentDelegation)
+	agentMap := make(map[id.AgentID]*AgentDelegation)
 
 	for _, grant := range grants {
 		delegation, exists := agentMap[grant.AgentID]

@@ -1,6 +1,10 @@
 package ports
 
-import "context"
+import (
+	"context"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+)
 
 // EncryptionPort defines the interface for encrypting and decrypting sensitive data.
 // This port allows the domain to remain independent of specific encryption implementations.
@@ -28,7 +32,7 @@ type BranchKeyRepository interface {
 	// The branch key ID follows the pattern: service_{service_id}_branch_key
 	// Returns the generated branch key ID or error if provisioning fails.
 	// ATOMIC: Should fail immediately if KMS/DynamoDB operations fail - no partial state.
-	Create(ctx context.Context, serviceID string) (string, error)
+	Create(ctx context.Context, serviceID id.ServiceID) (string, error)
 }
 
 // BranchKeyIdProvider defines the interface for generating and parsing branch key IDs.
@@ -38,14 +42,14 @@ type BranchKeyIdProvider interface {
 	// GenerateBranchKeyId generates a deterministic branch key ID from a service ID.
 	// Format: service_{service_id}_branch_key
 	// Example: service_oauth2_branch_key, service_github_branch_key
-	GenerateBranchKeyId(serviceID string) string
+	GenerateBranchKeyId(serviceID id.ServiceID) string
 
 	// ExtractServiceIdFromBranchKey extracts the service ID from a branch key ID.
 	// This is the inverse operation of GenerateBranchKeyId.
 	// Format: service_{service_id}_branch_key -> service_id
-	// Example: service_oauth2_branch_key -> oauth2
-	// Returns empty string if parsing fails.
-	ExtractServiceIdFromBranchKey(branchKeyID string) string
+	// Example: service_550e8400-e29b-41d4-a716-446655440001_branch_key -> 550e8400-e29b-41d4-a716-446655440001
+	// Returns zero value (id.ServiceID{}) if parsing fails.
+	ExtractServiceIdFromBranchKey(branchKeyID string) id.ServiceID
 }
 
 // BranchKeyManager is an alias for BranchKeyRepository, consolidating branch key lifecycle management.

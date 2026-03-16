@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/google/uuid"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -30,8 +30,8 @@ func (r *PostgresUserSessionRepository) Create(ctx context.Context, session *sto
 		return err
 	}
 
-	if session.ID == "" {
-		session.ID = uuid.New().String()
+	if session.ID.IsZero() {
+		session.ID = id.NewSessionID()
 	}
 
 	query := `
@@ -68,15 +68,15 @@ func (r *PostgresUserSessionRepository) Create(ctx context.Context, session *sto
 }
 
 // Get retrieves a session by ID.
-func (r *PostgresUserSessionRepository) Get(ctx context.Context, id string) (*storage.UserSession, error) {
-	if id == "" {
+func (r *PostgresUserSessionRepository) Get(ctx context.Context, sessionID id.SessionID) (*storage.UserSession, error) {
+	if sessionID.IsZero() {
 		return nil, errors.New("session ID cannot be empty")
 	}
 
 	var session storage.UserSession
 	query := `SELECT * FROM user_sessions WHERE id = $1`
 
-	err := r.adapter.db.GetContext(ctx, &session, query, id)
+	err := r.adapter.db.GetContext(ctx, &session, query, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, storage.NewStorageError("Get", storage.ErrorKindNotFound, err, "session not found")
 	}
@@ -87,8 +87,8 @@ func (r *PostgresUserSessionRepository) Get(ctx context.Context, id string) (*st
 }
 
 // FindByPrincipalAndService retrieves the session for a principal and service.
-func (r *PostgresUserSessionRepository) FindByPrincipalAndService(ctx context.Context, principal, serviceID string) (*storage.UserSession, error) {
-	if principal == "" || serviceID == "" {
+func (r *PostgresUserSessionRepository) FindByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storage.UserSession, error) {
+	if principal.IsZero() || serviceID.IsZero() {
 		return nil, errors.New("principal and serviceID required")
 	}
 
@@ -106,8 +106,8 @@ func (r *PostgresUserSessionRepository) FindByPrincipalAndService(ctx context.Co
 }
 
 // ListByPrincipal retrieves all sessions for a principal.
-func (r *PostgresUserSessionRepository) ListByPrincipal(ctx context.Context, principal string) ([]*storage.UserSession, error) {
-	if principal == "" {
+func (r *PostgresUserSessionRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
+	if principal.IsZero() {
 		return nil, errors.New("principal required")
 	}
 
@@ -122,13 +122,13 @@ func (r *PostgresUserSessionRepository) ListByPrincipal(ctx context.Context, pri
 }
 
 // Delete deletes a session by ID.
-func (r *PostgresUserSessionRepository) Delete(ctx context.Context, id string) error {
-	if id == "" {
+func (r *PostgresUserSessionRepository) Delete(ctx context.Context, sessionID id.SessionID) error {
+	if sessionID.IsZero() {
 		return errors.New("session ID cannot be empty")
 	}
 
 	query := `DELETE FROM user_sessions WHERE id = $1`
-	_, err := r.adapter.db.ExecContext(ctx, query, id)
+	_, err := r.adapter.db.ExecContext(ctx, query, sessionID)
 	if err != nil {
 		return r.wrapError(err, "Delete")
 	}
@@ -136,8 +136,8 @@ func (r *PostgresUserSessionRepository) Delete(ctx context.Context, id string) e
 }
 
 // DeleteByPrincipalAndService deletes the session for a principal and service.
-func (r *PostgresUserSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal, serviceID string) error {
-	if principal == "" || serviceID == "" {
+func (r *PostgresUserSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) error {
+	if principal.IsZero() || serviceID.IsZero() {
 		return errors.New("principal and serviceID required")
 	}
 
@@ -150,8 +150,8 @@ func (r *PostgresUserSessionRepository) DeleteByPrincipalAndService(ctx context.
 }
 
 // CountByService counts sessions referencing a service.
-func (r *PostgresUserSessionRepository) CountByService(ctx context.Context, serviceID string) (int, error) {
-	if serviceID == "" {
+func (r *PostgresUserSessionRepository) CountByService(ctx context.Context, serviceID id.ServiceID) (int, error) {
+	if serviceID.IsZero() {
 		return 0, errors.New("serviceID required")
 	}
 

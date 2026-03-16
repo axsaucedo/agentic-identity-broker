@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -123,8 +124,8 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 
 	// Register agent
 	agent := &storage.Agent{
-		ID:          "agent-1",
-		ClientID:    "client-1",
+		ID:          id.NewAgentID(),
+		ClientID:    id.NewClientID("client-1"),
 		DisplayName: "Test Client",
 	}
 	_ = agentRepo.Create(context.Background(), agent)
@@ -154,7 +155,7 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 	// Verify redirect to consent
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
-	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/agent-1")
+	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agent.ID.String())
 }
 
 // TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream tests redirect to upstream with active grant
@@ -163,21 +164,22 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	// Register agent
+	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          "agent-1",
-		ClientID:    "client-1",
+		ID:          agentID,
+		ClientID:    id.NewClientID("client-1"),
 		DisplayName: "Test Client",
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
 	// Create active grant for user
 	grant := &storage.UserGrant{
-		ID:         "grant-1",
-		Principal:  "user@example.com",
-		AgentID:    "agent-1",
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    agentID,
 		ValidUntil: nil, // Indefinite grant
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+			{ThirdpartyOAuth2ServiceID: id.NewServiceID(), Scopes: []string{"openid"}},
 		},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
@@ -227,9 +229,10 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	grantRepo := newInMemoryGrantRepo()
 
 	// Register agent
+	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          "agent-1",
-		ClientID:    "client-1",
+		ID:          agentID,
+		ClientID:    id.NewClientID("client-1"),
 		DisplayName: "Test Client",
 	}
 	_ = agentRepo.Create(context.Background(), agent)
@@ -237,12 +240,12 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	// Create expired grant
 	expiredTime := time.Now().Add(-1 * time.Hour)
 	grant := &storage.UserGrant{
-		ID:         "grant-1",
-		Principal:  "user@example.com",
-		AgentID:    "agent-1",
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    agentID,
 		ValidUntil: &expiredTime,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+			{ThirdpartyOAuth2ServiceID: id.NewServiceID(), Scopes: []string{"openid"}},
 		},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
@@ -275,7 +278,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	// Verify redirect to consent (not upstream)
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
-	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/agent-1")
+	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agent.ID.String())
 	assert.NotContains(t, redirectURL, "https://auth.example.com/authorize")
 }
 
@@ -284,20 +287,21 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
+	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          "agent-1",
-		ClientID:    "client-1",
+		ID:          agentID,
+		ClientID:    id.NewClientID("client-1"),
 		DisplayName: "Test Client",
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
 	grant := &storage.UserGrant{
-		ID:         "grant-1",
-		Principal:  "user@example.com",
-		AgentID:    "agent-1",
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    agentID,
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+			{ThirdpartyOAuth2ServiceID: id.NewServiceID(), Scopes: []string{"openid"}},
 		},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
@@ -343,20 +347,21 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
+	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          "agent-1",
-		ClientID:    "client-1",
+		ID:          agentID,
+		ClientID:    id.NewClientID("client-1"),
 		DisplayName: "Test Client",
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
 	grant := &storage.UserGrant{
-		ID:         "grant-1",
-		Principal:  "user@example.com",
-		AgentID:    "agent-1",
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal("user@example.com"),
+		AgentID:    agentID,
 		ValidUntil: nil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: "service-1", Scopes: []string{"openid"}},
+			{ThirdpartyOAuth2ServiceID: id.NewServiceID(), Scopes: []string{"openid"}},
 		},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
@@ -398,12 +403,12 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 // In-memory repository implementations for testing
 
 type inMemoryAgentRepo struct {
-	agents map[string]*storage.Agent
+	agents map[id.AgentID]*storage.Agent
 }
 
 func newInMemoryAgentRepo() *inMemoryAgentRepo {
 	return &inMemoryAgentRepo{
-		agents: make(map[string]*storage.Agent),
+		agents: make(map[id.AgentID]*storage.Agent),
 	}
 }
 
@@ -412,8 +417,8 @@ func (r *inMemoryAgentRepo) Create(ctx context.Context, agent *storage.Agent) er
 	return nil
 }
 
-func (r *inMemoryAgentRepo) Get(ctx context.Context, id string) (*storage.Agent, error) {
-	agent, ok := r.agents[id]
+func (r *inMemoryAgentRepo) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
+	agent, ok := r.agents[agentID]
 	if !ok {
 		return nil, ports.ErrNotFound
 	}
@@ -428,8 +433,8 @@ func (r *inMemoryAgentRepo) Update(ctx context.Context, agent *storage.Agent) er
 	return nil
 }
 
-func (r *inMemoryAgentRepo) Delete(ctx context.Context, id string) error {
-	delete(r.agents, id)
+func (r *inMemoryAgentRepo) Delete(ctx context.Context, agentID id.AgentID) error {
+	delete(r.agents, agentID)
 	return nil
 }
 
@@ -441,7 +446,7 @@ func (r *inMemoryAgentRepo) List(ctx context.Context) ([]*storage.Agent, error) 
 	return agents, nil
 }
 
-func (r *inMemoryAgentRepo) GetByClientID(ctx context.Context, clientID string) (*storage.Agent, error) {
+func (r *inMemoryAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, agent := range r.agents {
 		if agent.ClientID == clientID {
 			return agent, nil
@@ -456,12 +461,12 @@ func (r *inMemoryAgentRepo) GetByClientID(ctx context.Context, clientID string) 
 }
 
 type inMemoryGrantRepo struct {
-	grants map[string]*storage.UserGrant
+	grants map[id.GrantID]*storage.UserGrant
 }
 
 func newInMemoryGrantRepo() *inMemoryGrantRepo {
 	return &inMemoryGrantRepo{
-		grants: make(map[string]*storage.UserGrant),
+		grants: make(map[id.GrantID]*storage.UserGrant),
 	}
 }
 
@@ -470,8 +475,8 @@ func (r *inMemoryGrantRepo) Create(ctx context.Context, grant *storage.UserGrant
 	return nil
 }
 
-func (r *inMemoryGrantRepo) Get(ctx context.Context, id string) (*storage.UserGrant, error) {
-	grant, ok := r.grants[id]
+func (r *inMemoryGrantRepo) Get(ctx context.Context, grantID id.GrantID) (*storage.UserGrant, error) {
+	grant, ok := r.grants[grantID]
 	if !ok {
 		return nil, ports.ErrNotFound
 	}
@@ -486,12 +491,12 @@ func (r *inMemoryGrantRepo) Update(ctx context.Context, grant *storage.UserGrant
 	return nil
 }
 
-func (r *inMemoryGrantRepo) Delete(ctx context.Context, id string) error {
-	delete(r.grants, id)
+func (r *inMemoryGrantRepo) Delete(ctx context.Context, grantID id.GrantID) error {
+	delete(r.grants, grantID)
 	return nil
 }
 
-func (r *inMemoryGrantRepo) ListByPrincipalAndAgent(ctx context.Context, principal string, agentID string) ([]*storage.UserGrant, error) {
+func (r *inMemoryGrantRepo) ListByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	var grants []*storage.UserGrant
 	for _, grant := range r.grants {
 		if grant.Principal == principal && grant.AgentID == agentID && grant.IsActive() {
@@ -501,7 +506,7 @@ func (r *inMemoryGrantRepo) ListByPrincipalAndAgent(ctx context.Context, princip
 	return grants, nil
 }
 
-func (r *inMemoryGrantRepo) FindByPrincipalAndAgent(ctx context.Context, principal, agentID string) (*storage.UserGrant, error) {
+func (r *inMemoryGrantRepo) FindByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) (*storage.UserGrant, error) {
 	for _, grant := range r.grants {
 		if grant.Principal == principal && grant.AgentID == agentID {
 			return grant, nil
@@ -510,16 +515,16 @@ func (r *inMemoryGrantRepo) FindByPrincipalAndAgent(ctx context.Context, princip
 	return nil, nil
 }
 
-func (r *inMemoryGrantRepo) DeleteByAgent(ctx context.Context, agentID string) error {
-	for id, grant := range r.grants {
+func (r *inMemoryGrantRepo) DeleteByAgent(ctx context.Context, agentID id.AgentID) error {
+	for grantID, grant := range r.grants {
 		if grant.AgentID == agentID {
-			delete(r.grants, id)
+			delete(r.grants, grantID)
 		}
 	}
 	return nil
 }
 
-func (r *inMemoryGrantRepo) ListByPrincipal(ctx context.Context, principal string) ([]storage.UserGrant, error) {
+func (r *inMemoryGrantRepo) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storage.UserGrant, error) {
 	var grants []storage.UserGrant
 	for _, grant := range r.grants {
 		if grant.Principal == principal && grant.IsActive() {
@@ -529,8 +534,8 @@ func (r *inMemoryGrantRepo) ListByPrincipal(ctx context.Context, principal strin
 	return grants, nil
 }
 
-func (r *inMemoryGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID string) (int, error) {
-	agents := make(map[string]bool)
+func (r *inMemoryGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
+	agents := make(map[id.AgentID]bool)
 	for _, grant := range r.grants {
 		for _, token := range grant.DelegatedOAuth2Tokens {
 			if token.ThirdpartyOAuth2ServiceID == serviceID {
@@ -542,8 +547,8 @@ func (r *inMemoryGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceI
 	return len(agents), nil
 }
 
-func (r *inMemoryGrantRepo) ListByServiceID(ctx context.Context, serviceID string) ([]string, error) {
-	agents := make(map[string]bool)
+func (r *inMemoryGrantRepo) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
+	agents := make(map[id.AgentID]bool)
 	for _, grant := range r.grants {
 		for _, token := range grant.DelegatedOAuth2Tokens {
 			if token.ThirdpartyOAuth2ServiceID == serviceID {
@@ -552,7 +557,7 @@ func (r *inMemoryGrantRepo) ListByServiceID(ctx context.Context, serviceID strin
 			}
 		}
 	}
-	var agentIDs []string
+	var agentIDs []id.AgentID
 	for agentID := range agents {
 		agentIDs = append(agentIDs, agentID)
 	}

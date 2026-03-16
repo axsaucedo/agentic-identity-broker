@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
@@ -24,8 +25,8 @@ func (m *MockRepository) Create(ctx context.Context, entity *model.ThirdpartyOAu
 	return args.Error(0)
 }
 
-func (m *MockRepository) Get(ctx context.Context, id string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
-	args := m.Called(ctx, id)
+func (m *MockRepository) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	args := m.Called(ctx, serviceID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -37,8 +38,8 @@ func (m *MockRepository) Update(ctx context.Context, entity *model.ThirdpartyOAu
 	return args.Error(0)
 }
 
-func (m *MockRepository) Delete(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
+func (m *MockRepository) Delete(ctx context.Context, serviceID id.ServiceID) error {
+	args := m.Called(ctx, serviceID)
 	return args.Error(0)
 }
 
@@ -50,7 +51,7 @@ func (m *MockRepository) List(ctx context.Context) ([]*model.ThirdpartyOAuth2Pro
 	return args.Get(0).([]*model.ThirdpartyOAuth2ProviderEntity), args.Error(1)
 }
 
-func (m *MockRepository) CountGrantsReferencingService(ctx context.Context, serviceID string) (int, error) {
+func (m *MockRepository) CountGrantsReferencingService(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	args := m.Called(ctx, serviceID)
 	return args.Int(0), args.Error(1)
 }
@@ -89,7 +90,7 @@ type MockBranchKeyManager struct {
 	mock.Mock
 }
 
-func (m *MockBranchKeyManager) Create(ctx context.Context, serviceID string) (string, error) {
+func (m *MockBranchKeyManager) Create(ctx context.Context, serviceID id.ServiceID) (string, error) {
 	args := m.Called(ctx, serviceID)
 	return args.String(0), args.Error(1)
 }
@@ -97,11 +98,11 @@ func (m *MockBranchKeyManager) Create(ctx context.Context, serviceID string) (st
 // minimalValidEntity returns the smallest ThirdpartyOAuth2ProviderEntity that passes
 // ValidateForCreate. Use this as the base for tests focused on service behavior
 // (encryption, branch keys, storage) rather than validation logic.
-func minimalValidEntity(id string, secret model.Secret) *model.ThirdpartyOAuth2ProviderEntity {
+func minimalValidEntity(svcID id.ServiceID, secret model.Secret) *model.ThirdpartyOAuth2ProviderEntity {
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          id,
+		ID:          svcID,
 		DisplayName: "Test Provider",
-		ClientID:    "test-client-id",
+		ClientID:    id.ClientID("test-client-id"),
 		Secret:      secret,
 		IssuerURI:   "https://issuer.example.com",
 		Discovery:   model.DiscoveryConfig{EnableDiscovery: true},
@@ -121,7 +122,7 @@ func TestThirdpartyOAuth2ProviderService_Create_ValidationRejectsBeforeIDGenerat
 	ctx := context.Background()
 	// Entity missing required DisplayName — validation must reject before ID is assigned
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:     "", // deliberately empty to observe ID generation behavior
+		ID:     id.ServiceID{}, // deliberately zero to observe ID generation behavior
 		Secret: model.NewPlaintextSecret("secret"),
 	}
 
@@ -129,7 +130,7 @@ func TestThirdpartyOAuth2ProviderService_Create_ValidationRejectsBeforeIDGenerat
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "provider validation failed")
-	assert.Empty(t, entity.ID, "ID must NOT be generated when validation fails")
+	assert.True(t, entity.ID.IsZero(), "ID must NOT be generated when validation fails")
 	mockEnc.AssertNotCalled(t, "Encrypt")
 	mockRepo.AssertNotCalled(t, "Create")
 }
@@ -143,7 +144,7 @@ func TestThirdpartyOAuth2ProviderService_Create_ValidationRejectsBeforeBranchKey
 	ctx := context.Background()
 	// Invalid entity (missing DisplayName) — branch key must NOT be provisioned
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:     "service-123",
+		ID:     id.NewServiceID(),
 		Secret: model.NewPlaintextSecret("secret"),
 	}
 
@@ -162,7 +163,7 @@ func TestThirdpartyOAuth2ProviderService_Create_HTTPIssuerRejectedByDefault(t *t
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("svc-1", model.NewPlaintextSecret("secret"))
+	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("secret"))
 	entity.IssuerURI = "http://issuer.example.com" // HTTP non-localhost
 
 	err := svc.Create(ctx, entity)
@@ -178,7 +179,7 @@ func TestThirdpartyOAuth2ProviderService_Create_HTTPIssuerAllowedWithSkipHTTPS(t
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, true, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("svc-1", model.NewPlaintextSecret("secret"))
+	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("secret"))
 	entity.IssuerURI = "http://issuer.example.com" // HTTP non-localhost, allowed in dev
 
 	mockEnc.On("Encrypt", ctx, mock.Anything, mock.Anything).Return([]byte("enc"), nil)
@@ -198,7 +199,7 @@ func TestThirdpartyOAuth2ProviderService_Update_ValidationRejectsBeforeEncryptio
 	ctx := context.Background()
 	// Entity missing required DisplayName — encryption must NOT be attempted
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:     "service-123",
+		ID:     id.NewServiceID(),
 		Secret: model.NewPlaintextSecret("new-secret"),
 	}
 
@@ -220,9 +221,9 @@ func TestThirdpartyOAuth2ProviderService_Create_EncryptsAndStores(t *testing.T) 
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("service-123", model.NewPlaintextSecret("supersecret"))
+	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("supersecret"))
 
-	expectedEncContext := map[string]string{"service_id": "service-123"}
+	expectedEncContext := map[string]string{"service_id": entity.ID.String()}
 	mockEnc.On("Encrypt", ctx, []byte("supersecret"), expectedEncContext).
 		Return([]byte("encrypted-bytes"), nil)
 	mockRepo.On("Create", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
@@ -245,20 +246,20 @@ func TestThirdpartyOAuth2ProviderService_Create_GeneratesIDIfEmpty(t *testing.T)
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("", model.NewPlaintextSecret("my-secret"))
+	entity := minimalValidEntity(id.ServiceID{}, model.NewPlaintextSecret("my-secret"))
 
 	mockEnc.On("Encrypt", ctx, []byte("my-secret"), mock.MatchedBy(func(ec map[string]string) bool {
-		id, ok := ec["service_id"]
-		return ok && id != "" // ID must be set in encryption context
+		sid, ok := ec["service_id"]
+		return ok && sid != ""
 	})).Return([]byte("enc"), nil)
 	mockRepo.On("Create", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
-		return e.ID != "" // ID must be set
+		return !e.ID.IsZero()
 	})).Return(nil)
 
 	err := svc.Create(ctx, entity)
 
 	require.NoError(t, err)
-	assert.NotEmpty(t, entity.ID, "ID should be generated")
+	assert.False(t, entity.ID.IsZero(), "ID should be generated")
 	mockEnc.AssertExpectations(t)
 	mockRepo.AssertExpectations(t)
 }
@@ -270,10 +271,11 @@ func TestThirdpartyOAuth2ProviderService_Create_WithBranchKeyManager(t *testing.
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, mockBKM, false, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("service-123", model.NewPlaintextSecret("secret"))
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("secret"))
 
 	callOrder := make([]string, 0)
-	mockBKM.On("Create", ctx, "service-123").Return("bk-1", nil).Run(func(_ mock.Arguments) {
+	mockBKM.On("Create", ctx, svcID).Return("bk-1", nil).Run(func(_ mock.Arguments) {
 		callOrder = append(callOrder, "branch_key")
 	})
 	mockEnc.On("Encrypt", ctx, mock.Anything, mock.Anything).Return([]byte("enc"), nil).Run(func(_ mock.Arguments) {
@@ -300,9 +302,10 @@ func TestThirdpartyOAuth2ProviderService_Create_BranchKeyFailure_AbortCreate(t *
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, mockBKM, false, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("service-123", model.NewPlaintextSecret("secret"))
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("secret"))
 
-	mockBKM.On("Create", ctx, "service-123").Return("", errors.New("KMS unavailable"))
+	mockBKM.On("Create", ctx, svcID).Return("", errors.New("KMS unavailable"))
 
 	err := svc.Create(ctx, entity)
 
@@ -318,7 +321,7 @@ func TestThirdpartyOAuth2ProviderService_Create_EncryptionFailure(t *testing.T) 
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("service-123", model.NewPlaintextSecret("secret"))
+	entity := minimalValidEntity(id.NewServiceID(), model.NewPlaintextSecret("secret"))
 
 	mockEnc.On("Encrypt", ctx, mock.Anything, mock.Anything).Return(nil, errors.New("KMS error"))
 
@@ -336,7 +339,7 @@ func TestThirdpartyOAuth2ProviderService_Create_EncryptedSecretFails(t *testing.
 
 	ctx := context.Background()
 	// Entity with encrypted secret — ValidateForCreate requires plaintext state
-	entity := minimalValidEntity("service-123", model.NewEncryptedSecret([]byte("already-encrypted")))
+	entity := minimalValidEntity(id.NewServiceID(), model.NewEncryptedSecret([]byte("already-encrypted")))
 
 	err := svc.Create(ctx, entity)
 
@@ -356,19 +359,20 @@ func TestThirdpartyOAuth2ProviderService_Get_DecryptsSecret(t *testing.T) {
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svcID := id.NewServiceID()
 	storedEntity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "service-123",
+		ID:          svcID,
 		DisplayName: "GitHub",
 		Secret:      model.NewEncryptedSecret([]byte("ciphertext")),
 	}
-	mockRepo.On("Get", ctx, "service-123").Return(storedEntity, nil)
-	mockEnc.On("Decrypt", ctx, []byte("ciphertext"), map[string]string{"service_id": "service-123"}).
+	mockRepo.On("Get", ctx, svcID).Return(storedEntity, nil)
+	mockEnc.On("Decrypt", ctx, []byte("ciphertext"), map[string]string{"service_id": svcID.String()}).
 		Return([]byte("plaintext-secret"), nil)
 
-	result, err := svc.Get(ctx, "service-123")
+	result, err := svc.Get(ctx, svcID)
 
 	require.NoError(t, err)
-	assert.Equal(t, "service-123", result.ID)
+	assert.Equal(t, svcID, result.ID)
 	assert.Equal(t, "GitHub", result.DisplayName)
 	assert.True(t, result.Secret.IsPlaintext())
 	pt, err := result.Secret.GetPlaintext()
@@ -384,9 +388,10 @@ func TestThirdpartyOAuth2ProviderService_Get_NotFound(t *testing.T) {
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
-	mockRepo.On("Get", ctx, "nonexistent").Return(nil, errors.New("not found"))
+	nonexistentID := id.NewServiceID()
+	mockRepo.On("Get", ctx, nonexistentID).Return(nil, errors.New("not found"))
 
-	result, err := svc.Get(ctx, "nonexistent")
+	result, err := svc.Get(ctx, nonexistentID)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -402,18 +407,19 @@ func TestThirdpartyOAuth2ProviderService_CrossServiceProtection(t *testing.T) {
 	ctx := context.Background()
 
 	// Service A's data stored with "service-a" binding
+	svcAID := id.NewServiceID()
 	storedEntityA := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:     "service-a",
+		ID:     svcAID,
 		Secret: model.NewEncryptedSecret([]byte("encrypted-for-a")),
 	}
-	mockRepo.On("Get", ctx, "service-a").Return(storedEntityA, nil)
+	mockRepo.On("Get", ctx, svcAID).Return(storedEntityA, nil)
 
-	// Decryption fails because Service A's context is {"service_id": "service-a"}
+	// Decryption fails because Service A's context is bound to its ID
 	contextMismatchErr := errors.New("encryption context mismatch")
-	mockEnc.On("Decrypt", ctx, []byte("encrypted-for-a"), map[string]string{"service_id": "service-a"}).
+	mockEnc.On("Decrypt", ctx, []byte("encrypted-for-a"), map[string]string{"service_id": svcAID.String()}).
 		Return(nil, contextMismatchErr)
 
-	_, err := svc.Get(ctx, "service-a")
+	_, err := svc.Get(ctx, svcAID)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to decrypt")
@@ -430,9 +436,10 @@ func TestThirdpartyOAuth2ProviderService_Update_WithNewSecret(t *testing.T) {
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("service-123", model.NewPlaintextSecret("new-secret"))
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("new-secret"))
 
-	mockEnc.On("Encrypt", ctx, []byte("new-secret"), map[string]string{"service_id": "service-123"}).
+	mockEnc.On("Encrypt", ctx, []byte("new-secret"), map[string]string{"service_id": svcID.String()}).
 		Return([]byte("new-encrypted"), nil)
 	mockRepo.On("Update", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
 		return e.Secret.IsEncrypted()
@@ -454,7 +461,7 @@ func TestThirdpartyOAuth2ProviderService_Update_EncryptedSecretFails(t *testing.
 	ctx := context.Background()
 	// Passing an already-encrypted secret must be rejected — callers must always supply
 	// plaintext so re-encryption always runs (prevents silent bypass during key rotation).
-	entity := minimalValidEntity("service-123", model.NewEncryptedSecret([]byte("existing-ciphertext")))
+	entity := minimalValidEntity(id.NewServiceID(), model.NewEncryptedSecret([]byte("existing-ciphertext")))
 
 	err := svc.Update(ctx, entity)
 
@@ -475,14 +482,16 @@ func TestThirdpartyOAuth2ProviderService_List_DecryptsAll(t *testing.T) {
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svc1ID := id.NewServiceID()
+	svc2ID := id.NewServiceID()
 	entities := []*model.ThirdpartyOAuth2ProviderEntity{
-		{ID: "svc-1", Secret: model.NewEncryptedSecret([]byte("enc-1"))},
-		{ID: "svc-2", Secret: model.NewEncryptedSecret([]byte("enc-2"))},
+		{ID: svc1ID, Secret: model.NewEncryptedSecret([]byte("enc-1"))},
+		{ID: svc2ID, Secret: model.NewEncryptedSecret([]byte("enc-2"))},
 	}
 	mockRepo.On("List", ctx).Return(entities, nil)
-	mockEnc.On("Decrypt", ctx, []byte("enc-1"), map[string]string{"service_id": "svc-1"}).
+	mockEnc.On("Decrypt", ctx, []byte("enc-1"), map[string]string{"service_id": svc1ID.String()}).
 		Return([]byte("secret-1"), nil)
-	mockEnc.On("Decrypt", ctx, []byte("enc-2"), map[string]string{"service_id": "svc-2"}).
+	mockEnc.On("Decrypt", ctx, []byte("enc-2"), map[string]string{"service_id": svc2ID.String()}).
 		Return([]byte("secret-2"), nil)
 
 	results, err := svc.List(ctx)
@@ -503,21 +512,23 @@ func TestThirdpartyOAuth2ProviderService_List_FailFastOnDecryptionError(t *testi
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svc1ID := id.NewServiceID()
+	svc2ID := id.NewServiceID()
 	entities := []*model.ThirdpartyOAuth2ProviderEntity{
-		{ID: "svc-1", Secret: model.NewEncryptedSecret([]byte("enc-1"))},
-		{ID: "svc-2", Secret: model.NewEncryptedSecret([]byte("corrupted"))},
+		{ID: svc1ID, Secret: model.NewEncryptedSecret([]byte("enc-1"))},
+		{ID: svc2ID, Secret: model.NewEncryptedSecret([]byte("corrupted"))},
 	}
 	mockRepo.On("List", ctx).Return(entities, nil)
-	mockEnc.On("Decrypt", ctx, []byte("enc-1"), map[string]string{"service_id": "svc-1"}).
+	mockEnc.On("Decrypt", ctx, []byte("enc-1"), map[string]string{"service_id": svc1ID.String()}).
 		Return([]byte("secret-1"), nil)
-	mockEnc.On("Decrypt", ctx, []byte("corrupted"), map[string]string{"service_id": "svc-2"}).
+	mockEnc.On("Decrypt", ctx, []byte("corrupted"), map[string]string{"service_id": svc2ID.String()}).
 		Return(nil, errors.New("decryption failed"))
 
 	results, err := svc.List(ctx)
 
 	assert.Error(t, err)
 	assert.Nil(t, results)
-	assert.Contains(t, err.Error(), "svc-2")
+	assert.Contains(t, err.Error(), svc2ID.String())
 	mockEnc.AssertExpectations(t)
 }
 
@@ -531,9 +542,10 @@ func TestThirdpartyOAuth2ProviderService_Delete(t *testing.T) {
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
-	mockRepo.On("Delete", ctx, "service-123").Return(nil)
+	svcID := id.NewServiceID()
+	mockRepo.On("Delete", ctx, svcID).Return(nil)
 
-	err := svc.Delete(ctx, "service-123")
+	err := svc.Delete(ctx, svcID)
 
 	require.NoError(t, err)
 	mockEnc.AssertNotCalled(t, "Decrypt")
@@ -550,18 +562,19 @@ func TestThirdpartyOAuth2ProviderService_FindByProtectedResource_DecryptsSecret(
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svcID := id.NewServiceID()
 	storedEntity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:     "service-123",
+		ID:     svcID,
 		Secret: model.NewEncryptedSecret([]byte("ciphertext")),
 	}
 	mockRepo.On("FindByProtectedResource", ctx, "https://api.example.com").Return(storedEntity, nil)
-	mockEnc.On("Decrypt", ctx, []byte("ciphertext"), map[string]string{"service_id": "service-123"}).
+	mockEnc.On("Decrypt", ctx, []byte("ciphertext"), map[string]string{"service_id": svcID.String()}).
 		Return([]byte("plaintext"), nil)
 
 	result, err := svc.FindByProtectedResource(ctx, "https://api.example.com")
 
 	require.NoError(t, err)
-	assert.Equal(t, "service-123", result.ID)
+	assert.Equal(t, svcID, result.ID)
 	assert.True(t, result.Secret.IsPlaintext())
 	mockEnc.AssertExpectations(t)
 	mockRepo.AssertExpectations(t)
@@ -577,10 +590,11 @@ func TestThirdpartyOAuth2ProviderService_Create_ServiceIDOnlyContext(t *testing.
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
-	entity := minimalValidEntity("service-abc", model.NewPlaintextSecret("secret"))
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("secret"))
 
 	// ADR 008: only service_id in context, no principal
-	expectedContext := map[string]string{"service_id": "service-abc"}
+	expectedContext := map[string]string{"service_id": svcID.String()}
 	mockEnc.On("Encrypt", ctx, []byte("secret"), expectedContext).Return([]byte("enc"), nil)
 	mockRepo.On("Create", ctx, mock.Anything).Return(nil)
 
@@ -614,8 +628,9 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_ValidScopes
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svcID := id.NewServiceID()
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "svc-1",
+		ID:          svcID,
 		DisplayName: "GitHub",
 		Scopes: []model.OAuthScope{
 			{ScopeValue: "repo"},
@@ -623,11 +638,11 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_ValidScopes
 		},
 		Secret: model.NewEncryptedSecret([]byte("ciphertext")),
 	}
-	mockRepo.On("Get", ctx, "svc-1").Return(entity, nil)
+	mockRepo.On("Get", ctx, svcID).Return(entity, nil)
 
 	serviceReqs := []storage.ServiceRequirement{
 		{
-			ServiceID:       "svc-1",
+			ServiceID:       svcID,
 			RequirementType: storage.RequirementTypeMandatory,
 			RequiredScopes:  []string{"repo", "user:email"},
 		},
@@ -644,24 +659,26 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_MultipleSer
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	githubID := id.NewServiceID()
+	gitlabID := id.NewServiceID()
 	entity1 := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "github",
+		ID:          githubID,
 		DisplayName: "GitHub",
 		Scopes:      []model.OAuthScope{{ScopeValue: "repo"}, {ScopeValue: "user:email"}},
 		Secret:      model.NewEncryptedSecret([]byte("enc1")),
 	}
 	entity2 := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "gitlab",
+		ID:          gitlabID,
 		DisplayName: "GitLab",
 		Scopes:      []model.OAuthScope{{ScopeValue: "api"}, {ScopeValue: "read_user"}},
 		Secret:      model.NewEncryptedSecret([]byte("enc2")),
 	}
-	mockRepo.On("Get", ctx, "github").Return(entity1, nil)
-	mockRepo.On("Get", ctx, "gitlab").Return(entity2, nil)
+	mockRepo.On("Get", ctx, githubID).Return(entity1, nil)
+	mockRepo.On("Get", ctx, gitlabID).Return(entity2, nil)
 
 	serviceReqs := []storage.ServiceRequirement{
-		{ServiceID: "github", RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"repo"}},
-		{ServiceID: "gitlab", RequirementType: storage.RequirementTypeOptional, RequiredScopes: []string{"api"}},
+		{ServiceID: githubID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"repo"}},
+		{ServiceID: gitlabID, RequirementType: storage.RequirementTypeOptional, RequiredScopes: []string{"api"}},
 	}
 
 	err := svc.ValidateServiceRequirements(ctx, serviceReqs)
@@ -675,11 +692,12 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_ServiceNotF
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	missingSvcID := id.NewServiceID()
 	notFoundErr := storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "not found")
-	mockRepo.On("Get", ctx, "missing-svc").Return(nil, notFoundErr)
+	mockRepo.On("Get", ctx, missingSvcID).Return(nil, notFoundErr)
 
 	serviceReqs := []storage.ServiceRequirement{
-		{ServiceID: "missing-svc", RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"read"}},
+		{ServiceID: missingSvcID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"read"}},
 	}
 
 	err := svc.ValidateServiceRequirements(ctx, serviceReqs)
@@ -688,7 +706,7 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_ServiceNotF
 	var storageErr *storage.StorageError
 	require.True(t, errors.As(err, &storageErr))
 	assert.Equal(t, storage.ErrorKindValidation, storageErr.Kind)
-	assert.Contains(t, storageErr.Message, "missing-svc")
+	assert.Contains(t, storageErr.Message, missingSvcID.String())
 	assert.Contains(t, storageErr.Message, "not found")
 	assert.Contains(t, storageErr.Message, "index 0")
 	mockRepo.AssertExpectations(t)
@@ -700,16 +718,17 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_InvalidScop
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svcID := id.NewServiceID()
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "svc-1",
+		ID:          svcID,
 		DisplayName: "GitHub",
 		Scopes:      []model.OAuthScope{{ScopeValue: "repo"}, {ScopeValue: "user:email"}},
 		Secret:      model.NewEncryptedSecret([]byte("ciphertext")),
 	}
-	mockRepo.On("Get", ctx, "svc-1").Return(entity, nil)
+	mockRepo.On("Get", ctx, svcID).Return(entity, nil)
 
 	serviceReqs := []storage.ServiceRequirement{
-		{ServiceID: "svc-1", RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"repo", "invalid:scope"}},
+		{ServiceID: svcID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"repo", "invalid:scope"}},
 	}
 
 	err := svc.ValidateServiceRequirements(ctx, serviceReqs)
@@ -730,19 +749,21 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_SecondIndex
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svc1ID := id.NewServiceID()
+	missingSvcID := id.NewServiceID()
 	entity1 := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "svc-1",
+		ID:          svc1ID,
 		DisplayName: "GitHub",
 		Scopes:      []model.OAuthScope{{ScopeValue: "repo"}},
 		Secret:      model.NewEncryptedSecret([]byte("enc1")),
 	}
 	notFoundErr := storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "not found")
-	mockRepo.On("Get", ctx, "svc-1").Return(entity1, nil)
-	mockRepo.On("Get", ctx, "missing-svc").Return(nil, notFoundErr)
+	mockRepo.On("Get", ctx, svc1ID).Return(entity1, nil)
+	mockRepo.On("Get", ctx, missingSvcID).Return(nil, notFoundErr)
 
 	serviceReqs := []storage.ServiceRequirement{
-		{ServiceID: "svc-1", RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"repo"}},
-		{ServiceID: "missing-svc", RequirementType: storage.RequirementTypeOptional, RequiredScopes: []string{"read"}},
+		{ServiceID: svc1ID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"repo"}},
+		{ServiceID: missingSvcID, RequirementType: storage.RequirementTypeOptional, RequiredScopes: []string{"read"}},
 	}
 
 	err := svc.ValidateServiceRequirements(ctx, serviceReqs)
@@ -761,11 +782,12 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_StorageErro
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svc1ID := id.NewServiceID()
 	connErr := storage.NewStorageError("Get", storage.ErrorKindConnection, nil, "database connection failed")
-	mockRepo.On("Get", ctx, "svc-1").Return(nil, connErr)
+	mockRepo.On("Get", ctx, svc1ID).Return(nil, connErr)
 
 	serviceReqs := []storage.ServiceRequirement{
-		{ServiceID: "svc-1", RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"repo"}},
+		{ServiceID: svc1ID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"repo"}},
 	}
 
 	err := svc.ValidateServiceRequirements(ctx, serviceReqs)
@@ -784,17 +806,18 @@ func TestThirdpartyOAuth2ProviderService_ValidateServiceRequirements_CaseSensiti
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
 
 	ctx := context.Background()
+	svcID := id.NewServiceID()
 	entity := &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "svc-1",
+		ID:          svcID,
 		DisplayName: "GitHub",
 		Scopes:      []model.OAuthScope{{ScopeValue: "repo"}},
 		Secret:      model.NewEncryptedSecret([]byte("ciphertext")),
 	}
-	mockRepo.On("Get", ctx, "svc-1").Return(entity, nil)
+	mockRepo.On("Get", ctx, svcID).Return(entity, nil)
 
 	// "REPO" must not match "repo" — OAuth2 scopes are case-sensitive
 	serviceReqs := []storage.ServiceRequirement{
-		{ServiceID: "svc-1", RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"REPO"}},
+		{ServiceID: svcID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"REPO"}},
 	}
 
 	err := svc.ValidateServiceRequirements(ctx, serviceReqs)

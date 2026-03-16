@@ -3,6 +3,7 @@ package fixtures
 import (
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 )
 
@@ -14,10 +15,10 @@ func GitHubService() *model.ThirdpartyOAuth2ProviderEntity {
 	metadataURL := "https://github.com/.well-known/oauth-authorization-server"
 
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "github-service",
+		ID:          id.MustParseServiceID("a0000000-0000-0000-0000-000000000001"),
 		DisplayName: "GitHub",
-		ClientID:    "github-client-id",
-		Secret:      EncryptedSecret("github-service", "github-client-secret"),
+		ClientID:    id.ClientID("github-client-id"),
+		Secret:      EncryptedSecret("a0000000-0000-0000-0000-000000000001", "github-client-secret"),
 		IssuerURI:   "https://github.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
@@ -45,10 +46,10 @@ func GoogleService() *model.ThirdpartyOAuth2ProviderEntity {
 	metadataURL := "https://accounts.google.com/.well-known/openid-configuration"
 
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "google-service",
+		ID:          id.MustParseServiceID("a0000000-0000-0000-0000-000000000002"),
 		DisplayName: "Google",
-		ClientID:    "google-client-id",
-		Secret:      EncryptedSecret("google-service", "google-client-secret"),
+		ClientID:    id.ClientID("google-client-id"),
+		Secret:      EncryptedSecret("a0000000-0000-0000-0000-000000000002", "google-client-secret"),
 		IssuerURI:   "https://accounts.google.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
@@ -76,10 +77,10 @@ func MicrosoftService() *model.ThirdpartyOAuth2ProviderEntity {
 	metadataURL := "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
 
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          "microsoft-service",
+		ID:          id.MustParseServiceID("a0000000-0000-0000-0000-000000000003"),
 		DisplayName: "Microsoft Azure",
-		ClientID:    "microsoft-client-id",
-		Secret:      EncryptedSecret("microsoft-service", "microsoft-client-secret"),
+		ClientID:    id.ClientID("microsoft-client-id"),
+		Secret:      EncryptedSecret("a0000000-0000-0000-0000-000000000003", "microsoft-client-secret"),
 		IssuerURI:   "https://login.microsoftonline.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: true,
@@ -102,14 +103,14 @@ func MicrosoftService() *model.ThirdpartyOAuth2ProviderEntity {
 
 // ServiceWithID returns a service with the specified ID.
 // Base service can be customized for testing specific scenarios.
-func ServiceWithID(id string) *model.ThirdpartyOAuth2ProviderEntity {
+func ServiceWithID(svcID string) *model.ThirdpartyOAuth2ProviderEntity {
 	now := time.Now()
 
 	return &model.ThirdpartyOAuth2ProviderEntity{
-		ID:          id,
-		DisplayName: "Test Service " + id,
-		ClientID:    "test-client-" + id,
-		Secret:      EncryptedSecret(id, "test-secret-"+id),
+		ID:          id.MustParseServiceID(svcID),
+		DisplayName: "Test Service " + svcID,
+		ClientID:    id.ClientID("test-client-" + svcID),
+		Secret:      EncryptedSecret(svcID, "test-secret-"+svcID),
 		IssuerURI:   "https://test-issuer.example.com",
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: false,

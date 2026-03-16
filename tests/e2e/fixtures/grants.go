@@ -3,8 +3,8 @@ package fixtures
 import (
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/google/uuid"
 )
 
 // ActiveGrant returns a user grant that is currently active (not expired).
@@ -15,13 +15,13 @@ func ActiveGrant(principal, agentID, serviceID string, scopes []string) *storage
 	validUntil := now.Add(1 * time.Hour)
 
 	return &storage.UserGrant{
-		ID:         uuid.New().String(),
-		Principal:  principal,
-		AgentID:    agentID,
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal(principal),
+		AgentID:    id.MustParseAgentID(agentID),
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: serviceID,
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID(serviceID),
 				Scopes:                    scopes,
 			},
 		},
@@ -38,13 +38,13 @@ func ExpiredGrant(principal, agentID, serviceID string, scopes []string) *storag
 	validUntil := now.Add(-1 * time.Hour)
 
 	return &storage.UserGrant{
-		ID:         uuid.New().String(),
-		Principal:  principal,
-		AgentID:    agentID,
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal(principal),
+		AgentID:    id.MustParseAgentID(agentID),
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: serviceID,
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID(serviceID),
 				Scopes:                    scopes,
 			},
 		},
@@ -60,13 +60,13 @@ func GrantExpiringIn(principal, agentID, serviceID string, scopes []string, dura
 	validUntil := now.Add(duration)
 
 	return &storage.UserGrant{
-		ID:         uuid.New().String(),
-		Principal:  principal,
-		AgentID:    agentID,
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal(principal),
+		AgentID:    id.MustParseAgentID(agentID),
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: serviceID,
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID(serviceID),
 				Scopes:                    scopes,
 			},
 		},
@@ -81,13 +81,13 @@ func IndefiniteGrant(principal, agentID, serviceID string, scopes []string) *sto
 	now := time.Now()
 
 	return &storage.UserGrant{
-		ID:         uuid.New().String(),
-		Principal:  principal,
-		AgentID:    agentID,
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal(principal),
+		AgentID:    id.MustParseAgentID(agentID),
 		ValidUntil: nil, // No expiration
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: serviceID,
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID(serviceID),
 				Scopes:                    scopes,
 			},
 		},
@@ -103,21 +103,21 @@ func GrantWithMultipleServices(principal, agentID string) *storage.UserGrant {
 	validUntil := now.Add(24 * time.Hour)
 
 	return &storage.UserGrant{
-		ID:         uuid.New().String(),
-		Principal:  principal,
-		AgentID:    agentID,
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal(principal),
+		AgentID:    id.MustParseAgentID(agentID),
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "github-service",
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID("a0000000-0000-0000-0000-000000000001"),
 				Scopes:                    []string{"repo", "user"},
 			},
 			{
-				ThirdpartyOAuth2ServiceID: "google-service",
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID("a0000000-0000-0000-0000-000000000002"),
 				Scopes:                    []string{"calendar", "drive"},
 			},
 			{
-				ThirdpartyOAuth2ServiceID: "microsoft-service",
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID("a0000000-0000-0000-0000-000000000003"),
 				Scopes:                    []string{"mail.read", "calendar.read"},
 			},
 		},
@@ -133,13 +133,13 @@ func GrantWithService(principal, agentID, serviceID string, scopes []string) *st
 	validUntil := now.Add(30 * 24 * time.Hour) // 30 days
 
 	return &storage.UserGrant{
-		ID:         uuid.New().String(),
-		Principal:  principal,
-		AgentID:    agentID,
+		ID:         id.NewGrantID(),
+		Principal:  id.Principal(principal),
+		AgentID:    id.MustParseAgentID(agentID),
 		ValidUntil: &validUntil,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: serviceID,
+				ThirdpartyOAuth2ServiceID: id.MustParseServiceID(serviceID),
 				Scopes:                    scopes,
 			},
 		},
