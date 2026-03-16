@@ -412,6 +412,67 @@ func TestTokenExchanger_ClientAssertion_SendsCorrectGrantRequest(t *testing.T) {
 		"scope must be openid to obtain an id_token")
 }
 
+// Spec: oauth2.client_credentials_scopes — custom scopes sent to client_credentials endpoint
+func TestTokenExchanger_ClientAssertion_UsesConfiguredScopes(t *testing.T) {
+	var receivedForm url.Values
+	clientCredsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		receivedForm = r.Form
+		w.Header().Set("Content-Type", "application/json")
+		expiry := 3600
+		_ = json.NewEncoder(w).Encode(tokenResponse{
+			AccessToken: "access",
+			IDToken:     "id-token-jwt",
+			TokenType:   "Bearer",
+			ExpiresIn:   &expiry,
+		})
+	}))
+	defer clientCredsServer.Close()
+
+	tokenExchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expiry := 3600
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(tokenResponse{
+			AccessToken: "exchanged",
+			TokenType:   "Bearer",
+			ExpiresIn:   &expiry,
+		})
+	}))
+	defer tokenExchServer.Close()
+
+	cfg := &extprocconfig.Config{
+		GRPC: extprocconfig.GRPCConfig{Bind: "127.0.0.1", Port: 50051},
+		OAuth2: extprocconfig.OAuth2Config{
+			TokenEndpoint:              tokenExchServer.URL + "/oauth2/token",
+			Issuer:                     clientCredsServer.URL,
+			ClientID:                   "my-extproc-client",
+			ClientSecret:               "my-secret",
+			ClientCredentialsEndpoint:  clientCredsServer.URL + "/oauth/token",
+			ClientCredentialsScopes:    []string{"openid", "profile", "email"},
+			ClientAssertionType:        "id_token",
+			ExchangeTimeout:            5 * time.Second,
+			TLS:                        extprocconfig.TLSConfig{AllowHTTP: true},
+		},
+		Cache: extprocconfig.CacheConfig{
+			DefaultTTL: 5 * time.Minute,
+			MaxTTL:     1 * time.Hour,
+		},
+	}
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	_, err = exchanger.Exchange("user-token", "http://resource.example.com")
+	require.NoError(t, err)
+
+	// Verify that the configured scopes are sent to the client_credentials endpoint
+	scope := receivedForm.Get("scope")
+	assert.Contains(t, scope, "openid", "configured scope 'openid' should be sent")
+	assert.Contains(t, scope, "profile", "configured scope 'profile' should be sent")
+	assert.Contains(t, scope, "email", "configured scope 'email' should be sent")
+}
+
 // Spec: FR-006 — client_credentials endpoint defaults to {issuer}/oauth/token
 func TestTokenExchanger_ClientAssertion_DefaultsIssuerOAuthToken(t *testing.T) {
 	called := false

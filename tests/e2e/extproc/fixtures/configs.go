@@ -78,9 +78,10 @@ func ConfigWithInvalidPort() *extprocconfig.Config {
 	return cfg
 }
 
-// ConfigWithNegativeDefaultTTL returns a config with an invalid (negative) default TTL.
-func ConfigWithNegativeDefaultTTL() *extprocconfig.Config {
+// ConfigWithClientCredentialsScopes returns a config with custom OAuth2 scopes
+// for the client_credentials grant used to obtain the client assertion.
+func ConfigWithClientCredentialsScopes(scopes []string) *extprocconfig.Config {
 	cfg := DefaultConfig()
-	cfg.Cache.DefaultTTL = -1 * time.Second // Invalid TTL — should fail validation
+	cfg.OAuth2.ClientCredentialsScopes = scopes
 	return cfg
 }
