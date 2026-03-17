@@ -84,6 +84,8 @@ An operator configures the ExtProc service with gRPC settings and OAuth2 authori
 
 1. **Given** valid configuration for gRPC and token exchange settings, **When** the service starts, **Then** it binds to the configured host/port and logs a startup summary
 2. **Given** missing or invalid required configuration values, **When** the service starts, **Then** it exits with a configuration validation error
+3. **Given** no `client_credentials_scopes` are configured, **When** the ExtProc service acquires a client assertion, **Then** it sends `scope=openid` to the client_credentials endpoint
+4. **Given** `client_credentials_scopes` are configured (e.g., `["openid", "profile", "email"]`), **When** the ExtProc service acquires a client assertion, **Then** it sends the configured scopes to the client_credentials endpoint
 
 ---
 

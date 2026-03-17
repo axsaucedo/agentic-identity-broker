@@ -60,6 +60,7 @@ func RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().String("oauth2.client_id", "", "client ID for obtaining client assertion (required)")
 	cmd.Flags().String("oauth2.client_secret", "", "client secret for obtaining client assertion (required)")
 	cmd.Flags().String("oauth2.client_credentials_endpoint", "", "explicit client_credentials endpoint (optional)")
+	cmd.Flags().StringSlice("oauth2.client_credentials_scopes", nil, "OAuth2 scopes for client_credentials grant (optional, defaults to [openid])")
 	cmd.Flags().Duration("oauth2.exchange_timeout", 0, "timeout for token exchange HTTP calls (default: 5s)")
 	// Cache flags
 	cmd.Flags().Duration("cache.default_ttl", 0, "fallback TTL when token lacks expiry (default: 5m)")
@@ -170,6 +171,10 @@ func bindFlags(v *viper.Viper, cmd *cobra.Command) {
 			func() interface{} { s, _ := cmd.Flags().GetString("oauth2.client_credentials_endpoint"); return s },
 		},
 		{
+			"oauth2.client_credentials_scopes", "oauth2.client_credentials_scopes",
+			func() interface{} { ss, _ := cmd.Flags().GetStringSlice("oauth2.client_credentials_scopes"); return ss },
+		},
+		{
 			"oauth2.exchange_timeout", "oauth2.exchange_timeout",
 			func() interface{} { d, _ := cmd.Flags().GetDuration("oauth2.exchange_timeout"); return d },
 		},
@@ -212,6 +217,7 @@ func applyDefaults(v *viper.Viper) {
 	v.SetDefault("oauth2.client_id", "")
 	v.SetDefault("oauth2.client_secret", "")
 	v.SetDefault("oauth2.client_credentials_endpoint", "")
+	v.SetDefault("oauth2.client_credentials_scopes", []string{})
 	// Optional fields with non-empty defaults.
 	v.SetDefault("oauth2.exchange_timeout", "5s")
 	v.SetDefault("oauth2.client_assertion_type", "id_token")

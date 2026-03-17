@@ -149,6 +149,7 @@ type MockOAuth2Server struct {
 	accessToken string
 	statusCode  int
 	errorCode   string
+	lastForm    string
 }
 
 // NewMockOAuth2Server creates a new mock OAuth2 server with default successful responses.
@@ -206,14 +207,28 @@ func (m *MockOAuth2Server) WithError(statusCode int, errorCode string) *MockOAut
 	return m
 }
 
+// LastForm returns the last form-encoded request body received (thread-safe).
+// Use this in tests to assert on parameters sent to the client_credentials endpoint.
+func (m *MockOAuth2Server) LastForm() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.lastForm
+}
+
 // handleToken handles POST /oauth/token requests.
 func (m *MockOAuth2Server) handleToken(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
 	m.mu.Lock()
 	m.callCount++
 	statusCode := m.statusCode
 	idToken := m.idToken
 	accessToken := m.accessToken
 	errorCode := m.errorCode
+	m.lastForm = r.Form.Encode()
 	m.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")

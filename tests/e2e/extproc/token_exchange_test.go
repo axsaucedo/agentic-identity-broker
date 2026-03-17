@@ -449,6 +449,83 @@ var _ = Describe("ExtProc Token Exchange", func() {
 			Expect(env.MockTokenExchange.CallCount()).To(Equal(1),
 				"token without expiry should use default_ttl and be cached for subsequent requests")
 		})
+	})
+
+	// ---------------------------------------------------------------------------
+	// Configuration: client_credentials_scopes (optional)
+	// ---------------------------------------------------------------------------
+	Describe("client_credentials_scopes configuration", func() {
+
+		// When no scopes are configured, the client_credentials grant defaults to ["openid"].
+		Context("when no client_credentials_scopes are configured", func() {
+			// Spec: US3 Scenario 3
+			// Given no client_credentials_scopes are configured, when the ExtProc service
+			// acquires a client assertion, then it sends scope=openid to the client_credentials endpoint.
+			It("should send scope=openid as the default to the client_credentials endpoint", func() {
+				// DefaultConfig has no ClientCredentialsScopes set.
+				// Start() already populated env with DefaultConfig, so just use env directly.
+
+				// Trigger a token exchange to ensure the client assertion was acquired.
+				req := helpers.NewRequestHeaders().
+					WithPath(fixtures.ValidResourceURI).
+					WithBearerToken(fixtures.ValidBearerToken).
+					Build()
+
+				resp := helpers.SendRequestHeaders(context.Background(), client, req)
+				Expect(resp).NotTo(BeNil())
+
+				// The mock OAuth2 server should have received scope=openid
+				lastForm := env.MockOAuth2.LastForm()
+				Expect(lastForm).To(ContainSubstring("scope=openid"),
+					"when no scopes configured, client_credentials grant should default to scope=openid")
+			})
+		})
+
+		// When explicit scopes are configured, the client_credentials grant sends them.
+		Context("when client_credentials_scopes are configured", func() {
+			BeforeEach(func() {
+				// Replace the default environment with one using custom scopes
+				if conn != nil {
+					conn.Close() //nolint:errcheck
+				}
+				if env != nil {
+					env.Stop()
+				}
+				customScopesCfg := fixtures.ConfigWithClientCredentialsScopes([]string{"openid", "profile", "email"})
+				env = bootstrap.NewTestEnvironment(customScopesCfg, logger)
+				env.Start()
+				client, conn = env.NewExtProcClient()
+			})
+
+			// Spec: US3 Scenario 4
+			// Given client_credentials_scopes are configured, when the ExtProc service
+			// acquires a client assertion, then it sends the configured scopes to the client_credentials endpoint.
+			It("should send the configured scopes to the client_credentials endpoint", func() {
+				// Trigger a token exchange to ensure the client assertion was acquired.
+				req := helpers.NewRequestHeaders().
+					WithPath(fixtures.ValidResourceURI).
+					WithBearerToken(fixtures.ValidBearerToken).
+					Build()
+
+				resp := helpers.SendRequestHeaders(context.Background(), client, req)
+				Expect(resp).NotTo(BeNil())
+
+				// The mock OAuth2 server should have received the configured scopes.
+				lastForm := env.MockOAuth2.LastForm()
+				Expect(lastForm).To(ContainSubstring("openid"),
+					"configured scopes should be sent to the client_credentials endpoint")
+				Expect(lastForm).To(ContainSubstring("profile"),
+					"configured scopes should be sent to the client_credentials endpoint")
+				Expect(lastForm).To(ContainSubstring("email"),
+					"configured scopes should be sent to the client_credentials endpoint")
+			})
+		})
+	})
+
+	// ---------------------------------------------------------------------------
+	// Edge Cases (from specs/015-extproc-token-exchange/spec.md)
+	// ---------------------------------------------------------------------------
+	Describe("Edge Cases", func() {
 
 		// Edge Case: singleflight
 		// How does the service handle concurrent requests that race to refresh an expired cache entry?

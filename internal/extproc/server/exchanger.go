@@ -277,7 +277,7 @@ func (te *TokenExchanger) refreshClientAssertion() error {
 		ClientID:     te.cfg.OAuth2.ClientID,
 		ClientSecret: te.cfg.OAuth2.ClientSecret,
 		TokenURL:     endpoint,
-		Scopes:       []string{"openid"},
+		Scopes:       clientCredentialsScopes(te.cfg.OAuth2.ClientCredentialsScopes),
 		AuthStyle:    oauth2.AuthStyleInParams,
 	}
 
@@ -384,6 +384,22 @@ func (te *TokenExchanger) maybeRefreshAssertion() {
 				"error", err)
 		}
 	}
+}
+
+// clientCredentialsScopes returns the OAuth2 scopes for the client_credentials grant.
+// When no scopes are configured, or when all configured entries are blank after trimming,
+// it falls back to ["openid"] to obtain an id_token.
+func clientCredentialsScopes(configured []string) []string {
+	filtered := make([]string, 0, len(configured))
+	for _, s := range configured {
+		if trimmed := strings.TrimSpace(s); trimmed != "" {
+			filtered = append(filtered, trimmed)
+		}
+	}
+	if len(filtered) == 0 {
+		return []string{"openid"}
+	}
+	return filtered
 }
 
 // buildHTTPClient constructs an http.Client respecting the TLS configuration.
