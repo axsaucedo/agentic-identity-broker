@@ -54,16 +54,16 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Create(ctx context.Context,
 
 	query := `
 		INSERT INTO thirdparty_oauth2_services (
-			id, display_name, client_id, client_secret_encrypted, issuer_uri,
+			id, display_name, client_id, client_secret_encrypted, oauth2_flavor, issuer_uri,
 			enable_discovery, metadata_url, token_endpoint, authorize_endpoint,
 			scopes, protected_resources, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 
 	_, err = r.adapter.db.ExecContext(
 		execCtx, query,
 		record.ID, record.DisplayName, record.ClientID, record.SecretCiphertext,
-		record.IssuerURI, record.EnableDiscovery, record.MetadataURL,
+		record.Flavor, record.IssuerURI, record.EnableDiscovery, record.MetadataURL,
 		record.TokenEndpoint, record.AuthorizeEndpoint,
 		record.Scopes, pq.Array(record.ProtectedResources),
 		record.CreatedAt, record.UpdatedAt,
@@ -95,7 +95,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, se
 	defer cancel()
 
 	query := `
-		SELECT id, display_name, client_id, client_secret_encrypted, issuer_uri,
+		SELECT id, display_name, client_id, client_secret_encrypted, oauth2_flavor, issuer_uri,
 		       enable_discovery, metadata_url, token_endpoint, authorize_endpoint,
 		       scopes, protected_resources, created_at, updated_at
 		FROM thirdparty_oauth2_services
@@ -105,7 +105,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, se
 	var record ThirdpartyOAuth2ProviderRecord
 	err := r.adapter.db.QueryRowContext(queryCtx, query, serviceID).Scan(
 		&record.ID, &record.DisplayName, &record.ClientID, &record.SecretCiphertext,
-		&record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL,
+		&record.Flavor, &record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL,
 		&record.TokenEndpoint, &record.AuthorizeEndpoint,
 		&record.Scopes, pq.Array(&record.ProtectedResources),
 		&record.CreatedAt, &record.UpdatedAt,
@@ -146,14 +146,15 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Update(ctx context.Context,
 		SET display_name = $2,
 		    client_id = $3,
 		    client_secret_encrypted = $4,
-		    issuer_uri = $5,
-		    enable_discovery = $6,
-		    metadata_url = $7,
-		    token_endpoint = $8,
-		    authorize_endpoint = $9,
-		    scopes = $10,
-		    protected_resources = $11,
-		    updated_at = $12
+		    oauth2_flavor = $5,
+		    issuer_uri = $6,
+		    enable_discovery = $7,
+		    metadata_url = $8,
+		    token_endpoint = $9,
+		    authorize_endpoint = $10,
+		    scopes = $11,
+		    protected_resources = $12,
+		    updated_at = $13
 		WHERE id = $1
 		RETURNING created_at
 	`
@@ -162,7 +163,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Update(ctx context.Context,
 	err = r.adapter.db.QueryRowContext(
 		execCtx, query,
 		record.ID, record.DisplayName, record.ClientID, record.SecretCiphertext,
-		record.IssuerURI, record.EnableDiscovery, record.MetadataURL,
+		record.Flavor, record.IssuerURI, record.EnableDiscovery, record.MetadataURL,
 		record.TokenEndpoint, record.AuthorizeEndpoint,
 		record.Scopes, pq.Array(record.ProtectedResources),
 		record.UpdatedAt,
@@ -229,7 +230,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) List(ctx context.Context) (
 	defer cancel()
 
 	query := `
-		SELECT id, display_name, client_id, client_secret_encrypted, issuer_uri,
+		SELECT id, display_name, client_id, client_secret_encrypted, oauth2_flavor, issuer_uri,
 		       enable_discovery, metadata_url, token_endpoint, authorize_endpoint,
 		       scopes, protected_resources, created_at, updated_at
 		FROM thirdparty_oauth2_services
@@ -251,7 +252,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) List(ctx context.Context) (
 		var record ThirdpartyOAuth2ProviderRecord
 		err := rows.Scan(
 			&record.ID, &record.DisplayName, &record.ClientID, &record.SecretCiphertext,
-			&record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL,
+			&record.Flavor, &record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL,
 			&record.TokenEndpoint, &record.AuthorizeEndpoint,
 			&record.Scopes, pq.Array(&record.ProtectedResources),
 			&record.CreatedAt, &record.UpdatedAt,
@@ -318,7 +319,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx
 	defer cancel()
 
 	query := `
-		SELECT id, display_name, client_id, client_secret_encrypted, issuer_uri,
+		SELECT id, display_name, client_id, client_secret_encrypted, oauth2_flavor, issuer_uri,
 		       enable_discovery, metadata_url, token_endpoint, authorize_endpoint,
 		       scopes, protected_resources, created_at, updated_at
 		FROM thirdparty_oauth2_services
@@ -340,7 +341,7 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) FindByProtectedResource(ctx
 		var record ThirdpartyOAuth2ProviderRecord
 		err := rows.Scan(
 			&record.ID, &record.DisplayName, &record.ClientID, &record.SecretCiphertext,
-			&record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL,
+			&record.Flavor, &record.IssuerURI, &record.EnableDiscovery, &record.MetadataURL,
 			&record.TokenEndpoint, &record.AuthorizeEndpoint,
 			&record.Scopes, pq.Array(&record.ProtectedResources),
 			&record.CreatedAt, &record.UpdatedAt,

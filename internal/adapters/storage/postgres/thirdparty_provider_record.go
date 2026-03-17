@@ -26,6 +26,7 @@ type ThirdpartyOAuth2ProviderRecord struct {
 	DisplayName        string             `db:"display_name"`
 	ClientID           string             `db:"client_id"`
 	SecretCiphertext   []byte             `db:"client_secret_encrypted"`
+	Flavor             string             `db:"oauth2_flavor"`
 	IssuerURI          string             `db:"issuer_uri"`
 	EnableDiscovery    bool               `db:"enable_discovery"`
 	MetadataURL        *string            `db:"metadata_url"`
@@ -109,6 +110,7 @@ func entityToRecord(entity *model.ThirdpartyOAuth2ProviderEntity) (*ThirdpartyOA
 		DisplayName:       entity.DisplayName,
 		ClientID:          entity.ClientID.String(),
 		SecretCiphertext:  ciphertext,
+		Flavor:            string(entity.Flavor),
 		IssuerURI:         entity.IssuerURI,
 		EnableDiscovery:   entity.Discovery.EnableDiscovery,
 		TokenEndpoint:     entity.Endpoints.TokenEndpoint,
@@ -155,6 +157,7 @@ func recordToEntity(record *ThirdpartyOAuth2ProviderRecord) (*model.ThirdpartyOA
 		DisplayName: record.DisplayName,
 		ClientID:    id.ClientID(record.ClientID),
 		Secret:      model.NewEncryptedSecret(record.SecretCiphertext),
+		Flavor:      model.OAuth2Flavor(record.Flavor),
 		IssuerURI:   record.IssuerURI,
 		Discovery: model.DiscoveryConfig{
 			EnableDiscovery: record.EnableDiscovery,

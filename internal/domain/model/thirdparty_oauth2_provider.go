@@ -45,6 +45,7 @@ type ThirdpartyOAuth2ProviderEntity struct {
 	DisplayName         string
 	ClientID            id.ClientID
 	Secret              Secret
+	Flavor              OAuth2Flavor // defaults to OAuth2FlavorStandard when zero
 	IssuerURI           string
 	Discovery           DiscoveryConfig
 	Endpoints           OAuth2Endpoints
@@ -99,31 +100,55 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForCreate(skipHTTPSValidation b
 	if len(e.DisplayName) > 255 {
 		return fmt.Errorf("display_name exceeds 255 characters (got %d)", len(e.DisplayName))
 	}
-	if e.ClientID.IsZero() {
-		return errors.New("client_id is required")
+
+	// Validate flavor first; reject unknown values before other checks.
+	flavor := e.Flavor
+	if flavor == "" {
+		flavor = DefaultOAuth2Flavor
+	}
+	if err := flavor.Validate(); err != nil {
+		return err
 	}
 
 	// Secret must be in plaintext for create (before encryption)
 	if !e.Secret.IsPlaintext() {
 		return errors.New("client_secret is required for create")
 	}
-	if _, err := e.Secret.GetPlaintext(); err != nil {
+	credential, err := e.Secret.GetPlaintext()
+	if err != nil {
 		return fmt.Errorf("client_secret is invalid: %w", err)
 	}
 
-	if e.IssuerURI == "" {
-		return errors.New("issuer_uri is required")
-	}
-	if !isAllowedHTTPSScheme(e.IssuerURI, skipHTTPSValidation) {
-		return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
-	}
-
-	if !e.Discovery.EnableDiscovery {
-		if e.Endpoints.TokenEndpoint == "" {
-			return errors.New("token_endpoint is required when discovery is disabled")
+	switch flavor {
+	case OAuth2FlavorStandard:
+		// Standard flavor: client_id required, credential non-empty, issuer_uri required+HTTPS.
+		if e.ClientID == "" {
+			return errors.New("client_id is required")
 		}
-		if e.Endpoints.AuthorizeEndpoint == "" {
-			return errors.New("authorize_endpoint is required when discovery is disabled")
+		if credential == "" {
+			return errors.New("client_secret is required")
+		}
+		if e.IssuerURI == "" {
+			return errors.New("issuer_uri is required")
+		}
+		if !isAllowedHTTPSScheme(e.IssuerURI, skipHTTPSValidation) {
+			return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
+		}
+		if !e.Discovery.EnableDiscovery {
+			if e.Endpoints.TokenEndpoint == "" {
+				return errors.New("token_endpoint is required when discovery is disabled")
+			}
+			if e.Endpoints.AuthorizeEndpoint == "" {
+				return errors.New("authorize_endpoint is required when discovery is disabled")
+			}
+		}
+
+	case OAuth2FlavorGoogle:
+		// Google flavor: parse credential once, enrich derived fields, and validate host
+		// consistency. enrichForGoogleFlavor mutates the entity (sets ClientID, Endpoints,
+		// IssuerURI) so callers need not perform a separate enrichment step.
+		if err := e.enrichForGoogleFlavor(credential); err != nil {
+			return err
 		}
 	}
 
@@ -158,8 +183,14 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 	if len(e.DisplayName) > 255 {
 		return fmt.Errorf("display_name exceeds 255 characters (got %d)", len(e.DisplayName))
 	}
-	if e.ClientID.IsZero() {
-		return errors.New("client_id is required")
+
+	// Validate flavor first; reject unknown values before other checks.
+	flavor := e.Flavor
+	if flavor == "" {
+		flavor = DefaultOAuth2Flavor
+	}
+	if err := flavor.Validate(); err != nil {
+		return err
 	}
 
 	// Secret must be in plaintext for update (will be re-encrypted by the domain service).
@@ -168,23 +199,41 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 	if !e.Secret.IsPlaintext() {
 		return errors.New("client_secret is required for update")
 	}
-	if _, err := e.Secret.GetPlaintext(); err != nil {
+	credential, err := e.Secret.GetPlaintext()
+	if err != nil {
 		return fmt.Errorf("client_secret is invalid: %w", err)
 	}
 
-	if e.IssuerURI == "" {
-		return errors.New("issuer_uri is required")
-	}
-	if !isAllowedHTTPSScheme(e.IssuerURI, skipHTTPSValidation) {
-		return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
-	}
-
-	if !e.Discovery.EnableDiscovery {
-		if e.Endpoints.TokenEndpoint == "" {
-			return errors.New("token_endpoint is required when discovery is disabled")
+	switch flavor {
+	case OAuth2FlavorStandard:
+		// Standard flavor: client_id required, credential non-empty, issuer_uri required+HTTPS.
+		if e.ClientID == "" {
+			return errors.New("client_id is required")
 		}
-		if e.Endpoints.AuthorizeEndpoint == "" {
-			return errors.New("authorize_endpoint is required when discovery is disabled")
+		if credential == "" {
+			return errors.New("client_secret is required")
+		}
+		if e.IssuerURI == "" {
+			return errors.New("issuer_uri is required")
+		}
+		if !isAllowedHTTPSScheme(e.IssuerURI, skipHTTPSValidation) {
+			return errors.New("issuer_uri must be a valid HTTPS URL (HTTP allowed only for localhost in dev mode)")
+		}
+		if !e.Discovery.EnableDiscovery {
+			if e.Endpoints.TokenEndpoint == "" {
+				return errors.New("token_endpoint is required when discovery is disabled")
+			}
+			if e.Endpoints.AuthorizeEndpoint == "" {
+				return errors.New("authorize_endpoint is required when discovery is disabled")
+			}
+		}
+
+	case OAuth2FlavorGoogle:
+		// Google flavor: parse credential once, enrich derived fields, and validate host
+		// consistency. enrichForGoogleFlavor mutates the entity (sets ClientID, Endpoints,
+		// IssuerURI) so callers need not perform a separate enrichment step.
+		if err := e.enrichForGoogleFlavor(credential); err != nil {
+			return err
 		}
 	}
 
@@ -201,6 +250,66 @@ func (e *ThirdpartyOAuth2ProviderEntity) ValidateForUpdate(skipHTTPSValidation b
 		if err := scope.Validate(); err != nil {
 			return fmt.Errorf("scope %d: %w", i, err)
 		}
+	}
+
+	return nil
+}
+
+// validateIssuerURIAgainstTokenURI validates that the scheme+host of issuerURI matches
+// the scheme+host of tokenURI. Used for google flavor to ensure the provided issuer_uri
+// is consistent with the token_uri embedded in the service account JSON.
+func validateIssuerURIAgainstTokenURI(issuerURI, tokenURI string) error {
+	parsedIssuer, err := url.Parse(issuerURI)
+	if err != nil {
+		return fmt.Errorf("issuer_uri is invalid: %w", err)
+	}
+	parsedToken, err := url.Parse(tokenURI)
+	if err != nil {
+		return fmt.Errorf("token_uri in service account JSON is invalid: %w", err)
+	}
+	issuerBase := parsedIssuer.Scheme + "://" + parsedIssuer.Host
+	tokenBase := parsedToken.Scheme + "://" + parsedToken.Host
+	if issuerBase != tokenBase {
+		return fmt.Errorf("issuer_uri host %q must match token_uri host %q from service account JSON", parsedIssuer.Host, parsedToken.Host)
+	}
+	return nil
+}
+
+// enrichForGoogleFlavor parses the Google service account JSON credential (already extracted
+// as plaintext) and mutates the entity to populate derived fields: ClientID, Endpoints, and
+// IssuerURI. This ensures parsing happens exactly once (during validation) rather than once
+// in the HTTP handler and again in domain validation.
+//
+// Behaviour for IssuerURI:
+//   - Non-empty: treated as a user-supplied override; host is validated against token_uri.
+//   - Empty: derived from token_uri base URL (scheme + host).
+func (e *ThirdpartyOAuth2ProviderEntity) enrichForGoogleFlavor(credential string) error {
+	gsk, err := ParseGoogleServiceAccountKey(credential)
+	if err != nil {
+		return err
+	}
+
+	e.ClientID = id.ClientID(gsk.ClientID)
+	e.Endpoints = OAuth2Endpoints{
+		TokenEndpoint:     gsk.TokenURI,
+		AuthorizeEndpoint: googleOAuthAuthURL,
+	}
+
+	if e.IssuerURI != "" {
+		// User-supplied override: validate host consistency with token_uri.
+		if err := validateIssuerURIAgainstTokenURI(e.IssuerURI, gsk.TokenURI); err != nil {
+			return err
+		}
+	} else {
+		// Derive issuer_uri from token_uri base URL.
+		parsed, err := url.Parse(gsk.TokenURI)
+		if err != nil {
+			return fmt.Errorf("token_uri in service account JSON is not a valid URL: %w", err)
+		}
+		if parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("token_uri in service account JSON must be an absolute URL with scheme and host")
+		}
+		e.IssuerURI = parsed.Scheme + "://" + parsed.Host
 	}
 
 	return nil
@@ -247,6 +356,7 @@ func (e *ThirdpartyOAuth2ProviderEntity) Copy() *ThirdpartyOAuth2ProviderEntity 
 		DisplayName: e.DisplayName,
 		ClientID:    e.ClientID,
 		Secret:      e.Secret, // Value type; internal ciphertext slice independently copied by Secret
+		Flavor:      e.Flavor,
 		IssuerURI:   e.IssuerURI,
 		Discovery: DiscoveryConfig{
 			EnableDiscovery: e.Discovery.EnableDiscovery,
