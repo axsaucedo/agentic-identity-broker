@@ -98,7 +98,7 @@ func (f *MigrationTestFramework) Cleanup(t *testing.T) {
 	f.container.Terminate(context.Background())
 }
 
-// Up runs all migrations up to the specified version
+// Up runs migrations up to the specified version
 func (f *MigrationTestFramework) Up(t *testing.T, targetVersion uint) error {
 	t.Helper()
 
@@ -111,10 +111,8 @@ func (f *MigrationTestFramework) Up(t *testing.T, targetVersion uint) error {
 
 	defer m.Close()
 
-	// For now, just apply all migrations
-	// The targetVersion parameter is not used but kept for API compatibility
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("migration failed: %w", err)
+	if err := m.Migrate(targetVersion); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("migration to version %d failed: %w", targetVersion, err)
 	}
 
 	return nil

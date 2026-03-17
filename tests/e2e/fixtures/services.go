@@ -128,3 +128,35 @@ func ServiceWithID(svcID string) *model.ThirdpartyOAuth2ProviderEntity {
 		UpdatedAt:          now,
 	}
 }
+
+// GoogleServiceAccountFixtureJSON returns a realistic but non-functional Google service
+// account JSON document as a string. Used for E2E testing of the google OAuth2 flavor.
+// The private_key value is fake and will not pass cryptographic validation,
+// but it passes structural validation since we do not verify crypto format (FR-014).
+func GoogleServiceAccountFixtureJSON() string {
+	return `{
+  "type": "service_account",
+  "project_id": "test-project-123",
+  "private_key_id": "test-key-id-abcdef",
+  "private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA2a2rwplBQLf0kTmkGp5RJFBpJOFBBhfJmLO0YjCGSLCuoP7\noc5RfakePrivateKeyDataForTestingPurposesOnlyNotRealCryptographicKey\n-----END RSA PRIVATE KEY-----\n",
+  "client_email": "test-service@test-project-123.iam.gserviceaccount.com",
+  "client_id": "112233445566778899001",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test-service%40test-project-123.iam.gserviceaccount.com"
+}`
+}
+
+// ValidGoogleServiceRequest returns a complete ServiceRequest body for creating a
+// google-flavor service. Used in E2E tests for google flavor scenarios.
+func ValidGoogleServiceRequest() map[string]interface{} {
+	return map[string]interface{}{
+		"display_name":        "Google Test Service",
+		"oauth2_flavor":       "google",
+		"client_secret":       GoogleServiceAccountFixtureJSON(),
+		"discovery":           map[string]interface{}{"enable_discovery": false},
+		"scopes":              []map[string]interface{}{{"scope_value": "https://www.googleapis.com/auth/cloud-platform", "description": "Cloud Platform"}},
+		"protected_resources": []string{"https://test.googleapis.com"},
+	}
+}

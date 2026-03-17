@@ -163,3 +163,94 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestThirdpartyOAuth2ProviderEntity_ValidateForCreate_FlavorDispatch(t *testing.T) {
+	// validGoogleServiceAccountJSON is shared with google_service_account_test.go
+	// but we redefine it here for independence of test packages (same package, different file).
+	googleJSON := `{
+  "type": "service_account",
+  "project_id": "my-project-123",
+  "private_key_id": "key-id-1234",
+  "private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA2a2rwplBQLf0kTmkGp5RJFBpJOFBBhfJmLO0YjCGSLCuoP7\noc5RfakePrivateKeyDataForTestingPurposesOnlyNotRealCryptographicKey\n-----END RSA PRIVATE KEY-----\n",
+  "client_email": "my-service@my-project-123.iam.gserviceaccount.com",
+  "client_id": "123456789012345678901",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/my-service%40my-project-123.iam.gserviceaccount.com"
+}`
+
+	tests := []struct {
+		name    string
+		entity  *ThirdpartyOAuth2ProviderEntity
+		wantErr string
+	}{
+		{
+			name: "Flavor google with valid service account JSON credential succeeds",
+			entity: &ThirdpartyOAuth2ProviderEntity{
+				DisplayName: "Google Service",
+				Flavor:      OAuth2FlavorGoogle,
+				Secret:      NewPlaintextSecret(googleJSON),
+				// client_id and issuer_uri are optional for google flavor
+				Discovery: DiscoveryConfig{EnableDiscovery: false},
+				Endpoints: OAuth2Endpoints{
+					TokenEndpoint:     "https://oauth2.googleapis.com/token",
+					AuthorizeEndpoint: "https://accounts.google.com/o/oauth2/auth",
+				},
+				Scopes: []OAuthScope{{ScopeValue: "https://www.googleapis.com/auth/cloud-platform", Description: "Cloud Platform"}},
+			},
+			wantErr: "",
+		},
+		{
+			name: "Flavor google with invalid JSON credential returns error",
+			entity: &ThirdpartyOAuth2ProviderEntity{
+				DisplayName: "Google Service",
+				Flavor:      OAuth2FlavorGoogle,
+				Secret:      NewPlaintextSecret(`{not valid json}`),
+				Scopes:      []OAuthScope{{ScopeValue: "openid", Description: "OpenID"}},
+			},
+			wantErr: "invalid Google service account JSON",
+		},
+		{
+			name: "Flavor standard with empty credential returns error",
+			entity: &ThirdpartyOAuth2ProviderEntity{
+				DisplayName: "Standard Service",
+				ClientID:    "client-123",
+				Flavor:      OAuth2FlavorStandard,
+				Secret:      NewPlaintextSecret(""),
+				IssuerURI:   "https://issuer.example.com",
+				Discovery:   DiscoveryConfig{EnableDiscovery: false},
+				Endpoints: OAuth2Endpoints{
+					TokenEndpoint:     "https://issuer.example.com/token",
+					AuthorizeEndpoint: "https://issuer.example.com/authorize",
+				},
+				Scopes: []OAuthScope{{ScopeValue: "openid", Description: "OpenID"}},
+			},
+			wantErr: "client_secret",
+		},
+		{
+			name: "Unknown Flavor returns error",
+			entity: &ThirdpartyOAuth2ProviderEntity{
+				DisplayName: "Unknown Flavor Service",
+				ClientID:    "client-123",
+				Flavor:      OAuth2Flavor("azure"),
+				Secret:      NewPlaintextSecret("some-secret"),
+				IssuerURI:   "https://issuer.example.com",
+				Scopes:      []OAuthScope{{ScopeValue: "openid", Description: "OpenID"}},
+			},
+			wantErr: "oauth2_flavor",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.entity.ValidateForCreate(true) // skipHTTPSValidation=true for tests
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
