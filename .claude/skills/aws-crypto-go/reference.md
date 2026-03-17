@@ -55,7 +55,10 @@ esdktypes.EncryptInput{
 esdktypes.DecryptInput{
     Ciphertext:        []byte,
     Keyring:           mpltypes.IKeyring,
-    EncryptionContext: map[string]string,  // For verification
+    EncryptionContext: map[string]string,  // Subset verification: all provided key-value pairs
+                                           // must be present in the ciphertext header.
+                                           // Extra keys in the header are allowed.
+                                           // Any mismatch causes Decrypt() to return an error.
 }
 ```
 

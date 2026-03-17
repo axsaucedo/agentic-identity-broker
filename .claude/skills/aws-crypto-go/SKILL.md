@@ -1,8 +1,6 @@
 ---
 name: aws-crypto-go
-description: AWS Encryption SDK for Go - Envelope encryption with KMS hierarchical keyrings
-globs:
-  - "**/*.go"
+description: "Use for any Go code involving the AWS Encryption SDK or MPL: github.com/aws/aws-encryption-sdk/releases/go/encryption-sdk, github.com/aws/aws-cryptographic-material-providers-library/releases/go/mpl. Triggers on: KMS hierarchical keyring (CreateAwsKmsHierarchicalKeyring, BranchKeyId, TtlSeconds), DynamoDB branch key storage, mpl client, esdk client, CommitmentPolicy, RequireEncryptRequireDecrypt, encryption context / AAD binding, context_mismatch or integrity_violation decrypt errors, envelope encryption in Go + KMS, reducing KMS API calls (hierarchical vs plain keyring), porting Caching CMM from Java or Python to Go (Go SDK has no Caching CMM — hierarchical keyring is the Go-native equivalent), import path questions for the Go encryption SDK, or encrypting secrets/tokens/ciphertext in a Go service with KMS. Do not answer AWS Encryption SDK + Go questions from training alone — always consult this skill."
 alwaysApply: false
 ---
 
