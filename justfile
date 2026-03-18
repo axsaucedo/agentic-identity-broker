@@ -947,27 +947,6 @@ cdk-test:
     cd infra/cdk && go test -v -race ./...
     @echo "✓ CDK tests passed"
 
-# Synthesize CloudFormation template (default: dev)
-cdk-synth env="dev":
-    @echo "Synthesizing CDK stack for {{env}}..."
-    cd infra/cdk && npx cdk synth -c env={{env}}
-
-# Diff CDK stack against deployed (default: dev)
-cdk-diff env="dev":
-    @echo "Diffing CDK stack for {{env}}..."
-    cd infra/cdk && npx cdk diff -c env={{env}}
-
-# Deploy CDK stack (default: dev)
-cdk-deploy env="dev" *ARGS="":
-    @echo "Deploying CDK stack for {{env}}..."
-    cd infra/cdk && npx cdk deploy -c env={{env}} {{ARGS}}
-
-# Destroy CDK stack (default: dev). Requires confirmation.
-cdk-destroy env="dev":
-    @echo "Destroying CDK stack for {{env}}..."
-    cd infra/cdk && npx cdk destroy -c env={{env}}
-
-# List CDK stacks
-cdk-list:
-    @echo "Listing CDK stacks..."
-    cd infra/cdk && npx cdk list
+# Synthesize CloudFormation template (default: test)
+cdk-synth env="test" *ARGS="":
+    cd infra/cdk && npx cdk synth -c env={{env}} {{ARGS}}

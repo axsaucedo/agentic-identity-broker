@@ -13,7 +13,7 @@ Manual provisioning of encryption infrastructure introduces risk:
 
 1. **Schema drift**: The AWS Encryption SDK KeyStore requires a DynamoDB table with a specific schema (`branch-key-id` (S) / `type` (S)). Manual creation is error-prone.
 2. **Permission creep**: IAM policies must grant exactly the permissions the hierarchical keyring needs — no more, no less.
-3. **Environment parity**: Dev, staging, and production must differ only in safety controls (deletion protection, retention policies), not in resource topology.
+3. **Environment parity**: Test and production must differ only in safety controls (deletion protection, retention policies), not in resource topology.
 4. **Auditability**: Infrastructure changes must be reviewable, versioned, and traceable.
 
 ---
@@ -74,7 +74,7 @@ A single `EncryptionStack` provisions:
 ### Environment Parameterization
 
 ```bash
-cdk deploy -c env=dev                    # dev defaults
+cdk deploy -c env=test                   # test defaults
 cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::123456789012:role/ECSTaskRole
 ```
 
