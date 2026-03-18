@@ -42,21 +42,21 @@ func createTestStackIRSA(t *testing.T, env string, oidcArn, namespace, sa string
 // --- KMS Key Tests ---
 
 func TestKMSKeyIsSymmetricWithRotation(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::KMS::Key"), map[string]interface{}{
 		"KeySpec":           "SYMMETRIC_DEFAULT",
 		"KeyUsage":          "ENCRYPT_DECRYPT",
 		"EnableKeyRotation": true,
-		"Description":       "Agentic Identity Broker - Token Vault KEK (dev)",
+		"Description":       "Agentic Identity Broker - Token Vault KEK (test)",
 	})
 }
 
 func TestKMSKeyAliasFollowsNamingConvention(t *testing.T) {
-	_, template := createTestStack(t, "staging", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::KMS::Alias"), map[string]interface{}{
-		"AliasName": "alias/identity-broker/staging/token-vault-kek",
+		"AliasName": "alias/agentic-identity-broker/test/token-vault-kek",
 	})
 }
 
@@ -76,8 +76,8 @@ func TestKMSKeyProdRetention(t *testing.T) {
 	}
 }
 
-func TestKMSKeyDevDeletion(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+func TestKMSKeyNonProdDeletion(t *testing.T) {
+	_, template := createTestStack(t, "test", "", "", "")
 
 	templateJSON := template.ToJSON()
 	resources := findResourcesByType(t, templateJSON, "AWS::KMS::Key")
@@ -86,14 +86,14 @@ func TestKMSKeyDevDeletion(t *testing.T) {
 	for _, res := range resources {
 		resMap, ok := res.(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, "Delete", resMap["DeletionPolicy"], "dev KMS key should have Delete deletion policy")
+		assert.Equal(t, "Delete", resMap["DeletionPolicy"], "non-prod KMS key should have Delete deletion policy")
 	}
 }
 
 // --- DynamoDB Table Tests ---
 
 func TestDynamoDBTableSchema(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	// The AWS Encryption SDK KeyStore requires branch-key-id (S) + type (S).
 	// This matches the schema used by the KeyStore client:
@@ -123,7 +123,7 @@ func TestDynamoDBTableSchema(t *testing.T) {
 }
 
 func TestDynamoDBTablePayPerRequest(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"BillingMode": "PAY_PER_REQUEST",
@@ -131,10 +131,10 @@ func TestDynamoDBTablePayPerRequest(t *testing.T) {
 }
 
 func TestDynamoDBTableNameFollowsConvention(t *testing.T) {
-	_, template := createTestStack(t, "staging", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
-		"TableName": "AgenticIdentityBrokerBranchKeys-staging",
+		"TableName": "AgenticIdentityBrokerBranchKeys-test",
 	})
 }
 
@@ -149,8 +149,8 @@ func TestDynamoDBTableProdDeletionProtection(t *testing.T) {
 	})
 }
 
-func TestDynamoDBTableDevNoDeletionProtection(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+func TestDynamoDBTableNonProdNoDeletionProtection(t *testing.T) {
+	_, template := createTestStack(t, "test", "", "", "")
 
 	templateJSON := template.ToJSON()
 	resources := findResourcesByType(t, templateJSON, "AWS::DynamoDB::Table")
@@ -159,22 +159,22 @@ func TestDynamoDBTableDevNoDeletionProtection(t *testing.T) {
 	for _, res := range resources {
 		resMap, ok := res.(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, "Delete", resMap["DeletionPolicy"], "dev DynamoDB table should have Delete deletion policy")
+		assert.Equal(t, "Delete", resMap["DeletionPolicy"], "non-prod DynamoDB table should have Delete deletion policy")
 	}
 }
 
 // --- IAM Role Tests ---
 
 func TestIAMRoleCreated(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"RoleName": "AgenticIdentityBrokerEncryptionRole-dev",
+		"RoleName": "AgenticIdentityBrokerEncryptionRole-test",
 	})
 }
 
 func TestIAMRoleTrustPolicyDefaultAccountRoot(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	// When no OIDC provider is specified, the role trusts the account root.
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
@@ -231,7 +231,7 @@ func TestIAMRoleTrustPolicyIRSA(t *testing.T) {
 }
 
 func TestIAMRoleHasKMSPermissions(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
 		"PolicyDocument": map[string]interface{}{
@@ -251,7 +251,7 @@ func TestIAMRoleHasKMSPermissions(t *testing.T) {
 }
 
 func TestIAMRoleHasDynamoDBPermissions(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
 		"PolicyDocument": map[string]interface{}{
@@ -271,7 +271,7 @@ func TestIAMRoleHasDynamoDBPermissions(t *testing.T) {
 }
 
 func TestIAMRoleHasCreateGrantPermission(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
 		"PolicyDocument": map[string]interface{}{
@@ -292,7 +292,7 @@ func TestIAMRoleHasCreateGrantPermission(t *testing.T) {
 }
 
 func TestIAMRoleMaxSessionDurationOneHour(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
 		"MaxSessionDuration": 3600,
@@ -302,7 +302,7 @@ func TestIAMRoleMaxSessionDurationOneHour(t *testing.T) {
 // --- Stack Outputs Tests ---
 
 func TestStackOutputsExist(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	templateJSON := template.ToJSON()
 	outputsRaw := extractSection(t, templateJSON, "Outputs")
@@ -334,7 +334,7 @@ func TestStackOutputsExist(t *testing.T) {
 }
 
 func TestStackOutputExportNames(t *testing.T) {
-	_, template := createTestStack(t, "staging", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	templateJSON := template.ToJSON()
 	outputsRaw := extractSection(t, templateJSON, "Outputs")
@@ -342,9 +342,9 @@ func TestStackOutputExportNames(t *testing.T) {
 	require.True(t, ok)
 
 	expectedExports := []string{
-		"AgenticIdentityBroker-staging-EncryptionKeyARN",
-		"AgenticIdentityBroker-staging-BranchKeyTableName",
-		"AgenticIdentityBroker-staging-EncryptionRoleARN",
+		"AgenticIdentityBroker-test-EncryptionKeyARN",
+		"AgenticIdentityBroker-test-BranchKeyTableName",
+		"AgenticIdentityBroker-test-EncryptionRoleARN",
 	}
 
 	var exportNames []string
@@ -368,7 +368,7 @@ func TestStackOutputExportNames(t *testing.T) {
 // --- Resource Count Tests ---
 
 func TestResourceCount(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.ResourceCountIs(jsii.String("AWS::KMS::Key"), jsii.Number(1))
 	template.ResourceCountIs(jsii.String("AWS::KMS::Alias"), jsii.Number(1))
@@ -399,7 +399,7 @@ func TestRequiredTagsApplied(t *testing.T) {
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
 				"Key":   "Component",
-				"Value": "encryption",
+				"Value": "encryption-vault",
 			}),
 		}),
 	})
@@ -420,21 +420,21 @@ func TestRequiredTagsApplied(t *testing.T) {
 	})
 
 	template.HasResourceProperties(jsii.String("AWS::KMS::Alias"), map[string]interface{}{
-		"AliasName": "alias/identity-broker/prod/token-vault-kek",
+		"AliasName": "alias/agentic-identity-broker/prod/token-vault-kek",
 	})
 
 	t.Log("Required tagging policy validated: Project, Component, ManagedBy tags present; environment embedded in resource names")
 }
 
 func TestAllResourcesTagged(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	// DynamoDB table should be tagged (CDK reliably propagates tags to DynamoDB).
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
 				"Key":   "Environment",
-				"Value": "dev",
+				"Value": "test",
 			}),
 			assertions.Match_ObjectLike(&map[string]interface{}{
 				"Key":   "Project",
@@ -448,7 +448,7 @@ func TestAllResourcesTagged(t *testing.T) {
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
 				"Key":   "Component",
-				"Value": "encryption",
+				"Value": "encryption-vault",
 			}),
 			assertions.Match_ObjectLike(&map[string]interface{}{
 				"Key":   "ManagedBy",
@@ -467,10 +467,10 @@ func TestDashboardCreated(t *testing.T) {
 }
 
 func TestDashboardNameFollowsConvention(t *testing.T) {
-	_, template := createTestStack(t, "staging", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Dashboard"), map[string]interface{}{
-		"DashboardName": "AgenticIdentityBroker-Encryption-staging",
+		"DashboardName": "AgenticIdentityBroker-Encryption-test",
 	})
 }
 
@@ -503,7 +503,7 @@ func TestKMSErrorAlarmCreated(t *testing.T) {
 }
 
 func TestKMSAlarmsOutputsExist(t *testing.T) {
-	_, template := createTestStack(t, "staging", "", "", "")
+	_, template := createTestStack(t, "test", "", "", "")
 
 	templateJSON := template.ToJSON()
 	outputsRaw := extractSection(t, templateJSON, "Outputs")
@@ -602,7 +602,7 @@ func TestProductionWithIRSAParametersSucceeds(t *testing.T) {
 }
 
 func TestNonProductionAllowsEmptyIRSAParameters(t *testing.T) {
-	// Should NOT panic for dev/staging without IRSA parameters
+	// Should NOT panic for test environment without IRSA parameters
 	app := awscdk.NewApp(nil)
 	stack := NewEncryptionStack(app, "test", &EncryptionStackProps{
 		StackProps: awscdk.StackProps{
@@ -611,7 +611,7 @@ func TestNonProductionAllowsEmptyIRSAParameters(t *testing.T) {
 				Region:  jsii.String("eu-central-1"),
 			},
 		},
-		Environment:           "dev",
+		Environment:           "test",
 		OIDCProviderArn:       "",
 		K8sNamespace:          "",
 		K8sServiceAccountName: "",
@@ -757,14 +757,14 @@ func TestIRSAConditionKeysFormatting(t *testing.T) {
 
 // --- Environment Parameterization Tests ---
 
-func TestEnvironmentParameterizationDev(t *testing.T) {
-	_, template := createTestStack(t, "dev", "", "", "")
+func TestEnvironmentParameterizationTest(t *testing.T) {
+	_, template := createTestStack(t, "test", "", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
-		"TableName": "AgenticIdentityBrokerBranchKeys-dev",
+		"TableName": "AgenticIdentityBrokerBranchKeys-test",
 	})
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"RoleName": "AgenticIdentityBrokerEncryptionRole-dev",
+		"RoleName": "AgenticIdentityBrokerEncryptionRole-test",
 	})
 }
 

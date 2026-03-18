@@ -34,7 +34,7 @@ The single `NewEncryptionStack()` function provisions:
 
 ### Environment Parameterization
 
-Three environments: `dev`, `staging`, `prod` (or `production`, normalized to `prod`).
+Two environments: `test`, `prod` (or `production`, normalized to `prod`).
 
 | Aspect | Production | Non-Production |
 |---|---|---|
@@ -72,13 +72,13 @@ Non-production defaults to `AccountRootPrincipal` for local dev convenience.
 ```bash
 just cdk-test           # Run CDK unit tests (assertions)
 just cdk-synth          # Synthesize CloudFormation template
-just cdk-deploy         # Deploy stack (default: dev)
+just cdk-deploy         # Deploy stack (default: test)
 ```
 
 Manual CDK commands:
 ```bash
 cd infra/cdk
-cdk deploy -c env=dev
+cdk deploy -c env=test
 cdk deploy -c env=prod \
   -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/... \
   -c k8sNamespace=identity-broker \

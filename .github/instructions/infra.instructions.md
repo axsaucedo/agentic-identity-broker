@@ -32,7 +32,7 @@ infra/cdk/
 
 ### Environment Parameterization
 
-Three environments: `dev`, `staging`, `prod`.
+Two environments: `test`, `prod`.
 
 | Aspect | Production | Non-Production |
 |---|---|---|
@@ -64,5 +64,5 @@ CDK `assertions.Template_FromStack()` for synthesized CloudFormation validation.
 ```bash
 just cdk-test     # Unit tests
 just cdk-synth    # Synthesize CloudFormation
-just cdk-deploy   # Deploy (default: dev)
+just cdk-deploy   # Deploy (default: test)
 ```

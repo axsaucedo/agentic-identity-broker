@@ -6,8 +6,7 @@
 //
 // Usage:
 //
-//	cdk deploy -c env=dev
-//	cdk deploy -c env=staging
+//	cdk deploy -c env=test
 //	cdk deploy -c env=prod \
 //	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLEID \
 //	  -c k8sNamespace=default \
@@ -15,7 +14,7 @@
 //
 // Custom Tags (optional):
 //
-//	cdk deploy -c env=dev -c 'customTags={"Application":"TokenVault","Team":"Security","CostCenter":"CC123"}'
+//	cdk deploy -c env=test -c 'customTags={"Application":"TokenVault","Team":"Security","CostCenter":"CC123"}'
 package main
 
 import (
@@ -31,8 +30,8 @@ func main() {
 
 	app := awscdk.NewApp(nil)
 
-	// Read environment from CDK context (default: "dev").
-	env := "dev"
+	// Read environment from CDK context (default: "test").
+	env := "test"
 	if v := app.Node().TryGetContext(jsii.String("env")); v != nil {
 		if s, ok := v.(string); ok {
 			env = s
@@ -40,9 +39,9 @@ func main() {
 	}
 
 	// Validate environment parameter to prevent typos and unexpected stack creation.
-	validEnvs := map[string]bool{"dev": true, "staging": true, "prod": true, "production": true}
+	validEnvs := map[string]bool{"test": true, "prod": true, "production": true}
 	if !validEnvs[env] {
-		panic(fmt.Sprintf("Invalid environment '%s'. Must be one of: dev, staging, prod, production", env))
+		panic(fmt.Sprintf("Invalid environment '%s'. Must be one of: test, prod", env))
 	}
 
 	// Normalize "production" to "prod" for consistency.

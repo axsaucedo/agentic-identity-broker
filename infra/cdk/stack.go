@@ -21,7 +21,7 @@ const (
 	ProdDeletionWindowDays = 30
 
 	// KMS key pending deletion window for non-production (days, minimum for fast cleanup).
-	DevDeletionWindowDays = 7
+	NonProdDeletionWindowDays = 7
 
 	// CloudWatch metrics period (minutes).
 	MetricsPeriodMinutes = 5
@@ -37,7 +37,7 @@ const (
 type EncryptionStackProps struct {
 	awscdk.StackProps
 
-	// Environment is the deployment environment: "dev", "staging", or "prod".
+	// Environment is the deployment environment: "test" or "prod".
 	Environment string
 
 	// OIDCProviderArn is the full ARN of the EKS OIDC provider for IRSA.
@@ -436,7 +436,7 @@ func pendingWindow(isProd bool) awscdk.Duration {
 	if isProd {
 		return awscdk.Duration_Days(jsii.Number(ProdDeletionWindowDays))
 	}
-	return awscdk.Duration_Days(jsii.Number(DevDeletionWindowDays))
+	return awscdk.Duration_Days(jsii.Number(NonProdDeletionWindowDays))
 }
 
 // applyStackTags applies default and custom tags to all stack resources.
@@ -446,9 +446,8 @@ func pendingWindow(isProd bool) awscdk.Duration {
 func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
 	// Build default tags
 	defaultTags := map[string]string{
-		"Project":   "agentic-identity-broker",
-		"Component": "encryption-vault",
-		"ManagedBy": "aws-cdk",
+		"application": "agentic-identity-broker",
+		"component":   "encryption-vault",
 	}
 
 	// Merge user-provided tags into defaults (user tags override defaults)
@@ -460,7 +459,7 @@ func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
 	}
 
 	// Always set Environment to match props.Environment
-	allTags["Environment"] = props.Environment
+	allTags["environment"] = props.Environment
 
 	// Apply all tags to the stack
 	for key, value := range allTags {
