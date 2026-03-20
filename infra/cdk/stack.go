@@ -79,9 +79,12 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// CI/CD tooling requires these fields to identify and validate the synthesized
 	// CloudFormation template used by deployment pipelines.
 	stack.TemplateOptions().SetMetadata(&map[string]interface{}{
-		"Application": "agentic-identity-broker",
-		"Environment": props.Environment,
-		"StackName":   stack.StackName(),
+		"StackName": stack.StackName(),
+		"Tags": map[string]interface{}{
+			"application": "agentic-identity-broker",
+			"component":   "encryption-vault",
+			"environment": props.Environment,
+		},
 	})
 
 	isProd := props.Environment == "prod" || props.Environment == "production"
