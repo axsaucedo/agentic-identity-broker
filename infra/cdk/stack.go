@@ -81,7 +81,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	stack.TemplateOptions().SetMetadata(&map[string]interface{}{
 		"Application": "agentic-identity-broker",
 		"Environment": props.Environment,
-		"StackName":   id,
+		"StackName":   stack.StackName(),
 	})
 
 	isProd := props.Environment == "prod" || props.Environment == "production"
