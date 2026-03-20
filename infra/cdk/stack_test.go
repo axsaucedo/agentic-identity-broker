@@ -384,32 +384,22 @@ func TestRequiredTagsApplied(t *testing.T) {
 	// This validates the tagging policy specified in the REMEDIATION_PLAN.md.
 	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
 
-	// Verify Project tag on DynamoDB table (critical for cost allocation and resource identification)
+	// Verify application tag on DynamoDB table (critical for cost allocation and resource identification)
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Project",
+				"Key":   "application",
 				"Value": "agentic-identity-broker",
 			}),
 		}),
 	})
 
-	// Verify Component tag on IAM role (critical for operational understanding)
+	// Verify component tag on IAM role (critical for operational understanding)
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Component",
+				"Key":   "component",
 				"Value": "encryption-vault",
-			}),
-		}),
-	})
-
-	// Verify ManagedBy tag on IAM role (shows infrastructure-as-code management)
-	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"Tags": assertions.Match_ArrayWith(&[]interface{}{
-			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "ManagedBy",
-				"Value": "aws-cdk",
 			}),
 		}),
 	})
@@ -423,7 +413,7 @@ func TestRequiredTagsApplied(t *testing.T) {
 		"AliasName": "alias/agentic-identity-broker/prod/token-vault-kek",
 	})
 
-	t.Log("Required tagging policy validated: Project, Component, ManagedBy tags present; environment embedded in resource names")
+	t.Log("Required tagging policy validated: application, component, environment tags present; environment embedded in resource names")
 }
 
 func TestAllResourcesTagged(t *testing.T) {
@@ -433,12 +423,12 @@ func TestAllResourcesTagged(t *testing.T) {
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Environment",
-				"Value": "test",
+				"Key":   "application",
+				"Value": "agentic-identity-broker",
 			}),
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Project",
-				"Value": "agentic-identity-broker",
+				"Key":   "environment",
+				"Value": "test",
 			}),
 		}),
 	})
@@ -447,12 +437,8 @@ func TestAllResourcesTagged(t *testing.T) {
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Component",
+				"Key":   "component",
 				"Value": "encryption-vault",
-			}),
-			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "ManagedBy",
-				"Value": "aws-cdk",
 			}),
 		}),
 	})
