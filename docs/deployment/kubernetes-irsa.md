@@ -169,7 +169,7 @@ This command:
 1. Calls the Go CDK app (via `go run .` as configured in `cdk.json`)
 2. Generates a CloudFormation template in `cdk.out/`
 
-Review the synthesized template: `cdk.out/AgenticIdentityBrokerEncryption-prod.template.json`
+Review the synthesized template: `cdk.out/AgenticIdentityBrokerEncryptionVault-prod.template.json`
 
 #### 1.4 Preview Infrastructure Changes
 
@@ -198,7 +198,7 @@ Deployment takes approximately 3-5 minutes.
 After successful deployment, extract the stack outputs needed for Helm configuration:
 
 ```bash
-STACK_NAME="AgenticIdentityBrokerEncryption-prod"
+STACK_NAME="AgenticIdentityBrokerEncryptionVault-prod"
 
 # Extract all outputs
 aws cloudformation describe-stacks \
@@ -847,7 +847,7 @@ jobs:
         id: outputs
         run: |
           ROLE_ARN=$(aws cloudformation describe-stacks \
-            --stack-name AgenticIdentityBrokerEncryption-prod \
+            --stack-name AgenticIdentityBrokerEncryptionVault-prod \
             --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' \
             --output text)
           echo "role_arn=$ROLE_ARN" >> $GITHUB_OUTPUT

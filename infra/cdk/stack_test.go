@@ -755,6 +755,31 @@ func TestIRSAConditionKeysFormatting(t *testing.T) {
 	}
 }
 
+// --- Template Metadata Tests ---
+
+func TestTemplateMetadataHeader(t *testing.T) {
+	// CI/CD tooling requires Metadata.Application, Environment, and StackName
+	// in the synthesized CloudFormation template to validate deployment manifests.
+	_, template := createTestStack(t, "test", "", "", "")
+
+	templateJSON := template.ToJSON()
+	metadataRaw := extractSection(t, templateJSON, "Metadata")
+	metadata, ok := metadataRaw.(map[string]interface{})
+	require.True(t, ok, "template Metadata section should be present")
+
+	application, ok := metadata["Application"].(string)
+	require.True(t, ok, "Metadata.Application should be a string")
+	assert.Equal(t, "agentic-identity-broker", application)
+
+	environment, ok := metadata["Environment"].(string)
+	require.True(t, ok, "Metadata.Environment should be a string")
+	assert.Equal(t, "test", environment)
+
+	stackName, ok := metadata["StackName"].(string)
+	require.True(t, ok, "Metadata.StackName should be a string")
+	assert.Equal(t, "TestStack", stackName, "Metadata.StackName should match the stack logical ID")
+}
+
 // --- Environment Parameterization Tests ---
 
 func TestEnvironmentParameterizationTest(t *testing.T) {

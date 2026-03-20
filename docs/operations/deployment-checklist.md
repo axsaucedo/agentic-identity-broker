@@ -102,7 +102,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Verify IAM role created**:
   ```bash
   # IAM role name is created by CDK with the format: AgenticIdentityBrokerEncryptionRole-{env}
-  # NOTE: Role name includes "-Role" suffix (different from stack name AgenticIdentityBrokerEncryption-{env})
+  # NOTE: Role name includes "-Role" suffix (different from stack name AgenticIdentityBrokerEncryptionVault-{env})
   aws iam get-role --role-name AgenticIdentityBrokerEncryptionRole-prod
   # Expected: Role exists with KMS and DynamoDB permissions
   # Note: MaxSessionDuration = 1 hour (for temporary credential limitation)
@@ -110,7 +110,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 
 - [ ] **Extract stack outputs**:
   ```bash
-  STACK_NAME="AgenticIdentityBrokerEncryption-prod"
+  STACK_NAME="AgenticIdentityBrokerEncryptionVault-prod"
 
   aws cloudformation describe-stacks \
     --stack-name $STACK_NAME \
@@ -123,7 +123,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Verify IAM role trust policy includes federated principal**:
   ```bash
   IAM_ROLE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name AgenticIdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryptionVault-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`IamRoleName`].OutputValue' \
     --output text)
 
@@ -139,23 +139,23 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
   ```bash
   # Extract outputs needed for Helm values
   export KMS_KEY_ARN=$(aws cloudformation describe-stacks \
-    --stack-name AgenticIdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryptionVault-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`EncryptionKeyARN`].OutputValue' \
     --output text)
 
   export DYNAMODB_TABLE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name AgenticIdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryptionVault-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`BranchKeyTableName`].OutputValue' \
     --output text)
 
   export IAM_ROLE_ARN=$(aws cloudformation describe-stacks \
-    --stack-name AgenticIdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryptionVault-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' \
     --output text)
 
   # Extract IAM role name for IRSA annotation
   export IAM_ROLE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name AgenticIdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryptionVault-prod \
     --query 'Stacks[0].Outputs[?OutputKey==`IamRoleName`].OutputValue' \
     --output text)
 
@@ -167,7 +167,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
   # View all available stack outputs
   echo -e "\n=== All Stack Outputs ==="
   aws cloudformation describe-stacks \
-    --stack-name AgenticIdentityBrokerEncryption-prod \
+    --stack-name AgenticIdentityBrokerEncryptionVault-prod \
     --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
     --output table
   ```
@@ -231,7 +231,7 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
 - [ ] **Configure application environment variables**:
   ```bash
   # Extract stack outputs and set environment variables
-  STACK_NAME="AgenticIdentityBrokerEncryption-prod"
+  STACK_NAME="AgenticIdentityBrokerEncryptionVault-prod"
 
   export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN=$(aws cloudformation describe-stacks \
     --stack-name $STACK_NAME \
@@ -315,18 +315,18 @@ If deployment fails or issues are discovered:
 # CloudFormation automatically rolls back failed stacks
 # No manual action required - monitors stack events
 aws cloudformation describe-stack-events \
-  --stack-name AgenticIdentityBrokerEncryption-prod
+  --stack-name AgenticIdentityBrokerEncryptionVault-prod
 ```
 
 ### Option 2: Manual Rollback
 ```bash
 # Cancel in-progress deployment
 aws cloudformation cancel-update-stack \
-  --stack-name AgenticIdentityBrokerEncryption-prod
+  --stack-name AgenticIdentityBrokerEncryptionVault-prod
 
 # Verify stack returns to previous state
 aws cloudformation describe-stacks \
-  --stack-name AgenticIdentityBrokerEncryption-prod \
+  --stack-name AgenticIdentityBrokerEncryptionVault-prod \
   --query 'Stacks[0].StackStatus'
 ```
 
@@ -478,9 +478,9 @@ Expected monthly costs for production:
 
 ## CloudFormation Stack Outputs Reference
 
-All outputs from the CDK stack `AgenticIdentityBrokerEncryption-{env}`:
+All outputs from the CDK stack `AgenticIdentityBrokerEncryptionVault-{env}`:
 
-> **Important**: The stack name is `AgenticIdentityBrokerEncryption-{env}`, but the IAM role name is `AgenticIdentityBrokerEncryptionRole-{env}` (includes "-Role" suffix). Use the correct name when calling `aws iam get-role --role-name`.
+> **Important**: The stack name is `AgenticIdentityBrokerEncryptionVault-{env}`, but the IAM role name is `AgenticIdentityBrokerEncryptionRole-{env}` (includes "-Role" suffix). Use the correct name when calling `aws iam get-role --role-name`.
 
 | Output Key | Description | Usage |
 |------------|-------------|-------|

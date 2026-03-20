@@ -75,6 +75,15 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 
 	stack := awscdk.NewStack(scope, &id, &props.StackProps)
 
+	// Add the required CloudFormation template Metadata header.
+	// CI/CD tooling requires these fields to identify and validate deployment manifests
+	// in deploy/aws/{env}/stack.yaml.
+	stack.TemplateOptions().SetMetadata(&map[string]interface{}{
+		"Application": "agentic-identity-broker",
+		"Environment": props.Environment,
+		"StackName":   id,
+	})
+
 	isProd := props.Environment == "prod" || props.Environment == "production"
 
 	// ─── IRSA Parameters Validation ─────────────────────────────────────
