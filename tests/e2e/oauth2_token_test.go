@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -82,11 +83,13 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				WithExpiresIn(3600)
 
 			// When: POST to token endpoint with authorization_code grant
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type":    []string{"authorization_code"},
 				"code":          []string{"auth-code-123"},
 				"redirect_uri":  []string{"http://localhost:3000/callback"},
-				"client_id":     []string{"client-abc"},
+				"client_id":     []string{agentID.String()},
 				"client_secret": []string{"secret-xyz"},
 			}
 
@@ -129,11 +132,13 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			mockUpstream.WithSuccessfulTokenResponse()
 
 			// When: POST to token endpoint with various parameters
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type":    []string{"authorization_code"},
 				"code":          []string{"special-auth-code-xyz"},
 				"redirect_uri":  []string{"https://example.com/callback?with=params"},
-				"client_id":     []string{"my-client-id"},
+				"client_id":     []string{agentID.String()},
 				"client_secret": []string{"my-secret-key"},
 				"scope":         []string{"openid profile email"},
 				"code_verifier": []string{"pkce-verifier-value"},
@@ -160,7 +165,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			Expect(lastRequest.FormValue("grant_type")).To(Equal("authorization_code"))
 			Expect(lastRequest.FormValue("code")).To(Equal("special-auth-code-xyz"))
 			Expect(lastRequest.FormValue("redirect_uri")).To(Equal("https://example.com/callback?with=params"))
-			Expect(lastRequest.FormValue("client_id")).To(Equal("my-client-id"))
+			Expect(lastRequest.FormValue("client_id")).To(Equal(agentID.String()))
 			Expect(lastRequest.FormValue("client_secret")).To(Equal("my-secret-key"))
 			Expect(lastRequest.FormValue("scope")).To(Equal("openid profile email"))
 			Expect(lastRequest.FormValue("code_verifier")).To(Equal("pkce-verifier-value"))
@@ -176,9 +181,12 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				WithExpiresIn(7200)
 
 			// When: POST to token endpoint
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
+				"client_id":  []string{agentID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -221,9 +229,12 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			)
 
 			// When: POST to token endpoint with invalid code
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"invalid-code"},
+				"client_id":  []string{agentID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -253,18 +264,15 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			Expect(errResp["error_description"]).To(ContainSubstring("authorization code"))
 		})
 
-		It("should handle invalid_client error from upstream correctly", func() {
-			// Given: Mock upstream configured to return invalid_client error
-			mockUpstream.WithErrorResponseAndDescription(
-				"invalid_client",
-				"Client authentication failed",
-			)
+		It("should reject non-UUID client_id with 401 invalid_client (broker-level validation)", func() {
+			// The broker always treats client_id as the agent UUID. A non-UUID value is
+			// rejected by the broker before the request reaches the upstream OAuth2 server.
 
-			// When: POST to token endpoint with invalid client credentials
+			// When: POST to token endpoint with a non-UUID client_id
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
-				"client_id":  []string{"invalid-client"},
+				"client_id":  []string{"not-a-valid-agent-uuid"},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -279,10 +287,45 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Response should be 400 Bad Request
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			// Then: Broker rejects with 401 before forwarding to upstream
+			Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
 
-			// Then: Response should contain error
+			// Then: Response should contain invalid_client error
+			body, err := helpers.ReadResponseBody(resp)
+			Expect(err).NotTo(HaveOccurred())
+
+			var errResp map[string]string
+			err = json.Unmarshal([]byte(body), &errResp)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(errResp["error"]).To(Equal("invalid_client"))
+		})
+
+		It("should reject missing client_id with 401 invalid_client (broker-level validation)", func() {
+			// The broker requires client_id (agent UUID) on every non-token-exchange request.
+
+			// When: POST to token endpoint without client_id
+			formData := url.Values{
+				"grant_type": []string{"authorization_code"},
+				"code":       []string{"code-123"},
+			}
+
+			resp, err := testServer.DirectRequest(
+				"POST",
+				"/oauth2/token",
+				"", // no principal required for token endpoint
+				map[string]string{
+					"Content-Type": "application/x-www-form-urlencoded",
+				},
+				strings.NewReader(formData.Encode()),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			// Then: Broker rejects with 401 before forwarding to upstream
+			Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
+
+			// Then: Response should contain invalid_client error
 			body, err := helpers.ReadResponseBody(resp)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -301,9 +344,12 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			)
 
 			// When: POST to token endpoint
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
+				"client_id":  []string{agentID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -342,10 +388,12 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				WithExpiresIn(3600)
 
 			// When: POST to token endpoint with refresh_token grant
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type":    []string{"refresh_token"},
 				"refresh_token": []string{"old-refresh-token"},
-				"client_id":     []string{"client-id"},
+				"client_id":     []string{agentID.String()},
 				"client_secret": []string{"client-secret"},
 			}
 
@@ -390,9 +438,12 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			)
 
 			// When: POST to token endpoint with expired refresh token
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type":    []string{"refresh_token"},
 				"refresh_token": []string{"expired-refresh-token"},
+				"client_id":     []string{agentID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -431,9 +482,12 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			)
 
 			// When: POST to token endpoint with unsupported grant_type
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"implicit"},
 				"code":       []string{"code-123"},
+				"client_id":  []string{agentID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -471,8 +525,11 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			)
 
 			// When: POST to token endpoint without grant_type
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
-				"code": []string{"code-123"},
+				"code":      []string{"code-123"},
+				"client_id": []string{agentID.String()},
 				// grant_type is missing
 			}
 
@@ -531,9 +588,12 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 				WithAccessToken("valid-token")
 
 			// When: POST with correct Content-Type
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
+				"client_id":  []string{agentID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -560,9 +620,12 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			mockUpstream.WithSuccessfulTokenResponse()
 
 			// When: POST to token endpoint
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
+				"client_id":  []string{agentID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(

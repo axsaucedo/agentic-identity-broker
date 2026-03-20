@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -331,6 +332,8 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 		It("should gracefully handle upstream timeout errors", func() {
 			// Given: Upstream configured with short timeout
 			// When: POST to token endpoint with valid form data
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			agentID := id.NewAgentID()
 			resp, err := server.DirectRequest(
 				"POST",
 				"/oauth2/token",
@@ -338,7 +341,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				map[string]string{
 					"Content-Type": "application/x-www-form-urlencoded",
 				},
-				strings.NewReader("grant_type=authorization_code&code=test&client_id=test&redirect_uri=https://client.example.com/cb"),
+				strings.NewReader("grant_type=authorization_code&code=test&client_id="+agentID.String()+"&redirect_uri=https://client.example.com/cb"),
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()

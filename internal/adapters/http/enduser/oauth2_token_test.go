@@ -24,6 +24,8 @@ func (m *mockMultiAgentVerifier) VerifyAgentIDClaim(ctx context.Context, respons
 
 // TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation tests Content-Type validation
 func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	// Mock upstream server
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -60,7 +62,8 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader("grant_type=authorization_code&code=abc123"))
+			body := "grant_type=authorization_code&code=abc123&client_id=" + agentID.String()
+			req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(body))
 			req.Header.Set("Content-Type", tt.contentType)
 			w := httptest.NewRecorder()
 
@@ -73,6 +76,8 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 
 // TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering tests hop-by-hop header filtering
 func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	// Mock upstream server that echoes back request headers
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -94,7 +99,7 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=client-1")
+	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	// Add hop-by-hop headers that should be filtered
@@ -112,6 +117,8 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 
 // TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy tests successful token request proxy
 func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
@@ -128,7 +135,7 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=client-1&redirect_uri=https://client.example.com/callback")
+	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String() + "&redirect_uri=https://client.example.com/callback")
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -147,6 +154,8 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 
 // TestOAuth2TokenHandler_ServeHTTP_UpstreamError tests upstream errors are proxied
 func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -158,7 +167,7 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	reqBody := strings.NewReader("grant_type=authorization_code&code=expired")
+	reqBody := strings.NewReader("grant_type=authorization_code&code=expired&client_id=" + agentID.String())
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -290,6 +299,8 @@ func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 
 // TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming tests response is streamed properly
 func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Custom-Response-Header", "custom-value")
@@ -303,7 +314,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123")
+	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -316,4 +327,74 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 	respBody, _ := io.ReadAll(w.Body)
 	assert.Contains(t, string(respBody), "access_token")
 	assert.Contains(t, string(respBody), "verylongtoken123456789")
+}
+
+// TestOAuth2TokenHandler_ClientIDValidation tests that client_id is always validated as an
+// agent UUID, regardless of whether MultiAgentVerifier is set.  The client_id is the
+// broker-internal agent UUID from the perspective of every OAuth2 client (spec: Feature 021).
+func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token":"tok","token_type":"Bearer"}`))
+	}))
+	defer mockUpstream.Close()
+
+	verifiers := []struct {
+		name     string
+		verifier MultiAgentVerifier
+	}{
+		{"without verifier", nil},
+		{"with verifier", &mockMultiAgentVerifier{verifyFn: func(_ context.Context, _ []byte, _ id.AgentID) error { return nil }}},
+	}
+
+	tests := []struct {
+		name           string
+		body           string
+		wantStatusCode int
+		wantError      string
+	}{
+		{
+			name:           "missing client_id returns 401 invalid_client",
+			body:           "grant_type=authorization_code&code=abc123",
+			wantStatusCode: http.StatusUnauthorized,
+			wantError:      "invalid_client",
+		},
+		{
+			name:           "non-UUID client_id returns 401 invalid_client",
+			body:           "grant_type=authorization_code&code=abc123&client_id=not-a-uuid",
+			wantStatusCode: http.StatusUnauthorized,
+			wantError:      "invalid_client",
+		},
+		{
+			name:           "legacy non-UUID client_id returns 401 invalid_client",
+			body:           "grant_type=authorization_code&code=abc123&client_id=legacy-client-id",
+			wantStatusCode: http.StatusUnauthorized,
+			wantError:      "invalid_client",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Behaviour must be identical regardless of whether MultiAgentVerifier is set.
+			for _, v := range verifiers {
+				t.Run(v.name, func(t *testing.T) {
+					handler := &OAuth2TokenHandler{
+						UpstreamTokenURL:   mockUpstream.URL,
+						MultiAgentVerifier: v.verifier,
+					}
+
+					req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(tt.body))
+					req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+					w := httptest.NewRecorder()
+
+					handler.ServeHTTP(w, req)
+
+					assert.Equal(t, tt.wantStatusCode, w.Code)
+					respBody, _ := io.ReadAll(w.Body)
+					assert.Contains(t, string(respBody), tt.wantError)
+				})
+			}
+		})
+	}
 }

@@ -8,12 +8,15 @@ import (
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestOAuth2TokenEndpoint_SuccessfulTokenExchange tests complete token exchange flow
 func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	// Mock upstream OAuth2 server
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
@@ -42,7 +45,7 @@ func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	reqBody := strings.NewReader("grant_type=authorization_code&code=auth_code_123&client_id=client-1&client_secret=secret&redirect_uri=https://client.example.com/callback")
+	reqBody := strings.NewReader("grant_type=authorization_code&code=auth_code_123&client_id=" + agentID.String() + "&client_secret=secret&redirect_uri=https://client.example.com/callback")
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -61,6 +64,8 @@ func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
 
 // TestOAuth2TokenEndpoint_RefreshTokenGrant tests refresh token grant exchange
 func TestOAuth2TokenEndpoint_RefreshTokenGrant(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := r.ParseForm()
 		require.NoError(t, err)
@@ -81,7 +86,7 @@ func TestOAuth2TokenEndpoint_RefreshTokenGrant(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	reqBody := strings.NewReader("grant_type=refresh_token&refresh_token=refresh_token_abc&client_id=client-1&client_secret=secret")
+	reqBody := strings.NewReader("grant_type=refresh_token&refresh_token=refresh_token_abc&client_id=" + agentID.String() + "&client_secret=secret")
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -95,6 +100,8 @@ func TestOAuth2TokenEndpoint_RefreshTokenGrant(t *testing.T) {
 
 // TestOAuth2TokenEndpoint_InvalidGrantError tests upstream error responses are proxied
 func TestOAuth2TokenEndpoint_InvalidGrantError(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -109,7 +116,7 @@ func TestOAuth2TokenEndpoint_InvalidGrantError(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	reqBody := strings.NewReader("grant_type=authorization_code&code=expired_code")
+	reqBody := strings.NewReader("grant_type=authorization_code&code=expired_code&client_id=" + agentID.String())
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", reqBody)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -125,6 +132,8 @@ func TestOAuth2TokenEndpoint_InvalidGrantError(t *testing.T) {
 
 // TestOAuth2TokenEndpoint_HeadersFiltered tests hop-by-hop headers are filtered
 func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	// Mock upstream server that verifies hop-by-hop headers were filtered
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check that hop-by-hop headers were not forwarded
@@ -144,7 +153,7 @@ func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	body := strings.NewReader("grant_type=authorization_code&code=abc123")
+	body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	// Add hop-by-hop headers that should be filtered
@@ -159,6 +168,8 @@ func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
 
 // TestOAuth2TokenEndpoint_StandardHeadersPreserved tests standard headers are preserved
 func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
@@ -172,7 +183,7 @@ func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
 		UpstreamTokenURL: mockUpstream.URL,
 	}
 
-	body := strings.NewReader("grant_type=authorization_code&code=abc123")
+	body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
 	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -187,6 +198,8 @@ func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
 
 // TestOAuth2TokenEndpoint_StatusCodePreserved tests various status codes are preserved
 func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
+	agentID := id.NewAgentID()
+
 	tests := []struct {
 		name           string
 		upstreamStatus int
@@ -227,7 +240,7 @@ func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
 				UpstreamTokenURL: mockUpstream.URL,
 			}
 
-			body := strings.NewReader("grant_type=authorization_code&code=abc123")
+			body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
 			req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", body)
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()

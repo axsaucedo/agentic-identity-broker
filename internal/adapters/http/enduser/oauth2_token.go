@@ -225,68 +225,68 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 
 // proxyToUpstream forwards requests to upstream OAuth2 server (for non-token-exchange flows).
 //
-// Feature 021: When MultiAgentVerifier is non-nil, the upstream response body is buffered
-// (not streamed) so the agent ID claim can be verified before forwarding the response.
-// On verification failure the response is withheld and an OAuth2 server_error is returned
-// to the client (fail-closed per SR-001). When MultiAgentVerifier is nil the body is
-// streamed unchanged.
+// The client_id in the token request is always the agent ID (broker-internal UUID).
+// This is validated unconditionally: a missing or malformed client_id is rejected before
+// forwarding to upstream (fail-closed per SR-001).
+//
+// When MultiAgentVerifier is non-nil, the upstream response body is additionally buffered
+// so the agent ID claim in the returned token can be verified before forwarding the
+// response. On verification failure the response is withheld and an OAuth2 server_error is
+// returned to the client (fail-closed per SR-001). When MultiAgentVerifier is nil the body
+// is streamed unchanged.
 func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Request, body string) {
-	// Feature 021: extract client_id from the token request form body.
-	// This is the agent UUID (broker internal ID) that was used as client_id in the
-	// original authorize request. We need it to verify the upstream token's agent ID claim.
-	var agentID id.AgentID
-	if h.MultiAgentVerifier != nil {
-		formData, err := url.ParseQuery(body)
-		if err != nil {
-			// Fail closed: malformed form body means we cannot reliably determine agent ID.
-			if h.Logger != nil {
-				h.Logger.Error("TokenRequestFormParseError",
-					slog.String("error", err.Error()),
-				)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error":             "invalid_request",
-				"error_description": "token request body is not valid form-encoded data",
-			})
-			return
+	// The client_id is always the agent UUID from the broker's perspective.
+	// Validate it unconditionally so that only agents with a recognised UUID can
+	// reach the upstream OAuth2 server.
+	formData, err := url.ParseQuery(body)
+	if err != nil {
+		// Fail closed: malformed form body means we cannot reliably determine agent ID.
+		if h.Logger != nil {
+			h.Logger.Error("TokenRequestFormParseError",
+				slog.String("error", err.Error()),
+			)
 		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_request",
+			"error_description": "token request body is not valid form-encoded data",
+		})
+		return
+	}
 
-		rawClientID := formData.Get("client_id")
-		if rawClientID == "" {
-			// Fail closed when client_id is missing: we cannot determine the expected agent.
-			if h.Logger != nil {
-				h.Logger.Error("MissingClientIDInTokenRequest")
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error":             "invalid_client",
-				"error_description": "client_id is required",
-			})
-			return
+	rawClientID := formData.Get("client_id")
+	if rawClientID == "" {
+		// Fail closed when client_id is missing: we cannot determine the expected agent.
+		if h.Logger != nil {
+			h.Logger.Error("MissingClientIDInTokenRequest")
 		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_client",
+			"error_description": "client_id is required",
+		})
+		return
+	}
 
-		parsedID, parseErr := id.ParseAgentID(rawClientID)
-		if parseErr != nil {
-			// Fail closed per SR-001: reject immediately rather than forwarding
-			// a zero-value UUID to upstream.
-			if h.Logger != nil {
-				h.Logger.Error("AgentIDParseError",
-					"received_client_id", rawClientID,
-					"error", parseErr,
-				)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error":             "invalid_client",
-				"error_description": "client_id is not a valid agent UUID",
-			})
-			return
+	agentID, parseErr := id.ParseAgentID(rawClientID)
+	if parseErr != nil {
+		// Fail closed per SR-001: reject immediately rather than forwarding
+		// a non-agent client_id to upstream.
+		if h.Logger != nil {
+			h.Logger.Error("AgentIDParseError",
+				"received_client_id", rawClientID,
+				"error", parseErr,
+			)
 		}
-		agentID = parsedID
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_client",
+			"error_description": "client_id is not a valid agent UUID",
+		})
+		return
 	}
 
 	// Create upstream request
