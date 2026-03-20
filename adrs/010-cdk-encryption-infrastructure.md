@@ -56,8 +56,8 @@ A single `EncryptionStack` provisions:
 
 3. **IAM Role** — least-privilege access for encryption operations
    - Name: `AgenticIdentityBrokerEncryptionRole-{env}`
-   - Trust principal configurable via CDK context (`-c trustPrincipal=ARN`)
-   - Defaults to same-account root (for dev/test convenience)
+   - Trust principal configurable via IRSA params (`-c oidcProviderArn=ARN -c k8sNamespace=NS -c k8sServiceAccountName=SA`)
+   - Defaults to same-account root (for non-production convenience)
    - Permissions:
      - KMS: Encrypt, Decrypt, GenerateDataKey, ReEncrypt*, DescribeKey
      - KMS: CreateGrant (conditioned on `kms:GrantIsForAWSResource`)

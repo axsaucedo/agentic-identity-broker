@@ -33,12 +33,6 @@ func createTestStack(t *testing.T, env string, oidcArn, namespace, sa string) (a
 	return stack, template
 }
 
-// helper to create a stack with IRSA configuration for production testing.
-func createTestStackIRSA(t *testing.T, env string, oidcArn, namespace, sa string) (awscdk.Stack, assertions.Template) {
-	t.Helper()
-	return createTestStack(t, env, oidcArn, namespace, sa)
-}
-
 // --- KMS Key Tests ---
 
 func TestKMSKeyIsSymmetricWithRotation(t *testing.T) {
