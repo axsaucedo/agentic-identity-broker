@@ -276,13 +276,13 @@ func (b *Builder) Build() (*App, error) {
 		// Create CEL evaluator with configuration
 		celConfig := tokenexchange.CELEvaluatorConfig{
 			PrincipalExpression:     b.config.TokenExchange.ClaimExtraction.PrincipalExpression,
-			AgentClientIDExpression: b.config.TokenExchange.ClaimExtraction.AgentClientIDExpression,
+			AgentIDExpression: b.config.TokenExchange.ClaimExtraction.AgentIDExpression,
 			AuthorizationExpression: b.config.TokenExchange.Authorization.CEL.Expression,
 			EvaluationTimeout:       b.config.TokenExchange.Authorization.CEL.EvaluationTimeout,
 		}
 
 		// T039: When feature is disabled, register resolveAgentIdByClientId CEL function so
-		// agent_client_id_expression can look up an agent by its upstream client_id.
+		// agent_id_expression can look up an agent by its upstream client_id.
 		// When enabled, the expression receives the UUID directly from the token — no lookup needed.
 		if !b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
 			agentRepo := b.storage.Agents()

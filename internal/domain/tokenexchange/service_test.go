@@ -312,7 +312,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 			config: &ports.TokenExchangeConfig{
 				ClaimExtraction: ports.ClaimExtractionConfig{
 					PrincipalExpression:     "subject_token.sub",
-					AgentClientIDExpression: "subject_token.azp",
+					AgentIDExpression: "subject_token.azp",
 				},
 				Authorization: ports.AuthorizationConfig{
 					Type: "cel",
@@ -423,7 +423,7 @@ func TestExchange_InvalidRequest(t *testing.T) {
 	config := &ports.TokenExchangeConfig{
 		ClaimExtraction: ports.ClaimExtractionConfig{
 			PrincipalExpression:     "subject_token.sub",
-			AgentClientIDExpression: "subject_token.azp",
+			AgentIDExpression: "subject_token.azp",
 		},
 		Authorization: ports.AuthorizationConfig{
 			Type: "cel",
@@ -789,7 +789,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 
 	celEvaluator, err := NewCELEvaluator(CELEvaluatorConfig{
 		PrincipalExpression:     "subject_token.sub",
-		AgentClientIDExpression: "subject_token.azp",
+		AgentIDExpression: "subject_token.azp",
 		AuthorizationExpression: "true",
 		EvaluationTimeout:       100 * time.Millisecond,
 	})
@@ -820,7 +820,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 		&ports.TokenExchangeConfig{
 			ClaimExtraction: ports.ClaimExtractionConfig{
 				PrincipalExpression:     "subject_token.sub",
-				AgentClientIDExpression: "subject_token.azp",
+				AgentIDExpression: "subject_token.azp",
 			},
 			Authorization: ports.AuthorizationConfig{
 				Type: "cel",

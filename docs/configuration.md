@@ -764,7 +764,7 @@ oauth2_authorization_server:
     agent_id_claim_name: "x_agent_id"   # expected in upstream token response JWT
 ```
 
-**Token exchange CEL expression update**: When using `multi_agent_client`, you must also update `token_exchange.claim_extraction.agent_client_id_expression` in your configuration:
+**Token exchange CEL expression update**: When using `multi_agent_client`, you must also update `token_exchange.claim_extraction.agent_id_expression` in your configuration:
 
 | Feature mode | Required CEL expression | Notes |
 |---|---|---|

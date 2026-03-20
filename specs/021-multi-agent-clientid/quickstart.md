@@ -27,7 +27,7 @@ token_exchange:
     principal_expression: "subject_token.sub"
     # resolveAgentIdByClientId maps upstream client_id → internal agent.id
     # Safe because client_id uniqueness is enforced in disabled mode.
-    agent_client_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+    agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
 ```
 
 **Behavior**:
@@ -53,7 +53,7 @@ token_exchange:
   claim_extraction:
     principal_expression: "subject_token.sub"
     # Read agent ID directly from the token claim (configured name)
-    agent_client_id_expression: "subject_token.x_agent_id"
+    agent_id_expression: "subject_token.x_agent_id"
 ```
 
 **Behavior**:
@@ -80,13 +80,13 @@ curl -s https://broker.example.com/api/agents | jq '.[].id'
 
 ### Step 2: Update token exchange CEL policy
 
-If using token exchange, update `agent_client_id_expression`:
+If using token exchange, update `agent_id_expression`:
 ```yaml
 # Before
-agent_client_id_expression: "subject_token.azp"
+agent_id_expression: "subject_token.azp"
 
 # After (feature disabled)
-agent_client_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
 ```
 
 ### Step 3: Configure upstream OAuth2 server (if enabling the feature)

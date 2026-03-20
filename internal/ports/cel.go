@@ -89,7 +89,7 @@ type CELRequestContext struct {
 	Principal string
 
 	// AgentClientID is the agent identifier extracted from subject_token.
-	// This is extracted using ClaimExtractionConfig.AgentClientIDExpression.
+	// This is extracted using ClaimExtractionConfig.AgentIDExpression.
 	AgentClientID string
 }
 

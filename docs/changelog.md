@@ -5,7 +5,7 @@
 ### Multi-Agent OAuth2 Client Delegation (021)
 
 - **BREAKING**: The `client_id` parameter in OAuth2 authorize/token requests now resolves to `agent.id` (UUID), not `agent.client_id` (upstream client ID). Clients must update their `client_id` values from the upstream OAuth2 client ID string to the broker-internal agent UUID.
-- **BREAKING**: Token exchange CEL expression `agent_client_id_expression` must be updated from `subject_token.azp` to `resolveAgentIdByClientId(subject_token.azp)` (or a claim-based expression when the feature is enabled). The previous expression resolved agents by `client_id`; token exchange now resolves by `agent.id` (UUID).
+- **BREAKING**: Token exchange CEL expression `agent_id_expression` must be updated from `subject_token.azp` to `resolveAgentIdByClientId(subject_token.azp)` (or a claim-based expression when the feature is enabled). The previous expression resolved agents by `client_id`; token exchange now resolves by `agent.id` (UUID).
 - **NEW**: `multi_agent_client` configuration block under `oauth2_authorization_server` enables multiple agents to share one upstream OAuth2 client ID. See `examples/config/oauth2-authorization-server.yaml` and `docs/configuration.md` for configuration details.
 - **NEW**: CEL helper function `resolveAgentIdByClientId(clientId string) string` is available in token exchange CEL policies when `multi_agent_client.enabled = false`. It maps an upstream `client_id` string to the corresponding broker `agent.id` UUID.
 
@@ -25,17 +25,17 @@ client_id=a1b2c3d4-e5f6-7890-abcd-ef1234567890  # agent.id UUID
 
 **Step 2: Update token exchange CEL expression**
 
-Operators must update `token_exchange.claim_extraction.agent_client_id_expression` in their configuration:
+Operators must update `token_exchange.claim_extraction.agent_id_expression` in their configuration:
 
 ```yaml
 # Before (no longer valid — resolves by client_id, not agent.id)
-agent_client_id_expression: "subject_token.azp"
+agent_id_expression: "subject_token.azp"
 
 # After — feature disabled (default): resolve upstream client_id → agent.id UUID
-agent_client_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
 
 # After — feature enabled: use the agent ID claim injected by the broker
-agent_client_id_expression: "subject_token.x_agent_id"  # use your configured claim name
+agent_id_expression: "subject_token.x_agent_id"  # use your configured claim name
 ```
 
 **Step 3 (optional): Enable multi-agent client sharing**

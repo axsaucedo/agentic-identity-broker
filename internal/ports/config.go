@@ -406,13 +406,14 @@ type ClaimExtractionConfig struct {
 	// It is validated at startup (FR-017) and will cause startup failure if invalid.
 	PrincipalExpression string `mapstructure:"principal_expression" validate:"required"`
 
-	// AgentClientIDExpression is a CEL expression that extracts the agent identifier from subject_token.
+	// AgentIDExpression is a CEL expression that extracts the agent identifier from subject_token.
 	// The expression receives the validated subject_token JWT as input.
 	// Default: "subject_token.azp"
-	// Examples: "subject_token.azp", "subject_token['client_id']"
+	// Examples: "resolveAgentIdByClientId(subject_token.azp)" (feature disabled),
+	//           "subject_token.x_agent_id" (feature enabled, use configured agent_id_claim_name)
 	// This value is REQUIRED and MUST be a valid CEL expression.
 	// It is validated at startup (FR-017) and will cause startup failure if invalid.
-	AgentClientIDExpression string `mapstructure:"agent_client_id_expression" validate:"required"`
+	AgentIDExpression string `mapstructure:"agent_id_expression" validate:"required"`
 }
 
 // AuthorizationConfig defines authorization policies for token exchange.

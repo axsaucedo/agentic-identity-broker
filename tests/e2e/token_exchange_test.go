@@ -1108,15 +1108,227 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		})
 	})
 
+	// US7: resolveAgentIdByClientId CEL Helper (Feature 021)
+	//
+	// Spec: specs/021-multi-agent-clientid/spec.md — US2 Scenario 3
+	//
+	// When multi_agent_client is disabled (the default), the broker enforces that each
+	// upstream OAuth2 client_id is unique per agent. In this mode, the CEL helper
+	// function resolveAgentIdByClientId() is registered and operators use it in
+	// agent_id_expression to map an upstream client_id (e.g. the "azp" claim) to
+	// the broker's internal agent.id UUID.
+	//
+	// This Describe block contains the explicit test that FR-009 is satisfied:
+	// the function is registered, functional, and actually used by the token exchange.
+	Describe("US7: resolveAgentIdByClientId CEL Helper (multi_agent_client disabled)", func() {
+		// US7 Scenario 1
+		// Given: multi_agent_client is disabled and agent_id_expression uses resolveAgentIdByClientId,
+		// When: a subject token with azp=<upstream client_id> is presented for exchange,
+		// Then: the token exchange resolves the agent by upstream client_id and succeeds.
+		It("[US7-S1] should resolve agent via resolveAgentIdByClientId when feature is disabled", Label("US7"), func() {
+			// ── Setup: override the default config to use resolveAgentIdByClientId ──
+			// Create a fresh server configured with the feature-disabled expression.
+			// The existing enduserServer (set up in BeforeEach) uses "subject_token.azp"
+			// directly (the UUID). Here we create a dedicated server that maps
+			// upstream client_id → agent UUID via the CEL helper.
+			resolveConfig := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
+			resolveConfig.OAuth2AuthServer.MultiAgentClient = ports.MultiAgentClientConfig{Enabled: false}
+			// agent_id_expression: resolveAgentIdByClientId maps azp (upstream client_id) → agent.id UUID
+			resolveConfig.TokenExchange.ClaimExtraction.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+			resolveFactory := bootstrap.NewServerFactory(resolveConfig, logger)
+
+			// ── Data: create an agent with a distinct upstream client_id ──
+			// This agent's ClientID is the upstream OAuth2 application identifier;
+			// its ID (UUID) is what resolveAgentIdByClientId must return.
+			resolveAgent := fixtures.AgentWithClientID("test-upstream-client-id")
+
+			// Use a separate storage to avoid cross-test pollution.
+			resolveStorage, err := storageFactory.NewTestStorage()
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = storageFactory.CloseStorage(resolveStorage) }()
+
+			ctx := context.Background()
+			Expect(resolveStorage.Agents().Create(ctx, resolveAgent)).ToNot(HaveOccurred())
+
+			// Create GitHub service on the resolve storage for resource-based lookup.
+			githubService := fixtures.GitHubService()
+			githubService.Endpoints.TokenEndpoint = mockUpstream.URL() + "/oauth/token"
+			Expect(resolveStorage.Services().Create(ctx, githubService)).ToNot(HaveOccurred())
+
+			// Grant the resolve agent access to the GitHub service.
+			grant := fixtures.ActiveGrant(
+				fixtures.DefaultPrincipal().String(),
+				resolveAgent.ID.String(),
+				githubService.ID.String(),
+				[]string{"repo", "user"},
+			)
+			Expect(resolveStorage.UserGrants().Create(ctx, grant)).ToNot(HaveOccurred())
+
+			// Create a session for the resolve agent so token exchange can retrieve stored tokens.
+			session := fixtures.GitHubSessionForPrincipal(fixtures.DefaultPrincipal().String())
+			Expect(resolveStorage.UserSessions().Create(ctx, session)).ToNot(HaveOccurred())
+
+			// Build and start the resolver server.
+			resolveApp, err := resolveFactory.BuildApp(resolveStorage)
+			Expect(err).ToNot(HaveOccurred())
+			resolveServer, err := bootstrap.NewEndUserTestServer(resolveApp, logger)
+			Expect(err).ToNot(HaveOccurred())
+			defer resolveServer.Close()
+
+			// ── Tokens: subject_token has azp = upstream client_id (not the agent UUID) ──
+			now := time.Now()
+			subjectTokenClaims := map[string]interface{}{
+				"sub": fixtures.DefaultPrincipal().String(),
+				"azp": string(resolveAgent.ClientID), // upstream client_id — resolved by the CEL helper
+				"iss": mockUpstream.URL(),
+				"aud": "token-exchange-broker",
+				"exp": now.Add(1 * time.Hour).Unix(),
+				"iat": now.Unix(),
+			}
+			subjectToken, err := helpers.SignTestJWT(subjectTokenClaims, mockUpstream.GetPrivateKeyPEM())
+			Expect(err).ToNot(HaveOccurred())
+
+			clientAssertionClaims := map[string]interface{}{
+				"sub": resolveAgent.ID.String(),
+				"iss": mockUpstream.URL(),
+				"aud": "token-exchange-broker",
+				"exp": now.Add(1 * time.Hour).Unix(),
+				"iat": now.Unix(),
+			}
+			clientAssertion, err := helpers.SignTestJWT(clientAssertionClaims, mockUpstream.GetPrivateKeyPEM())
+			Expect(err).ToNot(HaveOccurred())
+
+			// ── Request: RFC 8693 token exchange ──
+			mockUpstream.WithSuccessfulTokenResponse()
+			formData := url.Values{
+				"grant_type":            []string{"urn:ietf:params:oauth:grant-type:token-exchange"},
+				"subject_token":         []string{subjectToken},
+				"subject_token_type":    []string{"urn:ietf:params:oauth:token-type:access_token"},
+				"requested_token_type":  []string{"urn:ietf:params:oauth:token-type:access_token"},
+				"resource":              []string{"https://api.github.com"},
+				"client_assertion_type": []string{"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+				"client_assertion":      []string{clientAssertion},
+			}
+			resp, err := resolveServer.DirectRequest(
+				"POST",
+				"/oauth2/token",
+				"",
+				map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+				strings.NewReader(formData.Encode()),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			// ── Assert: exchange succeeds ── resolveAgentIdByClientId mapped azp → agent.id
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusOK))
+		})
+
+		// US7 Scenario 2
+		// Given: resolveAgentIdByClientId is registered but the azp claim does not match any agent,
+		// When: a token exchange is attempted,
+		// Then: it fails (unknown agent).
+		It("[US7-S2] should fail when azp does not match any agent upstream client_id", Label("US7"), func() {
+			resolveConfig := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
+			resolveConfig.OAuth2AuthServer.MultiAgentClient = ports.MultiAgentClientConfig{Enabled: false}
+			resolveConfig.TokenExchange.ClaimExtraction.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+			resolveFactory := bootstrap.NewServerFactory(resolveConfig, logger)
+
+			resolveStorage, err := storageFactory.NewTestStorage()
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = storageFactory.CloseStorage(resolveStorage) }()
+
+			resolveApp, err := resolveFactory.BuildApp(resolveStorage)
+			Expect(err).ToNot(HaveOccurred())
+			resolveServer, err := bootstrap.NewEndUserTestServer(resolveApp, logger)
+			Expect(err).ToNot(HaveOccurred())
+			defer resolveServer.Close()
+
+			now := time.Now()
+			subjectTokenClaims := map[string]interface{}{
+				"sub": fixtures.DefaultPrincipal().String(),
+				"azp": "nonexistent-upstream-client", // no agent has this upstream client_id
+				"iss": mockUpstream.URL(),
+				"aud": "token-exchange-broker",
+				"exp": now.Add(1 * time.Hour).Unix(),
+				"iat": now.Unix(),
+			}
+			subjectToken, err := helpers.SignTestJWT(subjectTokenClaims, mockUpstream.GetPrivateKeyPEM())
+			Expect(err).ToNot(HaveOccurred())
+
+			clientAssertionClaims := map[string]interface{}{
+				"sub": "some-gateway",
+				"iss": mockUpstream.URL(),
+				"aud": "token-exchange-broker",
+				"exp": now.Add(1 * time.Hour).Unix(),
+				"iat": now.Unix(),
+			}
+			clientAssertion, err := helpers.SignTestJWT(clientAssertionClaims, mockUpstream.GetPrivateKeyPEM())
+			Expect(err).ToNot(HaveOccurred())
+
+			formData := url.Values{
+				"grant_type":            []string{"urn:ietf:params:oauth:grant-type:token-exchange"},
+				"subject_token":         []string{subjectToken},
+				"subject_token_type":    []string{"urn:ietf:params:oauth:token-type:access_token"},
+				"requested_token_type":  []string{"urn:ietf:params:oauth:token-type:access_token"},
+				"resource":              []string{"https://api.github.com"},
+				"client_assertion_type": []string{"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+				"client_assertion":      []string{clientAssertion},
+			}
+			resp, err := resolveServer.DirectRequest(
+				"POST",
+				"/oauth2/token",
+				"",
+				map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+				strings.NewReader(formData.Encode()),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			// resolveAgentIdByClientId returns an error for unknown client_id →
+			// CEL expression fails → token exchange is rejected (not 200)
+			Expect(resp.StatusCode).ToNot(Equal(http.StatusOK))
+		})
+
+		// US7 Scenario 3: Startup validation — resolveAgentIdByClientId is NOT registered
+		// when multi_agent_client is enabled.
+		It("[US7-S3] should fail to compile agent_id_expression using resolveAgentIdByClientId when feature is enabled", Label("US7"), func() {
+			// When multi_agent_client is enabled, resolveAgentIdByClientId is NOT registered.
+			// An expression using it will fail at startup (unknown function).
+			badConfig := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
+			badConfig.OAuth2AuthServer.MultiAgentClient = ports.MultiAgentClientConfig{
+				Enabled:          true,
+				AgentIDParamName: "x_agent_id",
+				AgentIDClaimName: "x_agent_id",
+			}
+			// This expression is only valid when the feature is disabled.
+			badConfig.TokenExchange.ClaimExtraction.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+			resolveFactory := bootstrap.NewServerFactory(badConfig, logger)
+			resolveStorage, err := storageFactory.NewTestStorage()
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = storageFactory.CloseStorage(resolveStorage) }()
+
+			// When: trying to build the application
+			_, err = resolveFactory.BuildApp(resolveStorage)
+
+			// Then: startup fails because resolveAgentIdByClientId is not registered (FR-010)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
 	// Specification Reference
-	// All tests map to acceptance scenarios from specs/013-token-exchange/spec.md
-	// Total: 29 acceptance test scenarios
+	// All tests map to acceptance scenarios from specs/013-token-exchange/spec.md and
+	// specs/021-multi-agent-clientid/spec.md
+	// Total: 32 acceptance test scenarios
 	// - US1: 6 scenarios (token exchange gateway)
 	// - US2: 5 scenarios (resource discovery)
 	// - US3: 4 scenarios (grant verification)
 	// - US4: 6 scenarios (CEL authorization)
 	// - US5: 3 scenarios (session errors)
 	// - US6: 5 scenarios (admin API)
+	// - US7: 3 scenarios (resolveAgentIdByClientId CEL helper)
 })
 
 // generateTokenFixtures creates all JWT tokens needed for RFC 8693 token exchange testing.

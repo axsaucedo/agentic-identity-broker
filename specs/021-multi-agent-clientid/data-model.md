@@ -102,7 +102,7 @@ type OAuth2Config struct {
 ```go
 type CELEvaluatorConfig struct {
     PrincipalExpression      string
-    AgentClientIDExpression  string
+    AgentIDExpression  string
     AuthorizationExpression  string
     EvaluationTimeout        time.Duration
     // NEW: non-nil only when multi_agent_client.enabled = false

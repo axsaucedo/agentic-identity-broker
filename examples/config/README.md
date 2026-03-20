@@ -171,7 +171,7 @@ RFC 8693 OAuth 2.0 Token Exchange configuration. Demonstrates:
 - Automatic token refresh configuration
 - Security-first design with mandatory JWT validation
 - Support for both minimal and complex authorization scenarios
-- Both `multi_agent_client` modes for `agent_client_id_expression` (Feature 021)
+- Both `multi_agent_client` modes for `agent_id_expression` (Feature 021)
 
 **Usage:**
 ```bash
@@ -183,9 +183,9 @@ token_exchange:
   claim_extraction:
     principal_expression: "subject_token.sub"
     # Feature disabled (default): resolve upstream client_id → agent.id UUID
-    agent_client_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+    agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
     # Feature enabled: use the agent ID claim name from multi_agent_client.agent_id_claim_name
-    # agent_client_id_expression: "subject_token.x_agent_id"
+    # agent_id_expression: "subject_token.x_agent_id"
   authorization:
     type: "cel"
     cel:
@@ -204,7 +204,7 @@ token_exchange:
 - Complete audit logging of token exchange events
 - `resolveAgentIdByClientId(clientId)` CEL helper (Feature 021, feature-disabled mode) to map upstream `client_id` → `agent.id` UUID
 
-> **Breaking change (Feature 021)**: `agent_client_id_expression: "subject_token.azp"` is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)`. See [docs/changelog.md](../../docs/changelog.md).
+> **Breaking change (Feature 021)**: `agent_id_expression: "subject_token.azp"` is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)`. See [docs/changelog.md](../../docs/changelog.md).
 
 ### `oauth2-authorization-server.yaml`
 
@@ -252,9 +252,9 @@ multi_agent_client:
   agent_id_claim_name: "x_agent_id"   # JWT claim verified in upstream token response
 ```
 
-> **Important**: When `multi_agent_client.enabled = true`, you must also update `token_exchange.claim_extraction.agent_client_id_expression` in your token exchange configuration. See `token-exchange.yaml` for both modes.
+> **Important**: When `multi_agent_client.enabled = true`, you must also update `token_exchange.claim_extraction.agent_id_expression` in your token exchange configuration. See `token-exchange.yaml` for both modes.
 
-> **Breaking change (Feature 021)**: The `agent_client_id_expression: "subject_token.azp"` expression is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)` (feature disabled) or `subject_token.<claim_name>` (feature enabled). See [docs/changelog.md](../../docs/changelog.md).
+> **Breaking change (Feature 021)**: The `agent_id_expression: "subject_token.azp"` expression is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)` (feature disabled) or `subject_token.<claim_name>` (feature enabled). See [docs/changelog.md](../../docs/changelog.md).
 
 ## Configuration Sources and Precedence
 

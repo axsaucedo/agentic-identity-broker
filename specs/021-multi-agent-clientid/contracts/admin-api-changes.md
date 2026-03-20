@@ -97,24 +97,24 @@ This is a **non-breaking addition** to the configuration schema — existing con
 ## 4. Token Exchange CEL Policy (Operator-facing, not REST API)
 
 ### Affected Configuration
-`token_exchange.claim_extraction.agent_client_id_expression` in YAML config.
+`token_exchange.claim_extraction.agent_id_expression` in YAML config.
 
 ### Change Description
 
 **Feature disabled (recommended for existing operators)**:
 ```yaml
-agent_client_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
 ```
 The new `resolveAgentIdByClientId` CEL function maps upstream `client_id` → internal `agent.id`.
 
 **Feature enabled**:
 ```yaml
-agent_client_id_expression: "subject_token.x_agent_id"  # use configured claim name
+agent_id_expression: "subject_token.x_agent_id"  # use configured claim name
 ```
 
 **Previous behavior (now invalid)**:
 ```yaml
-agent_client_id_expression: "subject_token.azp"  # Was looking up by client_id directly
+agent_id_expression: "subject_token.azp"  # Was looking up by client_id directly
 ```
 
 The previous expression using `subject_token.azp` directly is no longer valid because the token exchange service now looks up agents by `agent.id` (UUID), not `agent.client_id`.
@@ -151,7 +151,7 @@ HTTP status: `500 Internal Server Error`
 ### Multi-Agent OAuth2 Client Delegation (021)
 
 - **BREAKING**: The `client_id` parameter in OAuth2 authorize/token requests now resolves to `agent.id` (UUID), not `agent.client_id` (upstream client ID). Clients must update their `client_id` values.
-- **BREAKING**: Token exchange CEL expression `agent_client_id_expression` must be updated from `subject_token.azp` to `resolveAgentIdByClientId(subject_token.azp)` (or similar claim-based expression when feature is enabled).
+- **BREAKING**: Token exchange CEL expression `agent_id_expression` must be updated from `subject_token.azp` to `resolveAgentIdByClientId(subject_token.azp)` (or similar claim-based expression when feature is enabled).
 - **NEW**: `multi_agent_client` configuration block under `oauth2_authorization_server` enables multiple agents to share one upstream OAuth2 client ID.
 - **NEW**: CEL helper function `resolveAgentIdByClientId(clientId)` available when feature is disabled for token exchange CEL policies.
 ```

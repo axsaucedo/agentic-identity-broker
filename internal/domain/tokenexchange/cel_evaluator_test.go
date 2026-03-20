@@ -18,7 +18,7 @@ func TestNewCELEvaluatorSuccessfulCompilation(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, evaluator)
 	assert.NotNil(t, evaluator.principalProgram)
-	assert.NotNil(t, evaluator.agentClientIDProgram)
+	assert.NotNil(t, evaluator.agentIDProgram)
 	assert.NotNil(t, evaluator.authorizationProgram)
 }
 
@@ -37,10 +37,10 @@ func TestNewCELEvaluatorInvalidPrincipalExpression(t *testing.T) {
 	assert.Equal(t, 500, tokExErr.HTTPStatus())
 }
 
-// TestNewCELEvaluatorInvalidAgentClientIDExpression tests startup failure with invalid agent_client_id expression.
-func TestNewCELEvaluatorInvalidAgentClientIDExpression(t *testing.T) {
+// TestNewCELEvaluatorInvalidAgentIDExpression tests startup failure with invalid agent_client_id expression.
+func TestNewCELEvaluatorInvalidAgentIDExpression(t *testing.T) {
 	config := validTokenExchangeConfig(t)
-	config.AgentClientIDExpression = "invalid !@#$ syntax"
+	config.AgentIDExpression = "invalid !@#$ syntax"
 
 	evaluator, err := NewCELEvaluator(config)
 
@@ -185,7 +185,7 @@ func TestExtractAgentClientIDDefaultExpression(t *testing.T) {
 // TestExtractAgentClientIDCustomExpression tests agent_client_id extraction with custom expression.
 func TestExtractAgentClientIDCustomExpression(t *testing.T) {
 	config := validTokenExchangeConfig(t)
-	config.AgentClientIDExpression = "subject_token.client_id"
+	config.AgentIDExpression = "subject_token.client_id"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
@@ -417,7 +417,7 @@ func TestExtractPrincipalWithComplexNestedClaims(t *testing.T) {
 // TestExtractAgentClientIDWithComplexNestedClaims tests agent_client_id extraction from complex nested structure.
 func TestExtractAgentClientIDWithComplexNestedClaims(t *testing.T) {
 	config := validTokenExchangeConfig(t)
-	config.AgentClientIDExpression = "subject_token.agent.client_id"
+	config.AgentIDExpression = "subject_token.agent.client_id"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
@@ -511,7 +511,7 @@ func TestNewCELEvaluatorWithCustomTimeout(t *testing.T) {
 func validTokenExchangeConfig(_ *testing.T) CELEvaluatorConfig {
 	return CELEvaluatorConfig{
 		PrincipalExpression:     DefaultPrincipalExpression,
-		AgentClientIDExpression: DefaultAgentClientIDExpression,
+		AgentIDExpression: DefaultAgentIDExpression,
 		AuthorizationExpression: DefaultAuthorizationExpression,
 		EvaluationTimeout:       time.Duration(DefaultEvaluationTimeoutMs) * time.Millisecond,
 	}
@@ -535,7 +535,7 @@ func TestCELEvaluator_ResolveAgentIdByClientId_CorrectResult(t *testing.T) {
 		return "", fmt.Errorf("unknown client_id: %s", clientID)
 	}
 	// Use the resolveAgentIdByClientId function in the expression
-	config.AgentClientIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+	config.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
 
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err, "NewCELEvaluator should succeed when resolver is registered")
@@ -556,7 +556,7 @@ func TestCELEvaluator_ResolveAgentIdByClientId_UnknownClientIDReturnsErr(t *test
 	config.ResolveAgentIDByClientID = func(clientID string) (string, error) {
 		return "", fmt.Errorf("unknown client_id: %s", clientID)
 	}
-	config.AgentClientIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+	config.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
 
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err, "NewCELEvaluator should succeed when resolver is registered")
@@ -575,7 +575,7 @@ func TestCELEvaluator_ResolveAgentIdByClientId_UnknownClientIDReturnsErr(t *test
 func TestCELEvaluator_ResolveAgentIdByClientId_NotRegisteredWhenNil(t *testing.T) {
 	config := validTokenExchangeConfig(t)
 	config.ResolveAgentIDByClientID = nil // Feature disabled
-	config.AgentClientIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+	config.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
 
 	evaluator, err := NewCELEvaluator(config)
 	assert.Error(t, err, "NewCELEvaluator should fail when nil resolver and expression uses resolveAgentIdByClientId")

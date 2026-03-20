@@ -16,7 +16,7 @@
 - Q: Does the broker need to validate the JWT signature when inspecting the token at the token endpoint for the agent ID claim? → A: No — the broker parses JWT claims without signature verification. Claim presence and registry match are sufficient; cryptographic validation is the responsibility of the token consumer (resource server), not the proxy.
 - Q: When the feature is enabled, does the token exchange (ExtProc) service need a new agent ID extraction mechanism, or should the agent ID claim be exposed as a CEL variable? → A: Token claims are already fully exposed in the CEL evaluation context; no new extraction mechanism is needed. Operators reference the agent ID claim directly in their CEL policy (e.g., `claims.x_agent_id`). No broker-side changes to the CEL infrastructure are required.
 - Q: Should the `resolveAgentIdByClientId` CEL helper function be kept, and if so when should it be registered? → A: Keep it. Register it only when the feature is **disabled** — in that mode upstream client_id uniqueness is enforced so the lookup is safe. When the feature is enabled the function must NOT be registered; operators use the agent ID claim directly. Both modes are long-lived operator choices.
-- Q: What does the token exchange CEL policy look like for both feature modes? → A: Feature disabled: `agent_client_id_expression: "resolveAgentIdByClientId(subject_token.azp)"` (maps upstream client_id claim to agent.id via helper). Feature enabled: `agent_client_id_expression: "subject_token.x_agent_id"` (reads agent ID claim directly, using the configured claim name).
+- Q: What does the token exchange CEL policy look like for both feature modes? → A: Feature disabled: `agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"` (maps upstream client_id claim to agent.id via helper). Feature enabled: `agent_id_expression: "subject_token.x_agent_id"` (reads agent ID claim directly, using the configured claim name).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -125,7 +125,7 @@ token_exchange:
     principal_expression: "subject_token.sub"
     # resolveAgentIdByClientId is registered when multi_agent_client is disabled.
     # It maps the upstream client_id claim (e.g. azp) to the broker's agent.id.
-    agent_client_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+    agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
 ```
 
 *Feature enabled — multiple agents may share the same upstream client_id; agent resolved from token claim:*
@@ -147,7 +147,7 @@ token_exchange:
     principal_expression: "subject_token.sub"
     # When multi_agent_client is enabled, read the agent ID directly from the token claim.
     # resolveAgentIdByClientId is NOT registered in this mode.
-    agent_client_id_expression: "subject_token.x_agent_id"
+    agent_id_expression: "subject_token.x_agent_id"
 ```
 
 **Configuration Location**: Added under `oauth2_authorization_server` in `examples/config/oauth2-authorization-server.yaml`; `token_exchange` snippet illustrates required CEL policy change in `examples/config/token-exchange.yaml`

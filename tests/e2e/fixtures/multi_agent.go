@@ -52,7 +52,7 @@ func MultiAgentBeta() *storage.Agent {
 //
 // Token exchange is configured to read the agent ID directly from the "x_agent_id" claim:
 //
-//	agent_client_id_expression: "subject_token.x_agent_id"
+//	agent_id_expression: "subject_token.x_agent_id"
 //
 // NOTE: This fixture references ports.MultiAgentClientConfig which is added in Phase 2.5 (T015/T016).
 // Tests using this fixture will not compile until Phase 2.5 is complete.
@@ -64,7 +64,7 @@ func MultiAgentEnabledConfig(upstreamURL string) *ports.Config {
 		AgentIDClaimName: "x_agent_id",
 	}
 	// When feature is enabled, the CEL policy reads the agent ID claim directly
-	config.TokenExchange.ClaimExtraction.AgentClientIDExpression = "subject_token.x_agent_id"
+	config.TokenExchange.ClaimExtraction.AgentIDExpression = "subject_token.x_agent_id"
 	return config
 }
 
@@ -76,7 +76,7 @@ func MultiAgentEnabledConfig(upstreamURL string) *ports.Config {
 //
 // Token exchange is configured to use the resolveAgentIdByClientId function:
 //
-//	agent_client_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+//	agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
 //
 // NOTE: This fixture references ports.MultiAgentClientConfig which is added in Phase 2.5 (T015/T016).
 // Tests using this fixture will not compile until Phase 2.5 is complete.
@@ -86,6 +86,6 @@ func MultiAgentDisabledConfig(upstreamURL string) *ports.Config {
 		Enabled: false,
 	}
 	// When feature is disabled, CEL uses resolveAgentIdByClientId to map upstream client_id → agent.id
-	config.TokenExchange.ClaimExtraction.AgentClientIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+	config.TokenExchange.ClaimExtraction.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
 	return config
 }
