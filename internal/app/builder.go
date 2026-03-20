@@ -2,6 +2,7 @@
 package app
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
+	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -268,9 +270,26 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		// Create JWKS adapter for JWT validation
-		// Per spec FR-039: JWKS fetched from upstream OAuth2 server
+		// Per spec FR-039: JWKS URI discovered from upstream OAuth2 server metadata (RFC 8414)
+		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(),
+			time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds)*time.Second)
+
+		discovered, err := domstorage.DiscoverOAuth2Endpoints(
+			discoveryCtx,
+			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			nil, // use standard /.well-known/oauth-authorization-server path
+			b.config.Security.SkipThirdpartyHTTPSValidation,
+		)
+		discoveryCancel()
+		if err != nil {
+			return nil, fmt.Errorf("failed to discover OAuth2 server metadata: %w", err)
+		}
+		if discovered.JWKsURI == "" {
+			return nil, fmt.Errorf("OAuth2 server metadata did not include a jwks_uri")
+		}
+
 		jwksAdapter, err := jwks.NewJWKSAdapter(
-			b.config.OAuth2AuthServer.UpstreamIssuerURI+"/.well-known/jwks.json",
+			discovered.JWKsURI,
 			upstreamClient,
 			15*time.Minute, // min refresh interval
 			1*time.Hour,    // max refresh interval

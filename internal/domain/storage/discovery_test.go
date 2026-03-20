@@ -60,6 +60,10 @@ func TestDiscoverOAuth2Endpoints_Success(t *testing.T) {
 	if endpoints.AuthorizeEndpoint != metadata["authorization_endpoint"] {
 		t.Errorf("expected authorization_endpoint=%s, got=%s", metadata["authorization_endpoint"], endpoints.AuthorizeEndpoint)
 	}
+
+	if endpoints.JWKsURI != metadata["jwks_uri"] {
+		t.Errorf("expected jwks_uri=%s, got=%s", metadata["jwks_uri"], endpoints.JWKsURI)
+	}
 }
 
 func TestDiscoverOAuth2Endpoints_WithMetadataURLOverride(t *testing.T) {
@@ -294,6 +298,57 @@ func TestDiscoverOAuth2Endpoints_InvalidAuthorizationEndpointURL(t *testing.T) {
 	}
 
 	if !strings.Contains(err.Error(), "authorization_endpoint") || !strings.Contains(err.Error(), "HTTPS") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestDiscoverOAuth2Endpoints_MissingJWKsURI(t *testing.T) {
+	// jwks_uri is optional per RFC 8414; absence should not cause an error
+	metadata := map[string]string{
+		"token_endpoint":         "https://oauth.example.com/token",
+		"authorization_endpoint": "https://oauth.example.com/authorize",
+		// no jwks_uri
+	}
+
+	server, cleanup := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(metadata)
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	endpoints, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
+
+	if err != nil {
+		t.Fatalf("expected no error when jwks_uri absent, got: %v", err)
+	}
+
+	if endpoints.JWKsURI != "" {
+		t.Errorf("expected empty JWKsURI when not in response, got: %s", endpoints.JWKsURI)
+	}
+}
+
+func TestDiscoverOAuth2Endpoints_InvalidJWKsURIURL(t *testing.T) {
+	metadata := map[string]string{
+		"token_endpoint":         "https://oauth.example.com/token",
+		"authorization_endpoint": "https://oauth.example.com/authorize",
+		"jwks_uri":               "http://oauth.example.com/jwks", // HTTP not HTTPS
+	}
+
+	server, cleanup := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(metadata)
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	_, err := DiscoverOAuth2Endpoints(ctx, server.URL, nil, false)
+
+	if err == nil {
+		t.Fatal("expected error for invalid jwks_uri URL")
+	}
+
+	if !strings.Contains(err.Error(), "jwks_uri") || !strings.Contains(err.Error(), "HTTPS") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

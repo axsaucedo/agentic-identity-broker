@@ -145,10 +145,18 @@ func DiscoverOAuth2Endpoints(ctx context.Context, issuerURI string, metadataURL 
 		return nil, fmt.Errorf("invalid authorization_endpoint: %w", err)
 	}
 
+	// Validate jwks_uri when present (optional per RFC 8414, but must be a valid URL if set)
+	if metadata.JWKsURI != "" {
+		if err := validateEndpointURL(metadata.JWKsURI, skipHTTPSValidation); err != nil {
+			return nil, fmt.Errorf("invalid jwks_uri: %w", err)
+		}
+	}
+
 	// Return discovered endpoints
 	return &model.OAuth2Endpoints{
 		TokenEndpoint:     metadata.TokenEndpoint,
 		AuthorizeEndpoint: metadata.AuthorizationEndpoint,
+		JWKsURI:           metadata.JWKsURI,
 	}, nil
 }
 

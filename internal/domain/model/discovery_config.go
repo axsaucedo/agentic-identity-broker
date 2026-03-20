@@ -13,4 +13,5 @@ type DiscoveryConfig struct {
 type OAuth2Endpoints struct {
 	TokenEndpoint     string
 	AuthorizeEndpoint string
+	JWKsURI           string
 }
