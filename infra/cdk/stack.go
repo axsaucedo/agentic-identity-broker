@@ -75,6 +75,18 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 
 	stack := awscdk.NewStack(scope, &id, &props.StackProps)
 
+	// Add the required CloudFormation template Metadata header.
+	// CI/CD tooling requires these fields to identify and validate the synthesized
+	// CloudFormation template used by deployment pipelines.
+	stack.TemplateOptions().SetMetadata(&map[string]interface{}{
+		"StackName": stack.StackName(),
+		"Tags": map[string]interface{}{
+			"application": "agentic-identity-broker",
+			"component":   "encryption-vault",
+			"environment": props.Environment,
+		},
+	})
+
 	isProd := props.Environment == "prod" || props.Environment == "production"
 
 	// ─── IRSA Parameters Validation ─────────────────────────────────────
@@ -170,7 +182,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// Throttling indicates approaching or exceeding KMS request quota.
 	kmsThrottleMetric := awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
 		Namespace:  jsii.String("AWS/KMS"),
-		MetricName: jsii.String("UserErrorCount"),
+		MetricName: jsii.String("ThrottleCount"),
 		DimensionsMap: &map[string]*string{
 			"KeyId": kmsKey.KeyId(),
 		},
@@ -287,7 +299,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("EncryptionKeyAlias"), &awscdk.CfnOutputProps{
-		Value:       jsii.String(fmt.Sprintf("alias/identity-broker/%s/token-vault-kek", props.Environment)),
+		Value:       jsii.String(fmt.Sprintf("alias/agentic-identity-broker/%s/token-vault-kek", props.Environment)),
 		Description: jsii.String("KMS CMK Alias for human-readable reference"),
 	})
 

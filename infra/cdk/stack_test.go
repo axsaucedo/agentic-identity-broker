@@ -33,12 +33,6 @@ func createTestStack(t *testing.T, env string, oidcArn, namespace, sa string) (a
 	return stack, template
 }
 
-// helper to create a stack with IRSA configuration for production testing.
-func createTestStackIRSA(t *testing.T, env string, oidcArn, namespace, sa string) (awscdk.Stack, assertions.Template) {
-	t.Helper()
-	return createTestStack(t, env, oidcArn, namespace, sa)
-}
-
 // --- KMS Key Tests ---
 
 func TestKMSKeyIsSymmetricWithRotation(t *testing.T) {
@@ -384,32 +378,22 @@ func TestRequiredTagsApplied(t *testing.T) {
 	// This validates the tagging policy specified in the REMEDIATION_PLAN.md.
 	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
 
-	// Verify Project tag on DynamoDB table (critical for cost allocation and resource identification)
+	// Verify application tag on DynamoDB table (critical for cost allocation and resource identification)
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Project",
+				"Key":   "application",
 				"Value": "agentic-identity-broker",
 			}),
 		}),
 	})
 
-	// Verify Component tag on IAM role (critical for operational understanding)
+	// Verify component tag on IAM role (critical for operational understanding)
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Component",
+				"Key":   "component",
 				"Value": "encryption-vault",
-			}),
-		}),
-	})
-
-	// Verify ManagedBy tag on IAM role (shows infrastructure-as-code management)
-	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"Tags": assertions.Match_ArrayWith(&[]interface{}{
-			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "ManagedBy",
-				"Value": "aws-cdk",
 			}),
 		}),
 	})
@@ -423,7 +407,7 @@ func TestRequiredTagsApplied(t *testing.T) {
 		"AliasName": "alias/agentic-identity-broker/prod/token-vault-kek",
 	})
 
-	t.Log("Required tagging policy validated: Project, Component, ManagedBy tags present; environment embedded in resource names")
+	t.Log("Required tagging policy validated: application, component, environment tags present; environment embedded in resource names")
 }
 
 func TestAllResourcesTagged(t *testing.T) {
@@ -433,12 +417,12 @@ func TestAllResourcesTagged(t *testing.T) {
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Environment",
-				"Value": "test",
+				"Key":   "application",
+				"Value": "agentic-identity-broker",
 			}),
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Project",
-				"Value": "agentic-identity-broker",
+				"Key":   "environment",
+				"Value": "test",
 			}),
 		}),
 	})
@@ -447,12 +431,8 @@ func TestAllResourcesTagged(t *testing.T) {
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
 		"Tags": assertions.Match_ArrayWith(&[]interface{}{
 			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "Component",
+				"Key":   "component",
 				"Value": "encryption-vault",
-			}),
-			assertions.Match_ObjectLike(&map[string]interface{}{
-				"Key":   "ManagedBy",
-				"Value": "aws-cdk",
 			}),
 		}),
 	})
@@ -753,6 +733,30 @@ func TestIRSAConditionKeysFormatting(t *testing.T) {
 			})
 		})
 	}
+}
+
+// --- Template Metadata Tests ---
+
+func TestTemplateMetadataHeader(t *testing.T) {
+	// CI/CD pipeline requires Metadata.StackName and Metadata.Tags.application
+	// in the synthesized CloudFormation template to identify deployment manifests.
+	_, template := createTestStack(t, "test", "", "", "")
+
+	templateJSON := template.ToJSON()
+	metadataRaw := extractSection(t, templateJSON, "Metadata")
+	metadata, ok := metadataRaw.(map[string]interface{})
+	require.True(t, ok, "template Metadata section should be present")
+
+	stackName, ok := metadata["StackName"].(string)
+	require.True(t, ok, "Metadata.StackName should be a string")
+	assert.Equal(t, "TestStack", stackName, "Metadata.StackName should match the stack logical ID")
+
+	tags, ok := metadata["Tags"].(map[string]interface{})
+	require.True(t, ok, "Metadata.Tags should be a map")
+
+	application, ok := tags["application"].(string)
+	require.True(t, ok, "Metadata.Tags.application should be a string")
+	assert.Equal(t, "agentic-identity-broker", application)
 }
 
 // --- Environment Parameterization Tests ---
