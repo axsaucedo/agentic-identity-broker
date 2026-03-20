@@ -75,7 +75,10 @@ A single `EncryptionStack` provisions:
 
 ```bash
 cdk deploy -c env=test                   # test defaults
-cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::123456789012:role/ECSTaskRole
+cdk deploy -c env=prod \
+  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/... \
+  -c k8sNamespace=identity-broker \
+  -c k8sServiceAccountName=agentic-identity-broker
 ```
 
 ### Tagging
@@ -84,10 +87,9 @@ All resources are tagged via `Tags.Of(stack).Add()`:
 
 | Tag Key     | Value                      |
 |-------------|----------------------------|
-| Project     | agentic-identity-broker    |
-| Component   | encryption                 |
-| Environment | `{env}`                    |
-| ManagedBy   | aws-cdk                    |
+| application | agentic-identity-broker    |
+| component   | encryption-vault           |
+| environment | `{env}`                    |
 
 ---
 
