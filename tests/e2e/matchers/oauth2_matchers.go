@@ -167,6 +167,7 @@ func (m *oauth2ErrorMatcher) Match(actual interface{}) (success bool, err error)
 		contentType := resp.Header.Get("Content-Type")
 		if strings.Contains(contentType, "application/json") && resp.Body != nil {
 			bodyBytes, readErr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
 			if readErr != nil {
 				m.error = fmt.Sprintf("failed to read JSON error body: %v", readErr)
 				return false, nil

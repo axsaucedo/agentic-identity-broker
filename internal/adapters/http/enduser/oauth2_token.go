@@ -237,28 +237,56 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 	var agentID id.AgentID
 	if h.MultiAgentVerifier != nil {
 		formData, err := url.ParseQuery(body)
-		if err == nil {
-			rawClientID := formData.Get("client_id")
-			parsedID, parseErr := id.ParseAgentID(rawClientID)
-			if parseErr != nil {
-				// Fail closed per SR-001: reject immediately rather than forwarding
-				// a zero-value UUID to upstream.
-				if h.Logger != nil {
-					h.Logger.Error("AgentIDParseError",
-						"received_client_id", rawClientID,
-						"error", parseErr,
-					)
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				_ = json.NewEncoder(w).Encode(map[string]string{
-					"error":             "invalid_client",
-					"error_description": "client_id is not a valid agent UUID",
-				})
-				return
+		if err != nil {
+			// Fail closed: malformed form body means we cannot reliably determine agent ID.
+			if h.Logger != nil {
+				h.Logger.Error("TokenRequestFormParseError",
+					slog.String("error", err.Error()),
+				)
 			}
-			agentID = parsedID
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":             "invalid_request",
+				"error_description": "token request body is not valid form-encoded data",
+			})
+			return
 		}
+
+		rawClientID := formData.Get("client_id")
+		if rawClientID == "" {
+			// Fail closed when client_id is missing: we cannot determine the expected agent.
+			if h.Logger != nil {
+				h.Logger.Error("MissingClientIDInTokenRequest")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":             "invalid_client",
+				"error_description": "client_id is required",
+			})
+			return
+		}
+
+		parsedID, parseErr := id.ParseAgentID(rawClientID)
+		if parseErr != nil {
+			// Fail closed per SR-001: reject immediately rather than forwarding
+			// a zero-value UUID to upstream.
+			if h.Logger != nil {
+				h.Logger.Error("AgentIDParseError",
+					"received_client_id", rawClientID,
+					"error", parseErr,
+				)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":             "invalid_client",
+				"error_description": "client_id is not a valid agent UUID",
+			})
+			return
+		}
+		agentID = parsedID
 	}
 
 	// Create upstream request

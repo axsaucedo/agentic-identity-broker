@@ -55,6 +55,7 @@ func (m *agentIDClaimMatcher) Match(actual interface{}) (success bool, err error
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
 	if err != nil {
 		m.error = fmt.Sprintf("failed to read response body: %v", err)
 		return false, nil

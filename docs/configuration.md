@@ -728,7 +728,7 @@ For compliance and troubleshooting, check the JSON audit log (first output on st
 
 #### oauth2_authorization_server.multi_agent_client
 
-**Description**: Controls whether multiple agents may share the same upstream OAuth2 `client_id`. When disabled (default), the broker enforces per-agent `client_id` uniqueness and resolves agents using the standard `client_id` lookup. When enabled, multiple agents can share one upstream OAuth2 application, and agent identity is determined by a custom claim injected into the upstream authorize redirect and verified in the upstream token response.
+**Description**: Controls whether multiple agents may share the same upstream OAuth2 `client_id` (stored as `agent.client_id`). When disabled (default), the broker enforces per-agent *upstream* `client_id` uniqueness; incoming OAuth2 requests are always resolved by the agent's internal UUID (`agent.id`), regardless of this setting. When enabled, multiple agents can share one upstream OAuth2 application, and agent identity is additionally verified via a custom claim injected into the upstream authorize redirect and checked in the upstream token response.
 
 **Configuration block** (nested under `oauth2_authorization_server`):
 
