@@ -22,15 +22,15 @@ type GRPCConfig struct {
 
 // OAuth2Config holds OAuth2 and token exchange settings.
 type OAuth2Config struct {
-	TokenEndpoint              string        `mapstructure:"token_endpoint"`
-	Issuer                     string        `mapstructure:"issuer"`
-	ClientID                   string        `mapstructure:"client_id"`
-	ClientSecret               string        `mapstructure:"client_secret"`
-	ClientCredentialsEndpoint  string        `mapstructure:"client_credentials_endpoint"`
-	ClientCredentialsScopes    []string      `mapstructure:"client_credentials_scopes"`
-	ClientAssertionType        string        `mapstructure:"client_assertion_type"`
-	ExchangeTimeout            time.Duration `mapstructure:"exchange_timeout"`
-	TLS                        TLSConfig     `mapstructure:"tls"`
+	TokenEndpoint             string        `mapstructure:"token_endpoint"`
+	Issuer                    string        `mapstructure:"issuer"`
+	ClientID                  string        `mapstructure:"client_id"`
+	ClientSecret              string        `mapstructure:"client_secret"`
+	ClientCredentialsEndpoint string        `mapstructure:"client_credentials_endpoint"`
+	ClientCredentialsScopes   []string      `mapstructure:"client_credentials_scopes"`
+	ClientAssertionType       string        `mapstructure:"client_assertion_type"`
+	ExchangeTimeout           time.Duration `mapstructure:"exchange_timeout"`
+	TLS                       TLSConfig     `mapstructure:"tls"`
 }
 
 // TLSConfig holds TLS settings for outbound HTTP connections.

@@ -126,6 +126,10 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 		{"001_create_agents.up.sql", 1},
 		{"002_create_thirdparty_services.up.sql", 2},
 		{"003_create_user_grants.up.sql", 3},
+		{"004_create_user_sessions.up.sql", 4},
+		{"005_add_agent_service_requirements.up.sql", 5},
+		{"006_add_service_protected_resources.up.sql", 6},
+		{"007_add_oauth2_flavor.up.sql", 7},
 	}
 
 	for _, migration := range migrations {

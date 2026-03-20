@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -80,7 +81,7 @@ func TestAgentRepository_Create(t *testing.T) {
 
 	t.Run("with optional fields", func(t *testing.T) {
 		now := time.Now().UTC()
-		externalID := "ext-123"
+		externalID := id.ExternalID("ext-123")
 		govURL := "https://example.com/governance"
 		docURL := "https://example.com/docs"
 		agentURL := "https://example.com/agent"
@@ -102,7 +103,7 @@ func TestAgentRepository_Create(t *testing.T) {
 
 		retrieved, err := repo.Get(ctx, agent.ID)
 		require.NoError(t, err)
-		assert.Equal(t, externalID, *retrieved.ExternalID)
+		assert.Equal(t, id.ExternalID(externalID), *retrieved.ExternalID)
 		assert.Equal(t, govURL, *retrieved.GovernanceURL)
 		assert.Equal(t, docURL, *retrieved.UserDocumentationURL)
 		assert.Equal(t, agentURL, *retrieved.AgentInterfaceURL)
@@ -223,7 +224,7 @@ func TestAgentRepository_Get(t *testing.T) {
 	})
 
 	t.Run("non-existent agent", func(t *testing.T) {
-		retrieved, err := repo.Get(ctx, "non-existent-id")
+		retrieved, err := repo.Get(ctx, id.MustParseAgentID("00000000-0000-0000-0000-000000000001"))
 		require.Error(t, err)
 		assert.Nil(t, retrieved)
 
@@ -233,7 +234,7 @@ func TestAgentRepository_Get(t *testing.T) {
 	})
 
 	t.Run("empty ID", func(t *testing.T) {
-		retrieved, err := repo.Get(ctx, "")
+		retrieved, err := repo.Get(ctx, id.AgentID{})
 		require.Error(t, err)
 		assert.Nil(t, retrieved)
 
@@ -326,13 +327,13 @@ func TestAgentRepository_Update(t *testing.T) {
 
 		retrieved, err := repo.Get(ctx, agent.ID)
 		require.NoError(t, err)
-		assert.Equal(t, "new-client-id", retrieved.ClientID)
+		assert.Equal(t, id.ClientID("new-client-id"), retrieved.ClientID)
 	})
 
 	t.Run("update non-existent agent", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ID:          "non-existent-id",
+			ID:          id.MustParseAgentID("00000000-0000-0000-0000-000000000002"),
 			ClientID:    "test-client",
 			DisplayName: "Test Agent",
 			Description: "Test description",
@@ -439,12 +440,12 @@ func TestAgentRepository_Delete(t *testing.T) {
 
 	t.Run("idempotent deletion", func(t *testing.T) {
 		// Delete non-existent agent - should not error
-		err := repo.Delete(ctx, "non-existent-id")
+		err := repo.Delete(ctx, id.MustParseAgentID("00000000-0000-0000-0000-000000000003"))
 		require.NoError(t, err)
 	})
 
 	t.Run("empty ID validation", func(t *testing.T) {
-		err := repo.Delete(ctx, "")
+		err := repo.Delete(ctx, id.AgentID{})
 		require.Error(t, err)
 
 		storageErr, ok := err.(*storage.StorageError)

@@ -8,9 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	testServiceGitHub = id.MustParseServiceID("10000000-0000-0000-0000-000000000001")
+	testServiceGoogle = id.MustParseServiceID("10000000-0000-0000-0000-000000000002")
+	testGrantNotFound = id.MustParseGrantID("99000000-0000-0000-0000-000000000001")
+	testAgentNotFound = id.MustParseAgentID("99000000-0000-0000-0000-000000000001")
 )
 
 // setupUserGrantTestDB creates a test database with migrations applied.
@@ -45,12 +53,12 @@ func TestUserGrantRepository_Create(t *testing.T) {
 	t.Run("successful creation", func(t *testing.T) {
 		validUntil := time.Now().Add(24 * time.Hour)
 		grant := &storage.UserGrant{
-			Principal:  "user@example.com",
+			Principal:  id.Principal("user@example.com"),
 			AgentID:    agent.ID,
 			ValidUntil: &validUntil,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo", "user:email"},
 				},
 			},
@@ -71,7 +79,7 @@ func TestUserGrantRepository_Create(t *testing.T) {
 	})
 
 	t.Run("upsert semantics", func(t *testing.T) {
-		principal := "user2@example.com"
+		principal := id.Principal("user2@example.com")
 		validUntil1 := time.Now().Add(24 * time.Hour)
 
 		grant1 := &storage.UserGrant{
@@ -80,7 +88,7 @@ func TestUserGrantRepository_Create(t *testing.T) {
 			ValidUntil: &validUntil1,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -100,7 +108,7 @@ func TestUserGrantRepository_Create(t *testing.T) {
 			ValidUntil: &validUntil2,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-google",
+					ThirdpartyOAuth2ServiceID: testServiceGoogle,
 					Scopes:                    []string{"openid"},
 				},
 			},
@@ -117,7 +125,7 @@ func TestUserGrantRepository_Create(t *testing.T) {
 		assert.Len(t, grants, 1)
 
 		// Verify the grant was updated
-		assert.Equal(t, "service-google", grants[0].DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+		assert.Equal(t, testServiceGoogle, grants[0].DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
 
 		// The returned ID should be the first one (ON CONFLICT UPDATE keeps original ID)
 		assert.Equal(t, firstID, grants[0].ID)
@@ -142,7 +150,7 @@ func TestUserGrantRepository_Get(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("get non-existent grant", func(t *testing.T) {
-		_, err := grantRepo.Get(ctx, "nonexistent-id")
+		_, err := grantRepo.Get(ctx, testGrantNotFound)
 		require.Error(t, err)
 		storageErr, ok := err.(*storage.StorageError)
 		require.True(t, ok)
@@ -151,11 +159,11 @@ func TestUserGrantRepository_Get(t *testing.T) {
 
 	t.Run("get existing grant", func(t *testing.T) {
 		grant := &storage.UserGrant{
-			Principal: "user@example.com",
+			Principal: id.Principal("user@example.com"),
 			AgentID:   agent.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -192,11 +200,11 @@ func TestUserGrantRepository_Update(t *testing.T) {
 
 	t.Run("update existing grant", func(t *testing.T) {
 		grant := &storage.UserGrant{
-			Principal: "user@example.com",
+			Principal: id.Principal("user@example.com"),
 			AgentID:   agent.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -212,7 +220,7 @@ func TestUserGrantRepository_Update(t *testing.T) {
 		grant.ValidUntil = &validUntil
 		grant.DelegatedOAuth2Tokens = []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "service-google",
+				ThirdpartyOAuth2ServiceID: testServiceGoogle,
 				Scopes:                    []string{"openid"},
 			},
 		}
@@ -226,17 +234,17 @@ func TestUserGrantRepository_Update(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, retrieved.ValidUntil)
 		assert.Len(t, retrieved.DelegatedOAuth2Tokens, 1)
-		assert.Equal(t, "service-google", retrieved.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
+		assert.Equal(t, testServiceGoogle, retrieved.DelegatedOAuth2Tokens[0].ThirdpartyOAuth2ServiceID)
 	})
 
 	t.Run("update non-existent grant", func(t *testing.T) {
 		grant := &storage.UserGrant{
-			ID:        "nonexistent-id",
-			Principal: "user@example.com",
+			ID:        testGrantNotFound,
+			Principal: id.Principal("user@example.com"),
 			AgentID:   agent.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -271,11 +279,11 @@ func TestUserGrantRepository_Delete(t *testing.T) {
 
 	t.Run("delete existing grant", func(t *testing.T) {
 		grant := &storage.UserGrant{
-			Principal: "user@example.com",
+			Principal: id.Principal("user@example.com"),
 			AgentID:   agent.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -296,7 +304,7 @@ func TestUserGrantRepository_Delete(t *testing.T) {
 	})
 
 	t.Run("delete non-existent grant (idempotent)", func(t *testing.T) {
-		err := grantRepo.Delete(ctx, "nonexistent-id")
+		err := grantRepo.Delete(ctx, testGrantNotFound)
 		require.NoError(t, err)
 	})
 }
@@ -318,7 +326,7 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 	err := agentRepo.Create(ctx, agent)
 	require.NoError(t, err)
 
-	principal := "user@example.com"
+	principal := id.Principal("user@example.com")
 
 	t.Run("list when no grants exist", func(t *testing.T) {
 		grants, err := grantRepo.ListByPrincipalAndAgent(ctx, principal, agent.ID)
@@ -332,7 +340,7 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 			AgentID:   agent.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -350,7 +358,7 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 	})
 
 	t.Run("includes expired grants", func(t *testing.T) {
-		principal2 := "user2@example.com"
+		principal2 := id.Principal("user2@example.com")
 
 		// Create grant with short validity
 		validUntil := time.Now().Add(1 * time.Millisecond)
@@ -360,7 +368,7 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 			ValidUntil: &validUntil,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -398,7 +406,7 @@ func TestUserGrantRepository_FindByPrincipalAndAgent(t *testing.T) {
 	err := agentRepo.Create(ctx, agent)
 	require.NoError(t, err)
 
-	principal := "user@example.com"
+	principal := id.Principal("user@example.com")
 
 	t.Run("find when no grant exists", func(t *testing.T) {
 		_, err := grantRepo.FindByPrincipalAndAgent(ctx, principal, agent.ID)
@@ -414,7 +422,7 @@ func TestUserGrantRepository_FindByPrincipalAndAgent(t *testing.T) {
 			AgentID:   agent.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -461,11 +469,11 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 	t.Run("cascade delete all grants for agent", func(t *testing.T) {
 		// Create multiple grants for agent1
 		grant1 := &storage.UserGrant{
-			Principal: "user1@example.com",
+			Principal: id.Principal("user1@example.com"),
 			AgentID:   agent1.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -476,11 +484,11 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 		require.NoError(t, err)
 
 		grant2 := &storage.UserGrant{
-			Principal: "user2@example.com",
+			Principal: id.Principal("user2@example.com"),
 			AgentID:   agent1.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-google",
+					ThirdpartyOAuth2ServiceID: testServiceGoogle,
 					Scopes:                    []string{"openid"},
 				},
 			},
@@ -492,11 +500,11 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 
 		// Create grant for agent2
 		grant3 := &storage.UserGrant{
-			Principal: "user1@example.com",
+			Principal: id.Principal("user1@example.com"),
 			AgentID:   agent2.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo"},
 				},
 			},
@@ -522,7 +530,7 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 	})
 
 	t.Run("delete by non-existent agent (idempotent)", func(t *testing.T) {
-		err := grantRepo.DeleteByAgent(ctx, "nonexistent-agent")
+		err := grantRepo.DeleteByAgent(ctx, testAgentNotFound)
 		require.NoError(t, err)
 	})
 }
@@ -546,15 +554,15 @@ func TestUserGrantRepository_JSONBMarshaling(t *testing.T) {
 
 	t.Run("marshal and unmarshal complex tokens", func(t *testing.T) {
 		grant := &storage.UserGrant{
-			Principal: "user@example.com",
+			Principal: id.Principal("user@example.com"),
 			AgentID:   agent.ID,
 			DelegatedOAuth2Tokens: []storage.DelegatedToken{
 				{
-					ThirdpartyOAuth2ServiceID: "service-github",
+					ThirdpartyOAuth2ServiceID: testServiceGitHub,
 					Scopes:                    []string{"repo", "user:email", "read:org"},
 				},
 				{
-					ThirdpartyOAuth2ServiceID: "service-google",
+					ThirdpartyOAuth2ServiceID: testServiceGoogle,
 					Scopes:                    []string{"openid", "email", "profile"},
 				},
 			},
@@ -593,11 +601,11 @@ func TestUserGrantRepository_DeepCopy(t *testing.T) {
 	require.NoError(t, err)
 
 	grant := &storage.UserGrant{
-		Principal: "user@example.com",
+		Principal: id.Principal("user@example.com"),
 		AgentID:   agent.ID,
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{
 			{
-				ThirdpartyOAuth2ServiceID: "service-github",
+				ThirdpartyOAuth2ServiceID: testServiceGitHub,
 				Scopes:                    []string{"repo"},
 			},
 		},
