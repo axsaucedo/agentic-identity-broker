@@ -139,7 +139,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			redirectURI := "https://client.example.com/callback"
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=abc123",
-					agent.ClientID, url.QueryEscape(redirectURI)),
+					agent.ID.String(), url.QueryEscape(redirectURI)),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())

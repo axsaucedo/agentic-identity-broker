@@ -87,7 +87,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Given: Valid agent registered
 			// When: Authorization request with valid client_id (authenticated as default user)
 			resp, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz",
+				"/oauth2/authorize?client_id="+agent.ID.String()+"&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -135,7 +135,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 
 		It("should redirect to consent UI with full original request URL preserved", func() {
 			// Given: Valid agent but no grant
-			originalURL := "/oauth2/authorize?client_id=" + string(agent.ClientID) + "&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid"
+			originalURL := "/oauth2/authorize?client_id=" + agent.ID.String() + "&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid"
 
 			// When: Authorization request (authenticated as default user)
 			resp, err := server.AuthenticatedGET(originalURL, fixtures.DefaultPrincipal().String())
@@ -149,7 +149,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			redirectURL, err := helpers.ExtractRedirectURL(resp)
 			Expect(err).ToNot(HaveOccurred())
 			redirectURIParam := redirectURL.Query().Get("redirect_uri")
-			Expect(redirectURIParam).To(ContainSubstring(string(agent.ClientID)))
+			Expect(redirectURIParam).To(ContainSubstring(agent.ID.String()))
 			Expect(redirectURIParam).To(ContainSubstring("state=xyz"))
 		})
 	})
@@ -173,7 +173,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Given: Active grant exists
 			// When: Authorization request with multiple OAuth2 parameters (authenticated as default user)
 			resp, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid+profile&code_challenge=abc&code_challenge_method=S256",
+				"/oauth2/authorize?client_id="+agent.ID.String()+"&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz&scope=openid+profile&code_challenge=abc&code_challenge_method=S256",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -228,7 +228,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Given: Expired grant exists
 			// When: Authorization request (authenticated as default user)
 			resp, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id="+agent.ID.String()+"&redirect_uri=https://client.example.com/cb&response_type=code",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -253,7 +253,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// Given: Valid agent and no X-Remote-User header (unauthenticated)
 			// When: Authorization request without principal (using PublicGET)
 			resp, err := server.PublicGET(
-				"/oauth2/authorize?client_id=" + string(agent.ClientID) + "&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id=" + agent.ID.String() + "&redirect_uri=https://client.example.com/cb&response_type=code",
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -290,7 +290,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			// When: Authorization request with valid redirect_uri
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz",
-					string(agent.ClientID), redirectURI),
+					agent.ID.String(), redirectURI),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -326,7 +326,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				// When: Authorization request with state parameter
 				resp, err := server.AuthenticatedGET(
 					fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=%s",
-						string(agent.ClientID), stateValue),
+						agent.ID.String(), stateValue),
 					fixtures.DefaultPrincipal().String(),
 				)
 				Expect(err).ToNot(HaveOccurred())
@@ -361,7 +361,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 				// When: Authorization request with state parameter
 				resp, err := server.AuthenticatedGET(
 					fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=%s",
-						string(agent.ClientID), stateValue),
+						agent.ID.String(), stateValue),
 					fixtures.DefaultPrincipal().String(),
 				)
 				Expect(err).ToNot(HaveOccurred())
@@ -403,7 +403,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 
 			// When: Default principal makes request
 			resp1, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id="+agent.ID.String()+"&redirect_uri=https://client.example.com/cb&response_type=code",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -419,7 +419,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 
 			// When: Another principal makes request
 			resp2, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id="+string(agent.ClientID)+"&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id="+agent.ID.String()+"&redirect_uri=https://client.example.com/cb&response_type=code",
 				fixtures.AnotherPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())

@@ -804,7 +804,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			anotherPrincipal := fixtures.AnotherPrincipal().String()
 			anotherPrincipalClaims := map[string]interface{}{
 				"sub": anotherPrincipal,
-				"azp": agent.ClientID,
+				"azp": agent.ID.String(),
 				"iss": mockUpstream.URL(),
 				"aud": "token-exchange-broker",
 				"exp": time.Now().Add(1 * time.Hour).Unix(),
@@ -882,7 +882,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// Create a token for principal with no session
 			adminClaims := map[string]interface{}{
 				"sub": anotherPrincipal,
-				"azp": agent.ClientID,
+				"azp": agent.ID.String(),
 				"iss": mockUpstream.URL(),
 				"aud": "token-exchange-broker",
 				"exp": time.Now().Add(1 * time.Hour).Unix(),
@@ -1142,7 +1142,7 @@ func generateTokenFixtures(mockUpstream *helpers.MockUpstreamOAuth2Server, princ
 	// Used in successful token exchange scenarios (US1-S1 through US1-S4)
 	subjectTokenClaims := map[string]interface{}{
 		"sub": principal,                     // Principal claim (user identifier)
-		"azp": agent.ClientID,                // Agent ID claim (client being used on behalf of)
+		"azp": agent.ID.String(),             // Agent internal UUID (T030: must be UUID for agentRepository.Get)
 		"iss": mockUpstream.URL(),            // Issuer must match upstream server
 		"aud": "token-exchange-broker",       // Audience for this token exchange
 		"exp": now.Add(1 * time.Hour).Unix(), // Expires in 1 hour
@@ -1169,7 +1169,7 @@ func generateTokenFixtures(mockUpstream *helpers.MockUpstreamOAuth2Server, princ
 	// Used to test handling of expired tokens (US1-S6, US5-S2)
 	expiredTokenClaims := map[string]interface{}{
 		"sub": principal,
-		"azp": agent.ClientID,
+		"azp": agent.ID.String(),
 		"iss": mockUpstream.URL(),
 		"aud": "token-exchange-broker",
 		"exp": now.Add(-1 * time.Hour).Unix(), // Expired 1 hour ago
@@ -1212,7 +1212,7 @@ func generateTokenFixtures(mockUpstream *helpers.MockUpstreamOAuth2Server, princ
 	// Used to test issuer validation (different upstream server)
 	invalidIssuerClaims := map[string]interface{}{
 		"sub": principal,
-		"azp": agent.ClientID,
+		"azp": agent.ID.String(),
 		"iss": "https://wrong-issuer.example.com", // Wrong issuer
 		"aud": "token-exchange-broker",
 		"exp": now.Add(1 * time.Hour).Unix(),

@@ -1,6 +1,7 @@
 package tokenexchange
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -514,4 +515,70 @@ func validTokenExchangeConfig(_ *testing.T) CELEvaluatorConfig {
 		AuthorizationExpression: DefaultAuthorizationExpression,
 		EvaluationTimeout:       time.Duration(DefaultEvaluationTimeoutMs) * time.Millisecond,
 	}
+}
+
+// --- T028: resolveAgentIdByClientId CEL function tests (Feature 021 US2) ---
+
+// TestCELEvaluator_ResolveAgentIdByClientId_CorrectResult verifies that when
+// ResolveAgentIDByClientID is non-nil, the resolveAgentIdByClientId CEL function is
+// registered and returns the agent UUID string returned by the resolver.
+// [T028] Written before T031 implementation — must FAIL until T031 registers the function.
+func TestCELEvaluator_ResolveAgentIdByClientId_CorrectResult(t *testing.T) {
+	agentUUID := "550e8400-e29b-41d4-a716-446655440000"
+
+	config := validTokenExchangeConfig(t)
+	// Register a mock resolver that maps "upstream-client-1" → agentUUID
+	config.ResolveAgentIDByClientID = func(clientID string) (string, error) {
+		if clientID == "upstream-client-1" {
+			return agentUUID, nil
+		}
+		return "", fmt.Errorf("unknown client_id: %s", clientID)
+	}
+	// Use the resolveAgentIdByClientId function in the expression
+	config.AgentClientIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+	evaluator, err := NewCELEvaluator(config)
+	require.NoError(t, err, "NewCELEvaluator should succeed when resolver is registered")
+	require.NotNil(t, evaluator)
+
+	result, err := evaluator.ExtractAgentClientID(map[string]interface{}{
+		"azp": "upstream-client-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agentUUID, result)
+}
+
+// TestCELEvaluator_ResolveAgentIdByClientId_UnknownClientIDReturnsErr verifies that when
+// the resolver returns an error (unknown clientID), ExtractAgentClientID returns an error.
+// [T028] Written before T031 implementation — must FAIL until T031 registers the function.
+func TestCELEvaluator_ResolveAgentIdByClientId_UnknownClientIDReturnsErr(t *testing.T) {
+	config := validTokenExchangeConfig(t)
+	config.ResolveAgentIDByClientID = func(clientID string) (string, error) {
+		return "", fmt.Errorf("unknown client_id: %s", clientID)
+	}
+	config.AgentClientIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+	evaluator, err := NewCELEvaluator(config)
+	require.NoError(t, err, "NewCELEvaluator should succeed when resolver is registered")
+
+	_, err = evaluator.ExtractAgentClientID(map[string]interface{}{
+		"azp": "unknown-client",
+	})
+	assert.Error(t, err, "ExtractAgentClientID should return error when resolver fails")
+}
+
+// TestCELEvaluator_ResolveAgentIdByClientId_NotRegisteredWhenNil verifies that when
+// ResolveAgentIDByClientID is nil, an expression using resolveAgentIdByClientId fails at
+// compile time with an undeclared reference error (feature disabled — function absent).
+// [T028] This test guards the contract that nil resolver → function NOT registered.
+// It passes both before and after T031 (the function is only registered when non-nil).
+func TestCELEvaluator_ResolveAgentIdByClientId_NotRegisteredWhenNil(t *testing.T) {
+	config := validTokenExchangeConfig(t)
+	config.ResolveAgentIDByClientID = nil // Feature disabled
+	config.AgentClientIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+	evaluator, err := NewCELEvaluator(config)
+	assert.Error(t, err, "NewCELEvaluator should fail when nil resolver and expression uses resolveAgentIdByClientId")
+	assert.Nil(t, evaluator)
+	assert.True(t, IsTokenExchangeError(err), "error should be a TokenExchangeError")
 }

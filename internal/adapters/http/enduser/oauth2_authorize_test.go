@@ -174,7 +174,8 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 		Service: svc,
 	}
 
-	originalURL := "https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123"
+	// Feature 021: client_id is now the agent UUID, not the upstream client_id
+	originalURL := "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String() + "&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123"
 	req := httptest.NewRequest("GET", originalURL, nil)
 	req.Header.Set("X-Remote-User", "user@example.com")
 	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
@@ -226,9 +227,10 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 		Service: svc,
 	}
 
+	// Feature 021: client_id is now the agent UUID, not the upstream client_id
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123&scope=openid+profile",
+		"https://broker.example.com/oauth2/authorize?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123&scope=openid+profile",
 		nil,
 	)
 	req.Header.Set("X-Remote-User", "user@example.com")
@@ -284,10 +286,10 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 		Service: svc,
 	}
 
-	// Request with PKCE parameters
+	// Feature 021: client_id is now the agent UUID, not the upstream client_id
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123&scope=openid+profile+email&code_challenge=E9Mrozoa2owQB2dSBnnNBvjrNqtPTUAwY5uQp41VN-I&code_challenge_method=S256",
+		"https://broker.example.com/oauth2/authorize?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123&scope=openid+profile+email&code_challenge=E9Mrozoa2owQB2dSBnnNBvjrNqtPTUAwY5uQp41VN-I&code_challenge_method=S256",
 		nil,
 	)
 	req.Header.Set("X-Remote-User", "user@example.com")

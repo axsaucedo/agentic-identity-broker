@@ -20,20 +20,24 @@ import (
 
 // AgentsHandler handles HTTP requests for agent CRUD operations.
 type AgentsHandler struct {
-	repo            ports.AgentRepository
-	providerService *thirdparty.ThirdpartyOAuth2ProviderService
-	logger          *slog.Logger
+	repo              ports.AgentRepository
+	providerService   *thirdparty.ThirdpartyOAuth2ProviderService
+	logger            *slog.Logger
+	multiAgentEnabled bool // when true, duplicate client_id is allowed (Feature 021)
 }
 
 // NewAgentsHandler creates a new agents handler.
-func NewAgentsHandler(repo ports.AgentRepository, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger) *AgentsHandler {
+// multiAgentEnabled should match OAuth2AuthServerConfig.MultiAgentClient.Enabled:
+// when false (the default), client_id uniqueness is enforced at the application layer.
+func NewAgentsHandler(repo ports.AgentRepository, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger, multiAgentEnabled bool) *AgentsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentsHandler{
-		repo:            repo,
-		providerService: providerService,
-		logger:          logger,
+		repo:              repo,
+		providerService:   providerService,
+		logger:            logger,
+		multiAgentEnabled: multiAgentEnabled,
 	}
 }
 
@@ -109,6 +113,16 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("service requirements validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
 		return
+	}
+
+	// T036: When feature is disabled, enforce client_id uniqueness at the application layer.
+	// (Storage adapters no longer enforce this, per Feature 021 requirement to allow sharing.)
+	if !h.multiAgentEnabled {
+		clientID := id.ClientID(req.ClientID)
+		if _, err := h.repo.GetByClientID(ctx, clientID); err == nil {
+			h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
+			return
+		}
 	}
 
 	// Create agent entity
@@ -221,6 +235,16 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("service requirements validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
 		return
+	}
+
+	// T037: When feature is disabled, enforce client_id uniqueness at the application layer,
+	// excluding the current agent (self-update must be allowed).
+	if !h.multiAgentEnabled {
+		newClientID := id.ClientID(req.ClientID)
+		if other, err := h.repo.GetByClientID(ctx, newClientID); err == nil && other.ID != parsedAgentID {
+			h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
+			return
+		}
 	}
 
 	// Update agent entity

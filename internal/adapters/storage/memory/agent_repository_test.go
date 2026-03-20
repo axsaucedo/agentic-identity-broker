@@ -71,15 +71,15 @@ func TestAgentRepository_Create(t *testing.T) {
 		assert.Contains(t, err.Error(), "already exists")
 	})
 
-	t.Run("duplicate client_id conflict", func(t *testing.T) {
+	t.Run("duplicate client_id allowed (Feature 021: multiple agents share one upstream client_id)", func(t *testing.T) {
 		repo := NewAgentRepository()
 		agent1 := &storage.Agent{
-			ClientID:    id.ClientID("duplicate-client"),
+			ClientID:    id.ClientID("shared-upstream-client"),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 		}
 		agent2 := &storage.Agent{
-			ClientID:    id.ClientID("duplicate-client"),
+			ClientID:    id.ClientID("shared-upstream-client"),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 		}
@@ -87,9 +87,9 @@ func TestAgentRepository_Create(t *testing.T) {
 		err := repo.Create(ctx, agent1)
 		require.NoError(t, err)
 
+		// Feature 021: duplicate client_id must NOT return an error
 		err = repo.Create(ctx, agent2)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "client_id already exists")
+		require.NoError(t, err, "multiple agents may share the same upstream client_id")
 	})
 
 	t.Run("validation failure", func(t *testing.T) {

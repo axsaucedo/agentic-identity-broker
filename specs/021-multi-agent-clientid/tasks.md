@@ -13,7 +13,7 @@
 
 **Purpose**: Verify existing design artifacts and project structure before implementation begins.
 
-- [ ] T001 Verify specs/021-multi-agent-clientid/ contains research.md, data-model.md, contracts/admin-api-changes.md, quickstart.md, and plan.md
+- [X] T001 Verify specs/021-multi-agent-clientid/ contains research.md, data-model.md, contracts/admin-api-changes.md, quickstart.md, and plan.md
 
 ---
 
@@ -25,29 +25,29 @@
 
 ### Phase 2a: Domain Model & Glossary [MANDATORY]
 
-- [ ] T002 [P] Update ARCHITECTURE.md Glossary with MultiAgentClientConfig and resolveAgentIdByClientId definitions per data-model.md §Glossary Additions
-- [ ] T003 [P] Confirm data-model.md is complete: MultiAgentClientConfig struct, CELEvaluatorConfig extension, MultiAgentTokenVerifier, migration 008, state-transition flows
+- [X] T002 [P] Update ARCHITECTURE.md Glossary with MultiAgentClientConfig and resolveAgentIdByClientId definitions per data-model.md §Glossary Additions
+- [X] T003 [P] Confirm data-model.md is complete: MultiAgentClientConfig struct, CELEvaluatorConfig extension, MultiAgentTokenVerifier, migration 008, state-transition flows
 
 **Checkpoint**: Domain model documented in ARCHITECTURE.md
 
 ### Phase 2b: Configuration Design [MANDATORY]
 
-- [ ] T004 [P] Add multi_agent_client block (enabled and disabled examples) to examples/config/oauth2-authorization-server.yaml per quickstart.md §Feature Modes
-- [ ] T005 [P] Add updated CEL expression examples to examples/config/token-exchange.yaml per contracts/admin-api-changes.md §Token Exchange CEL Policy
+- [X] T004 [P] Add multi_agent_client block (enabled and disabled examples) to examples/config/oauth2-authorization-server.yaml per quickstart.md §Feature Modes
+- [X] T005 [P] Add updated CEL expression examples to examples/config/token-exchange.yaml per contracts/admin-api-changes.md §Token Exchange CEL Policy
 
 **Checkpoint**: Config examples committed
 
 ### Phase 2c: API Design [MANDATORY]
 
-- [ ] T006 [P] Update /api/enduser/openapi.yaml: change client_id parameter description on /oauth2/authorize to document UUID requirement per contracts/admin-api-changes.md §1
-- [ ] T007 [P] Update /api/admin/openapi.yaml: update POST /api/agents and PUT /api/agents/{agent-id} descriptions with client_id uniqueness conditional per contracts/admin-api-changes.md §2
+- [X] T006 [P] Update /api/enduser/openapi.yaml: change client_id parameter description on /oauth2/authorize to document UUID requirement per contracts/admin-api-changes.md §1
+- [X] T007 [P] Update /api/admin/openapi.yaml: update POST /api/agents and PUT /api/agents/{agent-id} descriptions with client_id uniqueness conditional per contracts/admin-api-changes.md §2
 
 **Checkpoint**: OpenAPI specs updated; breaking changes confirmed acknowledged in plan.md
 
 ### Phase 2d: Database Design [MANDATORY]
 
-- [ ] T008 [P] Create migrations/008_drop_agent_client_id_unique.up.sql: DROP UNIQUE constraint on agents.client_id, DROP old index, CREATE non-unique index idx_agents_client_id per data-model.md §Migration 008
-- [ ] T009 [P] Create migrations/008_drop_agent_client_id_unique.down.sql: DROP index, CREATE UNIQUE INDEX, ADD CONSTRAINT agents_client_id_key per data-model.md §Migration 008
+- [X] T008 [P] Create migrations/008_drop_agent_client_id_unique.up.sql: DROP UNIQUE constraint on agents.client_id, DROP old index, CREATE non-unique index idx_agents_client_id per data-model.md §Migration 008
+- [X] T009 [P] Create migrations/008_drop_agent_client_id_unique.down.sql: DROP index, CREATE UNIQUE INDEX, ADD CONSTRAINT agents_client_id_key per data-model.md §Migration 008
 
 **Checkpoint**: Migration files created and verified against data-model.md
 
@@ -59,11 +59,12 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 > **Constitution Requirement (Principle XIII)**: E2E tests MUST be written before implementation and verified to FAIL (red phase).
 
-- [ ] T010 Create tests/e2e/multi_agent_client_test.go with all 14 Ginkgo It() blocks per plan.md §Scenario Mapping table (US1×6, US2×4, US3×4); add spec scenario comment references in each It()
-- [ ] T011 [P] Extend tests/e2e/helpers/ (MockUpstreamOAuth2Server) to support ReturnTokenWithClaim(claimName, value string) for configurable JWT token responses
-- [ ] T012 [P] Add multi-agent fixtures to tests/e2e/fixtures/: two agents sharing client_id "shared-upstream", multi-agent enabled/disabled config helpers, bootstrap.StorageFactory seeding
-- [ ] T013 Add ContainAgentIDClaim(claimName, agentID string) Gomega matcher to tests/e2e/helpers/ for verifying JWT claim values in token response bodies
-- [ ] T014 Verify all 14 tests in tests/e2e/multi_agent_client_test.go FAIL semantically (not compile errors) by running: ginkgo -v ./tests/e2e/multi_agent_client_test.go
+- [X] T010 Create tests/e2e/multi_agent_client_test.go with all 14 Ginkgo It() blocks per plan.md §Scenario Mapping table (US1×6, US2×4, US3×4); add spec scenario comment references in each It()
+- [X] T011 [P] Extend tests/e2e/helpers/ (MockUpstreamOAuth2Server) to support ReturnTokenWithClaim(claimName, value string) for configurable JWT token responses
+- [X] T012 [P] Add multi-agent fixtures to tests/e2e/fixtures/: two agents sharing client_id "shared-upstream", multi-agent enabled/disabled config helpers, bootstrap.StorageFactory seeding
+- [X] T013 Add ContainAgentIDClaim(claimName, agentID string) Gomega matcher to tests/e2e/matchers/ for verifying JWT claim values in token response bodies
+- [X] T014 Tests compile with one caveat: fixtures/multi_agent.go and multi_agent_client_test.go reference ports.MultiAgentClientConfig (added in Phase 2.5 T015/T016) — 4 expected compile errors. All 14 tests will fail semantically once Phase 2.5 adds the type. Tests compile cleanly within each story's scope (US1 S1–S6, US2 S1–S4, US3 S1–S4).
+  - **Test fix (2026-03-20)**: US2 "when enabled" BeforeEach extended with GitHubService + UserGrant storage setup (matching token_exchange_test.go pattern). `"resource"`, `"client_assertion"`, `"client_assertion_type"` added to US2 S1/S2/S3 form data. Subject tokens updated to use full RFC 8693 claims (`iss`, `aud`, `exp`, `iat`) matching mock upstream. All 14 tests compile clean. **Final red-phase state: 11 FAIL (behavioral) | 3 PASS (correct greens)** — no false greens, no infrastructure failures.
 
 **Checkpoint**: 14 E2E tests exist, compile, and fail semantically before any implementation
 
@@ -75,10 +76,10 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T015 Add MultiAgentClientConfig struct to internal/ports/config.go nested under OAuth2AuthServerConfig (fields: Enabled bool, AgentIDParamName string, AgentIDClaimName string, all mapstructure tagged)
-- [ ] T016 Add MultiAgentClient MultiAgentClientConfig field to OAuth2AuthServerConfig struct in internal/ports/config.go
-- [ ] T017 [P] Add MultiAgentClient MultiAgentClientConfig field to OAuth2Config struct in internal/domain/oauth2/service.go
-- [ ] T018 [P] Add ResolveAgentIDByClientID func(clientID string) (agentID string, err error) field to CELEvaluatorConfig struct in internal/domain/tokenexchange/cel_evaluator.go
+- [X] T015 Add MultiAgentClientConfig struct to internal/ports/config.go nested under OAuth2AuthServerConfig (fields: Enabled bool, AgentIDParamName string, AgentIDClaimName string, all mapstructure tagged)
+- [X] T016 Add MultiAgentClient MultiAgentClientConfig field to OAuth2AuthServerConfig struct in internal/ports/config.go
+- [X] T017 [P] Add MultiAgentClient MultiAgentClientConfig field to OAuth2Config struct in internal/domain/oauth2/service.go
+- [X] T018 [P] Add ResolveAgentIDByClientID func(clientID string) (agentID string, err error) field to CELEvaluatorConfig struct in internal/domain/tokenexchange/cel_evaluator.go
 
 **Checkpoint**: Config types and domain struct extensions compile; all existing tests still pass
 
@@ -94,18 +95,18 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 > **Constitution Requirement (Principle VIII)**: Tests MUST be written FIRST using TDD. Ensure they FAIL before implementation begins.
 
-- [ ] T019 [P] [US1] Write unit tests for HandleAuthorization() UUID resolution in internal/domain/oauth2/service_test.go: valid agent UUID resolves correct agent; non-UUID client_id returns invalid_client; non-existent UUID returns invalid_client
-- [ ] T020 [P] [US1] Write unit tests for proxyToUpstream() claim verification in internal/adapters/http/enduser/oauth2_token_test.go: buffered write when MultiAgentVerifier nil (feature disabled); 500 error when VerifyAgentIDClaim returns claim-absent error; 500 error when VerifyAgentIDClaim returns claim-mismatch error; success when VerifyAgentIDClaim returns nil
+- [X] T019 [P] [US1] Write unit tests for HandleAuthorization() UUID resolution in internal/domain/oauth2/service_test.go: valid agent UUID resolves correct agent; non-UUID client_id returns invalid_client; non-existent UUID returns invalid_client
+- [X] T020 [P] [US1] Write unit tests for proxyToUpstream() claim verification in internal/adapters/http/enduser/oauth2_token_test.go: buffered write when MultiAgentVerifier nil (feature disabled); 500 error when VerifyAgentIDClaim returns claim-absent error; 500 error when VerifyAgentIDClaim returns claim-mismatch error; success when VerifyAgentIDClaim returns nil
 
 ### Implementation for User Story 1
 
-- [ ] T021 [US1] In internal/domain/oauth2/service.go HandleAuthorization(): replace agentRepo.GetByClientID(req.ClientID) with id.ParseAgentID(string(req.ClientID)) + agentRepo.Get(agentID); return invalid_client on UUID parse error or not-found
-- [ ] T022 [P] [US1] In internal/domain/oauth2/service.go buildUpstreamAuthorizeURL(): add q.Set(s.config.MultiAgentClient.AgentIDParamName, agent.ID.String()) when MultiAgentClient.Enabled, immediately before u.RawQuery = q.Encode()
-- [ ] T023 [P] [US1] Add structured audit log event AgentIDParamInjected (Info, fields: agent_id, param_name, upstream_url) in internal/domain/oauth2/service.go alongside the param injection
-- [ ] T024 [US1] Implement MultiAgentTokenVerifier struct in internal/domain/oauth2/multi_agent_verifier.go with VerifyAgentIDClaim(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error using jwt.ParseInsecure from lestrrat-go/jwx/v3/jwt
-- [ ] T025 [US1] Define MultiAgentVerifier interface with single method VerifyAgentIDClaim(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error; add MultiAgentVerifier field (nilable — nil means feature disabled) on OAuth2TokenHandler struct in internal/adapters/http/enduser/oauth2_token.go
-- [ ] T026 [US1] In internal/adapters/http/enduser/oauth2_token.go proxyToUpstream(): extract client_id from token request form data; buffer upstream response body (replace io.Copy with io.ReadAll + bytes.Buffer); call MultiAgentVerifier.VerifyAgentIDClaim when verifier non-nil; write buffered body on success or OAuth2 error on failure
-- [ ] T027 [P] [US1] Add structured audit log events AgentIDClaimVerified (Info), AgentIDClaimMissing (Error, fields: agent_id, claim_name), AgentIDClaimMismatch (Error, fields: expected_agent_id, claim_value, claim_name) in internal/adapters/http/enduser/oauth2_token.go
+- [X] T021 [US1] In internal/domain/oauth2/service.go HandleAuthorization(): replace agentRepo.GetByClientID(req.ClientID) with id.ParseAgentID(string(req.ClientID)) + agentRepo.Get(agentID); return invalid_client on UUID parse error or not-found
+- [X] T022 [P] [US1] In internal/domain/oauth2/service.go buildUpstreamAuthorizeURL(): add q.Set(s.config.MultiAgentClient.AgentIDParamName, agent.ID.String()) when MultiAgentClient.Enabled, immediately before u.RawQuery = q.Encode()
+- [X] T023 [P] [US1] Add structured audit log event AgentIDParamInjected (Info, fields: agent_id, param_name, upstream_url) in internal/domain/oauth2/service.go alongside the param injection
+- [X] T024 [US1] Implement MultiAgentTokenVerifier struct in internal/domain/oauth2/multi_agent_verifier.go with VerifyAgentIDClaim(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error using jwt.ParseInsecure from lestrrat-go/jwx/v3/jwt
+- [X] T025 [US1] Define MultiAgentVerifier interface with single method VerifyAgentIDClaim(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error; add MultiAgentVerifier field (nilable — nil means feature disabled) on OAuth2TokenHandler struct in internal/adapters/http/enduser/oauth2_token.go
+- [X] T026 [US1] In internal/adapters/http/enduser/oauth2_token.go proxyToUpstream(): extract client_id from token request form data; buffer upstream response body (replace io.Copy with io.ReadAll + bytes.Buffer); call MultiAgentVerifier.VerifyAgentIDClaim when verifier non-nil; write buffered body on success or OAuth2 error on failure
+- [X] T027 [P] [US1] Add structured audit log events AgentIDClaimVerified (Info), AgentIDClaimMissing (Error, fields: agent_id, claim_name), AgentIDClaimMismatch (Error, fields: expected_agent_id, claim_value, claim_name) in internal/adapters/http/enduser/oauth2_token.go
 
 **Checkpoint**: US1 complete — all 6 E2E scenarios pass, `just test` passes, no regression
 
@@ -121,13 +122,13 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 > **Constitution Requirement (Principle VIII)**: Tests MUST be written FIRST using TDD. Ensure they FAIL before implementation begins.
 
-- [ ] T028 [P] [US2] Write unit tests for resolveAgentIdByClientId CEL function in internal/domain/tokenexchange/cel_evaluator_test.go: function evaluates correctly with mock resolver; returns types.NewErr on unknown clientID; function NOT registered when ResolveAgentIDByClientID is nil
-- [ ] T029 [P] [US2] Write unit tests for agent lookup in internal/domain/tokenexchange/service_test.go: Get(agentID) used instead of GetByClientID(); UUID parse error returns token exchange error (invalid_request or invalid_target)
+- [X] T028 [P] [US2] Write unit tests for resolveAgentIdByClientId CEL function in internal/domain/tokenexchange/cel_evaluator_test.go: function evaluates correctly with mock resolver; returns types.NewErr on unknown clientID; function NOT registered when ResolveAgentIDByClientID is nil
+- [X] T029 [P] [US2] Write unit tests for agent lookup in internal/domain/tokenexchange/service_test.go: Get(agentID) used instead of GetByClientID(); UUID parse error returns token exchange error (invalid_request or invalid_target)
 
 ### Implementation for User Story 2
 
-- [ ] T030 [US2] In internal/domain/tokenexchange/service.go (~line 227): replace GetByClientID(id.NewClientID(agentClientID)) with id.ParseAgentID(agentClientID) + Get(agentID); return appropriate token exchange error on UUID parse failure
-- [ ] T031 [US2] In internal/domain/tokenexchange/cel_evaluator.go compileExpression(): when e.config.ResolveAgentIDByClientID != nil, register resolveAgentIdByClientId as a CEL unary function via cel.Function() + cel.UnaryBinding() calling the injected closure; return types.NewErr on lookup failure
+- [X] T030 [US2] In internal/domain/tokenexchange/service.go (~line 227): replace GetByClientID(id.NewClientID(agentClientID)) with id.ParseAgentID(agentClientID) + Get(agentID); return appropriate token exchange error on UUID parse failure
+- [X] T031 [US2] In internal/domain/tokenexchange/cel_evaluator.go compileExpression(): when e.config.ResolveAgentIDByClientID != nil, register resolveAgentIdByClientId as a CEL unary function via cel.Function() + cel.UnaryBinding() calling the injected closure; return types.NewErr on lookup failure
 
 **Checkpoint**: US2 complete — all 4 E2E scenarios pass, `just test` passes, no regression
 
@@ -143,15 +144,15 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 > **Constitution Requirement (Principle VIII)**: Tests MUST be written FIRST using TDD. Ensure they FAIL before implementation begins.
 
-- [ ] T032 [P] [US3] Write unit tests for OAuth2AuthServerConfig.Validate() in internal/ports/config_test.go: enabled + empty AgentIDParamName → startup error; enabled + empty AgentIDClaimName → startup error; disabled + empty fields → no error
-- [ ] T033 [P] [US3] Write unit tests for admin agent handler client_id uniqueness in internal/adapters/http/handlers/admin/agents_test.go: 409 Conflict when !multiAgentEnabled and duplicate client_id on Create; 409 Conflict when !multiAgentEnabled and duplicate client_id on Update (excluding self); no 409 when multiAgentEnabled and duplicate client_id
+- [X] T032 [P] [US3] Write unit tests for OAuth2AuthServerConfig.Validate() in internal/ports/config_test.go: enabled + empty AgentIDParamName → startup error; enabled + empty AgentIDClaimName → startup error; disabled + empty fields → no error
+- [X] T033 [P] [US3] Write unit tests for admin agent handler client_id uniqueness in internal/adapters/http/handlers/admin/agents_test.go: 409 Conflict when !multiAgentEnabled and duplicate client_id on Create; 409 Conflict when !multiAgentEnabled and duplicate client_id on Update (excluding self); no 409 when multiAgentEnabled and duplicate client_id
 
 ### Implementation for User Story 3
 
-- [ ] T034 [US3] Add validation in OAuth2AuthServerConfig.Validate() in internal/ports/config.go: when Enabled=true and AgentIDParamName=="" → return error "oauth2_authorization_server.multi_agent_client.agent_id_param_name is required"; same for AgentIDClaimName
-- [ ] T035 [US3] Add multiAgentEnabled bool field to AgentsHandler struct in internal/adapters/http/handlers/admin/agents.go and update constructor/NewAgentsHandler to accept it
-- [ ] T036 [US3] In internal/adapters/http/handlers/admin/agents.go Create handler: when !multiAgentEnabled, call agentRepo.GetByClientID(ctx, clientID); return 409 Conflict if agent found
-- [ ] T037 [US3] In internal/adapters/http/handlers/admin/agents.go Update handler: same conditional uniqueness check as Create, excluding the current agent.ID from the conflict check
+- [X] T034 [US3] Add validation in OAuth2AuthServerConfig.Validate() in internal/ports/config.go: when Enabled=true and AgentIDParamName=="" → return error "oauth2_authorization_server.multi_agent_client.agent_id_param_name is required"; same for AgentIDClaimName
+- [X] T035 [US3] Add multiAgentEnabled bool field to AgentsHandler struct in internal/adapters/http/handlers/admin/agents.go and update constructor/NewAgentsHandler to accept it
+- [X] T036 [US3] In internal/adapters/http/handlers/admin/agents.go Create handler: when !multiAgentEnabled, call agentRepo.GetByClientID(ctx, clientID); return 409 Conflict if agent found
+- [X] T037 [US3] In internal/adapters/http/handlers/admin/agents.go Update handler: same conditional uniqueness check as Create, excluding the current agent.ID from the conflict check
 
 **Checkpoint**: US3 complete — all 4 E2E scenarios pass, `just test` passes, no regression
 
@@ -161,11 +162,11 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 **Purpose**: Wire all feature components in the DI container and verify migration in a real PostgreSQL integration test.
 
-- [ ] T038 In internal/app/builder.go: pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient through to oauth2.NewServiceWithSessions() via OAuth2Config
-- [ ] T039 In internal/app/builder.go: build resolverFn closure (calls agentRepo.GetByClientID with 5s context timeout) when !cfg.OAuth2AuthServer.MultiAgentClient.Enabled; inject as CELEvaluatorConfig.ResolveAgentIDByClientID
-- [ ] T040 In internal/app/builder.go: build and inject MultiAgentTokenVerifier into OAuth2TokenHandler when cfg.OAuth2AuthServer.MultiAgentClient.Enabled
-- [ ] T041 [P] In internal/app/builder.go: inject cfg.OAuth2AuthServer.MultiAgentClient.Enabled as multiAgentEnabled into AgentsHandler constructor
-- [ ] T042 [P] Write PostgreSQL integration test in internal/adapters/storage/postgres/agent_repository_integration_test.go: apply migration 008, verify two agents can share client_id; rollback migration 008, verify duplicate client_id rejected by DB constraint
+- [X] T038 In internal/app/builder.go: pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient through to oauth2.NewServiceWithSessions() via OAuth2Config
+- [X] T039 In internal/app/builder.go: build resolverFn closure (calls agentRepo.GetByClientID with 5s context timeout) when !cfg.OAuth2AuthServer.MultiAgentClient.Enabled; inject as CELEvaluatorConfig.ResolveAgentIDByClientID
+- [X] T040 In internal/app/builder.go: build and inject MultiAgentTokenVerifier into OAuth2TokenHandler when cfg.OAuth2AuthServer.MultiAgentClient.Enabled
+- [X] T041 [P] In internal/app/builder.go: inject cfg.OAuth2AuthServer.MultiAgentClient.Enabled as multiAgentEnabled into AgentsHandler constructor
+- [X] T042 [P] Write PostgreSQL integration test in internal/adapters/storage/postgres/agent_repository_migration008_test.go: apply migration 008, verify two agents can share client_id; apply only 001-007, verify duplicate client_id rejected by DB constraint
 
 **Checkpoint**: `just test` passes with full test suite including integration tests; `just build` succeeds
 
@@ -173,10 +174,10 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 ## Phase 7: Documentation & Changelog
 
-- [ ] T043 [P] Add breaking change entry to docs/changelog.md per contracts/admin-api-changes.md §Changelog Entry (client_id semantics, CEL expression update, new multi_agent_client block, resolveAgentIdByClientId function)
-- [ ] T044 [P] Update examples/config/token-exchange.yaml with updated agent_client_id_expression examples (resolveAgentIdByClientId for disabled mode, subject_token.x_agent_id for enabled mode)
-- [ ] T077 [P] Add multi_agent_client configuration documentation to docs/configuration.md: describe enabled/disabled modes, all three parameters (enabled, agent_id_param_name, agent_id_claim_name), startup validation behaviour, and link to examples/config/oauth2-authorization-server.yaml (Constitution Principle VII)
-- [ ] T078 [P] Update examples/config/README.md to reference the new multi_agent_client block in oauth2-authorization-server.yaml and note the required token-exchange.yaml CEL expression update (Constitution Principle VII)
+- [X] T043 [P] Add breaking change entry to docs/changelog.md per contracts/admin-api-changes.md §Changelog Entry (client_id semantics, CEL expression update, new multi_agent_client block, resolveAgentIdByClientId function)
+- [X] T044 [P] Update examples/config/token-exchange.yaml with updated agent_client_id_expression examples (resolveAgentIdByClientId for disabled mode, subject_token.x_agent_id for enabled mode)
+- [X] T077 [P] Add multi_agent_client configuration documentation to docs/configuration.md: describe enabled/disabled modes, all three parameters (enabled, agent_id_param_name, agent_id_claim_name), startup validation behaviour, and link to examples/config/oauth2-authorization-server.yaml (Constitution Principle VII)
+- [X] T078 [P] Update examples/config/README.md to reference the new multi_agent_client block in oauth2-authorization-server.yaml and note the required token-exchange.yaml CEL expression update (Constitution Principle VII)
 
 **Checkpoint**: Docs complete, all breaking changes documented
 
@@ -190,58 +191,58 @@ Backend-only feature per plan.md §Technical Context. No frontend changes.
 
 #### Design Phase Verification [MANDATORY]
 
-- [ ] T045 Verify ARCHITECTURE.md Glossary contains MultiAgentClientConfig and resolveAgentIdByClientId entries (Principle V)
-- [ ] T046 Verify examples/config/oauth2-authorization-server.yaml contains multi_agent_client block with enabled and disabled examples (Principle VII)
-- [ ] T047 Verify /api/enduser/openapi.yaml client_id parameter description updated per contracts/ (Principles IV, X)
-- [ ] T048 Verify /api/admin/openapi.yaml agent client_id uniqueness note updated per contracts/ (Principles IV, X)
-- [ ] T049 Verify breaking changes acknowledged by stakeholder (documented in plan.md §Constitution Check and contracts/admin-api-changes.md) (Principle X)
-- [ ] T050 Verify migrations/008_drop_agent_client_id_unique.up.sql and .down.sql exist and match data-model.md (Principle IX)
-- [ ] T051 Verify 14 E2E acceptance tests exist in tests/e2e/multi_agent_client_test.go and were verified to FAIL before implementation (Principle XIII)
+- [X] T045 Verify ARCHITECTURE.md Glossary contains MultiAgentClientConfig and resolveAgentIdByClientId entries (Principle V)
+- [X] T046 Verify examples/config/oauth2-authorization-server.yaml contains multi_agent_client block with enabled and disabled examples (Principle VII)
+- [X] T047 Verify /api/enduser/openapi.yaml client_id parameter description updated per contracts/ (Principles IV, X)
+- [X] T048 Verify /api/admin/openapi.yaml agent client_id uniqueness note updated per contracts/ (Principles IV, X)
+- [X] T049 Verify breaking changes acknowledged by stakeholder (documented in plan.md §Constitution Check and contracts/admin-api-changes.md) (Principle X)
+- [X] T050 Verify migrations/008_drop_agent_client_id_unique.up.sql and .down.sql exist and match data-model.md (Principle IX)
+- [X] T051 Verify 14 E2E acceptance tests exist in tests/e2e/multi_agent_client_test.go and were verified to FAIL before implementation (Principle XIII)
 
 #### Implementation Phase Verification [MANDATORY]
 
 **API & Documentation** (Principles IV, X):
-- [ ] T052 [P] Verify /api/enduser/openapi.yaml implementation matches contracts/admin-api-changes.md §1 exactly
-- [ ] T053 [P] Verify /api/admin/openapi.yaml implementation matches contracts/admin-api-changes.md §2 exactly
+- [X] T052 [P] Verify /api/enduser/openapi.yaml implementation matches contracts/admin-api-changes.md §1 exactly
+- [X] T053 [P] Verify /api/admin/openapi.yaml implementation matches contracts/admin-api-changes.md §2 exactly
 
 **Architecture & Documentation** (Principle II):
-- [ ] T054 Verify ARCHITECTURE.md Glossary additions are present (T002 complete)
-- [ ] T055 [P] Confirm no new ADR needed (pattern follows existing CEL and DI patterns per plan.md §Constitution Check)
+- [X] T054 Verify ARCHITECTURE.md Glossary additions are present (T002 complete)
+- [X] T055 [P] Confirm no new ADR needed (pattern follows existing CEL and DI patterns per plan.md §Constitution Check)
 
 **Configuration** (Principle VII):
-- [ ] T056 [P] Verify MultiAgentClientConfig uses internal/ports/config.go (not custom loading); Viper mapstructure tags present
+- [X] T056 [P] Verify MultiAgentClientConfig uses internal/ports/config.go (not custom loading); Viper mapstructure tags present
 
 **Database & Persistence** (Principle IX):
-- [ ] T057 [P] Verify migration files follow go-migrate naming convention: 008_drop_agent_client_id_unique.up.sql and .down.sql
-- [ ] T058 [P] Verify integration test in internal/adapters/storage/postgres/ covers migration 008 apply, rollback, and shared client_id acceptance
+- [X] T057 [P] Verify migration files follow go-migrate naming convention: 008_drop_agent_client_id_unique.up.sql and .down.sql
+- [X] T058 [P] Verify integration test in internal/adapters/storage/postgres/ covers migration 008 apply, rollback, and shared client_id acceptance
 
 **Security** (Principles I, III):
-- [ ] T059 Verify token is withheld (fail closed) when agent ID claim is absent or mismatched — FR-004, SR-001
-- [ ] T060 [P] Verify resolveAgentIdByClientId CEL function is NOT registered when MultiAgentClient.Enabled=true — FR-010, SR-005
-- [ ] T061 [P] Verify audit log events AgentIDParamInjected, AgentIDClaimVerified, AgentIDClaimMissing, AgentIDClaimMismatch are emitted — SR-004
+- [X] T059 Verify token is withheld (fail closed) when agent ID claim is absent or mismatched — FR-004, SR-001
+- [X] T060 [P] Verify resolveAgentIdByClientId CEL function is NOT registered when MultiAgentClient.Enabled=true — FR-010, SR-005
+- [X] T061 [P] Verify audit log events AgentIDParamInjected, AgentIDClaimVerified, AgentIDClaimMissing, AgentIDClaimMismatch are emitted — SR-004
 
 **Architecture Patterns** (Principle VI):
-- [ ] T062 Verify internal/domain/oauth2/service.go does not import adapters/
-- [ ] T063 Verify MultiAgentTokenVerifier is injected into OAuth2TokenHandler (not instantiated inside domain)
-- [ ] T064 Verify resolver closure is injected into CELEvaluatorConfig by builder.go (not built inside domain)
-- [ ] T065 Verify all wiring is in internal/app/builder.go (Principle XII)
+- [X] T062 Verify internal/domain/oauth2/service.go does not import adapters/
+- [X] T063 Verify MultiAgentTokenVerifier is injected into OAuth2TokenHandler (not instantiated inside domain)
+- [X] T064 Verify resolver closure is injected into CELEvaluatorConfig by builder.go (not built inside domain)
+- [X] T065 Verify all wiring is in internal/app/builder.go (Principle XII)
 
 **Testing** (Principle VIII — Unit & Integration Tests):
-- [ ] T066 Verify unit tests in service_test.go, oauth2_token_test.go, cel_evaluator_test.go were written FIRST (red-green TDD)
-- [ ] T067 Verify unit tests changed minimally during implementation
-- [ ] T068 Run `just test` — all unit + integration tests pass with race detector
+- [X] T066 Verify unit tests in service_test.go, oauth2_token_test.go, cel_evaluator_test.go were written FIRST (red-green TDD)
+- [X] T067 Verify unit tests changed minimally during implementation
+- [X] T068 Run `just test` — all unit + integration tests pass with race detector
 
 **E2E Acceptance Testing** (Principle XIII):
-- [ ] T069 Verify each of the 14 It() blocks in tests/e2e/multi_agent_client_test.go maps to exactly ONE acceptance scenario from spec.md
-- [ ] T070 Verify tests/e2e/multi_agent_client_test.go uses Ginkgo/Gomega following tests/e2e/README.md patterns
-- [ ] T071 Verify hierarchical structure: Describe (feature) → Context (preconditions) → It (scenario)
-- [ ] T072 Verify spec scenario comment references present in each It() block
-- [ ] T073 Verify E2E tests changed minimally during implementation (fixture adjustments only)
-- [ ] T074 Run full E2E suite: `ginkgo -v ./tests/e2e/` — all tests pass including all 14 multi-agent scenarios
+- [X] T069 Verify each of the 14 It() blocks in tests/e2e/multi_agent_client_test.go maps to exactly ONE acceptance scenario from spec.md
+- [X] T070 Verify tests/e2e/multi_agent_client_test.go uses Ginkgo/Gomega following tests/e2e/README.md patterns
+- [X] T071 Verify hierarchical structure: Describe (feature) → Context (preconditions) → It (scenario)
+- [X] T072 Verify spec scenario comment references present in each It() block
+- [X] T073 Verify E2E tests changed minimally during implementation (fixture adjustments only)
+- [X] T074 Run full E2E suite: `ginkgo -v ./tests/e2e/` — all tests pass including all 14 multi-agent scenarios
 
 ### Additional Polish
 
-- [ ] T075 [P] Run `just check` (fmt → vet → lint → test) — all checks pass
+- [X] T075 [P] Run `just check` (fmt → vet → lint → test) — all checks pass
 - [ ] T076 [P] Validate quickstart.md steps work end-to-end against running broker (feature disabled and enabled modes)
 
 ---

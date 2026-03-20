@@ -1,14 +1,26 @@
 package enduser
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/stretchr/testify/assert"
 )
+
+// mockMultiAgentVerifier is a test double for MultiAgentVerifier
+type mockMultiAgentVerifier struct {
+	verifyFn func(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error
+}
+
+func (m *mockMultiAgentVerifier) VerifyAgentIDClaim(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error {
+	return m.verifyFn(ctx, responseBody, expectedAgentID)
+}
 
 // TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation tests Content-Type validation
 func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
@@ -195,6 +207,83 @@ func TestIsHopByHopHeader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := isHopByHopHeader(tt.headerName)
 			assert.Equal(t, tt.isHopByHop, result)
+		})
+	}
+}
+
+// TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier tests claim verification
+// for multi-agent client sharing (Feature 021 US1).
+func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
+	agentID := id.NewAgentID()
+	upstreamResponseBody := `{"access_token":"tok123","token_type":"Bearer"}`
+
+	tests := []struct {
+		name             string
+		verifier         MultiAgentVerifier
+		clientID         string // form body client_id
+		wantStatusCode   int
+		wantBodyContains string
+	}{
+		{
+			name:             "nil verifier (feature disabled) passes response through unchanged",
+			verifier:         nil,
+			clientID:         agentID.String(),
+			wantStatusCode:   http.StatusOK,
+			wantBodyContains: "access_token",
+		},
+		{
+			name: "verifier returns nil (claim matches) passes response through",
+			verifier: &mockMultiAgentVerifier{verifyFn: func(_ context.Context, _ []byte, _ id.AgentID) error {
+				return nil
+			}},
+			clientID:         agentID.String(),
+			wantStatusCode:   http.StatusOK,
+			wantBodyContains: "access_token",
+		},
+		{
+			name: "verifier returns claim-absent error returns 500 server_error",
+			verifier: &mockMultiAgentVerifier{verifyFn: func(_ context.Context, _ []byte, _ id.AgentID) error {
+				return errors.New("agent ID claim absent from upstream token")
+			}},
+			clientID:         agentID.String(),
+			wantStatusCode:   http.StatusInternalServerError,
+			wantBodyContains: "server_error",
+		},
+		{
+			name: "verifier returns claim-mismatch error returns 500 server_error",
+			verifier: &mockMultiAgentVerifier{verifyFn: func(_ context.Context, _ []byte, _ id.AgentID) error {
+				return errors.New("agent ID claim mismatch")
+			}},
+			clientID:         agentID.String(),
+			wantStatusCode:   http.StatusInternalServerError,
+			wantBodyContains: "server_error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(upstreamResponseBody))
+			}))
+			defer mockUpstream.Close()
+
+			handler := &OAuth2TokenHandler{
+				UpstreamTokenURL:   mockUpstream.URL,
+				MultiAgentVerifier: tt.verifier,
+			}
+
+			body := "grant_type=authorization_code&code=abc123&client_id=" + tt.clientID
+			req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatusCode, w.Code)
+			respBody, _ := io.ReadAll(w.Body)
+			assert.Contains(t, string(respBody), tt.wantBodyContains)
 		})
 	}
 }

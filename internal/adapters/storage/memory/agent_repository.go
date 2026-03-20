@@ -47,16 +47,6 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
-	// Check for duplicate client_id
-	if _, exists := r.byClientID[agent.ClientID]; exists {
-		return storage.NewStorageError(
-			"CreateAgent",
-			storage.ErrorKindConflict,
-			nil,
-			"agent with this client_id already exists",
-		)
-	}
-
 	// Validate before storing
 	if err := agent.ValidateForCreate(); err != nil {
 		return storage.NewStorageError(

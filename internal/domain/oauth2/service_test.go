@@ -186,10 +186,11 @@ func TestService_HandleAuthorization(t *testing.T) {
 		wantAction string
 	}{
 		{
-			name:       "invalid client_id returns error redirect",
+			name:       "non-UUID client_id returns error redirect",
 			setupAgent: func(r *MockAgentRepository) {},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
+				// Feature 021: client_id must be a UUID; "unknown-client" is not
 				ClientID:     id.ClientID("unknown-client"),
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
@@ -199,7 +200,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 			wantAction: "error",
 		},
 		{
-			name: "valid client_id with no grant redirects to consent UI",
+			name: "valid UUID client_id with no grant redirects to consent UI",
 			setupAgent: func(r *MockAgentRepository) {
 				agent := &storage.Agent{
 					ID:          testAgentID,
@@ -210,17 +211,18 @@ func TestService_HandleAuthorization(t *testing.T) {
 			},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     id.ClientID("client-1"),
+				// Feature 021: client_id is now the agent's internal UUID
+				ClientID:     id.ClientID(testAgentID.String()),
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
-				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=client-1",
+				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + testAgentID.String(),
 			},
 			principal:  "user@example.com",
 			wantAction: "redirect_to_consent",
 		},
 		{
-			name: "valid client_id with active grant redirects to upstream",
+			name: "valid UUID client_id with active grant redirects to upstream",
 			setupAgent: func(r *MockAgentRepository) {
 				agent := &storage.Agent{
 					ID:          testAgentID,
@@ -242,7 +244,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     id.ClientID("client-1"),
+				ClientID:     id.ClientID(testAgentID.String()),
 				RedirectURI:  "https://client.example.com/callback",
 				Scope:        "openid profile",
 				State:        "xyz123",
@@ -275,11 +277,11 @@ func TestService_HandleAuthorization(t *testing.T) {
 				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     id.ClientID("client-1"),
+				ClientID:     id.ClientID(testAgentID.String()),
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
-				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=client-1",
+				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + testAgentID.String(),
 			},
 			principal:  "user@example.com",
 			wantAction: "redirect_to_consent",
@@ -342,7 +344,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	})
 
 	authReq := &ports.AuthorizationRequest{
-		ClientID:            id.ClientID("client-1"),
+		ClientID:            id.ClientID(agentID.String()), // Feature 021: client_id is now the agent UUID
 		RedirectURI:         "https://client.example.com/callback",
 		Scope:               "openid profile email",
 		State:               "state123",
@@ -365,6 +367,154 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	assert.Contains(t, redirectURL, "response_type=code")
 	assert.Contains(t, redirectURL, "code_challenge=E9Mrozoa2owQB2dSBnnNBvjrNqtPTUAwY5uQp41VN-I")
 	assert.Contains(t, redirectURL, "code_challenge_method=S256")
+}
+
+// TestService_HandleAuthorization_UUIDResolution tests the new UUID-based agent resolution
+// (Feature 021: Multi-Agent OAuth2 Client Delegation).
+// The client_id parameter MUST be the agent's internal UUID (agent.id), NOT agent.client_id.
+func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+
+	setupAgent := func(r *MockAgentRepository) {
+		agent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    id.ClientID("upstream-client-1"), // upstream OAuth2 client ID
+			DisplayName: "Test Agent",
+		}
+		_ = r.Create(context.Background(), agent)
+	}
+
+	setupActiveGrant := func(r *MockGrantRepository) {
+		grant := &storage.UserGrant{
+			ID:        id.NewGrantID(),
+			Principal: id.Principal("user@example.com"),
+			AgentID:   agentID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
+			},
+		}
+		_ = r.Create(context.Background(), grant)
+	}
+
+	tests := []struct {
+		name            string
+		setupAgent      func(*MockAgentRepository)
+		setupGrant      func(*MockGrantRepository)
+		clientID        string
+		wantAction      string
+		wantErrorCode   string
+		wantRedirectURL string // substring check
+	}{
+		{
+			name:          "valid agent UUID resolves agent and redirects to upstream",
+			setupAgent:    setupAgent,
+			setupGrant:    setupActiveGrant,
+			clientID:      agentID.String(),
+			wantAction:    "redirect_to_upstream",
+			wantErrorCode: "",
+		},
+		{
+			name:          "non-UUID client_id returns invalid_client",
+			setupAgent:    setupAgent,
+			setupGrant:    func(r *MockGrantRepository) {},
+			clientID:      "not-a-uuid",
+			wantAction:    "error",
+			wantErrorCode: "invalid_client",
+		},
+		{
+			name:          "well-formed UUID that is not a registered agent returns invalid_client",
+			setupAgent:    func(r *MockAgentRepository) {}, // empty repo
+			setupGrant:    func(r *MockGrantRepository) {},
+			clientID:      id.NewAgentID().String(), // valid UUID but not in repo
+			wantAction:    "error",
+			wantErrorCode: "invalid_client",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agentRepo := NewMockAgentRepository()
+			grantRepo := NewMockGrantRepository()
+
+			tt.setupAgent(agentRepo)
+			tt.setupGrant(grantRepo)
+
+			svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+				PublicURL:                 "https://broker.example.com",
+				SupportedResponseTypes:    []string{"code"},
+			})
+
+			req := &ports.AuthorizationRequest{
+				ClientID:     id.ClientID(tt.clientID),
+				RedirectURI:  "https://client.example.com/callback",
+				ResponseType: "code",
+				State:        "state123",
+				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + tt.clientID,
+			}
+
+			decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
+
+			require.NoError(t, err)
+			require.NotNil(t, decision)
+			assert.Equal(t, tt.wantAction, decision.Action)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, decision.ErrorCode)
+			}
+		})
+	}
+}
+
+// TestService_HandleAuthorization_UUIDResolution_UpstreamClientID verifies that the
+// upstream authorize URL uses agent.ClientID (upstream OAuth2 client ID), NOT the
+// broker's internal agent UUID.
+func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.T) {
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    id.ClientID("upstream-client-abc"), // this is what should appear in upstream URL
+		DisplayName: "Test Agent",
+	}
+	_ = agentRepo.Create(context.Background(), agent)
+
+	grant := &storage.UserGrant{
+		ID:        id.NewGrantID(),
+		Principal: id.Principal("user@example.com"),
+		AgentID:   agentID,
+		DelegatedOAuth2Tokens: []storage.DelegatedToken{
+			{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
+		},
+	}
+	_ = grantRepo.Create(context.Background(), grant)
+
+	svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	})
+
+	req := &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()), // UUID
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		State:        "state123",
+	}
+
+	decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
+
+	require.NoError(t, err)
+	assert.Equal(t, "redirect_to_upstream", decision.Action)
+
+	// The upstream URL MUST use the agent's upstream ClientID, NOT the internal UUID
+	assert.Contains(t, decision.RedirectURL, "client_id=upstream-client-abc",
+		"upstream URL must use agent.ClientID (upstream OAuth2 client ID), not the broker UUID")
+	assert.NotContains(t, decision.RedirectURL, agentID.String(),
+		"upstream URL must NOT expose the broker's internal agent UUID as client_id")
 }
 
 // TestService_GenerateMetadata tests RFC 8414 metadata generation

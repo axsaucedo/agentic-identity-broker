@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
 )
 
 // CELEvaluatorConfig holds CEL-specific configuration for expression evaluation.
@@ -24,6 +25,15 @@ type CELEvaluatorConfig struct {
 
 	// EvaluationTimeout is the maximum time allowed for CEL expression evaluation
 	EvaluationTimeout time.Duration
+
+	// ResolveAgentIDByClientID is an optional function that maps an upstream OAuth2 client_id
+	// to the broker's internal agent.id (UUID string).
+	// Non-nil only when multi_agent_client.enabled = false.
+	// When non-nil, the CEL function resolveAgentIdByClientId() is registered and available
+	// in agent_client_id_expression.
+	// When nil (feature enabled), the function is NOT registered.
+	// Injected by app/builder.go from AgentRepository.GetByClientID.
+	ResolveAgentIDByClientID func(clientID string) (agentID string, err error)
 }
 
 // CELEvaluator evaluates CEL expressions for claim extraction and privileged client authorization.
@@ -159,12 +169,40 @@ func (e *CELEvaluator) compileAuthorizationExpression() error {
 // compileExpression compiles a single CEL expression into a program.
 // Returns error if the expression is invalid.
 func (e *CELEvaluator) compileExpression(expr string) (cel.Program, error) {
-	// Create CEL environment with sandbox restrictions
-	env, err := cel.NewEnv(
+	// Build CEL environment options: base variables + optional resolveAgentIdByClientId function
+	envOpts := []cel.EnvOption{
 		cel.Variable(CELSubjectTokenVariable, cel.MapType(cel.StringType, cel.AnyType)),
 		cel.Variable("client_assertion", cel.MapType(cel.StringType, cel.AnyType)),
 		cel.Variable("request", cel.MapType(cel.StringType, cel.AnyType)),
-	)
+	}
+
+	// Feature 021 (T031): Register resolveAgentIdByClientId only when the resolver is configured.
+	// When nil (feature disabled), expressions using this function fail at compile time.
+	if e.config.ResolveAgentIDByClientID != nil {
+		resolver := e.config.ResolveAgentIDByClientID
+		envOpts = append(envOpts, cel.Function(
+			"resolveAgentIdByClientId",
+			cel.Overload(
+				"resolveAgentIdByClientId_string",
+				[]*cel.Type{cel.StringType},
+				cel.StringType,
+				cel.UnaryBinding(func(arg ref.Val) ref.Val {
+					clientID, ok := arg.Value().(string)
+					if !ok {
+						return types.NewErr("resolveAgentIdByClientId: argument must be a string")
+					}
+					agentID, err := resolver(clientID)
+					if err != nil {
+						return types.NewErr("resolveAgentIdByClientId: %v", err)
+					}
+					return types.String(agentID)
+				}),
+			),
+		))
+	}
+
+	// Create CEL environment with sandbox restrictions
+	env, err := cel.NewEnv(envOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}

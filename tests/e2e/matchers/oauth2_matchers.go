@@ -165,9 +165,33 @@ func (m *oauth2ErrorMatcher) Match(actual interface{}) (success bool, err error)
 	// Check for JSON error response (4xx or 5xx)
 	if resp.StatusCode >= 400 {
 		contentType := resp.Header.Get("Content-Type")
-		if strings.Contains(contentType, "application/json") {
-			// Would need to read and parse body - simplified for now
-			m.error = "JSON error response (would need body parsing)"
+		if strings.Contains(contentType, "application/json") && resp.Body != nil {
+			bodyBytes, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				m.error = fmt.Sprintf("failed to read JSON error body: %v", readErr)
+				return false, nil
+			}
+			resp.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+
+			var errorBody map[string]interface{}
+			if jsonErr := json.Unmarshal(bodyBytes, &errorBody); jsonErr != nil {
+				m.error = fmt.Sprintf("failed to parse JSON error body: %v", jsonErr)
+				return false, nil
+			}
+
+			if errorCode, ok := errorBody["error"].(string); ok {
+				m.actualErrorCode = errorCode
+				if desc, ok := errorBody["error_description"].(string); ok {
+					m.errorDescription = desc
+				}
+				if m.expectedErrorCode == "" || m.expectedErrorCode == errorCode {
+					return true, nil
+				}
+				m.error = fmt.Sprintf("error code mismatch: expected %q, got %q", m.expectedErrorCode, errorCode)
+				return false, nil
+			}
+
+			m.error = "JSON body does not contain an 'error' field"
 			return false, nil
 		}
 	}

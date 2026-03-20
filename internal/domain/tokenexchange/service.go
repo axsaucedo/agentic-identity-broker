@@ -222,17 +222,23 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	// Only if grant exists but session is missing do we return invalid_grant (no session).
 	//
 	// T059: Agent client ID extracted from subject_token (already done in Step 5)
-	// T060: Look up Agent by agent_client_id to get internal UUID for grant lookup
-	// Grants are stored by internal agent UUID; client_id must be resolved first.
-	agent, err := s.agentRepository.GetByClientID(ctx, id.NewClientID(agentClientID))
+	// T060 (Feature 021): agentClientID is the broker-internal agent UUID (resolved by CEL).
+	// Parse it as UUID and look up by primary key — no GetByClientID needed.
+	agentID, parseErr := id.ParseAgentID(agentClientID)
+	if parseErr != nil {
+		return nil, NewInvalidRequestError(
+			fmt.Sprintf("agent_client_id %q extracted from subject_token is not a valid agent UUID", agentClientID),
+		)
+	}
+	agent, err := s.agentRepository.Get(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, ports.ErrNotFound) {
 			return nil, NewAccessDeniedErrorWithDetails(
 				"user has not granted permission for this agent to access the requested service",
-				fmt.Sprintf("agent with client_id %q not found", agentClientID),
+				fmt.Sprintf("agent with id %q not found", agentClientID),
 			)
 		}
-		return nil, NewServerErrorWithCause("failed to lookup agent by client_id", err)
+		return nil, NewServerErrorWithCause("failed to lookup agent by agent_id", err)
 	}
 	// T061-T065: Delegate grant verification to ConsentService using internal agent UUID
 	// ConsentService.VerifyAgentAccess checks:

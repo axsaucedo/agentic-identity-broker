@@ -404,7 +404,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			pkceChallenge := "E9Mrozoa2owUonx4Z_p4gUzyQYISTuYnxlCMCkxo4dQ"
 			path := fmt.Sprintf(
 				"/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&code_challenge=%s&code_challenge_method=S256&state=state123",
-				agent.ClientID, pkceChallenge)
+				agent.ID.String(), pkceChallenge)
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
