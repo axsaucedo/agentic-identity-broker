@@ -172,6 +172,16 @@ func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.
 	return agentIDs, nil
 }
 
+func (m *MockGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	for grantKey, grant := range m.grants {
+		if grant.Principal == principal && grant.AgentID == agentID {
+			delete(m.grants, grantKey)
+			return nil
+		}
+	}
+	return ports.ErrNotFound
+}
+
 // TestService_HandleAuthorization tests the HandleAuthorization method with table-driven tests
 func TestService_HandleAuthorization(t *testing.T) {
 	testAgentID := id.NewAgentID()

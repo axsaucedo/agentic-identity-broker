@@ -12,7 +12,7 @@
  * Features page transition animations for smooth UX.
  */
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@components/layout/AppLayout';
 import { PageTransition } from '@components/ui/PageTransition';
@@ -20,11 +20,52 @@ import { DelegationListSkeleton } from '@components/ui/Skeleton';
 import { InlineError } from '@components/ui/InlineError';
 import { EmptyState } from '@components/ui/EmptyState';
 import { DelegationList } from '@components/consent/DelegationList';
+import { RevokeGrantDialog } from '@components/consent/RevokeGrantDialog';
 import { useConsent } from '@hooks/useConsent';
+import { useToast } from '@components/ui/Toast';
+import { consentApi } from '@services/api';
 
 export function ConsentOverviewPage() {
   const navigate = useNavigate();
   const { delegations, loading, error, refetch } = useConsent();
+  const { showToast } = useToast();
+
+  // Agent being revoked (null when dialog is closed)
+  const [revokingAgentId, setRevokingAgentId] = useState<string | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
+
+  // Derive agent name from the delegation list
+  const revokingAgentName = revokingAgentId
+    ? (delegations.find((d) => d.agentId === revokingAgentId)?.displayName ??
+      '')
+    : '';
+
+  const handleRevoke = useCallback((agentId: string) => {
+    setRevokingAgentId(agentId);
+  }, []);
+
+  const handleRevokeConfirm = async () => {
+    if (!revokingAgentId) return;
+    setIsRevoking(true);
+    try {
+      await consentApi.deleteGrant(revokingAgentId);
+      setRevokingAgentId(null);
+      showToast('All access has been revoked.', 'success');
+      await refetch();
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: string }).message)
+          : 'Failed to revoke access. Please try again.';
+      showToast(message, 'error');
+    } finally {
+      setIsRevoking(false);
+    }
+  };
+
+  const handleRevokeClose = () => {
+    if (!isRevoking) setRevokingAgentId(null);
+  };
 
   /**
    * Navigate to agent detail page when delegation card is clicked.
@@ -102,6 +143,7 @@ export function ConsentOverviewPage() {
                   <DelegationList
                     delegations={delegations}
                     onDelegationClick={handleDelegationClick}
+                    onRevoke={handleRevoke}
                   />
                 )}
               </div>
@@ -109,6 +151,15 @@ export function ConsentOverviewPage() {
           </div>
         </div>
       </PageTransition>
+
+      {/* Revoke confirmation dialog — controlled by revokingAgentId state */}
+      <RevokeGrantDialog
+        agentName={revokingAgentName}
+        isOpen={revokingAgentId !== null}
+        onConfirm={handleRevokeConfirm}
+        onClose={handleRevokeClose}
+        isLoading={isRevoking}
+      />
     </AppLayout>
   );
 }

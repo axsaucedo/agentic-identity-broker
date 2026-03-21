@@ -234,6 +234,36 @@ func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID id.Agen
 	return nil
 }
 
+// DeleteByPrincipalAndAgentID deletes the grant owned by principal for the given agent.
+// Returns StorageError wrapping ports.ErrNotFound when no grant exists for the pair.
+// This is NOT idempotent: absence of a grant is an error (revocation semantics FR-014).
+func (r *UserGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := principalAgentKey(principal, agentID)
+	grantID, exists := r.byPrincipalAndAgent[key]
+	if !exists {
+		return storage.NewStorageError(
+			"DeleteByPrincipalAndAgentID",
+			storage.ErrorKindNotFound,
+			ports.ErrNotFound,
+			"no active grant exists for this principal and agent",
+		)
+	}
+
+	// Remove from principal+agent index
+	delete(r.byPrincipalAndAgent, key)
+
+	// Remove from agent index
+	r.removeGrantFromAgentIndex(agentID, grantID)
+
+	// Remove grant
+	delete(r.grants, grantID)
+
+	return nil
+}
+
 // principalAgentKey creates a composite key for indexing by principal and agent.
 func principalAgentKey(principal id.Principal, agentID id.AgentID) string {
 	return principal.String() + ":" + agentID.String()

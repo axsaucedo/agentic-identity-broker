@@ -184,6 +184,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.Agents(),
 			app.ProviderService,
 			b.storage.UserGrants(),
+			b.logger,
 		)
 	}
 
@@ -392,6 +393,7 @@ func (b *Builder) Build() (*App, error) {
 		AgentDetail:    agentDetailHandler,
 		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
 		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger),
+		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
 			Service: app.OAuth2Service,

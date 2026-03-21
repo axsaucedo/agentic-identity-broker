@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -213,7 +214,7 @@ func (m *mockAgentsService) asService() *consent.Service {
 		err:         m.err,
 	}
 
-	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo)
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, slog.Default())
 }
 
 // Mock repository implementations for agents handler tests
@@ -359,4 +360,8 @@ func (m *mockGrantRepoForAgents) CountAgentsByServiceID(ctx context.Context, ser
 
 func (m *mockGrantRepoForAgents) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	return []id.AgentID{}, nil
+}
+
+func (m *mockGrantRepoForAgents) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	return m.err
 }

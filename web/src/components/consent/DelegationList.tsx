@@ -19,6 +19,8 @@ interface DelegationListProps {
   delegations: AgentDelegation[];
   /** Callback when a delegation card is clicked */
   onDelegationClick: (agentId: string) => void;
+  /** Optional callback to revoke all access for an agent */
+  onRevoke?: (agentId: string) => void;
 }
 
 /**
@@ -28,6 +30,7 @@ interface DelegationListProps {
 function DelegationListComponent({
   delegations,
   onDelegationClick,
+  onRevoke,
 }: DelegationListProps) {
   // Animation variants for the container
   const containerVariants = {
@@ -61,7 +64,11 @@ function DelegationListComponent({
 
           return (
             <motion.div key={delegation.agentId} variants={itemVariants}>
-              <DelegationCard delegation={delegation} onClick={handleClick} />
+              <DelegationCard
+                delegation={delegation}
+                onClick={handleClick}
+                onRevoke={onRevoke}
+              />
             </motion.div>
           );
         })}
@@ -89,6 +96,11 @@ export const DelegationList = memo(
       ) {
         return false;
       }
+    }
+
+    // Re-render if onRevoke callback reference changed
+    if (prevProps.onRevoke !== nextProps.onRevoke) {
+      return false;
     }
 
     return true;

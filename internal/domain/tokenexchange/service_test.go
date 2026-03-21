@@ -2,6 +2,7 @@ package tokenexchange
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -39,6 +40,7 @@ func newMockConsentService() *consent.Service {
 				UpdatedAt:  time.Now(),
 			},
 		},
+		slog.Default(),
 	)
 }
 
@@ -214,6 +216,10 @@ func (m *MockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.
 
 func (m *MockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storagedomain.UserGrant, error) {
 	return nil, nil
+}
+
+func (m *MockGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	return m.err
 }
 
 type MockSessionRepository struct {

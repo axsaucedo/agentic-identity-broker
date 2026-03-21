@@ -563,3 +563,13 @@ func (r *inMemoryGrantRepo) ListByServiceID(ctx context.Context, serviceID id.Se
 	}
 	return agentIDs, nil
 }
+
+func (r *inMemoryGrantRepo) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	for grantID, grant := range r.grants {
+		if grant.Principal == principal && grant.AgentID == agentID {
+			delete(r.grants, grantID)
+			return nil
+		}
+	}
+	return ports.ErrNotFound
+}

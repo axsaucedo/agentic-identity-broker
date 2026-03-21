@@ -628,3 +628,116 @@ func TestUserGrantRepository_DeepCopy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, retrieved2.DelegatedOAuth2Tokens[0].Scopes, 1)
 }
+
+func TestUserGrantRepository_DeleteByPrincipalAndAgentID(t *testing.T) {
+	_, agentRepo, grantRepo, cleanup := setupUserGrantTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create two agents
+	agent1 := &storage.Agent{
+		ClientID:    "agent-revoke-1",
+		DisplayName: "Revoke Test Agent 1",
+		Description: "Used for DeleteByPrincipalAndAgentID tests",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	agent2 := &storage.Agent{
+		ClientID:    "agent-revoke-2",
+		DisplayName: "Revoke Test Agent 2",
+		Description: "Used for DeleteByPrincipalAndAgentID tests",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	err := agentRepo.Create(ctx, agent1)
+	require.NoError(t, err)
+	err = agentRepo.Create(ctx, agent2)
+	require.NoError(t, err)
+
+	t.Run("success: deletes grant and cleans up indexes", func(t *testing.T) {
+		principal := id.Principal("revoke-user@example.com")
+		grant := &storage.UserGrant{
+			Principal: principal,
+			AgentID:   agent1.ID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{ThirdpartyOAuth2ServiceID: testServiceGitHub, Scopes: []string{"repo"}},
+			},
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+
+		err := grantRepo.Create(ctx, grant)
+		require.NoError(t, err)
+
+		err = grantRepo.DeleteByPrincipalAndAgentID(ctx, principal, agent1.ID)
+		require.NoError(t, err)
+
+		// Grant must be gone by ID
+		_, err = grantRepo.Get(ctx, grant.ID)
+		require.Error(t, err)
+		storageErr, ok := err.(*storage.StorageError)
+		require.True(t, ok)
+		assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+
+		// principal+agent index must be cleaned up
+		_, err = grantRepo.FindByPrincipalAndAgent(ctx, principal, agent1.ID)
+		require.Error(t, err)
+		storageErr, ok = err.(*storage.StorageError)
+		require.True(t, ok)
+		assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+	})
+
+	t.Run("not found: no active grant exists — returns NotFound error", func(t *testing.T) {
+		err := grantRepo.DeleteByPrincipalAndAgentID(ctx, id.Principal("no-grant@example.com"), testAgentNotFound)
+		require.Error(t, err)
+		storageErr, ok := err.(*storage.StorageError)
+		require.True(t, ok)
+		assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+	})
+
+	t.Run("cross-principal isolation: only deletes the specified principal's grant (SR-001)", func(t *testing.T) {
+		principalA := id.Principal("isolation-user-a@example.com")
+		principalB := id.Principal("isolation-user-b@example.com")
+
+		grantA := &storage.UserGrant{
+			Principal: principalA,
+			AgentID:   agent2.ID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{ThirdpartyOAuth2ServiceID: testServiceGitHub, Scopes: []string{"repo"}},
+			},
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+		grantB := &storage.UserGrant{
+			Principal: principalB,
+			AgentID:   agent2.ID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{ThirdpartyOAuth2ServiceID: testServiceGoogle, Scopes: []string{"openid"}},
+			},
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+
+		err := grantRepo.Create(ctx, grantA)
+		require.NoError(t, err)
+		err = grantRepo.Create(ctx, grantB)
+		require.NoError(t, err)
+
+		// Revoke only principalA's grant
+		err = grantRepo.DeleteByPrincipalAndAgentID(ctx, principalA, agent2.ID)
+		require.NoError(t, err)
+
+		// principalA's grant is gone
+		_, err = grantRepo.FindByPrincipalAndAgent(ctx, principalA, agent2.ID)
+		require.Error(t, err)
+		storageErr, ok := err.(*storage.StorageError)
+		require.True(t, ok)
+		assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+
+		// principalB's grant is untouched
+		found, err := grantRepo.FindByPrincipalAndAgent(ctx, principalB, agent2.ID)
+		require.NoError(t, err)
+		assert.Equal(t, grantB.ID, found.ID)
+	})
+}

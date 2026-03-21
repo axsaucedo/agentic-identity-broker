@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -24,6 +25,9 @@ var (
 	ErrAgentAccessDenied = errors.New("agent access denied")
 	// ErrGrantExpired is returned when a user grant has expired.
 	ErrGrantExpired = errors.New("grant expired")
+	// ErrGrantNotFound is returned by RevokeConsentForPrincipal when no active grant exists
+	// for the (principal, agent) pair. The handler maps this to HTTP 404.
+	ErrGrantNotFound = errors.New("grant not found")
 )
 
 // Service provides consent management business logic.
@@ -33,6 +37,7 @@ type Service struct {
 	agentRepo       ports.AgentRepository
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService
 	grantRepo       ports.UserGrantRepository
+	logger          *slog.Logger
 }
 
 // NewService creates a new ConsentService.
@@ -40,11 +45,13 @@ func NewService(
 	agentRepo ports.AgentRepository,
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	grantRepo ports.UserGrantRepository,
+	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		agentRepo:       agentRepo,
 		providerService: providerService,
 		grantRepo:       grantRepo,
+		logger:          logger,
 	}
 }
 
@@ -163,23 +170,48 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 }
 
 // RevokeConsent deletes a user grant (FR-014).
-// Idempotent: returns nil if grant doesn't exist.
+// Idempotent: returns nil if the grant doesn't exist (absence is not an error).
+// Used by the POST /grants path with empty tokens.
 func (s *Service) RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
-	// Find grant
+	if err := s.grantRepo.DeleteByPrincipalAndAgentID(ctx, principal, agentID); err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil // idempotent: absence is not an error
+		}
+		return fmt.Errorf("failed to revoke consent: %w", err)
+	}
+	return nil
+}
+
+// RevokeConsentForPrincipal revokes the authenticated user's grant for the given agent (FR-014).
+// This is the user-facing revocation entry point for DELETE /api/consent/agent/{agent-id}/grants.
+//
+// Unlike RevokeConsent, this method:
+// - Is NOT idempotent: absence of grant returns ErrGrantNotFound (handler maps to 404)
+// - Emits a structured audit log on success with action, principal, agent_id, and grant_id
+func (s *Service) RevokeConsentForPrincipal(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	// Phase 1: look up the grant to capture the ID for the audit log.
 	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agentID)
-	if err != nil && !errors.Is(err, ports.ErrNotFound) {
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return fmt.Errorf("%w", ErrGrantNotFound)
+		}
 		return fmt.Errorf("failed to find grant: %w", err)
 	}
 
-	// If grant doesn't exist, operation is idempotent (already revoked)
-	if grant == nil {
-		return nil
+	// Phase 2: delete the grant.
+	if err := s.grantRepo.DeleteByPrincipalAndAgentID(ctx, principal, agentID); err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			// Concurrent revocation raced us — treat as not found.
+			return fmt.Errorf("%w", ErrGrantNotFound)
+		}
+		return fmt.Errorf("failed to revoke consent: %w", err)
 	}
 
-	// Delete grant
-	if err := s.grantRepo.Delete(ctx, grant.ID); err != nil {
-		return fmt.Errorf("failed to delete grant: %w", err)
-	}
+	s.logger.Info("grant revoked",
+		"action", "grant_revoked",
+		"principal", principal,
+		"agent_id", agentID,
+		"grant_id", grant.ID)
 
 	return nil
 }
@@ -240,13 +272,8 @@ func (s *Service) VerifyAgentAccess(ctx context.Context, principal id.Principal,
 			ErrGrantExpired, grant.ValidUntil.Format(time.RFC3339), principal, agentID)
 	}
 
-	// Check grant is not revoked
-	// TODO: Implement revocation check when revocation status is added to UserGrant entity
-	// For now, assume no revocation field exists. When revoked field is added:
-	// if grant.Revoked {
-	//   return nil, fmt.Errorf("%w: user grant has been revoked (principal: %s, agent: %s)",
-	//     ErrAgentAccessDenied, principal, agentID)
-	// }
+	// Hard deletion is the revocation mechanism: a missing grant (ports.ErrNotFound) is treated
+	// as access denied (fail closed). No revoked status field is needed.
 
 	// Return copy to prevent external mutation
 	return grant.Copy(), nil
