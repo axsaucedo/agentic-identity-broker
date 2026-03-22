@@ -285,3 +285,42 @@ func TestHTTPStatusCodesPerRFC8693(t *testing.T) {
 		})
 	}
 }
+
+// TestTokenExchangeErrorWithCause verifies WithCause preserves all fields and attaches the cause.
+func TestTokenExchangeErrorWithCause(t *testing.T) {
+	cause := errors.New("jwt: audience mismatch")
+	base := NewInvalidGrantError("subject_token issuer validation failed")
+	err := base.WithCause(cause)
+
+	if err.Code() != base.Code() {
+		t.Errorf("WithCause changed code: got %q, want %q", err.Code(), base.Code())
+	}
+	if err.Description() != base.Description() {
+		t.Errorf("WithCause changed description: got %q, want %q", err.Description(), base.Description())
+	}
+	if err.HTTPStatus() != base.HTTPStatus() {
+		t.Errorf("WithCause changed httpStatus: got %d, want %d", err.HTTPStatus(), base.HTTPStatus())
+	}
+	if got := err.Unwrap(); got != cause {
+		t.Errorf("Unwrap() = %v, want %v", got, cause)
+	}
+	if !errors.Is(err, cause) {
+		t.Error("errors.Is() should find the wrapped cause via WithCause")
+	}
+}
+
+// TestTokenExchangeErrorWithCauseDoesNotMutateOriginal verifies WithCause returns a new instance.
+func TestTokenExchangeErrorWithCauseDoesNotMutateOriginal(t *testing.T) {
+	cause := errors.New("low-level failure")
+	base := NewInvalidGrantError("token validation failed")
+	withCause := base.WithCause(cause)
+
+	// Original must not be mutated
+	if base.Unwrap() != nil {
+		t.Error("WithCause mutated the original error's cause; it should return a new instance")
+	}
+	// New instance must carry the cause
+	if withCause.Unwrap() != cause {
+		t.Errorf("new instance Unwrap() = %v, want %v", withCause.Unwrap(), cause)
+	}
+}

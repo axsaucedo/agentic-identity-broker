@@ -249,3 +249,16 @@ func IsTokenExchangeError(err error) bool {
 	_, ok := err.(*TokenExchangeError)
 	return ok
 }
+
+// WithCause returns a copy of the error with the given underlying cause attached.
+// The cause is available via errors.Unwrap() for logging and error chain inspection.
+// The cause is NOT included in the RFC 8693 error response to the client.
+func (e *TokenExchangeError) WithCause(cause error) *TokenExchangeError {
+	return &TokenExchangeError{
+		code:        e.code,
+		description: e.description,
+		httpStatus:  e.httpStatus,
+		cause:       cause,
+		details:     e.details,
+	}
+}

@@ -301,11 +301,15 @@ func (b *Builder) Build() (*App, error) {
 
 		// Create JWT validator
 		// Per spec SR-001: Client assertion and subject_token JWTs validated against JWKS
+		brokerAudience := b.config.TokenExchange.ExpectedAudience
+		if brokerAudience == "" {
+			brokerAudience = tokenexchange.DefaultBrokerAudience
+		}
 		jwtValidator, err := tokenexchange.NewJWTValidator(
 			jwksAdapter,
 			b.config.OAuth2AuthServer.UpstreamIssuerURI,
-			"token-exchange-broker", // Per spec: broker's own identifier in audience claim
-			60,                      // Per spec FR-042: 60 second clock skew tolerance
+			brokerAudience,
+			tokenexchange.DefaultClockSkewTolerance, // Per spec FR-042: 60 second clock skew tolerance
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWT validator for token exchange: %w", err)

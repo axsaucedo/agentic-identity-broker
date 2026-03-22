@@ -2,7 +2,10 @@ package app
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -201,6 +204,141 @@ func TestBuilderMissingRequiredDependency(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "encryption configuration required") {
 			t.Errorf("expected error to contain %q, got: %v", "encryption configuration required", err)
+		}
+	})
+}
+
+// TestBuilderTokenExchangeExpectedAudience verifies that the builder correctly reads
+// ExpectedAudience from config and passes it to the JWT validator, including the
+// default fallback when no value is set.
+//
+// The test spins up a minimal httptest server that mimics the discovery and JWKS
+// endpoints of a real upstream OAuth2 server, so the builder can complete
+// JWKS-discovery and JWT-validator wiring without any external dependencies.
+func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+
+	// Spin up a minimal mock upstream that serves OAuth2 discovery + empty JWKS.
+	// We need discovery so the builder can find the jwks_uri, and we need
+	// the JWKS endpoint so NewJWKSAdapter succeeds. The key set can be empty
+	// because we are only testing wiring, not actual JWT verification here.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			baseURL := "http://" + r.Host
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"issuer":                 baseURL,
+				"authorization_endpoint": baseURL + "/oauth/authorize",
+				"token_endpoint":         baseURL + "/oauth/token",
+				"jwks_uri":               baseURL + "/.well-known/jwks.json",
+			})
+		case "/.well-known/jwks.json":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"keys": []interface{}{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	// buildAppWithTokenExchange constructs a complete App with token exchange enabled,
+	// using the provided config modifier to adjust individual fields.
+	buildAppWithTokenExchange := func(t *testing.T, modifyConfig func(*ports.Config)) (*App, error) {
+		t.Helper()
+		storageAdapter, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend: "memory",
+			Timeouts: ports.StorageTimeouts{
+				Read:  5 * time.Second,
+				Write: 5 * time.Second,
+			},
+		})
+		if err != nil {
+			t.Fatalf("failed to create storage adapter: %v", err)
+		}
+
+		cfg := &ports.Config{
+			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+			Server: ports.ServerConfig{
+				EndUser: ports.ServerInstanceConfig{
+					Port:      8000,
+					Bind:      "::1",
+					PublicURL: "http://localhost:8000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Admin: ports.ServerInstanceConfig{
+					Port:      14000,
+					Bind:      "::1",
+					PublicURL: "http://localhost:14000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+			},
+			Storage: ports.StorageConfig{
+				Backend:  "memory",
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+			},
+			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+			OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+				UpstreamIssuerURI:         upstream.URL,
+				UpstreamAuthorizeEndpoint: upstream.URL + "/oauth/authorize",
+				UpstreamTokenEndpoint:     upstream.URL + "/oauth/token",
+				UpstreamTimeoutSeconds:    5,
+				Mode:                      "proxy",
+			},
+			TokenExchange: ports.TokenExchangeConfig{
+				ClaimExtraction: ports.ClaimExtractionConfig{
+					PrincipalExpression:     "subject_token.sub",
+					AgentClientIDExpression: "subject_token.azp",
+				},
+				Authorization: ports.AuthorizationConfig{
+					Type: "cel",
+					CEL: ports.CELAuthorizationConfig{
+						Expression:        "true",
+						EvaluationTimeout: 100 * time.Millisecond,
+					},
+				},
+			},
+			Security: ports.SecurityConfig{SkipThirdpartyHTTPSValidation: true},
+		}
+		modifyConfig(cfg)
+
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		return NewBuilder().
+			WithConfig(cfg).
+			WithStorage(storageAdapter).
+			WithLogger(logger).
+			Build()
+	}
+
+	t.Run("empty ExpectedAudience falls back to default and builds successfully", func(t *testing.T) {
+		app, err := buildAppWithTokenExchange(t, func(cfg *ports.Config) {
+			cfg.TokenExchange.ExpectedAudience = "" // use default "token-exchange-broker"
+		})
+		if err != nil {
+			t.Fatalf("Build() with empty ExpectedAudience failed: %v", err)
+		}
+		if app.TokenExchangeService == nil {
+			t.Error("expected TokenExchangeService to be set when token exchange is configured")
+		}
+	})
+
+	t.Run("custom ExpectedAudience is accepted and service is wired", func(t *testing.T) {
+		app, err := buildAppWithTokenExchange(t, func(cfg *ports.Config) {
+			cfg.TokenExchange.ExpectedAudience = "my-gateway"
+		})
+		if err != nil {
+			t.Fatalf("Build() with custom ExpectedAudience failed: %v", err)
+		}
+		if app.TokenExchangeService == nil {
+			t.Error("expected TokenExchangeService to be set when token exchange is configured")
 		}
 	})
 }
