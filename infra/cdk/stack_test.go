@@ -783,6 +783,73 @@ func TestEnvironmentParameterizationProd(t *testing.T) {
 	})
 }
 
+func TestEnvironmentParameterizationSandbox(t *testing.T) {
+	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/kube-1.corporate-iam.zalan.do"
+	_, template := createTestStack(t, "sandbox", oidcProviderArn, "agentic-identity-broker-sandbox", "agentic-identity-broker")
+
+	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
+		"TableName": "AgenticIdentityBrokerBranchKeys-sandbox",
+	})
+	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
+		"RoleName": "AgenticIdentityBrokerEncryptionRole-sandbox",
+	})
+	template.HasResourceProperties(jsii.String("AWS::KMS::Alias"), map[string]interface{}{
+		"AliasName": "alias/agentic-identity-broker/sandbox/token-vault-kek",
+	})
+}
+
+func TestSandboxHasNonProdRetentionSettings(t *testing.T) {
+	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/kube-1.corporate-iam.zalan.do"
+	_, template := createTestStack(t, "sandbox", oidcProviderArn, "agentic-identity-broker-sandbox", "agentic-identity-broker")
+
+	templateJSON := template.ToJSON()
+
+	// KMS key should use Delete policy (not Retain).
+	kmsResources := findResourcesByType(t, templateJSON, "AWS::KMS::Key")
+	require.NotEmpty(t, kmsResources)
+	for _, res := range kmsResources {
+		resMap, ok := res.(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "Delete", resMap["DeletionPolicy"], "sandbox KMS key should have Delete deletion policy")
+	}
+
+	// DynamoDB should have no deletion protection and no PITR.
+	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
+		"DeletionProtectionEnabled": false,
+		"PointInTimeRecoverySpecification": map[string]interface{}{
+			"PointInTimeRecoveryEnabled": false,
+		},
+	})
+}
+
+func TestSandboxIRSAConditions(t *testing.T) {
+	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/kube-1.corporate-iam.zalan.do"
+	namespace := "agentic-identity-broker-sandbox"
+	sa := "agentic-identity-broker"
+
+	_, template := createTestStack(t, "sandbox", oidcProviderArn, namespace, sa)
+
+	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
+		"AssumeRolePolicyDocument": map[string]interface{}{
+			"Statement": []interface{}{
+				map[string]interface{}{
+					"Action": "sts:AssumeRoleWithWebIdentity",
+					"Effect": "Allow",
+					"Principal": map[string]interface{}{
+						"Federated": oidcProviderArn,
+					},
+					"Condition": map[string]interface{}{
+						"StringEquals": map[string]interface{}{
+							"kube-1.corporate-iam.zalan.do:sub": "system:serviceaccount:agentic-identity-broker-sandbox:agentic-identity-broker",
+							"kube-1.corporate-iam.zalan.do:aud": "sts.amazonaws.com",
+						},
+					},
+				},
+			},
+		},
+	})
+}
+
 // --- Helpers ---
 
 // findResourcesByType extracts all CloudFormation resources of a given type.

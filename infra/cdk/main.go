@@ -7,6 +7,10 @@
 // Usage:
 //
 //	cdk deploy -c env=test
+//	cdk deploy -c env=sandbox \
+//	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/kube-1.corporate-iam.zalan.do \
+//	  -c k8sNamespace=agentic-identity-broker-sandbox \
+//	  -c k8sServiceAccountName=agentic-identity-broker
 //	cdk deploy -c env=prod \
 //	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLEID \
 //	  -c k8sNamespace=default \
@@ -39,9 +43,9 @@ func main() {
 	}
 
 	// Validate environment parameter to prevent typos and unexpected stack creation.
-	validEnvs := map[string]bool{"test": true, "prod": true, "production": true}
+	validEnvs := map[string]bool{"test": true, "sandbox": true, "prod": true, "production": true}
 	if !validEnvs[env] {
-		panic(fmt.Sprintf("Invalid environment '%s'. Must be one of: test, prod", env))
+		panic(fmt.Sprintf("Invalid environment '%s'. Must be one of: test, sandbox, prod", env))
 	}
 
 	// Normalize "production" to "prod" for consistency.
