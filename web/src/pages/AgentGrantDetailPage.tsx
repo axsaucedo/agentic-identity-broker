@@ -15,7 +15,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@components/layout/AppLayout';
 import { PageTransition } from '@components/ui/PageTransition';
 import { Skeleton } from '@components/ui/Skeleton';
@@ -25,6 +25,7 @@ import { useToast } from '@components/ui/Toast';
 import { Breadcrumb } from '@design-system/components/navigation/Breadcrumb';
 import { Card } from '@design-system/components/data-display/Card';
 import { ServiceCard } from '@components/consent/ServiceCard';
+import { RevokeGrantButton } from '@components/consent/RevokeGrantButton';
 import { GrantValidityControl } from '@components/consent/GrantValidityControl';
 import { useAgentGrants } from '../hooks/useAgentGrants';
 import { useToggleGrant } from '../hooks/useToggleGrant';
@@ -41,6 +42,7 @@ export function AgentGrantDetailPage() {
   const { agentId } = useParams<{ agentId: string }>();
   const { showToast } = useToast();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Extract redirect_uri from query parameters (FR-025)
   const searchParams = new URLSearchParams(location.search);
@@ -231,6 +233,12 @@ export function AgentGrantDetailPage() {
   },
     [services, delegatedTokens, handleServiceLogin, setDelegatedTokens, showToast],
   );
+
+  // Handle full grant deletion (Revoke All Access button)
+  const handleGrantRevoked = useCallback(() => {
+    navigate('/');
+    showToast('All access for this agent has been revoked.', 'success');
+  }, [navigate, showToast]);
 
   // Handle service revocation (deselect service from grant)
   const handleRevoke = useCallback(
@@ -624,7 +632,18 @@ export function AgentGrantDetailPage() {
           </div>
 
           {/* Action buttons - Always visible (FR-023), Approve disabled until mandatory requirements met (FR-024) */}
-          <div className="flex items-center justify-end gap-3 pt-4">
+          <div className="flex items-center justify-between gap-3 pt-4">
+            {/* Revoke All Access — only visible when user has an active grant */}
+            {grants !== null &&
+              grants.delegated_oauth2_tokens &&
+              grants.delegated_oauth2_tokens.length > 0 && (
+                <RevokeGrantButton
+                  agentId={resolvedAgentId}
+                  agentName={agent.displayName}
+                  onRevoked={handleGrantRevoked}
+                />
+              )}
+
             <Button
               variant="primary"
               onClick={handleSubmit}

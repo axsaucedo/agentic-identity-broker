@@ -23,13 +23,14 @@ import (
 //
 //nolint:unused // Used in tests
 type mockConsentService struct {
-	getAgentConsentInfoFunc func(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error)
-	getActiveGrantsFunc     func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
-	grantConsentFunc        func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
-	revokeConsentFunc       func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
-	getAgentDelegationsFunc func(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error)
-	getAgentDetailFunc      func(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error)
-	getUserGrantsFunc       func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
+	getAgentConsentInfoFunc       func(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error)
+	getActiveGrantsFunc           func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
+	grantConsentFunc              func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
+	revokeConsentFunc             func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
+	revokeConsentForPrincipalFunc func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
+	getAgentDelegationsFunc       func(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error)
+	getAgentDetailFunc            func(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error)
+	getUserGrantsFunc             func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 }
 
 //nolint:unused // Used in tests
@@ -60,6 +61,14 @@ func (m *mockConsentService) GrantConsent(ctx context.Context, req *consent.Gran
 func (m *mockConsentService) RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
 	if m.revokeConsentFunc != nil {
 		return m.revokeConsentFunc(ctx, principal, agentID)
+	}
+	return errors.New("not implemented")
+}
+
+//nolint:unused // Used in tests
+func (m *mockConsentService) RevokeConsentForPrincipal(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	if m.revokeConsentForPrincipalFunc != nil {
+		return m.revokeConsentForPrincipalFunc(ctx, principal, agentID)
 	}
 	return errors.New("not implemented")
 }
@@ -353,7 +362,7 @@ func (m *mockConsentServiceWrapper) asService() *consent.Service {
 	mockServiceRepo := &mockServiceRepo{services: services, err: m.err}
 	mockGrantRepo := &mockGrantRepo{}
 
-	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo)
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, slog.Default())
 }
 
 // Mock repository implementations
@@ -472,4 +481,8 @@ func (m *mockGrantRepo) CountAgentsByServiceID(ctx context.Context, serviceID id
 
 func (m *mockGrantRepo) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	return []id.AgentID{}, nil
+}
+
+func (m *mockGrantRepo) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	return nil
 }

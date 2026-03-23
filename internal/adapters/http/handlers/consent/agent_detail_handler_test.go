@@ -79,6 +79,10 @@ func (m *mockAgentDetailService) GetUserGrants(ctx context.Context, p id.Princip
 	return nil, errors.New("not implemented")
 }
 
+func (m *mockAgentDetailService) RevokeConsentForPrincipal(ctx context.Context, p id.Principal, agentID id.AgentID) error {
+	return nil
+}
+
 func TestGetAgentDetail_Success(t *testing.T) {
 	// Setup
 	agentID := id.NewAgentID()

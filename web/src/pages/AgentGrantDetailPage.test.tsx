@@ -599,3 +599,107 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
     });
   });
 });
+
+describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
+  // A grant with active delegated tokens
+  const grantWithTokens = {
+    id: 'grant-1',
+    agent_id: 'agent-123',
+    principal: 'user@example.com',
+    delegated_oauth2_tokens: [
+      { thirdparty_oauth2_service_id: 'github', scopes: ['read:user'] },
+    ],
+    valid_until: null,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(useConsentModule, 'useConsent').mockReturnValue({
+      delegations: [],
+      userInfo: {
+        principal: 'user@example.com',
+        displayName: 'Test User',
+        pictureUrl: 'https://example.com/avatar.png',
+      },
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  it('RevokeGrantButton visible when grant exists with delegated tokens', () => {
+    vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+      agent: mockAgent,
+      services: mockServices,
+      grants: grantWithTokens,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <RouterWrapper>
+        <AgentGrantDetailPage />
+      </RouterWrapper>,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: /revoke all access for research assistant/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('RevokeGrantButton absent when user has no active grant (null grants)', () => {
+    vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+      agent: mockAgent,
+      services: mockServices,
+      grants: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <RouterWrapper>
+        <AgentGrantDetailPage />
+      </RouterWrapper>,
+    );
+
+    expect(
+      screen.queryByRole('button', {
+        name: /revoke all access for research assistant/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('RevokeGrantButton absent when grant has empty delegated tokens', () => {
+    const emptyGrant = {
+      ...grantWithTokens,
+      delegated_oauth2_tokens: [],
+    };
+
+    vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+      agent: mockAgent,
+      services: mockServices,
+      grants: emptyGrant,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <RouterWrapper>
+        <AgentGrantDetailPage />
+      </RouterWrapper>,
+    );
+
+    expect(
+      screen.queryByRole('button', {
+        name: /revoke all access for research assistant/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+});

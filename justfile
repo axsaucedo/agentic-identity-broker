@@ -228,13 +228,13 @@ setup-hooks:
 # Run integration tests (requires Docker for PostgreSQL tests)
 test-integration:
     @echo "Running integration tests..."
-    go test -tags=integration -v ./tests/integration/storage/...
+    go test -tags=integration -v ./tests/integration/storage/... ./internal/adapters/storage/postgres/...
 
 # Run integration tests and generate JUnit XML report for CI/CD
 test-integration-junit:
     @echo "Running integration tests with JUnit output..."
     @mkdir -p test-results
-    @go test -tags=integration -v ./tests/integration/storage/... 2>&1 | tee test-results/integration-test-output.txt | go-junit-report -set-exit-code > test-results/integration-junit.xml
+    @go test -tags=integration -v ./tests/integration/storage/... ./internal/adapters/storage/postgres/... 2>&1 | tee test-results/integration-test-output.txt | go-junit-report -set-exit-code > test-results/integration-junit.xml
     @echo "JUnit report generated at test-results/integration-junit.xml"
 
 # Run all tests (unit, integration, E2E, E2E frontend) and generate consolidated JUnit XML report
@@ -276,7 +276,7 @@ test-all-junit:
     # Run storage-specific integration tests with PostgreSQL containers
     echo ""
     echo "==> Running storage integration tests (PostgreSQL)..."
-    if go test -v -tags=integration ./tests/integration/storage/... 2>&1 | tee test-results/storage-tests-output.txt | go-junit-report -set-exit-code > test-results/storage-junit.xml; then
+    if go test -v -tags=integration ./tests/integration/storage/... ./internal/adapters/storage/postgres/... 2>&1 | tee test-results/storage-tests-output.txt | go-junit-report -set-exit-code > test-results/storage-junit.xml; then
         echo "✓ Storage integration tests passed"
     else
         STORAGE_EXIT=$?

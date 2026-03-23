@@ -42,6 +42,7 @@ type EnduserRouteConfig struct {
 //	GET    /api/consent/agent/{agent-id}              - Get agent details
 //	GET    /api/consent/agent/{agent-id}/grants       - Get agent grants
 //	POST   /api/consent/agent/{agent-id}/grants       - Create grant
+//	DELETE /api/consent/agent/{agent-id}/grants       - Revoke grant (FR-014)
 //
 //	OAuth2 Session Routes (authenticated, optional):
 //	GET    /api/third-party/sessions                  - List sessions
@@ -87,6 +88,9 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 						r.Get("/", h.AgentDetail.GetAgentDetail)
 						r.Get("/grants", h.AgentGrants.GetAgentGrants)
 						r.Post("/grants", h.Grants.CreateGrant)
+						if h.RevokeGrant != nil {
+							r.Delete("/grants", h.RevokeGrant.RevokeGrant)
+						}
 					})
 				})
 			}

@@ -17,14 +17,14 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
+**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
+**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
+**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
 **Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [single/web/mobile - determines source structure]  
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
+**Project Type**: [single/web/mobile - determines source structure]
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
+**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
 ## Constitution Check
@@ -40,13 +40,16 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](.spe
 - [ ] **Entity IDs**: For each new domain entity with a UUID primary key, will a typed ID (`type XxxID uuid.UUID`) be added to `internal/domain/id/` via `gen_ids.go` and documented in `internal/domain/id/AGENTS.md`? (ADR 013)
 - [ ] **Configuration Design**: Have all config requirements been identified with YAML examples?
 - [ ] **Config Examples**: Will example YAML snippets be added to examples/config/?
+- [ ] **Helm Chart**: If configuration parameters are added/changed/removed, will `charts/agentic-identity-broker/` be updated (values.yaml, templates, README)?
 - [ ] **API Design First**: Will APIs be designed (OpenAPI spec) and confirmed BEFORE implementation?
 - [ ] **API Documentation**: Will OpenAPI specs be created in `/api/enduser/` or `/api/admin/` as applicable?
 - [ ] **API Changes**: Are all API changes confirmed by user/stakeholder (document in PR)?
 - [ ] **Database Design**: Will all schema changes use go-migrate naming in `/migrations/`?
 - [ ] **E2E Acceptance Tests**: Will E2E tests be written for ALL spec scenarios BEFORE implementation?
 - [ ] **E2E Test Mapping**: Will each acceptance scenario map 1:1 to one It() block in tests/e2e/?
-- [ ] **E2E Red Phase**: Will E2E tests FAIL initially, proving they test actual functionality?
+- [ ] **E2E Red Phase**: Will E2E tests FAIL initially with detailed, realistic expectations (not placeholder assertions)?
+- [ ] **Frontend Playwright E2E**: If this feature changes the React UI, will Playwright E2E tests be added/amended in `tests/e2e/frontend/`?
+- [ ] **Frontend Screenshots**: If this feature changes the React UI, will screenshots be captured to `tests/e2e/screenshots/` for each UI state under test?
 
 **Implementation Considerations**:
 
@@ -128,6 +131,7 @@ directories captured above]
 <!--
   Per Constitution Principle XIII (End-to-End Acceptance Testing & Spec Traceability):
   All features MUST have E2E acceptance tests mapped 1:1 to spec scenarios.
+  Frontend UI changes additionally require Playwright E2E tests and screenshots.
 
   This section documents HOW E2E tests will be structured and implemented for this feature.
 -->
@@ -153,14 +157,25 @@ directories captured above]
 
 *Note: Populate this table during Phase 2f (E2E Acceptance Test Design) with actual line numbers and test descriptions*
 
+**Red Phase Requirements**:
+- E2E tests MUST compile and contain detailed, realistic expectations
+- Assertions MUST target actual system output (e.g., `Expect(resp.StatusCode).To(Equal(200))`,
+  `Expect(body).To(ContainSubstring("expected_field"))`)
+- Placeholder always-fail assertions (e.g., `Expect(true).To(BeFalse())`) do NOT satisfy red phase —
+  the failure must come from realistic assertions against the feature's expected behavior
+- `XIt`, `PIt`, `XDescribe`, `PDescribe`, `XContext`, `PContext`, and `Skip()` are FORBIDDEN —
+  all tests MUST run and fail
+- Tests MUST NOT contain comments marking them as "in the red phase" — tests turn green naturally
+  as implementation progresses and MUST NOT require annotation cleanup later
+
 **Test Data Strategy**:
 - Use fixtures from `tests/e2e/fixtures/` for stable, reusable test data
 - Required fixtures: [list which fixtures are needed: agents, grants, principals, config, etc.]
 - New fixture creation: [document any new fixtures that need to be created for this feature]
 
 **Test Execution Flow**:
-1. **Phase 2f (Design)**: Write E2E tests for all spec scenarios
-2. **Verify Red Phase**: Run `ginkgo -v ./tests/e2e/[feature]_test.go` - all tests must FAIL
+1. **Phase 2f (Design)**: Write E2E tests for all spec scenarios with detailed expectations
+2. **Verify Red Phase**: Run `ginkgo -v ./tests/e2e/[feature]_test.go` — all tests must FAIL semantically
 3. **Implementation**: Implement feature incrementally
 4. **Verify Green Phase**: E2E tests turn GREEN as implementation satisfies acceptance criteria
 5. **Minimal Changes**: Only fixture adjustments during implementation, not test logic
@@ -174,6 +189,36 @@ directories captured above]
 - Custom matchers needed: [list any new matchers required, or reference existing in tests/e2e/matchers/]
 - HTTP helpers: [reference existing helpers in tests/e2e/helpers/ or document new ones]
 - Mock services: [document any mock upstream services needed]
+
+### Frontend Playwright E2E Tests (if UI changes)
+
+<!--
+  INCLUDE THIS SECTION if the feature changes any React UI in web/src/.
+  Remove this section if the feature is purely backend with no UI changes.
+-->
+
+**Test Location**: `tests/e2e/frontend/[feature]_test.go`
+
+**Framework**: Playwright via existing harness in `tests/e2e/frontend/` and page objects in `tests/e2e/pages/`
+
+**Screenshot Location**: `tests/e2e/screenshots/`
+
+**UI Scenario Mapping**:
+
+| UI Scenario | Playwright Test Location | Screenshot Filename |
+|-------------|--------------------------|---------------------|
+| [Scenario description] | `tests/e2e/frontend/[feature]_test.go:XX` | `tests/e2e/screenshots/[descriptive_name].png` |
+
+**Screenshot Naming Convention**:
+- Use descriptive filenames that identify the UI state (e.g., `consent_page_with_github_scopes.png`,
+  `revoke_dialog_open_from_detail_page.png`)
+- One screenshot per meaningful UI state; capture before and after key interactions if relevant
+
+**Test Execution**:
+- Run frontend E2E suite: `ginkgo -v ./tests/e2e/frontend/`
+- Screenshots are automatically saved during test runs to `tests/e2e/screenshots/`
+- Frontend E2E tests MUST follow the same red-green discipline: write tests first with detailed
+  element assertions, verify they fail before implementing the UI
 
 ### Unit & Integration Tests
 
@@ -191,6 +236,7 @@ directories captured above]
 - Unit test coverage: [target percentage or "critical paths only"]
 - Integration test coverage: [specific adapters/repositories to test]
 - E2E test coverage: 100% of acceptance scenarios from spec.md (mandatory per Principle XIII)
+- Frontend E2E coverage: all UI acceptance scenarios (mandatory per Principle XIII if UI changes)
 
 ## Complexity Tracking
 

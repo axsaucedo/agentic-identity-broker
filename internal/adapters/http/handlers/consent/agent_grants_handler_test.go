@@ -52,6 +52,10 @@ func (m *mockAgentGrantsService) GetAgentDelegations(ctx context.Context, princi
 	return nil, errors.New("not implemented")
 }
 
+func (m *mockAgentGrantsService) RevokeConsentForPrincipal(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	return nil
+}
+
 func TestGetAgentGrants_Success(t *testing.T) {
 	// Setup
 	principalValue := "user@example.com"

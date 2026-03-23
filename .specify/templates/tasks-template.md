@@ -86,8 +86,10 @@ These sections provide examples that should be replaced with feature-specific ta
 - [ ] T005a Create example YAML showing all new config options with defaults
 - [ ] T005b [P] Commit configuration examples to `examples/config/[feature_name].yaml`
 - [ ] T005c Update `examples/config/README.md` to reference new configuration section
+- [ ] T005d [P] Update `charts/agentic-identity-broker/` Helm chart if config parameters changed:
+      add to `values.yaml`, update ConfigMap/Secret templates, update chart README (if applicable)
 
-**Checkpoint**: Configuration requirements designed with YAML examples
+**Checkpoint**: Configuration requirements designed with YAML examples and Helm chart updated
 
 ### Phase 2c: API Design [MANDATORY]
 
@@ -135,9 +137,16 @@ These sections provide examples that should be replaced with feature-specific ta
 - [ ] T010c Organize tests hierarchically: `Describe` (feature) → `Context` (preconditions) → `It` (scenario)
 - [ ] T010d Use fixtures from `tests/e2e/fixtures/` (agents, grants, principals, config)
 - [ ] T010e Add comment references to spec scenarios in E2E test files
-- [ ] T010f Verify E2E tests FAIL initially (red phase) - no implementation exists yet
+- [ ] T010f Verify E2E tests FAIL semantically (red phase): detailed expectations present and failing,
+      NOT placeholder always-fail assertions (e.g., `Expect(true).To(BeFalse())` is NOT acceptable);
+      no `XIt`/`PIt`/`Skip()` pending markers; no "red phase" comments in test files
+- [ ] T010g [IF FRONTEND] Add/amend Playwright E2E tests in `tests/e2e/frontend/` for all UI scenarios
+- [ ] T010h [IF FRONTEND] Use existing page objects in `tests/e2e/pages/` and Playwright harness
+- [ ] T010i [IF FRONTEND] Verify frontend Playwright tests capture screenshots to `tests/e2e/screenshots/`
+      using descriptive filenames for each meaningful UI state
 
-**Checkpoint**: E2E acceptance tests written and verified to fail before implementation
+**Checkpoint**: E2E acceptance tests written and verified to fail semantically before implementation;
+frontend Playwright tests added/amended and screenshots configured (if applicable)
 
 ---
 
@@ -281,7 +290,11 @@ These sections provide examples that should be replaced with feature-specific ta
 - [ ] TXXX Verify database schema design documented (migrations or confirmation of no DB changes) (Principle IX)
 - [ ] TXXX [IF FRONTEND] Verify design system review completed and universal components identified (Principle XI)
 - [ ] TXXX Verify E2E acceptance tests written in `tests/e2e/` for all spec scenarios (Principle XIII)
-- [ ] TXXX Verify E2E tests verified to FAIL before implementation (red phase) (Principle XIII)
+- [ ] TXXX Verify E2E tests verified to FAIL before implementation (red phase): detailed expectations
+      written and failing; no placeholder always-fail assertions; no `XIt`/`PIt`/`Skip()` markers;
+      no "red phase" comments in test files (Principle XIII)
+- [ ] TXXX [IF FRONTEND] Verify Playwright E2E tests added/amended in `tests/e2e/frontend/` (Principle XIII)
+- [ ] TXXX [IF FRONTEND] Verify screenshots captured to `tests/e2e/screenshots/` (Principle XIII)
 
 #### Implementation Phase Verification [MANDATORY]
 
@@ -299,6 +312,8 @@ These sections provide examples that should be replaced with feature-specific ta
 
 **Configuration** (Principle VII):
 - [ ] TXXX [P] Verify configuration uses unified system configuration port (not custom loading)
+- [ ] TXXX [IF CONFIG CHANGED] Verify Helm chart updated: `charts/agentic-identity-broker/values.yaml`,
+      templates, and README reflect all new/changed configuration parameters (Principle VII)
 
 **Database & Persistence** (Principle IX):
 - [ ] TXXX [P] Create/verify database migrations in `/migrations/` follow sequential numbering (NNN format)
@@ -331,6 +346,9 @@ These sections provide examples that should be replaced with feature-specific ta
 - [ ] TXXX Verify E2E test organization uses hierarchical structure (Describe → Context → It)
 - [ ] TXXX Verify E2E tests include comment references to spec scenarios
 - [ ] TXXX Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
+- [ ] TXXX [IF FRONTEND] Verify Playwright E2E tests in `tests/e2e/frontend/` pass
+- [ ] TXXX [IF FRONTEND] Verify screenshots saved to `tests/e2e/screenshots/` with descriptive filenames
+- [ ] TXXX [IF FRONTEND] Run frontend E2E suite: `ginkgo -v ./tests/e2e/frontend/` (all tests must pass)
 
 **Frontend** (Principle XI - if applicable):
 - [ ] TXXX [IF FRONTEND] Verify frontend components use design system primitives and semantic tokens
@@ -362,7 +380,9 @@ These sections provide examples that should be replaced with feature-specific ta
   - **CRITICAL**: Configuration requirements must be designed with YAML examples
   - **CRITICAL**: APIs must be designed and confirmed by user/stakeholder BEFORE implementation
   - **CRITICAL**: Database schema must be designed and migrations planned (or confirmed no DB changes)
-  - **CRITICAL**: E2E acceptance tests must be written for all spec scenarios and verified to FAIL (red phase)
+  - **CRITICAL**: E2E acceptance tests must be written with detailed expectations and verified to FAIL
+    semantically (red phase); frontend Playwright tests added/amended if UI changes involved
+  - **CRITICAL**: Helm chart must be updated if configuration parameters change
   - Phase 2a, 2b, 2c, 2d, 2e, 2f can proceed in parallel, but all must complete before Phase 2.5 begins
 - **Foundational Infrastructure (Phase 2.5)**: Depends on ALL of Phase 2 completion - BLOCKS all user stories
 - **User Stories (Phase 3+)**: All depend on Phase 2 + Phase 2.5 completion

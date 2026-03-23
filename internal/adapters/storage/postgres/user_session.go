@@ -4,12 +4,55 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/lib/pq"
 )
+
+// userSessionRecord is an adapter-local database record struct for user_sessions.
+// It maps directly to the table schema. The Scope field uses pq.StringArray to
+// correctly handle PostgreSQL TEXT[] scanning via pgx/v5/stdlib — the driver
+// returns TEXT[] as a string literal ("{val1,val2}") which []string cannot absorb.
+type userSessionRecord struct {
+	ID                    id.SessionID              `db:"id"`
+	Principal             id.Principal              `db:"principal"`
+	ServiceID             id.ServiceID              `db:"service_id"`
+	EncryptedAccessToken  []byte                    `db:"encrypted_access_token"`
+	EncryptedRefreshToken []byte                    `db:"encrypted_refresh_token"`
+	TokenType             string                    `db:"token_type"`
+	AccessTokenExpiresAt  *time.Time                `db:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time                `db:"refresh_token_expires_at"`
+	Scope                 pq.StringArray            `db:"scope"`
+	EncryptionContext     storage.EncryptionContext `db:"encryption_context"`
+	InitiatedAt           time.Time                 `db:"initiated_at"`
+	CreatedAt             time.Time                 `db:"created_at"`
+	UpdatedAt             time.Time                 `db:"updated_at"`
+}
+
+func recordToSession(r *userSessionRecord) *storage.UserSession {
+	s := &storage.UserSession{
+		ID:                    r.ID,
+		Principal:             r.Principal,
+		ServiceID:             r.ServiceID,
+		EncryptedAccessToken:  r.EncryptedAccessToken,
+		EncryptedRefreshToken: r.EncryptedRefreshToken,
+		TokenType:             r.TokenType,
+		AccessTokenExpiresAt:  r.AccessTokenExpiresAt,
+		RefreshTokenExpiresAt: r.RefreshTokenExpiresAt,
+		Scope:                 []string(r.Scope),
+		EncryptionContext:     r.EncryptionContext,
+		InitiatedAt:           r.InitiatedAt,
+		CreatedAt:             r.CreatedAt,
+		UpdatedAt:             r.UpdatedAt,
+	}
+	if s.Scope == nil {
+		s.Scope = []string{}
+	}
+	return s
+}
 
 // PostgresUserSessionRepository is a PostgreSQL implementation of UserSessionRepository.
 type PostgresUserSessionRepository struct {
@@ -57,7 +100,7 @@ func (r *PostgresUserSessionRepository) Create(ctx context.Context, session *sto
 		session.ID, session.Principal, session.ServiceID,
 		session.EncryptedAccessToken, session.EncryptedRefreshToken,
 		session.TokenType, session.AccessTokenExpiresAt, session.RefreshTokenExpiresAt,
-		session.Scope, session.EncryptionContext,
+		pq.Array(session.Scope), session.EncryptionContext,
 		session.InitiatedAt, session.CreatedAt, session.UpdatedAt,
 	)
 
@@ -73,17 +116,17 @@ func (r *PostgresUserSessionRepository) Get(ctx context.Context, sessionID id.Se
 		return nil, errors.New("session ID cannot be empty")
 	}
 
-	var session storage.UserSession
+	var rec userSessionRecord
 	query := `SELECT * FROM user_sessions WHERE id = $1`
 
-	err := r.adapter.db.GetContext(ctx, &session, query, sessionID)
+	err := r.adapter.db.GetContext(ctx, &rec, query, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, storage.NewStorageError("Get", storage.ErrorKindNotFound, err, "session not found")
 	}
 	if err != nil {
 		return nil, r.wrapError(err, "Get")
 	}
-	return &session, nil
+	return recordToSession(&rec), nil
 }
 
 // FindByPrincipalAndService retrieves the session for a principal and service.
@@ -92,17 +135,17 @@ func (r *PostgresUserSessionRepository) FindByPrincipalAndService(ctx context.Co
 		return nil, errors.New("principal and serviceID required")
 	}
 
-	var session storage.UserSession
+	var rec userSessionRecord
 	query := `SELECT * FROM user_sessions WHERE principal = $1 AND service_id = $2`
 
-	err := r.adapter.db.GetContext(ctx, &session, query, principal, serviceID)
+	err := r.adapter.db.GetContext(ctx, &rec, query, principal, serviceID)
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found is not an error
 	}
 	if err != nil {
 		return nil, r.wrapError(err, "FindByPrincipalAndService")
 	}
-	return &session, nil
+	return recordToSession(&rec), nil
 }
 
 // ListByPrincipal retrieves all sessions for a principal.
@@ -111,12 +154,16 @@ func (r *PostgresUserSessionRepository) ListByPrincipal(ctx context.Context, pri
 		return nil, errors.New("principal required")
 	}
 
-	var sessions []*storage.UserSession
+	var records []*userSessionRecord
 	query := `SELECT * FROM user_sessions WHERE principal = $1 ORDER BY created_at DESC`
 
-	err := r.adapter.db.SelectContext(ctx, &sessions, query, principal)
+	err := r.adapter.db.SelectContext(ctx, &records, query, principal)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, r.wrapError(err, "ListByPrincipal")
+	}
+	sessions := make([]*storage.UserSession, len(records))
+	for i, rec := range records {
+		sessions[i] = recordToSession(rec)
 	}
 	return sessions, nil
 }

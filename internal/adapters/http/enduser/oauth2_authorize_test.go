@@ -511,6 +511,16 @@ func (m *mockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.
 	return agentIDs, nil
 }
 
+func (m *mockGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	for grantID, grant := range m.grants {
+		if grant.Principal == principal && grant.AgentID == agentID {
+			delete(m.grants, grantID)
+			return nil
+		}
+	}
+	return ports.ErrNotFound
+}
+
 // newMockAgentRepository creates a new mock agent repository for testing
 // (wraps existing newMockAgentRepo for consistent naming)
 func newMockAgentRepository() *mockAgentRepository {

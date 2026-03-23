@@ -79,7 +79,7 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 		t.Fatalf("failed to create service: %v", err)
 	}
 
-	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo)
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, slog.Default())
 	handler := consent.NewAgentDetailHandler(consentSvc, nil).
 		WithAgentRepository(agentRepo)
 
@@ -161,7 +161,7 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 		t.Fatalf("failed to create grant: %v", err)
 	}
 
-	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo)
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, slog.Default())
 	handler := consent.NewAgentGrantsHandler(consentSvc, nil)
 
 	reqCtx := principal.WithPrincipal(ctx, principalValue)
@@ -296,7 +296,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 		t.Fatalf("failed to create grant: %v", err)
 	}
 
-	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo)
+	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, slog.Default())
 
 	t.Run("GetAgentDetail", func(t *testing.T) {
 		handler := consent.NewAgentDetailHandler(consentSvc, nil).

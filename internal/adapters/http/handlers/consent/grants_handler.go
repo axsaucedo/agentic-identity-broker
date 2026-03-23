@@ -162,10 +162,9 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Special case: empty tokens = revoke
+	// Special case: empty tokens = revoke (idempotent for POST — RevokeConsent returns nil if no grant)
 	if len(req.DelegatedOAuth2Tokens) == 0 {
-		err := h.consentService.RevokeConsent(r.Context(), id.Principal(principalValue), parsedAgentID)
-		if err != nil {
+		if err := h.consentService.RevokeConsent(r.Context(), id.Principal(principalValue), parsedAgentID); err != nil {
 			h.logger.Error("failed to revoke consent",
 				"agent_id", agentID,
 				"principal", principalValue,
@@ -174,9 +173,10 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.logger.Info("grant revoked",
-			"principal", principalValue,
-			"agent_id", agentID)
+		h.logger.Info("grant revoked via POST",
+			"action", "grant_revoked",
+			"agent_id", agentID,
+			"principal", principalValue)
 
 		w.WriteHeader(http.StatusNoContent)
 		return

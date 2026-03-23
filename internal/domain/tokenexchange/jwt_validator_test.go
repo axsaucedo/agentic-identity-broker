@@ -2,6 +2,7 @@ package tokenexchange
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -207,4 +208,77 @@ func TestValidateClientAssertion_MalformedToken(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "malformed")
+}
+
+// TestMapParseError_WrapsUnderlyingCause verifies that JWT validation errors include the
+// underlying library error as a cause so operators can log full details internally.
+func TestMapParseError_WrapsUnderlyingCause(t *testing.T) {
+	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
+	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name          string
+		rawErr        error
+		wantErrContains string
+	}{
+		{
+			name:            "signature error wrapped",
+			rawErr:          fmt.Errorf("signature verification failed: key mismatch"),
+			wantErrContains: "malformed",
+		},
+		{
+			name:            "issuer error wrapped",
+			rawErr:          fmt.Errorf("issuer mismatch: got example.com"),
+			wantErrContains: "issuer validation",
+		},
+		{
+			name:            "audience error wrapped",
+			rawErr:          fmt.Errorf("audience not satisfied"),
+			wantErrContains: "audience validation",
+		},
+		{
+			name:            "expiry error wrapped",
+			rawErr:          fmt.Errorf("token is expired"),
+			wantErrContains: "expired",
+		},
+		{
+			name:            "unknown error wrapped in default case",
+			rawErr:          fmt.Errorf("some totally unknown jwt failure"),
+			wantErrContains: "validation failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			domErr := validator.mapParseError(tt.rawErr, "subject_token")
+			require.Error(t, domErr)
+
+			// The domain error should contain the expected user-facing description
+			assert.ErrorContains(t, domErr, tt.wantErrContains)
+
+			// The underlying cause must be wrapped for internal logging
+			tokenErr, ok := domErr.(*TokenExchangeError)
+			require.True(t, ok, "expected *TokenExchangeError")
+			require.NotNil(t, tokenErr.Unwrap(), "expected underlying cause to be set for logging")
+			assert.Equal(t, tt.rawErr, tokenErr.Unwrap())
+		})
+	}
+}
+
+// TestMapClientAssertionParseError_WrapsUnderlyingCause verifies that client assertion validation
+// errors include the underlying library error as a cause for internal logging.
+func TestMapClientAssertionParseError_WrapsUnderlyingCause(t *testing.T) {
+	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
+	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
+	require.NoError(t, err)
+
+	rawErr := fmt.Errorf("some unexpected validation problem")
+	domErr := validator.mapClientAssertionParseError(rawErr)
+	require.Error(t, domErr)
+
+	tokenErr, ok := domErr.(*TokenExchangeError)
+	require.True(t, ok, "expected *TokenExchangeError")
+	require.NotNil(t, tokenErr.Unwrap(), "expected underlying cause to be set for logging")
+	assert.Equal(t, rawErr, tokenErr.Unwrap())
 }

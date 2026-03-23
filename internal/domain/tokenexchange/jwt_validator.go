@@ -62,7 +62,7 @@ func NewJWTValidator(
 		return nil, fmt.Errorf("expected_issuer cannot be empty")
 	}
 	if brokerAudience == "" {
-		return nil, fmt.Errorf("broker_audience cannot be empty")
+		return nil, fmt.Errorf("expected_audience cannot be empty")
 	}
 	if clockSkewSeconds < 0 {
 		return nil, fmt.Errorf("clock_skew_seconds cannot be negative")
@@ -182,6 +182,7 @@ func (v *JWTValidator) ValidateClientAssertion(ctx context.Context, tokenString 
 // This method maps them to the correct RFC 8693 error codes while preserving security.
 //
 // Per spec SR-005: Error messages do NOT expose token content (only metadata like issuer).
+// The underlying library error is attached as a cause for internal logging only.
 func (v *JWTValidator) mapParseError(err error, tokenType string) error {
 	if err == nil {
 		return nil
@@ -189,27 +190,31 @@ func (v *JWTValidator) mapParseError(err error, tokenType string) error {
 
 	errMsg := err.Error()
 
-	// Check for common validation failures and map to appropriate errors
+	// Check for common validation failures and map to appropriate errors.
+	// The underlying error is attached as cause so callers can log full details internally
+	// without exposing them to clients (per SR-005).
 	switch {
 	case strings.Contains(errMsg, "signature"):
-		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed")
+		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err)
 	case strings.Contains(errMsg, "issuer") || strings.Contains(errMsg, "iss"):
-		return NewInvalidGrantError(tokenType + " issuer validation failed")
+		return NewInvalidGrantError(tokenType + " issuer validation failed").WithCause(err)
 	case strings.Contains(errMsg, "audience") || strings.Contains(errMsg, "aud"):
-		return NewInvalidGrantError(tokenType + " audience validation failed")
+		return NewInvalidGrantError(tokenType + " audience validation failed").WithCause(err)
 	case strings.Contains(errMsg, "exp") || strings.Contains(errMsg, "expired"):
-		return NewInvalidGrantError(tokenType + " has expired")
+		return NewInvalidGrantError(tokenType + " has expired").WithCause(err)
 	case strings.Contains(errMsg, "malformed") || strings.Contains(errMsg, "parse"):
-		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed")
+		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err)
 	default:
-		// Generic validation failure
-		return NewInvalidGrantError(tokenType + " validation failed")
+		// Generic validation failure — attach the full underlying error as cause so operators
+		// can inspect it in logs without exposing it to the client.
+		return NewInvalidGrantError(tokenType + " validation failed").WithCause(err)
 	}
 }
 
 // mapClientAssertionParseError maps jwt.ParseString errors to InvalidClientError for client assertions.
 //
 // Client assertion failures always result in InvalidClientError per RFC 7523.
+// The underlying library error is attached as a cause for internal logging only.
 func (v *JWTValidator) mapClientAssertionParseError(err error) error {
 	if err == nil {
 		return nil
@@ -217,20 +222,22 @@ func (v *JWTValidator) mapClientAssertionParseError(err error) error {
 
 	errMsg := err.Error()
 
-	// All client assertion validation failures map to InvalidClientError
+	// All client assertion validation failures map to InvalidClientError.
+	// The underlying error is attached as cause so callers can log full details internally.
 	switch {
 	case strings.Contains(errMsg, "signature"):
-		return NewInvalidClientError("client_assertion is malformed or signature verification failed")
+		return NewInvalidClientError("client_assertion is malformed or signature verification failed").WithCause(err)
 	case strings.Contains(errMsg, "issuer") || strings.Contains(errMsg, "iss"):
-		return NewInvalidClientError("client_assertion issuer validation failed")
+		return NewInvalidClientError("client_assertion issuer validation failed").WithCause(err)
 	case strings.Contains(errMsg, "audience") || strings.Contains(errMsg, "aud"):
-		return NewInvalidClientError("client_assertion audience validation failed")
+		return NewInvalidClientError("client_assertion audience validation failed").WithCause(err)
 	case strings.Contains(errMsg, "exp") || strings.Contains(errMsg, "expired"):
-		return NewInvalidClientError("client_assertion has expired")
+		return NewInvalidClientError("client_assertion has expired").WithCause(err)
 	case strings.Contains(errMsg, "malformed") || strings.Contains(errMsg, "parse"):
-		return NewInvalidClientError("client_assertion is malformed or signature verification failed")
+		return NewInvalidClientError("client_assertion is malformed or signature verification failed").WithCause(err)
 	default:
-		// Generic validation failure
-		return NewInvalidClientError("client_assertion validation failed")
+		// Generic validation failure — attach the full underlying error as cause so operators
+		// can inspect it in logs without exposing it to the client.
+		return NewInvalidClientError("client_assertion validation failed").WithCause(err)
 	}
 }
