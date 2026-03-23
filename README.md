@@ -410,7 +410,7 @@ The consent frontend is a React-based Single Page Application (SPA) for managing
 
 ### Prerequisites
 
-- Node.js 18.0.0 or higher
+- Node.js 18.18.0 or higher
 - npm (comes with Node.js)
 
 ### Setup
