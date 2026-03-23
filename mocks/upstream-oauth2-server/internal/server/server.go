@@ -175,6 +175,7 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Register handlers
 	router.HandleFunc("/health", handlers.Health)
+	router.HandleFunc("/.well-known/oauth-authorization-server", s.handleDiscovery)
 	router.HandleFunc("/.well-known/jwks.json", s.handleJWKS)
 	router.HandleFunc("/oauth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		// Handle authorize requests with error recovery
@@ -283,6 +284,24 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 
 	return s, nil
+}
+
+// handleDiscovery serves the RFC 8414 OAuth 2.0 Authorization Server Metadata document.
+// The broker discovers the jwks_uri from this endpoint at startup.
+func (s *Server) handleDiscovery(w http.ResponseWriter, r *http.Request) {
+	issuer := fmt.Sprintf("http://%s:%d", "upstream-oauth2", s.cfg.Server.Port)
+
+	metadata := map[string]interface{}{
+		"issuer":                 issuer,
+		"authorization_endpoint": issuer + "/oauth/authorize",
+		"token_endpoint":         issuer + "/oauth/token",
+		"jwks_uri":               issuer + "/.well-known/jwks.json",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(metadata); err != nil {
+		slog.Error("failed to encode discovery response", "error", err)
+	}
 }
 
 // handleJWKS serves the RSA public key as a JSON Web Key Set so that token consumers

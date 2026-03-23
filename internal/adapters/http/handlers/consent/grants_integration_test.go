@@ -97,7 +97,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create consent service
-	consentService := consent.NewService(agentRepo, providerService, grantRepo)
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
 
 	// Create handler
 	handler := NewGrantsHandler(consentService, nil)
@@ -309,7 +309,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	err = providerService.Create(ctx, service)
 	require.NoError(t, err)
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo)
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
 	handler := NewGrantsHandler(consentService, nil)
 
 	tests := []struct {

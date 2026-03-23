@@ -3,6 +3,7 @@ package enduser
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -150,10 +151,21 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 	response, err := h.TokenExchange.Exchange(r.Context(), req)
 	if err != nil {
 		if h.Logger != nil {
-			h.Logger.Error("Token exchange failed",
+			logAttrs := []any{
 				"error", err.Error(),
 				"error_type", fmt.Sprintf("%T", err),
-			)
+			}
+			// Include underlying cause and structured details for operator diagnostics.
+			// The cause is internal only and is never forwarded to the client (per SR-005).
+			if tokenErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
+				if cause := errors.Unwrap(tokenErr); cause != nil {
+					logAttrs = append(logAttrs, "cause", cause.Error())
+				}
+				if details := tokenErr.Details(); details != "" {
+					logAttrs = append(logAttrs, "details", details)
+				}
+			}
+			h.Logger.Error("Token exchange failed", logAttrs...)
 		}
 		// Handle token exchange errors with proper RFC 8693 error codes
 		h.handleTokenExchangeError(w, err)

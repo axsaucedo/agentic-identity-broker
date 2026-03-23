@@ -75,7 +75,7 @@ export const TerminationDialog: React.FC<TerminationDialogProps> = ({
       />
       {/* Modal content card */}
       <div
-        className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
+        className="relative z-10 bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
         role="dialog"
         aria-modal="true"
         aria-labelledby="termination-dialog-title"

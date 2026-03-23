@@ -71,8 +71,8 @@ export interface AgentInfo {
  * Detailed session information including dependent agents.
  * Returned by GET /api/third-party/:service-id/session
  */
-export interface SessionDetail extends SessionSummary {
-  /** List of agents that depend on this session */
+export interface SessionDetail {
+  session: SessionSummary;
   dependent_agents: AgentInfo[];
 }
 

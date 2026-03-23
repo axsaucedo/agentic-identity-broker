@@ -181,6 +181,11 @@ const (
 	// MaxClockSkewTolerance is the maximum allowed clock skew in seconds.
 	// Prevents accepting tokens that are too far outside their validity period.
 	MaxClockSkewTolerance = int64(300)
+
+	// DefaultBrokerAudience is the default audience value the broker expects in subject_token
+	// and client_assertion JWT audience (aud) claims.
+	// Configurable via token_exchange.expected_audience in the application config.
+	DefaultBrokerAudience = "token-exchange-broker"
 )
 
 // Resource URI Validation

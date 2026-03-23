@@ -634,6 +634,51 @@ func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID id.
 	return agentIDs, nil
 }
 
+// DeleteByPrincipalAndAgentID deletes the grant owned by principal for the given agent.
+// Returns StorageError wrapping ports.ErrNotFound when no grant exists for the pair.
+// This is NOT idempotent: absence of a grant is an error (revocation semantics FR-014).
+func (r *UserGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	if r.adapter.db == nil {
+		return storage.NewStorageError(
+			"DeleteByPrincipalAndAgentID",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
+	defer cancel()
+
+	query := `DELETE FROM user_grants WHERE principal = $1 AND agent_id = $2`
+
+	result, err := r.adapter.db.ExecContext(ctxTimeout, query, principal, agentID)
+	if err != nil {
+		return r.handlePostgresError("DeleteByPrincipalAndAgentID", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return storage.NewStorageError(
+			"DeleteByPrincipalAndAgentID",
+			storage.ErrorKindUnknown,
+			err,
+			"failed to get rows affected",
+		)
+	}
+
+	if rowsAffected == 0 {
+		return storage.NewStorageError(
+			"DeleteByPrincipalAndAgentID",
+			storage.ErrorKindNotFound,
+			ports.ErrNotFound,
+			"no active grant exists for this principal and agent",
+		)
+	}
+
+	return nil
+}
+
 // handlePostgresError converts PostgreSQL errors to StorageError.
 func (r *UserGrantRepository) handlePostgresError(operation string, err error) error {
 	if pgErr, ok := err.(*pgconn.PgError); ok {

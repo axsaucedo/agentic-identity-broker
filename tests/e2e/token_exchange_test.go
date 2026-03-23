@@ -66,8 +66,8 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// Create mock upstream OAuth2 server
 		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
 
-		// Get configuration with mock upstream
-		config = fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
+		// Get configuration with mock upstream and token exchange enabled
+		config = fixtures.OAuth2ConfigWithTokenExchange(mockUpstream.URL())
 
 		// Create storage factory and fresh storage instance
 		storageFactory = bootstrap.NewStorageFactory(logger)

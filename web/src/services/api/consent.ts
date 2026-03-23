@@ -217,6 +217,38 @@ export class ConsentApiService {
       delegated_oauth2_tokens: [],
     });
   }
+
+  /**
+   * Delete all grants for a specific agent (hard delete).
+   * Calls DELETE /consent/agent/{agentId}/grants.
+   * Invalidates relevant caches after successful deletion.
+   *
+   * @param agentId - Unique agent identifier
+   * @throws {ApiError} if request fails; 404 throws a user-friendly message
+   */
+  async deleteGrant(agentId: string): Promise<void> {
+    try {
+      await apiClient.delete(`/consent/agent/${agentId}/grants`);
+    } catch (err) {
+      // Give 404 a more user-friendly message
+      if (
+        err &&
+        typeof err === 'object' &&
+        'status' in err &&
+        (err as { status: number }).status === 404
+      ) {
+        throw {
+          ...(err as object),
+          message: 'Grant not found — it may have already been revoked',
+        };
+      }
+      throw err;
+    }
+
+    // Invalidate caches on success
+    apiCache.invalidatePattern(`/consent/agent/${agentId}*`);
+    apiCache.invalidate('/consent/agents');
+  }
 }
 
 /**

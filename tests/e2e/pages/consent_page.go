@@ -12,8 +12,14 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
-// Route constants for navigation
-const agentDetailPath = "/consent/agent/%s"
+// Route constants for navigation.
+// The React app uses basename="/consent" so the overview is at /consent (root path)
+// and the agent detail page is at /consent/agent/:agentId.
+const (
+	agentDetailPath   = "/consent/agent/%s"
+	overviewPath      = "/consent"
+	revokeDialogTitle = "Revoke All Access"
+)
 
 // ConsentPage represents the OAuth2 consent flow page where users grant
 // OAuth2 scopes to agents. This page is actually the AgentGrantDetailPage
@@ -63,6 +69,13 @@ func NewConsentPage(page playwright.Page, baseURL string) *ConsentPage {
 //   - error: If navigation fails
 //
 // The page waits implicitly for load events before returning.
+// NavigateToAgent navigates to the detail page for a specific agent.
+// Waits for the page to finish loading before returning.
+//
+// The React app uses basename="/consent" so the full path is /consent/agent/:agentId.
+// This corresponds to the `/agent/:agentId` React route.
+//
+// Returns an error if navigation fails or the page does not load within the timeout.
 // If the page fails to load, returns a descriptive error.
 //
 // Example:
@@ -86,6 +99,23 @@ func (cp *ConsentPage) NavigateToAgent(ctx context.Context, agentID string) erro
 		return fmt.Errorf("agent name heading not found (page may not have loaded): %w", err)
 	}
 
+	return nil
+}
+
+// NavigateToOverview navigates to the consent overview page (list of delegations).
+// The React app serves the overview at the root route ("/") with basename="/consent",
+// so the full URL path is /consent.
+//
+// Returns an error if navigation fails.
+//
+// Example:
+//
+//	err := consentPage.NavigateToOverview(ctx)
+//	Expect(err).NotTo(HaveOccurred())
+func (cp *ConsentPage) NavigateToOverview(ctx context.Context) error {
+	if err := cp.Navigate(ctx, overviewPath); err != nil {
+		return fmt.Errorf("failed to navigate to consent overview page: %w", err)
+	}
 	return nil
 }
 
@@ -970,6 +1000,217 @@ func (cp *ConsentPage) IsMandatoryServiceConnected(ctx context.Context, serviceD
 	btnCount, _ := revokeBtn.Count()
 
 	return btnCount > 0, nil
+}
+
+// ===== Revoke Grant Page Object Methods =====
+// These methods support the RevokeGrantButton and RevokeGrantDialog UI components
+// introduced by feature 022-revoke-agent-consent.
+
+// GetRevokeButton returns the "Revoke All Access" button locator on the agent detail page.
+// The button is only rendered when the user has an active grant for the agent (FR-009).
+func (cp *ConsentPage) GetRevokeButton(ctx context.Context) playwright.Locator {
+	return cp.page().GetByRole(
+		"button",
+		playwright.PageGetByRoleOptions{Name: revokeDialogTitle},
+	)
+}
+
+// ClickRevokeButton clicks the "Revoke All Access" button on the detail page.
+// Returns an error if the button is not found or not clickable.
+func (cp *ConsentPage) ClickRevokeButton(ctx context.Context) error {
+	btn := cp.GetRevokeButton(ctx)
+
+	count, err := btn.Count()
+	if err != nil {
+		return fmt.Errorf("failed to count revoke button: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("revoke all access button not found")
+	}
+
+	if err := btn.Click(); err != nil {
+		return fmt.Errorf("failed to click revoke all access button: %w", err)
+	}
+	return nil
+}
+
+// GetRevokeDialog returns the RevokeGrantDialog locator (role="dialog").
+// The dialog is shown after clicking the Revoke All Access button.
+// NOTE: In Headless UI v2 with portal rendering, prefer WaitForRevokeDialog
+// (heading-based) over calling WaitFor() on this locator directly.
+func (cp *ConsentPage) GetRevokeDialog(ctx context.Context) playwright.Locator {
+	return cp.page().GetByRole("dialog")
+}
+
+// ConfirmRevoke clicks the primary confirmation button inside the RevokeGrantDialog.
+// This is the destructive action that permanently deletes the grant.
+func (cp *ConsentPage) ConfirmRevoke(ctx context.Context) error {
+	dialog := cp.GetRevokeDialog(ctx)
+
+	count, err := dialog.Count()
+	if err != nil {
+		return fmt.Errorf("failed to find revoke dialog: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("revoke dialog not found; call ClickRevokeButton first")
+	}
+
+	// Confirmation button inside dialog — labeled "Revoke All Access" or "Confirm"
+	confirmBtn := dialog.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: revokeDialogTitle})
+	btnCount, err := confirmBtn.Count()
+	if err != nil || btnCount == 0 {
+		// Try alternate label "Confirm"
+		confirmBtn = dialog.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Confirm"})
+		btnCount, _ = confirmBtn.Count()
+		if btnCount == 0 {
+			return fmt.Errorf("confirm button not found inside revoke dialog")
+		}
+	}
+
+	if err := confirmBtn.Click(); err != nil {
+		return fmt.Errorf("failed to click confirm button in revoke dialog: %w", err)
+	}
+	return nil
+}
+
+// CancelRevoke clicks the cancel button inside the RevokeGrantDialog.
+// The dialog is dismissed without making any changes.
+func (cp *ConsentPage) CancelRevoke(ctx context.Context) error {
+	dialog := cp.GetRevokeDialog(ctx)
+
+	count, err := dialog.Count()
+	if err != nil {
+		return fmt.Errorf("failed to find revoke dialog: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("revoke dialog not found; call ClickRevokeButton first")
+	}
+
+	cancelBtn := dialog.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Cancel"})
+	btnCount, err := cancelBtn.Count()
+	if err != nil || btnCount == 0 {
+		return fmt.Errorf("cancel button not found inside revoke dialog")
+	}
+
+	if err := cancelBtn.Click(); err != nil {
+		return fmt.Errorf("failed to click cancel button in revoke dialog: %w", err)
+	}
+	return nil
+}
+
+// IsRevokeButtonPresent checks whether the "Revoke All Access" button is visible on the page.
+// Returns false (not an error) when the button is absent, which is the expected state
+// when the user has no active grant for the agent (FR-009).
+func (cp *ConsentPage) IsRevokeButtonPresent(ctx context.Context) (bool, error) {
+	btn := cp.GetRevokeButton(ctx)
+
+	count, err := btn.Count()
+	if err != nil {
+		return false, fmt.Errorf("failed to count revoke button: %w", err)
+	}
+	if count == 0 {
+		return false, nil
+	}
+
+	visible, err := btn.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check revoke button visibility: %w", err)
+	}
+	return visible, nil
+}
+
+// revokeDialogHeading returns a locator for the dialog title heading.
+// This heading ("Revoke All Access") is only visible when the RevokeGrantDialog is open.
+// Headless UI v2 renders the Dialog in a portal and may hide it with display:none when
+// closed, making GetByRole("dialog").WaitFor() unreliable for detecting when the dialog opens.
+// Waiting for the heading provides a reliable, animation-safe check.
+func (cp *ConsentPage) revokeDialogHeading() playwright.Locator {
+	return cp.page().GetByRole("heading", playwright.PageGetByRoleOptions{
+		Name: revokeDialogTitle,
+	})
+}
+
+// WaitForRevokeDialog waits for the RevokeGrantDialog to appear on the page.
+// Should be called after ClickRevokeButton or ClickOverviewRevokeButton.
+// Uses the dialog title heading as a reliable indicator rather than GetByRole("dialog"),
+// which can have timing issues with Headless UI v2's portal-based rendering.
+func (cp *ConsentPage) WaitForRevokeDialog(ctx context.Context) error {
+	if err := cp.revokeDialogHeading().WaitFor(); err != nil {
+		return fmt.Errorf("revoke grant dialog did not appear: %w", err)
+	}
+	return nil
+}
+
+// IsRevokeDialogVisible reports whether the RevokeGrantDialog is currently visible.
+// Returns false (not an error) when the dialog has been dismissed.
+// Uses the dialog title heading as the visibility indicator.
+func (cp *ConsentPage) IsRevokeDialogVisible(ctx context.Context) (bool, error) {
+	count, err := cp.revokeDialogHeading().Count()
+	if err != nil {
+		return false, fmt.Errorf("failed to check revoke dialog visibility: %w", err)
+	}
+	return count > 0, nil
+}
+
+// RevokeDialogContainsText checks whether text is visible on the page that matches
+// what is expected to appear inside the RevokeGrantDialog.
+// Uses page-wide text search since the dialog renders in a Headless UI portal.
+// Must be called after WaitForRevokeDialog to ensure the dialog is open.
+func (cp *ConsentPage) RevokeDialogContainsText(ctx context.Context, text string) (bool, error) {
+	count, err := cp.page().GetByText(text).Count()
+	if err != nil {
+		return false, fmt.Errorf("failed to locate text %q on page: %w", text, err)
+	}
+	return count > 0, nil
+}
+
+// getOverviewRevokeButton returns the locator for the first "Revoke" button on an agent card
+// in the consent overview page. Shared by IsOverviewRevokeButtonPresent and ClickOverviewRevokeButton.
+//
+// Uses GetByLabel to match the DelegationCard button's aria-label="Revoke access for {displayName}".
+// This is more precise than GetByRole("button", {Name: "Revoke"}) which would also match the
+// Card wrapper div (which has role="button" and an accessible name that includes the inner button's
+// aria-label text via the ARIA accessible name computation algorithm).
+func (cp *ConsentPage) getOverviewRevokeButton() playwright.Locator {
+	return cp.page().GetByLabel("Revoke access for", playwright.PageGetByLabelOptions{Exact: playwright.Bool(false)}).First()
+}
+
+// IsOverviewRevokeButtonPresent reports whether at least one "Revoke" action button
+// is visible on an agent card in the consent overview page.
+// Waits for the button to appear (delegation list loads asynchronously after navigation).
+func (cp *ConsentPage) IsOverviewRevokeButtonPresent(ctx context.Context) (bool, error) {
+	btn := cp.getOverviewRevokeButton()
+	if err := btn.WaitFor(); err != nil {
+		// Timeout means button never appeared — that is a valid "not present" result.
+		return false, nil
+	}
+	return true, nil
+}
+
+// ClickOverviewRevokeButton clicks the first "Revoke" action button on an agent card
+// in the consent overview page, opening the RevokeGrantDialog.
+// Waits for the button to appear before clicking (delegation list loads asynchronously).
+func (cp *ConsentPage) ClickOverviewRevokeButton(ctx context.Context) error {
+	btn := cp.getOverviewRevokeButton()
+	if err := btn.WaitFor(); err != nil {
+		return fmt.Errorf("no Revoke button found on overview page agent cards: %w", err)
+	}
+	if err := btn.Click(); err != nil {
+		return fmt.Errorf("failed to click overview Revoke button: %w", err)
+	}
+	return nil
+}
+
+// WaitForRevokeDialogDismissed waits for the RevokeGrantDialog to fully close.
+// Should be called after CancelRevoke or ConfirmRevoke to ensure the dialog has
+// fully animated out before asserting on page state.
+func (cp *ConsentPage) WaitForRevokeDialogDismissed(ctx context.Context) error {
+	if err := cp.revokeDialogHeading().WaitFor(playwright.LocatorWaitForOptions{
+		State: playwright.WaitForSelectorStateHidden,
+	}); err != nil {
+		return fmt.Errorf("revoke grant dialog did not close: %w", err)
+	}
+	return nil
 }
 
 // WaitForServiceToAppear waits for a specific service to appear on the page.

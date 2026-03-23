@@ -187,3 +187,40 @@ func TestAWSKMSConfigurationEnvironmentVariables(t *testing.T) {
 		assert.Equal(t, "30m", cfg.Encryption.AWSKMS.BranchKeyTTL)
 	})
 }
+
+// setMinimalConfigEnv configures the minimum set of environment variables required to
+// pass config validation, matching the pattern used throughout this test file.
+// It uses t.Setenv so all variables are automatically restored after the test.
+func setMinimalConfigEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(32))
+	t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(32))
+	t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+	t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+}
+
+func TestTokenExchangeExpectedAudienceConfiguration(t *testing.T) {
+	t.Run("default expected_audience is token-exchange-broker when not configured", func(t *testing.T) {
+		setMinimalConfigEnv(t)
+		// No IDENTITY_BROKER_TOKEN_EXCHANGE_EXPECTED_AUDIENCE set
+
+		loader := NewLoader()
+		cfg, err := loader.GetConfig(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, "token-exchange-broker", cfg.TokenExchange.ExpectedAudience,
+			"expected_audience should default to token-exchange-broker via Viper SetDefault")
+	})
+
+	t.Run("expected_audience is overridden by environment variable", func(t *testing.T) {
+		setMinimalConfigEnv(t)
+		t.Setenv("IDENTITY_BROKER_TOKEN_EXCHANGE_EXPECTED_AUDIENCE", "my-custom-gateway-audience")
+
+		loader := NewLoader()
+		cfg, err := loader.GetConfig(context.Background())
+
+		require.NoError(t, err)
+		assert.Equal(t, "my-custom-gateway-audience", cfg.TokenExchange.ExpectedAudience,
+			"expected_audience should be overridden by IDENTITY_BROKER_TOKEN_EXCHANGE_EXPECTED_AUDIENCE env var")
+	})
+}

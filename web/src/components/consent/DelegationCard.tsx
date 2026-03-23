@@ -16,12 +16,15 @@ import type { AgentDelegation } from '../../types/consent';
 import { Card } from '@design-system/components/data-display/Card';
 import { Stack } from '@design-system/components/layout/Stack';
 import { Avatar } from '@design-system/components/primitives/Avatar';
+import { Button } from '@design-system/components/primitives/Button';
 
 interface DelegationCardProps {
   /** Agent delegation data */
   delegation: AgentDelegation;
   /** Callback when card is clicked */
   onClick: () => void;
+  /** Optional callback to revoke all access for this agent */
+  onRevoke?: (agentId: string) => void;
 }
 
 /**
@@ -29,7 +32,11 @@ interface DelegationCardProps {
  * Clicking the card navigates to the detailed grant management page.
  * Memoized for performance in large lists.
  */
-function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
+function DelegationCardComponent({
+  delegation,
+  onClick,
+  onRevoke,
+}: DelegationCardProps) {
   const { displayName, logoUrl, activeGrantCount, lastModifiedAt, expiresAt } =
     delegation;
 
@@ -100,25 +107,42 @@ function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
           <span className="text-xs text-neutral-500">
             Updated {lastModifiedText}
           </span>
-          {expirationText && (
-            <Stack direction="row" gap="xs" align="center">
-              <svg
-                className="w-4 h-4 text-neutral-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
+          <Stack direction="row" gap="sm" align="center">
+            {expirationText && (
+              <Stack direction="row" gap="xs" align="center">
+                <svg
+                  className="w-4 h-4 text-neutral-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="text-xs text-neutral-500">
+                  {expirationText}
+                </span>
+              </Stack>
+            )}
+            {onRevoke && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRevoke(delegation.agentId);
+                }}
+                aria-label={`Revoke access for ${displayName}`}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span className="text-xs text-neutral-500">{expirationText}</span>
-            </Stack>
-          )}
+                Revoke
+              </Button>
+            )}
+          </Stack>
         </Stack>
       </Stack>
     </Card>
@@ -132,7 +156,7 @@ function DelegationCardComponent({ delegation, onClick }: DelegationCardProps) {
 export const DelegationCard = memo(
   DelegationCardComponent,
   (prevProps, nextProps) => {
-    // Custom comparison: only re-render if delegation or onClick changed
+    // Custom comparison: only re-render if delegation, onClick, or onRevoke changed
     return (
       prevProps.delegation.agentId === nextProps.delegation.agentId &&
       prevProps.delegation.lastModifiedAt ===
@@ -140,7 +164,8 @@ export const DelegationCard = memo(
       prevProps.delegation.activeGrantCount ===
         nextProps.delegation.activeGrantCount &&
       prevProps.delegation.expiresAt === nextProps.delegation.expiresAt &&
-      prevProps.onClick === nextProps.onClick
+      prevProps.onClick === nextProps.onClick &&
+      prevProps.onRevoke === nextProps.onRevoke
     );
   },
 );

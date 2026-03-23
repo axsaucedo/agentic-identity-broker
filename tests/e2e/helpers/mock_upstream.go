@@ -74,6 +74,7 @@ func NewMockUpstreamOAuth2Server() *MockUpstreamOAuth2Server {
 	mux.HandleFunc("/oauth/authorize", m.handleAuthorize)
 	mux.HandleFunc("/oauth/token", m.handleToken)
 	mux.HandleFunc("/.well-known/openid-configuration", m.handleMetadata)
+	mux.HandleFunc("/.well-known/oauth-authorization-server", m.handleMetadata)
 	mux.HandleFunc("/.well-known/jwks.json", m.handleJWKS)
 
 	m.Server = httptest.NewServer(mux)

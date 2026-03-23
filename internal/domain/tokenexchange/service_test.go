@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -44,6 +45,7 @@ func newMockConsentService() *consent.Service {
 				UpdatedAt:  time.Now(),
 			},
 		},
+		slog.Default(),
 	)
 }
 
@@ -221,6 +223,10 @@ func (m *MockGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 	return nil, nil
 }
 
+func (m *MockGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
+	return m.err
+}
+
 type MockSessionRepository struct {
 	session *storagedomain.UserSession
 	err     error
@@ -311,8 +317,8 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 			agentRepository:      &MockAgentRepository{},
 			config: &ports.TokenExchangeConfig{
 				ClaimExtraction: ports.ClaimExtractionConfig{
-					PrincipalExpression:     "subject_token.sub",
-					AgentIDExpression: "subject_token.azp",
+					PrincipalExpression: "subject_token.sub",
+					AgentIDExpression:   "subject_token.azp",
 				},
 				Authorization: ports.AuthorizationConfig{
 					Type: "cel",
@@ -422,8 +428,8 @@ func TestExchange_InvalidRequest(t *testing.T) {
 	ctx := context.Background()
 	config := &ports.TokenExchangeConfig{
 		ClaimExtraction: ports.ClaimExtractionConfig{
-			PrincipalExpression:     "subject_token.sub",
-			AgentIDExpression: "subject_token.azp",
+			PrincipalExpression: "subject_token.sub",
+			AgentIDExpression:   "subject_token.azp",
 		},
 		Authorization: ports.AuthorizationConfig{
 			Type: "cel",
@@ -789,7 +795,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 
 	celEvaluator, err := NewCELEvaluator(CELEvaluatorConfig{
 		PrincipalExpression:     "subject_token.sub",
-		AgentIDExpression: "subject_token.azp",
+		AgentIDExpression:       "subject_token.azp",
 		AuthorizationExpression: "true",
 		EvaluationTimeout:       100 * time.Millisecond,
 	})
@@ -808,6 +814,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 		&MockAgentRepository{},
 		newTestProviderService(&MockServiceRepository{}),
 		&MockGrantRepository{err: ports.ErrNotFound},
+		slog.Default(),
 	)
 
 	svc, err := NewTokenExchangeServiceForTest(
@@ -819,8 +826,8 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 		agentRepo,
 		&ports.TokenExchangeConfig{
 			ClaimExtraction: ports.ClaimExtractionConfig{
-				PrincipalExpression:     "subject_token.sub",
-				AgentIDExpression: "subject_token.azp",
+				PrincipalExpression: "subject_token.sub",
+				AgentIDExpression:   "subject_token.azp",
 			},
 			Authorization: ports.AuthorizationConfig{
 				Type: "cel",

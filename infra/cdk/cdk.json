@@ -11,7 +11,6 @@
   },
   "context": {
     "@aws-cdk/core:aspectStabilization": true,
-    "env": "test",
-    "project": "agentic-identity-broker"
+    "env": "test"
   }
 }

@@ -464,6 +464,147 @@ func TestUserGrantRepository_ConcurrentAccess(t *testing.T) {
 	assert.Len(t, grants, 1, "upsert should result in one grant despite concurrent creates")
 }
 
+func TestUserGrantRepository_DeleteByPrincipalAndAgentID(t *testing.T) {
+	repo := NewUserGrantRepository()
+	ctx := context.Background()
+
+	// Create a grant for testPrincipal1 + testAgentID1
+	grant := &storage.UserGrant{
+		Principal: testPrincipal1,
+		AgentID:   testAgentID1,
+		DelegatedOAuth2Tokens: []storage.DelegatedToken{
+			{
+				ThirdpartyOAuth2ServiceID: testServiceGH,
+				Scopes:                    []string{"repo"},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, grant)
+	require.NoError(t, err)
+
+	// Delete it
+	err = repo.DeleteByPrincipalAndAgentID(ctx, testPrincipal1, testAgentID1)
+	require.NoError(t, err)
+
+	// Verify the grant is gone by ID
+	_, err = repo.Get(ctx, grant.ID)
+	require.Error(t, err)
+	storageErr, ok := err.(*storage.StorageError)
+	require.True(t, ok)
+	assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+
+	// Verify the principal+agent index is cleaned up
+	_, err = repo.FindByPrincipalAndAgent(ctx, testPrincipal1, testAgentID1)
+	require.Error(t, err)
+	storageErr, ok = err.(*storage.StorageError)
+	require.True(t, ok)
+	assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+}
+
+func TestUserGrantRepository_DeleteByPrincipalAndAgentID_NotFound(t *testing.T) {
+	repo := NewUserGrantRepository()
+	ctx := context.Background()
+
+	// Delete when no grant exists — must return NotFound (NOT idempotent, unlike DeleteByAgent)
+	err := repo.DeleteByPrincipalAndAgentID(ctx, testPrincipal1, testAgentID1)
+	require.Error(t, err)
+	storageErr, ok := err.(*storage.StorageError)
+	require.True(t, ok)
+	assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+}
+
+func TestUserGrantRepository_DeleteByPrincipalAndAgentID_CrossPrincipalIsolation(t *testing.T) {
+	repo := NewUserGrantRepository()
+	ctx := context.Background()
+
+	// Create grants for two different principals, same agent
+	grant1 := &storage.UserGrant{
+		Principal: testPrincipal1,
+		AgentID:   testAgentID1,
+		DelegatedOAuth2Tokens: []storage.DelegatedToken{
+			{ThirdpartyOAuth2ServiceID: testServiceGH, Scopes: []string{"repo"}},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	grant2 := &storage.UserGrant{
+		Principal: testPrincipal2,
+		AgentID:   testAgentID1,
+		DelegatedOAuth2Tokens: []storage.DelegatedToken{
+			{ThirdpartyOAuth2ServiceID: testServiceGH, Scopes: []string{"repo"}},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, grant1)
+	require.NoError(t, err)
+	err = repo.Create(ctx, grant2)
+	require.NoError(t, err)
+
+	// Delete only principal1's grant
+	err = repo.DeleteByPrincipalAndAgentID(ctx, testPrincipal1, testAgentID1)
+	require.NoError(t, err)
+
+	// principal1's grant is gone
+	_, err = repo.FindByPrincipalAndAgent(ctx, testPrincipal1, testAgentID1)
+	require.Error(t, err)
+	storageErr, ok := err.(*storage.StorageError)
+	require.True(t, ok)
+	assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+
+	// principal2's grant remains untouched (SR-001: cross-principal isolation)
+	found, err := repo.FindByPrincipalAndAgent(ctx, testPrincipal2, testAgentID1)
+	require.NoError(t, err)
+	assert.Equal(t, grant2.ID, found.ID)
+}
+
+func TestUserGrantRepository_DeleteByPrincipalAndAgentID_AgentIndexCleanup(t *testing.T) {
+	repo := NewUserGrantRepository()
+	ctx := context.Background()
+
+	// Create grant for agent1 and agent2 under same principal
+	grantA1 := &storage.UserGrant{
+		Principal: testPrincipal1,
+		AgentID:   testAgentID1,
+		DelegatedOAuth2Tokens: []storage.DelegatedToken{
+			{ThirdpartyOAuth2ServiceID: testServiceGH, Scopes: []string{"repo"}},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	grantA2 := &storage.UserGrant{
+		Principal: testPrincipal1,
+		AgentID:   testAgentID2,
+		DelegatedOAuth2Tokens: []storage.DelegatedToken{
+			{ThirdpartyOAuth2ServiceID: testServiceGoog, Scopes: []string{"openid"}},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, grantA1)
+	require.NoError(t, err)
+	err = repo.Create(ctx, grantA2)
+	require.NoError(t, err)
+
+	// Delete agent1's grant
+	err = repo.DeleteByPrincipalAndAgentID(ctx, testPrincipal1, testAgentID1)
+	require.NoError(t, err)
+
+	// Cascade delete by agent1 should now be a no-op (index cleaned up)
+	err = repo.DeleteByAgent(ctx, testAgentID1)
+	require.NoError(t, err)
+
+	// agent2's grant is still intact
+	found, err := repo.FindByPrincipalAndAgent(ctx, testPrincipal1, testAgentID2)
+	require.NoError(t, err)
+	assert.Equal(t, grantA2.ID, found.ID)
+}
+
 func TestUserGrantRepository_DeepCopy(t *testing.T) {
 	repo := NewUserGrantRepository()
 	ctx := context.Background()

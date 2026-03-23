@@ -1,54 +1,50 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.7.0 → 1.7.1
-Rationale: PATCH version bump - clarification of Principle VIII (Test-Driven Development & Automated Testing)
-  to refine what "starting red" means. This is a non-semantic refinement that removes ambiguity but does not
-  change the fundamental principle or add new requirements.
+Version Change: 1.7.1 → 1.8.1
+Rationale:
+  1.7.1 → 1.8.0 (MINOR): materially expanded guidance in two existing principles:
+    - Principle VII: new mandatory Helm chart update requirement for configuration changes
+    - Principle XIII: new mandatory frontend Playwright E2E requirement (tests/e2e/frontend/),
+      new mandatory screenshot capture requirement (tests/e2e/screenshots/), and refined
+      semantic failure definition (detailed expectations must be written AND must fail)
+  1.8.0 → 1.8.1 (PATCH): clarified red phase rules in Principles VIII and XIII:
+    - Pending/skipped tests (XIt, PIt, Skip(), etc.) are forbidden in red phase
+    - Tests MUST NOT contain comments marking them as "in the red phase" — tests turn green
+      naturally without being touched; red-phase annotations create unreliable cleanup debt
 
 Modified Principles:
-- Principle VIII: Test-Driven Development & Automated Testing - clarified "red phase" requirements
-  * Added explicit requirement that tests MUST compile before they can fail semantically
-  * Clarified that "starting red" means tests compile AND fail for the right reasons (semantic failure)
-  * Added guidance that implementing minimal structure (empty methods, structs) to make tests compile is acceptable
-  * Emphasized that tests should fail semantically (expectations/assertions work but functionality is missing)
-  * This prevents coding agents from writing non-compiling tests and claiming "red phase" success
-
-Added Principles: None
+- Principle VII: Configuration-Driven Design — added Helm chart update rule
+- Principle VIII: Test-Driven Development — added: pending/skipped tests forbidden in red phase;
+  red-phase comments forbidden in test files
+- Principle XIII: End-to-End Acceptance Testing & Spec Traceability — added frontend
+  Playwright E2E + screenshot rules; refined "failing semantically" to require detailed,
+  realistic expectations that actually fail (not placeholder assertions); added: pending/
+  skipped tests and red-phase comments forbidden in E2E test files
 
 Added Sections: None
 
 Removed Sections: None
 
 Templates Status:
-- ✅ tasks-template.md: NO CHANGES NEEDED
-  - Existing test verification tasks already cover this requirement
-  - Test task descriptions remain unchanged
+- ✅ plan-template.md: UPDATED
+  - Constitution Check: added Helm Chart, Frontend Playwright E2E, Frontend Screenshots checks
+  - Testing Strategy: added Frontend Playwright E2E subsection with screenshot guidance
+- ✅ tasks-template.md: UPDATED
+  - Phase 2b: added Helm chart update task (T005d)
+  - Phase 2f: added frontend Playwright sub-tasks (T010g-T010i)
+  - Phase N Compliance: added Helm chart and frontend E2E/screenshot verification tasks
 - ✅ spec-template.md: NO CHANGES NEEDED
-  - E2E testing guidance already aligned with clarified red phase requirements
-- ✅ plan-template.md: NO CHANGES NEEDED
-  - Testing Strategy section already covers test execution flow
-  - Constitution Check already references Principle VIII
+  - E2E testing guidance already aligned with updated principles
 
-Follow-up TODOs: None - This is a clarification only, no structural changes needed
+Follow-up TODOs: None
 
 Previous Version History:
-- 1.6.0 → 1.7.0: Added Principle XIII (End-to-End Acceptance Testing & Spec Traceability) + expanded Principle VIII (MINOR)
+- 1.7.0 → 1.7.1: Clarified red phase requirements in Principle VIII (PATCH)
+- 1.6.0 → 1.7.0: Added Principle XIII (E2E Acceptance Testing) + expanded Principle VIII (MINOR)
 - 1.5.1 → 1.6.0: Added Principle XII (Dependency Injection & Component Wiring) (MINOR)
 - 1.5.0 → 1.5.1: Clarified testing requirements in tasks-template.md (PATCH)
 - 1.4.0 → 1.5.0: Added Governance > Task List Requirements section (MINOR)
-
-Rationale for Principle VIII clarification (Red Phase Requirements):
-  TDD requires tests to fail before implementation, but "failing" means semantic failure, not compilation
-  errors. Coding agents have been observed writing tests that don't compile and interpreting this as
-  successful "red phase" - this is incorrect. The red phase requires: (1) tests compile successfully,
-  (2) all expectations and assertions compile and work correctly, (3) tests fail semantically because
-  the functionality under test doesn't exist yet. To achieve this, it's acceptable (and often necessary)
-  to implement minimal structure: extend structs, add empty method stubs, create interfaces that tests
-  depend on. This minimal scaffolding allows tests to compile while still failing semantically. The
-  test should fail because the method returns wrong/empty values or doesn't implement logic, NOT because
-  the method doesn't exist. This clarification ensures TDD is practiced correctly while avoiding
-  confusion about what "starting red" means.
 -->
 
 # Agentic Identity Broker Constitution
@@ -174,11 +170,20 @@ All runtime configuration MUST use the unified configuration system; ad-hoc conf
 - Configuration guide [examples/config/README.md](examples/config/README.md) MUST be referenced and updated as new features add configuration options
 - See [Flexible Configuration Feature Documentation](docs/configuration.md) for complete usage guidance
 - Implementation reference: [Feature 002 - Flexible Configuration](specs/002-flexible-configuration/)
+- **When configuration parameters are added, changed, or removed, the Helm chart in
+  `charts/agentic-identity-broker/` MUST be updated**:
+  - `values.yaml`: add new parameters with default values and `--` doc comments matching the existing style
+  - ConfigMap/Secret templates under `charts/agentic-identity-broker/templates/` MUST be updated to
+    pass the new config values to pods (environment variables or mounted config files)
+  - `charts/agentic-identity-broker/README.md` (if present): update configuration reference table
+    with new parameters, their types, defaults, and descriptions
 
 **Rationale**: Unified configuration prevents duplication, ensures consistent precedence rules across
 the system, reduces operational confusion, and simplifies deployment across development/staging/production
 environments. The 002-flexible-configuration feature established this system; all features MUST integrate
-with it rather than bypassing it.
+with it rather than bypassing it. Keeping the Helm chart in sync with configuration changes is essential
+for Kubernetes deployments: untracked config parameters cause silent runtime failures or require manual
+operator intervention to discover. The Helm chart is the deployment contract for production operators.
 
 ### VIII. Test-Driven Development & Automated Testing
 
@@ -197,6 +202,12 @@ Code quality and correctness MUST be ensured through Test-Driven Development (TD
     - Create interface definitions that tests depend on
     - Add minimal type definitions or stubs
   - The test should fail because the method returns wrong/empty values or doesn't implement logic, NOT because the method doesn't exist
+  - **Skipping or marking tests as pending is FORBIDDEN in the red phase**: `XIt`, `PIt`,
+    `XDescribe`, `PDescribe`, `XContext`, `PContext`, and `Skip()` calls MUST NOT appear in
+    test files submitted as "red phase" — all tests MUST run and fail
+  - **Tests MUST NOT contain comments marking them as "in the red phase"** (e.g., `// TODO: implement`,
+    `// red phase`, `// will pass after implementation`). Tests are written once, turn green naturally
+    as implementation progresses, and MUST NOT require cleanup of red-phase annotations later
 - **Skipping tests or checking for "not implemented" errors is NOT TDD**: tests must verify actual functionality, not error handling
 - Tests MUST drive design: implementation decisions emerge from test requirements, not vice versa
 - Tests MUST change as little as possible during implementation: major test changes indicate poorly derived tests
@@ -395,12 +406,31 @@ change minimally during implementation, and follow red-green development.
 **Rules**:
 - **Every acceptance scenario in `specs/[NNN-feature-name]/spec.md` MUST have a corresponding E2E test in `tests/e2e/`**
 - E2E tests MUST be written BEFORE implementation begins (acceptance-test-driven development)
-- **E2E tests MUST compile AND fail semantically initially (red phase)**, proving they test actual functionality not error handling:
+- **E2E tests MUST compile AND fail semantically initially (red phase)**:
   - E2E tests MUST compile successfully with no compilation errors
   - All test expectations and assertions MUST compile and work correctly
-  - E2E tests MUST fail semantically because the feature under test is missing or incomplete
-  - It is ACCEPTABLE to implement minimal structure to make E2E tests compile (empty handlers, stub routes, minimal types)
-  - The E2E test should fail because the endpoint returns wrong status/data or doesn't implement logic, NOT because the endpoint doesn't exist
+  - **"Failing semantically" requires detailed, realistic expectations—not placeholder assertions**:
+    - Assertions MUST target actual system output (HTTP status codes, response bodies, rendered UI
+      elements, page content) using concrete values (e.g.,
+      `Expect(resp.StatusCode).To(Equal(200))`,
+      `Expect(page.Locator(".consent-approve-btn")).To(BeVisible())`,
+      `Expect(body).To(ContainSubstring("repo"))`)
+    - Writing trivial always-fail placeholders (e.g., `Expect(true).To(BeFalse())`,
+      `Expect(nil).NotTo(BeNil())`) does NOT constitute semantic failure — the failure MUST
+      come from realistic assertions against the feature's actual expected behavior
+    - Every `It()` block MUST contain at least one assertion that directly verifies the
+      acceptance criterion described by that test scenario
+  - **Skipping or marking tests as pending is FORBIDDEN**: `XIt`, `PIt`, `XDescribe`, `PDescribe`,
+    `XContext`, `PContext`, and `Skip()` calls MUST NOT appear in E2E test files — all tests MUST
+    run and fail semantically
+  - **Tests MUST NOT contain comments marking them as "in the red phase"**: do not add annotations
+    like `// TODO: implement`, `// red phase`, or `// will pass after implementation`. Tests are
+    written once and turn green naturally without being touched again — red-phase comments create
+    cleanup debt and are never reliably removed
+  - E2E tests MUST fail semantically because the feature under test is missing or incomplete,
+    not because of compilation errors or vacuous assertions
+  - It is ACCEPTABLE to implement minimal structure to make E2E tests compile (empty handlers,
+    stub routes, minimal types)
 - E2E tests MUST change minimally during implementation: major changes indicate tests were derived from implementation, not specs
 - E2E tests turn GREEN when implementation satisfies acceptance criteria (green phase)
 - E2E tests MUST use Ginkgo/Gomega BDD framework following patterns in [tests/e2e/README.md](../../tests/e2e/README.md)
@@ -415,31 +445,46 @@ change minimally during implementation, and follow red-green development.
 - E2E tests MUST be independent and isolated: fresh server and storage for each test via BeforeEach/AfterEach
 - Common E2E test utilities (matchers, helpers, mock servers) MUST be in `tests/e2e/matchers/` and `tests/e2e/helpers/`
 - E2E tests MUST NOT depend on test execution order or shared state between tests
+- **Frontend UI changes MUST have Playwright E2E tests in `tests/e2e/frontend/`**: When any feature
+  includes changes to the React consent UI, Playwright E2E tests MUST be added or amended in
+  `tests/e2e/frontend/` using the existing Playwright harness and page objects in `tests/e2e/pages/`
+- **Frontend Playwright E2E tests MUST capture screenshots**: For each meaningful UI state exercised
+  by a frontend test, a screenshot MUST be saved to `tests/e2e/screenshots/` using descriptive
+  filenames that document the UI state (e.g., `consent_page_with_github_scopes.png`,
+  `revoke_dialog_open.png`). Screenshots serve as visual documentation and regression baselines
 - See [tests/e2e/README.md](../../tests/e2e/README.md) for comprehensive E2E testing patterns, examples, and anti-patterns
 
 **Rationale**: E2E tests validate complete system integration against user-facing acceptance criteria.
 Requiring 1:1 mapping between spec scenarios and E2E tests ensures complete coverage, enables traceability
 from requirements to validation, and establishes acceptance tests as the definition of "done". Writing E2E
 tests before implementation (red-green development) ensures tests are independent verification of requirements,
-not retrofitted validation. E2E tests must fail semantically (compile and run but functionality missing), not
-syntactically (don't compile). Implementing minimal structure (empty handlers, stub routes) to make E2E tests
-compile is acceptable and necessary. This follows Specification by Example principles: executable specifications
-that drive development and serve as living documentation. The tests/e2e/ infrastructure (Ginkgo/Gomega, fixtures,
-bootstrap layers) provides stable, maintainable E2E testing patterns. Minimal changes during implementation
-prove tests were correctly derived from specs, not implementation details. E2E tests complement unit tests:
-unit tests verify components in isolation (fast, focused), E2E tests verify complete workflows (slower,
-comprehensive). Together they provide defense in depth: unit tests catch logic errors early, E2E tests catch
-integration issues and ensure the system delivers user value.
+not retrofitted validation. E2E tests must fail semantically — meaning detailed, realistic expectations are
+written and those expectations fail because the feature is absent — not because of trivial always-fail
+assertions or compilation errors. This distinction prevents agents from writing placeholder tests that
+technically "fail" but provide no verification of actual behavior. Implementing minimal structure (empty
+handlers, stub routes) to make E2E tests compile is acceptable and necessary. Frontend Playwright tests in
+`tests/e2e/frontend/` extend this discipline to the React UI layer, using the existing harness and page
+objects so tests can be written consistently. Screenshots in `tests/e2e/screenshots/` provide visual
+documentation of UI states, making regressions immediately visible during review. Together, backend E2E
+(Ginkgo/Gomega) and frontend E2E (Playwright) provide defense in depth covering the full stack.
 
 **Example**: When implementing OAuth2 authorization endpoint:
 1. Read acceptance scenarios from `specs/009-oauth2-auth-server/spec.md` (User Story 1)
 2. Create `tests/e2e/oauth2_authorize_test.go` with one `It()` block per scenario
 3. Implement minimal structure so E2E tests compile (empty handler stubs, basic routes)
-4. Verify E2E tests compile AND fail semantically (no implementation logic exists yet)
+4. Verify E2E tests compile AND fail semantically: assertions like `Expect(resp.StatusCode).To(Equal(302))`
+   must be present and must fail (not placeholder `Expect(true).To(BeFalse())`)
 5. Implement authorization endpoint incrementally
 6. E2E tests turn GREEN as each scenario is satisfied
 7. Minimal test changes during implementation (fixture adjustments only, not test logic)
 8. Final E2E test file provides executable documentation of OAuth2 authorization behavior
+
+**Frontend Example**: When adding a new consent UI button:
+1. Add/amend test in `tests/e2e/frontend/consent_flow_test.go` using existing page objects
+2. Assert concrete element visibility: `Expect(consentPage.ApproveButton()).To(BeVisible())`
+3. Capture screenshot: `consentPage.Screenshot("consent_page_approve_button_visible.png")`
+4. Verify test fails before button is implemented (semantic red phase)
+5. Implement button, verify test turns green
 
 ## Development Requirements
 
@@ -451,12 +496,17 @@ integration issues and ensure the system delivers user value.
 - [ ] Domain concepts added to [ARCHITECTURE.md](ARCHITECTURE.md) Glossary section
 - [ ] Configuration requirements designed: example YAML snippets showing all new config options
 - [ ] Configuration examples committed to [examples/config/](examples/config/) for reference
+- [ ] **Helm chart updated if config parameters changed: `charts/agentic-identity-broker/values.yaml`,
+      templates, and README updated (Principle VII)**
 - [ ] APIs designed and documented in OpenAPI format (confirm with user/stakeholder per Principle X)
 - [ ] Database schema designed (migration files and SQL documented, or confirm no DB changes)
 - [ ] Frontend components designed: review [web/src/design-system/docs/INDEX.md](../web/src/design-system/docs/INDEX.md) and ensure design system can be used
 - [ ] Universal components identified: plan to add them to design system in `web/src/design-system/components/` (if applicable)
 - [ ] **E2E acceptance tests written in `tests/e2e/` for all spec scenarios (Principle XIII)**
-- [ ] **E2E tests compile successfully and fail semantically before implementation (red phase - Principle XIII)**
+- [ ] **E2E tests compile successfully and fail semantically before implementation (red phase — detailed
+      expectations written and failing, not placeholder assertions — Principle XIII)**
+- [ ] **[IF FRONTEND] Playwright E2E tests added/amended in `tests/e2e/frontend/` for all UI changes (Principle XIII)**
+- [ ] **[IF FRONTEND] Screenshots captured to `tests/e2e/screenshots/` for each UI state under test (Principle XIII)**
 
 **Implementation Phase**:
 
@@ -467,6 +517,7 @@ integration issues and ensure the system delivers user value.
 - [ ] APIs implemented exactly as documented in OpenAPI specification
 - [ ] End-user API documentation in [docs/api/](docs/api/) with examples (if applicable)
 - [ ] Configuration implementation uses unified system port, not custom loading
+- [ ] **Helm chart updated to reflect any new or changed configuration parameters (Principle VII)**
 - [ ] Domain logic uses ports (interfaces) and adapters are separated
 - [ ] No custom cryptography; security features use vetted libraries
 - [ ] Structured logging present for security-critical operations
@@ -490,6 +541,8 @@ integration issues and ensure the system delivers user value.
 - [ ] **E2E tests turn GREEN as implementation satisfies acceptance criteria (green phase - Principle XIII)**
 - [ ] **E2E tests changed minimally during implementation (Principle XIII)**
 - [ ] **All spec scenarios have passing E2E tests in `tests/e2e/` (Principle XIII)**
+- [ ] **[IF FRONTEND] Playwright E2E tests in `tests/e2e/frontend/` pass and screenshots saved to
+      `tests/e2e/screenshots/` (Principle XIII)**
 
 ### When Constraints Cannot Be Met
 
@@ -595,8 +648,14 @@ If Principle XIII (End-to-End Acceptance Testing & Spec Traceability) cannot be 
 - Reviewers MUST verify frontend components use design system and universal patterns are contributed (Principle XI)
 - Reviewers MUST verify WCAG 2.1 AA accessibility compliance for frontend components (Principle XI)
 - Reviewers MUST verify dependency injection uses Builder pattern and routing functions are thin (Principle XII)
-- Reviewers MUST verify TDD was followed: tests written first, compiled successfully, and failed semantically before implementation (Principle VIII)
+- Reviewers MUST verify TDD was followed: tests written first, compiled successfully, and failed semantically
+  before implementation — with detailed expectations, not placeholder assertions (Principle VIII)
 - Reviewers MUST verify E2E tests exist for all spec scenarios and changed minimally during implementation (Principle XIII)
+- Reviewers MUST verify E2E tests failed semantically in red phase: detailed expectations present and
+  failing, not trivial always-fail placeholders (Principle XIII)
+- Reviewers MUST verify Helm chart updated when configuration parameters changed (Principle VII)
+- Reviewers MUST verify frontend UI changes have Playwright E2E tests in `tests/e2e/frontend/` and
+  screenshots in `tests/e2e/screenshots/` (Principle XIII)
 - Template files in [.specify/templates/](.specify/templates/) provide execution workflows that enforce these principles
 
 ### Task List Requirements
@@ -606,10 +665,11 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
 **MANDATORY SECTIONS** (cannot be omitted):
 1. **Phase 2: Design Preconditions** - Constitution PRECONDITIONS implementation
    - Phase 2a: Domain Model & Glossary (Principles II, V)
-   - Phase 2b: Configuration Design (Principle VII)
+   - Phase 2b: Configuration Design (Principle VII) — includes Helm chart update task
    - Phase 2c: API Design (Principles IV, X)
    - Phase 2d: Database Design (Principle IX)
    - Phase 2e: Frontend/Design System Review (Principle XI, if applicable)
+   - Phase 2f: E2E Acceptance Test Design (Principle XIII) — includes frontend Playwright tasks if UI changes
 
 2. **Phase N: Constitution Compliance Verification** - Constitution Implementation Phase checklist
    - Design Phase Verification tasks
@@ -627,4 +687,4 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
 - The tasks-template.md uses 🔒 emoji and [MANDATORY] markers to clearly distinguish mandatory from customizable sections
 - Omitting mandatory sections violates this constitution and blocks feature completion
 
-**Version**: 1.7.1 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-01-09
+**Version**: 1.8.1 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-03-22

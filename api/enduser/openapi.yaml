@@ -692,6 +692,49 @@ paths:
           $ref: '#/components/responses/AgentNotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: revokeAgentGrant
+      summary: Revoke all agent permissions
+      description: |
+        Permanently deletes the authenticated user's grant for the specified agent.
+        After revocation, the agent can no longer perform token exchanges on behalf of
+        the user.
+
+        **Important**: This action only removes the delegation grant. Connected OAuth2
+        sessions (e.g., GitHub, Google) remain active and are NOT terminated by this
+        action. Users may manage OAuth2 sessions separately.
+
+        **Idempotency**: Non-idempotent — returns 404 if no grant exists. To silently
+        revoke if a grant exists, use `POST /api/consent/agent/{agent-id}/grants` with
+        an empty `delegated_oauth2_tokens` array (backward-compatible path).
+
+        **Security**: Only the grant owner may revoke. The principal is derived from the
+        `X-Remote-User` authentication header. Cross-user revocation is not possible —
+        grants are scoped to the authenticated principal.
+      tags:
+      - Consent Management
+      security:
+      - preAuth: []
+      parameters:
+      - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '204':
+          description: Grant revoked successfully. The agent no longer has any active permissions for the authenticated user.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No active grant exists for the authenticated user and specified agent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: not found
+                message: no active grant exists for this agent
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /api/third-party/sessions:
     get:
       operationId: listThirdPartySessions

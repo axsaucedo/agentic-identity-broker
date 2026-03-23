@@ -167,6 +167,13 @@ type UserGrantRepository interface {
 	// It is safe to call with non-existent agent (idempotent).
 	DeleteByAgent(ctx context.Context, agentID id.AgentID) error
 
+	// DeleteByPrincipalAndAgentID deletes the grant owned by principal for the given agent.
+	// Returns StorageError wrapping ports.ErrNotFound when no active grant exists for
+	// the (principal, agent_id) pair — never returns raw sql.ErrNoRows.
+	// This is the revocation operation for FR-014 (user-initiated grant deletion).
+	// Unlike DeleteByAgent, this is NOT idempotent: absence of the grant is an error.
+	DeleteByPrincipalAndAgentID(ctx context.Context, principal id.Principal, agentID id.AgentID) error
+
 	// ListByPrincipal retrieves all active grants for a principal across all agents.
 	// Filters expired grants (valid_until < NOW()).
 	// Returns empty slice if no active grants exist (not an error).

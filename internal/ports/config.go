@@ -386,6 +386,13 @@ func (e *oauth2ValidationError) Field() string {
 // This allows gateways to exchange tokens issued by the upstream OAuth2 server
 // for third-party OAuth2 tokens stored in the token vault.
 type TokenExchangeConfig struct {
+	// ExpectedAudience is the broker's own identifier that must appear in the audience (aud) claim
+	// of both subject_token and client_assertion JWTs submitted for token exchange.
+	// If empty, defaults to "token-exchange-broker".
+	// Configurable to support deployments where the broker is known under a different identifier.
+	// Environment variable: IDENTITY_BROKER_TOKEN_EXCHANGE_EXPECTED_AUDIENCE
+	ExpectedAudience string `mapstructure:"expected_audience"`
+
 	// ClaimExtraction defines how to extract user principal and agent identifier from subject_token JWT.
 	// Both are configurable via CEL expressions for flexibility in token structure mapping.
 	ClaimExtraction ClaimExtractionConfig `mapstructure:"claim_extraction"`

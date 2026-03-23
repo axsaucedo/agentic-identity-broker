@@ -1,0 +1,80 @@
+# API Contract: DELETE /api/consent/agent/{agent-id}/grants
+#
+# Endpoint: DELETE /api/consent/agent/{agent-id}/grants
+# Auth: X-Remote-User header (principal required)
+# Tag: Consent Management
+#
+# This fragment is to be merged into /api/enduser/openapi.yaml
+# under paths./api/consent/agent/{agent-id}/grants
+
+delete:
+  operationId: revokeAgentGrant
+  summary: Revoke all agent permissions
+  description: |
+    Permanently deletes the authenticated user's grant for the specified agent.
+    After revocation, the agent can no longer perform token exchanges on behalf of
+    the user.
+
+    **Important**: This action only removes the delegation grant. Connected OAuth2
+    sessions (e.g., GitHub, Google) remain active and are NOT terminated by this
+    action. Users may manage OAuth2 sessions separately.
+
+    **Idempotency**: Non-idempotent — returns 404 if no grant exists. To silently
+    revoke if a grant exists, use `POST /api/consent/agent/{agent-id}/grants` with
+    an empty `delegated_oauth2_tokens` array (backward-compatible path).
+
+    **Security**: Only the grant owner may revoke. The principal is derived from the
+    `X-Remote-User` authentication header. Cross-user revocation is not possible —
+    grants are scoped to the authenticated principal.
+  tags:
+    - Consent Management
+  security:
+    - preAuth: []
+  parameters:
+    - name: agent-id
+      in: path
+      required: true
+      description: UUID of the agent whose grant should be revoked
+      schema:
+        type: string
+        format: uuid
+      example: adebbf0a-3079-4b57-a123-000000000001
+  responses:
+    '204':
+      description: |
+        Grant revoked successfully. The agent no longer has any active permissions
+        for the authenticated user.
+    '400':
+      description: Invalid agent-id format (not a valid UUID)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: bad_request
+            message: "invalid agent ID format: must be a valid UUID"
+    '401':
+      description: No authenticated principal (missing X-Remote-User header)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: unauthorized
+            message: "authentication required"
+    '404':
+      description: |
+        No active grant exists for the authenticated user and specified agent.
+        This is returned when:
+        - The agent does not exist
+        - The agent exists but the user has no grant for it
+        - The grant was already revoked
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: not_found
+            message: "no active grant exists for this agent"
+    '500':
+      $ref: '#/components/responses/InternalError'

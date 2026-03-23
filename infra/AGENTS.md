@@ -12,7 +12,7 @@ AWS CDK (Go SDK) infrastructure-as-code for the encryption resources required by
 
 ```
 infra/cdk/
-  cdk.json           CDK app config (default env: "dev")
+  cdk.json           CDK app config (default env: "test")
   go.mod             Separate Go module (Go 1.25.6, aws-cdk-go/awscdk/v2)
   main.go            CDK app entrypoint — env parsing, validation, stack instantiation
   stack.go           EncryptionStack definition — all resources

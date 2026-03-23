@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -172,6 +173,12 @@ func (l *Loader) setDefaults() {
 	// Set security configuration defaults
 	l.v.SetDefault("security.skip_thirdparty_https_validation", false)
 
+	// Set token exchange configuration defaults
+	// expected_audience defaults to the well-known "token-exchange-broker" value.
+	// Operators can override it to match whatever audience their JWTs carry.
+	l.v.SetDefault("token_exchange.expected_audience", tokenexchange.DefaultBrokerAudience)
+	_ = l.v.BindEnv("token_exchange.expected_audience", "IDENTITY_BROKER_TOKEN_EXCHANGE_EXPECTED_AUDIENCE")
+
 	// Record defaults source
 	l.sources = append(l.sources, ports.ConfigSource{
 		Type:       ports.SourceTypeDefault,
@@ -186,6 +193,7 @@ func (l *Loader) setDefaults() {
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
 			"third_party_oauth2.state_token_ttl", "third_party_oauth2.pkce_verifier_length",
 			"security.skip_thirdparty_https_validation",
+			"token_exchange.expected_audience",
 		},
 	})
 }

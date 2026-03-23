@@ -30,6 +30,7 @@ type EnduserHandlers struct {
 	AgentDetail *consent.AgentDetailHandler
 	AgentGrants *consent.AgentGrantsHandler
 	Grants      *consent.GrantsHandler
+	RevokeGrant *consent.RevokeGrantHandler
 
 	// OAuth2 sessions handler for /api/third-party routes
 	OAuth2Sessions *oauth2_sessions.Handler
