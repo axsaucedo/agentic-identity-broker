@@ -31,7 +31,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
           cache: true
 
       # Set up Node.js (for web frontend)
@@ -39,6 +39,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      # Cache Go tool binaries, golangci-lint results, and Playwright browsers
+      - name: Cache dev tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/bin
+            ~/.cache/golangci-lint
+            ~/.cache/ms-playwright
+          key: tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+          restore-keys: tools-${{ runner.os }}-
 
       # Install just command runner
       - name: Install just
