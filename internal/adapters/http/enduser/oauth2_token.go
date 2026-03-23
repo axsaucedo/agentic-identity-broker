@@ -246,12 +246,7 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 				slog.String("error", err.Error()),
 			)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":             "invalid_request",
-			"error_description": "token request body is not valid form-encoded data",
-		})
+		h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "token request body is not valid form-encoded data")
 		return
 	}
 
@@ -261,12 +256,7 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 		if h.Logger != nil {
 			h.Logger.Error("MissingClientIDInTokenRequest")
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":             "invalid_client",
-			"error_description": "client_id is required",
-		})
+		h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "client_id is required")
 		return
 	}
 
@@ -280,12 +270,7 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 				"error", parseErr,
 			)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":             "invalid_client",
-			"error_description": "client_id is not a valid agent UUID",
-		})
+		h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "client_id is not a valid agent UUID")
 		return
 	}
 
@@ -346,12 +331,7 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 			}
 			w.Header().Del("Content-Length")
 			w.Header().Del("Transfer-Encoding")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error":             "server_error",
-				"error_description": "failed to read upstream response",
-			})
+			h.writeOAuth2Error(w, http.StatusInternalServerError, "server_error", "failed to read upstream response")
 			return
 		}
 
@@ -377,12 +357,7 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 			// causing HTTP/1.1 connection hangs (blocking architect fix).
 			w.Header().Del("Content-Length")
 			w.Header().Del("Transfer-Encoding")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error":             "server_error",
-				"error_description": "agent ID claim verification failed",
-			})
+			h.writeOAuth2Error(w, http.StatusInternalServerError, "server_error", "agent ID claim verification failed")
 			return
 		}
 
@@ -406,23 +381,31 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// isHopByHopHeader returns true if the header is a hop-by-hop header per RFC 7230
+// writeOAuth2Error writes an RFC 6749/8693-style JSON error response.
+func (h *OAuth2TokenHandler) writeOAuth2Error(w http.ResponseWriter, status int, code, description string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             code,
+		"error_description": description,
+	})
+}
+
+// hopByHopHeaders is the set of hop-by-hop headers per RFC 7230 that must not be forwarded.
+var hopByHopHeaders = map[string]bool{
+	"connection":          true,
+	"keep-alive":          true,
+	"proxy-authenticate":  true,
+	"proxy-authorization": true,
+	"te":                  true,
+	"trailers":            true,
+	"transfer-encoding":   true,
+	"upgrade":             true,
+}
+
+// isHopByHopHeader returns true if the header is a hop-by-hop header per RFC 7230.
 func isHopByHopHeader(headerName string) bool {
-	// Normalize to lowercase for comparison
-	header := strings.ToLower(headerName)
-
-	hopByHopHeaders := map[string]bool{
-		"connection":          true,
-		"keep-alive":          true,
-		"proxy-authenticate":  true,
-		"proxy-authorization": true,
-		"te":                  true,
-		"trailers":            true,
-		"transfer-encoding":   true,
-		"upgrade":             true,
-	}
-
-	return hopByHopHeaders[header]
+	return hopByHopHeaders[strings.ToLower(headerName)]
 }
 
 // NewOAuth2TokenHandler creates a new token handler

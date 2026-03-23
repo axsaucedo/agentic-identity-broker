@@ -599,6 +599,7 @@ func (m *tokenExchangeSuccessMatcher) Match(actual interface{}) (success bool, e
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
 	if err != nil {
 		m.error = fmt.Sprintf("failed to read response body: %v", err)
 		return false, nil

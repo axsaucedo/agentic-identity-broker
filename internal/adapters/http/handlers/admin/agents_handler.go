@@ -118,21 +118,9 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	// T036: When feature is disabled, enforce client_id uniqueness at the application layer.
 	// (Storage adapters no longer enforce this, per Feature 021 requirement to allow sharing.)
 	if !h.multiAgentEnabled {
-		clientID := id.ClientID(req.ClientID)
-		_, lookupErr := h.repo.GetByClientID(ctx, clientID)
-		if lookupErr == nil {
-			// An agent with this client_id already exists — reject.
-			h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
+		if !h.checkClientIDUniqueness(ctx, w, id.ClientID(req.ClientID), nil) {
 			return
 		}
-		var storageErr *storage.StorageError
-		if !errors.As(lookupErr, &storageErr) || storageErr.Kind != storage.ErrorKindNotFound {
-			// Unexpected error while checking uniqueness — surface as 500.
-			h.logger.Error("failed to check agent client_id uniqueness", "error", lookupErr, "client_id", clientID)
-			h.writeError(w, http.StatusInternalServerError, "internal error", "failed to check agent uniqueness")
-			return
-		}
-		// NotFound: safe to proceed with creation.
 	}
 
 	// Create agent entity
@@ -250,23 +238,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	// T037: When feature is disabled, enforce client_id uniqueness at the application layer,
 	// excluding the current agent (self-update must be allowed).
 	if !h.multiAgentEnabled {
-		newClientID := id.ClientID(req.ClientID)
-		other, lookupErr := h.repo.GetByClientID(ctx, newClientID)
-		if lookupErr == nil {
-			// Another agent with this client_id exists; allow self-update.
-			if other.ID != parsedAgentID {
-				h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
-				return
-			}
-		} else {
-			var storageErr *storage.StorageError
-			if !errors.As(lookupErr, &storageErr) || storageErr.Kind != storage.ErrorKindNotFound {
-				// Unexpected error while checking uniqueness — surface as 500.
-				h.logger.Error("failed to check agent client_id uniqueness", "error", lookupErr, "client_id", newClientID)
-				h.writeError(w, http.StatusInternalServerError, "internal error", "failed to check agent uniqueness")
-				return
-			}
-			// NotFound: safe to proceed with update.
+		if !h.checkClientIDUniqueness(ctx, w, id.ClientID(req.ClientID), &parsedAgentID) {
+			return
 		}
 	}
 
@@ -457,6 +430,27 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 	}
 
 	return result, nil
+}
+
+// checkClientIDUniqueness returns true when it is safe to proceed (client_id is not taken
+// by another agent). When excludeID is non-nil, that agent is exempt from the conflict check
+// (used for self-update). Writes an HTTP error and returns false otherwise.
+func (h *AgentsHandler) checkClientIDUniqueness(ctx context.Context, w http.ResponseWriter, clientID id.ClientID, excludeID *id.AgentID) bool {
+	other, lookupErr := h.repo.GetByClientID(ctx, clientID)
+	if lookupErr == nil {
+		if excludeID != nil && other.ID == *excludeID {
+			return true // self-update: same agent, safe to proceed
+		}
+		h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
+		return false
+	}
+	var storageErr *storage.StorageError
+	if !errors.As(lookupErr, &storageErr) || storageErr.Kind != storage.ErrorKindNotFound {
+		h.logger.Error("failed to check agent client_id uniqueness", "error", lookupErr, "client_id", clientID)
+		h.writeError(w, http.StatusInternalServerError, "internal error", "failed to check agent uniqueness")
+		return false
+	}
+	return true // NotFound: safe to proceed
 }
 
 // handleStorageError converts storage errors to HTTP responses.
