@@ -427,8 +427,6 @@ broker:
     upstreamAuthorizeEndpoint: ""
     # -- Upstream token endpoint
     upstreamTokenEndpoint: ""
-    # -- Public base URL of the broker
-    publicBaseUrl: ""
     # -- Supported OAuth2 response types
     supportedResponseTypes:
       - code

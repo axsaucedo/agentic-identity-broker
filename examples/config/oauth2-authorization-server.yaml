@@ -10,8 +10,9 @@ oauth2_authorization_server:
   upstream_authorize_endpoint: "https://auth.example.com/authorize"  # Upstream authorization endpoint
   upstream_token_endpoint: "https://auth.example.com/token"          # Upstream token endpoint
 
-  # Broker's public configuration
-  public_base_url: "https://broker.example.com"  # Broker's public base URL used in OAuth2 metadata (/.well-known/oauth-authorization-server)
+  # Note: The broker's public URL (used as the OAuth2 issuer in
+  # /.well-known/oauth-authorization-server metadata) is configured via
+  # server.enduser.public_url — not in this section.
 
   # Supported OAuth2 grant types
   supported_response_types:

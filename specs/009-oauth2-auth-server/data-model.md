@@ -154,7 +154,7 @@ type GrantRepository interface {
 
 **Lifecycle**: Generated dynamically from configuration, cached in memory for performance
 
-**Configuration Source**: Built from `oauth2_authorization_server.public_base_url` config parameter
+**Configuration Source**: Built from `server.enduser.public_url` config parameter
 
 ---
 
