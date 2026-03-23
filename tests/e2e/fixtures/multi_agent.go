@@ -57,7 +57,7 @@ func MultiAgentBeta() *storage.Agent {
 // NOTE: This fixture references ports.MultiAgentClientConfig which is added in Phase 2.5 (T015/T016).
 // Tests using this fixture will not compile until Phase 2.5 is complete.
 func MultiAgentEnabledConfig(upstreamURL string) *ports.Config {
-	config := OAuth2ConfigWithUpstream(upstreamURL)
+	config := OAuth2ConfigWithTokenExchange(upstreamURL)
 	config.OAuth2AuthServer.MultiAgentClient = ports.MultiAgentClientConfig{
 		Enabled:          true,
 		AgentIDParamName: "x_agent_id",
@@ -81,7 +81,7 @@ func MultiAgentEnabledConfig(upstreamURL string) *ports.Config {
 // NOTE: This fixture references ports.MultiAgentClientConfig which is added in Phase 2.5 (T015/T016).
 // Tests using this fixture will not compile until Phase 2.5 is complete.
 func MultiAgentDisabledConfig(upstreamURL string) *ports.Config {
-	config := OAuth2ConfigWithUpstream(upstreamURL)
+	config := OAuth2ConfigWithTokenExchange(upstreamURL)
 	config.OAuth2AuthServer.MultiAgentClient = ports.MultiAgentClientConfig{
 		Enabled: false,
 	}

@@ -1131,7 +1131,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			// The existing enduserServer (set up in BeforeEach) uses "subject_token.azp"
 			// directly (the UUID). Here we create a dedicated server that maps
 			// upstream client_id → agent UUID via the CEL helper.
-			resolveConfig := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
+			resolveConfig := fixtures.OAuth2ConfigWithTokenExchange(mockUpstream.URL())
 			resolveConfig.OAuth2AuthServer.MultiAgentClient = ports.MultiAgentClientConfig{Enabled: false}
 			// agent_id_expression: resolveAgentIdByClientId maps azp (upstream client_id) → agent.id UUID
 			resolveConfig.TokenExchange.ClaimExtraction.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
@@ -1229,7 +1229,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		// When: a token exchange is attempted,
 		// Then: it fails (unknown agent).
 		It("[US7-S2] should fail when azp does not match any agent upstream client_id", Label("US7"), func() {
-			resolveConfig := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
+			resolveConfig := fixtures.OAuth2ConfigWithTokenExchange(mockUpstream.URL())
 			resolveConfig.OAuth2AuthServer.MultiAgentClient = ports.MultiAgentClientConfig{Enabled: false}
 			resolveConfig.TokenExchange.ClaimExtraction.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
 
@@ -1296,7 +1296,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 		It("[US7-S3] should fail to compile agent_id_expression using resolveAgentIdByClientId when feature is enabled", Label("US7"), func() {
 			// When multi_agent_client is enabled, resolveAgentIdByClientId is NOT registered.
 			// An expression using it will fail at startup (unknown function).
-			badConfig := fixtures.OAuth2ConfigWithUpstream(mockUpstream.URL())
+			badConfig := fixtures.OAuth2ConfigWithTokenExchange(mockUpstream.URL())
 			badConfig.OAuth2AuthServer.MultiAgentClient = ports.MultiAgentClientConfig{
 				Enabled:          true,
 				AgentIDParamName: "x_agent_id",
