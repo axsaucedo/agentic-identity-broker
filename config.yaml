@@ -59,9 +59,6 @@ oauth2_authorization_server:
   upstream_authorize_endpoint: http://127.0.0.1:9001/oauth/authorize
   upstream_token_endpoint: http://127.0.0.1:9001/oauth/token
 
-  # Public URL of the identity broker (used in metadata endpoint)
-  public_base_url: http://localhost:8000
-
   # Supported OAuth2 response types
   supported_response_types:
     - code

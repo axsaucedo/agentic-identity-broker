@@ -151,7 +151,7 @@ OAuth2 clients and libraries need to discover the identity broker's OAuth2 endpo
 - **upstream_issuer_uri**: String, the issuer URI of the upstream OAuth2 authorization server (e.g., "https://oauth2.example.com"), required, no default
 - **upstream_authorize_endpoint**: String, the full URL of the upstream OAuth2 authorization endpoint (e.g., "https://oauth2.example.com/oauth2/authorize"), required, no default
 - **upstream_token_endpoint**: String, the full URL of the upstream OAuth2 token endpoint (e.g., "https://oauth2.example.com/oauth2/token"), required, no default
-- **public_base_url**: String, the public base URL of the identity broker used for OAuth2 metadata and redirects (e.g., "https://identity-broker.example.com"), required, no default
+- **server.enduser.public_url**: String (configured under `server.enduser`), the public base URL of the identity broker used for OAuth2 metadata (issuer) and redirects (e.g., "https://identity-broker.example.com"), required, no default
 - **supported_response_types**: Array of strings, OAuth2 response types supported by the broker (e.g., ["code"]), optional, default: ["code"]
 - **supported_grant_types**: Array of strings, OAuth2 grant types supported by the broker (e.g., ["authorization_code", "refresh_token"]), optional, default: ["authorization_code", "refresh_token"]
 - **upstream_timeout_seconds**: Integer, timeout in seconds for HTTP requests to the upstream OAuth2 server, optional, default: 30
@@ -168,8 +168,8 @@ oauth2_authorization_server:
   upstream_authorize_endpoint: "https://oauth2.example.com/oauth2/authorize"
   upstream_token_endpoint: "https://oauth2.example.com/oauth2/token"
 
-  # Identity broker public URL (for metadata and redirects)
-  public_base_url: "https://identity-broker.example.com"
+  # Note: the broker's public URL (issuer for RFC 8414 metadata) is configured
+  # under server.enduser.public_url, not in this section.
 
   # Supported OAuth2 flows (optional, defaults shown)
   supported_response_types:
@@ -289,7 +289,7 @@ oauth2_authorization_server:
 - The identity broker's agent client credentials (client_id, client_secret) are already registered with the upstream OAuth2 server
 - User authentication is handled by upstream proxy (oauth2-proxy, nginx, etc.) which sets a principal header (configurable, default X-Remote-User) that is extracted by RequirePrincipalMiddleware
 - The consent UI (feature 007) correctly preserves and passes back the full redirect_uri parameter containing the original OAuth2 authorization request
-- The public_base_url configuration accurately reflects how external clients access the identity broker
+- The `server.enduser.public_url` configuration accurately reflects how external clients access the identity broker
 - Network connectivity between the identity broker and upstream OAuth2 server is reliable with reasonable latency
 - OAuth2 clients are configured with the identity broker's OAuth2 endpoints (not the upstream server directly)
 - The upstream OAuth2 server validates redirect_uri and other security-critical parameters
