@@ -101,7 +101,6 @@ data:
       upstream_issuer_uri: {{ .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
       upstream_authorize_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamAuthorizeEndpoint }}
       upstream_token_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamTokenEndpoint }}
-      public_base_url: {{ .Values.broker.oauth2AuthorizationServer.publicBaseUrl }}
       supported_response_types:
         {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedResponseTypes | nindent 8 }}
       supported_grant_types:
