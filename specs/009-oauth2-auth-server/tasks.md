@@ -19,7 +19,7 @@
 
 **Purpose**: Configuration schema and examples
 
-- [X] T001 Add OAuth2AuthServerConfig to internal/config/schema.go with upstream_issuer_uri, upstream_authorize_endpoint, upstream_token_endpoint, public_base_url, supported_response_types, supported_grant_types, upstream_timeout_seconds, mode fields
+- [X] T001 Add OAuth2AuthServerConfig to internal/config/schema.go with upstream_issuer_uri, upstream_authorize_endpoint, upstream_token_endpoint, supported_response_types, supported_grant_types, upstream_timeout_seconds, mode fields (public URL is sourced from server.enduser.public_url)
 - [X] T002 [P] Implement Validate() method for OAuth2AuthServerConfig in internal/config/schema.go validating required fields and HTTPS URLs
 - [X] T003 [P] Unit test for OAuth2AuthServerConfig.Validate() in internal/config/schema_test.go with table-driven tests covering valid config, missing required fields, non-HTTPS URLs, and default value assignment
 - [X] T004 [P] Create examples/config/oauth2-authorization-server.yaml with complete configuration example
@@ -115,7 +115,7 @@
 
 > **CRITICAL**: Write these tests FIRST, ensure they FAIL before implementation
 
-- [X] T035 [P] [US3] Unit test for GenerateMetadata in internal/domain/oauth2/service_test.go verifying RFC 8414 compliance: issuer matches public_base_url, authorization_endpoint correct path, token_endpoint correct path, response_types_supported includes "code", grant_types_supported includes configured types
+- [X] T035 [P] [US3] Unit test for GenerateMetadata in internal/domain/oauth2/service_test.go verifying RFC 8414 compliance: issuer matches server.enduser.public_url, authorization_endpoint correct path, token_endpoint correct path, response_types_supported includes "code", grant_types_supported includes configured types
 - [X] T036 [P] [US3] Unit test for OAuth2MetadataHandler.ServeHTTP in internal/adapters/http/enduser/oauth2_metadata_test.go with mocked OAuth2Service covering: successful metadata generation, service error handling, JSON encoding, Content-Type header
 - [X] T037 [P] [US3] Integration test for metadata endpoint in tests/integration/oauth2_metadata_test.go verifying: HTTP 200 response, valid JSON, RFC 8414 schema compliance, correct endpoint URLs
 

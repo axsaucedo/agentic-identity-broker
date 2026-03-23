@@ -29,7 +29,6 @@ type OAuth2AuthServerConfig struct {
     UpstreamIssuerURI         string   `mapstructure:"upstream_issuer_uri"`
     UpstreamAuthorizeEndpoint string   `mapstructure:"upstream_authorize_endpoint"`
     UpstreamTokenEndpoint     string   `mapstructure:"upstream_token_endpoint"`
-    PublicBaseURL             string   `mapstructure:"public_base_url"`
     SupportedResponseTypes    []string `mapstructure:"supported_response_types"`
     SupportedGrantTypes       []string `mapstructure:"supported_grant_types"`
     UpstreamTimeoutSeconds    int      `mapstructure:"upstream_timeout_seconds"`
@@ -45,9 +44,6 @@ func (c *OAuth2AuthServerConfig) Validate() error {
     }
     if c.UpstreamTokenEndpoint == "" {
         return errors.New("upstream_token_endpoint is required")
-    }
-    if c.PublicBaseURL == "" {
-        return errors.New("public_base_url is required")
     }
 
     // Validate HTTPS
@@ -80,8 +76,8 @@ oauth2_authorization_server:
   upstream_authorize_endpoint: "https://upstream-oauth2.example.com/oauth2/authorize"
   upstream_token_endpoint: "https://upstream-oauth2.example.com/oauth2/token"
 
-  # Identity broker public URL (for metadata and redirects)
-  public_base_url: "https://identity-broker.example.com"
+  # Identity broker public URL (for metadata and redirects) is configured
+  # under server.enduser.public_url, not in this section.
 
   # Supported OAuth2 flows (optional, defaults shown)
   supported_response_types:

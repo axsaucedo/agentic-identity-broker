@@ -203,10 +203,10 @@ token_exchange:
 
 OAuth2 Authorization Server proxy configuration. Demonstrates:
 - Upstream OAuth2 server URLs (authorization, token endpoints)
-- Broker's public base URL for metadata discovery
 - Supported OAuth2 grant types and response types
 - Upstream request timeout configuration
 - TLS certificate validation (enforced by default)
+- **Note**: The broker's public URL used for RFC 8414 metadata/issuer is configured via `server.enduser.public_url` (not inside the `oauth2_authorization_server` block)
 
 **Usage:**
 ```bash
@@ -218,7 +218,11 @@ OAuth2 Authorization Server proxy configuration. Demonstrates:
 #   upstream_issuer_uri: "https://auth.example.com"
 #   upstream_authorize_endpoint: "https://auth.example.com/authorize"
 #   upstream_token_endpoint: "https://auth.example.com/token"
-#   public_base_url: "https://broker.example.com"
+#
+# The broker's public URL (used as the OAuth2 issuer) is set separately:
+# server:
+#   enduser:
+#     public_url: "https://identity-broker.example.com"
 ```
 
 **Key Features:**
