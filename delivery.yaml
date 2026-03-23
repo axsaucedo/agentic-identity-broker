@@ -13,15 +13,15 @@ pipeline:
       paths:
         # pkg cache for Go modules and Go build cache
         - /go/pkg/mod
-        - $HOME/.cache/go-build
+        - ~/.cache/go-build
         # compiled Go tool binaries (golangci-lint, ginkgo, go-junit-report, air)
         - /go/bin
         # golangci-lint incremental result cache
-        - $HOME/.cache/golangci-lint
+        - ~/.cache/golangci-lint
         # npm package cache (speeds up npm ci)
-        - $HOME/.npm
+        - ~/.npm
         # Playwright browser binaries (~500MB — dominant install cost)
-        - $HOME/.cache/ms-playwright
+        - ~/.cache/ms-playwright
     commands:
       - desc: "Install pre-requisites"
         cmd: |
