@@ -202,15 +202,10 @@ vet:
 # Install development tools (air, golangci-lint, go-junit-report)
 install-tools:
     @echo "Installing development tools..."
-    @echo "Installing air for hot reload..."
-    go install github.com/air-verse/air@v1.63.6
-    @echo "Installing golangci-lint..."
-    go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
-    @echo "Installing go-junit-report for CI/CD test reporting..."
-    go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-    @echo "Installing ginkgo for E2E testing..."
-    go install github.com/onsi/ginkgo/v2/ginkgo@v2.28.1
-    @echo "Installing Playwright Go binary..."
+    @command -v air          > /dev/null || go install github.com/air-verse/air@v1.63.6
+    @command -v golangci-lint > /dev/null || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
+    @command -v go-junit-report > /dev/null || go install github.com/jstemmer/go-junit-report/v2@v2.1.0
+    @command -v ginkgo       > /dev/null || go install github.com/onsi/ginkgo/v2/ginkgo@v2.28.1
     go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps
     @echo "Tools installation complete"
 
