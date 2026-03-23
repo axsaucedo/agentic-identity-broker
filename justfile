@@ -205,11 +205,7 @@ install-tools:
     @echo "Installing air for hot reload..."
     go install github.com/air-verse/air@v1.63.6
     @echo "Installing golangci-lint..."
-    @if ! command -v golangci-lint > /dev/null; then \
-        bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.8.0; \
-    else \
-        echo "golangci-lint is already installed"; \
-    fi
+    go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
     @echo "Installing go-junit-report for CI/CD test reporting..."
     go install github.com/jstemmer/go-junit-report/v2@v2.1.0
     @echo "Installing ginkgo for E2E testing..."

@@ -15,7 +15,7 @@ pipeline:
         - /go/pkg/mod
         - $HOME/.cache/go-build
         # compiled Go tool binaries (golangci-lint, ginkgo, go-junit-report, air)
-        - $GOPATH/bin
+        - /go/bin
         # golangci-lint incremental result cache
         - $HOME/.cache/golangci-lint
         # npm package cache (speeds up npm ci)
@@ -52,7 +52,7 @@ pipeline:
         - /go/pkg/mod
         - $HOME/.cache/go-build
         # compiled Go tool binaries (golangci-lint, ginkgo, go-junit-report, air)
-        - $GOPATH/bin
+        - /go/bin
         # golangci-lint incremental result cache
         - $HOME/.cache/golangci-lint
         # npm package cache (speeds up npm ci)
