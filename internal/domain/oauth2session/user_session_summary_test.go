@@ -67,3 +67,25 @@ func TestUserSessionSummary_WithExpiredAccessToken(t *testing.T) {
 	assert.True(t, summary.AccessTokenExpired)
 	assert.False(t, summary.IsExpired) // Session not expired if refresh token valid
 }
+
+func TestUserSessionSummary_HasRefreshToken(t *testing.T) {
+	t.Run("has_refresh_token is true when EncryptedRefreshToken is set", func(t *testing.T) {
+		session := &storage.UserSession{
+			ID:                    id.NewSessionID(),
+			ServiceID:             id.NewServiceID(),
+			EncryptedRefreshToken: []byte("encrypted-refresh-token"),
+		}
+		summary := storage.NewUserSessionSummary(session, "GitHub", 0)
+		assert.True(t, summary.HasRefreshToken)
+	})
+
+	t.Run("has_refresh_token is false when EncryptedRefreshToken is empty", func(t *testing.T) {
+		session := &storage.UserSession{
+			ID:                    id.NewSessionID(),
+			ServiceID:             id.NewServiceID(),
+			EncryptedRefreshToken: nil,
+		}
+		summary := storage.NewUserSessionSummary(session, "GitHub", 0)
+		assert.False(t, summary.HasRefreshToken)
+	})
+}

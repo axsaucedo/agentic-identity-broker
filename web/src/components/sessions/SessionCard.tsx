@@ -74,9 +74,9 @@ export const SessionCard: React.FC<SessionCardProps> = ({
     return { status: 'Active', variant: 'success' as const };
   }, [session]);
 
-  // Format initiation date
+  // Format initiation date using the user's browser locale
   const initiatedDate = useMemo(() => {
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat(undefined, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -84,6 +84,18 @@ export const SessionCard: React.FC<SessionCardProps> = ({
       minute: '2-digit',
     }).format(new Date(session.initiated_at));
   }, [session.initiated_at]);
+
+  // Format refresh token expiry date using the user's browser locale (if present)
+  const refreshTokenExpiryDate = useMemo(() => {
+    if (!session.refresh_token_expires_at) return null;
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(session.refresh_token_expires_at));
+  }, [session.refresh_token_expires_at]);
 
   return (
     <Card padding="default" border="subtle" hover="lift">
@@ -188,6 +200,31 @@ export const SessionCard: React.FC<SessionCardProps> = ({
           }
           label={`Established: ${initiatedDate}`}
         />
+
+        {/* Refresh token expiry */}
+        {session.has_refresh_token && (
+          <StatusIndicator
+            icon={
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="w-4 h-4"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            }
+            label={
+              refreshTokenExpiryDate
+                ? `Session might expire after ${refreshTokenExpiryDate}`
+                : 'Session does not expire'
+            }
+          />
+        )}
 
         {/* OAuth2 Scopes */}
         {session.scope && session.scope.length > 0 && (

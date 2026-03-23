@@ -37,6 +37,9 @@ export interface SessionSummary {
   /** Whether the access token specifically is expired */
   access_token_expired: boolean;
 
+  /** Whether a refresh token is stored for this session */
+  has_refresh_token: boolean;
+
   /** ISO 8601 timestamp when refresh token expires (if applicable) */
   refresh_token_expires_at?: string;
 
