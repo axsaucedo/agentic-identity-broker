@@ -42,6 +42,9 @@ pipeline:
 
   - id: release
     type: script
+    when:
+      - event: push
+        branch: main
     vm_config:
       type: linux
       image: cdp-runtime/go-1.25
