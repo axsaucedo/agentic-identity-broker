@@ -724,6 +724,75 @@ For compliance and troubleshooting, check the JSON audit log (first output on st
 }
 ```
 
+## Observability / OpenTelemetry
+
+The Identity Broker supports configurable OpenTelemetry (OTel) tracing, metrics, and logging export via OTLP (gRPC or HTTP). When disabled (default), the OTel SDK is never initialized and there is zero overhead.
+
+### Quickstart
+
+See `examples/config/telemetry.yaml` for a complete production-ready example. The minimal configuration to enable tracing:
+
+```yaml
+telemetry:
+  enabled: true
+  service_name: agentic-identity-broker
+  exporter:
+    protocol: grpc
+    endpoint: otel-collector:4317
+    insecure: true   # only for non-production environments
+```
+
+### OTel Configuration Reference
+
+| Parameter | Type | Default | Environment Variable | Description |
+|---|---|---|---|---|
+| `telemetry.enabled` | bool | `false` | `IDENTITY_BROKER_TELEMETRY_ENABLED` | Master switch. When false, no OTel SDK is initialized and overhead is zero. |
+| `telemetry.service_name` | string | `"agentic-identity-broker"` | `IDENTITY_BROKER_TELEMETRY_SERVICE_NAME` | Value for the `service.name` OTel resource attribute. Appears on all spans, metrics, and logs. |
+| `telemetry.resource_attributes` | map[string]string | `{}` | N/A (config file only) | Additional OTel resource attributes added to every telemetry signal (e.g., `deployment.environment: production`). |
+| `telemetry.traces.enabled` | bool | `true` (when telemetry.enabled) | `IDENTITY_BROKER_TELEMETRY_TRACES_ENABLED` | Enable trace export. Disabling traces suppresses otelchi HTTP spans and storage child spans. |
+| `telemetry.traces.sampling_rate` | float64 | `1.0` | `IDENTITY_BROKER_TELEMETRY_TRACES_SAMPLING_RATE` | Fractional sampling rate for traces (0.0–1.0). `1.0` = 100% sampled. Uses `ParentBased(TraceIDRatioBased(rate))`. |
+| `telemetry.traces.propagators` | []string | `["tracecontext","baggage"]` | N/A (config file only) | W3C propagators to register globally. Supported values: `tracecontext`, `baggage`. |
+| `telemetry.metrics.enabled` | bool | `true` (when telemetry.enabled) | `IDENTITY_BROKER_TELEMETRY_METRICS_ENABLED` | Enable metrics export. When enabled, process runtime metrics (goroutines, memory, GC) and HTTP request metrics (via otelchi) are exported automatically. |
+| `telemetry.metrics.export_interval` | duration | `30s` | `IDENTITY_BROKER_TELEMETRY_METRICS_EXPORT_INTERVAL` | How often metrics are pushed to the collector. Must be positive. Example: `30s`, `1m`. |
+| `telemetry.exporter.protocol` | string | `"grpc"` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_PROTOCOL` | OTLP transport protocol. Accepted values: `grpc`, `http`. |
+| `telemetry.exporter.endpoint` | string | `""` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT` | OTLP collector endpoint. **Required when `telemetry.enabled=true`**. Format: `host:port` for gRPC or `https://host:port` for HTTP. |
+| `telemetry.exporter.headers` | map[string]string | `{}` | N/A (config file only) | Additional HTTP/gRPC headers sent with every export request (e.g., authentication tokens). Use `${ENV_VAR}` substitution to avoid committing secrets. |
+| `telemetry.exporter.timeout` | duration | `10s` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_TIMEOUT` | Per-export request timeout. Must be positive. Example: `5s`, `30s`. |
+| `telemetry.exporter.insecure` | bool | `false` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE` | Disable TLS for the OTLP exporter. **Do not use in production** — a startup warning is emitted when this is true. |
+
+### Environment Variable Mapping
+
+All OTel settings can be overridden via environment variables using the `IDENTITY_BROKER_TELEMETRY_` prefix, following the same Viper binding rules as other settings. For example:
+
+```bash
+IDENTITY_BROKER_TELEMETRY_ENABLED=true
+IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT=otel-collector:4317
+IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE=true
+IDENTITY_BROKER_TELEMETRY_SERVICE_NAME=my-broker-instance
+```
+
+### What is Instrumented
+
+When tracing is enabled, the following operations emit child spans:
+
+| Span Name | Operation | Key Attributes |
+|---|---|---|
+| HTTP span (per route) | All inbound HTTP requests (via otelchi) | `http.method`, `http.route`, `http.status_code` |
+| `storage.get.agent` | PostgreSQL `AgentRepository.Get` | `db.system=postgresql`, `db.operation=GetAgent` |
+| `storage.list.userGrants` | PostgreSQL `UserGrantRepository.ListByPrincipal` | `db.system=postgresql` |
+| `storage.upsert.userGrant` | PostgreSQL `UserGrantRepository.Create` (upsert) | `db.system=postgresql` |
+| `storage.get.thirdPartyService` | PostgreSQL `ThirdpartyServiceRepository.Get` | `db.system=postgresql` |
+| `encryption.encrypt` | AWS KMS envelope encryption | `encryption.key_type=aws_kms` |
+| `encryption.decrypt` | AWS KMS envelope decryption | `encryption.key_type=aws_kms` |
+| `jwks.fetch` | JWKS key set fetch/cache lookup | `url.full` |
+| `oauth2.token_exchange` | Upstream OAuth2 token proxy | `http.method=POST`, `http.status_code` |
+
+### Security Notes
+
+- `telemetry.exporter.insecure` defaults to `false` (TLS required by default). A startup WARN is emitted if set to true.
+- Span attributes never contain tokens, encryption keys, PII, credentials, or request body content.
+- `telemetry.exporter.headers` values (e.g., API keys) should reference environment variables via `${VAR_NAME}` syntax to avoid committing secrets to configuration files.
+
 ## Getting Help
 
 - Review error messages carefully - they include fix instructions

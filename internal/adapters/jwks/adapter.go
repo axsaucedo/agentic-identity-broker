@@ -11,6 +11,8 @@ import (
 
 	"github.com/lestrrat-go/httprc/v3"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // Adapter implements the JWKSPort interface for fetching and caching JWKS from an upstream server.
@@ -118,6 +120,10 @@ func NewJWKSAdapter(
 //
 // Thread-safe: Safe for concurrent calls (synchronized by jwk.Cache internally).
 func (a *Adapter) GetKeySet(ctx context.Context) (jwk.Set, error) {
+	ctx, span := otel.Tracer("jwks").Start(ctx, "jwks.fetch")
+	defer span.End()
+	span.SetAttributes(attribute.String("url.full", a.jwksURI))
+
 	// Check if resource is ready. If not, force a refresh to populate the cache.
 	// This handles the case where Register was called with WithWaitReady(false).
 	if !a.cache.Ready(ctx, a.jwksURI) {

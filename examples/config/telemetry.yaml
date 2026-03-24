@@ -1,0 +1,28 @@
+# OpenTelemetry observability configuration
+# Default: disabled. Enable for distributed tracing, metrics, and log correlation.
+telemetry:
+  enabled: true
+  service_name: agentic-identity-broker
+  resource_attributes:
+    deployment.environment: production
+    service.version: "1.0.0"
+    cloud.region: eu-west-1
+
+  traces:
+    enabled: true
+    sampling_rate: 0.1  # 10% in production; use 1.0 for development
+    propagators:
+      - tracecontext
+      - baggage
+
+  metrics:
+    enabled: true
+    export_interval: 30s
+
+  exporter:
+    protocol: grpc  # grpc (default) or http
+    endpoint: otel-collector.monitoring.svc:4317  # host:port for gRPC
+    headers:
+      Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
+    timeout: 10s
+    insecure: false  # TLS enabled by default; never disable in production

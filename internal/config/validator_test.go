@@ -360,6 +360,168 @@ func TestValidate_WithJWTConfig(t *testing.T) {
 	}
 }
 
+func TestValidateTelemetryConfig(t *testing.T) {
+	// valid base config used as the starting point for each test case;
+	// only the field under test is changed so that exactly one rule fires at a time.
+	validEnabled := func() ports.TelemetryConfig {
+		cfg := ports.DefaultTelemetryConfig()
+		cfg.Enabled = true
+		cfg.Exporter.Endpoint = "otel-collector:4317"
+		cfg.Exporter.Protocol = "grpc"
+		cfg.Exporter.Timeout = 10 * time.Second
+		cfg.Traces.SamplingRate = 1.0
+		cfg.Metrics.Enabled = true
+		cfg.Metrics.ExportInterval = 30 * time.Second
+		return cfg
+	}
+
+	tests := []struct {
+		name      string
+		cfg       ports.TelemetryConfig
+		wantErr   bool
+		wantField string
+	}{
+		{
+			// Rule 1: skip validation when disabled — even an empty endpoint must not error
+			name: "skip-when-disabled",
+			cfg: func() ports.TelemetryConfig {
+				cfg := ports.DefaultTelemetryConfig()
+				cfg.Enabled = false
+				cfg.Exporter.Endpoint = ""
+				return cfg
+			}(),
+			wantErr: false,
+		},
+		{
+			// Rule 2: endpoint is required when enabled
+			name: "endpoint required when enabled",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Exporter.Endpoint = ""
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.exporter.endpoint",
+		},
+		{
+			// Rule 3: endpoint must be a valid format (no percent-encoded garbage)
+			name: "endpoint invalid format",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Exporter.Endpoint = "not-valid-%%url"
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.exporter.endpoint",
+		},
+		{
+			// Rule 4: protocol must be grpc or http
+			name: "protocol invalid",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Exporter.Protocol = "jaeger"
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.exporter.protocol",
+		},
+		{
+			// Rule 5: sampling rate must be 0.0-1.0
+			name: "sampling rate out of range high",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Traces.SamplingRate = 1.5
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.traces.sampling_rate",
+		},
+		{
+			// Rule 6: export interval must be positive when metrics enabled
+			name: "export interval zero when metrics enabled",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Metrics.Enabled = true
+				cfg.Metrics.ExportInterval = 0
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.metrics.export_interval",
+		},
+		{
+			// Rule 7: exporter timeout must be positive
+			name: "exporter timeout zero",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Exporter.Timeout = 0
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.exporter.timeout",
+		},
+		{
+			// Rule 8: service_name must be non-empty
+			name: "empty service_name",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.ServiceName = ""
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.service_name",
+		},
+		{
+			// Rule 8 (whitespace variant): whitespace-only service_name treated as empty
+			name: "whitespace-only service_name",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.ServiceName = "   "
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.service_name",
+		},
+		{
+			// Happy path: fully valid enabled config
+			name:    "valid enabled config",
+			cfg:     validEnabled(),
+			wantErr: false,
+		},
+		{
+			// Happy path: http protocol with a proper URL endpoint
+			name: "valid http protocol with URL endpoint",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Exporter.Protocol = "http"
+				cfg.Exporter.Endpoint = "http://otel-collector:4318"
+				return cfg
+			}(),
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateTelemetryConfig(&tt.cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateTelemetryConfig() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if err != nil && tt.wantField != "" {
+				configErr, ok := err.(*config.ConfigError)
+				if !ok {
+					t.Errorf("validateTelemetryConfig() error type = %T, want *config.ConfigError", err)
+					return
+				}
+				if configErr.Field != tt.wantField {
+					t.Errorf("validateTelemetryConfig() error field = %q, want %q", configErr.Field, tt.wantField)
+				}
+			}
+		})
+	}
+}
+
 func TestValidateThirdPartyOAuth2Config(t *testing.T) {
 	tests := []struct {
 		name    string

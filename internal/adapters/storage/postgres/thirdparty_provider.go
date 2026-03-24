@@ -7,6 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -84,6 +88,13 @@ func (r *PostgresThirdpartyOAuth2ProviderRepository) Create(ctx context.Context,
 // Get retrieves a provider entity by ID from PostgreSQL.
 // Returns entity with Secret in encrypted state.
 func (r *PostgresThirdpartyOAuth2ProviderRepository) Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	ctx, span := otel.Tracer("storage").Start(ctx, "storage.get.thirdPartyService")
+	defer span.End()
+	span.SetAttributes(
+		semconv.DBSystemKey.String("postgresql"),
+		attribute.String("db.operation", "GetThirdPartyService"),
+	)
+
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError("GetThirdpartyOAuth2Provider", storage.ErrorKindConnection, nil, "database not initialized")
 	}
