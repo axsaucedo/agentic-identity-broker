@@ -39,6 +39,10 @@ func DefaultConfig() *extprocconfig.Config {
 			Level:  "debug",
 			Format: "text",
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -67,6 +71,10 @@ func InvalidConfig() *extprocconfig.Config {
 		Cache: extprocconfig.CacheConfig{
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
+		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
 		},
 	}
 }

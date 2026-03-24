@@ -112,6 +112,10 @@ func TestTokenExchanger_TLS_InsecureSkipVerify_ConnectsToSelfSignedServer(t *tes
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 
 	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
@@ -156,6 +160,10 @@ func TestTokenExchanger_TLS_NoInsecureSkipVerify_SelfSignedFails(t *testing.T) {
 		Cache: extprocconfig.CacheConfig{
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
+		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
 		},
 	}
 
@@ -221,6 +229,10 @@ func TestTokenExchanger_TLS_CaBundlePath_AllowsCustomCA(t *testing.T) {
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 
 	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
@@ -266,6 +278,10 @@ func TestTokenExchanger_TLS_CaBundlePath_WrongCA_Fails(t *testing.T) {
 		Cache: extprocconfig.CacheConfig{
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
+		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
 		},
 	}
 

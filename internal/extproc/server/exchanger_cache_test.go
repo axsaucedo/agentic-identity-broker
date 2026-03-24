@@ -518,6 +518,10 @@ func TestTokenExchanger_AssertionRefresh_BackgroundRefresh_KeepsAssertionFresh(t
 			DefaultTTL: 2 * time.Second,
 			MaxTTL:     1 * time.Hour,
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 
 	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
@@ -610,6 +614,10 @@ func TestTokenExchanger_Concurrent_ExchangeAndShutdown_RaceFree(t *testing.T) {
 		Cache: extprocconfig.CacheConfig{
 			DefaultTTL: 50 * time.Millisecond,
 			MaxTTL:     1 * time.Hour,
+		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
 		},
 	}
 

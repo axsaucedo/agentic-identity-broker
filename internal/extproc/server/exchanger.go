@@ -24,6 +24,8 @@ import (
 	"golang.org/x/oauth2/clientcredentials"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/sony/gobreaker/v2"
+
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
 )
 
@@ -67,8 +69,8 @@ type assertionState struct {
 }
 
 // TokenExchanger implements the Exchanger interface.
-// It manages a token cache, singleflight group, and HTTP client for
-// outbound calls to the identity broker and the upstream OAuth2 server.
+// It manages a token cache, singleflight group, circuit breaker, and HTTP
+// client for outbound calls to the identity broker and the upstream OAuth2 server.
 type TokenExchanger struct {
 	cfg    *extprocconfig.Config
 	client *http.Client
@@ -85,6 +87,10 @@ type TokenExchanger struct {
 
 	// sfGroup deduplicates concurrent cache refresh calls for the same key.
 	sfGroup singleflight.Group
+
+	// cb protects outbound token exchange calls with a circuit breaker
+	// to prevent thundering herd when the identity broker recovers.
+	cb *gobreaker.CircuitBreaker[string]
 
 	// stopCh signals the background goroutine to stop.
 	stopCh chan struct{}
@@ -108,6 +114,7 @@ func NewTokenExchanger(cfg *extprocconfig.Config, logger *slog.Logger) (*TokenEx
 		client: httpClient,
 		logger: logger,
 		cache:  make(map[tokenCacheKey]*cachedToken),
+		cb:     newGobreakerCB(cfg, logger),
 		stopCh: make(chan struct{}),
 	}
 
@@ -146,18 +153,32 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 		}
 		te.cacheMu.RUnlock()
 
-		token, ttl, err := te.doExchange(subjectToken, resourceURI)
+		// Circuit breaker: wrap doExchange in gobreaker.Execute so that
+		// gobreaker tracks successes/failures and opens/closes automatically.
+		// gobreaker returns ErrOpenState when the circuit is open, or
+		// ErrTooManyRequests when the half-open probe slot is taken.
+		// Both are mapped to ErrCircuitOpen for callers.
+		token, err := te.cb.Execute(func() (string, error) {
+			tok, ttl, err := te.doExchange(subjectToken, resourceURI)
+			if err != nil {
+				return "", err
+			}
+
+			te.cacheMu.Lock()
+			te.cache[key] = &cachedToken{
+				accessToken: tok,
+				expiresAt:   time.Now().Add(ttl),
+			}
+			te.cacheMu.Unlock()
+
+			return tok, nil
+		})
 		if err != nil {
+			if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
+				return "", ErrCircuitOpen
+			}
 			return "", err
 		}
-
-		te.cacheMu.Lock()
-		te.cache[key] = &cachedToken{
-			accessToken: token,
-			expiresAt:   time.Now().Add(ttl),
-		}
-		te.cacheMu.Unlock()
-
 		return token, nil
 	})
 	if err != nil {

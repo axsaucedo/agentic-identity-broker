@@ -24,6 +24,11 @@ import (
 //  8. token_endpoint and issuer must use https:// unless oauth2.tls.allow_http is true
 //  9. cache.max_ttl must be a positive duration
 //  10. oauth2.exchange_timeout must be a positive duration
+//  11. log.level must be one of debug, info, warn, error
+//  12. log.format must be one of text, json
+//  13. oauth2.client_assertion_type must be one of id_token, access_token
+//  14. circuit_breaker.max_failures must be >= 1
+//  15. circuit_breaker.reset_timeout must be a positive duration
 func Validate(cfg *Config) error {
 	var errs []string
 
@@ -104,6 +109,16 @@ func Validate(cfg *Config) error {
 		// valid
 	default:
 		errs = append(errs, fmt.Sprintf("oauth2.client_assertion_type must be one of id_token, access_token; got %q", cfg.OAuth2.ClientAssertionType))
+	}
+
+	// Rule 14: circuit_breaker.max_failures must be positive
+	if cfg.CircuitBreaker.MaxFailures < 1 {
+		errs = append(errs, fmt.Sprintf("circuit_breaker.max_failures must be >= 1, got %d", cfg.CircuitBreaker.MaxFailures))
+	}
+
+	// Rule 15: circuit_breaker.reset_timeout must be positive
+	if cfg.CircuitBreaker.ResetTimeout <= 0 {
+		errs = append(errs, "circuit_breaker.reset_timeout must be a positive duration")
 	}
 
 	if len(errs) > 0 {
