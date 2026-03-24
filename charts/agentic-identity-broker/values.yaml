@@ -444,5 +444,58 @@ broker:
     # -- Skip HTTPS validation for third-party services (dev/test only!)
     skipThirdpartyHttpsValidation: false
 
+  # OpenTelemetry observability configuration
+  telemetry:
+    # -- Enable OpenTelemetry distributed tracing and metrics export
+    enabled: false
+    # -- Service name reported in every telemetry signal
+    serviceName: agentic-identity-broker
+    # -- Additional OTel resource attributes attached to every signal
+    # @default -- `{}`
+    resourceAttributes: {}
+      # deployment.environment: production
+      # service.version: "1.0.0"
+      # cloud.region: eu-west-1
+
+    # Distributed tracing configuration
+    traces:
+      # -- Enable trace export via OTLP
+      enabled: true
+      # -- Fractional sampling rate (0.0–1.0). `1.0` = 100% sampled.
+      # 1.0 is the default (useful for development and low-traffic services).
+      # In production, reduce to e.g. `0.1` (10 %) to limit overhead and cost.
+      samplingRate: 1.0
+      # -- W3C trace-context propagators to register globally
+      propagators:
+        - tracecontext
+        - baggage
+
+    # Metrics collection and export configuration
+    metrics:
+      # -- Enable metrics export via OTLP
+      enabled: true
+      # -- How often metrics are pushed to the collector. Must be positive. Example: `30s`, `1m`.
+      exportInterval: 30s
+
+    # OTLP exporter connection parameters
+    exporter:
+      # -- Transport protocol: `grpc` (default) or `http`
+      protocol: grpc
+      # -- OTLP collector endpoint.
+      # gRPC: `host:port` (e.g. `otel-collector.monitoring.svc:4317`)
+      # HTTP: full URL (e.g. `http://otel-collector.monitoring.svc:4318`)
+      # Can also be set via env var `IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT`.
+      endpoint: ""
+      # -- Additional HTTP/gRPC headers sent with every export request.
+      # Useful for authentication tokens. Reference secrets via `${ENV_VAR}` notation.
+      # @default -- `{}`
+      headers: {}
+        # Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
+      # -- Export request timeout (e.g. `10s`, `30s`)
+      timeout: 10s
+      # -- Disable TLS for the OTLP connection (insecure mode).
+      # MUST NOT be set to `true` in production.
+      insecure: false
+
   # -- Additional broker configuration (merged into config.yaml)
   extraConfig: {}

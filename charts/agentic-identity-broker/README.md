@@ -11,6 +11,7 @@ Official Helm chart for deploying the Agentic Identity Broker on Kubernetes.
 - 📊 **Production-ready** with Pod Security Standards, resource limits, and health checks
 - 📦 **Static manifests** generation via `helm template`
 - ⚙️ **Highly configurable** with comprehensive values.yaml
+- 🔭 **OpenTelemetry** support for distributed tracing and metrics via OTLP
 
 ## Prerequisites
 
@@ -134,6 +135,19 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `broker.encryption.awsKms.keyArn` | AWS KMS key ARN | `""` |
 | `broker.encryption.awsKms.dynamodbTableName` | DynamoDB table for branch keys | `IdentityBrokerEncryptionBranchKeys` |
 | `broker.encryption.awsKms.branchKeyTtl` | Branch key TTL | `1h` |
+| `broker.telemetry.enabled` | Enable OpenTelemetry tracing and metrics | `false` |
+| `broker.telemetry.serviceName` | Service name reported in every telemetry signal | `agentic-identity-broker` |
+| `broker.telemetry.resourceAttributes` | Additional OTel resource attributes (map) | `{}` |
+| `broker.telemetry.traces.enabled` | Enable trace export via OTLP | `true` |
+| `broker.telemetry.traces.samplingRate` | Fractional sampling rate (0.0–1.0) | `1.0` |
+| `broker.telemetry.traces.propagators` | W3C propagators to register globally | `[tracecontext, baggage]` |
+| `broker.telemetry.metrics.enabled` | Enable metrics export via OTLP | `true` |
+| `broker.telemetry.metrics.exportInterval` | Metrics push interval | `30s` |
+| `broker.telemetry.exporter.protocol` | OTLP transport protocol (`grpc` or `http`) | `grpc` |
+| `broker.telemetry.exporter.endpoint` | OTLP collector endpoint (host:port for gRPC, URL for HTTP) | `""` |
+| `broker.telemetry.exporter.headers` | Additional headers sent with every export request (map) | `{}` |
+| `broker.telemetry.exporter.timeout` | Export request timeout | `10s` |
+| `broker.telemetry.exporter.insecure` | Disable TLS for the OTLP connection (never use in production) | `false` |
 
 ### Custom Values File
 
@@ -421,6 +435,48 @@ podDisruptionBudget:
   enabled: true
   minAvailable: 2
 ```
+
+### OpenTelemetry with gRPC Exporter
+
+Enable distributed tracing and metrics using a gRPC OTLP collector (e.g. OpenTelemetry Collector, Grafana Alloy):
+
+```yaml
+broker:
+  telemetry:
+    enabled: true
+    serviceName: agentic-identity-broker
+    resourceAttributes:
+      deployment.environment: production
+      cloud.region: eu-west-1
+    traces:
+      enabled: true
+      samplingRate: 0.1  # 10% in production
+    metrics:
+      enabled: true
+      exportInterval: 30s
+    exporter:
+      protocol: grpc
+      endpoint: otel-collector.monitoring.svc:4317
+      insecure: false  # TLS enabled (production default)
+```
+
+### OpenTelemetry with HTTP Exporter and Authentication
+
+For OTLP/HTTP collectors that require an authorization header (e.g. Grafana Cloud):
+
+```yaml
+broker:
+  telemetry:
+    enabled: true
+    exporter:
+      protocol: http
+      endpoint: https://otlp-gateway.grafana.net
+      headers:
+        Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
+      timeout: 30s
+```
+
+> **Tip**: Store the authentication token in a Kubernetes Secret and inject it into the pod environment so that `${OTEL_EXPORTER_AUTH_TOKEN}` is resolved at runtime by the broker's configuration loader, which expands `${VAR}` references from the process environment. The env var `IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT` can also be used to override the endpoint without modifying the ConfigMap (useful in multi-environment Helm releases).
 
 ## License
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/riandyrn/otelchi"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
@@ -28,6 +29,10 @@ type EnduserRouteConfig struct {
 
 	// CORS configuration for API routes
 	CORS ports.CORSConfig
+
+	// Telemetry contains observability configuration. When Telemetry.Enabled and
+	// Telemetry.Traces.Enabled are both true, otelchi HTTP tracing middleware is registered.
+	Telemetry ports.TelemetryConfig
 }
 
 // SetupEnduserRoutes registers all end-user API routes and optional SPA serving.
@@ -59,6 +64,14 @@ type EnduserRouteConfig struct {
 //	SPA Serving (optional):
 //	GET    /*                                         - Serve static SPA files
 func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteConfig) {
+	// Register OTel HTTP tracing middleware when enabled (ADR-011, T031)
+	if cfg.Telemetry.Enabled && cfg.Telemetry.Traces.Enabled {
+		r.Use(otelchi.Middleware("enduser",
+			otelchi.WithChiRoutes(r),
+			otelchi.WithRequestMethodInSpanName(true),
+		))
+	}
+
 	// Register API routes with CORS middleware
 	r.Route("/api", func(r chi.Router) {
 		// Apply CORS middleware (no-op if AllowedOrigins empty)

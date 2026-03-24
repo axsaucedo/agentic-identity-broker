@@ -10,6 +10,12 @@ import (
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
+	otelslog "go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
@@ -20,6 +26,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwks"
 	jwtauthadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
@@ -56,6 +63,11 @@ type App struct {
 
 	// Logger
 	Logger *slog.Logger
+
+	// ShutdownTelemetry must be called on graceful shutdown to flush and close
+	// all OTel providers. It is always non-nil — when telemetry is disabled it
+	// is a no-op.
+	ShutdownTelemetry func(context.Context) error
 }
 
 // Builder is a chainable builder for constructing App instances.
@@ -73,6 +85,7 @@ type Builder struct {
 	storage                *storage.Adapter
 	logger                 *slog.Logger
 	staticWebResourcesPath string
+	tracerProvider         *sdktrace.TracerProvider // Optional: custom TracerProvider for testing
 }
 
 // NewBuilder creates a new application builder.
@@ -105,6 +118,14 @@ func (b *Builder) WithStaticWebResourcesPath(path string) *Builder {
 	return b
 }
 
+// WithTracerProvider sets a custom TracerProvider for testing.
+// When set, this provider is registered as the global provider instead of
+// the one created by NewProvider(). Mirrors the WithEncryption precedent.
+func (b *Builder) WithTracerProvider(tp *sdktrace.TracerProvider) *Builder {
+	b.tracerProvider = tp
+	return b
+}
+
 // Build constructs the App with all wired dependencies.
 // Returns error if required dependencies are missing or initialization fails.
 //
@@ -129,6 +150,45 @@ func (b *Builder) Build() (*App, error) {
 		Config:  b.config,
 		Storage: b.storage,
 		Logger:  b.logger,
+	}
+
+	// T029: Initialize telemetry provider
+	// Per ADR-011: OTel provider wired at app layer, no port interface needed.
+	// When b.tracerProvider is set (test override), register it globally and wrap
+	// it in a shutdown function. Otherwise, initialize the full OTel provider from config.
+	if b.tracerProvider != nil {
+		// Test override: register the provided TracerProvider globally
+		otel.SetTracerProvider(b.tracerProvider)
+		// Set default propagators for test environment
+		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		))
+		app.ShutdownTelemetry = func(ctx context.Context) error {
+			return b.tracerProvider.Shutdown(ctx)
+		}
+	} else {
+		// Production path: initialize full provider from config.
+		// Use a bounded context for initialization to avoid blocking indefinitely if the
+		// OTLP endpoint is unreachable at startup. The exporter timeout is a reasonable bound;
+		// per-export retries are handled by the OTel SDK independently of this context.
+		initCtx, initCancel := context.WithTimeout(context.Background(), b.config.Telemetry.Exporter.Timeout)
+		defer initCancel()
+		shutdownTelemetry, telErr := telemetry.NewProvider(initCtx, b.config.Telemetry, b.logger)
+		if telErr != nil {
+			return nil, fmt.Errorf("failed to initialize telemetry: %w", telErr)
+		}
+		app.ShutdownTelemetry = shutdownTelemetry
+	}
+
+	// T038: Wire OTel slog bridge when telemetry is enabled.
+	// Wraps the base logger handler with a multi-handler that fans log records to both
+	// the original handler and the OTel log bridge (otelslog), enabling log-trace correlation.
+	if b.config.Telemetry.Enabled {
+		otelHandler := otelslog.NewHandler(b.config.Telemetry.ServiceName,
+			otelslog.WithLoggerProvider(global.GetLoggerProvider()))
+		b.logger = slog.New(telemetry.NewMultiHandler(b.logger.Handler(), otelHandler))
+		app.Logger = b.logger
 	}
 
 	// Phase 1: Initialize encryption adapter (must happen before domain services).
@@ -237,6 +297,18 @@ func (b *Builder) Build() (*App, error) {
 	// Created early to support both OAuth2SessionService and TokenExchangeService
 	upstreamClient := &http.Client{
 		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
+	}
+
+	// Wrap the HTTP transport with OTel instrumentation when tracing is enabled.
+	// This is the "last resort" layer: even operations without an explicit custom span will
+	// still emit a client span and propagate W3C traceparent/tracestate headers to every
+	// outgoing HTTP call (JWKS fetches, upstream token proxy, OAuth2 session token exchange).
+	if b.config.Telemetry.Enabled && b.config.Telemetry.Traces.Enabled {
+		base := upstreamClient.Transport
+		if base == nil {
+			base = http.DefaultTransport
+		}
+		upstreamClient.Transport = otelhttp.NewTransport(base)
 	}
 
 	app.OAuth2SessionService = oauth2session.NewOAuth2SessionService(

@@ -13,7 +13,75 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
+
+// TestAgentRepository_Get_EmitsSpan verifies that AgentRepository.Get emits an OTel span
+// named "storage.get.agent" with db.system=postgresql attribute (T030).
+// TDD Red Phase: this test must fail before T033 implements the child span.
+func TestAgentRepository_Get_EmitsSpan(t *testing.T) {
+	adapter, cleanup := setupAgentTestDB(t)
+	defer cleanup()
+
+	// Set up an in-memory SpanRecorder as the global TracerProvider
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSpanProcessor(recorder),
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+	)
+	prevTP := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		require.NoError(t, tp.Shutdown(context.Background()))
+		otel.SetTracerProvider(prevTP)
+	})
+
+	repo := NewAgentRepository(adapter)
+	ctx := context.Background()
+
+	// Create an agent so Get can find it
+	now := time.Now().UTC()
+	agent := &storage.Agent{
+		ClientID:    "span-test-client",
+		DisplayName: "Span Test Agent",
+		Description: "Agent for span testing",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	err := repo.Create(ctx, agent)
+	require.NoError(t, err)
+
+	// Call Get — should emit a span named "storage.get.agent"
+	_, err = repo.Get(ctx, agent.ID)
+	require.NoError(t, err)
+
+	// Flush spans
+	require.NoError(t, tp.ForceFlush(ctx))
+
+	// Assert span was emitted
+	ended := recorder.Ended()
+	require.NotEmpty(t, ended, "expected at least one span to be recorded")
+
+	var foundSpan bool
+	for _, span := range ended {
+		if span.Name() == "storage.get.agent" {
+			foundSpan = true
+			// Verify db.system=postgresql attribute
+			foundAttr := false
+			for _, attr := range span.Attributes() {
+				if string(attr.Key) == "db.system" && attr.Value.AsString() == "postgresql" {
+					foundAttr = true
+					break
+				}
+			}
+			assert.True(t, foundAttr, "expected span to have attribute db.system=postgresql")
+			break
+		}
+	}
+	assert.True(t, foundSpan, "expected a span named 'storage.get.agent' to be recorded")
+}
 
 // setupAgentTestDB creates a test database with migrations applied.
 func setupAgentTestDB(t *testing.T) (*Adapter, func()) {

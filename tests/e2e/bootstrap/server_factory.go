@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -110,6 +112,35 @@ func (f *ServerFactory) BuildApp(storage interface{}) (*app.App, error) {
 		WithStaticWebResourcesPath("../../../web/dist")
 
 	return builder.Build()
+}
+
+// BuildAppWithTracerProvider creates a fully-wired application with a custom
+// TracerProvider for testing OTel instrumentation.
+// The TracerProvider is registered as the global OTel provider and used to
+// capture spans emitted during tests.
+func (f *ServerFactory) BuildAppWithTracerProvider(storage interface{}, tp *sdktrace.TracerProvider) (*app.App, error) {
+	if storage == nil {
+		return nil, fmt.Errorf("storage adapter is required")
+	}
+	if f.config == nil {
+		return nil, fmt.Errorf("factory config is required")
+	}
+	if f.logger == nil {
+		return nil, fmt.Errorf("factory logger is required")
+	}
+
+	storageAdapter, ok := storage.(*storageadapter.Adapter)
+	if !ok {
+		return nil, fmt.Errorf("storage must be *storageadapter.Adapter")
+	}
+
+	return app.NewBuilder().
+		WithConfig(f.config).
+		WithStorage(storageAdapter).
+		WithLogger(f.logger).
+		WithStaticWebResourcesPath("../../../web/dist").
+		WithTracerProvider(tp).
+		Build()
 }
 
 // ValidateFactory checks factory is properly initialized.

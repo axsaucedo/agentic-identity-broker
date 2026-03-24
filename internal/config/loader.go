@@ -4,6 +4,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,6 +174,31 @@ func (l *Loader) setDefaults() {
 	// Set security configuration defaults
 	l.v.SetDefault("security.skip_thirdparty_https_validation", false)
 
+	// Telemetry configuration defaults
+	telDefaults := ports.DefaultTelemetryConfig()
+	l.v.SetDefault("telemetry.enabled", telDefaults.Enabled)
+	l.v.SetDefault("telemetry.service_name", telDefaults.ServiceName)
+	l.v.SetDefault("telemetry.traces.enabled", telDefaults.Traces.Enabled)
+	l.v.SetDefault("telemetry.traces.sampling_rate", telDefaults.Traces.SamplingRate)
+	l.v.SetDefault("telemetry.traces.propagators", telDefaults.Traces.Propagators)
+	l.v.SetDefault("telemetry.metrics.enabled", telDefaults.Metrics.Enabled)
+	l.v.SetDefault("telemetry.metrics.export_interval", telDefaults.Metrics.ExportInterval)
+	l.v.SetDefault("telemetry.exporter.protocol", telDefaults.Exporter.Protocol)
+	l.v.SetDefault("telemetry.exporter.timeout", telDefaults.Exporter.Timeout)
+	l.v.SetDefault("telemetry.exporter.insecure", telDefaults.Exporter.Insecure)
+
+	// Bind telemetry env vars
+	_ = l.v.BindEnv("telemetry.enabled", "IDENTITY_BROKER_TELEMETRY_ENABLED")
+	_ = l.v.BindEnv("telemetry.service_name", "IDENTITY_BROKER_TELEMETRY_SERVICE_NAME")
+	_ = l.v.BindEnv("telemetry.traces.enabled", "IDENTITY_BROKER_TELEMETRY_TRACES_ENABLED")
+	_ = l.v.BindEnv("telemetry.traces.sampling_rate", "IDENTITY_BROKER_TELEMETRY_TRACES_SAMPLING_RATE")
+	_ = l.v.BindEnv("telemetry.metrics.enabled", "IDENTITY_BROKER_TELEMETRY_METRICS_ENABLED")
+	_ = l.v.BindEnv("telemetry.metrics.export_interval", "IDENTITY_BROKER_TELEMETRY_METRICS_EXPORT_INTERVAL")
+	_ = l.v.BindEnv("telemetry.exporter.protocol", "IDENTITY_BROKER_TELEMETRY_EXPORTER_PROTOCOL")
+	_ = l.v.BindEnv("telemetry.exporter.endpoint", "IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT")
+	_ = l.v.BindEnv("telemetry.exporter.timeout", "IDENTITY_BROKER_TELEMETRY_EXPORTER_TIMEOUT")
+	_ = l.v.BindEnv("telemetry.exporter.insecure", "IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE")
+
 	// Set token exchange configuration defaults
 	// expected_audience defaults to the well-known "token-exchange-broker" value.
 	// Operators can override it to match whatever audience their JWTs carry.
@@ -193,6 +219,10 @@ func (l *Loader) setDefaults() {
 			"storage.backend", "storage.timeouts.read", "storage.timeouts.write",
 			"third_party_oauth2.state_token_ttl", "third_party_oauth2.pkce_verifier_length",
 			"security.skip_thirdparty_https_validation",
+			"telemetry.enabled", "telemetry.service_name",
+			"telemetry.traces.enabled", "telemetry.traces.sampling_rate", "telemetry.traces.propagators",
+			"telemetry.metrics.enabled", "telemetry.metrics.export_interval",
+			"telemetry.exporter.protocol", "telemetry.exporter.timeout", "telemetry.exporter.insecure",
 			"token_exchange.expected_audience",
 		},
 	})
@@ -268,8 +298,8 @@ func (l *Loader) loadEnvFile(filename string) error {
 
 		// Strip IDENTITY_BROKER_ prefix and convert to Viper format
 		viperKey := key
-		if strings.HasPrefix(strings.ToUpper(key), "IDENTITY_BROKER_") {
-			viperKey = strings.TrimPrefix(strings.ToUpper(key), "IDENTITY_BROKER_")
+		if after, ok := strings.CutPrefix(strings.ToUpper(key), "IDENTITY_BROKER_"); ok {
+			viperKey = after
 		}
 		// Convert to lowercase with dots
 		viperKey = strings.ToLower(strings.ReplaceAll(viperKey, "_", "."))
@@ -424,9 +454,9 @@ func (l *Loader) expandWithCircularCheck(value string, visited map[string]bool, 
 		// Supports ${VAR:default} syntax
 		actualVarName := varName
 		defaultValue := ""
-		if idx := strings.Index(varName, ":"); idx >= 0 {
-			actualVarName = varName[:idx]
-			defaultValue = varName[idx+1:]
+		if before, after, found := strings.Cut(varName, ":"); found {
+			actualVarName = before
+			defaultValue = after
 		}
 
 		// Check for circular reference
@@ -455,10 +485,8 @@ func (l *Loader) expandWithCircularCheck(value string, visited map[string]bool, 
 		// Check if variable value contains more references
 		if strings.Contains(varValue, "${") {
 			// Mark variable as visited
-			newVisited := make(map[string]bool)
-			for k, v := range visited {
-				newVisited[k] = v
-			}
+			newVisited := make(map[string]bool, len(visited))
+			maps.Copy(newVisited, visited)
 			newVisited[actualVarName] = true
 
 			// Recursively expand
@@ -476,16 +504,13 @@ func (l *Loader) expandWithCircularCheck(value string, visited map[string]bool, 
 	// Check for expansion errors
 	if len(expansionErrors) > 0 {
 		for _, errMsg := range expansionErrors {
-			if strings.HasPrefix(errMsg, "CIRCULAR:") {
-				chain := strings.TrimPrefix(errMsg, "CIRCULAR:")
+			if chain, ok := strings.CutPrefix(errMsg, "CIRCULAR:"); ok {
 				return "", fmt.Errorf("circular reference detected: %s", chain)
 			}
-			if strings.HasPrefix(errMsg, "UNDEFINED:") {
-				varName := strings.TrimPrefix(errMsg, "UNDEFINED:")
+			if varName, ok := strings.CutPrefix(errMsg, "UNDEFINED:"); ok {
 				return "", fmt.Errorf("environment variable '%s' is not set", varName)
 			}
-			if strings.HasPrefix(errMsg, "NESTED:") {
-				nested := strings.TrimPrefix(errMsg, "NESTED:")
+			if nested, ok := strings.CutPrefix(errMsg, "NESTED:"); ok {
 				return "", fmt.Errorf("nested expansion error: %s", nested)
 			}
 		}

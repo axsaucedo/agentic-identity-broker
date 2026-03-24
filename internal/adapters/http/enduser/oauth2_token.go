@@ -10,6 +10,10 @@ import (
 	"net/url"
 	"strings"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 )
 
@@ -135,8 +139,16 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 	// Step 2: Call token exchange service
 	// Service handles: request validation, JWT validation, authorization, token retrieval
 	// Per Constitution Principle I (Security-First): service validates all inputs and fails closed
-	response, err := h.TokenExchange.Exchange(r.Context(), req)
+	ctx, span := otel.Tracer("tokenexchange").Start(r.Context(), "tokenexchange.exchange")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("token_exchange.resource", req.Resource),
+		attribute.String("token_exchange.grant_type", req.GrantType),
+	)
+	response, err := h.TokenExchange.Exchange(ctx, req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		if h.Logger != nil {
 			logAttrs := []any{
 				"error", err.Error(),
@@ -224,8 +236,12 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 
 // proxyToUpstream forwards requests to upstream OAuth2 server (for non-token-exchange flows)
 func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Request, body string) {
-	// Create upstream request
-	upstreamReq, err := http.NewRequest("POST", h.UpstreamTokenURL, strings.NewReader(body))
+	ctx, span := otel.Tracer("upstream").Start(r.Context(), "oauth2.token_proxy")
+	defer span.End()
+	span.SetAttributes(attribute.String("http.method", "POST"))
+
+	// Create upstream request with traced context
+	upstreamReq, err := http.NewRequestWithContext(ctx, "POST", h.UpstreamTokenURL, strings.NewReader(body))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create upstream request: %v", err), http.StatusInternalServerError)
 		return
@@ -254,6 +270,9 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer func() { _ = upstreamResp.Body.Close() }()
+
+	// Set http.status_code attribute now that response is available
+	span.SetAttributes(attribute.Int("http.status_code", upstreamResp.StatusCode))
 
 	// Copy response headers from upstream to client, filtering hop-by-hop headers
 	for key, values := range upstreamResp.Header {

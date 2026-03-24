@@ -85,7 +85,8 @@ func run(cmd *cobra.Command, args []string) error {
 	// Create route setup function for admin server
 	adminRouteSetup := func(r chi.Router) {
 		routing.SetupAdminRoutes(r, application.AdminHandlers, routing.AdminRouteConfig{
-			CORS: cfg.Server.Admin.CORS,
+			CORS:      cfg.Server.Admin.CORS,
+			Telemetry: cfg.Telemetry,
 		})
 	}
 
@@ -96,6 +97,7 @@ func run(cmd *cobra.Command, args []string) error {
 			JWTAuthenticator: application.JWTAuthenticator,
 			Logger:           logger,
 			CORS:             cfg.Server.EndUser.CORS,
+			Telemetry:        cfg.Telemetry,
 		})
 	}
 
@@ -236,6 +238,17 @@ func run(cmd *cobra.Command, args []string) error {
 	if err := shutdownGroup.Wait(); err != nil {
 		logger.Error("Shutdown error", "error", err)
 		return fmt.Errorf("shutdown error: %w", err)
+	}
+
+	// Flush and close telemetry providers (after HTTP drain, before process exit)
+	// Satisfies FR-009: pending spans/metrics flushed on graceful shutdown (T043)
+	if application.ShutdownTelemetry != nil {
+		if err := application.ShutdownTelemetry(shutdownCtx); err != nil {
+			logger.Error("Telemetry shutdown error", "error", err)
+			// Non-fatal: log and continue
+		} else {
+			logger.Info("Telemetry providers shut down successfully")
+		}
 	}
 
 	// Wait for servers to finish

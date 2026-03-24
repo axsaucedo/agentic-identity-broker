@@ -186,8 +186,100 @@ func TokenExchangeConfigWithInvalidCELSyntax(invalidExpression string) *ports.Co
 	return config
 }
 
-// TokenExchangeConfigWithClaimExtraction returns a config with custom claim extraction expressions
-// pointed at the given upstream OAuth2 server.
+// TelemetryEnabledConfig returns a config with telemetry tracing enabled.
+// Intended for E2E tests that use BuildAppWithTracerProvider() — the OTLP exporter
+// endpoint is irrelevant because WithTracerProvider() bypasses NewProvider().
+// Having Telemetry.Enabled=true and Traces.Enabled=true ensures the otelchi
+// middleware gate in SetupEnduserRoutes/SetupAdminRoutes is satisfied.
+func TelemetryEnabledConfig() *ports.Config {
+	cfg := DefaultOAuth2Config()
+	cfg.Telemetry = ports.TelemetryConfig{
+		Enabled:            true,
+		ServiceName:        "test-broker",
+		ResourceAttributes: map[string]string{},
+		Traces: ports.TracesConfig{
+			Enabled:      true,
+			SamplingRate: 1.0,
+			Propagators:  []string{"tracecontext", "baggage"},
+		},
+		Metrics: ports.MetricsConfig{
+			Enabled:        false, // no runtime metrics in tests
+			ExportInterval: 30 * time.Second,
+		},
+		Exporter: ports.OTLPExporterConfig{
+			Protocol: "grpc",
+			Endpoint: "localhost:4317", // not used when TP is injected via WithTracerProvider
+			Headers:  map[string]string{},
+			Timeout:  5 * time.Second,
+			Insecure: true,
+		},
+	}
+	return cfg
+}
+
+// TelemetryGRPCConfig returns a config with telemetry enabled using the gRPC OTLP protocol.
+// The endpoint (localhost:4317) is intentionally unreachable; the OTel SDK buffers telemetry
+// and does not fail at startup. Suitable for smoke-testing the production NewProvider() path.
+// Uses a short exporter timeout to keep test execution fast.
+func TelemetryGRPCConfig() *ports.Config {
+	cfg := DefaultOAuth2Config()
+	cfg.Telemetry = ports.TelemetryConfig{
+		Enabled:            true,
+		ServiceName:        "test-broker",
+		ResourceAttributes: map[string]string{},
+		Traces: ports.TracesConfig{
+			Enabled:      true,
+			SamplingRate: 1.0,
+			Propagators:  []string{"tracecontext", "baggage"},
+		},
+		Metrics: ports.MetricsConfig{
+			Enabled:        false,
+			ExportInterval: 30 * time.Second,
+		},
+		Exporter: ports.OTLPExporterConfig{
+			Protocol: "grpc",
+			Endpoint: "localhost:4317",
+			Headers:  map[string]string{},
+			Timeout:  500 * time.Millisecond,
+			Insecure: true,
+		},
+	}
+	return cfg
+}
+
+// TelemetryHTTPConfig returns a config with telemetry enabled using the HTTP OTLP protocol.
+// The endpoint (http://localhost:4318) is intentionally unreachable; the OTel SDK buffers
+// telemetry and does not fail at startup. Suitable for smoke-testing the production
+// NewProvider() path. Uses a short exporter timeout to keep test execution fast.
+//
+// The endpoint is a full http:// URL as required by the HTTP OTLP exporter (WithEndpointURL).
+func TelemetryHTTPConfig() *ports.Config {
+	cfg := DefaultOAuth2Config()
+	cfg.Telemetry = ports.TelemetryConfig{
+		Enabled:            true,
+		ServiceName:        "test-broker",
+		ResourceAttributes: map[string]string{},
+		Traces: ports.TracesConfig{
+			Enabled:      true,
+			SamplingRate: 1.0,
+			Propagators:  []string{"tracecontext", "baggage"},
+		},
+		Metrics: ports.MetricsConfig{
+			Enabled:        false,
+			ExportInterval: 30 * time.Second,
+		},
+		Exporter: ports.OTLPExporterConfig{
+			Protocol: "http",
+			Endpoint: "http://localhost:4318", // full URL required for HTTP OTLP exporter
+			Headers:  map[string]string{},
+			Timeout:  500 * time.Millisecond,
+			Insecure: true,
+		},
+	}
+	return cfg
+}
+
+// TokenExchangeConfigWithClaimExtraction returns a config with custom claim extraction expressions.
 // Useful for testing different claim mapping strategies.
 // PrincipalExpr: CEL expression to extract principal (e.g., "subject_token.preferred_username")
 // AgentExpr: CEL expression to extract agent ID (e.g., "subject_token.client_id")

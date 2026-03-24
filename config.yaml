@@ -79,3 +79,24 @@ security:
   # Skip HTTPS validation for third-party OAuth2 services (dev/test only!)
   # Allows HTTP connections to mock OAuth2 services during development
   skip_thirdparty_https_validation: true
+
+# OpenTelemetry observability configuration
+# Disabled by default. Enable to export traces and metrics to an OTLP collector.
+# Full configuration reference: examples/config/telemetry.yaml
+telemetry:
+  enabled: false
+  # service_name: agentic-identity-broker
+  #
+  # traces:
+  #   enabled: true
+  #   sampling_rate: 0.1   # 10% in production
+  #
+  # metrics:
+  #   enabled: true
+  #   export_interval: 30s
+  #
+  # exporter:
+  #   protocol: grpc
+  #   endpoint: otel-collector.monitoring.svc:4317
+  #   timeout: 10s
+  #   insecure: false  # TLS enabled by default
