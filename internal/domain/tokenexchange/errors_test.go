@@ -6,6 +6,7 @@ import (
 )
 
 func TestTokenExchangeErrorInterface(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		err            *TokenExchangeError
@@ -52,6 +53,7 @@ func TestTokenExchangeErrorInterface(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.err.Code(); got != tt.expectedCode {
 				t.Errorf("Code() = %q, want %q", got, tt.expectedCode)
 			}
@@ -63,6 +65,7 @@ func TestTokenExchangeErrorInterface(t *testing.T) {
 }
 
 func TestTokenExchangeErrorDescription(t *testing.T) {
+	t.Parallel()
 	desc := "missing resource parameter"
 	err := NewInvalidRequestError(desc)
 	if got := err.Description(); got != desc {
@@ -71,6 +74,7 @@ func TestTokenExchangeErrorDescription(t *testing.T) {
 }
 
 func TestTokenExchangeErrorWithDetails(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		err             *TokenExchangeError
@@ -110,6 +114,7 @@ func TestTokenExchangeErrorWithDetails(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.err.Details(); got != tt.expectedDetails {
 				t.Errorf("Details() = %q, want %q", got, tt.expectedDetails)
 			}
@@ -118,6 +123,7 @@ func TestTokenExchangeErrorWithDetails(t *testing.T) {
 }
 
 func TestTokenExchangeErrorErrorMethod(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		err      *TokenExchangeError
@@ -137,6 +143,7 @@ func TestTokenExchangeErrorErrorMethod(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.err.Error(); got != tt.expected {
 				t.Errorf("Error() = %q, want %q", got, tt.expected)
 			}
@@ -145,6 +152,7 @@ func TestTokenExchangeErrorErrorMethod(t *testing.T) {
 }
 
 func TestTokenExchangeErrorUnwrap(t *testing.T) {
+	t.Parallel()
 	cause := errors.New("connection refused")
 	err := NewServerErrorWithCause("database error", cause)
 
@@ -158,6 +166,7 @@ func TestTokenExchangeErrorUnwrap(t *testing.T) {
 }
 
 func TestTokenExchangeErrorUnwrapNil(t *testing.T) {
+	t.Parallel()
 	err := NewInvalidRequestError("missing param")
 	if got := err.Unwrap(); got != nil {
 		t.Errorf("Unwrap() = %v, want nil for error with no cause", got)
@@ -165,6 +174,7 @@ func TestTokenExchangeErrorUnwrapNil(t *testing.T) {
 }
 
 func TestIsTokenExchangeError(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		err      error
@@ -194,6 +204,7 @@ func TestIsTokenExchangeError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := IsTokenExchangeError(tt.err)
 			if got != tt.expected {
 				t.Errorf("IsTokenExchangeError() = %v, want %v", got, tt.expected)
@@ -204,6 +215,7 @@ func TestIsTokenExchangeError(t *testing.T) {
 
 // TestAllErrorsImplementInterface verifies all error factory functions return proper errors
 func TestAllErrorsImplementInterface(t *testing.T) {
+	t.Parallel()
 	errors := []error{
 		NewInvalidRequestError("test"),
 		NewInvalidClientError("test"),
@@ -227,6 +239,7 @@ func TestAllErrorsImplementInterface(t *testing.T) {
 
 // TestSecurityNoTokenInError verifies token values can't accidentally leak
 func TestSecurityNoTokenInError(t *testing.T) {
+	t.Parallel()
 	// These descriptions intentionally don't include token values
 	// The caller is responsible for not including them
 	err := NewInvalidClientError("JWT signature verification failed")
@@ -240,6 +253,7 @@ func TestSecurityNoTokenInError(t *testing.T) {
 
 // TestErrorCodesMatchRFC8693 verifies error codes comply with RFC 8693
 func TestErrorCodesMatchRFC8693(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		err          *TokenExchangeError
@@ -255,6 +269,7 @@ func TestErrorCodesMatchRFC8693(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.err.Code(); got != tt.expectedCode {
 				t.Errorf("Code() = %q, want %q", got, tt.expectedCode)
 			}
@@ -264,6 +279,7 @@ func TestErrorCodesMatchRFC8693(t *testing.T) {
 
 // TestHTTPStatusCodesPerRFC8693 verifies HTTP status codes match RFC 8693 Section 5.2
 func TestHTTPStatusCodesPerRFC8693(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		err            *TokenExchangeError
@@ -279,6 +295,7 @@ func TestHTTPStatusCodesPerRFC8693(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.err.HTTPStatus(); got != tt.expectedStatus {
 				t.Errorf("HTTPStatus() = %d, want %d", got, tt.expectedStatus)
 			}
@@ -288,6 +305,7 @@ func TestHTTPStatusCodesPerRFC8693(t *testing.T) {
 
 // TestTokenExchangeErrorWithCause verifies WithCause preserves all fields and attaches the cause.
 func TestTokenExchangeErrorWithCause(t *testing.T) {
+	t.Parallel()
 	cause := errors.New("jwt: audience mismatch")
 	base := NewInvalidGrantError("subject_token issuer validation failed")
 	err := base.WithCause(cause)
@@ -311,6 +329,7 @@ func TestTokenExchangeErrorWithCause(t *testing.T) {
 
 // TestTokenExchangeErrorWithCauseDoesNotMutateOriginal verifies WithCause returns a new instance.
 func TestTokenExchangeErrorWithCauseDoesNotMutateOriginal(t *testing.T) {
+	t.Parallel()
 	cause := errors.New("low-level failure")
 	base := NewInvalidGrantError("token validation failed")
 	withCause := base.WithCause(cause)

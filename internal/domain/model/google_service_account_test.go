@@ -24,7 +24,9 @@ const validGoogleServiceAccountJSON = `{
 }`
 
 func TestParseGoogleServiceAccountKey(t *testing.T) {
+	t.Parallel()
 	t.Run("valid service account JSON returns populated struct", func(t *testing.T) {
+		t.Parallel()
 		gsk, err := ParseGoogleServiceAccountKey(validGoogleServiceAccountJSON)
 		require.NoError(t, err)
 		require.NotNil(t, gsk)
@@ -36,6 +38,7 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("wrong type field returns error mentioning service_account", func(t *testing.T) {
+		t.Parallel()
 		wrongType := strings.ReplaceAll(validGoogleServiceAccountJSON,
 			`"type": "service_account"`,
 			`"type": "authorized_user"`)
@@ -45,11 +48,13 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("invalid JSON returns parse error", func(t *testing.T) {
+		t.Parallel()
 		_, err := ParseGoogleServiceAccountKey(`{not valid json}`)
 		require.Error(t, err)
 	})
 
 	t.Run("missing private_key returns error naming the field", func(t *testing.T) {
+		t.Parallel()
 		noPrivateKey := strings.ReplaceAll(validGoogleServiceAccountJSON,
 			`"private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA2a2rwplBQLf0kTmkGp5RJFBpJOFBBhfJmLO0YjCGSLCuoP7\noc5RfakePrivateKeyDataForTestingPurposesOnlyNotRealCryptographicKey\n-----END RSA PRIVATE KEY-----\n"`,
 			`"private_key": ""`)
@@ -59,6 +64,7 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("missing client_email returns error naming the field", func(t *testing.T) {
+		t.Parallel()
 		noEmail := strings.ReplaceAll(validGoogleServiceAccountJSON,
 			`"client_email": "my-service@my-project-123.iam.gserviceaccount.com"`,
 			`"client_email": ""`)
@@ -68,6 +74,7 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("missing token_uri returns error naming the field", func(t *testing.T) {
+		t.Parallel()
 		noTokenURI := strings.ReplaceAll(validGoogleServiceAccountJSON,
 			`"token_uri": "https://oauth2.googleapis.com/token"`,
 			`"token_uri": ""`)
@@ -77,6 +84,7 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("missing client_id returns error naming the field", func(t *testing.T) {
+		t.Parallel()
 		noClientID := strings.ReplaceAll(validGoogleServiceAccountJSON,
 			`"client_id": "123456789012345678901"`,
 			`"client_id": ""`)
@@ -86,6 +94,7 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("empty private_key returns non-empty validation error", func(t *testing.T) {
+		t.Parallel()
 		// Explicitly set empty private_key (different from missing private_key check)
 		emptyKey := strings.ReplaceAll(validGoogleServiceAccountJSON,
 			`"private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA2a2rwplBQLf0kTmkGp5RJFBpJOFBBhfJmLO0YjCGSLCuoP7\noc5RfakePrivateKeyDataForTestingPurposesOnlyNotRealCryptographicKey\n-----END RSA PRIVATE KEY-----\n"`,
@@ -99,6 +108,7 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("JSON exceeding 32 KB returns size limit error", func(t *testing.T) {
+		t.Parallel()
 		// Build a JSON that exceeds 32 KB
 		largePadding := strings.Repeat("x", 33*1024)
 		largeJSON := strings.ReplaceAll(validGoogleServiceAccountJSON,
@@ -110,6 +120,7 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("issuer_uri host matching token_uri host is valid", func(t *testing.T) {
+		t.Parallel()
 		// This tests validateIssuerURIAgainstTokenURI via the entity validation path.
 		// token_uri host in the fixture is "oauth2.googleapis.com"
 		// issuerURI with same host should pass.
@@ -121,6 +132,7 @@ func TestParseGoogleServiceAccountKey(t *testing.T) {
 	})
 
 	t.Run("issuer_uri host differing from token_uri host returns validation error", func(t *testing.T) {
+		t.Parallel()
 		err := validateIssuerURIAgainstTokenURI(
 			"https://accounts.google.com",
 			"https://oauth2.googleapis.com/token",

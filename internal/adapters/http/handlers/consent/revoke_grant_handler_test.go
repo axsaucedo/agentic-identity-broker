@@ -16,6 +16,7 @@ import (
 
 // TestRevokeGrantHandler_Success tests 204 No Content on successful revocation.
 func TestRevokeGrantHandler_Success(t *testing.T) {
+	t.Parallel()
 	testAgentID := id.NewAgentID()
 	revokeCalled := false
 
@@ -52,6 +53,7 @@ func TestRevokeGrantHandler_Success(t *testing.T) {
 // TestRevokeGrantHandler_NoPrincipal tests 401 when principal is missing.
 // Principal check must happen BEFORE UUID parse (AGENTS.md rule: 401 before 400).
 func TestRevokeGrantHandler_NoPrincipal(t *testing.T) {
+	t.Parallel()
 	testAgentID := id.NewAgentID()
 	handler := NewRevokeGrantHandler(nil, nil)
 
@@ -78,6 +80,7 @@ func TestRevokeGrantHandler_NoPrincipal(t *testing.T) {
 // TestRevokeGrantHandler_NoPrincipal_InvalidUUID tests that 401 is returned even when
 // the agent-id is also invalid — principal check is first (SR-001).
 func TestRevokeGrantHandler_NoPrincipal_InvalidUUID(t *testing.T) {
+	t.Parallel()
 	handler := NewRevokeGrantHandler(nil, nil)
 
 	req := httptest.NewRequest("DELETE", "/api/consent/agent/not-a-uuid/grants", nil)
@@ -96,6 +99,7 @@ func TestRevokeGrantHandler_NoPrincipal_InvalidUUID(t *testing.T) {
 
 // TestRevokeGrantHandler_InvalidAgentID tests 400 when agent-id is not a valid UUID.
 func TestRevokeGrantHandler_InvalidAgentID(t *testing.T) {
+	t.Parallel()
 	handler := NewRevokeGrantHandler(nil, nil)
 
 	req := newRequestWithPrincipal("DELETE", "/api/consent/agent/not-a-uuid/grants", "user@example.com", nil)
@@ -113,6 +117,7 @@ func TestRevokeGrantHandler_InvalidAgentID(t *testing.T) {
 
 // TestRevokeGrantHandler_NotFound tests 404 when ErrGrantNotFound is returned (SR-001).
 func TestRevokeGrantHandler_NotFound(t *testing.T) {
+	t.Parallel()
 	testAgentID := id.NewAgentID()
 
 	mockService := &mockConsentService{
@@ -144,6 +149,7 @@ func TestRevokeGrantHandler_NotFound(t *testing.T) {
 
 // TestRevokeGrantHandler_ServiceError tests 500 on unexpected service errors (fail-closed SR-003).
 func TestRevokeGrantHandler_ServiceError(t *testing.T) {
+	t.Parallel()
 	testAgentID := id.NewAgentID()
 
 	mockService := &mockConsentService{
@@ -169,6 +175,7 @@ func TestRevokeGrantHandler_ServiceError(t *testing.T) {
 // TestRevokeGrantHandler_NoPrincipalWithInvalidAgentID_PrincipalCheckedFirst tests
 // that principal validation error takes precedence over agent ID validation error.
 func TestRevokeGrantHandler_PrincipalCheckedFirst(t *testing.T) {
+	t.Parallel()
 	handler := NewRevokeGrantHandler(nil, nil)
 
 	// No principal in context AND invalid UUID

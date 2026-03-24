@@ -8,6 +8,7 @@ import (
 
 // TestClientAssertion_ValidMinimal tests a minimal valid client assertion.
 func TestClientAssertion_ValidMinimal(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	assertion := NewClientAssertion(
 		"privileged-client-1",
@@ -26,6 +27,7 @@ func TestClientAssertion_ValidMinimal(t *testing.T) {
 
 // TestClientAssertion_ValidWithScopes tests assertion with scopes claim.
 func TestClientAssertion_ValidWithScopes(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	assertion := NewClientAssertion(
 		"privileged-client-1",
@@ -48,8 +50,9 @@ func TestClientAssertion_ValidWithScopes(t *testing.T) {
 
 // TestClientAssertion_ValidWithCustomClaims tests assertion with custom claims.
 func TestClientAssertion_ValidWithCustomClaims(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"custom_field": "custom_value",
 		"role":         "privileged_client",
 		"environment":  "production",
@@ -76,6 +79,7 @@ func TestClientAssertion_ValidWithCustomClaims(t *testing.T) {
 
 // TestClientAssertion_InvalidEmptySubject tests validation with empty subject.
 func TestClientAssertion_InvalidEmptySubject(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	assertion := NewClientAssertion(
 		"",
@@ -98,6 +102,7 @@ func TestClientAssertion_InvalidEmptySubject(t *testing.T) {
 
 // TestClientAssertion_InvalidEmptyAudiences tests validation with empty audiences.
 func TestClientAssertion_InvalidEmptyAudiences(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	assertion := NewClientAssertion(
 		"privileged-client-1",
@@ -120,6 +125,7 @@ func TestClientAssertion_InvalidEmptyAudiences(t *testing.T) {
 
 // TestClientAssertion_InvalidZeroExpiresAt tests validation with zero ExpiresAt.
 func TestClientAssertion_InvalidZeroExpiresAt(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	assertion := NewClientAssertion(
 		"privileged-client-1",
@@ -142,6 +148,7 @@ func TestClientAssertion_InvalidZeroExpiresAt(t *testing.T) {
 
 // TestClientAssertion_InvalidZeroIssuedAt tests validation with zero IssuedAt.
 func TestClientAssertion_InvalidZeroIssuedAt(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	assertion := NewClientAssertion(
 		"privileged-client-1",
@@ -164,6 +171,7 @@ func TestClientAssertion_InvalidZeroIssuedAt(t *testing.T) {
 
 // TestClientAssertion_HasAudience tests audience checking.
 func TestClientAssertion_HasAudience(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	assertion := NewClientAssertion(
 		"privileged-client-1",
@@ -204,6 +212,7 @@ func TestClientAssertion_HasAudience(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if assertion.HasAudience(tt.audience) != tt.want {
 				t.Errorf("HasAudience(%q) = %v, want %v", tt.audience, assertion.HasAudience(tt.audience), tt.want)
 			}
@@ -213,6 +222,7 @@ func TestClientAssertion_HasAudience(t *testing.T) {
 
 // TestClientAssertion_IsExpired tests expiration checking.
 func TestClientAssertion_IsExpired(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 
 	tests := []struct {
@@ -249,6 +259,7 @@ func TestClientAssertion_IsExpired(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assertion := NewClientAssertion(
 				"privileged-client-1",
 				[]string{"https://auth.example.com"},
@@ -268,8 +279,9 @@ func TestClientAssertion_IsExpired(t *testing.T) {
 
 // TestClientAssertion_GetCustomClaim tests custom claim retrieval.
 func TestClientAssertion_GetCustomClaim(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"role":     "admin",
 		"dept":     "platform",
 		"verified": true,
@@ -288,7 +300,7 @@ func TestClientAssertion_GetCustomClaim(t *testing.T) {
 	tests := []struct {
 		name      string
 		claimName string
-		want      interface{}
+		want      any
 	}{
 		{
 			name:      "existing string claim",
@@ -309,6 +321,7 @@ func TestClientAssertion_GetCustomClaim(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			val := assertion.GetCustomClaim(tt.claimName)
 			if val != tt.want {
 				t.Errorf("GetCustomClaim(%q) = %v, want %v", tt.claimName, val, tt.want)
@@ -319,8 +332,9 @@ func TestClientAssertion_GetCustomClaim(t *testing.T) {
 
 // TestClientAssertion_HasCustomClaim tests custom claim existence checking.
 func TestClientAssertion_HasCustomClaim(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"role": "admin",
 	}
 
@@ -345,8 +359,9 @@ func TestClientAssertion_HasCustomClaim(t *testing.T) {
 
 // TestClientAssertion_GetAllClaims tests retrieving all claims as a map.
 func TestClientAssertion_GetAllClaims(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"custom": "value",
 	}
 
@@ -398,6 +413,7 @@ func TestClientAssertion_GetAllClaims(t *testing.T) {
 
 // TestClientAssertion_String tests string representation doesn't expose sensitive data.
 func TestClientAssertion_String(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	expiresAt := now.Add(1 * time.Hour).Unix()
 
@@ -408,7 +424,7 @@ func TestClientAssertion_String(t *testing.T) {
 		now.Unix(),
 		"https://upstream.example.com",
 		"secret-scope",
-		map[string]interface{}{
+		map[string]any{
 			"secret": "data",
 		},
 	)
@@ -435,8 +451,9 @@ func TestClientAssertion_String(t *testing.T) {
 
 // TestClientAssertion_GetAssertion tests CEL context retrieval.
 func TestClientAssertion_GetAssertion(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"role": "privileged_client",
 	}
 
@@ -463,6 +480,7 @@ func TestClientAssertion_GetAssertion(t *testing.T) {
 
 // TestClientAssertion_GetterMethods tests all getter methods.
 func TestClientAssertion_GetterMethods(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	expiresAt := now.Add(1 * time.Hour).Unix()
 	issuedAt := now.Unix()
@@ -504,6 +522,7 @@ func TestClientAssertion_GetterMethods(t *testing.T) {
 
 // TestClientAssertion_NilCustomClaims tests handling of nil custom claims.
 func TestClientAssertion_NilCustomClaims(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	assertion := NewClientAssertion(
 		"privileged-client-1",

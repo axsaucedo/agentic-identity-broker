@@ -8,6 +8,7 @@ import (
 )
 
 func TestOAuthScope_Validate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		scope   OAuthScope
@@ -42,6 +43,7 @@ func TestOAuthScope_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.scope.Validate()
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -54,7 +56,9 @@ func TestOAuthScope_Validate(t *testing.T) {
 }
 
 func TestOAuthScope_Copy(t *testing.T) {
+	t.Parallel()
 	t.Run("copy is independent", func(t *testing.T) {
+		t.Parallel()
 		original := OAuthScope{
 			ScopeValue:  "repo",
 			Description: "Full repository access",
@@ -72,6 +76,7 @@ func TestOAuthScope_Copy(t *testing.T) {
 	})
 
 	t.Run("copy via pointer receiver", func(t *testing.T) {
+		t.Parallel()
 		original := &OAuthScope{
 			ScopeValue:  "openid",
 			Description: "OpenID Connect scope",

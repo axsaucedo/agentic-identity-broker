@@ -8,6 +8,7 @@ import (
 
 // TestSubjectToken_ValidMinimal tests a minimal valid subject token.
 func TestSubjectToken_ValidMinimal(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	token := NewSubjectToken(
 		"user@example.com",
@@ -28,6 +29,7 @@ func TestSubjectToken_ValidMinimal(t *testing.T) {
 
 // TestSubjectToken_ValidWithDifferentExtraction tests when CEL extracts from different claims.
 func TestSubjectToken_ValidWithDifferentExtraction(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	// CEL expression might extract principal from 'preferred_username' instead of 'sub'
 	// and agent from 'client_id' instead of 'azp'
@@ -58,8 +60,9 @@ func TestSubjectToken_ValidWithDifferentExtraction(t *testing.T) {
 
 // TestSubjectToken_ValidWithCustomClaims tests token with custom claims.
 func TestSubjectToken_ValidWithCustomClaims(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"org":    "acme",
 		"team":   "platform",
 		"roles":  []string{"admin", "developer"},
@@ -89,6 +92,7 @@ func TestSubjectToken_ValidWithCustomClaims(t *testing.T) {
 
 // TestSubjectToken_InvalidEmptyPrincipal tests validation with empty principal.
 func TestSubjectToken_InvalidEmptyPrincipal(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	token := NewSubjectToken(
 		"", // empty principal
@@ -113,6 +117,7 @@ func TestSubjectToken_InvalidEmptyPrincipal(t *testing.T) {
 
 // TestSubjectToken_InvalidEmptyAgentClientID tests validation with empty agent client ID.
 func TestSubjectToken_InvalidEmptyAgentClientID(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	token := NewSubjectToken(
 		"user@example.com",
@@ -137,6 +142,7 @@ func TestSubjectToken_InvalidEmptyAgentClientID(t *testing.T) {
 
 // TestSubjectToken_InvalidZeroExpiresAt tests validation with zero ExpiresAt.
 func TestSubjectToken_InvalidZeroExpiresAt(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	token := NewSubjectToken(
 		"user@example.com",
@@ -161,6 +167,7 @@ func TestSubjectToken_InvalidZeroExpiresAt(t *testing.T) {
 
 // TestSubjectToken_InvalidZeroIssuedAt tests validation with zero IssuedAt.
 func TestSubjectToken_InvalidZeroIssuedAt(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	token := NewSubjectToken(
 		"user@example.com",
@@ -185,6 +192,7 @@ func TestSubjectToken_InvalidZeroIssuedAt(t *testing.T) {
 
 // TestSubjectToken_IsExpired tests expiration checking.
 func TestSubjectToken_IsExpired(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 
 	tests := []struct {
@@ -221,6 +229,7 @@ func TestSubjectToken_IsExpired(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			token := NewSubjectToken(
 				"user@example.com",
 				"agent-123",
@@ -242,8 +251,9 @@ func TestSubjectToken_IsExpired(t *testing.T) {
 
 // TestSubjectToken_GetCustomClaim tests custom claim retrieval.
 func TestSubjectToken_GetCustomClaim(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"org":    "acme",
 		"active": true,
 	}
@@ -263,7 +273,7 @@ func TestSubjectToken_GetCustomClaim(t *testing.T) {
 	tests := []struct {
 		name      string
 		claimName string
-		want      interface{}
+		want      any
 	}{
 		{
 			name:      "existing string claim",
@@ -284,6 +294,7 @@ func TestSubjectToken_GetCustomClaim(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			val := token.GetCustomClaim(tt.claimName)
 			if val != tt.want {
 				t.Errorf("GetCustomClaim(%q) = %v, want %v", tt.claimName, val, tt.want)
@@ -294,8 +305,9 @@ func TestSubjectToken_GetCustomClaim(t *testing.T) {
 
 // TestSubjectToken_HasCustomClaim tests custom claim existence checking.
 func TestSubjectToken_HasCustomClaim(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"org": "acme",
 	}
 
@@ -322,8 +334,9 @@ func TestSubjectToken_HasCustomClaim(t *testing.T) {
 
 // TestSubjectToken_GetAllClaims tests retrieving all claims as a map.
 func TestSubjectToken_GetAllClaims(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"org": "acme",
 	}
 
@@ -377,6 +390,7 @@ func TestSubjectToken_GetAllClaims(t *testing.T) {
 
 // TestSubjectToken_String tests string representation doesn't expose sensitive data.
 func TestSubjectToken_String(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	expiresAt := now.Add(1 * time.Hour).Unix()
 
@@ -389,7 +403,7 @@ func TestSubjectToken_String(t *testing.T) {
 		expiresAt,
 		now.Unix(),
 		"secret-scope",
-		map[string]interface{}{
+		map[string]any{
 			"secret": "data",
 		},
 	)
@@ -418,8 +432,9 @@ func TestSubjectToken_String(t *testing.T) {
 
 // TestSubjectToken_GetToken tests CEL context retrieval.
 func TestSubjectToken_GetToken(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"org": "acme",
 	}
 
@@ -448,6 +463,7 @@ func TestSubjectToken_GetToken(t *testing.T) {
 
 // TestSubjectToken_GetterMethods tests all getter methods.
 func TestSubjectToken_GetterMethods(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	expiresAt := now.Add(1 * time.Hour).Unix()
 	issuedAt := now.Unix()
@@ -499,6 +515,7 @@ func TestSubjectToken_GetterMethods(t *testing.T) {
 
 // TestSubjectToken_NilCustomClaims tests handling of nil custom claims.
 func TestSubjectToken_NilCustomClaims(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	token := NewSubjectToken(
 		"user@example.com",
@@ -530,8 +547,9 @@ func TestSubjectToken_NilCustomClaims(t *testing.T) {
 
 // TestSubjectToken_MultipleAudiences tests with multiple custom claims.
 func TestSubjectToken_MultipleAudiences(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
-	customClaims := map[string]interface{}{
+	customClaims := map[string]any{
 		"audiences": []string{"api1", "api2"},
 		"roles":     []string{"admin", "user"},
 	}

@@ -10,6 +10,7 @@ import (
 
 // TestNewCELEvaluatorSuccessfulCompilation tests successful evaluator creation.
 func TestNewCELEvaluatorSuccessfulCompilation(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 
 	evaluator, err := NewCELEvaluator(config)
@@ -23,6 +24,7 @@ func TestNewCELEvaluatorSuccessfulCompilation(t *testing.T) {
 
 // TestNewCELEvaluatorInvalidPrincipalExpression tests startup failure with invalid principal expression.
 func TestNewCELEvaluatorInvalidPrincipalExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.PrincipalExpression = "invalid syntax !@#$"
 
@@ -38,6 +40,7 @@ func TestNewCELEvaluatorInvalidPrincipalExpression(t *testing.T) {
 
 // TestNewCELEvaluatorInvalidAgentClientIDExpression tests startup failure with invalid agent_client_id expression.
 func TestNewCELEvaluatorInvalidAgentClientIDExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AgentClientIDExpression = "invalid !@#$ syntax"
 
@@ -50,6 +53,7 @@ func TestNewCELEvaluatorInvalidAgentClientIDExpression(t *testing.T) {
 
 // TestNewCELEvaluatorInvalidAuthorizationExpression tests startup failure with invalid authorization expression.
 func TestNewCELEvaluatorInvalidAuthorizationExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = "not a boolean !@#$"
 
@@ -62,11 +66,12 @@ func TestNewCELEvaluatorInvalidAuthorizationExpression(t *testing.T) {
 
 // TestExtractPrincipalDefaultExpression tests principal extraction with default expression.
 func TestExtractPrincipalDefaultExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"sub": "user123",
 	}
 
@@ -78,12 +83,13 @@ func TestExtractPrincipalDefaultExpression(t *testing.T) {
 
 // TestExtractPrincipalCustomExpression tests principal extraction with custom expression.
 func TestExtractPrincipalCustomExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.PrincipalExpression = "subject_token.preferred_username"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"sub":                "user123",
 		"preferred_username": "john.doe",
 	}
@@ -96,13 +102,14 @@ func TestExtractPrincipalCustomExpression(t *testing.T) {
 
 // TestExtractPrincipalNestedClaim tests principal extraction from nested claim.
 func TestExtractPrincipalNestedClaim(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.PrincipalExpression = "subject_token.claims.email"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
-		"claims": map[string]interface{}{
+	claims := map[string]any{
+		"claims": map[string]any{
 			"email": "user@example.com",
 		},
 	}
@@ -115,11 +122,12 @@ func TestExtractPrincipalNestedClaim(t *testing.T) {
 
 // TestExtractPrincipalMissingClaim tests error when claim is missing.
 func TestExtractPrincipalMissingClaim(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		// Missing 'sub' claim
 	}
 
@@ -132,11 +140,12 @@ func TestExtractPrincipalMissingClaim(t *testing.T) {
 
 // TestExtractPrincipalEmptyValue tests error when extracted value is empty.
 func TestExtractPrincipalEmptyValue(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"sub": "",
 	}
 
@@ -149,12 +158,13 @@ func TestExtractPrincipalEmptyValue(t *testing.T) {
 
 // TestExtractPrincipalWrongType tests error when extracted value is not a string.
 func TestExtractPrincipalWrongType(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.PrincipalExpression = "subject_token.exp"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"exp": int64(1234567890),
 	}
 
@@ -167,11 +177,12 @@ func TestExtractPrincipalWrongType(t *testing.T) {
 
 // TestExtractAgentClientIDDefaultExpression tests agent_client_id extraction with default expression.
 func TestExtractAgentClientIDDefaultExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"azp": "agent-app-1",
 	}
 
@@ -183,12 +194,13 @@ func TestExtractAgentClientIDDefaultExpression(t *testing.T) {
 
 // TestExtractAgentClientIDCustomExpression tests agent_client_id extraction with custom expression.
 func TestExtractAgentClientIDCustomExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AgentClientIDExpression = "subject_token.client_id"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"client_id": "app-agent",
 	}
 
@@ -200,11 +212,12 @@ func TestExtractAgentClientIDCustomExpression(t *testing.T) {
 
 // TestExtractAgentClientIDMissingClaim tests error when claim is missing.
 func TestExtractAgentClientIDMissingClaim(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		// Missing 'azp' claim
 	}
 
@@ -217,15 +230,16 @@ func TestExtractAgentClientIDMissingClaim(t *testing.T) {
 
 // TestAuthorizePrivilegedClientDefaultExpression tests privileged client authorization with default allow-all expression.
 func TestAuthorizePrivilegedClientDefaultExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	clientAssertion := map[string]interface{}{
+	clientAssertion := map[string]any{
 		"sub": "privileged-client-1",
 		"iss": "https://auth.example.com",
 	}
-	subjectToken := map[string]interface{}{
+	subjectToken := map[string]any{
 		"sub": "user123",
 	}
 	request := CELRequestContext{
@@ -244,16 +258,17 @@ func TestAuthorizePrivilegedClientDefaultExpression(t *testing.T) {
 
 // TestAuthorizePrivilegedClientCustomExpressionAllow tests privileged client authorization with custom allow expression.
 func TestAuthorizePrivilegedClientCustomExpressionAllow(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `client_assertion.iss == "https://trusted.example.com"`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	clientAssertion := map[string]interface{}{
+	clientAssertion := map[string]any{
 		"sub": "privileged-client-1",
 		"iss": "https://trusted.example.com",
 	}
-	subjectToken := map[string]interface{}{
+	subjectToken := map[string]any{
 		"sub": "user123",
 	}
 	request := CELRequestContext{
@@ -271,16 +286,17 @@ func TestAuthorizePrivilegedClientCustomExpressionAllow(t *testing.T) {
 
 // TestAuthorizePrivilegedClientCustomExpressionDeny tests privileged client authorization with custom deny expression.
 func TestAuthorizePrivilegedClientCustomExpressionDeny(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `client_assertion.iss == "https://trusted.example.com"`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	clientAssertion := map[string]interface{}{
+	clientAssertion := map[string]any{
 		"sub": "privileged-client-1",
 		"iss": "https://untrusted.example.com", // Doesn't match trusted issuer
 	}
-	subjectToken := map[string]interface{}{
+	subjectToken := map[string]any{
 		"sub": "user123",
 	}
 	request := CELRequestContext{
@@ -301,6 +317,7 @@ func TestAuthorizePrivilegedClientCustomExpressionDeny(t *testing.T) {
 
 // TestAuthorizePrivilegedClientComplexExpression tests authorization with complex multi-condition expression.
 func TestAuthorizePrivilegedClientComplexExpression(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `
 		client_assertion.sub == "trusted-privileged-client" &&
@@ -309,12 +326,12 @@ func TestAuthorizePrivilegedClientComplexExpression(t *testing.T) {
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	clientAssertion := map[string]interface{}{
+	clientAssertion := map[string]any{
 		"sub": "trusted-privileged-client",
 	}
-	subjectToken := map[string]interface{}{
+	subjectToken := map[string]any{
 		"sub":   "user123",
-		"roles": []interface{}{"admin", "user"},
+		"roles": []any{"admin", "user"},
 	}
 	request := CELRequestContext{
 		Resource:      "https://api.example.com",
@@ -331,6 +348,7 @@ func TestAuthorizePrivilegedClientComplexExpression(t *testing.T) {
 
 // TestAuthorizePrivilegedClientComplexExpressionFailsAdminCheck tests complex expression with failed admin check.
 func TestAuthorizePrivilegedClientComplexExpressionFailsAdminCheck(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `
 		client_assertion.sub == "trusted-privileged-client" &&
@@ -339,12 +357,12 @@ func TestAuthorizePrivilegedClientComplexExpressionFailsAdminCheck(t *testing.T)
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	clientAssertion := map[string]interface{}{
+	clientAssertion := map[string]any{
 		"sub": "trusted-privileged-client",
 	}
-	subjectToken := map[string]interface{}{
+	subjectToken := map[string]any{
 		"sub":   "user123",
-		"roles": []interface{}{"user"}, // Missing admin role
+		"roles": []any{"user"}, // Missing admin role
 	}
 	request := CELRequestContext{
 		Resource:      "https://api.example.com",
@@ -362,16 +380,17 @@ func TestAuthorizePrivilegedClientComplexExpressionFailsAdminCheck(t *testing.T)
 
 // TestAuthorizePrivilegedClientWithTimeout tests authorization evaluation with timeout.
 func TestAuthorizePrivilegedClientWithTimeout(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.EvaluationTimeout = 1 * time.Millisecond // Very short timeout
 	config.AuthorizationExpression = "true"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	clientAssertion := map[string]interface{}{
+	clientAssertion := map[string]any{
 		"sub": "privileged-client-1",
 	}
-	subjectToken := map[string]interface{}{
+	subjectToken := map[string]any{
 		"sub": "user123",
 	}
 	request := CELRequestContext{
@@ -395,13 +414,14 @@ func TestAuthorizePrivilegedClientWithTimeout(t *testing.T) {
 
 // TestExtractPrincipalWithComplexNestedClaims tests principal extraction from complex nested structure.
 func TestExtractPrincipalWithComplexNestedClaims(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.PrincipalExpression = "subject_token.user.id"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
-		"user": map[string]interface{}{
+	claims := map[string]any{
+		"user": map[string]any{
 			"id":   "user-456",
 			"name": "John Doe",
 		},
@@ -415,13 +435,14 @@ func TestExtractPrincipalWithComplexNestedClaims(t *testing.T) {
 
 // TestExtractAgentClientIDWithComplexNestedClaims tests agent_client_id extraction from complex nested structure.
 func TestExtractAgentClientIDWithComplexNestedClaims(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AgentClientIDExpression = "subject_token.agent.client_id"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	claims := map[string]interface{}{
-		"agent": map[string]interface{}{
+	claims := map[string]any{
+		"agent": map[string]any{
 			"client_id": "agent-789",
 			"name":      "Privileged Client Agent",
 		},
@@ -435,15 +456,16 @@ func TestExtractAgentClientIDWithComplexNestedClaims(t *testing.T) {
 
 // TestAuthorizePrivilegedClientWithRequestContext tests authorization with request context variables.
 func TestAuthorizePrivilegedClientWithRequestContext(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `request.resource == "https://api.example.com"`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	clientAssertion := map[string]interface{}{
+	clientAssertion := map[string]any{
 		"sub": "privileged-client-1",
 	}
-	subjectToken := map[string]interface{}{
+	subjectToken := map[string]any{
 		"sub": "user123",
 	}
 	request := CELRequestContext{
@@ -461,15 +483,16 @@ func TestAuthorizePrivilegedClientWithRequestContext(t *testing.T) {
 
 // TestAuthorizePrivilegedClientWithRequestContextMismatch tests authorization with mismatched request context.
 func TestAuthorizePrivilegedClientWithRequestContextMismatch(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.AuthorizationExpression = `request.resource == "https://api.example.com"`
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
-	clientAssertion := map[string]interface{}{
+	clientAssertion := map[string]any{
 		"sub": "privileged-client-1",
 	}
-	subjectToken := map[string]interface{}{
+	subjectToken := map[string]any{
 		"sub": "user123",
 	}
 	request := CELRequestContext{
@@ -488,6 +511,7 @@ func TestAuthorizePrivilegedClientWithRequestContextMismatch(t *testing.T) {
 
 // TestNewCELEvaluatorWithDefaultTimeout tests evaluator initialization with default timeout.
 func TestNewCELEvaluatorWithDefaultTimeout(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.EvaluationTimeout = 0 // Force default
 	evaluator, err := NewCELEvaluator(config)
@@ -498,6 +522,7 @@ func TestNewCELEvaluatorWithDefaultTimeout(t *testing.T) {
 
 // TestNewCELEvaluatorWithCustomTimeout tests evaluator initialization with custom timeout.
 func TestNewCELEvaluatorWithCustomTimeout(t *testing.T) {
+	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	config.EvaluationTimeout = 250 * time.Millisecond
 	evaluator, err := NewCELEvaluator(config)

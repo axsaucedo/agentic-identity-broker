@@ -290,6 +290,7 @@ func NewTokenExchangeServiceForTest(
 
 // TestNewTokenExchangeService tests service creation with various parameter combinations
 func TestNewTokenExchangeServiceForTest(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                 string
 		jwtValidator         *JWTValidator
@@ -394,6 +395,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			service, err := NewTokenExchangeServiceForTest(
 				tt.jwtValidator,
 				tt.celEvaluator,
@@ -420,6 +422,7 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 
 // TestExchange_InvalidRequest tests handling of invalid token exchange requests
 func TestExchange_InvalidRequest(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	config := &ports.TokenExchangeConfig{
 		ClaimExtraction: ports.ClaimExtractionConfig{
@@ -479,6 +482,7 @@ func TestExchange_InvalidRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := service.Exchange(ctx, tt.request)
 			assert.Error(t, err)
 
@@ -493,6 +497,7 @@ func TestExchange_InvalidRequest(t *testing.T) {
 // TestExchange_RequestValidation documents valid token exchange request structure
 // Full E2E testing of request/JWT validation is in E2E tests
 func TestExchange_RequestValidation(t *testing.T) {
+	t.Parallel()
 	// This test documents that request validation happens before JWT validation
 	// Full integration tests of the complete flow are in E2E tests
 	// Unit tests of JWT validation are in jwt_validator_test.go
@@ -500,9 +505,11 @@ func TestExchange_RequestValidation(t *testing.T) {
 
 // TestExchange_GrantExpiration tests handling of expired user grants
 func TestExchange_GrantExpiration(t *testing.T) {
+	t.Parallel()
 	// This test verifies that expired grants are properly rejected
 	// In a full implementation with complete mocking, this would test the full flow
 	t.Run("expired grant should return access_denied", func(t *testing.T) {
+		t.Parallel()
 		// Would need complete mocking of JWT validation and other steps
 		// This is a placeholder for the test pattern
 		expiredTime := time.Now().UTC().Add(-1 * time.Hour)
@@ -522,6 +529,7 @@ func TestExchange_GrantExpiration(t *testing.T) {
 // NOTE: buildRequestContext is not currently exposed on TokenExchangeService
 // This test remains as documentation for the pattern once the method is public
 func TestBuildRequestContext(t *testing.T) {
+	t.Parallel()
 	_, err := NewTokenExchangeServiceForTest(
 		&JWTValidator{},
 		&CELEvaluator{},
@@ -555,6 +563,7 @@ func TestBuildRequestContext(t *testing.T) {
 
 // TestGrantVerification_MissingGrant tests T063 - access_denied when grant not found
 func TestGrantVerification_MissingGrant(t *testing.T) {
+	t.Parallel()
 	// This test documents the grant verification flow (T061-T063)
 	// When a grant is not found (ErrNotFound), the service should return access_denied
 
@@ -576,6 +585,7 @@ func TestGrantVerification_MissingGrant(t *testing.T) {
 
 // TestGrantVerification_ExpiredGrant tests T065 - access_denied when grant expired
 func TestGrantVerification_ExpiredGrant(t *testing.T) {
+	t.Parallel()
 	// Create an expired grant
 	expiredTime := time.Now().UTC().Add(-1 * time.Hour)
 	expiredGrant := &storagedomain.UserGrant{
@@ -613,6 +623,7 @@ func TestGrantVerification_ExpiredGrant(t *testing.T) {
 
 // TestGrantVerification_ActiveGrant tests T062a - active grant is allowed
 func TestGrantVerification_ActiveGrant(t *testing.T) {
+	t.Parallel()
 	// Create an active (non-expired) grant
 	futureTime := time.Now().UTC().Add(24 * time.Hour)
 	activeGrant := &storagedomain.UserGrant{
@@ -650,6 +661,7 @@ func TestGrantVerification_ActiveGrant(t *testing.T) {
 
 // TestMockOAuth2SessionService_NewMethods tests the newly added mock methods
 func TestMockOAuth2SessionService_NewMethods(t *testing.T) {
+	t.Parallel()
 	mock := &MockOAuth2SessionService{}
 	ctx := context.Background()
 	testSvcID := id.NewServiceID()
