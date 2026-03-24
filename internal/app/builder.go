@@ -190,9 +190,10 @@ func (b *Builder) Build() (*App, error) {
 
 	// Create OAuth2 service if configuration available
 	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
-		app.OAuth2Service = oauth2service.NewService(
+		app.OAuth2Service = oauth2service.NewServiceWithSessions(
 			b.storage.Agents(),
 			b.storage.UserGrants(),
+			b.storage.UserSessions(),
 			&oauth2service.OAuth2Config{
 				UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
 				UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
@@ -200,6 +201,7 @@ func (b *Builder) Build() (*App, error) {
 				SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
 				SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
 			},
+			b.logger,
 		)
 	}
 
