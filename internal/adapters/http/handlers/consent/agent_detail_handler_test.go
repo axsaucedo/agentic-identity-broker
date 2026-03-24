@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
@@ -764,5 +765,69 @@ func TestBuildServiceRequirementsForUser_ServiceNotFound(t *testing.T) {
 	// Missing service should be skipped from results
 	if len(results) != 0 {
 		t.Errorf("expected 0 results (missing service skipped), got %d", len(results))
+	}
+}
+
+func TestBuildServiceRequirementsForUser_ExpiredSessionShowsNotConnected(t *testing.T) {
+	// Expired sessions must surface as "not_connected" so the Login button is shown
+	// on the consent screen and users can re-authenticate.
+	userPrincipal := id.NewPrincipal("user@example.com")
+	githubServiceID := id.NewServiceID()
+
+	agentWithReqs := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "Test Agent",
+		ServiceRequirements: []storage.ServiceRequirement{
+			{
+				ServiceID:       githubServiceID,
+				RequirementType: storage.RequirementTypeMandatory,
+				RequiredScopes:  []string{"read:user"},
+			},
+		},
+	}
+
+	mockService := &mockAgentDetailService{}
+
+	expiredAt := time.Now().Add(-1 * time.Hour)
+	mockSessions := &mockSessionRepository{
+		findByPrincipalAndServiceFunc: func(ctx context.Context, p id.Principal, svcID id.ServiceID) (*storage.UserSession, error) {
+			return &storage.UserSession{
+				ID:                    id.NewSessionID(),
+				Principal:             userPrincipal,
+				ServiceID:             githubServiceID,
+				TokenType:             "Bearer",
+				RefreshTokenExpiresAt: &expiredAt, // fully expired
+			}, nil
+		},
+	}
+
+	mockServices := &mockServiceRepository{
+		getFunc: func(ctx context.Context, svcID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+			return &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          githubServiceID,
+				DisplayName: "GitHub",
+				Scopes: []model.OAuthScope{
+					{ScopeValue: "read:user", Description: "Read user profile"},
+				},
+				Secret: model.NewEncryptedSecret(encryptSecretForTest(githubServiceID.String(), "test-client-secret")),
+			}, nil
+		},
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil)
+	handler.sessionRepository = mockSessions
+	handler.providerService = newTestProviderService(mockServices)
+
+	ctx := context.Background()
+	results, err := handler.buildServiceRequirementsForUser(ctx, userPrincipal, agentWithReqs)
+
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].ConnectionStatus != "not_connected" {
+		t.Errorf("expected connection status 'not_connected' for expired session, got %s", results[0].ConnectionStatus)
 	}
 }

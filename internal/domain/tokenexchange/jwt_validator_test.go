@@ -218,8 +218,8 @@ func TestMapParseError_WrapsUnderlyingCause(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name          string
-		rawErr        error
+		name            string
+		rawErr          error
 		wantErrContains string
 	}{
 		{
