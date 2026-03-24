@@ -85,7 +85,7 @@ test-coverage-summary:
 test-backend-e2e:
     @echo "Running E2E tests..."
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v ./tests/e2e/; \
+        ginkgo -v --procs=4 ./tests/e2e/; \
     else \
         echo "Error: ginkgo is not installed. Install it with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
         exit 1; \
@@ -96,7 +96,7 @@ test-backend-e2e-coverage:
     @echo "Running E2E tests with coverage..."
     @mkdir -p coverage
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v --cover --coverprofile=e2e.out --output-dir=coverage ./tests/e2e/; \
+        ginkgo -v --procs=4 --cover --coverprofile=e2e.out --output-dir=coverage ./tests/e2e/; \
         go tool cover -html=coverage/e2e.out -o coverage/e2e.html; \
         echo "E2E coverage report generated at coverage/e2e.html"; \
     else \
@@ -139,7 +139,7 @@ test-e2e-full:
     #!/usr/bin/env bash
     set -e
     just web-build
-    ginkgo -v ./tests/e2e/ --skip="Frontend"
+    ginkgo -v --procs=4 ./tests/e2e/ --skip="Frontend"
     just test-frontend-e2e
 
 # Build and run the application
@@ -283,7 +283,7 @@ test-all-junit:
         echo "  Run 'just install-tools' to install required development tools"
         E2E_EXIT=1
     else
-        if ginkgo run -v --junit-report=test-results/e2e-junit.xml ./tests/e2e/; then
+        if ginkgo run -v --procs=4 --junit-report=test-results/e2e-junit.xml ./tests/e2e/; then
             echo "✓ E2E tests passed"
         else
             E2E_EXIT=$?
@@ -299,7 +299,7 @@ test-all-junit:
         echo "  Run 'just install-tools' to install required development tools"
         E2E_EXTPROC_EXIT=1
     else
-        if ginkgo run -v --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/; then
+        if ginkgo run -v --procs=4 --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/; then
             echo "✓ E2E ExtProc tests passed"
         else
             E2E_EXTPROC_EXIT=$?
@@ -729,7 +729,7 @@ extproc-test:
 extproc-test-e2e:
     @echo "Running extproc E2E tests..."
     @if command -v ginkgo > /dev/null; then \
-        ginkgo -v ./tests/e2e/extproc/; \
+        ginkgo -v --procs=4 ./tests/e2e/extproc/; \
     else \
         echo "Error: ginkgo is not installed. Run: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; \
         exit 1; \
