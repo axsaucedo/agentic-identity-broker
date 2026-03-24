@@ -5,6 +5,7 @@ import (
 )
 
 func TestNewResourceURI(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		input       string
@@ -65,6 +66,7 @@ func TestNewResourceURI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			uri, err := NewResourceURI(tt.input)
 
 			if tt.expectError {
@@ -87,6 +89,7 @@ func TestNewResourceURI(t *testing.T) {
 }
 
 func TestResourceURIEqual(t *testing.T) {
+	t.Parallel()
 	uri1 := &ResourceURI{value: "https://api.github.com"}
 	uri2 := &ResourceURI{value: "https://api.github.com"}
 	uri3 := &ResourceURI{value: "https://api.example.com"}
@@ -125,6 +128,7 @@ func TestResourceURIEqual(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := tt.uri1.Equal(tt.uri2)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
@@ -134,6 +138,7 @@ func TestResourceURIEqual(t *testing.T) {
 }
 
 func TestResourceURIString(t *testing.T) {
+	t.Parallel()
 	uri, _ := NewResourceURI("https://api.github.com")
 	if uri.String() != "https://api.github.com" {
 		t.Errorf("String() failed: expected %q, got %q", "https://api.github.com", uri.String())
@@ -146,6 +151,7 @@ func TestResourceURIString(t *testing.T) {
 }
 
 func TestNormalize(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -195,6 +201,7 @@ func TestNormalize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := Normalize(tt.input)
 			if result != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, result)

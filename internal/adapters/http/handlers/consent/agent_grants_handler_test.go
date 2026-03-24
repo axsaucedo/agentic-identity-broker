@@ -57,6 +57,7 @@ func (m *mockAgentGrantsService) RevokeConsentForPrincipal(ctx context.Context, 
 }
 
 func TestGetAgentGrants_Success(t *testing.T) {
+	t.Parallel()
 	// Setup
 	principalValue := "user@example.com"
 	agentID := id.NewAgentID()
@@ -139,6 +140,7 @@ func TestGetAgentGrants_Success(t *testing.T) {
 }
 
 func TestGetAgentGrants_EmptyGrants(t *testing.T) {
+	t.Parallel()
 	// Setup - user hasn't granted this agent access yet
 	principalValue := "user@example.com"
 	agentID := id.NewAgentID()
@@ -182,6 +184,7 @@ func TestGetAgentGrants_EmptyGrants(t *testing.T) {
 }
 
 func TestGetAgentGrants_MissingPrincipal(t *testing.T) {
+	t.Parallel()
 	// Setup
 	mockService := &mockAgentGrantsService{}
 	handler := NewAgentGrantsHandler(mockService, nil)
@@ -214,6 +217,7 @@ func TestGetAgentGrants_MissingPrincipal(t *testing.T) {
 }
 
 func TestGetAgentGrants_MissingAgentID(t *testing.T) {
+	t.Parallel()
 	// Setup
 	mockService := &mockAgentGrantsService{}
 	handler := NewAgentGrantsHandler(mockService, nil)
@@ -248,6 +252,7 @@ func TestGetAgentGrants_MissingAgentID(t *testing.T) {
 }
 
 func TestGetAgentGrants_AgentNotFound(t *testing.T) {
+	t.Parallel()
 	// Setup
 	principalValue := "user@example.com"
 	agentID := id.NewAgentID()
@@ -290,6 +295,7 @@ func TestGetAgentGrants_AgentNotFound(t *testing.T) {
 }
 
 func TestGetAgentGrants_ServiceError(t *testing.T) {
+	t.Parallel()
 	// Setup
 	principalValue := "user@example.com"
 	agentID := id.NewAgentID()
@@ -332,6 +338,7 @@ func TestGetAgentGrants_ServiceError(t *testing.T) {
 }
 
 func TestToUserGrantDTO_Conversion(t *testing.T) {
+	t.Parallel()
 	// Setup
 	grantID := id.NewGrantID()
 	agentID := id.NewAgentID()

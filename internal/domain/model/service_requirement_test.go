@@ -9,6 +9,7 @@ import (
 )
 
 func TestRequirementType_Valid(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		rt    RequirementType
@@ -23,12 +24,14 @@ func TestRequirementType_Valid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.valid, tt.rt.Valid())
 		})
 	}
 }
 
 func TestRequirementType_Validate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		rt      RequirementType
@@ -50,6 +53,7 @@ func TestRequirementType_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.rt.Validate()
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -62,23 +66,28 @@ func TestRequirementType_Validate(t *testing.T) {
 }
 
 func TestRequirementType_Predicates(t *testing.T) {
+	t.Parallel()
 	t.Run("IsMandatory", func(t *testing.T) {
+		t.Parallel()
 		assert.True(t, RequirementTypeMandatory.IsMandatory())
 		assert.False(t, RequirementTypeOptional.IsMandatory())
 	})
 
 	t.Run("IsOptional", func(t *testing.T) {
+		t.Parallel()
 		assert.True(t, RequirementTypeOptional.IsOptional())
 		assert.False(t, RequirementTypeMandatory.IsOptional())
 	})
 
 	t.Run("String", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, "mandatory", RequirementTypeMandatory.String())
 		assert.Equal(t, "optional", RequirementTypeOptional.String())
 	})
 }
 
 func TestServiceRequirement_Validate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		sr      ServiceRequirement
@@ -150,6 +159,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.sr.Validate()
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -162,6 +172,7 @@ func TestServiceRequirement_Validate(t *testing.T) {
 }
 
 func TestServiceRequirement_HasScope(t *testing.T) {
+	t.Parallel()
 	sr := ServiceRequirement{
 		ServiceID:       id.NewServiceID(),
 		RequirementType: RequirementTypeMandatory,
@@ -177,6 +188,7 @@ func TestServiceRequirement_HasScope(t *testing.T) {
 }
 
 func TestServiceRequirement_Predicates(t *testing.T) {
+	t.Parallel()
 	svcID1 := id.NewServiceID()
 	svcID2 := id.NewServiceID()
 	mandatory := ServiceRequirement{
@@ -197,6 +209,7 @@ func TestServiceRequirement_Predicates(t *testing.T) {
 }
 
 func TestServiceRequirement_Copy(t *testing.T) {
+	t.Parallel()
 	original := &ServiceRequirement{
 		ServiceID:       id.MustParseServiceID("650e8400-e29b-41d4-a716-446655440001"),
 		RequirementType: RequirementTypeMandatory,
@@ -214,6 +227,7 @@ func TestServiceRequirement_Copy(t *testing.T) {
 	assert.Equal(t, "repo", original.RequiredScopes[0], "mutation of copy should not affect original")
 
 	t.Run("nil scopes copy", func(t *testing.T) {
+		t.Parallel()
 		sr := &ServiceRequirement{
 			ServiceID:       id.NewServiceID(),
 			RequirementType: RequirementTypeOptional,

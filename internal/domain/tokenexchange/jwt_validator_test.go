@@ -36,6 +36,7 @@ func (m *MockJWKSProvider) GetKey(ctx context.Context, kid string) (jwk.Key, err
 
 // TestNewJWTValidator tests validator creation with various parameter combinations
 func TestNewJWTValidator(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		jwksProvider     JWKSProvider
@@ -122,6 +123,7 @@ func TestNewJWTValidator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			validator, err := NewJWTValidator(
 				tt.jwksProvider,
 				tt.expectedIssuer,
@@ -145,6 +147,7 @@ func TestNewJWTValidator(t *testing.T) {
 
 // TestValidateSubjectToken_EmptyToken tests handling of empty token
 func TestValidateSubjectToken_EmptyToken(t *testing.T) {
+	t.Parallel()
 	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
 	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
 	require.NoError(t, err)
@@ -158,6 +161,7 @@ func TestValidateSubjectToken_EmptyToken(t *testing.T) {
 
 // TestValidateSubjectToken_MalformedToken tests handling of malformed token
 func TestValidateSubjectToken_MalformedToken(t *testing.T) {
+	t.Parallel()
 	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
 	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
 	require.NoError(t, err)
@@ -171,6 +175,7 @@ func TestValidateSubjectToken_MalformedToken(t *testing.T) {
 
 // TestValidateSubjectToken_JWKSFetchError tests handling of JWKS fetch error
 func TestValidateSubjectToken_JWKSFetchError(t *testing.T) {
+	t.Parallel()
 	mockProvider := &MockJWKSProvider{err: NewServerError("connection failed")}
 	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
 	require.NoError(t, err)
@@ -186,6 +191,7 @@ func TestValidateSubjectToken_JWKSFetchError(t *testing.T) {
 
 // TestValidateClientAssertion_EmptyToken tests handling of empty client_assertion
 func TestValidateClientAssertion_EmptyToken(t *testing.T) {
+	t.Parallel()
 	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
 	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
 	require.NoError(t, err)
@@ -199,6 +205,7 @@ func TestValidateClientAssertion_EmptyToken(t *testing.T) {
 
 // TestValidateClientAssertion_MalformedToken tests handling of malformed client_assertion
 func TestValidateClientAssertion_MalformedToken(t *testing.T) {
+	t.Parallel()
 	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
 	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
 	require.NoError(t, err)
@@ -213,6 +220,7 @@ func TestValidateClientAssertion_MalformedToken(t *testing.T) {
 // TestMapParseError_WrapsUnderlyingCause verifies that JWT validation errors include the
 // underlying library error as a cause so operators can log full details internally.
 func TestMapParseError_WrapsUnderlyingCause(t *testing.T) {
+	t.Parallel()
 	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
 	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
 	require.NoError(t, err)
@@ -251,6 +259,7 @@ func TestMapParseError_WrapsUnderlyingCause(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			domErr := validator.mapParseError(tt.rawErr, "subject_token")
 			require.Error(t, domErr)
 
@@ -269,6 +278,7 @@ func TestMapParseError_WrapsUnderlyingCause(t *testing.T) {
 // TestMapClientAssertionParseError_WrapsUnderlyingCause verifies that client assertion validation
 // errors include the underlying library error as a cause for internal logging.
 func TestMapClientAssertionParseError_WrapsUnderlyingCause(t *testing.T) {
+	t.Parallel()
 	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
 	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
 	require.NoError(t, err)
