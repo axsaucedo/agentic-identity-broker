@@ -130,6 +130,10 @@ func configForMocks(m *mockServers) *extprocconfig.Config {
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -401,6 +405,10 @@ func TestTokenExchanger_ClientAssertion_SendsCorrectGrantRequest(t *testing.T) {
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 
 	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
@@ -605,6 +613,10 @@ func TestTokenExchanger_ClientAssertion_DefaultsIssuerOAuthToken(t *testing.T) {
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 
 	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
@@ -643,6 +655,10 @@ func TestTokenExchanger_New_ClientAssertionFailure_ReturnsError(t *testing.T) {
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 
 	_, err := server.NewTokenExchanger(cfg, testLogger())
@@ -676,6 +692,10 @@ func TestTokenExchanger_ClientSecret_NotExposedInErrors(t *testing.T) {
 		Cache: extprocconfig.CacheConfig{
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
+		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
 		},
 	}
 

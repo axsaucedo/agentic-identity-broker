@@ -138,6 +138,36 @@ data:
     security:
       skip_thirdparty_https_validation: {{ .Values.broker.security.skipThirdpartyHttpsValidation }}
 
+    {{- if .Values.broker.telemetry.enabled }}
+    # OpenTelemetry observability configuration
+    telemetry:
+      enabled: true
+      service_name: {{ .Values.broker.telemetry.serviceName | quote }}
+      {{- if .Values.broker.telemetry.resourceAttributes }}
+      resource_attributes:
+        {{- toYaml .Values.broker.telemetry.resourceAttributes | nindent 8 }}
+      {{- end }}
+      traces:
+        enabled: {{ .Values.broker.telemetry.traces.enabled }}
+        sampling_rate: {{ .Values.broker.telemetry.traces.samplingRate }}
+        propagators:
+          {{- toYaml .Values.broker.telemetry.traces.propagators | nindent 10 }}
+      metrics:
+        enabled: {{ .Values.broker.telemetry.metrics.enabled }}
+        export_interval: {{ .Values.broker.telemetry.metrics.exportInterval | quote }}
+      exporter:
+        protocol: {{ .Values.broker.telemetry.exporter.protocol | quote }}
+        {{- if .Values.broker.telemetry.exporter.endpoint }}
+        endpoint: {{ .Values.broker.telemetry.exporter.endpoint | quote }}
+        {{- end }}
+        {{- if .Values.broker.telemetry.exporter.headers }}
+        headers:
+          {{- toYaml .Values.broker.telemetry.exporter.headers | nindent 10 }}
+        {{- end }}
+        timeout: {{ .Values.broker.telemetry.exporter.timeout | quote }}
+        insecure: {{ .Values.broker.telemetry.exporter.insecure }}
+    {{- end }}
+
     {{- if eq .Values.storage.type "postgres" }}
     # Storage configuration (overridden by environment variables)
     # Environment variables IDENTITY_BROKER_STORAGE_BACKEND and

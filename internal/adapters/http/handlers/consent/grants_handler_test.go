@@ -35,6 +35,7 @@ func newRequestWithPrincipal(method, path, principalValue string, body interface
 }
 
 func TestGetGrants_NoPrincipal(t *testing.T) {
+	t.Parallel()
 	handler := NewGrantsHandler(nil, nil)
 	testAgentID := id.NewAgentID()
 
@@ -64,6 +65,7 @@ func TestGetGrants_NoPrincipal(t *testing.T) {
 }
 
 func TestCreateGrant_NoPrincipal(t *testing.T) {
+	t.Parallel()
 	handler := NewGrantsHandler(nil, nil)
 	testAgentID := id.NewAgentID()
 
@@ -93,6 +95,7 @@ func TestCreateGrant_NoPrincipal(t *testing.T) {
 }
 
 func TestCreateGrant_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	handler := NewGrantsHandler(nil, nil)
 	testAgentID := id.NewAgentID()
 
@@ -123,6 +126,7 @@ func TestCreateGrant_InvalidJSON(t *testing.T) {
 }
 
 func TestCreateGrant_EmptyTokensRevokes(t *testing.T) {
+	t.Parallel()
 	testAgentID := id.NewAgentID()
 	revokeCalled := false
 	mockService := &mockConsentService{
@@ -165,6 +169,7 @@ func TestCreateGrant_EmptyTokensRevokes(t *testing.T) {
 }
 
 func TestCreateGrant_ValidUntilInPast(t *testing.T) {
+	t.Parallel()
 	handler := NewGrantsHandler(nil, nil)
 	testAgentID := id.NewAgentID()
 
@@ -210,6 +215,7 @@ func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 }
 
 func TestToGrantResponse(t *testing.T) {
+	t.Parallel()
 	handler := NewGrantsHandler(nil, nil)
 
 	testGrantID := id.NewGrantID()
@@ -292,6 +298,7 @@ func TestToGrantResponse(t *testing.T) {
 
 // Integration-style test that verifies error handling for service errors
 func TestCreateGrant_ServiceErrors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		serviceError   error
@@ -326,6 +333,7 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			testAgentID := id.NewAgentID()
 
 			// Create mock service that returns the error
@@ -375,6 +383,7 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 
 // TestCreateGrant_Success verifies successful grant creation
 func TestCreateGrant_Success(t *testing.T) {
+	t.Parallel()
 	// Create mock service
 	testAgentID := id.NewAgentID()
 	testGrantID := id.NewGrantID()
@@ -463,6 +472,7 @@ func TestCreateGrant_Success(t *testing.T) {
 
 // TestGetGrants_Success verifies successful grant retrieval
 func TestGetGrants_Success(t *testing.T) {
+	t.Parallel()
 	testAgentID := id.NewAgentID()
 	testGrantID1 := id.NewGrantID()
 	testGrantID2 := id.NewGrantID()
@@ -534,6 +544,7 @@ func TestGetGrants_Success(t *testing.T) {
 
 // TestGetGrants_AgentNotFound verifies agent not found error
 func TestGetGrants_AgentNotFound(t *testing.T) {
+	t.Parallel()
 	testAgentID := id.NewAgentID()
 	mockService := &mockConsentService{
 		getActiveGrantsFunc: func(ctx context.Context, p id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
@@ -572,6 +583,7 @@ func TestGetGrants_AgentNotFound(t *testing.T) {
 
 // TestValidateRedirectURI tests the redirect URI validation function
 func TestValidateRedirectURI(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		redirectURI   string
@@ -696,6 +708,7 @@ func TestValidateRedirectURI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Create *http.Request from requestHost string
 			// Detect if HTTPS by checking for :443 port indicator
 			isTLS := strings.Contains(tt.requestHost, ":443")
@@ -724,6 +737,7 @@ func TestValidateRedirectURI(t *testing.T) {
 
 // TestCreateGrant_WithRedirectURI_Valid tests approval with valid redirect_uri
 func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
+	t.Parallel()
 	// T050: Test case 2 - Approval with valid redirect_uri should redirect
 	testAgentID := id.NewAgentID()
 	testGrantID := id.NewGrantID()
@@ -791,6 +805,7 @@ func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
 
 // TestCreateGrant_WithRedirectURI_RelativeValid tests approval with relative redirect_uri
 func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
+	t.Parallel()
 	// T050: Test case 3 - Approval with relative redirect_uri should redirect
 	testAgentID := id.NewAgentID()
 	testGrantID := id.NewGrantID()
@@ -858,6 +873,7 @@ func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
 
 // TestCreateGrant_WithRedirectURI_InvalidDomain tests approval with external domain redirect_uri
 func TestCreateGrant_WithRedirectURI_InvalidDomain(t *testing.T) {
+	t.Parallel()
 	// T050: Test case 4 - Approval with invalid redirect_uri (external domain) should return error
 	testAgentID := id.NewAgentID()
 	handler := NewGrantsHandler(nil, nil)
@@ -897,6 +913,7 @@ func TestCreateGrant_WithRedirectURI_InvalidDomain(t *testing.T) {
 
 // TestCreateGrant_WithoutRedirectURI tests approval without redirect_uri (success page)
 func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
+	t.Parallel()
 	// T050: Test case 1 - Approval without redirect_uri should return success page
 	testAgentID := id.NewAgentID()
 	testGrantID := id.NewGrantID()
@@ -959,6 +976,7 @@ func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 
 // TestCreateGrant_WithRedirectURI_PreservesQueryParams tests that query parameters are preserved
 func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
+	t.Parallel()
 	// T058: Test case - Approval preserves query parameters in redirect
 	testAgentID := id.NewAgentID()
 	testGrantID := id.NewGrantID()

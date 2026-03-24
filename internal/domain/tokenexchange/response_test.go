@@ -10,6 +10,7 @@ import (
 
 // TestTokenExchangeResponse_ValidMinimal tests a minimal valid response.
 func TestTokenExchangeResponse_ValidMinimal(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...", // access_token
 		BearerTokenType,      // token_type
@@ -33,6 +34,7 @@ func TestTokenExchangeResponse_ValidMinimal(t *testing.T) {
 
 // TestTokenExchangeResponse_ValidWithExpiry tests response with expiration time.
 func TestTokenExchangeResponse_ValidWithExpiry(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponseWithExpiry(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -51,6 +53,7 @@ func TestTokenExchangeResponse_ValidWithExpiry(t *testing.T) {
 
 // TestTokenExchangeResponse_ValidFull tests response with all optional fields.
 func TestTokenExchangeResponse_ValidFull(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponseFull(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -74,6 +77,7 @@ func TestTokenExchangeResponse_ValidFull(t *testing.T) {
 
 // TestTokenExchangeResponse_InvalidEmptyAccessToken tests validation with empty access_token.
 func TestTokenExchangeResponse_InvalidEmptyAccessToken(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"", // empty access_token
 		BearerTokenType,
@@ -91,6 +95,7 @@ func TestTokenExchangeResponse_InvalidEmptyAccessToken(t *testing.T) {
 
 // TestTokenExchangeResponse_InvalidEmptyTokenType tests validation with empty token_type.
 func TestTokenExchangeResponse_InvalidEmptyTokenType(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...",
 		"", // empty token_type
@@ -108,6 +113,7 @@ func TestTokenExchangeResponse_InvalidEmptyTokenType(t *testing.T) {
 
 // TestTokenExchangeResponse_InvalidEmptyIssuedTokenType tests validation with empty issued_token_type.
 func TestTokenExchangeResponse_InvalidEmptyIssuedTokenType(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -125,6 +131,7 @@ func TestTokenExchangeResponse_InvalidEmptyIssuedTokenType(t *testing.T) {
 
 // TestTokenExchangeResponse_InvalidNegativeExpiresIn tests validation with negative expires_in.
 func TestTokenExchangeResponse_InvalidNegativeExpiresIn(t *testing.T) {
+	t.Parallel()
 	resp := &TokenExchangeResponse{
 		AccessToken:     "ya29.a0AfH6SMBx...",
 		TokenType:       BearerTokenType,
@@ -143,6 +150,7 @@ func TestTokenExchangeResponse_InvalidNegativeExpiresIn(t *testing.T) {
 
 // TestTokenExchangeResponse_ToJSON tests JSON serialization.
 func TestTokenExchangeResponse_ToJSON(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponseFull(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -159,7 +167,7 @@ func TestTokenExchangeResponse_ToJSON(t *testing.T) {
 	}
 
 	// Parse JSON to verify structure
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal(jsonBytes, &data); err != nil {
 		t.Errorf("JSON unmarshal error = %v", err)
 		return
@@ -187,6 +195,7 @@ func TestTokenExchangeResponse_ToJSON(t *testing.T) {
 
 // TestTokenExchangeResponse_ToJSON_OmitEmptyOptionalFields tests that empty optional fields are omitted.
 func TestTokenExchangeResponse_ToJSON_OmitEmptyOptionalFields(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -200,7 +209,7 @@ func TestTokenExchangeResponse_ToJSON_OmitEmptyOptionalFields(t *testing.T) {
 	}
 
 	// Parse and check that empty optional fields are not in JSON
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal(jsonBytes, &data); err != nil {
 		t.Errorf("JSON unmarshal error = %v", err)
 		return
@@ -217,6 +226,7 @@ func TestTokenExchangeResponse_ToJSON_OmitEmptyOptionalFields(t *testing.T) {
 
 // TestTokenExchangeResponse_String tests the string representation doesn't expose tokens.
 func TestTokenExchangeResponse_String(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponseFull(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -247,6 +257,7 @@ func TestTokenExchangeResponse_String(t *testing.T) {
 
 // TestTokenExchangeResponse_WithRefreshToken tests the builder method.
 func TestTokenExchangeResponse_WithRefreshToken(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -268,6 +279,7 @@ func TestTokenExchangeResponse_WithRefreshToken(t *testing.T) {
 
 // TestTokenExchangeResponse_WithScope tests the builder method.
 func TestTokenExchangeResponse_WithScope(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -289,6 +301,7 @@ func TestTokenExchangeResponse_WithScope(t *testing.T) {
 
 // TestTokenExchangeResponse_WithExpiresIn tests the builder method.
 func TestTokenExchangeResponse_WithExpiresIn(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -310,6 +323,7 @@ func TestTokenExchangeResponse_WithExpiresIn(t *testing.T) {
 
 // TestTokenExchangeResponse_HasRefreshToken tests the query method.
 func TestTokenExchangeResponse_HasRefreshToken(t *testing.T) {
+	t.Parallel()
 	resp1 := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -334,6 +348,7 @@ func TestTokenExchangeResponse_HasRefreshToken(t *testing.T) {
 
 // TestTokenExchangeResponse_GetExpirationSeconds tests the getter method.
 func TestTokenExchangeResponse_GetExpirationSeconds(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		expiresIn int64
@@ -358,6 +373,7 @@ func TestTokenExchangeResponse_GetExpirationSeconds(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			resp := &TokenExchangeResponse{
 				AccessToken:     "token",
 				TokenType:       BearerTokenType,
@@ -374,6 +390,7 @@ func TestTokenExchangeResponse_GetExpirationSeconds(t *testing.T) {
 
 // TestTokenExchangeResponse_ChainedBuilders tests that builders can be chained.
 func TestTokenExchangeResponse_ChainedBuilders(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponse(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -395,6 +412,7 @@ func TestTokenExchangeResponse_ChainedBuilders(t *testing.T) {
 
 // TestTokenExchangeResponse_RFC8693Format verifies JSON format matches RFC 8693.
 func TestTokenExchangeResponse_RFC8693Format(t *testing.T) {
+	t.Parallel()
 	resp := NewTokenExchangeResponseFull(
 		"ya29.a0AfH6SMBx...",
 		BearerTokenType,
@@ -407,7 +425,7 @@ func TestTokenExchangeResponse_RFC8693Format(t *testing.T) {
 	jsonBytes, _ := resp.ToJSON()
 
 	// Expected RFC 8693 Section 2.2 format
-	expected := map[string]interface{}{
+	expected := map[string]any{
 		"access_token":      "ya29.a0AfH6SMBx...",
 		"token_type":        BearerTokenType,
 		"issued_token_type": AccessTokenType,
@@ -416,7 +434,7 @@ func TestTokenExchangeResponse_RFC8693Format(t *testing.T) {
 		"scope":             "repo read",
 	}
 
-	var actual map[string]interface{}
+	var actual map[string]any
 	require.NoError(t, json.Unmarshal(jsonBytes, &actual))
 
 	for key, expectedVal := range expected {
@@ -428,6 +446,7 @@ func TestTokenExchangeResponse_RFC8693Format(t *testing.T) {
 
 // TestTokenExchangeResponse_IsExpired tests expiration check.
 func TestTokenExchangeResponse_IsExpired(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		expiresIn int64
@@ -452,6 +471,7 @@ func TestTokenExchangeResponse_IsExpired(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			resp := &TokenExchangeResponse{
 				AccessToken:     "token",
 				TokenType:       BearerTokenType,

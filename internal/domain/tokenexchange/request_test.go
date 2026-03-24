@@ -7,6 +7,7 @@ import (
 
 // TestTokenExchangeRequest_Valid tests valid token exchange requests.
 func TestTokenExchangeRequest_Valid(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		request  *TokenExchangeRequest
@@ -69,6 +70,7 @@ func TestTokenExchangeRequest_Valid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.request.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
@@ -79,6 +81,7 @@ func TestTokenExchangeRequest_Valid(t *testing.T) {
 
 // TestTokenExchangeRequest_InvalidGrantType tests invalid grant types.
 func TestTokenExchangeRequest_InvalidGrantType(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		grantType  string
@@ -113,6 +116,7 @@ func TestTokenExchangeRequest_InvalidGrantType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := NewTokenExchangeRequest(
 				tt.grantType,
 				"eyJhbGc...",
@@ -138,6 +142,7 @@ func TestTokenExchangeRequest_InvalidGrantType(t *testing.T) {
 
 // TestTokenExchangeRequest_InvalidSubjectToken tests missing or invalid subject_token.
 func TestTokenExchangeRequest_InvalidSubjectToken(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		subjectToken string
@@ -154,6 +159,7 @@ func TestTokenExchangeRequest_InvalidSubjectToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := NewTokenExchangeRequest(
 				TokenExchangeGrantType,
 				tt.subjectToken,
@@ -179,6 +185,7 @@ func TestTokenExchangeRequest_InvalidSubjectToken(t *testing.T) {
 
 // TestTokenExchangeRequest_InvalidClientAssertion tests missing or invalid client_assertion.
 func TestTokenExchangeRequest_InvalidClientAssertion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		clientAssertion string
@@ -195,6 +202,7 @@ func TestTokenExchangeRequest_InvalidClientAssertion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := NewTokenExchangeRequest(
 				TokenExchangeGrantType,
 				"eyJhbGc...",
@@ -220,6 +228,7 @@ func TestTokenExchangeRequest_InvalidClientAssertion(t *testing.T) {
 
 // TestTokenExchangeRequest_InvalidResource tests missing or invalid resource parameter.
 func TestTokenExchangeRequest_InvalidResource(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		resource   string
@@ -236,6 +245,7 @@ func TestTokenExchangeRequest_InvalidResource(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := NewTokenExchangeRequest(
 				TokenExchangeGrantType,
 				"eyJhbGc...",
@@ -261,6 +271,7 @@ func TestTokenExchangeRequest_InvalidResource(t *testing.T) {
 
 // TestTokenExchangeRequest_Defaults tests that optional fields get proper defaults.
 func TestTokenExchangeRequest_Defaults(t *testing.T) {
+	t.Parallel()
 	req := NewTokenExchangeRequest(
 		TokenExchangeGrantType,
 		"eyJhbGc...",
@@ -282,6 +293,7 @@ func TestTokenExchangeRequest_Defaults(t *testing.T) {
 
 // TestTokenExchangeRequest_String tests the string representation doesn't expose tokens.
 func TestTokenExchangeRequest_String(t *testing.T) {
+	t.Parallel()
 	req := NewTokenExchangeRequest(
 		TokenExchangeGrantType,
 		"eyJhbGc...", // This should NOT appear in String() output
@@ -313,6 +325,7 @@ func TestTokenExchangeRequest_String(t *testing.T) {
 
 // TestTokenExchangeRequest_IsTokenExchangeRequest tests the detector method.
 func TestTokenExchangeRequest_IsTokenExchangeRequest(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		grantType string
@@ -337,6 +350,7 @@ func TestTokenExchangeRequest_IsTokenExchangeRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := NewTokenExchangeRequest(
 				tt.grantType,
 				"eyJhbGc...",

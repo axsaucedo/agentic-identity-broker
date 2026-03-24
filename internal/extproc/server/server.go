@@ -153,6 +153,12 @@ func (s *Server) processRequestHeaders(headers *extprocv3.HttpHeaders) *extprocv
 			return immediateResponse(httpv3.StatusCode_ServiceUnavailable,
 				`{"error":"service_unavailable","error_description":"client assertion expired"}`)
 		}
+		if errors.Is(err, ErrCircuitOpen) {
+			s.logger.Debug("token exchange rejected: circuit breaker is open",
+				"resource", resourceURI)
+			return immediateResponse(httpv3.StatusCode_ServiceUnavailable,
+				`{"error":"service_unavailable","error_description":"circuit breaker is open"}`)
+		}
 		s.logger.Error("token exchange failed", "resource", resourceURI, "error", err)
 		return immediateResponse(httpv3.StatusCode_InternalServerError,
 			`{"error":"token_exchange_failed","error_description":"token exchange request failed"}`)

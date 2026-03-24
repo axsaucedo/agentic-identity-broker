@@ -341,6 +341,7 @@ func (m *mockGrantRepo) DeleteByPrincipalAndAgentID(ctx context.Context, princip
 // Test cases
 
 func TestService_GetAgentConsentInfo(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	agentID := id.NewAgentID()
@@ -366,6 +367,7 @@ func TestService_GetAgentConsentInfo(t *testing.T) {
 	}
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
@@ -385,6 +387,7 @@ func TestService_GetAgentConsentInfo(t *testing.T) {
 	})
 
 	t.Run("agent not found", func(t *testing.T) {
+		t.Parallel()
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
@@ -399,6 +402,7 @@ func TestService_GetAgentConsentInfo(t *testing.T) {
 }
 
 func TestService_GrantConsent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	agentID := id.NewAgentID()
@@ -425,6 +429,7 @@ func TestService_GrantConsent(t *testing.T) {
 	}
 
 	t.Run("create new grant", func(t *testing.T) {
+		t.Parallel()
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
@@ -454,6 +459,7 @@ func TestService_GrantConsent(t *testing.T) {
 	})
 
 	t.Run("invalid scopes", func(t *testing.T) {
+		t.Parallel()
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
@@ -479,6 +485,7 @@ func TestService_GrantConsent(t *testing.T) {
 	})
 
 	t.Run("agent not found", func(t *testing.T) {
+		t.Parallel()
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
@@ -508,6 +515,7 @@ func TestService_GrantConsent(t *testing.T) {
 // This is the dedicated method for DELETE /api/consent/agent/{agent-id}/grants — non-idempotent,
 // maps storage not-found to ErrGrantNotFound so the handler can return 404.
 func TestService_RevokeConsentForPrincipal(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	agentID := id.NewAgentID()
@@ -524,6 +532,7 @@ func TestService_RevokeConsentForPrincipal(t *testing.T) {
 	}
 
 	t.Run("success: grant is deleted", func(t *testing.T) {
+		t.Parallel()
 		grantRepo := &mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{grantID: existingGrant}}
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
@@ -538,6 +547,7 @@ func TestService_RevokeConsentForPrincipal(t *testing.T) {
 	})
 
 	t.Run("grant not found: returns ErrGrantNotFound (not raw ErrNotFound)", func(t *testing.T) {
+		t.Parallel()
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
@@ -551,6 +561,7 @@ func TestService_RevokeConsentForPrincipal(t *testing.T) {
 	})
 
 	t.Run("cross-principal: different principal cannot revoke another's grant (SR-001)", func(t *testing.T) {
+		t.Parallel()
 		grantRepo := &mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{grantID: existingGrant}}
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
@@ -570,6 +581,7 @@ func TestService_RevokeConsentForPrincipal(t *testing.T) {
 }
 
 func TestService_RevokeConsent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	agentID := id.NewAgentID()
@@ -589,6 +601,7 @@ func TestService_RevokeConsent(t *testing.T) {
 	}
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		grantRepo := &mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{grantID: existingGrant}}
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
@@ -603,6 +616,7 @@ func TestService_RevokeConsent(t *testing.T) {
 	})
 
 	t.Run("grant not found - returns nil (idempotent: POST empty-tokens path)", func(t *testing.T) {
+		t.Parallel()
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
@@ -616,6 +630,7 @@ func TestService_RevokeConsent(t *testing.T) {
 }
 
 func TestService_GetActiveGrants(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	agentID := id.NewAgentID()
@@ -658,6 +673,7 @@ func TestService_GetActiveGrants(t *testing.T) {
 	}
 
 	t.Run("filters expired grants", func(t *testing.T) {
+		t.Parallel()
 		grantRepo := &mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{
 			grantID1: activeGrant,
 			grantID2: expiredGrant,
@@ -677,6 +693,7 @@ func TestService_GetActiveGrants(t *testing.T) {
 	})
 
 	t.Run("no grants - returns empty slice", func(t *testing.T) {
+		t.Parallel()
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
@@ -691,6 +708,7 @@ func TestService_GetActiveGrants(t *testing.T) {
 }
 
 func TestService_GetAgentDelegations(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	agent1ID := id.NewAgentID()
@@ -884,6 +902,7 @@ func TestService_GetAgentDelegations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			svc := NewService(
 				&mockAgentRepo{agents: tt.agents},
 				newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),

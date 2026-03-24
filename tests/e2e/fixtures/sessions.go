@@ -111,6 +111,14 @@ func SessionForService(principal, serviceID string) *storage.UserSession {
 	}
 }
 
+// SessionForServiceWithScopes returns an active session for the given principal, service, and
+// explicit scope list. Use this when the session must satisfy specific scope requirements.
+func SessionForServiceWithScopes(principal, serviceID string, scopes []string) *storage.UserSession {
+	s := SessionForService(principal, serviceID)
+	s.Scope = scopes
+	return s
+}
+
 // SessionWithoutRefreshToken returns an active session that does NOT have a refresh token.
 func SessionWithoutRefreshToken(principal, serviceID string) *storage.UserSession {
 	now := time.Now()

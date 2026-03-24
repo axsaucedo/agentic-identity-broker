@@ -151,7 +151,41 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}, nil
 	}
 
-	// Step 4: Validate mandatory service requirements (if session repo available)
+	// Step 4: Check that sessions for all delegated services are not expired.
+	// Even if the grant is active, a token exchange will fail when the underlying
+	// third-party session has expired. Redirect to the consent screen early so
+	// the user can re-authenticate with the affected service instead of getting
+	// a cryptic error later.
+	if s.sessionRepo != nil {
+		expired, err := s.anyDelegatedSessionExpired(ctx, id.Principal(principal), grant.DelegatedOAuth2Tokens)
+		if err != nil {
+			return &ports.AuthorizationDecision{
+				Action:    "error",
+				ErrorCode: "server_error",
+				ErrorDesc: "Failed to check session status",
+			}, nil
+		}
+		if expired {
+			if s.logger != nil {
+				s.logger.Warn(
+					"DelegatedSessionExpired",
+					"agent_id", agent.ID,
+					"principal", principal,
+				)
+			}
+			consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
+				s.config.PublicURL,
+				agent.ID,
+				url.QueryEscape(req.OriginalURL),
+			)
+			return &ports.AuthorizationDecision{
+				Action:      "redirect_to_consent",
+				RedirectURL: consentURL,
+			}, nil
+		}
+	}
+
+	// Step 5: Validate mandatory service requirements (if session repo available)
 	if s.sessionRepo != nil && len(agent.ServiceRequirements) > 0 {
 		err := s.validateMandatoryRequirements(ctx, principal, agent)
 		if err != nil {
@@ -243,6 +277,24 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	return metadata, nil
 }
 
+// anyDelegatedSessionExpired returns true if any existing session for a delegated service is
+// expired. A missing session (nil) is not treated as expired — absence means the user simply
+// has not logged into that service yet, which is handled separately by mandatory requirement
+// validation. Only an existing session whose refresh token has expired triggers a consent redirect.
+// Returns an error only on unexpected storage failures.
+func (s *Service) anyDelegatedSessionExpired(ctx context.Context, principal id.Principal, tokens []storage.DelegatedToken) (bool, error) {
+	for _, token := range tokens {
+		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, token.ThirdpartyOAuth2ServiceID)
+		if err != nil {
+			return false, fmt.Errorf("failed to check session status: %w", err)
+		}
+		if session != nil && session.IsExpired() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // validateMandatoryRequirements checks that user has active sessions for all mandatory services
 // with required scopes. Returns error if any mandatory requirement is not satisfied.
 // Optional requirements are ignored and never block authorization.
@@ -263,10 +315,22 @@ func (s *Service) validateMandatoryRequirements(
 			continue
 		}
 
-		// Verify user has active session for this service
+		// Verify user has active session for this service.
+		// FindByPrincipalAndService returns (nil, nil) when no session exists — that is
+		// not an error condition per the port contract; check nil separately.
 		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, id.Principal(principal), req.ServiceID)
 		if err != nil {
-			// Session not found
+			if s.logger != nil {
+				s.logger.Warn(
+					"MandatoryRequirementNotMet",
+					"agent_id", agent.ID,
+					"service_id", req.ServiceID,
+					"reason", "session_lookup_error",
+				)
+			}
+			return fmt.Errorf("session_required: user does not have required session for service %s", req.ServiceID)
+		}
+		if session == nil {
 			if s.logger != nil {
 				s.logger.Warn(
 					"MandatoryRequirementNotMet",

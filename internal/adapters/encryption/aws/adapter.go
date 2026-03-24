@@ -13,6 +13,8 @@ import (
 	client "github.com/aws/aws-encryption-sdk/releases/go/encryption-sdk/awscryptographyencryptionsdksmithygenerated"
 	esdktypes "github.com/aws/aws-encryption-sdk/releases/go/encryption-sdk/awscryptographyencryptionsdksmithygeneratedtypes"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/encryption"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -222,6 +224,10 @@ func newAdapterWithBase64KEK(keyMaterial string) (*AWSAdapter, error) {
 // Uses AWS Encryption SDK with AESGCMSIV authenticated encryption.
 // Context binding is enforced at both DEK and KEK layers.
 func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionContext map[string]string) ([]byte, error) {
+	ctx, span := otel.Tracer("encryption").Start(ctx, "encryption.encrypt")
+	defer span.End()
+	span.SetAttributes(attribute.String("encryption.key_type", "aws_kms"))
+
 	if a == nil || a.encryptionClient == nil {
 		slog.Error("encryption_failed",
 			"operation", "encrypt",
@@ -369,6 +375,10 @@ func (a *AWSAdapter) Encrypt(ctx context.Context, plaintext []byte, encryptionCo
 // - Authentication tag verification
 // - DEK unwrapping with KEK using same context
 func (a *AWSAdapter) Decrypt(ctx context.Context, ciphertext []byte, encryptionContext map[string]string) ([]byte, error) {
+	ctx, span := otel.Tracer("encryption").Start(ctx, "encryption.decrypt")
+	defer span.End()
+	span.SetAttributes(attribute.String("encryption.key_type", "aws_kms"))
+
 	if a == nil || a.encryptionClient == nil {
 		slog.Error("decryption_failed",
 			"operation", "decrypt",

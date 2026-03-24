@@ -132,6 +132,7 @@ type UserSessionSummary struct {
 	InitiatedAt           time.Time    `json:"initiated_at"`
 	IsExpired             bool         `json:"is_expired"`
 	AccessTokenExpired    bool         `json:"access_token_expired"`
+	HasRefreshToken       bool         `json:"has_refresh_token"`
 	RefreshTokenExpiresAt *time.Time   `json:"refresh_token_expires_at,omitempty"`
 	DependentAgentCount   int          `json:"dependent_agent_count"`
 	IsEncrypted           bool         `json:"is_encrypted"` // Always true
@@ -148,6 +149,7 @@ func NewUserSessionSummary(session *UserSession, serviceDisplayName string, agen
 		InitiatedAt:           session.InitiatedAt,
 		IsExpired:             session.IsExpired(),
 		AccessTokenExpired:    !session.HasValidAccessToken(),
+		HasRefreshToken:       len(session.EncryptedRefreshToken) > 0,
 		RefreshTokenExpiresAt: session.RefreshTokenExpiresAt,
 		DependentAgentCount:   agentCount,
 		IsEncrypted:           true,

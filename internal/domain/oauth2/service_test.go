@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MockAgentRepository is a test double for AgentRepository
 type MockAgentRepository struct {
 	agents map[id.AgentID]*storage.Agent
 }
@@ -182,6 +181,52 @@ func (m *MockGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, p
 	return ports.ErrNotFound
 }
 
+// MockSessionRepository is a test double for UserSessionRepository.
+// Uses a configurable findFunc so each test case can define its own behaviour for
+// FindByPrincipalAndService — the only method exercised by the authorization flow.
+// All other methods are intentionally no-op stubs.
+type MockSessionRepository struct {
+	findFunc func(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storage.UserSession, error)
+}
+
+func NewMockSessionRepository() *MockSessionRepository {
+	return &MockSessionRepository{}
+}
+
+func (m *MockSessionRepository) Create(ctx context.Context, session *storage.UserSession) error {
+	return nil
+}
+
+// Get is not exercised by the authorization flow tests but must satisfy the interface.
+func (m *MockSessionRepository) Get(ctx context.Context, sessionID id.SessionID) (*storage.UserSession, error) {
+	return nil, &storage.StorageError{Kind: storage.ErrorKindNotFound}
+}
+
+func (m *MockSessionRepository) FindByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storage.UserSession, error) {
+	if m.findFunc != nil {
+		return m.findFunc(ctx, principal, serviceID)
+	}
+	return nil, nil
+}
+
+// ListByPrincipal, Delete, DeleteByPrincipalAndService, and CountByService are not
+// exercised by the authorization flow; they are intentionally no-op stubs.
+func (m *MockSessionRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
+	return nil, nil
+}
+
+func (m *MockSessionRepository) Delete(ctx context.Context, sessionID id.SessionID) error {
+	return nil
+}
+
+func (m *MockSessionRepository) DeleteByPrincipalAndService(ctx context.Context, principal id.Principal, serviceID id.ServiceID) error {
+	return nil
+}
+
+func (m *MockSessionRepository) CountByService(ctx context.Context, serviceID id.ServiceID) (int, error) {
+	return 0, nil
+}
+
 // TestService_HandleAuthorization tests the HandleAuthorization method with table-driven tests
 func TestService_HandleAuthorization(t *testing.T) {
 	testAgentID := id.NewAgentID()
@@ -320,6 +365,107 @@ func TestService_HandleAuthorization(t *testing.T) {
 			require.NotNil(t, decision, "Decision should not be nil")
 
 			assert.Equal(t, tt.wantAction, decision.Action, "Action mismatch")
+		})
+	}
+}
+
+// TestService_HandleAuthorization_SessionExpiry tests that expired delegated sessions
+// redirect back to consent even when the grant itself is still active.
+func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+
+	activeGrant := func(r *MockGrantRepository) {
+		grant := &storage.UserGrant{
+			ID:        id.NewGrantID(),
+			Principal: id.Principal("user@example.com"),
+			AgentID:   agentID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
+			},
+		}
+		_ = r.Create(context.Background(), grant)
+	}
+
+	cfg := &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	}
+
+	authReq := &ports.AuthorizationRequest{
+		ClientID:     id.ClientID("client-1"),
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=client-1",
+	}
+
+	tests := []struct {
+		name         string
+		setupSession func(*MockSessionRepository)
+		wantAction   string
+	}{
+		{
+			name: "active grant with valid session redirects to upstream",
+			setupSession: func(r *MockSessionRepository) {
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return &storage.UserSession{
+						ID:        id.NewSessionID(),
+						Principal: id.Principal("user@example.com"),
+						ServiceID: serviceID,
+						TokenType: "Bearer",
+					}, nil
+				}
+			},
+			wantAction: "redirect_to_upstream",
+		},
+		{
+			name: "active grant with expired session redirects to consent",
+			setupSession: func(r *MockSessionRepository) {
+				expiredAt := time.Now().Add(-1 * time.Hour)
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return &storage.UserSession{
+						ID:                    id.NewSessionID(),
+						Principal:             id.Principal("user@example.com"),
+						ServiceID:             serviceID,
+						TokenType:             "Bearer",
+						RefreshTokenExpiresAt: &expiredAt,
+					}, nil
+				}
+			},
+			wantAction: "redirect_to_consent",
+		},
+		{
+			name: "active grant with no session yet still redirects to upstream",
+			setupSession: func(r *MockSessionRepository) {
+				// findFunc returns nil, nil — no session established yet.
+				// Absence of a session is not an expiry; mandatory-requirements
+				// validation (Step 5) handles that case separately.
+			},
+			wantAction: "redirect_to_upstream",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agentRepo := NewMockAgentRepository()
+			grantRepo := NewMockGrantRepository()
+			sessionRepo := NewMockSessionRepository()
+
+			_ = agentRepo.Create(context.Background(), &storage.Agent{
+				ID:          agentID,
+				ClientID:    id.ClientID("client-1"),
+				DisplayName: "Test Client",
+			})
+			activeGrant(grantRepo)
+			tt.setupSession(sessionRepo)
+
+			svc := NewServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg, nil)
+
+			decision, err := svc.HandleAuthorization(context.Background(), authReq, "user@example.com")
+
+			require.NoError(t, err)
+			require.NotNil(t, decision)
+			assert.Equal(t, tt.wantAction, decision.Action)
 		})
 	}
 }

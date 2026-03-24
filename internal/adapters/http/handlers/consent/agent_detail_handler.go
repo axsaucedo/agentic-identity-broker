@@ -238,7 +238,7 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 
 		// Determine connection status
 		connStatus := "not_connected"
-		if session != nil {
+		if session != nil && !session.IsExpired() {
 			connStatus = "connected"
 		}
 

@@ -7,6 +7,10 @@ import (
 	"encoding/json"
 	"strings"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -150,6 +154,13 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 // Get retrieves an agent entity by ID from PostgreSQL.
 // Returns StorageError with Kind=NotFound if agent not found.
 func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
+	ctx, span := otel.Tracer("storage").Start(ctx, "storage.get.agent")
+	defer span.End()
+	span.SetAttributes(
+		semconv.DBSystemKey.String("postgresql"),
+		attribute.String("db.operation", "GetAgent"),
+	)
+
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"GetAgent",

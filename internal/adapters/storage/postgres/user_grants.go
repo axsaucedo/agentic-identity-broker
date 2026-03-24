@@ -7,6 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -30,6 +34,13 @@ func NewUserGrantRepository(adapter *Adapter) *UserGrantRepository {
 // The grant ID should be generated before calling this method.
 // Uses ON CONFLICT to implement upsert semantics (one grant per principal-agent pair).
 func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGrant) error {
+	ctx, span := otel.Tracer("storage").Start(ctx, "storage.upsert.userGrant")
+	defer span.End()
+	span.SetAttributes(
+		semconv.DBSystemKey.String("postgresql"),
+		attribute.String("db.operation", "UpsertUserGrant"),
+	)
+
 	if r.adapter.db == nil {
 		return storage.NewStorageError(
 			"CreateUserGrant",
@@ -463,6 +474,13 @@ func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID id.Agen
 // Filters expired grants (valid_until < NOW()).
 // Returns empty slice if no active grants exist (not an error).
 func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storage.UserGrant, error) {
+	ctx, span := otel.Tracer("storage").Start(ctx, "storage.list.userGrants")
+	defer span.End()
+	span.SetAttributes(
+		semconv.DBSystemKey.String("postgresql"),
+		attribute.String("db.operation", "ListUserGrantsByPrincipal"),
+	)
+
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
 			"ListByPrincipal",

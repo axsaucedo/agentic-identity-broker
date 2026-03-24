@@ -191,6 +191,7 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 				JWTAuthenticator: app.JWTAuthenticator,
 				Logger:           logger,
 				CORS:             app.Config.Server.EndUser.CORS,
+				Telemetry:        app.Config.Telemetry,
 			})
 			if spaSaved != nil {
 				r.Handle("/*", spaSaved)
@@ -203,7 +204,8 @@ func NewTestServerV2(app *app.App, logger *slog.Logger, opts ...TestServerOption
 		}
 		routeSetup = func(r chi.Router) {
 			routing.SetupAdminRoutes(r, app.AdminHandlers, routing.AdminRouteConfig{
-				CORS: app.Config.Server.Admin.CORS,
+				CORS:      app.Config.Server.Admin.CORS,
+				Telemetry: app.Config.Telemetry,
 			})
 		}
 
@@ -684,6 +686,7 @@ func (b *TestServerBuilderImpl) Build() (*TestServer, error) {
 		Authentication:   appInstance.Config.Server.EndUser.Authentication,
 		JWTAuthenticator: appInstance.JWTAuthenticator,
 		Logger:           b.logger,
+		Telemetry:        appInstance.Config.Telemetry,
 	})
 
 	b.logger.Info("Test server created and configured", "url", testServer.URL)

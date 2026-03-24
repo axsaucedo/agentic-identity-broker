@@ -41,6 +41,7 @@ type Config struct {
 	TokenExchange    TokenExchangeConfig    `mapstructure:"token_exchange"`
 	Security         SecurityConfig         `mapstructure:"security"`
 	Encryption       EncryptionConfig       `mapstructure:"encryption"`
+	Telemetry        TelemetryConfig        `mapstructure:"telemetry"`
 }
 
 // ServerConfig contains configuration for both HTTP servers.
@@ -598,4 +599,72 @@ type MemoryConfig struct {
 	//
 	// SECURITY: This field contains sensitive key material and will be redacted in logs.
 	RawKey string `mapstructure:"raw_key" validate:"required_if_backend"`
+}
+
+// TelemetryConfig contains OpenTelemetry observability configuration.
+type TelemetryConfig struct {
+	Enabled            bool               `mapstructure:"enabled"`
+	ServiceName        string             `mapstructure:"service_name"`
+	ResourceAttributes map[string]string  `mapstructure:"resource_attributes"`
+	Traces             TracesConfig       `mapstructure:"traces"`
+	Metrics            MetricsConfig      `mapstructure:"metrics"`
+	Exporter           OTLPExporterConfig `mapstructure:"exporter"`
+}
+
+// TracesConfig contains distributed tracing configuration.
+type TracesConfig struct {
+	Enabled      bool     `mapstructure:"enabled"`
+	SamplingRate float64  `mapstructure:"sampling_rate"`
+	Propagators  []string `mapstructure:"propagators"`
+}
+
+// MetricsConfig contains metrics collection and export configuration.
+type MetricsConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	ExportInterval time.Duration `mapstructure:"export_interval"`
+}
+
+// OTLPProtocol identifies the transport protocol for the OTLP exporter.
+type OTLPProtocol = string
+
+const (
+	// OTLPProtocolGRPC uses gRPC transport for OTLP export.
+	OTLPProtocolGRPC OTLPProtocol = "grpc"
+	// OTLPProtocolHTTP uses HTTP/protobuf transport for OTLP export.
+	OTLPProtocolHTTP OTLPProtocol = "http"
+)
+
+// OTLPExporterConfig contains OTLP exporter connection parameters.
+type OTLPExporterConfig struct {
+	Protocol OTLPProtocol      `mapstructure:"protocol"`
+	Endpoint string            `mapstructure:"endpoint"`
+	Headers  map[string]string `mapstructure:"headers"`
+	Timeout  time.Duration     `mapstructure:"timeout"`
+	Insecure bool              `mapstructure:"insecure"`
+}
+
+// DefaultTelemetryConfig returns default telemetry configuration.
+// Telemetry is DISABLED by default; all other values are production-safe defaults.
+func DefaultTelemetryConfig() TelemetryConfig {
+	return TelemetryConfig{
+		Enabled:            false,
+		ServiceName:        "agentic-identity-broker",
+		ResourceAttributes: map[string]string{},
+		Traces: TracesConfig{
+			Enabled:      true,
+			SamplingRate: 1.0,
+			Propagators:  []string{"tracecontext", "baggage"},
+		},
+		Metrics: MetricsConfig{
+			Enabled:        true,
+			ExportInterval: 30 * time.Second,
+		},
+		Exporter: OTLPExporterConfig{
+			Protocol: OTLPProtocolGRPC,
+			Endpoint: "",
+			Headers:  map[string]string{},
+			Timeout:  10 * time.Second,
+			Insecure: false,
+		},
+	}
 }

@@ -14,6 +14,7 @@ import (
 
 // TestGetUserInfo_Success tests successful retrieval of user info.
 func TestGetUserInfo_Success(t *testing.T) {
+	t.Parallel()
 	principalValue := "user@example.com"
 
 	handler := NewUserInfoHandler(nil)
@@ -43,6 +44,7 @@ func TestGetUserInfo_Success(t *testing.T) {
 
 // TestGetUserInfo_DifferentPrincipals tests with different principal values.
 func TestGetUserInfo_DifferentPrincipals(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name      string
 		principal string
@@ -63,6 +65,7 @@ func TestGetUserInfo_DifferentPrincipals(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			handler := NewUserInfoHandler(nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -86,6 +89,7 @@ func TestGetUserInfo_DifferentPrincipals(t *testing.T) {
 
 // TestGetUserInfo_MissingPrincipal tests error when principal is not in context.
 func TestGetUserInfo_MissingPrincipal(t *testing.T) {
+	t.Parallel()
 	handler := NewUserInfoHandler(nil)
 
 	// Request without principal in context
@@ -105,6 +109,7 @@ func TestGetUserInfo_MissingPrincipal(t *testing.T) {
 
 // TestGetUserInfo_EmptyPrincipal tests error when principal is empty string.
 func TestGetUserInfo_EmptyPrincipal(t *testing.T) {
+	t.Parallel()
 	handler := NewUserInfoHandler(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -121,6 +126,7 @@ func TestGetUserInfo_EmptyPrincipal(t *testing.T) {
 
 // TestGetUserInfo_ContentType tests that response has correct content type.
 func TestGetUserInfo_ContentType(t *testing.T) {
+	t.Parallel()
 	principalValue := "user@example.com"
 
 	handler := NewUserInfoHandler(nil)
@@ -137,6 +143,7 @@ func TestGetUserInfo_ContentType(t *testing.T) {
 
 // TestGetUserInfo_ResponseStructure tests the response envelope structure with enriched profile.
 func TestGetUserInfo_ResponseStructure(t *testing.T) {
+	t.Parallel()
 	principalValue := "test@example.com"
 
 	handler := NewUserInfoHandler(nil)
@@ -170,6 +177,7 @@ func TestGetUserInfo_ResponseStructure(t *testing.T) {
 
 // TestGetUserInfo_EnrichedProfile tests that enriched profile from JWT is returned.
 func TestGetUserInfo_EnrichedProfile(t *testing.T) {
+	t.Parallel()
 	handler := NewUserInfoHandler(nil)
 
 	email := "alice@corp.com"
@@ -203,6 +211,7 @@ func TestGetUserInfo_EnrichedProfile(t *testing.T) {
 
 // TestGetUserInfo_PartialProfile tests enriched profile with only some fields.
 func TestGetUserInfo_PartialProfile(t *testing.T) {
+	t.Parallel()
 	handler := NewUserInfoHandler(nil)
 
 	email := "alice@corp.com"
@@ -234,6 +243,7 @@ func TestGetUserInfo_PartialProfile(t *testing.T) {
 
 // TestGetUserInfo_PlainHeaderProfile tests that plain header mode returns principal-only profile.
 func TestGetUserInfo_PlainHeaderProfile(t *testing.T) {
+	t.Parallel()
 	handler := NewUserInfoHandler(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -260,6 +270,7 @@ func TestGetUserInfo_PlainHeaderProfile(t *testing.T) {
 
 // TestGetUserInfo_EmailOmittedInJSON tests that email field is omitted from JSON when nil.
 func TestGetUserInfo_EmailOmittedInJSON(t *testing.T) {
+	t.Parallel()
 	handler := NewUserInfoHandler(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -278,6 +289,7 @@ func TestGetUserInfo_EmailOmittedInJSON(t *testing.T) {
 
 // TestGetUserInfo_EmailPresentInJSON tests that email field is present in JSON when set.
 func TestGetUserInfo_EmailPresentInJSON(t *testing.T) {
+	t.Parallel()
 	handler := NewUserInfoHandler(nil)
 
 	email := "alice@corp.com"
@@ -299,6 +311,7 @@ func TestGetUserInfo_EmailPresentInJSON(t *testing.T) {
 // TestGetUserInfo_BackwardCompatWithPrincipalOnly tests backward compat when only
 // the principal string is in context (no profile).
 func TestGetUserInfo_BackwardCompatWithPrincipalOnly(t *testing.T) {
+	t.Parallel()
 	handler := NewUserInfoHandler(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)

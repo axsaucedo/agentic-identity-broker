@@ -542,6 +542,13 @@ var _ = Describe("Agent Permission Requirements", func() {
 			err = testStorage.UserGrants().Create(context.Background(), grantWithRequiredScopes)
 			Expect(err).ToNot(HaveOccurred())
 
+			// And: User has an active session for the mandatory service with required scopes.
+			// Mandatory requirement validation is session-based — having a grant is necessary
+			// but not sufficient; the user must also have an active third-party session.
+			session := fixtures.SessionForServiceWithScopes(userPrincipal, githubService.ID.String(), []string{"repo", "user:email"})
+			err = testStorage.UserSessions().Create(context.Background(), session)
+			Expect(err).ToNot(HaveOccurred(), "Failed to create session for mandatory service")
+
 			// When: Authorization request arrives
 			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=abc123",

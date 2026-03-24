@@ -4,7 +4,9 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	domconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
@@ -47,6 +49,11 @@ func Validate(cfg *ports.Config) error {
 
 	// Validate encryption configuration
 	if err := validateEncryptionConfig(&cfg.Encryption); err != nil {
+		return err
+	}
+
+	// Validate telemetry configuration
+	if err := validateTelemetryConfig(&cfg.Telemetry); err != nil {
 		return err
 	}
 
@@ -601,6 +608,106 @@ func maskSensitiveValue(value string) string {
 		return "***" // Too short to safely display any part
 	}
 	return value[:10] + "..." + value[len(value)-5:]
+}
+
+// validateTelemetryConfig validates the OpenTelemetry configuration.
+// Validation is skipped when telemetry is disabled (cfg.Enabled=false).
+func validateTelemetryConfig(cfg *ports.TelemetryConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+
+	// ServiceName must be non-empty (OTel semantic convention: service.name)
+	if strings.TrimSpace(cfg.ServiceName) == "" {
+		return formatValidationError(
+			"telemetry.service_name", cfg.ServiceName,
+			"non-empty service name (OTel service.name resource attribute)", nil,
+		)
+	}
+
+	// Endpoint is required when enabled
+	if cfg.Exporter.Endpoint == "" {
+		return formatValidationError(
+			"telemetry.exporter.endpoint", "",
+			"non-empty OTLP endpoint", nil,
+		)
+	}
+
+	// Protocol must be grpc or http
+	if cfg.Exporter.Protocol != "grpc" && cfg.Exporter.Protocol != "http" {
+		return formatValidationError(
+			"telemetry.exporter.protocol", cfg.Exporter.Protocol,
+			"one of: grpc, http", nil,
+		)
+	}
+
+	// Validate endpoint format (must be valid host:port or URL)
+	if err := validateOTLPEndpoint(cfg.Exporter.Endpoint, cfg.Exporter.Protocol); err != nil {
+		return formatValidationError(
+			"telemetry.exporter.endpoint", cfg.Exporter.Endpoint,
+			"valid gRPC host:port or HTTP URL", err,
+		)
+	}
+
+	// Sampling rate 0.0–1.0
+	if cfg.Traces.SamplingRate < 0.0 || cfg.Traces.SamplingRate > 1.0 {
+		return formatValidationError(
+			"telemetry.traces.sampling_rate",
+			fmt.Sprintf("%f", cfg.Traces.SamplingRate),
+			"value between 0.0 and 1.0", nil,
+		)
+	}
+
+	// Export interval must be positive when metrics enabled
+	if cfg.Metrics.Enabled && cfg.Metrics.ExportInterval <= 0 {
+		return formatValidationError(
+			"telemetry.metrics.export_interval", cfg.Metrics.ExportInterval.String(),
+			"positive duration", nil,
+		)
+	}
+
+	// Exporter timeout must be positive
+	if cfg.Exporter.Timeout <= 0 {
+		return formatValidationError(
+			"telemetry.exporter.timeout", cfg.Exporter.Timeout.String(),
+			"positive duration", nil,
+		)
+	}
+
+	return nil
+}
+
+// validateOTLPEndpoint validates an OTLP endpoint string.
+// For gRPC: must be a valid host:port (no scheme); port must be a number in [1, 65535].
+// For HTTP: must be a valid http:// or https:// URL.
+func validateOTLPEndpoint(endpoint, protocol string) error {
+	if endpoint == "" {
+		return fmt.Errorf("endpoint is empty")
+	}
+	if protocol == "http" {
+		// HTTP endpoint must be a full http:// or https:// URL
+		if !isValidURL(endpoint) {
+			return fmt.Errorf("not a valid http(s) URL")
+		}
+		return nil
+	}
+	// gRPC: must be host:port without a URL scheme
+	if strings.Contains(endpoint, "://") {
+		return fmt.Errorf("gRPC endpoint should be host:port without scheme (e.g. collector:4317)")
+	}
+	host, portStr, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return fmt.Errorf("gRPC endpoint must be host:port: %w", err)
+	}
+	_ = host // SplitHostPort guarantees non-empty host when err == nil
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return fmt.Errorf("gRPC endpoint port is not a number: %w", err)
+	}
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("gRPC endpoint port %d is out of range [1, 65535]", port)
+	}
+	return nil
 }
 
 // isValidURL checks if a string is a valid HTTP or HTTPS URL.

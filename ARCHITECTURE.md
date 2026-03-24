@@ -280,7 +280,42 @@ App
 - **Dependency Scanning**: Regular npm audit for vulnerabilities
 - **TypeScript**: Compile-time type checking prevents runtime errors
 
-#### 3.1.3. End-to-End Testing Architecture
+#### 3.1.3. Builder Pattern and Dependency Injection
+
+**Purpose**: Central DI wiring for all application components. All service instantiation happens in `internal/app/builder.go` via the `Builder` struct and `NewBuilder().With*().Build()` pattern.
+
+**OTel Provider Wiring** (Feature 017):
+
+The OTel provider is initialized in `Build()` and follows the app-layer provider pattern documented in [ADR 011](adrs/011-opentelemetry-provider-pattern.md):
+
+```
+Build()
+  ├── NewProvider(ctx, cfg.Telemetry, logger)    // Initialize TracerProvider, MeterProvider, LoggerProvider
+  ├── otel.SetTracerProvider(tp)                  // Register globally for child spans in adapters
+  ├── otel.SetMeterProvider(mp)                   // Register globally (otelchi uses this for HTTP metrics)
+  └── store shutdown func on App.ShutdownTelemetry
+```
+
+**Test Override Pattern** (mirrors `WithEncryption`):
+
+```go
+// WithTracerProvider sets a custom TracerProvider for testing.
+// When set, this provider is registered as the global provider instead of
+// the one created by NewProvider().
+func (b *Builder) WithTracerProvider(tp *sdktrace.TracerProvider) *Builder
+```
+
+Tests use `bootstrap.NewInMemoryTracerProvider()` to get a `*tracetest.SpanRecorder`-backed provider and inject it via `builder.WithTracerProvider(tp)`.
+
+**Graceful Shutdown Sequence**:
+
+```
+HTTP servers drain → tp.Shutdown(ctx) → mp.Shutdown(ctx) → lp.Shutdown(ctx) → process exit
+```
+
+The composite shutdown function is stored as `App.ShutdownTelemetry func(context.Context) error` and called after HTTP servers have drained all in-flight requests.
+
+#### 3.1.4. End-to-End Testing Architecture
 
 **Purpose**: Comprehensive E2E acceptance tests that validate the complete OAuth2 Authorization Server functionality through real HTTP requests and production code paths.
 
@@ -824,6 +859,9 @@ This section lists all architectural decisions made for this project. ADRs docum
 - [ADR 009: Envelope Encryption Design](adrs/009-envelope-encryption-design.md) - DEK-per-session with AWS KMS and context binding
 - [ADR 010: CDK Encryption Infrastructure](adrs/010-cdk-encryption-infrastructure.md) - AWS CDK (Go) for KMS, DynamoDB, and IAM provisioning
 - [ADR 012: Encryption Layer Separation](adrs/012-encryption-layer-separation.md) - Domain service encryption pattern for hexagonal architecture
+
+### Observability
+- [ADR 011: OpenTelemetry Provider Pattern](adrs/011-opentelemetry-provider-pattern.md) - App-layer OTel provider, otelchi middleware choice, context-based span propagation
 
 ## 11. Project Identification
 

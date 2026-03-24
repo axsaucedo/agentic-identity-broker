@@ -206,6 +206,39 @@ token_exchange:
 
 > **Breaking change (Feature 021)**: `agent_id_expression: "subject_token.azp"` is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)`. See [docs/changelog.md](../../docs/changelog.md).
 
+### `telemetry.yaml`
+
+OpenTelemetry observability configuration. Demonstrates:
+- Enabling distributed tracing, metrics, and log correlation
+- Service name and resource attribute configuration
+- Trace sampling rate and propagator selection
+- Metrics export interval configuration
+- OTLP exporter protocol (gRPC or HTTP), endpoint, headers with `${ENV_VAR}` substitution
+- TLS configuration (enabled by default; `insecure: false` is the secure default)
+
+Telemetry is **disabled by default** — no OTel SDK code runs when `enabled: false`, incurring zero overhead. Enable only when an OTLP-compatible collector is available.
+
+**Usage:**
+```bash
+# Set the OTLP exporter auth token (if required by your collector)
+export OTEL_EXPORTER_AUTH_TOKEN="your-collector-token"
+
+# Enable telemetry by including this section in your configuration
+./agentic-identity-broker --config ./examples/config/telemetry.yaml
+```
+
+**Key Features:**
+- Zero overhead when disabled (no-op provider, no SDK initialization)
+- Configurable sampling rate (default: 1.0 for development, 0.1 recommended for production)
+- gRPC (default) or HTTP OTLP exporter protocol
+- TLS enabled by default (`insecure: false`) — explicit opt-in required to disable
+- Environment variable substitution for sensitive headers (e.g., auth tokens)
+- Compatible with any OTLP-capable collector (Grafana Agent, OpenTelemetry Collector, Datadog, etc.)
+
+**Security Note:** Never set `insecure: true` in production. This disables TLS for telemetry export, exposing trace data and metric data in transit. The broker will emit a WARN log if insecure mode is enabled at startup.
+
+See [docs/configuration.md](../../docs/configuration.md) for the full list of configuration parameters and environment variable mappings.
+
 ### `oauth2-authorization-server.yaml`
 
 OAuth2 Authorization Server proxy configuration. Demonstrates:
@@ -546,8 +579,54 @@ Configuration Summary:
 
 The `[source: ...]` annotation shows where each value came from.
 
+## Observability
+
+The broker supports configurable OpenTelemetry (OTel) distributed tracing, metrics, and log correlation. Telemetry is **disabled by default** with zero overhead.
+
+### Quick Start (Development)
+
+```bash
+# Start a local OpenTelemetry Collector (e.g., via Docker)
+docker run --rm -p 4317:4317 otel/opentelemetry-collector-contrib
+
+# Enable telemetry with gRPC exporter and insecure connection for local dev
+./agentic-identity-broker --config ./examples/config/telemetry.yaml
+```
+
+### Configuration Reference
+
+See [`telemetry.yaml`](telemetry.yaml) for a full production-ready example covering:
+- `telemetry.enabled` — master switch (default: `false`)
+- `telemetry.service_name` — service name on all spans and metrics
+- `telemetry.resource_attributes` — custom key-value pairs added to all telemetry
+- `telemetry.traces.sampling_rate` — fraction of traces to export (0.0–1.0)
+- `telemetry.traces.propagators` — trace context propagation formats (`tracecontext`, `baggage`)
+- `telemetry.metrics.export_interval` — how often to push metrics to the collector
+- `telemetry.exporter.protocol` — `grpc` (default) or `http`
+- `telemetry.exporter.endpoint` — OTLP collector address (`host:port` for gRPC, `https://host:port` for HTTP)
+- `telemetry.exporter.headers` — additional headers (e.g., auth tokens via `${ENV_VAR}`)
+- `telemetry.exporter.timeout` — per-export timeout
+- `telemetry.exporter.insecure` — disable TLS (default: `false`, **never use in production**)
+
+### Environment Variable Mapping
+
+| YAML Key | Environment Variable |
+|---|---|
+| `telemetry.enabled` | `IDENTITY_BROKER_TELEMETRY_ENABLED` |
+| `telemetry.service_name` | `IDENTITY_BROKER_TELEMETRY_SERVICE_NAME` |
+| `telemetry.exporter.endpoint` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT` |
+| `telemetry.exporter.protocol` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_PROTOCOL` |
+| `telemetry.exporter.insecure` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE` |
+
+See [docs/configuration.md](../../docs/configuration.md) for the complete list.
+
+### ADR Reference
+
+[ADR 011](../../adrs/011-opentelemetry-provider-pattern.md) documents the app-layer OTel provider pattern, `otelchi` library choice, and context-based span propagation approach.
+
 ## See Also
 
 - [Configuration Guide](../../docs/configuration.md) - Comprehensive documentation
 - [ADR 002](../../adrs/002-configuration-libraries.md) - Library selection rationale
+- [ADR 011](../../adrs/011-opentelemetry-provider-pattern.md) - OpenTelemetry provider pattern
 - [Architecture](../../ARCHITECTURE.md) - Configuration subsystem architecture

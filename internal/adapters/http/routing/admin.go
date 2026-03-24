@@ -3,6 +3,7 @@ package routing
 
 import (
 	"github.com/go-chi/chi/v5"
+	"github.com/riandyrn/otelchi"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
@@ -13,6 +14,9 @@ import (
 type AdminRouteConfig struct {
 	// CORS configuration for API routes
 	CORS ports.CORSConfig
+
+	// Telemetry contains observability configuration.
+	Telemetry ports.TelemetryConfig
 }
 
 // SetupAdminRoutes registers all administrative API routes.
@@ -32,6 +36,14 @@ type AdminRouteConfig struct {
 //	PUT    /api/services/{service-id}  - Update service
 //	DELETE /api/services/{service-id}  - Delete service
 func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers, cfg AdminRouteConfig) {
+	// Register OTel HTTP tracing middleware when enabled (ADR-011, T032)
+	if cfg.Telemetry.Enabled && cfg.Telemetry.Traces.Enabled {
+		r.Use(otelchi.Middleware("admin",
+			otelchi.WithChiRoutes(r),
+			otelchi.WithRequestMethodInSpanName(true),
+		))
+	}
+
 	r.Route("/api", func(r chi.Router) {
 		// Apply CORS middleware (no-op if AllowedOrigins empty)
 		r.Use(middleware.CORSMiddleware(cfg.CORS))

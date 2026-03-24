@@ -10,6 +10,7 @@ import (
 )
 
 func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
+	t.Parallel()
 	metadataURL := "https://github.com/.well-known/oauth-authorization-server"
 
 	tests := []struct {
@@ -153,6 +154,7 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.entity.Validate()
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -165,6 +167,7 @@ func TestThirdpartyOAuth2ProviderEntity_Validate(t *testing.T) {
 }
 
 func TestThirdpartyOAuth2ProviderEntity_ValidateForCreate_FlavorDispatch(t *testing.T) {
+	t.Parallel()
 	// validGoogleServiceAccountJSON is shared with google_service_account_test.go
 	// but we redefine it here for independence of test packages (same package, different file).
 	googleJSON := `{
@@ -244,6 +247,7 @@ func TestThirdpartyOAuth2ProviderEntity_ValidateForCreate_FlavorDispatch(t *test
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.entity.ValidateForCreate(true) // skipHTTPSValidation=true for tests
 			if tt.wantErr != "" {
 				require.Error(t, err)
