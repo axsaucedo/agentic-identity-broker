@@ -11,16 +11,16 @@ pipeline:
       image: cdp-runtime/go-1.25
     cache:
       paths:
-        # pkg cache for Go modules and Go build cache
+        # Go module download cache (stable — only changes when go.mod/go.sum change)
         - /go/pkg/mod
-        - ~/.cache/go-build
-        # golangci-lint incremental result cache
-        - ~/.cache/golangci-lint
-        # npm package cache
+        # npm package cache (stable — only changes when package-lock.json changes)
         - ~/.npm
-        # Playwright browser binaries
+        # Playwright browser binaries (stable — only changes when playwright version is bumped)
         - ~/.cache/ms-playwright
-      size_limit_megabytes: 6500
+        # NOTE: ~/.cache/go-build and ~/.cache/golangci-lint are intentionally excluded.
+        # They change on every source commit, causing a full cache re-upload (~7min) that
+        # negates any compilation speedup they provide.
+      size_limit_megabytes: 4096
     commands:
       - desc: "Install pre-requisites"
         cmd: |
@@ -50,16 +50,11 @@ pipeline:
       image: cdp-runtime/go-1.25
     cache:
       paths:
-        # pkg cache for Go modules and Go build cache
+        # Go module download cache (stable — only changes when go.mod/go.sum change)
         - /go/pkg/mod
-        - ~/.cache/go-build
-        # golangci-lint incremental result cache
-        - ~/.cache/golangci-lint
-        # npm package cache
+        # npm package cache (stable — only changes when package-lock.json changes)
         - ~/.npm
-        # Playwright browser binaries
-        - ~/.cache/ms-playwright
-      size_limit_megabytes: 6500
+      size_limit_megabytes: 2048
     commands:
       - desc: "Build and push Docker images (broker + migrate + extproc)"
         cmd: |
