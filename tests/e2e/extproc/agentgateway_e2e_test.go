@@ -324,6 +324,10 @@ func startAgentgwExtProc(
 			Level:  "debug",
 			Format: "text",
 		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 
 	slogLogger := bootstrap.NewTestLogger()
