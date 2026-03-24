@@ -16,8 +16,11 @@ pipeline:
         - ~/.cache/go-build
         # golangci-lint incremental result cache
         - ~/.cache/golangci-lint
-        # Playwright browser binaries (~500MB — dominant install cost)
+        # npm package cache
+        - ~/.npm
+        # Playwright browser binaries
         - ~/.cache/ms-playwright
+      size_limit_megabytes: 6500
     commands:
       - desc: "Install pre-requisites"
         cmd: |
