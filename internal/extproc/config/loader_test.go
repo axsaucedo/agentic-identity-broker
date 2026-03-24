@@ -34,6 +34,10 @@ func validConfig() *config.Config {
 			DefaultTTL: 5 * time.Minute,
 			MaxTTL:     1 * time.Hour,
 		},
+		CircuitBreaker: config.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -231,6 +235,37 @@ func TestValidate(t *testing.T) {
 			wantErr:     true,
 			errContains: "configuration validation failed",
 		},
+		// Rule 14: circuit_breaker.max_failures
+		{
+			name:        "rule14: zero max_failures is invalid",
+			mutate:      func(c *config.Config) { c.CircuitBreaker.MaxFailures = 0 },
+			wantErr:     true,
+			errContains: "circuit_breaker.max_failures",
+		},
+		{
+			name:        "rule14: negative max_failures is invalid",
+			mutate:      func(c *config.Config) { c.CircuitBreaker.MaxFailures = -1 },
+			wantErr:     true,
+			errContains: "circuit_breaker.max_failures",
+		},
+		{
+			name:    "rule14: max_failures 1 is valid",
+			mutate:  func(c *config.Config) { c.CircuitBreaker.MaxFailures = 1 },
+			wantErr: false,
+		},
+		// Rule 15: circuit_breaker.reset_timeout
+		{
+			name:        "rule15: zero reset_timeout is invalid",
+			mutate:      func(c *config.Config) { c.CircuitBreaker.ResetTimeout = 0 },
+			wantErr:     true,
+			errContains: "circuit_breaker.reset_timeout",
+		},
+		{
+			name:        "rule15: negative reset_timeout is invalid",
+			mutate:      func(c *config.Config) { c.CircuitBreaker.ResetTimeout = -1 * time.Second },
+			wantErr:     true,
+			errContains: "circuit_breaker.reset_timeout",
+		},
 	}
 
 	for _, tt := range tests {
@@ -281,6 +316,8 @@ func TestLoadFromViper_Defaults(t *testing.T) {
 	assert.False(t, cfg.OAuth2.TLS.InsecureSkipVerify)
 	assert.False(t, cfg.OAuth2.TLS.AllowHTTP)
 	assert.Equal(t, "", cfg.OAuth2.TLS.CaBundlePath)
+	assert.Equal(t, 5, cfg.CircuitBreaker.MaxFailures)
+	assert.Equal(t, 30*time.Second, cfg.CircuitBreaker.ResetTimeout)
 }
 
 func TestLoadFromViper_EnvVarExpansion(t *testing.T) {

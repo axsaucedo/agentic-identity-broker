@@ -7,10 +7,11 @@ import "time"
 
 // Config is the root configuration for the ExtProc Token Exchange Service.
 type Config struct {
-	GRPC   GRPCConfig   `mapstructure:"grpc"`
-	OAuth2 OAuth2Config `mapstructure:"oauth2"`
-	Cache  CacheConfig  `mapstructure:"cache"`
-	Log    LogConfig    `mapstructure:"log"`
+	GRPC           GRPCConfig           `mapstructure:"grpc"`
+	OAuth2         OAuth2Config         `mapstructure:"oauth2"`
+	Cache          CacheConfig          `mapstructure:"cache"`
+	Log            LogConfig            `mapstructure:"log"`
+	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
 }
 
 // GRPCConfig holds gRPC server settings.
@@ -50,4 +51,12 @@ type CacheConfig struct {
 type LogConfig struct {
 	Level  string `mapstructure:"level"`
 	Format string `mapstructure:"format"`
+}
+
+// CircuitBreakerConfig holds circuit breaker settings for the token exchange
+// HTTP calls to the identity broker. The circuit breaker prevents a thundering
+// herd when the identity broker recovers after an outage.
+type CircuitBreakerConfig struct {
+	MaxFailures  int           `mapstructure:"max_failures"`
+	ResetTimeout time.Duration `mapstructure:"reset_timeout"`
 }

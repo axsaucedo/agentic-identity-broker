@@ -91,6 +91,21 @@ cache:
   # Env: EXTPROC_CACHE_MAX_TTL
   max_ttl: "1h"
 
+# Circuit breaker settings for the token exchange HTTP calls to the identity broker.
+# Prevents thundering herd when the identity broker recovers after an outage.
+circuit_breaker:
+  # Number of consecutive exchange failures before the circuit opens.
+  # While open, all exchange requests fail immediately with 503.
+  # Default: 5
+  # Env: EXTPROC_CIRCUIT_BREAKER_MAX_FAILURES
+  max_failures: 5
+
+  # Duration the circuit stays open before allowing a single probe request.
+  # If the probe succeeds, the circuit closes. If it fails, the circuit reopens.
+  # Default: "30s"
+  # Env: EXTPROC_CIRCUIT_BREAKER_RESET_TIMEOUT
+  reset_timeout: "30s"
+
 # Logging configuration
 log:
   # Log level (debug|info|warn|error)
