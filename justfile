@@ -207,7 +207,11 @@ install-tools:
     @command -v golangci-lint > /dev/null || bash scripts/golangci-lint-install.sh -b /usr/local/bin v2.11.4
     @command -v go-junit-report > /dev/null || go install github.com/jstemmer/go-junit-report/v2@v2.1.0
     @command -v ginkgo       > /dev/null || go install github.com/onsi/ginkgo/v2/ginkgo@v2.28.1
-    go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps
+    @if [ -d "~/.cache/ms-playwright" ] && [ -n "$(ls -A ~/.cache/ms-playwright 2>/dev/null)" ]; then \
+        echo "Playwright browsers already installed, skipping download"; \
+    else \
+        go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps; \
+    fi
     @echo "Tools installation complete"
 
 # Setup git hooks for quality checks
