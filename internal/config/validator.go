@@ -633,11 +633,19 @@ func validateTelemetryConfig(cfg *ports.TelemetryConfig) error {
 		)
 	}
 
-	// Protocol must be grpc or http
-	if cfg.Exporter.Protocol != "grpc" && cfg.Exporter.Protocol != "http" {
+	// Protocol must be grpc, http, or https
+	if cfg.Exporter.Protocol != "grpc" && cfg.Exporter.Protocol != "http" && cfg.Exporter.Protocol != "https" {
 		return formatValidationError(
 			"telemetry.exporter.protocol", cfg.Exporter.Protocol,
-			"one of: grpc, http", nil,
+			"one of: grpc, http, https", nil,
+		)
+	}
+
+	// Compression must be none or gzip
+	if cfg.Exporter.Compression != "" && cfg.Exporter.Compression != "none" && cfg.Exporter.Compression != "gzip" {
+		return formatValidationError(
+			"telemetry.exporter.compression", cfg.Exporter.Compression,
+			"one of: none, gzip", nil,
 		)
 	}
 
@@ -680,6 +688,7 @@ func validateTelemetryConfig(cfg *ports.TelemetryConfig) error {
 // validateOTLPEndpoint validates an OTLP endpoint string.
 // For gRPC: must be a valid host:port (no scheme); port must be a number in [1, 65535].
 // For HTTP: must be a valid http:// or https:// URL.
+// For HTTPS: must be a valid https:// URL or a bare host:port (auto-prefixed by the provider).
 func validateOTLPEndpoint(endpoint, protocol string) error {
 	if endpoint == "" {
 		return fmt.Errorf("endpoint is empty")
@@ -688,6 +697,37 @@ func validateOTLPEndpoint(endpoint, protocol string) error {
 		// HTTP endpoint must be a full http:// or https:// URL
 		if !isValidURL(endpoint) {
 			return fmt.Errorf("not a valid http(s) URL")
+		}
+		return nil
+	}
+	if protocol == "https" {
+		// HTTPS accepts either a bare host:port (auto-prefixed) or a full https:// URL.
+		// An http:// URL contradicts the https protocol choice.
+		if strings.HasPrefix(endpoint, "http://") {
+			return fmt.Errorf("protocol is https but endpoint uses http:// scheme — use https:// or bare host:port")
+		}
+		if strings.Contains(endpoint, "://") {
+			// Full URL provided — must be https://
+			if !strings.HasPrefix(endpoint, "https://") {
+				return fmt.Errorf("protocol is https but endpoint has non-https scheme")
+			}
+			if !isValidURL(endpoint) {
+				return fmt.Errorf("not a valid https URL")
+			}
+			return nil
+		}
+		// Bare host:port — validate format (will be auto-prefixed with https:// by the provider)
+		host, portStr, err := net.SplitHostPort(endpoint)
+		if err != nil {
+			return fmt.Errorf("HTTPS endpoint must be host:port or https:// URL: %w", err)
+		}
+		_ = host
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return fmt.Errorf("HTTPS endpoint port is not a number: %w", err)
+		}
+		if port < 1 || port > 65535 {
+			return fmt.Errorf("HTTPS endpoint port %d is out of range [1, 65535]", port)
 		}
 		return nil
 	}

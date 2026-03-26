@@ -23,9 +23,14 @@ telemetry:
     enabled: true  # Set to false if the OTEL collector does not support the LogsService
 
   exporter:
-    protocol: grpc  # grpc (default) or http
-    endpoint: otel-collector.monitoring.svc:4317  # host:port for gRPC
+    # Protocol: grpc (default), http, or https
+    #   grpc  — gRPC transport, endpoint is host:port, insecure flag controls TLS
+    #   http  — HTTP/protobuf transport, endpoint is a full URL (scheme controls TLS)
+    #   https — HTTP/protobuf over TLS, endpoint is host:port (auto-prefixed with https://)
+    protocol: grpc
+    endpoint: otel-collector.monitoring.svc:4317  # host:port for gRPC; full URL for http/https
     headers:
       Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
     timeout: 10s
-    insecure: false  # TLS enabled by default; never disable in production
+    insecure: false      # TLS enabled by default (only applies to gRPC); never disable in production
+    compression: none    # none (default) or gzip

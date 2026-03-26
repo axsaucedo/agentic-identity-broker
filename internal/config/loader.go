@@ -187,6 +187,7 @@ func (l *Loader) setDefaults() {
 	l.v.SetDefault("telemetry.exporter.protocol", telDefaults.Exporter.Protocol)
 	l.v.SetDefault("telemetry.exporter.timeout", telDefaults.Exporter.Timeout)
 	l.v.SetDefault("telemetry.exporter.insecure", telDefaults.Exporter.Insecure)
+	l.v.SetDefault("telemetry.exporter.compression", telDefaults.Exporter.Compression)
 
 	// Bind telemetry env vars
 	_ = l.v.BindEnv("telemetry.enabled", "IDENTITY_BROKER_TELEMETRY_ENABLED")
@@ -200,6 +201,7 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("telemetry.exporter.endpoint", "IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT")
 	_ = l.v.BindEnv("telemetry.exporter.timeout", "IDENTITY_BROKER_TELEMETRY_EXPORTER_TIMEOUT")
 	_ = l.v.BindEnv("telemetry.exporter.insecure", "IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE")
+	_ = l.v.BindEnv("telemetry.exporter.compression", "IDENTITY_BROKER_TELEMETRY_EXPORTER_COMPRESSION")
 
 	// Set token exchange configuration defaults
 	// expected_audience defaults to the well-known "token-exchange-broker" value.

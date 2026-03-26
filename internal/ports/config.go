@@ -604,18 +604,37 @@ type OTLPProtocol = string
 
 const (
 	// OTLPProtocolGRPC uses gRPC transport for OTLP export.
+	// Endpoint format: host:port (e.g. "collector:4317").
+	// TLS is controlled by the Insecure flag.
 	OTLPProtocolGRPC OTLPProtocol = "grpc"
 	// OTLPProtocolHTTP uses HTTP/protobuf transport for OTLP export.
+	// Endpoint format: full URL including scheme (e.g. "http://collector:4318" or "https://collector:4318").
+	// The URL scheme determines whether TLS is used; the Insecure flag is ignored.
 	OTLPProtocolHTTP OTLPProtocol = "http"
+	// OTLPProtocolHTTPS uses HTTP/protobuf transport over TLS for OTLP export.
+	// Endpoint format: host:port (e.g. "collector:4318") — https:// is added automatically.
+	// A full https:// URL is also accepted. Using http:// is rejected at validation time.
+	OTLPProtocolHTTPS OTLPProtocol = "https"
+)
+
+// OTLPCompression identifies the payload compression algorithm for the OTLP exporter.
+type OTLPCompression = string
+
+const (
+	// OTLPCompressionNone sends payloads uncompressed (default).
+	OTLPCompressionNone OTLPCompression = "none"
+	// OTLPCompressionGzip compresses payloads with gzip before sending.
+	OTLPCompressionGzip OTLPCompression = "gzip"
 )
 
 // OTLPExporterConfig contains OTLP exporter connection parameters.
 type OTLPExporterConfig struct {
-	Protocol OTLPProtocol      `mapstructure:"protocol"`
-	Endpoint string            `mapstructure:"endpoint"`
-	Headers  map[string]string `mapstructure:"headers"`
-	Timeout  time.Duration     `mapstructure:"timeout"`
-	Insecure bool              `mapstructure:"insecure"`
+	Protocol    OTLPProtocol      `mapstructure:"protocol"`
+	Endpoint    string            `mapstructure:"endpoint"`
+	Headers     map[string]string `mapstructure:"headers"`
+	Timeout     time.Duration     `mapstructure:"timeout"`
+	Insecure    bool              `mapstructure:"insecure"`
+	Compression OTLPCompression   `mapstructure:"compression"`
 }
 
 // DefaultTelemetryConfig returns default telemetry configuration.
@@ -638,11 +657,12 @@ func DefaultTelemetryConfig() TelemetryConfig {
 			Enabled: true,
 		},
 		Exporter: OTLPExporterConfig{
-			Protocol: OTLPProtocolGRPC,
-			Endpoint: "",
-			Headers:  map[string]string{},
-			Timeout:  10 * time.Second,
-			Insecure: false,
+			Protocol:    OTLPProtocolGRPC,
+			Endpoint:    "",
+			Headers:     map[string]string{},
+			Timeout:     10 * time.Second,
+			Insecure:    false,
+			Compression: OTLPCompressionNone,
 		},
 	}
 }

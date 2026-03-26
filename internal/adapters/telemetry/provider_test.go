@@ -80,6 +80,118 @@ func TestNewProvider_InvalidProtocol(t *testing.T) {
 	assert.Contains(t, err.Error(), "jaeger")
 }
 
+// Test 7: HTTPS protocol initializes using HTTP exporter with auto-prefixed endpoint.
+func TestNewProvider_HTTPSInitializes(t *testing.T) {
+	saveAndRestoreGlobalProviders(t)
+
+	cfg := minimalEnabledConfig("https")
+	// Bare host:port — provider should auto-prefix https://
+	cfg.Exporter.Endpoint = "localhost:4318"
+
+	ctx := context.Background()
+	logger := newTestLogger(new(bytes.Buffer))
+
+	shutdown, err := NewProvider(ctx, cfg, logger)
+	require.NoError(t, err, "HTTPS provider must initialize with bare host:port")
+	require.NotNil(t, shutdown)
+
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_ = shutdown(shutdownCtx)
+	})
+}
+
+// Test 8: HTTPS protocol with full https:// URL initializes.
+func TestNewProvider_HTTPSWithFullURL(t *testing.T) {
+	saveAndRestoreGlobalProviders(t)
+
+	cfg := minimalEnabledConfig("https")
+	cfg.Exporter.Endpoint = "https://localhost:4318"
+
+	ctx := context.Background()
+	logger := newTestLogger(new(bytes.Buffer))
+
+	shutdown, err := NewProvider(ctx, cfg, logger)
+	require.NoError(t, err, "HTTPS provider must initialize with full https:// URL")
+	require.NotNil(t, shutdown)
+
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_ = shutdown(shutdownCtx)
+	})
+}
+
+// Test 9: HTTPS + insecure=true logs a warning about the contradiction.
+func TestNewProvider_HTTPSInsecureWarning(t *testing.T) {
+	saveAndRestoreGlobalProviders(t)
+
+	cfg := minimalEnabledConfig("https")
+	cfg.Exporter.Endpoint = "localhost:4318"
+	cfg.Exporter.Insecure = true
+
+	ctx := context.Background()
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	shutdown, err := NewProvider(ctx, cfg, logger)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	t.Cleanup(func() {
+		cancelCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_ = shutdown(cancelCtx)
+	})
+
+	output := buf.String()
+	assert.Contains(t, output, "contradictory",
+		"expected warning about insecure+https contradiction, got: %s", output)
+}
+
+// Test 10: gzip compression option is accepted without error for gRPC.
+func TestNewProvider_GRPCWithGzipCompression(t *testing.T) {
+	saveAndRestoreGlobalProviders(t)
+
+	cfg := minimalEnabledConfig("grpc")
+	cfg.Exporter.Compression = "gzip"
+
+	ctx := context.Background()
+	logger := newTestLogger(new(bytes.Buffer))
+
+	shutdown, err := NewProvider(ctx, cfg, logger)
+	require.NoError(t, err, "gRPC with gzip compression must initialize")
+	require.NotNil(t, shutdown)
+
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_ = shutdown(shutdownCtx)
+	})
+}
+
+// Test 11: gzip compression option is accepted without error for HTTP.
+func TestNewProvider_HTTPWithGzipCompression(t *testing.T) {
+	saveAndRestoreGlobalProviders(t)
+
+	cfg := minimalEnabledConfig("http")
+	cfg.Exporter.Endpoint = "http://localhost:4318"
+	cfg.Exporter.Compression = "gzip"
+
+	ctx := context.Background()
+	logger := newTestLogger(new(bytes.Buffer))
+
+	shutdown, err := NewProvider(ctx, cfg, logger)
+	require.NoError(t, err, "HTTP with gzip compression must initialize")
+	require.NotNil(t, shutdown)
+
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_ = shutdown(shutdownCtx)
+	})
+}
+
 // Test 3: insecure=true logs a warning containing "insecure" or "TLS disabled".
 func TestNewProvider_InsecureLogsWarning(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
