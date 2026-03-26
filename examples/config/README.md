@@ -573,12 +573,14 @@ See [`telemetry.yaml`](telemetry.yaml) for a full production-ready example cover
 - `telemetry.service_name` — service name on all spans and metrics
 - `telemetry.resource_attributes` — custom key-value pairs added to all telemetry
 - `telemetry.traces.sampling_rate` — fraction of traces to export (0.0–1.0)
-- `telemetry.traces.propagators` — trace context propagation formats (`tracecontext`, `baggage`)
+- `telemetry.traces.propagators` — propagation formats (`ottrace`, `b3multi`, `b3`, `tracecontext`, `baggage`)
 - `telemetry.metrics.export_interval` — how often to push metrics to the collector
-- `telemetry.exporter.protocol` — `grpc` (default) or `http`
-- `telemetry.exporter.endpoint` — OTLP collector address (`host:port` for gRPC, `https://host:port` for HTTP)
+- `telemetry.logs.enabled` — toggle OTLP log export (set `false` if collector lacks LogsService)
+- `telemetry.exporter.protocol` — `grpc` (default), `http`, or `https`
+- `telemetry.exporter.endpoint` — OTLP collector address (`host:port` for gRPC, `http(s)://host:port` for HTTP)
 - `telemetry.exporter.headers` — additional headers (e.g., auth tokens via `${ENV_VAR}`)
 - `telemetry.exporter.timeout` — per-export timeout
+- `telemetry.exporter.compression` — `none` (default) or `gzip`
 - `telemetry.exporter.insecure` — disable TLS (default: `false`, **never use in production**)
 
 ### Environment Variable Mapping
