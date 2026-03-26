@@ -75,11 +75,15 @@ func NewProvider(ctx context.Context, cfg ports.TelemetryConfig, logger *slog.Lo
 
 	// Warn if TLS is disabled (SR-003: security-first, fail closed).
 	if cfg.Exporter.Insecure {
-		if cfg.Exporter.Protocol == ports.OTLPProtocolHTTPS {
+		switch cfg.Exporter.Protocol {
+		case ports.OTLPProtocolHTTPS:
 			logger.Warn("telemetry: insecure=true is contradictory with protocol=https and will be ignored",
 				"endpoint", cfg.Exporter.Endpoint)
-		} else {
-			logger.Warn("telemetry: TLS disabled for OTLP exporter (insecure=true) — do not use in production",
+		case ports.OTLPProtocolHTTP:
+			logger.Warn("telemetry: insecure=true has no effect for protocol=http — TLS is controlled by the URL scheme",
+				"endpoint", cfg.Exporter.Endpoint)
+		case ports.OTLPProtocolGRPC:
+			logger.Warn("telemetry: TLS disabled for OTLP gRPC exporter (insecure=true) — do not use in production",
 				"endpoint", cfg.Exporter.Endpoint)
 		}
 	}

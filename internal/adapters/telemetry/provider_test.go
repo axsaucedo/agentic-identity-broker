@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
-	"strings"
 	"testing"
 
 	"go.opentelemetry.io/otel"
@@ -192,7 +191,7 @@ func TestNewProvider_HTTPWithGzipCompression(t *testing.T) {
 	})
 }
 
-// Test 3: insecure=true logs a warning containing "insecure" or "TLS disabled".
+// Test 3: grpc + insecure=true logs a "TLS disabled" warning (insecure flag actually changes behavior).
 func TestNewProvider_InsecureLogsWarning(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 
@@ -213,10 +212,35 @@ func TestNewProvider_InsecureLogsWarning(t *testing.T) {
 	})
 
 	output := buf.String()
-	assert.True(t,
-		strings.Contains(output, "insecure") || strings.Contains(output, "TLS disabled"),
-		"expected log output to mention insecure TLS, got: %s", output,
-	)
+	assert.Contains(t, output, "TLS disabled",
+		"expected gRPC insecure warning to mention TLS disabled, got: %s", output)
+}
+
+// Test 3b: http + insecure=true logs a warning that insecure has no effect (TLS is URL-scheme-controlled).
+func TestNewProvider_HTTPInsecureIgnoredWarning(t *testing.T) {
+	saveAndRestoreGlobalProviders(t)
+
+	cfg := minimalEnabledConfig("http")
+	cfg.Exporter.Insecure = true
+
+	ctx := context.Background()
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	shutdown, err := NewProvider(ctx, cfg, logger)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+	t.Cleanup(func() {
+		cancelCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_ = shutdown(cancelCtx)
+	})
+
+	output := buf.String()
+	assert.Contains(t, output, "no effect",
+		"expected http insecure warning to say insecure has no effect, got: %s", output)
+	assert.NotContains(t, output, "TLS disabled",
+		"expected no 'TLS disabled' warning for protocol=http, got: %s", output)
 }
 
 // Test 4: gRPC provider initializes without a real collector.
