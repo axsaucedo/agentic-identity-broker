@@ -376,10 +376,11 @@ func TestValidateTelemetryConfig(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		cfg       ports.TelemetryConfig
-		wantErr   bool
-		wantField string
+		name            string
+		cfg             ports.TelemetryConfig
+		wantErr         bool
+		wantField       string
+		wantCompression string // non-empty: assert cfg.Exporter.Compression after call
 	}{
 		{
 			// Rule 1: skip validation when disabled — even an empty endpoint must not error
@@ -498,6 +499,28 @@ func TestValidateTelemetryConfig(t *testing.T) {
 			}(),
 			wantErr: false,
 		},
+		{
+			// Normalization: empty string compression is normalised to "none" — no error
+			name: "empty compression normalized to none",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Exporter.Compression = ""
+				return cfg
+			}(),
+			wantErr:         false,
+			wantCompression: "none",
+		},
+		{
+			// Compression value outside the allowed set is rejected
+			name: "invalid compression value",
+			cfg: func() ports.TelemetryConfig {
+				cfg := validEnabled()
+				cfg.Exporter.Compression = "br"
+				return cfg
+			}(),
+			wantErr:   true,
+			wantField: "telemetry.exporter.compression",
+		},
 	}
 
 	for _, tt := range tests {
@@ -517,6 +540,10 @@ func TestValidateTelemetryConfig(t *testing.T) {
 				if configErr.Field != tt.wantField {
 					t.Errorf("validateTelemetryConfig() error field = %q, want %q", configErr.Field, tt.wantField)
 				}
+			}
+
+			if tt.wantCompression != "" && tt.cfg.Exporter.Compression != tt.wantCompression {
+				t.Errorf("validateTelemetryConfig() compression = %q, want %q", tt.cfg.Exporter.Compression, tt.wantCompression)
 			}
 		})
 	}
