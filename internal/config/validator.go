@@ -641,8 +641,13 @@ func validateTelemetryConfig(cfg *ports.TelemetryConfig) error {
 		)
 	}
 
+	// Normalize empty compression to "none" (canonical default).
+	if cfg.Exporter.Compression == "" {
+		cfg.Exporter.Compression = "none"
+	}
+
 	// Compression must be none or gzip
-	if cfg.Exporter.Compression != "" && cfg.Exporter.Compression != "none" && cfg.Exporter.Compression != "gzip" {
+	if cfg.Exporter.Compression != "none" && cfg.Exporter.Compression != "gzip" {
 		return formatValidationError(
 			"telemetry.exporter.compression", cfg.Exporter.Compression,
 			"one of: none, gzip", nil,
