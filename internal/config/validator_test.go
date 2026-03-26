@@ -500,7 +500,7 @@ func TestValidateTelemetryConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			// Normalization: empty string compression is normalised to "none" — no error
+			// Normalization: empty string compression is normalized to "none" — no error
 			name: "empty compression normalized to none",
 			cfg: func() ports.TelemetryConfig {
 				cfg := validEnabled()
