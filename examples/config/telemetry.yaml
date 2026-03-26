@@ -12,8 +12,12 @@ telemetry:
     enabled: true
     sampling_rate: 0.1  # 10% in production; use 1.0 for development
     propagators:
-      - tracecontext
-      - baggage
+      - ottrace       # OpenTracing ↔ OpenTelemetry interop (ot-tracer-* headers)
+      - b3multi       # Zipkin B3 multiple headers (X-B3-TraceId, X-B3-SpanId, …)
+      - baggage       # W3C Baggage
+      # Also available:
+      #   - tracecontext  # W3C Trace Context (traceparent/tracestate)
+      #   - b3            # Zipkin B3 single header
 
   metrics:
     enabled: true

@@ -647,7 +647,7 @@ func DefaultTelemetryConfig() TelemetryConfig {
 		Traces: TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"tracecontext", "baggage"},
+			Propagators:  []string{"ottrace", "b3multi", "baggage"},
 		},
 		Metrics: MetricsConfig{
 			Enabled:        true,

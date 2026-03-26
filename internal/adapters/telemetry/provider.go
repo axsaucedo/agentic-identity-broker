@@ -10,6 +10,8 @@ import (
 	"time"
 
 	runtimemetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
+	"go.opentelemetry.io/contrib/propagators/b3"
+	"go.opentelemetry.io/contrib/propagators/ot"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otlploggrpc "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
@@ -324,6 +326,13 @@ func buildTracerProvider(exp sdktrace.SpanExporter, res *resource.Resource, cfg 
 }
 
 // registerPropagators sets up the global TextMapPropagator from config.
+// Supported propagator names:
+//   - "tracecontext" — W3C Trace Context (traceparent/tracestate headers)
+//   - "baggage"      — W3C Baggage
+//   - "b3multi"      — Zipkin B3 Multiple Headers (X-B3-TraceId, X-B3-SpanId, …)
+//   - "b3"           — Zipkin B3 Single Header (b3)
+//   - "ottrace"      — OpenTracing (ot-tracer-*) for OT↔OTel interoperability
+//
 // Unrecognized propagator names are logged as warnings and skipped.
 func registerPropagators(propagatorNames []string, logger *slog.Logger) {
 	var propagators []propagation.TextMapPropagator
@@ -333,6 +342,12 @@ func registerPropagators(propagatorNames []string, logger *slog.Logger) {
 			propagators = append(propagators, propagation.TraceContext{})
 		case "baggage":
 			propagators = append(propagators, propagation.Baggage{})
+		case "b3multi":
+			propagators = append(propagators, b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader)))
+		case "b3":
+			propagators = append(propagators, b3.New())
+		case "ottrace":
+			propagators = append(propagators, ot.OT{})
 		default:
 			logger.Warn("telemetry: unrecognized propagator name, ignoring", "propagator", name)
 		}

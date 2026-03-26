@@ -315,3 +315,35 @@ func TestNewProvider_CustomServiceName(t *testing.T) {
 	}
 	assert.True(t, found, "resource must contain service.name=my-service")
 }
+
+func TestRegisterPropagators_AllSupported(t *testing.T) {
+	// Save and restore global propagator to avoid leaking state.
+	prevProp := otel.GetTextMapPropagator()
+	t.Cleanup(func() { otel.SetTextMapPropagator(prevProp) })
+
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	// Register all supported propagators.
+	registerPropagators([]string{"tracecontext", "baggage", "b3multi", "b3", "ottrace"}, logger)
+
+	// Verify composite propagator reports the expected header fields.
+	prop := otel.GetTextMapPropagator()
+	fields := prop.Fields()
+	assert.NotEmpty(t, fields, "composite propagator must report header fields")
+
+	// No warnings should have been logged.
+	assert.Empty(t, buf.String(), "no warnings expected for valid propagator names")
+}
+
+func TestRegisterPropagators_UnknownSkipped(t *testing.T) {
+	prevProp := otel.GetTextMapPropagator()
+	t.Cleanup(func() { otel.SetTextMapPropagator(prevProp) })
+
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+
+	registerPropagators([]string{"b3multi", "nonexistent"}, logger)
+
+	assert.Contains(t, buf.String(), "nonexistent", "should warn about unrecognized propagator")
+}

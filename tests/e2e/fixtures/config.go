@@ -200,7 +200,7 @@ func TelemetryEnabledConfig() *ports.Config {
 		Traces: ports.TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"tracecontext", "baggage"},
+			Propagators:  []string{"ottrace", "b3multi", "baggage"},
 		},
 		Metrics: ports.MetricsConfig{
 			Enabled:        false, // no runtime metrics in tests
@@ -233,7 +233,7 @@ func TelemetryGRPCConfig() *ports.Config {
 		Traces: ports.TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"tracecontext", "baggage"},
+			Propagators:  []string{"ottrace", "b3multi", "baggage"},
 		},
 		Metrics: ports.MetricsConfig{
 			Enabled:        false,
@@ -268,7 +268,7 @@ func TelemetryHTTPConfig() *ports.Config {
 		Traces: ports.TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"tracecontext", "baggage"},
+			Propagators:  []string{"ottrace", "b3multi", "baggage"},
 		},
 		Metrics: ports.MetricsConfig{
 			Enabled:        false,
