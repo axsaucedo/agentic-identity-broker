@@ -393,10 +393,10 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 	}
 
 	authReq := &ports.AuthorizationRequest{
-		ClientID:     id.ClientID("client-1"),
+		ClientID:     id.ClientID(agentID.String()),
 		RedirectURI:  "https://client.example.com/callback",
 		ResponseType: "code",
-		OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=client-1",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
 	}
 
 	tests := []struct {
