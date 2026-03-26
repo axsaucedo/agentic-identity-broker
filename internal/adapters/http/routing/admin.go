@@ -39,8 +39,9 @@ type AdminRouteConfig struct {
 func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers, cfg AdminRouteConfig) {
 	// Register OTel HTTP tracing middleware when enabled (ADR-011, T032).
 	// Propagators are passed explicitly so the middleware always uses the globally
-	// registered propagator and correctly attaches to inbound trace context
-	// (traceparent/tracestate) instead of creating new root traces.
+	// registered propagator and continues any inbound trace context (for example,
+	// b3, ot-tracer-*, or W3C Trace Context when enabled) instead of creating new
+	// root traces.
 	if cfg.Telemetry.Enabled && cfg.Telemetry.Traces.Enabled {
 		r.Use(otelchi.Middleware("admin",
 			otelchi.WithChiRoutes(r),
