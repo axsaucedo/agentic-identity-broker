@@ -33,6 +33,8 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.41.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.64.0
+	go.opentelemetry.io/contrib/propagators/b3 v1.42.0
+	go.opentelemetry.io/contrib/propagators/ot v1.42.0
 	go.opentelemetry.io/otel v1.42.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.16.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.16.0
@@ -49,11 +51,7 @@ require (
 	google.golang.org/grpc v1.79.3
 )
 
-require (
-	go.opentelemetry.io/contrib/propagators/b3 v1.42.0 // indirect
-	go.opentelemetry.io/contrib/propagators/ot v1.42.0 // indirect
-	go.uber.org/multierr v1.11.0 // indirect
-)
+require go.uber.org/multierr v1.11.0 // indirect
 
 require (
 	cel.dev/expr v0.25.1 // indirect
