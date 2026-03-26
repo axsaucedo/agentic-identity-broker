@@ -90,8 +90,14 @@ func NewProvider(ctx context.Context, cfg ports.TelemetryConfig, logger *slog.Lo
 	// TracerProvider remains the SDK default (no-op) so instrumented libraries produce no spans.
 	if cfg.Traces.Enabled && tp != nil {
 		otel.SetTracerProvider(tp)
-		registerPropagators(cfg.Traces.Propagators, logger)
 	}
+
+	// Register propagators unconditionally when telemetry is enabled.
+	// Propagation and tracing are separate concerns: trace context must always be
+	// extracted from inbound requests and injected into outbound requests so that
+	// this service is transparent to distributed tracing, even when its own trace
+	// pipeline is disabled.
+	registerPropagators(cfg.Traces.Propagators, logger)
 
 	// Register metric provider only when metrics are enabled. When disabled, the global
 	// MeterProvider remains the SDK default (no-op) so otelchi does not export metrics.
@@ -188,23 +194,26 @@ func buildGRPCProviders(ctx context.Context, cfg ports.TelemetryConfig, res *res
 		mp = buildMeterProvider(metricExp, res, cfg)
 	}
 
-	// Log exporter — non-fatal: failure is logged as a warning and lp is nil
-	logOpts := []otlploggrpc.Option{
-		otlploggrpc.WithEndpoint(cfg.Exporter.Endpoint),
-		otlploggrpc.WithTimeout(cfg.Exporter.Timeout),
-		otlploggrpc.WithHeaders(cfg.Exporter.Headers),
-	}
-	if insecure {
-		logOpts = append(logOpts, otlploggrpc.WithInsecure())
-	} else {
-		logOpts = append(logOpts, otlploggrpc.WithTLSCredentials(tlsCreds))
-	}
+	// Log exporter — skipped when logs are disabled, non-fatal when enabled:
+	// failure is logged as a warning and lp is nil.
 	var lp *sdklog.LoggerProvider
-	logExp, logErr := otlploggrpc.New(ctx, logOpts...)
-	if logErr != nil {
-		logger.Warn("telemetry: log gRPC exporter failed to initialize, OTLP log pipeline disabled", "error", logErr)
-	} else {
-		lp = buildLoggerProvider(logExp, res)
+	if cfg.Logs.Enabled {
+		logOpts := []otlploggrpc.Option{
+			otlploggrpc.WithEndpoint(cfg.Exporter.Endpoint),
+			otlploggrpc.WithTimeout(cfg.Exporter.Timeout),
+			otlploggrpc.WithHeaders(cfg.Exporter.Headers),
+		}
+		if insecure {
+			logOpts = append(logOpts, otlploggrpc.WithInsecure())
+		} else {
+			logOpts = append(logOpts, otlploggrpc.WithTLSCredentials(tlsCreds))
+		}
+		logExp, logErr := otlploggrpc.New(ctx, logOpts...)
+		if logErr != nil {
+			logger.Warn("telemetry: log gRPC exporter failed to initialize, OTLP log pipeline disabled", "error", logErr)
+		} else {
+			lp = buildLoggerProvider(logExp, res)
+		}
 	}
 
 	return tp, mp, lp, nil
@@ -250,18 +259,21 @@ func buildHTTPProviders(ctx context.Context, cfg ports.TelemetryConfig, res *res
 		mp = buildMeterProvider(metricExp, res, cfg)
 	}
 
-	// Log exporter — non-fatal: failure is logged as a warning and lp is nil
-	logOpts := []otlploghttp.Option{
-		otlploghttp.WithEndpointURL(cfg.Exporter.Endpoint),
-		otlploghttp.WithTimeout(cfg.Exporter.Timeout),
-		otlploghttp.WithHeaders(cfg.Exporter.Headers),
-	}
+	// Log exporter — skipped when logs are disabled, non-fatal when enabled:
+	// failure is logged as a warning and lp is nil.
 	var lp *sdklog.LoggerProvider
-	logExp, logErr := otlploghttp.New(ctx, logOpts...)
-	if logErr != nil {
-		logger.Warn("telemetry: log HTTP exporter failed to initialize, OTLP log pipeline disabled", "error", logErr)
-	} else {
-		lp = buildLoggerProvider(logExp, res)
+	if cfg.Logs.Enabled {
+		logOpts := []otlploghttp.Option{
+			otlploghttp.WithEndpointURL(cfg.Exporter.Endpoint),
+			otlploghttp.WithTimeout(cfg.Exporter.Timeout),
+			otlploghttp.WithHeaders(cfg.Exporter.Headers),
+		}
+		logExp, logErr := otlploghttp.New(ctx, logOpts...)
+		if logErr != nil {
+			logger.Warn("telemetry: log HTTP exporter failed to initialize, OTLP log pipeline disabled", "error", logErr)
+		} else {
+			lp = buildLoggerProvider(logExp, res)
+		}
 	}
 
 	return tp, mp, lp, nil

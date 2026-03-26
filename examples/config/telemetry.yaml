@@ -19,6 +19,9 @@ telemetry:
     enabled: true
     export_interval: 30s
 
+  logs:
+    enabled: true  # Set to false if the OTEL collector does not support the LogsService
+
   exporter:
     protocol: grpc  # grpc (default) or http
     endpoint: otel-collector.monitoring.svc:4317  # host:port for gRPC

@@ -206,6 +206,9 @@ func TelemetryEnabledConfig() *ports.Config {
 			Enabled:        false, // no runtime metrics in tests
 			ExportInterval: 30 * time.Second,
 		},
+		Logs: ports.LogsConfig{
+			Enabled: false, // no OTLP log export in tests
+		},
 		Exporter: ports.OTLPExporterConfig{
 			Protocol: "grpc",
 			Endpoint: "localhost:4317", // not used when TP is injected via WithTracerProvider
@@ -235,6 +238,9 @@ func TelemetryGRPCConfig() *ports.Config {
 		Metrics: ports.MetricsConfig{
 			Enabled:        false,
 			ExportInterval: 30 * time.Second,
+		},
+		Logs: ports.LogsConfig{
+			Enabled: false,
 		},
 		Exporter: ports.OTLPExporterConfig{
 			Protocol: "grpc",
@@ -267,6 +273,9 @@ func TelemetryHTTPConfig() *ports.Config {
 		Metrics: ports.MetricsConfig{
 			Enabled:        false,
 			ExportInterval: 30 * time.Second,
+		},
+		Logs: ports.LogsConfig{
+			Enabled: false,
 		},
 		Exporter: ports.OTLPExporterConfig{
 			Protocol: "http",

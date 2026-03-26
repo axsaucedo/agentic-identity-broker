@@ -575,6 +575,7 @@ type TelemetryConfig struct {
 	ResourceAttributes map[string]string  `mapstructure:"resource_attributes"`
 	Traces             TracesConfig       `mapstructure:"traces"`
 	Metrics            MetricsConfig      `mapstructure:"metrics"`
+	Logs               LogsConfig         `mapstructure:"logs"`
 	Exporter           OTLPExporterConfig `mapstructure:"exporter"`
 }
 
@@ -589,6 +590,13 @@ type TracesConfig struct {
 type MetricsConfig struct {
 	Enabled        bool          `mapstructure:"enabled"`
 	ExportInterval time.Duration `mapstructure:"export_interval"`
+}
+
+// LogsConfig contains OTLP log export configuration.
+// Not all OTEL collectors support the LogsService gRPC service; when the collector
+// does not, set Enabled=false to suppress connection errors.
+type LogsConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }
 
 // OTLPProtocol identifies the transport protocol for the OTLP exporter.
@@ -625,6 +633,9 @@ func DefaultTelemetryConfig() TelemetryConfig {
 		Metrics: MetricsConfig{
 			Enabled:        true,
 			ExportInterval: 30 * time.Second,
+		},
+		Logs: LogsConfig{
+			Enabled: true,
 		},
 		Exporter: OTLPExporterConfig{
 			Protocol: OTLPProtocolGRPC,

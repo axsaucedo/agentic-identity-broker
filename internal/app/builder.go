@@ -181,10 +181,10 @@ func (b *Builder) Build() (*App, error) {
 		app.ShutdownTelemetry = shutdownTelemetry
 	}
 
-	// T038: Wire OTel slog bridge when telemetry is enabled.
+	// T038: Wire OTel slog bridge when telemetry and log export are both enabled.
 	// Wraps the base logger handler with a multi-handler that fans log records to both
 	// the original handler and the OTel log bridge (otelslog), enabling log-trace correlation.
-	if b.config.Telemetry.Enabled {
+	if b.config.Telemetry.Enabled && b.config.Telemetry.Logs.Enabled {
 		otelHandler := otelslog.NewHandler(b.config.Telemetry.ServiceName,
 			otelslog.WithLoggerProvider(global.GetLoggerProvider()))
 		b.logger = slog.New(telemetry.NewMultiHandler(b.logger.Handler(), otelHandler))
