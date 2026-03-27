@@ -58,7 +58,7 @@ type Config struct {
 |---|---|---|---|---|
 | `Enabled` | `bool` | `enabled` | `true` (when parent Enabled=true) | — |
 | `SamplingRate` | `float64` | `sampling_rate` | `1.0` | Range 0.0–1.0 (inclusive) |
-| `Propagators` | `[]string` | `propagators` | `["tracecontext", "baggage"]` | Each item must be `"tracecontext"` or `"baggage"` |
+| `Propagators` | `[]string` | `propagators` | `["ottrace", "b3multi", "baggage"]` | Each item must be one of: `"ottrace"`, `"b3multi"`, `"b3"`, `"tracecontext"`, `"baggage"` |
 
 **Sampling semantics**:
 - `1.0` → `AlwaysSample` (via `TraceIDRatioBased(1.0)` wrapped in `ParentBased`)
@@ -82,21 +82,37 @@ type Config struct {
 
 ---
 
+### Entity: `LogsConfig`
+
+**Purpose**: Configuration for OTLP log export. Not all collectors support `opentelemetry.proto.collector.logs.v1.LogsService`; disabling prevents connection errors.
+
+| Field | Type | mapstructure key | Default | Validation |
+|---|---|---|---|---|
+| `Enabled` | `bool` | `enabled` | `true` (when parent Enabled=true) | — |
+
+---
+
 ### Entity: `OTLPExporterConfig`
 
 **Purpose**: OTLP exporter connection parameters.
 
 | Field | Type | mapstructure key | Default | Validation |
 |---|---|---|---|---|
-| `Protocol` | `string` | `protocol` | `"grpc"` | Must be `"grpc"` or `"http"` when Enabled=true |
+| `Protocol` | `string` | `protocol` | `"grpc"` | Must be `"grpc"`, `"http"`, or `"https"` when Enabled=true |
 | `Endpoint` | `string` | `endpoint` | `""` | **Required** when Enabled=true; must be a valid host:port or URL |
 | `Headers` | `map[string]string` | `headers` | `{}` | Values support `${ENV_VAR}` substitution |
 | `Timeout` | `time.Duration` | `timeout` | `10s` | Must be > 0 |
+| `Compression` | `string` | `compression` | `"none"` | Must be `"none"` or `"gzip"` |
 | `Insecure` | `bool` | `insecure` | `false` | — |
+
+**Protocol behaviour**:
+- `grpc` → gRPC OTLP exporter; endpoint format: `host:port`
+- `http` → HTTP OTLP exporter; endpoint format: `http://host:port`
+- `https` → HTTP OTLP exporter with TLS; bare `host:port` auto-prefixed with `https://`
 
 **TLS behaviour**:
 - `Insecure: false` (default) → TLS enabled for gRPC / HTTPS for HTTP
-- `Insecure: true` → TLS disabled; system **MUST** log a `WARN` at startup
+- `Insecure: true` → TLS disabled for gRPC; a `WARN` is emitted at startup. For HTTP, the URL scheme controls TLS; for `https` protocol, `insecure: true` is contradictory (warning logged).
 
 **Header secret handling**:
 - `${ENV_VAR}` references in header values are expanded during config loading by the existing `expandEnvVars()` mechanism in `internal/config/loader.go`
@@ -113,7 +129,8 @@ Implemented in `internal/config/validator.go` as `validateTelemetryConfig(cfg *p
 | Skip all validation | `cfg.Enabled == false` | — | — |
 | Endpoint required | `cfg.Exporter.Endpoint == ""` | `telemetry.exporter.endpoint` | `"non-empty OTLP endpoint"` |
 | Endpoint valid format | not a valid host:port or URL | `telemetry.exporter.endpoint` | `"valid gRPC host:port or HTTP URL"` |
-| Protocol valid | not `"grpc"` or `"http"` | `telemetry.exporter.protocol` | `"one of: grpc, http"` |
+| Protocol valid | not `"grpc"`, `"http"`, or `"https"` | `telemetry.exporter.protocol` | `"one of: grpc, http, https"` |
+| Compression valid | not `"none"` or `"gzip"` | `telemetry.exporter.compression` | `"one of: none, gzip"` |
 | Sampling rate in range | `< 0.0` or `> 1.0` | `telemetry.traces.sampling_rate` | `"value between 0.0 and 1.0"` |
 | Export interval positive | `cfg.Metrics.Enabled && cfg.Metrics.ExportInterval <= 0` | `telemetry.metrics.export_interval` | `"positive duration"` |
 | Exporter timeout positive | `cfg.Exporter.Timeout <= 0` | `telemetry.exporter.timeout` | `"positive duration"` |
@@ -132,18 +149,22 @@ func DefaultTelemetryConfig() TelemetryConfig {
         Traces: TracesConfig{
             Enabled:      true,
             SamplingRate: 1.0,
-            Propagators:  []string{"tracecontext", "baggage"},
+            Propagators:  []string{"ottrace", "b3multi", "baggage"},
         },
         Metrics: MetricsConfig{
             Enabled:        true,
             ExportInterval: 30 * time.Second,
         },
+        Logs: LogsConfig{
+            Enabled: true,
+        },
         Exporter: OTLPExporterConfig{
-            Protocol: "grpc",
-            Endpoint: "",
-            Headers:  map[string]string{},
-            Timeout:  10 * time.Second,
-            Insecure: false,
+            Protocol:    "grpc",
+            Endpoint:    "",
+            Headers:     map[string]string{},
+            Timeout:     10 * time.Second,
+            Compression: "none",
+            Insecure:    false,
         },
     }
 }

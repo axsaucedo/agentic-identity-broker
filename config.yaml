@@ -95,8 +95,12 @@ telemetry:
   #   enabled: true
   #   export_interval: 30s
   #
+  # logs:
+  #   enabled: true  # set false if collector lacks LogsService support
+  #
   # exporter:
-  #   protocol: grpc
+  #   protocol: grpc       # grpc, http, or https
   #   endpoint: otel-collector.monitoring.svc:4317
   #   timeout: 10s
-  #   insecure: false  # TLS enabled by default
+  #   insecure: false      # TLS enabled by default (gRPC only)
+  #   compression: none    # none or gzip

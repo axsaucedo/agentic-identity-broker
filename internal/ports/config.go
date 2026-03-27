@@ -575,6 +575,7 @@ type TelemetryConfig struct {
 	ResourceAttributes map[string]string  `mapstructure:"resource_attributes"`
 	Traces             TracesConfig       `mapstructure:"traces"`
 	Metrics            MetricsConfig      `mapstructure:"metrics"`
+	Logs               LogsConfig         `mapstructure:"logs"`
 	Exporter           OTLPExporterConfig `mapstructure:"exporter"`
 }
 
@@ -591,23 +592,49 @@ type MetricsConfig struct {
 	ExportInterval time.Duration `mapstructure:"export_interval"`
 }
 
+// LogsConfig contains OTLP log export configuration.
+// Not all OTEL collectors support the LogsService gRPC service; when the collector
+// does not, set Enabled=false to suppress connection errors.
+type LogsConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+}
+
 // OTLPProtocol identifies the transport protocol for the OTLP exporter.
 type OTLPProtocol = string
 
 const (
 	// OTLPProtocolGRPC uses gRPC transport for OTLP export.
+	// Endpoint format: host:port (e.g. "collector:4317").
+	// TLS is controlled by the Insecure flag.
 	OTLPProtocolGRPC OTLPProtocol = "grpc"
 	// OTLPProtocolHTTP uses HTTP/protobuf transport for OTLP export.
+	// Endpoint format: full URL including scheme (e.g. "http://collector:4318" or "https://collector:4318").
+	// The URL scheme determines whether TLS is used; the Insecure flag is ignored.
 	OTLPProtocolHTTP OTLPProtocol = "http"
+	// OTLPProtocolHTTPS uses HTTP/protobuf transport over TLS for OTLP export.
+	// Endpoint format: host:port (e.g. "collector:4318") — https:// is added automatically.
+	// A full https:// URL is also accepted. Using http:// is rejected at validation time.
+	OTLPProtocolHTTPS OTLPProtocol = "https"
+)
+
+// OTLPCompression identifies the payload compression algorithm for the OTLP exporter.
+type OTLPCompression = string
+
+const (
+	// OTLPCompressionNone sends payloads uncompressed (default).
+	OTLPCompressionNone OTLPCompression = "none"
+	// OTLPCompressionGzip compresses payloads with gzip before sending.
+	OTLPCompressionGzip OTLPCompression = "gzip"
 )
 
 // OTLPExporterConfig contains OTLP exporter connection parameters.
 type OTLPExporterConfig struct {
-	Protocol OTLPProtocol      `mapstructure:"protocol"`
-	Endpoint string            `mapstructure:"endpoint"`
-	Headers  map[string]string `mapstructure:"headers"`
-	Timeout  time.Duration     `mapstructure:"timeout"`
-	Insecure bool              `mapstructure:"insecure"`
+	Protocol    OTLPProtocol      `mapstructure:"protocol"`
+	Endpoint    string            `mapstructure:"endpoint"`
+	Headers     map[string]string `mapstructure:"headers"`
+	Timeout     time.Duration     `mapstructure:"timeout"`
+	Insecure    bool              `mapstructure:"insecure"`
+	Compression OTLPCompression   `mapstructure:"compression"`
 }
 
 // DefaultTelemetryConfig returns default telemetry configuration.
@@ -620,18 +647,22 @@ func DefaultTelemetryConfig() TelemetryConfig {
 		Traces: TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"tracecontext", "baggage"},
+			Propagators:  []string{"ottrace", "b3multi", "baggage"},
 		},
 		Metrics: MetricsConfig{
 			Enabled:        true,
 			ExportInterval: 30 * time.Second,
 		},
+		Logs: LogsConfig{
+			Enabled: true,
+		},
 		Exporter: OTLPExporterConfig{
-			Protocol: OTLPProtocolGRPC,
-			Endpoint: "",
-			Headers:  map[string]string{},
-			Timeout:  10 * time.Second,
-			Insecure: false,
+			Protocol:    OTLPProtocolGRPC,
+			Endpoint:    "",
+			Headers:     map[string]string{},
+			Timeout:     10 * time.Second,
+			Insecure:    false,
+			Compression: OTLPCompressionNone,
 		},
 	}
 }

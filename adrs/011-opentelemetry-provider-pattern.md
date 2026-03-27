@@ -46,11 +46,13 @@ We use `github.com/riandyrn/otelchi v0.12.2` as the OpenTelemetry middleware for
 **Registration**:
 
 ```go
-// Registered conditionally when cfg.Telemetry.Enabled && cfg.Telemetry.Traces.Enabled
+// Registered conditionally when cfg.Telemetry.Enabled && cfg.Telemetry.Traces.Enabled.
+// Propagators are registered unconditionally (propagation ≠ tracing).
 r.Use(otelchi.Middleware("enduser",
     otelchi.WithTracerProvider(tp),
     otelchi.WithChiRoutes(r),
     otelchi.WithRequestMethodInSpanName(true),
+    otelchi.WithPropagators(otel.GetTextMapPropagator()),
 ))
 ```
 
