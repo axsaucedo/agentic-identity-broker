@@ -48,7 +48,7 @@ func minimalEnabledConfig(protocol string) ports.TelemetryConfig {
 	return cfg
 }
 
-// Test 1: disabled fast-path — NewProvider with Enabled=false returns noop shutdown with no error.
+// Disabled fast-path — NewProvider with Enabled=false returns noop shutdown with no error.
 func TestNewProvider_DisabledReturnsNoop(t *testing.T) {
 	cfg := ports.DefaultTelemetryConfig()
 	cfg.Enabled = false
@@ -64,7 +64,7 @@ func TestNewProvider_DisabledReturnsNoop(t *testing.T) {
 	require.NoError(t, shutdown(ctx))
 }
 
-// Test 2: invalid protocol returns non-nil error.
+// Invalid protocol returns non-nil error.
 func TestNewProvider_InvalidProtocol(t *testing.T) {
 	cfg := ports.DefaultTelemetryConfig()
 	cfg.Enabled = true
@@ -79,7 +79,7 @@ func TestNewProvider_InvalidProtocol(t *testing.T) {
 	assert.Contains(t, err.Error(), "jaeger")
 }
 
-// Test 7: HTTPS protocol initializes using HTTP exporter with auto-prefixed endpoint.
+// HTTPS protocol initializes using HTTP exporter with auto-prefixed endpoint.
 func TestNewProvider_HTTPSInitializes(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 
@@ -101,7 +101,7 @@ func TestNewProvider_HTTPSInitializes(t *testing.T) {
 	})
 }
 
-// Test 8: HTTPS protocol with full https:// URL initializes.
+// HTTPS protocol with full https:// URL initializes.
 func TestNewProvider_HTTPSWithFullURL(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 
@@ -122,7 +122,7 @@ func TestNewProvider_HTTPSWithFullURL(t *testing.T) {
 	})
 }
 
-// Test 9: HTTPS + insecure=true logs a warning about the contradiction.
+// HTTPS + insecure=true logs a warning about the contradiction.
 func TestNewProvider_HTTPSInsecureWarning(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 
@@ -148,7 +148,7 @@ func TestNewProvider_HTTPSInsecureWarning(t *testing.T) {
 		"expected warning about insecure+https contradiction, got: %s", output)
 }
 
-// Test 10: gzip compression option is accepted without error for gRPC.
+// Gzip compression option is accepted without error for gRPC.
 func TestNewProvider_GRPCWithGzipCompression(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 
@@ -169,7 +169,7 @@ func TestNewProvider_GRPCWithGzipCompression(t *testing.T) {
 	})
 }
 
-// Test 11: gzip compression option is accepted without error for HTTP.
+// Gzip compression option is accepted without error for HTTP.
 func TestNewProvider_HTTPWithGzipCompression(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 
@@ -191,7 +191,7 @@ func TestNewProvider_HTTPWithGzipCompression(t *testing.T) {
 	})
 }
 
-// Test 3: grpc + insecure=true logs a "TLS disabled" warning (insecure flag actually changes behavior).
+// Grpc + insecure=true logs a "TLS disabled" warning (insecure flag actually changes behavior).
 func TestNewProvider_InsecureLogsWarning(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 
@@ -216,7 +216,7 @@ func TestNewProvider_InsecureLogsWarning(t *testing.T) {
 		"expected gRPC insecure warning to mention TLS disabled, got: %s", output)
 }
 
-// Test 3b: http + insecure=true logs a warning that insecure has no effect (TLS is URL-scheme-controlled).
+// Http + insecure=true logs a warning that insecure has no effect (TLS is URL-scheme-controlled).
 func TestNewProvider_HTTPInsecureIgnoredWarning(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 
@@ -243,7 +243,7 @@ func TestNewProvider_HTTPInsecureIgnoredWarning(t *testing.T) {
 		"expected no 'TLS disabled' warning for protocol=http, got: %s", output)
 }
 
-// Test 4: gRPC provider initializes without a real collector.
+// gRPC provider initializes without a real collector.
 // The OTel SDK buffers telemetry and does not fail on initialization when no
 // collector is reachable. Shutdown may return an error on flush — that's acceptable.
 func TestNewProvider_GRPCInitializes(t *testing.T) {
@@ -266,7 +266,7 @@ func TestNewProvider_GRPCInitializes(t *testing.T) {
 	})
 }
 
-// Test 5: HTTP provider initializes without a real collector.
+// HTTP provider initializes without a real collector.
 // The OTel SDK buffers telemetry and does not fail on initialization when no
 // collector is reachable. Shutdown may return an error on flush — that's acceptable.
 func TestNewProvider_HTTPInitializes(t *testing.T) {
@@ -291,7 +291,7 @@ func TestNewProvider_HTTPInitializes(t *testing.T) {
 	})
 }
 
-// Test 6: custom service name appears in TracerProvider resource via emitted spans.
+// Custom service name appears in TracerProvider resource via emitted spans.
 func TestNewProvider_CustomServiceName(t *testing.T) {
 	saveAndRestoreGlobalProviders(t)
 

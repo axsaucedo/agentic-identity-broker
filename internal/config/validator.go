@@ -726,7 +726,9 @@ func validateOTLPEndpoint(endpoint, protocol string) error {
 		if err != nil {
 			return fmt.Errorf("HTTPS endpoint must be host:port or https:// URL: %w", err)
 		}
-		_ = host
+		if strings.TrimSpace(host) == "" {
+			return fmt.Errorf("HTTPS endpoint host must not be empty: got %q", endpoint)
+		}
 		port, err := strconv.Atoi(portStr)
 		if err != nil {
 			return fmt.Errorf("HTTPS endpoint port is not a number: %w", err)

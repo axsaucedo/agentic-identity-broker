@@ -227,6 +227,8 @@ func (l *Loader) setDefaults() {
 			"telemetry.traces.enabled", "telemetry.traces.sampling_rate", "telemetry.traces.propagators",
 			"telemetry.metrics.enabled", "telemetry.metrics.export_interval",
 			"telemetry.exporter.protocol", "telemetry.exporter.timeout", "telemetry.exporter.insecure",
+			"telemetry.logs.enabled",
+			"telemetry.exporter.compression",
 			"token_exchange.expected_audience",
 		},
 	})
