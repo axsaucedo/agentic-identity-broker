@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -230,31 +231,12 @@ func TestMapParseError_WrapsUnderlyingCause(t *testing.T) {
 		rawErr          error
 		wantErrContains string
 	}{
-		{
-			name:            "signature error wrapped",
-			rawErr:          fmt.Errorf("signature verification failed: key mismatch"),
-			wantErrContains: "malformed",
-		},
-		{
-			name:            "issuer error wrapped",
-			rawErr:          fmt.Errorf("issuer mismatch: got example.com"),
-			wantErrContains: "issuer validation",
-		},
-		{
-			name:            "audience error wrapped",
-			rawErr:          fmt.Errorf("audience not satisfied"),
-			wantErrContains: "audience validation",
-		},
-		{
-			name:            "expiry error wrapped",
-			rawErr:          fmt.Errorf("token is expired"),
-			wantErrContains: "expired",
-		},
-		{
-			name:            "unknown error wrapped in default case",
-			rawErr:          fmt.Errorf("some totally unknown jwt failure"),
-			wantErrContains: "validation failed",
-		},
+		{name: "parse/signature error mapped via ParseError sentinel", rawErr: jwt.ParseError(), wantErrContains: "malformed"},
+		{name: "issuer error includes expected iss value", rawErr: jwt.InvalidIssuerError(), wantErrContains: `expected iss="https://auth.example.com"`},
+		{name: "audience error includes expected aud value", rawErr: jwt.InvalidAudienceError(), wantErrContains: `expected aud="broker-id"`},
+		{name: "expired token mapped", rawErr: jwt.TokenExpiredError(), wantErrContains: "expired"},
+		{name: "not-yet-valid token mapped", rawErr: jwt.TokenNotYetValidError(), wantErrContains: "not yet valid"},
+		{name: "unknown error falls through to default case", rawErr: fmt.Errorf("some totally unknown jwt failure"), wantErrContains: "validation failed"},
 	}
 
 	for _, tt := range tests {
@@ -283,12 +265,31 @@ func TestMapClientAssertionParseError_WrapsUnderlyingCause(t *testing.T) {
 	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
 	require.NoError(t, err)
 
-	rawErr := fmt.Errorf("some unexpected validation problem")
-	domErr := validator.mapClientAssertionParseError(rawErr)
-	require.Error(t, domErr)
+	tests := []struct {
+		name            string
+		rawErr          error
+		wantErrContains string
+	}{
+		{name: "parse/signature error mapped via ParseError sentinel", rawErr: jwt.ParseError(), wantErrContains: "malformed"},
+		{name: "issuer error includes expected iss value", rawErr: jwt.InvalidIssuerError(), wantErrContains: `expected iss="https://auth.example.com"`},
+		{name: "audience error includes expected aud value", rawErr: jwt.InvalidAudienceError(), wantErrContains: `expected aud="broker-id"`},
+		{name: "expired token mapped", rawErr: jwt.TokenExpiredError(), wantErrContains: "expired"},
+		{name: "not-yet-valid token mapped", rawErr: jwt.TokenNotYetValidError(), wantErrContains: "not yet valid"},
+		{name: "unknown error falls through to default case", rawErr: fmt.Errorf("some totally unknown jwt failure"), wantErrContains: "validation failed"},
+	}
 
-	tokenErr, ok := domErr.(*TokenExchangeError)
-	require.True(t, ok, "expected *TokenExchangeError")
-	require.NotNil(t, tokenErr.Unwrap(), "expected underlying cause to be set for logging")
-	assert.Equal(t, rawErr, tokenErr.Unwrap())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			domErr := validator.mapClientAssertionParseError(tt.rawErr)
+			require.Error(t, domErr)
+
+			assert.ErrorContains(t, domErr, tt.wantErrContains)
+
+			tokenErr, ok := domErr.(*TokenExchangeError)
+			require.True(t, ok, "expected *TokenExchangeError")
+			require.NotNil(t, tokenErr.Unwrap(), "expected underlying cause to be set for logging")
+			assert.Equal(t, tt.rawErr, tokenErr.Unwrap())
+		})
+	}
 }

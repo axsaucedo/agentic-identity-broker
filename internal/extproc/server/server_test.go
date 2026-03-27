@@ -2,8 +2,10 @@ package server_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -14,7 +16,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-	"net"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -406,4 +407,94 @@ func TestServer_Process_StreamHandledCleanly(t *testing.T) {
 				"unclean close should not produce Internal error")
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// MCP URL Elicitation — BrokerExchangeError with ErrorURI
+// ---------------------------------------------------------------------------
+
+// Spec: When broker returns error_uri, headers phase immediately returns HTTP 200
+// with JSON-RPC -32042 URLElicitationRequiredError. agentgateway 0.12.0 commits the
+// request to the backend as soon as it receives any RequestHeaders response, so
+// ImmediateResponse must come from the headers phase.
+func TestServer_Process_BrokerErrorWithURI_ReturnsElicitationFromHeadersPhase(t *testing.T) {
+	reAuthURL := "https://broker.example.com/api/third-party/svc-123/oauth2/authorize"
+	const description = "User session has expired. Please re-authenticate."
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_, _ string) (string, error) {
+			return "", &server.BrokerExchangeError{
+				StatusCode:  401,
+				Code:        "invalid_grant",
+				Description: description,
+				ErrorURI:    reAuthURL,
+			}
+		},
+	}
+	client, cleanup := startTestServer(t, exchanger)
+	defer cleanup()
+
+	resp, err := sendRequestHeaders(t, client, map[string]string{
+		":path":         "http://mcp-server:9003/mcp",
+		"authorization": "Bearer subject-token",
+	})
+	require.NoError(t, err)
+
+	immResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+	require.True(t, ok, "headers phase must return ImmediateResponse for elicitation")
+	assert.Equal(t, int32(httpv3.StatusCode_OK), int32(immResp.ImmediateResponse.Status.Code),
+		"elicitation must use HTTP 200 (JSON-RPC errors always travel over HTTP 200)")
+
+	var envelope struct {
+		JSONRPC string `json:"jsonrpc"`
+		ID      any    `json:"id"`
+		Error   struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			Data    struct {
+				Elicitations []struct {
+					Mode          string `json:"mode"`
+					ElicitationID string `json:"elicitationId"`
+					URL           string `json:"url"`
+					Message       string `json:"message"`
+				} `json:"elicitations"`
+			} `json:"data"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(immResp.ImmediateResponse.Body, &envelope))
+
+	assert.Equal(t, "2.0", envelope.JSONRPC)
+	assert.Nil(t, envelope.ID, "id must be JSON null (body not yet available in headers phase)")
+	assert.Equal(t, -32042, envelope.Error.Code, "must use JSON-RPC error code -32042")
+	assert.Equal(t, description, envelope.Error.Message)
+	require.Len(t, envelope.Error.Data.Elicitations, 1)
+	assert.Equal(t, "url", envelope.Error.Data.Elicitations[0].Mode)
+	assert.Equal(t, reAuthURL, envelope.Error.Data.Elicitations[0].URL)
+	assert.NotEmpty(t, envelope.Error.Data.Elicitations[0].ElicitationID, "elicitationId must be set")
+}
+
+// Spec: BrokerExchangeError without ErrorURI still returns 500 (no elicitation).
+func TestServer_Process_BrokerErrorWithoutURI_Returns500(t *testing.T) {
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_, _ string) (string, error) {
+			return "", &server.BrokerExchangeError{
+				StatusCode:  403,
+				Code:        "access_denied",
+				Description: "agent does not have a grant",
+				// ErrorURI intentionally empty
+			}
+		},
+	}
+	client, cleanup := startTestServer(t, exchanger)
+	defer cleanup()
+
+	resp, err := sendRequestHeaders(t, client, map[string]string{
+		":path":         "http://mcp-server:9003/mcp",
+		"authorization": "Bearer some-token",
+	})
+	require.NoError(t, err)
+
+	immResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+	require.True(t, ok, "broker error without ErrorURI must produce an ImmediateResponse directly")
+	assert.Equal(t, int32(httpv3.StatusCode_InternalServerError),
+		int32(immResp.ImmediateResponse.Status.Code))
 }

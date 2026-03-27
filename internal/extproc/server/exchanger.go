@@ -60,6 +60,31 @@ type tokenExchangeResponse struct {
 	ExpiresIn   *int   `json:"expires_in"` // pointer: nil means absent
 }
 
+// brokerErrorBody is the JSON shape returned by the broker on non-200 responses.
+type brokerErrorBody struct {
+	Code        string `json:"error"`
+	Description string `json:"error_description"`
+	ErrorURI    string `json:"error_uri,omitempty"`
+}
+
+// BrokerExchangeError is returned by Exchange when the broker responds with a non-200 status
+// and a parseable RFC 8693 error body. ErrorURI, when non-empty, carries the re-authentication
+// URL from the broker (RFC 6749 §5.2 error_uri). Callers that detect a non-empty ErrorURI
+// should return a MCP URLElicitationRequiredError (JSON-RPC -32042).
+type BrokerExchangeError struct {
+	StatusCode  int
+	Code        string
+	Description string
+	ErrorURI    string
+}
+
+func (e *BrokerExchangeError) Error() string {
+	if e.Description != "" {
+		return fmt.Sprintf("broker error %d: %s (%s)", e.StatusCode, e.Code, e.Description)
+	}
+	return fmt.Sprintf("broker error %d: %s", e.StatusCode, e.Code)
+}
+
 // assertionState is the atomically-swapped snapshot of the client assertion.
 // Storing all fields together ensures readers always observe a consistent snapshot.
 type assertionState struct {
@@ -248,6 +273,21 @@ func (te *TokenExchanger) doExchange(subjectToken, resourceURI string) (string, 
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		var errBody brokerErrorBody
+		_ = json.Unmarshal(body, &errBody)
+		if errBody.Code != "" {
+			te.logger.Warn("token exchange returned broker error",
+				"status", resp.StatusCode,
+				"code", errBody.Code,
+				"resource", resourceURI,
+				"has_error_uri", errBody.ErrorURI != "")
+			return "", 0, &BrokerExchangeError{
+				StatusCode:  resp.StatusCode,
+				Code:        errBody.Code,
+				Description: errBody.Description,
+				ErrorURI:    errBody.ErrorURI,
+			}
+		}
 		te.logger.Warn("token exchange returned non-200",
 			"status", resp.StatusCode,
 			"resource", resourceURI)

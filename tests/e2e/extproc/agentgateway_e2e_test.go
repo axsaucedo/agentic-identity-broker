@@ -16,7 +16,9 @@
 package extproc_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -449,3 +451,149 @@ func agentgwExtractTextContent(result *mcp.CallToolResult) string {
 	}
 	return ""
 }
+
+// --- Agentgateway Elicitation Integration ---
+// Validates the URLElicitationRequiredError path: when the identity broker returns
+// an RFC 8693 error with error_uri, ExtProc returns JSON-RPC code -32042 with an
+// elicitations array directly from the headers phase (id: null, per JSON-RPC 2.0 §5).
+
+const agentgwElicitationReAuthURL = "https://broker.example.com/api/third-party/svc-elicitation/oauth2/authorize"
+
+// newAgentgwElicitationBroker returns a mock broker that accepts client_credentials at
+// /oauth/token (200) but rejects token exchange at /oauth2/token (401 + error_uri).
+func newAgentgwElicitationBroker() *httptest.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, //nolint:errcheck
+			`{"access_token":%q,"token_type":"Bearer","expires_in":3600}`,
+			agentgwMockAccessToken,
+		)
+	})
+	mux.HandleFunc("/oauth2/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, //nolint:errcheck
+			`{"error":"invalid_grant","error_description":"Session expired, please re-authenticate","error_uri":%q}`,
+			agentgwElicitationReAuthURL,
+		)
+	})
+	return httptest.NewServer(mux)
+}
+
+var _ = Describe("Agentgateway Elicitation Integration", Ordered, func() {
+	var (
+		ctx               context.Context
+		cancel            context.CancelFunc
+		elicitationBroker *httptest.Server
+		extprocGRPC       *grpc.Server
+		exchanger         *extprocserver.TokenExchanger
+		agentgatewayURL   string
+	)
+
+	BeforeAll(func() {
+		_, dockerErr := testcontainers.ProviderDocker.GetProvider()
+		if dockerErr != nil {
+			Skip("Skipping agentgateway elicitation tests: Docker not available")
+		}
+
+		ctx, cancel = context.WithTimeout(context.Background(), 120*time.Second)
+
+		// 1. Broker: client_credentials succeeds, token exchange returns 401 + error_uri.
+		elicitationBroker = newAgentgwElicitationBroker()
+
+		// 2. MCP server: needed by agentgateway config; the elicitation response is
+		//    returned before agentgateway forwards to the backend, so it is never called.
+		mcpListener := startAgentgwMCPServer()
+		mcpPort := mcpListener.Addr().(*net.TCPAddr).Port
+
+		// 3. ExtProc (system under test).
+		var extprocListener net.Listener
+		extprocListener, extprocGRPC, exchanger = startAgentgwExtProc(
+			elicitationBroker.URL, elicitationBroker.URL,
+		)
+		extprocPort := extprocListener.Addr().(*net.TCPAddr).Port
+		agentgwLogger.Info("Elicitation ExtProc listening", "port", extprocPort)
+
+		// 4. agentgateway Docker container.
+		agentgatewayPort := startAgentgwContainer(ctx, extprocPort, mcpPort)
+		agentgatewayURL = fmt.Sprintf("http://localhost:%s", agentgatewayPort)
+		agentgwLogger.Info("Elicitation agentgateway accessible", "url", agentgatewayURL)
+
+		DeferCleanup(func() {
+			if extprocGRPC != nil {
+				extprocGRPC.GracefulStop()
+			}
+			if exchanger != nil {
+				exchanger.Shutdown()
+			}
+			if elicitationBroker != nil {
+				elicitationBroker.Close()
+			}
+			cancel()
+		})
+	})
+
+	// Scenario 1.1 from specs/023-extproc-mcp-elicitation/spec.md:
+	// When the broker returns error_uri on token exchange failure, ExtProc returns
+	// HTTP 200 with a JSON-RPC -32042 URLElicitationRequiredError body.
+	//
+	// We use a raw HTTP client here because the mcp-go StreamableHTTP transport
+	// rejects responses with "id": null (treating them as orphan notifications).
+	// Per JSON-RPC 2.0 §5, null id is correct when the request id is indeterminate
+	// — which is the case here since ExtProc short-circuits from the headers phase
+	// before the request body (containing the id) is read.
+	It("should return URLElicitationRequiredError with re-auth URL when token exchange fails with error_uri", func() {
+		// Build a JSON-RPC Initialize request (id=1) — the same request mcp-go would send.
+		initBody := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"` +
+			mcp.LATEST_PROTOCOL_VERSION + `","clientInfo":{"name":"e2e-elicitation-client","version":"1.0.0"},"capabilities":{}}}`
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, agentgatewayURL+"/mcp",
+			bytes.NewBufferString(initBody))
+		Expect(err).NotTo(HaveOccurred())
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Authorization", "Bearer "+agentgwOriginalBearerToken)
+
+		resp, err := http.DefaultClient.Do(req)
+		Expect(err).NotTo(HaveOccurred())
+		defer resp.Body.Close() //nolint:errcheck
+
+		// JSON-RPC errors travel over HTTP 200 (per JSON-RPC 2.0).
+		Expect(resp.StatusCode).To(Equal(http.StatusOK),
+			"elicitation response must be HTTP 200")
+
+		// Decode the JSON-RPC error response.
+		var envelope struct {
+			JSONRPC string `json:"jsonrpc"`
+			ID      any    `json:"id"`
+			Error   struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				Data    struct {
+					Elicitations []struct {
+						Mode          string `json:"mode"`
+						ElicitationID string `json:"elicitationId"`
+						URL           string `json:"url"`
+						Message       string `json:"message"`
+					} `json:"elicitations"`
+				} `json:"data"`
+			} `json:"error"`
+		}
+		Expect(json.NewDecoder(resp.Body).Decode(&envelope)).To(Succeed())
+
+		Expect(envelope.JSONRPC).To(Equal("2.0"))
+		// id is null because ExtProc responds from the headers phase, before the
+		// request body (which contains the JSON-RPC id) is available (JSON-RPC 2.0 §5).
+		Expect(envelope.ID).To(BeNil(), "id must be JSON null")
+		Expect(envelope.Error.Code).To(Equal(mcp.URL_ELICITATION_REQUIRED),
+			"must use JSON-RPC error code -32042")
+
+		Expect(envelope.Error.Data.Elicitations).To(HaveLen(1))
+		Expect(envelope.Error.Data.Elicitations[0].Mode).To(Equal(mcp.ElicitationModeURL))
+		Expect(envelope.Error.Data.Elicitations[0].URL).To(Equal(agentgwElicitationReAuthURL),
+			"elicitation URL must match the error_uri from the broker")
+		Expect(envelope.Error.Data.Elicitations[0].ElicitationID).NotTo(BeEmpty(),
+			"elicitationId must be set")
+	})
+})
