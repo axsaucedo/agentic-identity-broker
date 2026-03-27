@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -12,7 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domainstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -28,6 +29,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 		testServer     *bootstrap.TestServer
 		mockUpstream   *helpers.MockUpstreamOAuth2Server
 		config         *ports.Config
+		testAgent      *domainstorage.Agent // registered agent whose UUID is used as client_id
 	)
 
 	// Set up test infrastructure before each test
@@ -48,6 +50,11 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 		var err error
 		testStorage, err = storageFactory.NewTestStorage()
 		Expect(err).NotTo(HaveOccurred())
+
+		// Register a test agent in storage so the token handler can resolve
+		// the broker-internal agent UUID to the upstream client_id.
+		testAgent = fixtures.ValidAgent()
+		Expect(testStorage.Agents().Create(context.Background(), testAgent)).NotTo(HaveOccurred())
 
 		// Create server factory
 		serverFactory = bootstrap.NewServerFactory(config, logger)
@@ -84,12 +91,11 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint with authorization_code grant
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type":    []string{"authorization_code"},
 				"code":          []string{"auth-code-123"},
 				"redirect_uri":  []string{"http://localhost:3000/callback"},
-				"client_id":     []string{agentID.String()},
+				"client_id":     []string{testAgent.ID.String()},
 				"client_secret": []string{"secret-xyz"},
 			}
 
@@ -133,12 +139,11 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint with various parameters
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type":    []string{"authorization_code"},
 				"code":          []string{"special-auth-code-xyz"},
 				"redirect_uri":  []string{"https://example.com/callback?with=params"},
-				"client_id":     []string{agentID.String()},
+				"client_id":     []string{testAgent.ID.String()},
 				"client_secret": []string{"my-secret-key"},
 				"scope":         []string{"openid profile email"},
 				"code_verifier": []string{"pkce-verifier-value"},
@@ -165,7 +170,8 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			Expect(lastRequest.FormValue("grant_type")).To(Equal("authorization_code"))
 			Expect(lastRequest.FormValue("code")).To(Equal("special-auth-code-xyz"))
 			Expect(lastRequest.FormValue("redirect_uri")).To(Equal("https://example.com/callback?with=params"))
-			Expect(lastRequest.FormValue("client_id")).To(Equal(agentID.String()))
+			// The broker replaces the broker-internal agent UUID with the agent's upstream client_id.
+			Expect(lastRequest.FormValue("client_id")).To(Equal(string(testAgent.ClientID)))
 			Expect(lastRequest.FormValue("client_secret")).To(Equal("my-secret-key"))
 			Expect(lastRequest.FormValue("scope")).To(Equal("openid profile email"))
 			Expect(lastRequest.FormValue("code_verifier")).To(Equal("pkce-verifier-value"))
@@ -182,11 +188,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
-				"client_id":  []string{agentID.String()},
+				"client_id":  []string{testAgent.ID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -230,11 +235,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint with invalid code
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"invalid-code"},
-				"client_id":  []string{agentID.String()},
+				"client_id":  []string{testAgent.ID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -345,11 +349,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
-				"client_id":  []string{agentID.String()},
+				"client_id":  []string{testAgent.ID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -389,11 +392,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint with refresh_token grant
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type":    []string{"refresh_token"},
 				"refresh_token": []string{"old-refresh-token"},
-				"client_id":     []string{agentID.String()},
+				"client_id":     []string{testAgent.ID.String()},
 				"client_secret": []string{"client-secret"},
 			}
 
@@ -439,11 +441,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint with expired refresh token
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type":    []string{"refresh_token"},
 				"refresh_token": []string{"expired-refresh-token"},
-				"client_id":     []string{agentID.String()},
+				"client_id":     []string{testAgent.ID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -483,11 +484,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint with unsupported grant_type
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"implicit"},
 				"code":       []string{"code-123"},
-				"client_id":  []string{agentID.String()},
+				"client_id":  []string{testAgent.ID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -526,10 +526,9 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint without grant_type
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"code":      []string{"code-123"},
-				"client_id": []string{agentID.String()},
+				"client_id": []string{testAgent.ID.String()},
 				// grant_type is missing
 			}
 
@@ -589,11 +588,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST with correct Content-Type
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
-				"client_id":  []string{agentID.String()},
+				"client_id":  []string{testAgent.ID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(
@@ -621,11 +619,10 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 
 			// When: POST to token endpoint
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			formData := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"code-123"},
-				"client_id":  []string{agentID.String()},
+				"client_id":  []string{testAgent.ID.String()},
 			}
 
 			resp, err := testServer.DirectRequest(

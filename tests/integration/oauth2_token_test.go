@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +10,41 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domainstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// integrationStubAgentRepo is a minimal AgentRepository for integration tests that
+// directly construct OAuth2TokenHandler without a full storage stack.
+// Get returns the pre-configured agent for any agent ID (integration tests only exercise
+// HTTP-layer behaviour, not storage routing).
+type integrationStubAgentRepo struct {
+	agent *domainstorage.Agent
+	err   error
+}
+
+func newIntegrationStubAgentRepo(agentID id.AgentID) *integrationStubAgentRepo {
+	return &integrationStubAgentRepo{
+		agent: &domainstorage.Agent{
+			ID:       agentID,
+			ClientID: id.ClientID("test-upstream-client-id"),
+		},
+	}
+}
+
+func (r *integrationStubAgentRepo) Get(_ context.Context, _ id.AgentID) (*domainstorage.Agent, error) {
+	return r.agent, r.err
+}
+func (r *integrationStubAgentRepo) Create(_ context.Context, _ *domainstorage.Agent) error { return nil }
+func (r *integrationStubAgentRepo) Update(_ context.Context, _ *domainstorage.Agent) error { return nil }
+func (r *integrationStubAgentRepo) Delete(_ context.Context, _ id.AgentID) error           { return nil }
+func (r *integrationStubAgentRepo) List(_ context.Context) ([]*domainstorage.Agent, error) {
+	return nil, nil
+}
+func (r *integrationStubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*domainstorage.Agent, error) {
+	return nil, nil
+}
 
 // TestOAuth2TokenEndpoint_SuccessfulTokenExchange tests complete token exchange flow
 func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
@@ -43,6 +76,7 @@ func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
 
 	handler := &enduser.OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  newIntegrationStubAgentRepo(agentID),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=auth_code_123&client_id=" + agentID.String() + "&client_secret=secret&redirect_uri=https://client.example.com/callback")
@@ -84,6 +118,7 @@ func TestOAuth2TokenEndpoint_RefreshTokenGrant(t *testing.T) {
 
 	handler := &enduser.OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  newIntegrationStubAgentRepo(agentID),
 	}
 
 	reqBody := strings.NewReader("grant_type=refresh_token&refresh_token=refresh_token_abc&client_id=" + agentID.String() + "&client_secret=secret")
@@ -114,6 +149,7 @@ func TestOAuth2TokenEndpoint_InvalidGrantError(t *testing.T) {
 
 	handler := &enduser.OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  newIntegrationStubAgentRepo(agentID),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=expired_code&client_id=" + agentID.String())
@@ -151,6 +187,7 @@ func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
 
 	handler := &enduser.OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  newIntegrationStubAgentRepo(agentID),
 	}
 
 	body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -181,6 +218,7 @@ func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
 
 	handler := &enduser.OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  newIntegrationStubAgentRepo(agentID),
 	}
 
 	body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -238,6 +276,7 @@ func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
 
 			handler := &enduser.OAuth2TokenHandler{
 				UpstreamTokenURL: mockUpstream.URL,
+				AgentRepository:  newIntegrationStubAgentRepo(agentID),
 			}
 
 			body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())

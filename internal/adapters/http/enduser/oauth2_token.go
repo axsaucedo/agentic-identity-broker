@@ -18,6 +18,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // MultiAgentVerifier verifies agent ID claims in proxied upstream token responses.
@@ -37,6 +38,7 @@ type OAuth2TokenHandler struct {
 	TokenExchange      *tokenexchange.TokenExchangeService // RFC 8693 token exchange service
 	Logger             *slog.Logger                        // For structured logging
 	MultiAgentVerifier MultiAgentVerifier                  // nil = feature disabled; non-nil = verify agent ID claim
+	AgentRepository    ports.AgentRepository               // resolves broker agent UUID → upstream client_id
 }
 
 // ServeHTTP implements http.Handler for the token endpoint
@@ -301,6 +303,36 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 		h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "client_id is not a valid agent UUID")
 		return
 	}
+
+	// Resolve the upstream client_id from the broker-internal agent UUID.
+	// The broker exposes agent UUIDs as client_ids, but the upstream OAuth2 server
+	// uses the agent's configured ClientID (agent.client_id) for authentication.
+	// Per review comment r2995280734: the upstream does not know about agent UUIDs.
+	//
+	// The nil guard is defensive: builder.go always wires AgentRepository, but direct
+	// handler construction in tests or future code may omit it. Fail closed (per SR-001)
+	// rather than forwarding the agent UUID to an upstream that cannot interpret it.
+	if h.AgentRepository == nil {
+		if h.Logger != nil {
+			h.Logger.Error("AgentRepositoryNotConfigured")
+		}
+		h.writeOAuth2Error(w, http.StatusInternalServerError, "server_error", "agent repository not configured")
+		return
+	}
+	agent, agentErr := h.AgentRepository.Get(ctx, agentID)
+	if agentErr != nil {
+		if h.Logger != nil {
+			h.Logger.Error("AgentLookupFailed",
+				"agent_id", agentID.String(),
+				"error", agentErr,
+			)
+		}
+		h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "agent not found")
+		return
+	}
+	// Replace the broker-internal UUID with the upstream client_id before forwarding.
+	formData.Set("client_id", string(agent.ClientID))
+	body = formData.Encode()
 
 	// Create upstream request with traced context
 	upstreamReq, err := http.NewRequestWithContext(ctx, "POST", h.UpstreamTokenURL, strings.NewReader(body))

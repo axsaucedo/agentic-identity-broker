@@ -504,6 +504,7 @@ func (b *Builder) Build() (*App, error) {
 		Client:           upstreamClient,
 		TokenExchange:    app.TokenExchangeService,
 		Logger:           b.logger,
+		AgentRepository:  b.storage.Agents(),
 	}
 	if b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
 		verifier, err := oauth2service.NewMultiAgentTokenVerifier(b.config.OAuth2AuthServer.MultiAgentClient.AgentIDClaimName)

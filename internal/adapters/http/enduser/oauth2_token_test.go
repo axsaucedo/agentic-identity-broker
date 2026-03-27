@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,9 +23,42 @@ func (m *mockMultiAgentVerifier) VerifyAgentIDClaim(ctx context.Context, respons
 	return m.verifyFn(ctx, responseBody, expectedAgentID)
 }
 
+// stubAgentRepo is a minimal agent repository stub for unit testing.
+// Get always returns the configured agent (or error), ignoring the agentID argument.
+// This is intentional: unit tests in this package focus on HTTP handler behaviour
+// (client_id replacement, error propagation) rather than repository routing. The
+// correct agent is selected by configuring the stub with the expected agent.
+// Storage-layer routing (fetching the correct agent by ID) is tested in the storage adapter tests.
+type stubAgentRepo struct {
+	agent *storage.Agent
+	err   error
+}
+
+func newStubAgentRepo(agentID id.AgentID, upstreamClientID string) *stubAgentRepo {
+	return &stubAgentRepo{
+		agent: &storage.Agent{
+			ID:       agentID,
+			ClientID: id.ClientID(upstreamClientID),
+		},
+	}
+}
+
+func (r *stubAgentRepo) Get(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+	return r.agent, r.err
+}
+
+func (r *stubAgentRepo) Create(_ context.Context, _ *storage.Agent) error               { return nil }
+func (r *stubAgentRepo) Update(_ context.Context, _ *storage.Agent) error               { return nil }
+func (r *stubAgentRepo) Delete(_ context.Context, _ id.AgentID) error                   { return nil }
+func (r *stubAgentRepo) List(_ context.Context) ([]*storage.Agent, error)               { return nil, nil }
+func (r *stubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
+	return nil, nil
+}
+
 // TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation tests Content-Type validation
 func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	agentID := id.NewAgentID()
+	agentRepo := newStubAgentRepo(agentID, "test-upstream-client")
 
 	// Mock upstream server
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +70,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 
 	handler := &OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  agentRepo,
 	}
 
 	tests := []struct {
@@ -77,6 +112,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 // TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering tests hop-by-hop header filtering
 func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 	agentID := id.NewAgentID()
+	agentRepo := newStubAgentRepo(agentID, "test-upstream-client")
 
 	// Mock upstream server that echoes back request headers
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,6 +133,7 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 
 	handler := &OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  agentRepo,
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -118,6 +155,7 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 // TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy tests successful token request proxy
 func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 	agentID := id.NewAgentID()
+	agentRepo := newStubAgentRepo(agentID, "test-upstream-client")
 
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
@@ -133,6 +171,7 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 
 	handler := &OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  agentRepo,
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String() + "&redirect_uri=https://client.example.com/callback")
@@ -155,6 +194,7 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 // TestOAuth2TokenHandler_ServeHTTP_UpstreamError tests upstream errors are proxied
 func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 	agentID := id.NewAgentID()
+	agentRepo := newStubAgentRepo(agentID, "test-upstream-client")
 
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -165,6 +205,7 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 
 	handler := &OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  agentRepo,
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=expired&client_id=" + agentID.String())
@@ -224,6 +265,7 @@ func TestIsHopByHopHeader(t *testing.T) {
 // for multi-agent client sharing (Feature 021 US1).
 func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 	agentID := id.NewAgentID()
+	agentRepo := newStubAgentRepo(agentID, "test-upstream-client")
 	upstreamResponseBody := `{"access_token":"tok123","token_type":"Bearer"}`
 
 	tests := []struct {
@@ -281,6 +323,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 			handler := &OAuth2TokenHandler{
 				UpstreamTokenURL:   mockUpstream.URL,
 				MultiAgentVerifier: tt.verifier,
+				AgentRepository:    agentRepo,
 			}
 
 			body := "grant_type=authorization_code&code=abc123&client_id=" + tt.clientID
@@ -300,6 +343,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 // TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming tests response is streamed properly
 func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 	agentID := id.NewAgentID()
+	agentRepo := newStubAgentRepo(agentID, "test-upstream-client")
 
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -312,6 +356,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 
 	handler := &OAuth2TokenHandler{
 		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  agentRepo,
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -397,4 +442,78 @@ func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestOAuth2TokenHandler_ProxyToUpstream_ClientIDReplacement verifies that the broker
+// replaces the agent UUID in the token request body with the agent's upstream client_id
+// before forwarding to the upstream OAuth2 server (review comment r2995280734).
+func TestOAuth2TokenHandler_ProxyToUpstream_ClientIDReplacement(t *testing.T) {
+	agentID := id.NewAgentID()
+	const upstreamClientID = "shared-upstream-oauth2-client"
+
+	var receivedClientID string
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Capture the client_id that upstream received
+		if err := r.ParseForm(); err == nil {
+			receivedClientID = r.FormValue("client_id")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token":"tok","token_type":"Bearer"}`))
+	}))
+	defer mockUpstream.Close()
+
+	agentRepo := newStubAgentRepo(agentID, upstreamClientID)
+	handler := &OAuth2TokenHandler{
+		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  agentRepo,
+	}
+
+	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
+	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// Upstream must receive the configured upstream client_id, NOT the broker agent UUID.
+	assert.Equal(t, upstreamClientID, receivedClientID)
+	assert.NotEqual(t, agentID.String(), receivedClientID)
+}
+
+// TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound verifies that when the agent UUID
+// is valid but the agent does not exist in the repository, the handler fails closed with
+// 401 invalid_client without forwarding the request upstream (per SR-001).
+func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	upstreamCalled := false
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockUpstream.Close()
+
+	// Repo returns an error for any agent lookup (agent not found)
+	agentRepo := &stubAgentRepo{
+		agent: nil,
+		err:   errors.New("agent not found"),
+	}
+	handler := &OAuth2TokenHandler{
+		UpstreamTokenURL: mockUpstream.URL,
+		AgentRepository:  agentRepo,
+	}
+
+	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
+	req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	respBody, _ := io.ReadAll(w.Body)
+	assert.Contains(t, string(respBody), "invalid_client")
+	assert.False(t, upstreamCalled, "upstream must not be called when agent is not found")
 }

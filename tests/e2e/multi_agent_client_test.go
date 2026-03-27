@@ -178,6 +178,40 @@ var _ = Describe("Multi-Agent Client Delegation", func() {
 				Expect(resp).To(matchers.ContainAgentIDClaim("x_agent_id", alpha.ID.String()))
 			})
 
+			// US1 Scenario 3b: Verify upstream receives agent.ClientID, not the broker UUID
+			// (review comment r2995594898)
+			It("should forward the agent upstream client_id to upstream, not the broker agent UUID", Label("US1"), func() {
+				// Given: Mock upstream is configured to return a valid token response with
+				// the x_agent_id claim so the verifier passes.
+				mockUpstream.WithSuccessfulTokenResponse().
+					ReturnTokenWithClaim("x_agent_id", alpha.ID.String())
+
+				// When: Token request using alpha's broker UUID as client_id
+				formData := url.Values{
+					"grant_type":   []string{"authorization_code"},
+					"code":         []string{"mock-auth-code-123"},
+					"client_id":    []string{alpha.ID.String()}, // broker-internal UUID
+					"redirect_uri": []string{"https://client.example.com/cb"},
+				}
+				resp, err := server.DirectRequest(
+					"POST",
+					"/oauth2/token",
+					"",
+					map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+					strings.NewReader(formData.Encode()),
+				)
+				Expect(err).ToNot(HaveOccurred())
+				defer func() { _ = resp.Body.Close() }()
+				Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+				// Then: Upstream received the agent's upstream client_id, NOT the broker UUID.
+				// alpha.ClientID == fixtures.SharedUpstreamClientID, not alpha.ID (broker UUID).
+				lastReq := mockUpstream.GetLastRequest()
+				Expect(lastReq).NotTo(BeNil())
+				Expect(lastReq.FormValue("client_id")).To(Equal(fixtures.SharedUpstreamClientID))
+				Expect(lastReq.FormValue("client_id")).NotTo(Equal(alpha.ID.String()))
+			})
+
 			// US1 Scenario 4 from specs/021-multi-agent-clientid/spec.md
 			It("should verify claim value matches initiating agent ID", Label("US1"), func() {
 				// Given: Mock upstream returns JWT with x_agent_id=BETA (wrong agent!)

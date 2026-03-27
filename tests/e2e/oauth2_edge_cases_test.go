@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -27,6 +26,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 		logger         *slog.Logger
 		ctx            context.Context
 		storageFactory *bootstrap.StorageFactory
+		testAgent      *storage.Agent // registered agent used in token endpoint tests
 	)
 
 	BeforeEach(func() {
@@ -45,6 +45,11 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 
 		// Create context for test operations
 		ctx = context.Background()
+
+		// Register a shared test agent so token endpoint tests can resolve
+		// the broker-internal UUID to an upstream client_id.
+		testAgent = fixtures.ValidAgent()
+		Expect(testStorage.Agents().Create(ctx, testAgent)).ToNot(HaveOccurred())
 
 		// Build and start test server with default config
 		config := fixtures.DefaultOAuth2Config()
@@ -333,7 +338,6 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			// Given: Upstream configured with short timeout
 			// When: POST to token endpoint with valid form data
 			// client_id must be a valid agent UUID (broker-internal identifier)
-			agentID := id.NewAgentID()
 			resp, err := server.DirectRequest(
 				"POST",
 				"/oauth2/token",
@@ -341,7 +345,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 				map[string]string{
 					"Content-Type": "application/x-www-form-urlencoded",
 				},
-				strings.NewReader("grant_type=authorization_code&code=test&client_id="+agentID.String()+"&redirect_uri=https://client.example.com/cb"),
+				strings.NewReader("grant_type=authorization_code&code=test&client_id="+testAgent.ID.String()+"&redirect_uri=https://client.example.com/cb"),
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()

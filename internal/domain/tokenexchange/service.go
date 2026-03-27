@@ -227,7 +227,7 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	agentID, parseErr := id.ParseAgentID(agentClientID)
 	if parseErr != nil {
 		return nil, NewInvalidRequestError(
-			fmt.Sprintf("agent_client_id %q extracted from subject_token is not a valid agent UUID", agentClientID),
+			fmt.Sprintf("agent_id %q extracted from subject_token is not a valid agent UUID", agentClientID),
 		)
 	}
 	agent, err := s.agentRepository.Get(ctx, agentID)
