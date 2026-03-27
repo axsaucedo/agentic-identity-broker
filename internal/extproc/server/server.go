@@ -4,6 +4,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -13,6 +14,8 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"github.com/google/uuid"
+	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -115,6 +118,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 //   - No Bearer token → pass through (FR-009)
 //   - Empty/invalid :path → 503 ImmediateResponse (FR-013)
 //   - Successful exchange → replace Authorization header (FR-007)
+//   - Re-auth required (broker error_uri) → URLElicitationRequiredError ImmediateResponse (HTTP 200, code -32042)
 //   - Exchange failure → 500 ImmediateResponse (FR-008, FR-010)
 func (s *Server) processRequestHeaders(headers *extprocv3.HttpHeaders) *extprocv3.ProcessingResponse {
 	bearerToken := extractBearerToken(headers)
@@ -152,6 +156,20 @@ func (s *Server) processRequestHeaders(headers *extprocv3.HttpHeaders) *extprocv
 				"resource", resourceURI)
 			return immediateResponse(httpv3.StatusCode_ServiceUnavailable,
 				`{"error":"service_unavailable","error_description":"client assertion expired"}`)
+		}
+		var brokerErr *BrokerExchangeError
+		if errors.As(err, &brokerErr) && brokerErr.ErrorURI != "" {
+			// Re-authentication required: return URLElicitationRequiredError immediately from
+			// the headers phase. id is null because the request body has not been read yet;
+			// this is correct per JSON-RPC 2.0 §5 ("if the id cannot be determined, use null").
+			// Note: agentgateway 0.12.0 commits the request to the backend as soon as a
+			// RequestHeaders response is received, so ImmediateResponse must be returned here
+			// (not from a body phase) to prevent the request from being forwarded.
+			s.logger.Info("token exchange requires re-authentication — returning URLElicitationRequiredError",
+				"resource", resourceURI,
+				"code", brokerErr.Code,
+				"error_uri", brokerErr.ErrorURI)
+			return urlElicitationResponse(brokerErr)
 		}
 		if errors.Is(err, ErrCircuitOpen) {
 			s.logger.Debug("token exchange rejected: circuit breaker is open",
@@ -281,6 +299,35 @@ func immediateResponse(code httpv3.StatusCode, body string) *extprocv3.Processin
 			},
 		},
 	}
+}
+
+// urlElicitationResponse builds a ProcessingResponse_ImmediateResponse with HTTP 200 and
+// a JSON-RPC 2.0 URLElicitationRequiredError body (error code -32042).
+// Per MCP spec 2025-11-05: returned when a request cannot proceed until the user visits
+// a URL for OAuth re-authentication.
+// HTTP 200 is used because JSON-RPC errors always travel over HTTP 200.
+// id is always null: the response is returned from the headers phase before the body is read,
+// which is correct per JSON-RPC 2.0 §5 ("if the id cannot be determined, use null").
+func urlElicitationResponse(brokerErr *BrokerExchangeError) *extprocv3.ProcessingResponse {
+	elicitErr := mcp.URLElicitationRequiredError{
+		Elicitations: []mcp.ElicitationParams{
+			{
+				Mode:          mcp.ElicitationModeURL,
+				ElicitationID: uuid.New().String(),
+				URL:           brokerErr.ErrorURI,
+				Message:       brokerErr.Description,
+			},
+		},
+	}
+	jsonRPCErr := elicitErr.JSONRPCError()
+	// Override the generated message with the broker-supplied description so that
+	// the client receives context about why re-authentication is required.
+	jsonRPCErr.Error.Message = brokerErr.Description
+
+	// Marshal the response. json.Marshal cannot fail for this struct: all fields are strings,
+	// ints, or slices thereof — no encoding/json.Marshaler implementations that could error.
+	body, _ := json.Marshal(jsonRPCErr)
+	return immediateResponse(httpv3.StatusCode_OK, string(body))
 }
 
 // passThrough builds a ProcessingResponse_RequestHeaders with no mutations,

@@ -282,7 +282,8 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 				service.ID,
 				service.DisplayName,
 			)
-			return nil, NewInvalidGrantError(description)
+			reAuthURL := s.oauth2SessionService.ServiceAuthorizeURL(service.ID)
+			return nil, NewInvalidGrantError(description).WithErrorURI(reAuthURL)
 		}
 		if errors.Is(err, oauth2session.ErrSessionExpired) {
 			// T076: Both access and refresh tokens are expired
@@ -292,7 +293,8 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 				service.ID,
 				service.DisplayName,
 			)
-			return nil, NewInvalidGrantError(description)
+			reAuthURL := s.oauth2SessionService.ServiceAuthorizeURL(service.ID)
+			return nil, NewInvalidGrantError(description).WithErrorURI(reAuthURL)
 		}
 		// Other errors (refresh failed, decryption failed, etc)
 		return nil, NewServerErrorWithCause("failed to get valid access token", err)

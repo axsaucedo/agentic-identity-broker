@@ -208,10 +208,14 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 	if tokenExchangeErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
 		// RFC 8693 error: use error code and description from domain
 		w.WriteHeader(tokenExchangeErr.HTTPStatus())
-		if err := json.NewEncoder(w).Encode(map[string]string{
+		errBody := map[string]string{
 			"error":             tokenExchangeErr.Code(),
 			"error_description": tokenExchangeErr.Description(),
-		}); err != nil {
+		}
+		if tokenExchangeErr.ErrorURI() != "" {
+			errBody["error_uri"] = tokenExchangeErr.ErrorURI()
+		}
+		if err := json.NewEncoder(w).Encode(errBody); err != nil {
 			// Response headers already sent, can only log the encoding error
 			if h.Logger != nil {
 				h.Logger.Error("failed to encode token exchange error response", "error", err)
