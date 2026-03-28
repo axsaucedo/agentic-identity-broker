@@ -183,9 +183,11 @@ func (l *Loader) setDefaults() {
 	l.v.SetDefault("telemetry.traces.propagators", telDefaults.Traces.Propagators)
 	l.v.SetDefault("telemetry.metrics.enabled", telDefaults.Metrics.Enabled)
 	l.v.SetDefault("telemetry.metrics.export_interval", telDefaults.Metrics.ExportInterval)
+	l.v.SetDefault("telemetry.logs.enabled", telDefaults.Logs.Enabled)
 	l.v.SetDefault("telemetry.exporter.protocol", telDefaults.Exporter.Protocol)
 	l.v.SetDefault("telemetry.exporter.timeout", telDefaults.Exporter.Timeout)
 	l.v.SetDefault("telemetry.exporter.insecure", telDefaults.Exporter.Insecure)
+	l.v.SetDefault("telemetry.exporter.compression", telDefaults.Exporter.Compression)
 
 	// Bind telemetry env vars
 	_ = l.v.BindEnv("telemetry.enabled", "IDENTITY_BROKER_TELEMETRY_ENABLED")
@@ -194,10 +196,12 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("telemetry.traces.sampling_rate", "IDENTITY_BROKER_TELEMETRY_TRACES_SAMPLING_RATE")
 	_ = l.v.BindEnv("telemetry.metrics.enabled", "IDENTITY_BROKER_TELEMETRY_METRICS_ENABLED")
 	_ = l.v.BindEnv("telemetry.metrics.export_interval", "IDENTITY_BROKER_TELEMETRY_METRICS_EXPORT_INTERVAL")
+	_ = l.v.BindEnv("telemetry.logs.enabled", "IDENTITY_BROKER_TELEMETRY_LOGS_ENABLED")
 	_ = l.v.BindEnv("telemetry.exporter.protocol", "IDENTITY_BROKER_TELEMETRY_EXPORTER_PROTOCOL")
 	_ = l.v.BindEnv("telemetry.exporter.endpoint", "IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT")
 	_ = l.v.BindEnv("telemetry.exporter.timeout", "IDENTITY_BROKER_TELEMETRY_EXPORTER_TIMEOUT")
 	_ = l.v.BindEnv("telemetry.exporter.insecure", "IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE")
+	_ = l.v.BindEnv("telemetry.exporter.compression", "IDENTITY_BROKER_TELEMETRY_EXPORTER_COMPRESSION")
 
 	// Set token exchange configuration defaults
 	// expected_audience defaults to the well-known "token-exchange-broker" value.
@@ -223,6 +227,8 @@ func (l *Loader) setDefaults() {
 			"telemetry.traces.enabled", "telemetry.traces.sampling_rate", "telemetry.traces.propagators",
 			"telemetry.metrics.enabled", "telemetry.metrics.export_interval",
 			"telemetry.exporter.protocol", "telemetry.exporter.timeout", "telemetry.exporter.insecure",
+			"telemetry.logs.enabled",
+			"telemetry.exporter.compression",
 			"token_exchange.expected_audience",
 		},
 	})

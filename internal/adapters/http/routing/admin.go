@@ -4,6 +4,7 @@ package routing
 import (
 	"github.com/go-chi/chi/v5"
 	"github.com/riandyrn/otelchi"
+	"go.opentelemetry.io/otel"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
@@ -36,11 +37,16 @@ type AdminRouteConfig struct {
 //	PUT    /api/services/{service-id}  - Update service
 //	DELETE /api/services/{service-id}  - Delete service
 func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers, cfg AdminRouteConfig) {
-	// Register OTel HTTP tracing middleware when enabled (ADR-011, T032)
+	// Register OTel HTTP tracing middleware when enabled (ADR-011, T032).
+	// Propagators are passed explicitly so the middleware always uses the globally
+	// registered propagator and continues any inbound trace context (for example,
+	// b3, ot-tracer-*, or W3C Trace Context when enabled) instead of creating new
+	// root traces.
 	if cfg.Telemetry.Enabled && cfg.Telemetry.Traces.Enabled {
 		r.Use(otelchi.Middleware("admin",
 			otelchi.WithChiRoutes(r),
 			otelchi.WithRequestMethodInSpanName(true),
+			otelchi.WithPropagators(otel.GetTextMapPropagator()),
 		))
 	}
 

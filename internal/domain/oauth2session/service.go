@@ -147,6 +147,15 @@ func (s *OAuth2SessionService) GetCallbackBaseURL() string {
 	return s.config.CallbackBaseURL
 }
 
+// ServiceAuthorizeURL returns the URL a user must visit to initiate (or re-initiate)
+// OAuth2 authorization with the specified third-party service.
+// The URL follows the same base-URL convention already used for OAuth2 callback URLs.
+// It is included in RFC 6749 §5.2 error_uri fields when a user session is missing
+// or has expired, giving clients an actionable re-authentication link.
+func (s *OAuth2SessionService) ServiceAuthorizeURL(serviceID id.ServiceID) string {
+	return s.config.CallbackBaseURL + "/api/third-party/" + serviceID.String() + "/oauth2/authorize"
+}
+
 // InitiateFlowResult contains the data needed to redirect user to authorization.
 type InitiateFlowResult struct {
 	AuthorizationURL string // Full URL to redirect user to

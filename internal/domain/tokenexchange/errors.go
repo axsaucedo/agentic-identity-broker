@@ -29,6 +29,12 @@ type TokenExchangeError struct {
 	// Examples: "principal_missing", "grant_expired", "resource_ambiguous"
 	// MUST NOT contain token values.
 	details string
+
+	// errorURI is the RFC 6749 §5.2 error_uri — a URI pointing to a human-readable page
+	// with more information about the error. For session-not-found / session-expired errors
+	// this is the re-authentication URL the user must visit (e.g. third-party authorize endpoint).
+	// May be empty when no re-authentication URL is available.
+	errorURI string
 }
 
 // Error implements the error interface, returning a formatted error message.
@@ -260,5 +266,23 @@ func (e *TokenExchangeError) WithCause(cause error) *TokenExchangeError {
 		httpStatus:  e.httpStatus,
 		cause:       cause,
 		details:     e.details,
+		errorURI:    e.errorURI,
+	}
+}
+
+// ErrorURI returns the RFC 6749 §5.2 error_uri, if set.
+func (e *TokenExchangeError) ErrorURI() string {
+	return e.errorURI
+}
+
+// WithErrorURI returns a copy of the error with the given error_uri attached.
+func (e *TokenExchangeError) WithErrorURI(uri string) *TokenExchangeError {
+	return &TokenExchangeError{
+		code:        e.code,
+		description: e.description,
+		httpStatus:  e.httpStatus,
+		cause:       e.cause,
+		details:     e.details,
+		errorURI:    uri,
 	}
 }

@@ -200,11 +200,14 @@ func TelemetryEnabledConfig() *ports.Config {
 		Traces: ports.TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"tracecontext", "baggage"},
+			Propagators:  []string{"ottrace", "b3multi", "baggage"},
 		},
 		Metrics: ports.MetricsConfig{
 			Enabled:        false, // no runtime metrics in tests
 			ExportInterval: 30 * time.Second,
+		},
+		Logs: ports.LogsConfig{
+			Enabled: false, // no OTLP log export in tests
 		},
 		Exporter: ports.OTLPExporterConfig{
 			Protocol: "grpc",
@@ -230,11 +233,14 @@ func TelemetryGRPCConfig() *ports.Config {
 		Traces: ports.TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"tracecontext", "baggage"},
+			Propagators:  []string{"ottrace", "b3multi", "baggage"},
 		},
 		Metrics: ports.MetricsConfig{
 			Enabled:        false,
 			ExportInterval: 30 * time.Second,
+		},
+		Logs: ports.LogsConfig{
+			Enabled: false,
 		},
 		Exporter: ports.OTLPExporterConfig{
 			Protocol: "grpc",
@@ -262,11 +268,14 @@ func TelemetryHTTPConfig() *ports.Config {
 		Traces: ports.TracesConfig{
 			Enabled:      true,
 			SamplingRate: 1.0,
-			Propagators:  []string{"tracecontext", "baggage"},
+			Propagators:  []string{"ottrace", "b3multi", "baggage"},
 		},
 		Metrics: ports.MetricsConfig{
 			Enabled:        false,
 			ExportInterval: 30 * time.Second,
+		},
+		Logs: ports.LogsConfig{
+			Enabled: false,
 		},
 		Exporter: ports.OTLPExporterConfig{
 			Protocol: "http",

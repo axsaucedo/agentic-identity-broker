@@ -5,10 +5,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	runtimemetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
+	"go.opentelemetry.io/contrib/propagators/b3"
+	"go.opentelemetry.io/contrib/propagators/ot"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otlploggrpc "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
@@ -43,22 +46,26 @@ var runtimeMetricsOnce sync.Once
 // No OTel SDK instances are created in the disabled path.
 //
 // When cfg.Traces.Enabled=false, the trace pipeline is skipped entirely and the
-// global TracerProvider remains the SDK default (no-op). Propagators are also not
-// registered, so instrumented libraries produce no spans.
+// global TracerProvider remains the SDK default (no-op). Propagators are still
+// registered so that inbound trace context is propagated transparently.
 //
 // When cfg.Metrics.Enabled=false, the metric pipeline is skipped entirely and the
-// global MeterProvider remains the SDK default (no-op). This ensures the metrics
-// toggle is honoured even though otelchi reads from the global MeterProvider.
+// global MeterProvider remains the SDK default (no-op).
 //
-// The log pipeline is considered beta. Exporter initialisation failures are treated
-// as non-fatal: a warning is logged and the application continues without OTLP log export.
+// When cfg.Logs.Enabled=false, the OTLP log pipeline is skipped entirely.
+// Set this to false when the collector does not support the LogsService.
+//
+// Supported protocols: "grpc", "http", "https". The "https" protocol uses the
+// HTTP/protobuf exporter with enforced TLS (endpoint auto-prefixed with https://).
 func NewProvider(ctx context.Context, cfg ports.TelemetryConfig, logger *slog.Logger) (func(context.Context) error, error) {
 	if !cfg.Enabled {
 		return NoopShutdown, nil
 	}
 
-	if cfg.Exporter.Protocol != ports.OTLPProtocolGRPC && cfg.Exporter.Protocol != ports.OTLPProtocolHTTP {
-		return nil, fmt.Errorf("unsupported telemetry exporter protocol: %q (expected grpc or http)", cfg.Exporter.Protocol)
+	if cfg.Exporter.Protocol != ports.OTLPProtocolGRPC &&
+		cfg.Exporter.Protocol != ports.OTLPProtocolHTTP &&
+		cfg.Exporter.Protocol != ports.OTLPProtocolHTTPS {
+		return nil, fmt.Errorf("unsupported telemetry exporter protocol: %q (expected grpc, http, or https)", cfg.Exporter.Protocol)
 	}
 
 	res, err := buildResource(ctx, cfg)
@@ -68,8 +75,17 @@ func NewProvider(ctx context.Context, cfg ports.TelemetryConfig, logger *slog.Lo
 
 	// Warn if TLS is disabled (SR-003: security-first, fail closed).
 	if cfg.Exporter.Insecure {
-		logger.Warn("telemetry: TLS disabled for OTLP exporter (insecure=true) — do not use in production",
-			"endpoint", cfg.Exporter.Endpoint)
+		switch cfg.Exporter.Protocol {
+		case ports.OTLPProtocolHTTPS:
+			logger.Warn("telemetry: insecure=true is contradictory with protocol=https and will be ignored",
+				"endpoint", cfg.Exporter.Endpoint)
+		case ports.OTLPProtocolHTTP:
+			logger.Warn("telemetry: insecure=true has no effect for protocol=http — TLS is controlled by the URL scheme",
+				"endpoint", cfg.Exporter.Endpoint)
+		case ports.OTLPProtocolGRPC:
+			logger.Warn("telemetry: TLS disabled for OTLP gRPC exporter (insecure=true) — do not use in production",
+				"endpoint", cfg.Exporter.Endpoint)
+		}
 	}
 
 	var tp *sdktrace.TracerProvider
@@ -81,6 +97,12 @@ func NewProvider(ctx context.Context, cfg ports.TelemetryConfig, logger *slog.Lo
 		tp, mp, lp, err = buildGRPCProviders(ctx, cfg, res, logger)
 	case ports.OTLPProtocolHTTP:
 		tp, mp, lp, err = buildHTTPProviders(ctx, cfg, res, logger)
+	case ports.OTLPProtocolHTTPS:
+		// Normalize bare host:port to https:// URL for the HTTP exporter.
+		if !strings.Contains(cfg.Exporter.Endpoint, "://") {
+			cfg.Exporter.Endpoint = "https://" + cfg.Exporter.Endpoint
+		}
+		tp, mp, lp, err = buildHTTPProviders(ctx, cfg, res, logger)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("telemetry: failed to build providers: %w", err)
@@ -90,8 +112,14 @@ func NewProvider(ctx context.Context, cfg ports.TelemetryConfig, logger *slog.Lo
 	// TracerProvider remains the SDK default (no-op) so instrumented libraries produce no spans.
 	if cfg.Traces.Enabled && tp != nil {
 		otel.SetTracerProvider(tp)
-		registerPropagators(cfg.Traces.Propagators, logger)
 	}
+
+	// Register propagators unconditionally when telemetry is enabled.
+	// Propagation and tracing are separate concerns: trace context must always be
+	// extracted from inbound requests and injected into outbound requests so that
+	// this service is transparent to distributed tracing, even when its own trace
+	// pipeline is disabled.
+	registerPropagators(cfg.Traces.Propagators, logger)
 
 	// Register metric provider only when metrics are enabled. When disabled, the global
 	// MeterProvider remains the SDK default (no-op) so otelchi does not export metrics.
@@ -161,6 +189,9 @@ func buildGRPCProviders(ctx context.Context, cfg ports.TelemetryConfig, res *res
 		} else {
 			traceOpts = append(traceOpts, otlptracegrpc.WithTLSCredentials(tlsCreds))
 		}
+		if cfg.Exporter.Compression == ports.OTLPCompressionGzip {
+			traceOpts = append(traceOpts, otlptracegrpc.WithCompressor("gzip"))
+		}
 		traceExp, err := otlptracegrpc.New(ctx, traceOpts...)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("trace grpc exporter: %w", err)
@@ -181,6 +212,9 @@ func buildGRPCProviders(ctx context.Context, cfg ports.TelemetryConfig, res *res
 		} else {
 			metricOpts = append(metricOpts, otlpmetricgrpc.WithTLSCredentials(tlsCreds))
 		}
+		if cfg.Exporter.Compression == ports.OTLPCompressionGzip {
+			metricOpts = append(metricOpts, otlpmetricgrpc.WithCompressor("gzip"))
+		}
 		metricExp, err := otlpmetricgrpc.New(ctx, metricOpts...)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("metric grpc exporter: %w", err)
@@ -188,23 +222,29 @@ func buildGRPCProviders(ctx context.Context, cfg ports.TelemetryConfig, res *res
 		mp = buildMeterProvider(metricExp, res, cfg)
 	}
 
-	// Log exporter — non-fatal: failure is logged as a warning and lp is nil
-	logOpts := []otlploggrpc.Option{
-		otlploggrpc.WithEndpoint(cfg.Exporter.Endpoint),
-		otlploggrpc.WithTimeout(cfg.Exporter.Timeout),
-		otlploggrpc.WithHeaders(cfg.Exporter.Headers),
-	}
-	if insecure {
-		logOpts = append(logOpts, otlploggrpc.WithInsecure())
-	} else {
-		logOpts = append(logOpts, otlploggrpc.WithTLSCredentials(tlsCreds))
-	}
+	// Log exporter — skipped when logs are disabled, non-fatal when enabled:
+	// failure is logged as a warning and lp is nil.
 	var lp *sdklog.LoggerProvider
-	logExp, logErr := otlploggrpc.New(ctx, logOpts...)
-	if logErr != nil {
-		logger.Warn("telemetry: log gRPC exporter failed to initialize, OTLP log pipeline disabled", "error", logErr)
-	} else {
-		lp = buildLoggerProvider(logExp, res)
+	if cfg.Logs.Enabled {
+		logOpts := []otlploggrpc.Option{
+			otlploggrpc.WithEndpoint(cfg.Exporter.Endpoint),
+			otlploggrpc.WithTimeout(cfg.Exporter.Timeout),
+			otlploggrpc.WithHeaders(cfg.Exporter.Headers),
+		}
+		if insecure {
+			logOpts = append(logOpts, otlploggrpc.WithInsecure())
+		} else {
+			logOpts = append(logOpts, otlploggrpc.WithTLSCredentials(tlsCreds))
+		}
+		if cfg.Exporter.Compression == ports.OTLPCompressionGzip {
+			logOpts = append(logOpts, otlploggrpc.WithCompressor("gzip"))
+		}
+		logExp, logErr := otlploggrpc.New(ctx, logOpts...)
+		if logErr != nil {
+			logger.Warn("telemetry: log gRPC exporter failed to initialize, OTLP log pipeline disabled", "error", logErr)
+		} else {
+			lp = buildLoggerProvider(logExp, res)
+		}
 	}
 
 	return tp, mp, lp, nil
@@ -228,6 +268,9 @@ func buildHTTPProviders(ctx context.Context, cfg ports.TelemetryConfig, res *res
 			otlptracehttp.WithTimeout(cfg.Exporter.Timeout),
 			otlptracehttp.WithHeaders(cfg.Exporter.Headers),
 		}
+		if cfg.Exporter.Compression == ports.OTLPCompressionGzip {
+			traceOpts = append(traceOpts, otlptracehttp.WithCompression(otlptracehttp.GzipCompression))
+		}
 		traceExp, err := otlptracehttp.New(ctx, traceOpts...)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("trace http exporter: %w", err)
@@ -243,6 +286,9 @@ func buildHTTPProviders(ctx context.Context, cfg ports.TelemetryConfig, res *res
 			otlpmetrichttp.WithTimeout(cfg.Exporter.Timeout),
 			otlpmetrichttp.WithHeaders(cfg.Exporter.Headers),
 		}
+		if cfg.Exporter.Compression == ports.OTLPCompressionGzip {
+			metricOpts = append(metricOpts, otlpmetrichttp.WithCompression(otlpmetrichttp.GzipCompression))
+		}
 		metricExp, err := otlpmetrichttp.New(ctx, metricOpts...)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("metric http exporter: %w", err)
@@ -250,18 +296,24 @@ func buildHTTPProviders(ctx context.Context, cfg ports.TelemetryConfig, res *res
 		mp = buildMeterProvider(metricExp, res, cfg)
 	}
 
-	// Log exporter — non-fatal: failure is logged as a warning and lp is nil
-	logOpts := []otlploghttp.Option{
-		otlploghttp.WithEndpointURL(cfg.Exporter.Endpoint),
-		otlploghttp.WithTimeout(cfg.Exporter.Timeout),
-		otlploghttp.WithHeaders(cfg.Exporter.Headers),
-	}
+	// Log exporter — skipped when logs are disabled, non-fatal when enabled:
+	// failure is logged as a warning and lp is nil.
 	var lp *sdklog.LoggerProvider
-	logExp, logErr := otlploghttp.New(ctx, logOpts...)
-	if logErr != nil {
-		logger.Warn("telemetry: log HTTP exporter failed to initialize, OTLP log pipeline disabled", "error", logErr)
-	} else {
-		lp = buildLoggerProvider(logExp, res)
+	if cfg.Logs.Enabled {
+		logOpts := []otlploghttp.Option{
+			otlploghttp.WithEndpointURL(cfg.Exporter.Endpoint),
+			otlploghttp.WithTimeout(cfg.Exporter.Timeout),
+			otlploghttp.WithHeaders(cfg.Exporter.Headers),
+		}
+		if cfg.Exporter.Compression == ports.OTLPCompressionGzip {
+			logOpts = append(logOpts, otlploghttp.WithCompression(otlploghttp.GzipCompression))
+		}
+		logExp, logErr := otlploghttp.New(ctx, logOpts...)
+		if logErr != nil {
+			logger.Warn("telemetry: log HTTP exporter failed to initialize, OTLP log pipeline disabled", "error", logErr)
+		} else {
+			lp = buildLoggerProvider(logExp, res)
+		}
 	}
 
 	return tp, mp, lp, nil
@@ -278,6 +330,13 @@ func buildTracerProvider(exp sdktrace.SpanExporter, res *resource.Resource, cfg 
 }
 
 // registerPropagators sets up the global TextMapPropagator from config.
+// Supported propagator names:
+//   - "tracecontext" — W3C Trace Context (traceparent/tracestate headers)
+//   - "baggage"      — W3C Baggage
+//   - "b3multi"      — Zipkin B3 Multiple Headers (X-B3-TraceId, X-B3-SpanId, …)
+//   - "b3"           — Zipkin B3 Single Header (b3)
+//   - "ottrace"      — OpenTracing (ot-tracer-*) for OT↔OTel interoperability
+//
 // Unrecognized propagator names are logged as warnings and skipped.
 func registerPropagators(propagatorNames []string, logger *slog.Logger) {
 	var propagators []propagation.TextMapPropagator
@@ -287,6 +346,12 @@ func registerPropagators(propagatorNames []string, logger *slog.Logger) {
 			propagators = append(propagators, propagation.TraceContext{})
 		case "baggage":
 			propagators = append(propagators, propagation.Baggage{})
+		case "b3multi":
+			propagators = append(propagators, b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader)))
+		case "b3":
+			propagators = append(propagators, b3.New())
+		case "ottrace":
+			propagators = append(propagators, ot.OT{})
 		default:
 			logger.Warn("telemetry: unrecognized propagator name, ignoring", "propagator", name)
 		}

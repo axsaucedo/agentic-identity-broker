@@ -119,14 +119,16 @@ As an operator, I need the identity broker to continue functioning normally if t
 - **telemetry.resource_attributes**: Map of key-value pairs, additional resource attributes attached to all telemetry (e.g., environment, region). Default: empty.
 - **telemetry.traces.enabled**: Boolean, enables distributed tracing. Default: `true` (when telemetry is enabled).
 - **telemetry.traces.sampling_rate**: Float (0.0-1.0), ratio-based trace sampling rate. `1.0` = sample all, `0.0` = sample none. Default: `1.0`.
-- **telemetry.traces.propagators**: List of propagation formats. Default: `["tracecontext", "baggage"]` (W3C standards).
+- **telemetry.traces.propagators**: List of propagation formats. Default: `["ottrace", "b3multi", "baggage"]`. Supported values: `ottrace` (OpenTracing interop via `ot-tracer-*` headers), `b3multi` (Zipkin B3 multiple headers), `b3` (B3 single header), `tracecontext` (W3C Trace Context), `baggage` (W3C Baggage). Propagators are registered unconditionally when telemetry is enabled, regardless of `traces.enabled`.
 - **telemetry.metrics.enabled**: Boolean, enables metrics collection and export. Default: `true` (when telemetry is enabled).
 - **telemetry.metrics.export_interval**: Duration, how frequently metrics are exported. Default: `30s`.
-- **telemetry.exporter.protocol**: String, transport protocol. One of: `grpc`, `http`. Default: `grpc`.
+- **telemetry.logs.enabled**: Boolean, enables OTLP log export via the `slog` bridge. Default: `true` (when telemetry is enabled). Set to `false` if the collector does not support `opentelemetry.proto.collector.logs.v1.LogsService`.
+- **telemetry.exporter.protocol**: String, transport protocol. One of: `grpc`, `http`, `https`. Default: `grpc`. The `https` protocol uses the HTTP OTLP exporter with TLS; bare `host:port` endpoints are auto-prefixed with `https://`.
 - **telemetry.exporter.endpoint**: String, OTLP collector endpoint URL. Required when telemetry is enabled.
 - **telemetry.exporter.headers**: Map of key-value pairs, additional headers sent with export requests (e.g., authentication tokens). Default: empty. Values support `${ENV_VAR}` substitution for secrets.
 - **telemetry.exporter.timeout**: Duration, maximum time to wait for export to complete. Default: `10s`.
-- **telemetry.exporter.insecure**: Boolean, disables TLS verification for exporter connections. Default: `false`. Only for development/testing.
+- **telemetry.exporter.compression**: String, payload compression. One of: `none`, `gzip`. Default: `none`. Applied to all signal pipelines (traces, metrics, logs).
+- **telemetry.exporter.insecure**: Boolean, disables TLS verification for exporter connections. Default: `false`. Only for development/testing. Only meaningful for gRPC; for HTTP the URL scheme controls TLS.
 
 **Example YAML Configuration**:
 ```yaml
@@ -143,12 +145,16 @@ telemetry:
     enabled: true
     sampling_rate: 0.1  # Sample 10% of traces in production
     propagators:
-      - tracecontext
+      - ottrace
+      - b3multi
       - baggage
 
   metrics:
     enabled: true
     export_interval: 30s
+
+  logs:
+    enabled: true  # set false if collector lacks LogsService support
 
   exporter:
     protocol: grpc
@@ -156,6 +162,7 @@ telemetry:
     headers:
       Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
     timeout: 10s
+    compression: none  # or "gzip"
     insecure: false
 ```
 
@@ -173,7 +180,7 @@ telemetry:
 - The OTLP protocol is the standard export mechanism. Vendor-specific exporters (Jaeger, Zipkin, Prometheus native) are out of scope for this feature; operators can use an OTLP-compatible collector to bridge to those systems.
 - Telemetry configuration is loaded at startup and does not support hot-reloading, consistent with the existing configuration subsystem behavior.
 - The OpenTelemetry SDK handles buffering and retry internally. The identity broker configures the SDK but does not implement custom retry logic.
-- W3C Trace Context is the default propagation format. B3 propagation is not included by default but can be added in a future iteration if needed.
+- The default propagator set is OTTrace + B3 (multiple headers) + Baggage, ensuring interoperability between OpenTracing and OpenTelemetry instrumented components and Zipkin-based systems. W3C Trace Context (`tracecontext`) can be added to the list if needed.
 - Log correlation (injecting `trace_id` and `span_id` into structured log entries) is **in scope** for this feature, implemented via `go.opentelemetry.io/contrib/bridges/otelslog` bridging the existing `slog` logger to the OTel logs pipeline.
 
 ## Success Criteria *(mandatory)*

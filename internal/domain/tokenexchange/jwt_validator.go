@@ -3,8 +3,8 @@ package tokenexchange
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -187,26 +187,22 @@ func (v *JWTValidator) mapParseError(err error, tokenType string) error {
 	if err == nil {
 		return nil
 	}
-
-	errMsg := err.Error()
-
-	// Check for common validation failures and map to appropriate errors.
-	// The underlying error is attached as cause so callers can log full details internally
-	// without exposing them to clients (per SR-005).
 	switch {
-	case strings.Contains(errMsg, "signature"):
+	case errors.Is(err, jwt.ParseError()):
 		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err)
-	case strings.Contains(errMsg, "issuer") || strings.Contains(errMsg, "iss"):
-		return NewInvalidGrantError(tokenType + " issuer validation failed").WithCause(err)
-	case strings.Contains(errMsg, "audience") || strings.Contains(errMsg, "aud"):
-		return NewInvalidGrantError(tokenType + " audience validation failed").WithCause(err)
-	case strings.Contains(errMsg, "exp") || strings.Contains(errMsg, "expired"):
+	case errors.Is(err, jwt.InvalidIssuerError()):
+		return NewInvalidGrantError(
+			fmt.Sprintf("%s issuer validation failed: expected iss=%q", tokenType, v.expectedIssuer),
+		).WithCause(err)
+	case errors.Is(err, jwt.InvalidAudienceError()):
+		return NewInvalidGrantError(
+			fmt.Sprintf("%s audience validation failed: expected aud=%q", tokenType, v.brokerAudience),
+		).WithCause(err)
+	case errors.Is(err, jwt.TokenExpiredError()):
 		return NewInvalidGrantError(tokenType + " has expired").WithCause(err)
-	case strings.Contains(errMsg, "malformed") || strings.Contains(errMsg, "parse"):
-		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err)
+	case errors.Is(err, jwt.TokenNotYetValidError()):
+		return NewInvalidGrantError(tokenType + " is not yet valid (nbf)").WithCause(err)
 	default:
-		// Generic validation failure — attach the full underlying error as cause so operators
-		// can inspect it in logs without exposing it to the client.
 		return NewInvalidGrantError(tokenType + " validation failed").WithCause(err)
 	}
 }
@@ -219,25 +215,22 @@ func (v *JWTValidator) mapClientAssertionParseError(err error) error {
 	if err == nil {
 		return nil
 	}
-
-	errMsg := err.Error()
-
-	// All client assertion validation failures map to InvalidClientError.
-	// The underlying error is attached as cause so callers can log full details internally.
 	switch {
-	case strings.Contains(errMsg, "signature"):
+	case errors.Is(err, jwt.ParseError()):
 		return NewInvalidClientError("client_assertion is malformed or signature verification failed").WithCause(err)
-	case strings.Contains(errMsg, "issuer") || strings.Contains(errMsg, "iss"):
-		return NewInvalidClientError("client_assertion issuer validation failed").WithCause(err)
-	case strings.Contains(errMsg, "audience") || strings.Contains(errMsg, "aud"):
-		return NewInvalidClientError("client_assertion audience validation failed").WithCause(err)
-	case strings.Contains(errMsg, "exp") || strings.Contains(errMsg, "expired"):
+	case errors.Is(err, jwt.InvalidIssuerError()):
+		return NewInvalidClientError(
+			fmt.Sprintf("client_assertion issuer validation failed: expected iss=%q", v.expectedIssuer),
+		).WithCause(err)
+	case errors.Is(err, jwt.InvalidAudienceError()):
+		return NewInvalidClientError(
+			fmt.Sprintf("client_assertion audience validation failed: expected aud=%q", v.brokerAudience),
+		).WithCause(err)
+	case errors.Is(err, jwt.TokenExpiredError()):
 		return NewInvalidClientError("client_assertion has expired").WithCause(err)
-	case strings.Contains(errMsg, "malformed") || strings.Contains(errMsg, "parse"):
-		return NewInvalidClientError("client_assertion is malformed or signature verification failed").WithCause(err)
+	case errors.Is(err, jwt.TokenNotYetValidError()):
+		return NewInvalidClientError("client_assertion is not yet valid (nbf)").WithCause(err)
 	default:
-		// Generic validation failure — attach the full underlying error as cause so operators
-		// can inspect it in logs without exposing it to the client.
 		return NewInvalidClientError("client_assertion validation failed").WithCause(err)
 	}
 }

@@ -155,6 +155,8 @@ data:
       metrics:
         enabled: {{ .Values.broker.telemetry.metrics.enabled }}
         export_interval: {{ .Values.broker.telemetry.metrics.exportInterval | quote }}
+      logs:
+        enabled: {{ .Values.broker.telemetry.logs.enabled }}
       exporter:
         protocol: {{ .Values.broker.telemetry.exporter.protocol | quote }}
         {{- if .Values.broker.telemetry.exporter.endpoint }}
@@ -165,6 +167,7 @@ data:
           {{- toYaml .Values.broker.telemetry.exporter.headers | nindent 10 }}
         {{- end }}
         timeout: {{ .Values.broker.telemetry.exporter.timeout | quote }}
+        compression: {{ .Values.broker.telemetry.exporter.compression | quote }}
         insecure: {{ .Values.broker.telemetry.exporter.insecure }}
     {{- end }}
 

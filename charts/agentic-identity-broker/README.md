@@ -140,13 +140,15 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `broker.telemetry.resourceAttributes` | Additional OTel resource attributes (map) | `{}` |
 | `broker.telemetry.traces.enabled` | Enable trace export via OTLP | `true` |
 | `broker.telemetry.traces.samplingRate` | Fractional sampling rate (0.0–1.0) | `1.0` |
-| `broker.telemetry.traces.propagators` | W3C propagators to register globally | `[tracecontext, baggage]` |
+| `broker.telemetry.traces.propagators` | Propagators to register globally (ottrace, b3multi, b3, tracecontext, baggage) | `[ottrace, b3multi, baggage]` |
 | `broker.telemetry.metrics.enabled` | Enable metrics export via OTLP | `true` |
 | `broker.telemetry.metrics.exportInterval` | Metrics push interval | `30s` |
-| `broker.telemetry.exporter.protocol` | OTLP transport protocol (`grpc` or `http`) | `grpc` |
-| `broker.telemetry.exporter.endpoint` | OTLP collector endpoint (host:port for gRPC, URL for HTTP) | `""` |
+| `broker.telemetry.logs.enabled` | Enable OTLP log export (set false if collector lacks LogsService) | `true` |
+| `broker.telemetry.exporter.protocol` | OTLP transport protocol (`grpc`, `http`, or `https`) | `grpc` |
+| `broker.telemetry.exporter.endpoint` | OTLP collector endpoint (host:port for gRPC, URL for HTTP/HTTPS) | `""` |
 | `broker.telemetry.exporter.headers` | Additional headers sent with every export request (map) | `{}` |
 | `broker.telemetry.exporter.timeout` | Export request timeout | `10s` |
+| `broker.telemetry.exporter.compression` | Payload compression (`none` or `gzip`) | `none` |
 | `broker.telemetry.exporter.insecure` | Disable TLS for the OTLP connection (never use in production) | `false` |
 
 ### Custom Values File

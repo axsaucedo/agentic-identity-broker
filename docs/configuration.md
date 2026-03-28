@@ -802,14 +802,16 @@ telemetry:
 | `telemetry.resource_attributes` | map[string]string | `{}` | N/A (config file only) | Additional OTel resource attributes added to every telemetry signal (e.g., `deployment.environment: production`). |
 | `telemetry.traces.enabled` | bool | `true` (when telemetry.enabled) | `IDENTITY_BROKER_TELEMETRY_TRACES_ENABLED` | Enable trace export. Disabling traces suppresses otelchi HTTP spans and storage child spans. |
 | `telemetry.traces.sampling_rate` | float64 | `1.0` | `IDENTITY_BROKER_TELEMETRY_TRACES_SAMPLING_RATE` | Fractional sampling rate for traces (0.0–1.0). `1.0` = 100% sampled. Uses `ParentBased(TraceIDRatioBased(rate))`. |
-| `telemetry.traces.propagators` | []string | `["tracecontext","baggage"]` | N/A (config file only) | W3C propagators to register globally. Supported values: `tracecontext`, `baggage`. |
+| `telemetry.traces.propagators` | []string | `["ottrace","b3multi","baggage"]` | N/A (config file only) | Propagators to register globally. Supported values: `ottrace` (OpenTracing interop), `b3multi` (Zipkin B3 multiple headers), `b3` (B3 single header), `tracecontext` (W3C), `baggage` (W3C). Propagators are registered unconditionally when telemetry is enabled, even if `traces.enabled` is false. |
 | `telemetry.metrics.enabled` | bool | `true` (when telemetry.enabled) | `IDENTITY_BROKER_TELEMETRY_METRICS_ENABLED` | Enable metrics export. When enabled, process runtime metrics (goroutines, memory, GC) and HTTP request metrics (via otelchi) are exported automatically. |
 | `telemetry.metrics.export_interval` | duration | `30s` | `IDENTITY_BROKER_TELEMETRY_METRICS_EXPORT_INTERVAL` | How often metrics are pushed to the collector. Must be positive. Example: `30s`, `1m`. |
-| `telemetry.exporter.protocol` | string | `"grpc"` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_PROTOCOL` | OTLP transport protocol. Accepted values: `grpc`, `http`. |
-| `telemetry.exporter.endpoint` | string | `""` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT` | OTLP collector endpoint. **Required when `telemetry.enabled=true`**. Format: `host:port` for gRPC or `https://host:port` for HTTP. |
+| `telemetry.logs.enabled` | bool | `true` (when telemetry.enabled) | `IDENTITY_BROKER_TELEMETRY_LOGS_ENABLED` | Enable OTLP log export via the `slog` bridge. Set to `false` if the collector does not support `opentelemetry.proto.collector.logs.v1.LogsService`. |
+| `telemetry.exporter.protocol` | string | `"grpc"` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_PROTOCOL` | OTLP transport protocol. Accepted values: `grpc`, `http`, `https`. The `https` protocol uses the HTTP OTLP exporter with TLS; bare `host:port` endpoints are auto-prefixed with `https://`. |
+| `telemetry.exporter.endpoint` | string | `""` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT` | OTLP collector endpoint. **Required when `telemetry.enabled=true`**. Format: `host:port` for gRPC, `http(s)://host:port` for HTTP/HTTPS. |
 | `telemetry.exporter.headers` | map[string]string | `{}` | N/A (config file only) | Additional HTTP/gRPC headers sent with every export request (e.g., authentication tokens). Use `${ENV_VAR}` substitution to avoid committing secrets. |
 | `telemetry.exporter.timeout` | duration | `10s` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_TIMEOUT` | Per-export request timeout. Must be positive. Example: `5s`, `30s`. |
-| `telemetry.exporter.insecure` | bool | `false` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE` | Disable TLS for the OTLP exporter. **Do not use in production** — a startup warning is emitted when this is true. |
+| `telemetry.exporter.compression` | string | `"none"` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_COMPRESSION` | Payload compression for all OTLP exporters. Accepted values: `none`, `gzip`. |
+| `telemetry.exporter.insecure` | bool | `false` | `IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE` | Disable TLS for the OTLP exporter. **Do not use in production** — a startup warning is emitted when this is true. Only meaningful for gRPC; for HTTP the URL scheme controls TLS. |
 
 ### Environment Variable Mapping
 

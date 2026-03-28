@@ -42,6 +42,35 @@ These sections provide examples that should be replaced with feature-specific ta
 
 ---
 
+## Phase 0: Pre-implementation Refactoring [OPTIONAL]
+
+**Purpose**: Refactor existing code to prepare for the new feature, keeping structural changes
+isolated from feature work for clean, reviewable PRs.
+
+**⚠️ WHEN TO INCLUDE**: Include this phase only when the feature requires significant changes to
+existing code — rename, restructure, extract interfaces, split files, consolidate duplicates.
+Skip entirely if the feature only adds new code without touching existing structures.
+
+**📝 REVIEW DISCIPLINE**: Refactoring commits MUST be submitted as a SEPARATE PR (or isolated
+commit batch) from feature implementation. This keeps reviewers focused: first approve structural
+changes with no behavior change, then review new business logic separately.
+
+<!--
+  CUSTOMIZABLE SECTION: Replace T000 tasks with refactoring tasks specific to this feature.
+  Examples: extract interface from concrete type, rename entity, split large file,
+  move handler to new package, consolidate duplicate code.
+  IMPORTANT: Refactoring MUST NOT change behavior — all existing tests must pass unchanged.
+-->
+
+- [ ] T000 Identify all existing code that requires refactoring before the new feature can be cleanly added
+- [ ] T000a [P] [Refactor task 1] — e.g., "Extract StoragePort interface from concrete PostgresAdapter"
+- [ ] T000b [P] [Refactor task 2] — e.g., "Rename UserToken → UserSession throughout codebase"
+- [ ] T000c Verify all existing tests pass after refactoring (zero behavior changes)
+
+**Checkpoint**: Refactoring complete, all existing tests pass, no behavior changes introduced
+
+---
+
 ## Phase 1: Setup (Shared Infrastructure) [CUSTOMIZABLE]
 
 **Purpose**: Project initialization and basic structure
@@ -147,6 +176,52 @@ These sections provide examples that should be replaced with feature-specific ta
 
 **Checkpoint**: E2E acceptance tests written and verified to fail semantically before implementation;
 frontend Playwright tests added/amended and screenshots configured (if applicable)
+
+---
+
+## Phase 2.7: Entity Boilerplate (New Entities) [CUSTOMIZABLE - INCLUDE IF NEW ENTITIES]
+
+**Purpose**: Create empty-but-compiling CRUD scaffolding for each new entity identified in Phase 2a
+(domain model). Having this as a dedicated phase isolates structural additions from business logic,
+making code review significantly easier.
+
+**⚠️ WHEN TO INCLUDE**: Include when the feature introduces NEW domain entities requiring new ports,
+storage adapters, and HTTP handlers. Skip if the feature only extends existing entities.
+
+**📝 REVIEW DISCIPLINE**: Boilerplate commits SHOULD be in a SEPARATE PR (or isolated commit batch)
+from business logic. Reviewers can quickly approve structural scaffolding (empty methods returning
+501), then devote full attention to business logic in user story PRs.
+
+<!--
+  CUSTOMIZABLE SECTION: Duplicate the block below for each new entity from Phase 2a.
+  Boilerplate is intentionally empty — business logic belongs in Phase 3+ user story phases.
+  Empty handlers MUST compile and return 501 Not Implemented (not panic or fail to build).
+-->
+
+### Boilerplate: [EntityName] *(repeat per new entity)*
+
+- [ ] TBPL001 Define typed ID (`type [Entity]ID uuid.UUID`) in `internal/domain/id/gen_ids.go` and
+      document in `internal/domain/id/AGENTS.md` (ADR 013)
+- [ ] TBPL002 Define domain struct for `[EntityName]` in `internal/domain/storage/` or appropriate
+      domain package
+- [ ] TBPL003 Define `[EntityName]Repository` interface in `internal/ports/storage.go` (ISP — 5-7
+      methods max: Create, Get, Update, Delete, List)
+- [ ] TBPL004 [P] Implement empty `[EntityName]Repository` on in-memory adapter in
+      `internal/adapters/storage/memory/` (methods compile, return zero values / not-found)
+- [ ] TBPL005 [P] Implement empty `[EntityName]Repository` on postgres adapter in
+      `internal/adapters/storage/postgres/` (methods compile, return not-implemented error)
+- [ ] TBPL006 Add `[EntityName]s() [EntityName]Repository` accessor to Adapter struct in both
+      storage adapters
+- [ ] TBPL007 [P] Create empty HTTP handler struct `[EntityName]Handler` in
+      `internal/adapters/http/handlers/[entity]/handler.go` (CRUD methods return 501)
+- [ ] TBPL008 Register empty routes for `[EntityName]` CRUD in the appropriate routing file
+      (`internal/adapters/http/routing/enduser.go` or `admin.go`)
+- [ ] TBPL009 Add `[EntityName]Handler` field to `app.EnduserHandlers` or `app.AdminHandlers`
+      and wire it in `internal/app/builder.go`
+- [ ] TBPL010 Verify project compiles with all new empty scaffolding in place (`just build`)
+
+**Checkpoint**: All new entity scaffolding compiles, empty handlers return 501, no business logic
+yet — ready for incremental user story implementation
 
 ---
 
@@ -374,7 +449,9 @@ frontend Playwright tests added/amended and screenshots configured (if applicabl
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: No dependencies - can start immediately
+- **Pre-implementation Refactoring (Phase 0)**: OPTIONAL — can start immediately if needed;
+  MUST be complete (all existing tests pass) before Phase 2 (Design Preconditions) begins
+- **Setup (Phase 1)**: No dependencies — can start immediately (parallel with Phase 0 if Phase 0 is included)
 - **Design Preconditions (Phase 2)**: Depends on Setup completion - BLOCKS all implementation
   - **CRITICAL**: Domain model must be designed and documented
   - **CRITICAL**: Configuration requirements must be designed with YAML examples
@@ -383,9 +460,11 @@ frontend Playwright tests added/amended and screenshots configured (if applicabl
   - **CRITICAL**: E2E acceptance tests must be written with detailed expectations and verified to FAIL
     semantically (red phase); frontend Playwright tests added/amended if UI changes involved
   - **CRITICAL**: Helm chart must be updated if configuration parameters change
-  - Phase 2a, 2b, 2c, 2d, 2e, 2f can proceed in parallel, but all must complete before Phase 2.5 begins
-- **Foundational Infrastructure (Phase 2.5)**: Depends on ALL of Phase 2 completion - BLOCKS all user stories
-- **User Stories (Phase 3+)**: All depend on Phase 2 + Phase 2.5 completion
+  - Phase 2a, 2b, 2c, 2d, 2e, 2f can proceed in parallel, but all must complete before Phase 2.7 begins
+- **Entity Boilerplate (Phase 2.7)**: OPTIONAL (only if new entities) — depends on completion of all Phase 2 design tasks (2a–2f);
+  produces empty scaffolding BEFORE business logic; enables clean review
+- **Foundational Infrastructure (Phase 2.5)**: Depends on ALL of Phase 2 + Phase 2.7 (if included) completion - BLOCKS all user stories
+- **User Stories (Phase 3+)**: All depend on Phase 2 + Phase 2.5 + Phase 2.7 (if included) completion
   - User stories can then proceed in parallel (if staffed)
   - Or sequentially in priority order (P1 → P2 → P3)
 - **Polish (Final Phase)**: Depends on all desired user stories being complete
@@ -433,18 +512,20 @@ Task: "Create [Entity2] model in src/models/[entity2].py"
 
 ### MVP First (User Story 1 Only)
 
-1. Complete Phase 1: Setup
-2. Complete Phase 2: Design Preconditions (CRITICAL - blocks all stories)
+1. **(If needed) Complete Phase 0**: Pre-implementation refactoring — separate PR, all tests green
+2. Complete Phase 1: Setup
+3. Complete Phase 2: Design Preconditions (CRITICAL - blocks all stories)
    - 2a: Domain model & glossary
    - 2b: Configuration design with YAML examples
    - 2c: API design + user/stakeholder confirmation
    - 2d: Database schema design
    - 2e: Frontend/design system review (if applicable)
    - 2f: E2E acceptance test design (tests written and verified to FAIL)
-3. Complete Phase 2.5: Foundational Infrastructure (CRITICAL - blocks all stories)
-4. Complete Phase 3: User Story 1
-5. **STOP and VALIDATE**: Test User Story 1 independently
-6. Deploy/demo if ready
+4. **(If new entities) Complete Phase 2.7**: Entity boilerplate — separate PR, project compiles
+5. Complete Phase 2.5: Foundational Infrastructure (CRITICAL - blocks all stories)
+6. Complete Phase 3: User Story 1
+7. **STOP and VALIDATE**: Test User Story 1 independently
+8. Deploy/demo if ready
 
 ### Incremental Delivery
 

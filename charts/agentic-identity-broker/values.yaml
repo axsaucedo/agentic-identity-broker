@@ -502,9 +502,13 @@ broker:
       # 1.0 is the default (useful for development and low-traffic services).
       # In production, reduce to e.g. `0.1` (10 %) to limit overhead and cost.
       samplingRate: 1.0
-      # -- W3C trace-context propagators to register globally
+      # -- Trace-context propagators to register globally.
+      # Supported: ottrace (OpenTracing), b3multi (Zipkin B3 multiple headers),
+      # b3 (B3 single header), tracecontext (W3C), baggage (W3C).
+      # Propagators are registered unconditionally when telemetry is enabled.
       propagators:
-        - tracecontext
+        - ottrace
+        - b3multi
         - baggage
 
     # Metrics collection and export configuration
@@ -514,13 +518,21 @@ broker:
       # -- How often metrics are pushed to the collector. Must be positive. Example: `30s`, `1m`.
       exportInterval: 30s
 
+    # OTLP log export configuration
+    logs:
+      # -- Enable OTLP log export via the slog bridge.
+      # Set to false if the collector does not support
+      # opentelemetry.proto.collector.logs.v1.LogsService.
+      enabled: true
+
     # OTLP exporter connection parameters
     exporter:
-      # -- Transport protocol: `grpc` (default) or `http`
+      # -- Transport protocol: `grpc` (default), `http`, or `https`
+      # `https` uses the HTTP OTLP exporter with TLS; bare host:port auto-prefixed with https://
       protocol: grpc
       # -- OTLP collector endpoint.
       # gRPC: `host:port` (e.g. `otel-collector.monitoring.svc:4317`)
-      # HTTP: full URL (e.g. `http://otel-collector.monitoring.svc:4318`)
+      # HTTP/HTTPS: full URL (e.g. `https://otel-collector.monitoring.svc:4318`)
       # Can also be set via env var `IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT`.
       endpoint: ""
       # -- Additional HTTP/gRPC headers sent with every export request.
@@ -530,7 +542,10 @@ broker:
         # Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
       # -- Export request timeout (e.g. `10s`, `30s`)
       timeout: 10s
+      # -- Payload compression for all OTLP exporters. `none` (default) or `gzip`.
+      compression: none
       # -- Disable TLS for the OTLP connection (insecure mode).
+      # Only meaningful for gRPC; for HTTP the URL scheme controls TLS.
       # MUST NOT be set to `true` in production.
       insecure: false
 

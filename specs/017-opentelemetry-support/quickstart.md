@@ -123,9 +123,15 @@ telemetry:
     enabled: true       # default: true (when telemetry.enabled=true)
     sampling_rate: 0.1  # 10% of traces sampled in production; 1.0 = all
     propagators:
-      - tracecontext    # W3C Trace Context (default)
-      - baggage         # W3C Baggage (default)
+      - ottrace         # OpenTracing interop (ot-tracer-* headers)
+      - b3multi         # Zipkin B3 multiple headers (X-B3-TraceId, X-B3-SpanId, …)
+      - baggage         # W3C Baggage
+      # Also available: tracecontext (W3C), b3 (single header)
 ```
+
+**Propagator notes**:
+- Propagators are registered unconditionally when telemetry is enabled, even if `traces.enabled` is false — this ensures inbound trace context is always forwarded.
+- The default set (OTTrace + B3 multi + Baggage) ensures interoperability with OpenTracing, Zipkin, and Baggage-aware systems.
 
 **Sampling guidance**:
 - Development: `sampling_rate: 1.0` (sample everything)
@@ -169,12 +175,16 @@ telemetry:
     enabled: true
     sampling_rate: 0.1
     propagators:
-      - tracecontext
+      - ottrace
+      - b3multi
       - baggage
 
   metrics:
     enabled: true
     export_interval: 30s
+
+  logs:
+    enabled: true  # set false if collector lacks LogsService support
 
   exporter:
     protocol: grpc
@@ -182,6 +192,7 @@ telemetry:
     headers:
       Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
     timeout: 10s
+    compression: gzip  # recommended for production
     insecure: false
 ```
 
@@ -198,9 +209,11 @@ IDENTITY_BROKER_TELEMETRY_TRACES_ENABLED=true
 IDENTITY_BROKER_TELEMETRY_TRACES_SAMPLING_RATE=0.1
 IDENTITY_BROKER_TELEMETRY_METRICS_ENABLED=true
 IDENTITY_BROKER_TELEMETRY_METRICS_EXPORT_INTERVAL=30s
+IDENTITY_BROKER_TELEMETRY_LOGS_ENABLED=true
 IDENTITY_BROKER_TELEMETRY_EXPORTER_PROTOCOL=grpc
 IDENTITY_BROKER_TELEMETRY_EXPORTER_ENDPOINT=otel-collector:4317
 IDENTITY_BROKER_TELEMETRY_EXPORTER_TIMEOUT=10s
+IDENTITY_BROKER_TELEMETRY_EXPORTER_COMPRESSION=gzip
 IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE=false
 ```
 

@@ -12,6 +12,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	otelslog "go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/contrib/propagators/b3"
+	"go.opentelemetry.io/contrib/propagators/ot"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
@@ -171,9 +173,11 @@ func (b *Builder) Build() (*App, error) {
 	if b.tracerProvider != nil {
 		// Test override: register the provided TracerProvider globally
 		otel.SetTracerProvider(b.tracerProvider)
-		// Set default propagators for test environment
+		// Set default propagators for test environment — must match the production
+		// default set (ottrace, b3multi, baggage) to ensure span connectivity.
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-			propagation.TraceContext{},
+			ot.OT{},
+			b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader)),
 			propagation.Baggage{},
 		))
 		app.ShutdownTelemetry = func(ctx context.Context) error {
@@ -193,10 +197,10 @@ func (b *Builder) Build() (*App, error) {
 		app.ShutdownTelemetry = shutdownTelemetry
 	}
 
-	// T038: Wire OTel slog bridge when telemetry is enabled.
+	// T038: Wire OTel slog bridge when telemetry and log export are both enabled.
 	// Wraps the base logger handler with a multi-handler that fans log records to both
 	// the original handler and the OTel log bridge (otelslog), enabling log-trace correlation.
-	if b.config.Telemetry.Enabled {
+	if b.config.Telemetry.Enabled && b.config.Telemetry.Logs.Enabled {
 		otelHandler := otelslog.NewHandler(b.config.Telemetry.ServiceName,
 			otelslog.WithLoggerProvider(global.GetLoggerProvider()))
 		b.logger = slog.New(telemetry.NewMultiHandler(b.logger.Handler(), otelHandler))
