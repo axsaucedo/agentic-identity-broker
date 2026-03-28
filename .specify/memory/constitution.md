@@ -1,45 +1,44 @@
 <!--
 Sync Impact Report
 ==================
-Version Change: 1.7.1 → 1.8.1
+Version Change: 1.8.1 → 1.9.0
 Rationale:
-  1.7.1 → 1.8.0 (MINOR): materially expanded guidance in two existing principles:
-    - Principle VII: new mandatory Helm chart update requirement for configuration changes
-    - Principle XIII: new mandatory frontend Playwright E2E requirement (tests/e2e/frontend/),
-      new mandatory screenshot capture requirement (tests/e2e/screenshots/), and refined
-      semantic failure definition (detailed expectations must be written AND must fail)
-  1.8.0 → 1.8.1 (PATCH): clarified red phase rules in Principles VIII and XIII:
-    - Pending/skipped tests (XIt, PIt, Skip(), etc.) are forbidden in red phase
-    - Tests MUST NOT contain comments marking them as "in the red phase" — tests turn green
-      naturally without being touched; red-phase annotations create unreliable cleanup debt
+  1.8.1 → 1.9.0 (MINOR): materially expanded implementation guidance across three templates:
+    - spec-template.md: added GitHub-compatible Mermaid diagram section (erDiagram + sequenceDiagram)
+      with explicit rules for GitHub Mermaid compatibility (curly brace usage, newline avoidance)
+    - tasks-template.md: added Phase 0 (optional pre-implementation refactoring) and Phase 2.7
+      (entity boilerplate scaffolding) — dedicated phases that isolate structural/boilerplate
+      changes from business logic for incremental, reviewable PRs
+    - plan-template.md: added Implementation Phase Overview section documenting when to include
+      Phase 0 and Phase 2.7 with review ergonomics rationale
+    - Governance > Task List Requirements updated to document the new optional phases
 
-Modified Principles:
-- Principle VII: Configuration-Driven Design — added Helm chart update rule
-- Principle VIII: Test-Driven Development — added: pending/skipped tests forbidden in red phase;
-  red-phase comments forbidden in test files
-- Principle XIII: End-to-End Acceptance Testing & Spec Traceability — added frontend
-  Playwright E2E + screenshot rules; refined "failing semantically" to require detailed,
-  realistic expectations that actually fail (not placeholder assertions); added: pending/
-  skipped tests and red-phase comments forbidden in E2E test files
+Modified Principles: None
 
-Added Sections: None
+Added Sections:
+  - Governance > Task List Requirements: Phase 0 and Phase 2.7 documented as optional phases
 
 Removed Sections: None
 
 Templates Status:
-- ✅ plan-template.md: UPDATED
-  - Constitution Check: added Helm Chart, Frontend Playwright E2E, Frontend Screenshots checks
-  - Testing Strategy: added Frontend Playwright E2E subsection with screenshot guidance
+- ✅ spec-template.md: UPDATED
+  - Domain Model section: added erDiagram and sequenceDiagram Mermaid examples with
+    GitHub-compatibility rules (curly brace handling, newline avoidance, diagram type selection)
 - ✅ tasks-template.md: UPDATED
-  - Phase 2b: added Helm chart update task (T005d)
-  - Phase 2f: added frontend Playwright sub-tasks (T010g-T010i)
-  - Phase N Compliance: added Helm chart and frontend E2E/screenshot verification tasks
-- ✅ spec-template.md: NO CHANGES NEEDED
-  - E2E testing guidance already aligned with updated principles
+  - Added Phase 0 (Pre-implementation Refactoring): optional, separate PR discipline
+  - Added Phase 2.7 (Entity Boilerplate): optional, empty CRUD scaffolding before business logic
+  - Updated Dependencies section to include Phase 0 and Phase 2.7
+  - Updated Implementation Strategy > MVP First to include new phases
+- ✅ plan-template.md: UPDATED
+  - Added Implementation Phase Overview section with phase table and review ergonomics rationale
+- ✅ constitution.md: UPDATED
+  - Governance > Task List Requirements: documented Phase 0 and Phase 2.7
 
 Follow-up TODOs: None
 
 Previous Version History:
+- 1.8.0 → 1.8.1: Clarified red phase rules in Principles VIII and XIII (PATCH)
+- 1.7.1 → 1.8.0: Added Helm chart requirement (Principle VII) + frontend Playwright E2E (Principle XIII) (MINOR)
 - 1.7.0 → 1.7.1: Clarified red phase requirements in Principle VIII (PATCH)
 - 1.6.0 → 1.7.0: Added Principle XIII (E2E Acceptance Testing) + expanded Principle VIII (MINOR)
 - 1.5.1 → 1.6.0: Added Principle XII (Dependency Injection & Component Wiring) (MINOR)
@@ -676,6 +675,15 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
    - Implementation Phase Verification tasks grouped by principle
    - All verification tasks with explicit principle references
 
+**OPTIONAL PHASES** (include when applicable — omit when not needed):
+- **Phase 0: Pre-implementation Refactoring** — include when the feature requires significant changes
+  to existing code (rename, restructure, extract interfaces, split files). MUST be submitted as a
+  separate PR from feature work. All existing tests MUST pass after refactoring.
+- **Phase 2.7: Entity Boilerplate** — include when the feature introduces new domain entities
+  requiring new ports, storage adapters, and HTTP handlers. Creates empty-but-compiling CRUD
+  scaffolding (handlers returning 501, empty repository methods) as a separate PR before business
+  logic. Enables focused, incremental code review: structural scaffold PR → business logic PRs.
+
 **CUSTOMIZABLE SECTIONS** (adapt to feature):
 - Phase 1: Setup (project-specific initialization)
 - Phase 2.5: Foundational Infrastructure (feature-specific foundation)
@@ -687,4 +695,4 @@ Every feature's `tasks.md` file MUST include these mandatory sections from [task
 - The tasks-template.md uses 🔒 emoji and [MANDATORY] markers to clearly distinguish mandatory from customizable sections
 - Omitting mandatory sections violates this constitution and blocks feature completion
 
-**Version**: 1.8.1 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-03-22
+**Version**: 1.9.0 | **Ratified**: 2025-12-14 | **Last Amended**: 2026-03-27

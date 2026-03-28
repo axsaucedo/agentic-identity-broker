@@ -111,7 +111,63 @@
 <!--
   Per Constitution Principle V (Domain-Driven Design & Glossary Management):
   Domain concepts must be explicitly modeled and documented.
+
+  GITHUB-COMPATIBLE MERMAID RULES:
+  - erDiagram: { } in attribute blocks is correct Mermaid syntax — GitHub renders it fine
+  - classDiagram: { } enclosing class members is correct Mermaid syntax — also fine
+  - flowchart/graph TD: NEVER put { } inside node text — it breaks the parser
+    Use ["label text"] or ("label text") node forms instead
+  - Do NOT put newlines inside node text or relationship labels in any diagram type
+  - Wrap relationship labels that contain colons or special characters in double quotes
 -->
+
+**Domain Entity Diagram** *(replace entities and fields with this feature's actual domain model)*:
+
+```mermaid
+erDiagram
+    EntityOne {
+        uuid id PK
+        string name
+        string attribute
+    }
+    EntityTwo {
+        uuid id PK
+        uuid entityOneId FK
+        string value
+    }
+    EntityOne ||--o{ EntityTwo : "contains"
+```
+
+**Activity / Flow Diagram** *(use for non-trivial workflows, state transitions, or multi-party flows)*:
+
+<!--
+  Choose the right diagram type:
+  - flowchart TD: simple linear flows and decision trees
+    - {Decision text?} creates a diamond node (valid in flowchart — { } is Mermaid node syntax)
+    - ["Action text"] creates a rectangular node
+    - NEVER nest { } inside node text: {bad {nesting}} breaks the parser
+    - Keep decision labels short (no newlines, no colons outside quotes)
+  - sequenceDiagram: interactions between components/actors over time (recommended for HTTP flows)
+  - stateDiagram-v2: state machines and lifecycle transitions
+-->
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Frontend
+    participant Backend
+    participant ExternalService
+
+    User->>Frontend: initiates action
+    Frontend->>Backend: POST /api/resource
+    Backend->>ExternalService: delegates operation
+    ExternalService-->>Backend: result
+    Backend-->>Frontend: 201 Created
+    Frontend-->>User: confirmation
+```
+
+*Replace with the actual flow for this feature. Use `flowchart TD` for simpler decision-tree flows,
+`sequenceDiagram` for HTTP/component interactions, or `stateDiagram-v2` for lifecycle transitions.*
 
 **Entities** (things with unique identity):
 - **[Entity 1]**: [Brief description, key attributes, lifecycle, invariants]
