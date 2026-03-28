@@ -19,6 +19,9 @@
 - Q: Where are in-flight authorization codes stored? → A: Database-persisted in an `authorization_codes` table with TTL; survives restarts and supports multi-replica deployments.
 - Q: What is the JWKS endpoint path? → A: `/oauth2/jwks.json` on the end-user server, consistent with existing `/oauth2/` routing.
 - Q: When are `redirect_uris` enforced on agents? → A: At authorization request time only — agents may be created/updated with an empty `redirect_uris` list; the authorization endpoint rejects the request if no redirect URIs are registered for the agent.
+- Q: Where should the CEL token-claims expression be configured? → A: Global config under `oauth2_authorization_server.token_claims_expression` — a single CEL expression in the `issue_token` mode config block, applied to all locally-issued tokens.
+- Q: What variables should the CEL token-claims expression have access to? → A: Agent entity (`agent.id`, `agent.client_id`, `agent.display_name`, `agent.metadata`), principal as an object (`principal.id` always present, `principal.email` and `principal.display_name` optional), and request context (`request.grant_type`, `request.scopes`).
+- Q: Should CEL expression runtime failure block token issuance or fall back to base claims? → A: Fail closed — token issuance is rejected with an error; no token is returned. Consistent with Security-First constitution principle.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -104,7 +107,7 @@ An operator needs to rotate signing keys to maintain security hygiene without di
 
 **Acceptance Scenarios**:
 
-1. **Given** the broker is in `issue_token` mode, **When** an operator sends a POST to `/oauth2-server/signing-keys` with private key material, **Then** the new key is stored encrypted, assigned a unique `kid`, marked as current, and returned with its `kid`
+1. **Given** the broker is in `issue_token` mode, **When** an operator sends a POST to `/oauth2-server/signing-keys` with an algorithm preference (default ES256), **Then** the broker generates the key pair server-side, stores the private material encrypted, assigns a unique `kid`, marks the key as current, and returns the `kid` with metadata
 2. **Given** multiple signing keys exist, **When** an operator calls GET `/oauth2-server/signing-keys`, **Then** the response lists all active keys with `kid`, algorithm, `created_at`, and `is_current`; no private key material is returned
 3. **Given** a non-current signing key, **When** an operator sends PUT `/oauth2-server/signing-keys/{kid}/current`, **Then** the selected key becomes current and new tokens are signed with it
 4. **Given** a non-current signing key with no unexpired tokens depending on it, **When** an operator sends DELETE `/oauth2-server/signing-keys/{kid}`, **Then** the key is removed from JWKS and tokens signed with it immediately fail validation
@@ -140,6 +143,7 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 - What happens when no signing key exists in the database at startup in `issue_token` mode? The broker auto-generates an initial signing key, logs the event, and starts normally.
 - What happens when the broker is in `proxy` mode and a client attempts to authenticate with broker-issued credentials? The request is rejected; proxy mode forwards all token requests upstream.
 - What happens when an authorization code flow is attempted for an agent with no registered `redirect_uris`? The authorization endpoint returns `invalid_request` — no code is issued and no redirect is performed.
+- What happens when the `token_claims_expression` fails at runtime (e.g., references a missing `principal.email`)? Token issuance is rejected (fail closed); the broker returns a `server_error` OAuth2 error response and logs the evaluation failure with full context. No token with partial claims is ever issued.
 
 ## Requirements *(mandatory)*
 
@@ -153,12 +157,13 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 - **FR-006**: System MUST bind each broker-issued client ID uniquely to exactly one agent; a single agent has at most one active credential set at a time
 - **FR-006b**: The Admin API for agent create/update MUST accept an optional `redirect_uris` field (list of HTTPS URIs); agents may be created or updated with an empty list regardless of the broker's operating mode
 - **FR-006c**: The authorization endpoint MUST reject any `redirect_uri` in an authorization request that is not an exact match of one of the agent's registered redirect URIs, or if the agent has no registered redirect URIs; no redirect is performed on rejection
+- **FR-006d**: The Admin API for agent create/update MUST accept an optional `allowed_scopes` field (list of strings); when non-empty, it defines the maximum set of scopes the agent may request in token or authorization requests; when empty, the agent may request any scope; the token endpoint MUST return `invalid_scope` if requested scopes are not a subset of the agent's `allowed_scopes`
 - **FR-007**: In `issue_token` mode, the token endpoint MUST accept `grant_type=client_credentials` requests authenticated with broker-issued credentials and return locally-signed access tokens
 - **FR-007b**: In `issue_token` mode, the authorization endpoint MUST accept `grant_type=authorization_code` flow, issuing authorization codes itself by trusting the identity established by the configured preauth method (X-Remote-User header or JWT preauth) — no upstream OAuth2 redirect is performed
 - **FR-007c**: In `issue_token` mode, the authorization endpoint MUST validate the `client_id` against registered agents and enforce existing consent checks before issuing an authorization code
 - **FR-007d**: Authorization codes issued by the broker MUST expire after 60 seconds
 - **FR-007e**: PKCE (RFC 7636) MUST be required for all authorization code flows; the broker MUST reject authorization requests that do not include a `code_challenge` and `code_challenge_method`; only `S256` is accepted
-- **FR-008**: In `issue_token` mode, issued access tokens MUST include the agent's broker-internal ID as a claim
+- **FR-008**: In `issue_token` mode, issued access tokens MUST include the agent's broker-internal ID as both the `sub` claim and an explicit `agent_id` claim
 - **FR-009**: In `issue_token` mode, the JWKS endpoint MUST expose all currently active public signing keys, each identified by a unique `kid` claim
 - **FR-009b**: The broker MUST always sign new tokens with the current (latest) key; previously active keys remain in the JWKS until explicitly removed or expired
 - **FR-009c**: An Admin API endpoint MUST allow operators to add a new signing key (making it current) and remove an old key; removing a key from JWKS immediately stops validating tokens signed with it
@@ -168,6 +173,11 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 - **FR-010**: In `issue_token` mode, if no signing key exists in the database at startup, the broker MUST automatically generate an initial signing key, store it encrypted, mark it as current, and log that auto-generation occurred; this is not an error condition
 - **FR-011**: Credential rotation MUST invalidate the previous client secret immediately; there MUST be no grace period where both old and new secrets are valid simultaneously
 - **FR-012**: System MUST emit structured audit log entries for: credential generation, credential rotation, and every token issuance event
+- **FR-013**: In `issue_token` mode, the broker MUST support an optional `token_claims_expression` (CEL expression) that is evaluated at token issuance time to produce additional custom claims merged into locally-issued access tokens; the expression is configured globally under `oauth2_authorization_server` and applies to all agents
+- **FR-013b**: The `token_claims_expression` MUST be compiled and validated at startup; if the expression is syntactically invalid or type-incorrect, the broker MUST fail to start with a clear error message
+- **FR-013c**: The CEL expression MUST return a `map<string, dyn>`; claims returned by the expression are merged into the token payload alongside the base claims (`iss`, `sub`, `iat`, `exp`, `jti`, `kid`); expression-returned claims MUST NOT override base claims
+- **FR-013d**: The CEL expression evaluation context MUST provide the following variables: `agent` (object: `id`, `client_id`, `display_name`, `metadata`), `principal` (object: `id` always present, `email` and `display_name` optional/may be empty), and `request` (object: `grant_type`, `scopes`)
+- **FR-013e**: If the `token_claims_expression` fails at runtime (evaluation error, unexpected return type, timeout), token issuance MUST be rejected — no token is returned; the broker MUST log the error with full context (agent ID, principal, expression error details)
 
 ### Domain Model
 
@@ -181,6 +191,7 @@ erDiagram
         string display_name
         string description
         string[] redirect_uris
+        string[] allowed_scopes
     }
     BrokerClientCredential {
         uuid id PK
@@ -254,6 +265,7 @@ sequenceDiagram
 - **`oauth2_authorization_server.mode`**: String, operating mode: `proxy` (default, existing behavior) or `issue_token` (local minting). Default: `proxy`
 - **`oauth2_authorization_server.issuer_uri`**: String, the broker's own issuer URI used in locally-minted tokens and the discovery document (required when `mode: issue_token`)
 - **`oauth2_authorization_server.token_ttl`**: Duration, lifetime of locally-issued access tokens. Default: 1 hour
+- **`oauth2_authorization_server.token_claims_expression`**: String, a CEL expression evaluated at token issuance time to produce custom claims for locally-issued access tokens. The expression receives `agent` (object: `id`, `client_id`, `display_name`, `metadata`), `principal` (object: `id` always present, `email` and `display_name` optional), and `request` (object: `grant_type`, `scopes`). MUST return a `map<string, dyn>` of additional claims to merge into the token. Default: `{}` (no additional claims). Only applicable in `issue_token` mode. Compiled and validated at startup.
 
 Note: signing key material is NOT configured via env var or config file — keys are provisioned and managed exclusively via the Admin API and stored in the database.
 
@@ -263,6 +275,8 @@ oauth2_authorization_server:
   mode: issue_token
   issuer_uri: https://broker.example.com
   token_ttl: 1h
+  token_claims_expression: |
+    {"team": agent.metadata.team, "environment": "production"}
 ```
 
 **Configuration Location**: Will be added to `examples/config/oauth2-server-mode.yaml` and referenced in `examples/config/README.md`
@@ -289,7 +303,7 @@ oauth2_authorization_server:
 - **DB-003**: Each migration MUST be atomic (fully apply or fully rollback on failure)
 - **DB-004**: All migrations MUST be tested in PostgreSQL integration tests (apply, rollback, repeat without data loss)
 - **DB-005**: The `BrokerClientCredentialRepository` and `SigningKeyRepository` ports MUST each have both in-memory and PostgreSQL adapter implementations
-- **DB-006**: A new migration adds a `redirect_uris` column (array of strings) to the existing `agents` table; existing rows default to an empty array
+- **DB-006**: A new migration adds `redirect_uris` (array of strings) and `allowed_scopes` (array of strings) columns to the existing `agents` table; existing rows default to empty arrays
 - **DB-007**: A new migration adds an `authorization_codes` table: `id` (UUID PK), `code` (string, unique, hashed), `agent_id` (UUID FK), `principal` (string), `redirect_uri` (string), `code_challenge` (string), `expires_at` (timestamp), `used_at` (timestamp nullable); records are deleted after exchange or expiry
 - **DB-008**: The `AuthorizationCodeRepository` port MUST have both in-memory and PostgreSQL adapter implementations
 
@@ -299,7 +313,7 @@ oauth2_authorization_server:
 - **SR-002**: Client secrets MUST be stored only as a strong one-way hash (e.g., Argon2id or bcrypt); plaintext MUST be discarded after hashing
 - **SR-003**: Token signing MUST use asymmetric keys (RS256 or ES256); symmetric signing is not permitted
 - **SR-004**: Signing key private material MUST be encrypted at rest in the database using the existing encryption vault (consistent with the project's encryption pattern for secrets); raw private key bytes MUST never be stored in plaintext
-- **SR-005**: Locally-issued tokens MUST include `iss`, `sub` (agent broker ID), `iat`, `exp`, `jti`, and `kid` claims at minimum
+- **SR-005**: Locally-issued tokens MUST include `iss`, `sub` (agent broker ID), `iat`, `exp`, and `jti` claims in the payload at minimum; the JWT header MUST include `kid` identifying the signing key used
 - **SR-005b**: PKCE with `S256` method MUST be enforced for all authorization code flows; `plain` method and absent `code_challenge` MUST be rejected
 - **SR-005c**: Authorization codes MUST be single-use; replay MUST be rejected with an `invalid_grant` error
 - **SR-006**: The broker MUST fail closed: if a signing key exists in the database but its encrypted material cannot be decrypted or parsed, startup MUST fail with a clear error (corrupt key is not auto-replaced); absence of any key triggers auto-generation per FR-010, which is not an error condition
