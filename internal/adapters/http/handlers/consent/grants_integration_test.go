@@ -216,14 +216,11 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		assert.Len(t, response[0].DelegatedOAuth2Tokens, 2)
 	})
 
-	// Test 4: Revoke grant (empty tokens)
+	// Test 4: Revoke grant via DELETE /grants
 	t.Run("revoke_grant", func(t *testing.T) {
-		reqBody := GrantRequest{
-			DelegatedOAuth2Tokens: []DelegatedTokenRequest{}, // Empty = revoke
-		}
+		revokeHandler := NewRevokeGrantHandler(consentService, nil)
 
-		jsonBody, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", bytes.NewBuffer(jsonBody))
+		req := httptest.NewRequest("DELETE", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
 		//nolint:staticcheck // Using string key for test simplicity
 		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
 		rctx := chi.NewRouteContext()
@@ -231,7 +228,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
 
 		rr := httptest.NewRecorder()
-		handler.CreateGrant(rr, req)
+		revokeHandler.RevokeGrant(rr, req)
 
 		// Verify response
 		assert.Equal(t, http.StatusNoContent, rr.Code)
@@ -260,6 +257,106 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		require.True(t, ok, "expected 'data' field in response")
 
 		assert.Empty(t, response) // No grants after revocation
+	})
+}
+
+// TestGrantsIntegration_OptionalOnlyAgent verifies that agents with only optional service
+// requirements accept approval with no delegated tokens. Empty tokens create a grant with
+// no delegations (201 Created) rather than triggering a revoke.
+func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
+	agentRepo := memory.NewAgentRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
+	ctx := context.Background()
+
+	// Agent with only optional service requirements
+	optionalAgentID := id.NewAgentID()
+	optionalServiceID := id.NewServiceID()
+
+	optionalAgent := &storage.Agent{
+		ID:          optionalAgentID,
+		ClientID:    "client-optional",
+		DisplayName: "Optional-Only Agent",
+		Description: "Agent with only optional service requirements",
+		ServiceRequirements: []storage.ServiceRequirement{
+			{
+				ServiceID:       optionalServiceID,
+				RequirementType: storage.RequirementTypeOptional,
+				RequiredScopes:  []string{"read"},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err := agentRepo.Create(ctx, optionalAgent)
+	require.NoError(t, err)
+
+	optionalService := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          optionalServiceID,
+		DisplayName: "Optional Service",
+		ClientID:    "opt-client",
+		Secret:      model.NewPlaintextSecret("opt-secret"),
+		IssuerURI:   "https://optional.example.com",
+		Endpoints: model.OAuth2Endpoints{
+			TokenEndpoint:     "https://optional.example.com/token",
+			AuthorizeEndpoint: "https://optional.example.com/auth",
+		},
+		Scopes: []model.OAuthScope{
+			{ScopeValue: "read", Description: "Read access"},
+		},
+	}
+	err = providerService.Create(ctx, optionalService)
+	require.NoError(t, err)
+
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
+	handler := NewGrantsHandler(consentService, nil)
+
+	// Approval with no selected services creates a grant with empty delegations (201).
+	t.Run("approve_with_no_services_optional_only_agent", func(t *testing.T) {
+		reqBody := GrantRequest{
+			DelegatedOAuth2Tokens: []DelegatedTokenRequest{},
+		}
+
+		jsonBody, _ := json.Marshal(reqBody)
+		req := httptest.NewRequest("POST", "/api/consent/agent/"+optionalAgentID.String()+"/grants", bytes.NewBuffer(jsonBody))
+		ctx := principal.WithPrincipal(req.Context(), "bob@example.com")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", optionalAgentID.String())
+		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+
+		rr := httptest.NewRecorder()
+		handler.CreateGrant(rr, req)
+
+		assert.Equal(t, http.StatusCreated, rr.Code)
+		var resp map[string]interface{}
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+		data := resp["data"].(map[string]interface{})
+		assert.Equal(t, optionalAgentID.String(), data["agent_id"])
+		assert.Empty(t, data["delegated_oauth2_tokens"])
+	})
+
+	// Empty tokens with redirect_uri: creates grant and honours the redirect.
+	t.Run("empty_tokens_with_redirect_uri_creates_grant_and_redirects", func(t *testing.T) {
+		reqBody := GrantRequest{
+			DelegatedOAuth2Tokens: []DelegatedTokenRequest{},
+		}
+
+		jsonBody, _ := json.Marshal(reqBody)
+		req := httptest.NewRequest("POST", "/api/consent/agent/"+optionalAgentID.String()+"/grants?redirect_uri=%2Fcallback", bytes.NewBuffer(jsonBody))
+		ctx := principal.WithPrincipal(req.Context(), "bob@example.com")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", optionalAgentID.String())
+		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+
+		rr := httptest.NewRecorder()
+		handler.CreateGrant(rr, req)
+
+		assert.Equal(t, http.StatusCreated, rr.Code)
+		var resp map[string]interface{}
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+		assert.Equal(t, "/callback", resp["redirect_url"])
 	})
 }
 

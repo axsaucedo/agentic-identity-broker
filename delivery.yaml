@@ -8,6 +8,7 @@ pipeline:
     type: script
     vm_config:
       type: linux
+      size: large
       image: cdp-runtime/go-1.25
     cache:
       paths:
@@ -35,7 +36,7 @@ pipeline:
           just check
       - desc: "Run all tests (unit + integration)"
         cmd: |
-          cdp-wrap-cmd "just test-all-junit" "cdp-tool upload-test-results -t junit $(pwd)/test-results/all-tests-junit.xml"
+          GINKGO_PROCS=8 cdp-wrap-cmd "just test-all-junit" "cdp-tool upload-test-results -t junit $(pwd)/test-results/all-tests-junit.xml"
       - desc: "Run artifacts build test"
         cmd: |
           just build-all

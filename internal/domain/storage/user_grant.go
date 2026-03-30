@@ -46,11 +46,6 @@ func (g *UserGrant) Validate() error {
 		return errors.New("valid_until must be in the future")
 	}
 
-	// At least one delegation required
-	if len(g.DelegatedOAuth2Tokens) == 0 {
-		return errors.New("at least one delegated service is required")
-	}
-
 	// Validate each delegation
 	for i, token := range g.DelegatedOAuth2Tokens {
 		if token.ThirdpartyOAuth2ServiceID.IsZero() {
@@ -84,10 +79,6 @@ func (g *UserGrant) ValidateForCreate() error {
 
 	if g.ValidUntil != nil && g.ValidUntil.Before(time.Now()) {
 		return errors.New("valid_until must be in the future")
-	}
-
-	if len(g.DelegatedOAuth2Tokens) == 0 {
-		return errors.New("at least one delegated service is required")
 	}
 
 	for i, token := range g.DelegatedOAuth2Tokens {
