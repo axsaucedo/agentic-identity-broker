@@ -15,9 +15,12 @@ This package defines per-entity ID types that the compiler enforces. Without typ
 | Type | Entity | Database Column |
 |---|---|---|
 | `AgentID` | AI agent | `agents.id` |
-| `ServiceID` | Third-party OAuth2 service | `thirdparty_oauth2_services.id`, `service_requirements.service_id`, `delegated_tokens.service_id`, `user_sessions.service_id` |
+| `AuthorizationCodeID` | OAuth2 authorization code | `authorization_codes.id` |
+| `CredentialID` | Broker client credential | `broker_client_credentials.id` |
 | `GrantID` | User grant | `user_grants.id` |
+| `ServiceID` | Third-party OAuth2 service | `thirdparty_oauth2_services.id`, `service_requirements.service_id`, `delegated_tokens.service_id`, `user_sessions.service_id` |
 | `SessionID` | OAuth2 user session | `user_sessions.id` |
+| `SigningKeyID` | JWT signing key | `signing_keys.id` |
 | `UserID` | User account | `users.id` |
 
 Each UUID type exposes:
@@ -42,8 +45,10 @@ func (id *XxxID) UnmarshalText(b []byte) error             // for encoding.TextU
 
 | Type | Purpose | Constraint |
 |---|---|---|
+| `BrokerClientID` | Broker-issued OAuth2 client ID | `broker_` prefix + 22 chars |
 | `ClientID` | OAuth2 client identifier | `VARCHAR(255)`, not a UUID |
 | `ExternalID` | Optional external governance ID | `VARCHAR(255)`, not a UUID |
+| `KeyID` | JWT Key ID (`kid` claim) | UUID format |
 | `Principal` | Authenticated user identity (email, subject) | From `X-Remote-User` header |
 
 String types expose only `String()`, `IsZero()`, and a `New*()` constructor.

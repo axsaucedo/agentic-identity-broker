@@ -17,6 +17,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -31,7 +32,9 @@ type MultiAgentVerifier interface {
 }
 
 // OAuth2TokenHandler handles OAuth2 token endpoint requests
-// Routes between token exchange (RFC 8693) and standard OAuth2 token requests
+// Routes between token exchange (RFC 8693) and standard OAuth2 token requests.
+// When TokenMinting is set (issue_token mode), client_credentials and authorization_code
+// grants are handled locally instead of being proxied to upstream.
 type OAuth2TokenHandler struct {
 	UpstreamTokenURL   string
 	Client             *http.Client
@@ -39,6 +42,7 @@ type OAuth2TokenHandler struct {
 	Logger             *slog.Logger                        // For structured logging
 	MultiAgentVerifier MultiAgentVerifier                  // nil = feature disabled; non-nil = verify agent ID claim
 	AgentRepository    ports.AgentRepository               // resolves broker agent UUID → upstream client_id
+	TokenMinting       ports.TokenMintingStrategy          // nil = proxy mode; non-nil = local minting (issue_token mode)
 }
 
 // ServeHTTP implements http.Handler for the token endpoint
@@ -92,6 +96,13 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.Logger.Info("Routing to token exchange handler")
 		}
 		h.handleTokenExchange(w, r, formData)
+		return
+	}
+
+	// When TokenMinting strategy is set (issue_token mode), handle
+	// client_credentials and authorization_code grants locally.
+	if h.TokenMinting != nil {
+		h.handleLocalMinting(w, r, grantType, formData)
 		return
 	}
 
@@ -480,5 +491,131 @@ func NewOAuth2TokenHandler(upstreamTokenURL string, client *http.Client) *OAuth2
 	return &OAuth2TokenHandler{
 		UpstreamTokenURL: upstreamTokenURL,
 		Client:           client,
+	}
+}
+
+// handleLocalMinting dispatches client_credentials and authorization_code grants
+// to the local TokenMintingStrategy (issue_token mode).
+func (h *OAuth2TokenHandler) handleLocalMinting(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values) {
+	switch grantType {
+	case "client_credentials":
+		clientID := formData.Get("client_id")
+		clientSecret := formData.Get("client_secret")
+		scope := formData.Get("scope")
+
+		if clientID == "" || clientSecret == "" {
+			h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required")
+			return
+		}
+
+		resp, err := h.TokenMinting.HandleClientCredentials(r.Context(), clientID, clientSecret, scope)
+		if err != nil {
+			if h.Logger != nil {
+				h.Logger.Error("client_credentials grant failed", "error", err, "client_id", clientID)
+			}
+			h.handleMintingError(w, err, "client_credentials", clientID)
+			return
+		}
+
+		if h.Logger != nil {
+			h.Logger.Info("TokenIssued",
+				"event", "TokenIssued",
+				"grant_type", "client_credentials",
+				"client_id", clientID,
+				"scope", scope,
+			)
+		}
+
+		h.writeTokenResponse(w, resp)
+
+	case "authorization_code":
+		clientID := formData.Get("client_id")
+		clientSecret := formData.Get("client_secret")
+		code := formData.Get("code")
+		redirectURI := formData.Get("redirect_uri")
+		codeVerifier := formData.Get("code_verifier")
+
+		if clientID == "" || clientSecret == "" {
+			h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required")
+			return
+		}
+		if code == "" {
+			h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "code is required")
+			return
+		}
+
+		resp, err := h.TokenMinting.HandleAuthorizationCodeExchange(r.Context(), clientID, clientSecret, code, redirectURI, codeVerifier)
+		if err != nil {
+			if h.Logger != nil {
+				h.Logger.Error("authorization_code exchange failed", "error", err, "client_id", clientID)
+			}
+			h.handleMintingError(w, err, "authorization_code", clientID)
+			return
+		}
+
+		if h.Logger != nil {
+			h.Logger.Info("TokenIssued",
+				"event", "TokenIssued",
+				"grant_type", "authorization_code",
+				"client_id", clientID,
+			)
+		}
+
+		h.writeTokenResponse(w, resp)
+
+	default:
+		h.writeOAuth2Error(w, http.StatusBadRequest, "unsupported_grant_type",
+			"grant_type must be 'client_credentials' or 'authorization_code'")
+	}
+}
+
+// handleMintingError classifies errors from the token minting strategy into OAuth2 error responses.
+func (h *OAuth2TokenHandler) handleMintingError(w http.ResponseWriter, err error, grantType, clientID string) {
+	var errorCode string
+	switch {
+	case errors.Is(err, oauth2server.ErrInvalidClient):
+		errorCode = "invalid_client"
+		h.writeOAuth2Error(w, http.StatusUnauthorized, errorCode, "client authentication failed")
+	case errors.Is(err, oauth2server.ErrInvalidScope):
+		errorCode = "invalid_scope"
+		h.writeOAuth2Error(w, http.StatusBadRequest, errorCode, err.Error())
+	case errors.Is(err, oauth2server.ErrInvalidGrant):
+		errorCode = "invalid_grant"
+		h.writeOAuth2Error(w, http.StatusBadRequest, errorCode, err.Error())
+	default:
+		errorCode = "server_error"
+		h.writeOAuth2Error(w, http.StatusInternalServerError, errorCode, "internal error")
+	}
+
+	if h.Logger != nil {
+		h.Logger.Warn("TokenRequestFailed",
+			"event", "TokenRequestFailed",
+			"grant_type", grantType,
+			"error_code", errorCode,
+			"client_id", clientID,
+		)
+	}
+}
+
+// writeTokenResponse writes a successful OAuth2 token response from the minting strategy.
+func (h *OAuth2TokenHandler) writeTokenResponse(w http.ResponseWriter, resp *ports.TokenResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	tokenResp := map[string]interface{}{
+		"access_token": resp.AccessToken,
+		"token_type":   resp.TokenType,
+		"expires_in":   resp.ExpiresIn,
+	}
+	if resp.Scope != "" {
+		tokenResp["scope"] = resp.Scope
+	}
+
+	if err := json.NewEncoder(w).Encode(tokenResp); err != nil {
+		if h.Logger != nil {
+			h.Logger.Error("failed to encode token response", "error", err)
+		}
 	}
 }

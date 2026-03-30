@@ -436,8 +436,16 @@ broker:
       - refresh_token
     # -- Upstream request timeout (seconds)
     upstreamTimeoutSeconds: 10
-    # -- Operation mode (proxy or authorization_server)
+    # -- Operation mode (proxy or issue_token)
     mode: proxy
+    # -- Issuer URI: Required in issue_token mode. Issuer identifier for issued tokens.
+    # This value appears in the "iss" claim and /.well-known/oauth-authorization-server.
+    issuerUri: ""
+    # -- Token TTL: Access token validity period. Default: "1h"
+    tokenTtl: "1h"
+    # -- Token claims CEL expression: Evaluated at token issuance to produce custom JWT claims.
+    # Empty string means no custom claims.
+    tokenClaimsExpression: ""
     # Multi-agent client sharing (Feature 021)
     # When enabled, multiple agents may share the same upstream OAuth2 client_id.
     # Requires both agentIdParamName and agentIdClaimName when enabled.

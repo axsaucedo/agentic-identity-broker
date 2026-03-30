@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // init disables Ryuk for Podman compatibility
@@ -89,28 +91,22 @@ func setupTestContainer(t *testing.T) (testcontainers.Container, string, func())
 	return container, connStr, cleanup
 }
 
-// applyMigrations applies database migrations to the test container
+// applyMigrations applies all database migrations (001-012) to the test container.
+// Files are copied into the container and executed via `psql -f` to avoid
+// any issues with passing multi-statement SQL as a command-line argument.
 func applyMigrations(t *testing.T, container testcontainers.Container) {
+	t.Helper()
+	applyMigrationsUpTo(t, container, 12)
+}
+
+// applyMigrationsUpTo applies migrations sequentially from 001 up to and including
+// the migration with the given version number.
+func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo int) {
 	t.Helper()
 
 	ctx := context.Background()
 
-	// First, create schema_migrations table
-	schemaSQL := `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version BIGINT PRIMARY KEY,
-			dirty BOOLEAN NOT NULL DEFAULT FALSE
-		);
-	`
-	exitCode, _, err := container.Exec(ctx, []string{
-		"psql",
-		"-U", "testuser",
-		"-d", "testdb",
-		"-c", schemaSQL,
-	})
-	if err != nil || exitCode != 0 {
-		t.Logf("Warning: Failed to create schema_migrations table (exit %d): %v", exitCode, err)
-	}
+	createSchemaMigrationsTable(t, ctx, container)
 
 	// Find project root (where migrations folder is)
 	projectRoot, err := findProjectRoot()
@@ -118,7 +114,6 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 
 	migrationsDir := filepath.Join(projectRoot, "migrations")
 
-	// Read and apply each migration file
 	migrations := []struct {
 		file    string
 		version int64
@@ -130,37 +125,64 @@ func applyMigrations(t *testing.T, container testcontainers.Container) {
 		{"005_add_agent_service_requirements.up.sql", 5},
 		{"006_add_service_protected_resources.up.sql", 6},
 		{"007_add_oauth2_flavor.up.sql", 7},
+		{"008_drop_agent_client_id_unique.up.sql", 8},
+		{"009_add_agent_redirect_uris.up.sql", 9},
+		{"010_create_broker_client_credentials.up.sql", 10},
+		{"011_create_signing_keys.up.sql", 11},
+		{"012_create_authorization_codes.up.sql", 12},
 	}
 
 	for _, migration := range migrations {
-		migrationPath := filepath.Join(migrationsDir, migration.file)
-		data, err := os.ReadFile(migrationPath)
-		if err != nil {
-			t.Logf("Warning: Could not read migration %s: %v", migration.file, err)
-			continue
+		if int(migration.version) > upTo {
+			break
 		}
+		applyOneMigration(t, ctx, container, migrationsDir, migration.file, migration.version)
+	}
+}
 
-		// Execute migration SQL directly in container
-		exitCode, _, err := container.Exec(ctx, []string{
-			"psql",
-			"-U", "testuser",
-			"-d", "testdb",
-			"-c", string(data),
-		})
+// createSchemaMigrationsTable creates the schema_migrations tracking table in the container.
+func createSchemaMigrationsTable(t *testing.T, ctx context.Context, container testcontainers.Container) {
+	t.Helper()
+	schemaSQL := []byte(`CREATE TABLE IF NOT EXISTS schema_migrations (version BIGINT PRIMARY KEY, dirty BOOLEAN NOT NULL DEFAULT FALSE);`)
+	if err := container.CopyToContainer(ctx, schemaSQL, "/tmp/schema_migrations.sql", 0644); err != nil {
+		t.Logf("Warning: Failed to copy schema_migrations.sql: %v", err)
+		return
+	}
+	exitCode, _, err := container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", "testdb", "-f", "/tmp/schema_migrations.sql"})
+	if err != nil || exitCode != 0 {
+		t.Logf("Warning: Failed to create schema_migrations table (exit %d): %v", exitCode, err)
+	}
+}
 
-		if err != nil || exitCode != 0 {
-			t.Logf("Warning: Migration %s failed (exit %d): %v", migration.file, exitCode, err)
-			continue
-		}
+// applyOneMigration copies a migration file into the container and runs it via psql -f.
+func applyOneMigration(t *testing.T, ctx context.Context, container testcontainers.Container, migrationsDir, file string, version int64) {
+	t.Helper()
 
-		// Record migration version
-		versionSQL := fmt.Sprintf("INSERT INTO schema_migrations (version, dirty) VALUES (%d, FALSE) ON CONFLICT DO NOTHING;", migration.version)
-		container.Exec(ctx, []string{
-			"psql",
-			"-U", "testuser",
-			"-d", "testdb",
-			"-c", versionSQL,
-		})
+	data, err := os.ReadFile(filepath.Join(migrationsDir, file))
+	if err != nil {
+		t.Logf("Warning: Could not read migration %s: %v", file, err)
+		return
+	}
+
+	// Copy the SQL file into the container so psql can read it with -f (avoids
+	// any quoting or argument-length issues with psql -c "<multiline SQL>").
+	containerPath := fmt.Sprintf("/tmp/migration_%03d.sql", version)
+	if err := container.CopyToContainer(ctx, data, containerPath, 0644); err != nil {
+		t.Logf("Warning: Could not copy migration %s to container: %v", file, err)
+		return
+	}
+
+	exitCode, _, err := container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", "testdb", "-f", containerPath})
+	if err != nil || exitCode != 0 {
+		t.Logf("Warning: Migration %s failed (exit %d): %v", file, exitCode, err)
+		return
+	}
+
+	// Record migration version in schema_migrations
+	versionSQL := []byte(fmt.Sprintf("INSERT INTO schema_migrations (version, dirty) VALUES (%d, FALSE) ON CONFLICT DO NOTHING;", version))
+	versionPath := fmt.Sprintf("/tmp/migration_%03d_version.sql", version)
+	if err := container.CopyToContainer(ctx, versionSQL, versionPath, 0644); err == nil {
+		container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", "testdb", "-f", versionPath}) //nolint:errcheck
 	}
 }
 
@@ -181,5 +203,19 @@ func findProjectRoot() (string, error) {
 			return "", fmt.Errorf("could not find project root")
 		}
 		dir = parent
+	}
+}
+
+// testStorageConfig creates a StorageConfig for integration testing with the given connection string.
+func testStorageConfig(connString string) *ports.StorageConfig {
+	return &ports.StorageConfig{
+		Backend: "postgres",
+		Postgres: ports.PostgresConfig{
+			ConnectionURL: connString,
+		},
+		Timeouts: ports.StorageTimeouts{
+			Read:  5 * time.Second,
+			Write: 10 * time.Second,
+		},
 	}
 }

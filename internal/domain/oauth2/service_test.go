@@ -306,7 +306,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 				ResponseType: "code",
 			},
 			principal:  "user@example.com",
-			wantAction: "redirect_to_upstream",
+			wantAction: "proceed",
 		},
 		{
 			name: "expired grant redirects to consent UI",
@@ -416,7 +416,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 					}, nil
 				}
 			},
-			wantAction: "redirect_to_upstream",
+			wantAction: "proceed",
 		},
 		{
 			name: "active grant with expired session redirects to consent",
@@ -441,7 +441,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 				// Absence of a session is not an expiry; mandatory-requirements
 				// validation (Step 5) handles that case separately.
 			},
-			wantAction: "redirect_to_upstream",
+			wantAction: "proceed",
 		},
 	}
 
@@ -512,7 +512,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	decision, err := svc.HandleAuthorization(context.Background(), authReq, "user@example.com")
 
 	require.NoError(t, err)
-	require.Equal(t, "redirect_to_upstream", decision.Action)
+	require.Equal(t, "proceed", decision.Action)
 
 	// Verify the redirect URL contains all parameters
 	redirectURL := decision.RedirectURL
@@ -567,7 +567,7 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			setupAgent:    setupAgent,
 			setupGrant:    setupActiveGrant,
 			clientID:      agentID.String(),
-			wantAction:    "redirect_to_upstream",
+			wantAction:    "proceed",
 			wantErrorCode: "",
 		},
 		{
@@ -664,7 +664,7 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
 
 	require.NoError(t, err)
-	assert.Equal(t, "redirect_to_upstream", decision.Action)
+	assert.Equal(t, "proceed", decision.Action)
 
 	// The upstream URL MUST use the agent's upstream ClientID, NOT the internal UUID
 	assert.Contains(t, decision.RedirectURL, "client_id=upstream-client-abc",

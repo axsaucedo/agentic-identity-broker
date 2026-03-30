@@ -46,6 +46,14 @@ type OAuth2Config struct {
 	// MultiAgentClient holds optional multi-agent client sharing configuration.
 	// When Enabled, multiple agents may share a single upstream OAuth2 client ID.
 	MultiAgentClient ports.MultiAgentClientConfig
+
+	// Mode indicates whether the broker operates in "proxy" or "issue_token" mode.
+	// In issue_token mode, JWKS and code_challenge_methods are included in metadata.
+	Mode string
+
+	// IssuerURI is the issuer identifier for issue_token mode.
+	// When non-empty, overrides PublicURL as the issuer in metadata.
+	IssuerURI string
 }
 
 // Service implements the OAuth2Service port
@@ -86,7 +94,7 @@ func NewServiceWithSessions(
 
 // HandleAuthorization processes an OAuth2 authorization request
 // Returns an AuthorizationDecision with either:
-// - redirect_to_upstream: Valid client with active grant
+// - proceed: Valid client with active grant — handler decides next step
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
 //
@@ -209,10 +217,12 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}
 	}
 
-	// Active grant exists and all mandatory requirements satisfied - redirect to upstream OAuth2 server
+	// Active grant exists and all mandatory requirements satisfied — proceed.
+	// In proxy mode, the handler redirects to the upstream OAuth2 server.
+	// In issue_token mode, the handler issues a local authorization code.
 	upstreamURL := s.buildUpstreamAuthorizeURL(req, agent)
 	return &ports.AuthorizationDecision{
-		Action:      "redirect_to_upstream",
+		Action:      "proceed",
 		RedirectURL: upstreamURL,
 	}, nil
 }
@@ -263,15 +273,28 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 	return u.String()
 }
 
-// GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker
+// GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.
+// In issue_token mode, includes JWKS URI and code_challenge_methods.
 func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
+	issuer := s.config.PublicURL
+	if s.config.IssuerURI != "" {
+		issuer = s.config.IssuerURI
+	}
+
 	metadata := &ports.MetadataResponse{
-		Issuer:                            s.config.PublicURL,
-		AuthorizationEndpoint:             fmt.Sprintf("%s/oauth2/authorize", s.config.PublicURL),
-		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", s.config.PublicURL),
+		Issuer:                            issuer,
+		AuthorizationEndpoint:             fmt.Sprintf("%s/oauth2/authorize", issuer),
+		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", issuer),
 		ResponseTypesSupported:            s.config.SupportedResponseTypes,
 		GrantTypesSupported:               s.config.SupportedGrantTypes,
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
+	}
+
+	// In issue_token mode, include JWKS URI and code challenge methods
+	if s.config.Mode == "issue_token" {
+		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
+		metadata.CodeChallengeMethodsSupported = []string{"S256"}
+		metadata.TokenEndpointAuthMethodsSupported = []string{"client_secret_post"}
 	}
 
 	return metadata, nil

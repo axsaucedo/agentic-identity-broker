@@ -309,14 +309,39 @@ type OAuth2AuthServerConfig struct {
 	SupportedGrantTypes       []string `mapstructure:"supported_grant_types"`
 	UpstreamTimeoutSeconds    int      `mapstructure:"upstream_timeout_seconds"`
 	Mode                      string   `mapstructure:"mode"`
+
+	// issue_token mode fields (ignored when mode=proxy)
+	IssuerURI             string        `mapstructure:"issuer_uri"`              // Required when mode=issue_token
+	TokenTTL              time.Duration `mapstructure:"token_ttl"`               // Default: 1h
+	TokenClaimsExpression string        `mapstructure:"token_claims_expression"` // Optional CEL expression for custom claims
+
 	// MultiAgentClient holds optional multi-agent client sharing configuration.
 	MultiAgentClient MultiAgentClientConfig `mapstructure:"multi_agent_client"`
 }
 
 // Validate validates the OAuth2AuthServerConfig structure.
 // Sets defaults for empty fields and returns an error for missing required fields.
+// Validation is mode-conditional: proxy mode requires upstream fields, issue_token
+// mode requires issuer_uri and has its own defaults.
 func (c *OAuth2AuthServerConfig) Validate() error {
-	// Check required fields
+	// Default mode to proxy if not set
+	if c.Mode == "" {
+		c.Mode = "proxy"
+	}
+
+	switch c.Mode {
+	case "issue_token":
+		return c.validateIssueTokenMode()
+	case "proxy":
+		return c.validateProxyMode()
+	default:
+		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy' or 'issue_token'")
+	}
+}
+
+// validateProxyMode validates configuration for proxy mode (upstream OAuth2 server).
+func (c *OAuth2AuthServerConfig) validateProxyMode() error {
+	// Check required upstream fields
 	if c.UpstreamIssuerURI == "" {
 		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")
 	}
@@ -342,10 +367,6 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 		c.UpstreamTimeoutSeconds = 30
 	}
 
-	if c.Mode == "" {
-		c.Mode = "proxy"
-	}
-
 	// Validate multi_agent_client fields when enabled
 	if c.MultiAgentClient.Enabled {
 		if c.MultiAgentClient.AgentIDParamName == "" {
@@ -354,6 +375,28 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 		if c.MultiAgentClient.AgentIDClaimName == "" {
 			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
 		}
+	}
+
+	return nil
+}
+
+// validateIssueTokenMode validates configuration for issue_token mode (local token minting).
+func (c *OAuth2AuthServerConfig) validateIssueTokenMode() error {
+	if c.IssuerURI == "" {
+		return c.newValidationError("oauth2_authorization_server.issuer_uri is required in issue_token mode")
+	}
+
+	if c.TokenTTL == 0 {
+		c.TokenTTL = time.Hour
+	}
+
+	// Set defaults for supported types in issue_token mode
+	if len(c.SupportedResponseTypes) == 0 {
+		c.SupportedResponseTypes = []string{"code"}
+	}
+
+	if len(c.SupportedGrantTypes) == 0 {
+		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
 	}
 
 	return nil

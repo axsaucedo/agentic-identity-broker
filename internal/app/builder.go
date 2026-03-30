@@ -24,6 +24,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
+	enduserHandlers "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwks"
 	jwtauthadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwtauth"
@@ -33,6 +34,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -267,19 +269,33 @@ func (b *Builder) Build() (*App, error) {
 	// Create OAuth2 service if configuration available.
 	// T038: Use NewServiceWithSessions (enables mandatory requirement validation + multi-agent
 	// client config) and pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient.
-	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
+	// In issue_token mode, also create the service for consent checks and metadata generation.
+	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "issue_token" {
+		oauth2Config := &oauth2service.OAuth2Config{
+			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
+			UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+			PublicURL:                 b.config.Server.EndUser.PublicURL,
+			SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
+			SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
+			MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,
+			Mode:                      b.config.OAuth2AuthServer.Mode,
+			IssuerURI:                 b.config.OAuth2AuthServer.IssuerURI,
+		}
+		// In issue_token mode, set correct defaults for supported types
+		if b.config.OAuth2AuthServer.Mode == "issue_token" {
+			if len(oauth2Config.SupportedResponseTypes) == 0 {
+				oauth2Config.SupportedResponseTypes = []string{"code"}
+			}
+			if len(oauth2Config.SupportedGrantTypes) == 0 {
+				oauth2Config.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
+			}
+		}
+
 		app.OAuth2Service = oauth2service.NewServiceWithSessions(
 			b.storage.Agents(),
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
-			&oauth2service.OAuth2Config{
-				UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
-				UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
-				PublicURL:                 b.config.Server.EndUser.PublicURL,
-				SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
-				SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
-				MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,
-			},
+			oauth2Config,
 			b.logger,
 		)
 	}
@@ -488,10 +504,15 @@ func (b *Builder) Build() (*App, error) {
 
 	// Phase 3: Create handler instances
 
+	// Create signing key service for issue_token mode
+	signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
+
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
-		Agents:   admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger, b.config.OAuth2AuthServer.MultiAgentClient.Enabled),
-		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
+		Agents:            admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger, b.config.OAuth2AuthServer.MultiAgentClient.Enabled),
+		Services:          admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
+		ClientCredentials: admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), b.logger),
+		SigningKeys:       admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger),
 	}
 
 	// Create agent detail handler with repository dependencies for service requirements (Phase 6)
@@ -535,6 +556,46 @@ func (b *Builder) Build() (*App, error) {
 			Service: app.OAuth2Service,
 		},
 		SPA: handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
+	}
+
+	// Conditionally wire issue_token mode via strategy interfaces on existing handlers
+	if b.config.OAuth2AuthServer.Mode == "issue_token" {
+		// JWKS endpoint (issue_token mode only)
+		app.EnduserHandlers.JWKS = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
+
+		// Construct the OAuth2 server provider for local token minting
+		provider, err := oauth2server.NewProvider(
+			b.storage.AuthorizationCodes(),
+			b.storage.BrokerCredentials(),
+			b.storage.Agents(),
+			b.storage.SigningKeys(),
+			encryptor,
+			b.config.OAuth2AuthServer.IssuerURI,
+			b.config.OAuth2AuthServer.TokenTTL,
+			b.config.OAuth2AuthServer.TokenClaimsExpression,
+			b.logger,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
+		}
+
+		// Wire local minting strategy into the existing token handler
+		mintingStrategy := oauth2service.NewIssueTokenMintingStrategy(provider)
+		oauth2TokenHandler.TokenMinting = mintingStrategy
+
+		// Wire local code issuer into the existing authorize handler
+		codeIssuer := oauth2service.NewIssueTokenCodeIssuer(provider)
+		app.EnduserHandlers.OAuth2Authorize.CodeIssuer = codeIssuer
+
+		// Auto-generate signing key if none exists
+		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
+			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
+		}
+
+		b.logger.Info("OAuth2 server mode: issue_token — local token minting enabled",
+			"issuer_uri", b.config.OAuth2AuthServer.IssuerURI,
+			"token_ttl", b.config.OAuth2AuthServer.TokenTTL,
+		)
 	}
 
 	return app, nil

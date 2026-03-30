@@ -47,10 +47,10 @@ func (r *stubAgentRepo) Get(_ context.Context, _ id.AgentID) (*storage.Agent, er
 	return r.agent, r.err
 }
 
-func (r *stubAgentRepo) Create(_ context.Context, _ *storage.Agent) error               { return nil }
-func (r *stubAgentRepo) Update(_ context.Context, _ *storage.Agent) error               { return nil }
-func (r *stubAgentRepo) Delete(_ context.Context, _ id.AgentID) error                   { return nil }
-func (r *stubAgentRepo) List(_ context.Context) ([]*storage.Agent, error)               { return nil, nil }
+func (r *stubAgentRepo) Create(_ context.Context, _ *storage.Agent) error { return nil }
+func (r *stubAgentRepo) Update(_ context.Context, _ *storage.Agent) error { return nil }
+func (r *stubAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { return nil }
+func (r *stubAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
 func (r *stubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
 	return nil, nil
 }

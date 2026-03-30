@@ -115,23 +115,31 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 		})
 	})
 
-	// Register OAuth2 authorization server endpoints (optional, public routes)
-	if h.OAuth2Authorize != nil && h.OAuth2Token != nil && h.OAuth2Metadata != nil {
-		// T025: Authorization endpoint with audit middleware and principal requirement
-		// GET /oauth2/authorize
+	// Register OAuth2 authorization server endpoints (optional, public routes).
+	// Single authorize handler serves both proxy and issue_token mode.
+	// In issue_token mode, the handler's CodeIssuer strategy issues local codes.
+	if h.OAuth2Authorize != nil {
 		r.With(
 			middleware.OAuth2AuditMiddleware(cfg.Logger),
 			middleware.RequirePrincipalMiddleware(cfg.Authentication, cfg.JWTAuthenticator, cfg.Logger),
 		).Get("/oauth2/authorize", h.OAuth2Authorize.ServeHTTP)
+	}
 
-		// T034: Token endpoint (no authentication required, proxies to upstream)
-		// POST /oauth2/token
-		cfg.Logger.Info("Registering POST /oauth2/token endpoint")
+	// Single token handler serves both proxy and issue_token mode.
+	// In issue_token mode, the handler's TokenMinting strategy mints local tokens.
+	if h.OAuth2Token != nil {
 		r.Post("/oauth2/token", h.OAuth2Token.ServeHTTP)
+	}
 
-		// T041: Metadata endpoint (public, RFC 8414 compliant)
-		// GET /.well-known/oauth-authorization-server
+	// RFC 8414 discovery endpoint — single handler serves both modes.
+	// The OAuth2Service.GenerateMetadata() includes JWKS URI in issue_token mode.
+	if h.OAuth2Metadata != nil {
 		r.Get("/.well-known/oauth-authorization-server", h.OAuth2Metadata.ServeHTTP)
+	}
+
+	// JWKS endpoint (issue_token mode only — serves signing key public material)
+	if h.JWKS != nil {
+		r.Get("/oauth2/jwks.json", h.JWKS.ServeJWKS)
 	}
 
 	// Register SPA handler if configured (must be last, after /api routes)

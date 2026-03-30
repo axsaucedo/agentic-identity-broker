@@ -425,3 +425,26 @@ func SignedJWTConfigWithIssuer(jwksURL, issuer string) *ports.Config {
 	config.Server.EndUser.Authentication.JWT.ExpectedIssuer = issuer
 	return config
 }
+
+// IssueTokenConfig returns a config for issue_token mode E2E testing.
+// Uses in-memory storage and encryption, with a test issuer URI.
+// Upstream OAuth2 fields are cleared (not needed in issue_token mode).
+func IssueTokenConfig() *ports.Config {
+	config := DefaultOAuth2Config()
+	config.OAuth2AuthServer.Mode = "issue_token"
+	config.OAuth2AuthServer.IssuerURI = "http://localhost:8000"
+	config.OAuth2AuthServer.TokenTTL = time.Hour
+	config.OAuth2AuthServer.TokenClaimsExpression = ""
+	// Clear upstream fields (not needed in issue_token mode)
+	config.OAuth2AuthServer.UpstreamIssuerURI = ""
+	config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = ""
+	config.OAuth2AuthServer.UpstreamTokenEndpoint = ""
+	return config
+}
+
+// IssueTokenConfigWithCEL returns a config for issue_token mode with custom JWT claims.
+func IssueTokenConfigWithCEL(celExpr string) *ports.Config {
+	config := IssueTokenConfig()
+	config.OAuth2AuthServer.TokenClaimsExpression = celExpr
+	return config
+}

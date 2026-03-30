@@ -5,7 +5,6 @@ package postgres
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,6 +17,8 @@ import (
 )
 
 // setupAgentTestDBWithMigrations creates a test DB with migrations 001-N applied.
+// After applying up to upToMigration, it always applies remaining schema migrations
+// (009+) that the application-layer repositories require for their SQL queries.
 func setupAgentTestDBWithMigrations(t *testing.T, upToMigration int) (*Adapter, func()) {
 	t.Helper()
 
@@ -29,7 +30,10 @@ func setupAgentTestDBWithMigrations(t *testing.T, upToMigration int) (*Adapter, 
 	require.NoError(t, err)
 	migrationsDir := filepath.Join(projectRoot, "migrations")
 
-	allMigrations := []struct {
+	createSchemaMigrationsTable(t, ctx, container)
+
+	// Core migrations: applied only up to upToMigration (to test DB constraint behavior).
+	coreMigrations := []struct {
 		file    string
 		version int64
 	}{
@@ -43,20 +47,25 @@ func setupAgentTestDBWithMigrations(t *testing.T, upToMigration int) (*Adapter, 
 		{"008_drop_agent_client_id_unique.up.sql", 8},
 	}
 
-	// Create schema_migrations table
-	container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", "testdb", "-c",
-		`CREATE TABLE IF NOT EXISTS schema_migrations (version BIGINT PRIMARY KEY, dirty BOOLEAN NOT NULL DEFAULT FALSE);`})
-
-	for _, m := range allMigrations {
+	for _, m := range coreMigrations {
 		if int(m.version) > upToMigration {
 			break
 		}
-		data, readErr := os.ReadFile(filepath.Join(migrationsDir, m.file))
-		if readErr != nil {
-			t.Logf("Skipping migration %s: %v", m.file, readErr)
-			continue
-		}
-		container.Exec(ctx, []string{"psql", "-U", "testuser", "-d", "testdb", "-c", string(data)})
+		applyOneMigration(t, ctx, container, migrationsDir, m.file, m.version)
+	}
+
+	// Always apply additional migrations so application-layer repo queries work.
+	additionalMigrations := []struct {
+		file    string
+		version int64
+	}{
+		{"009_add_agent_redirect_uris.up.sql", 9},
+		{"010_create_broker_client_credentials.up.sql", 10},
+		{"011_create_signing_keys.up.sql", 11},
+		{"012_create_authorization_codes.up.sql", 12},
+	}
+	for _, m := range additionalMigrations {
+		applyOneMigration(t, ctx, container, migrationsDir, m.file, m.version)
 	}
 
 	config := &ports.StorageConfig{

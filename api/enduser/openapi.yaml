@@ -1213,12 +1213,29 @@ paths:
       summary: OAuth2 Authorization Endpoint (RFC 6749)
       description: |
         Initiates an OAuth2 authorization code flow. The broker validates the agent,
-        checks consent, and redirects to the upstream OAuth2 authorization server.
+        checks consent, and either redirects to the upstream OAuth2 authorization server
+        or issues an authorization code directly (issue_token mode).
 
         **client_id semantics (Breaking Change — Feature 021)**:
         The `client_id` parameter MUST be the agent's internal UUID (`agent.id`), NOT the
         upstream OAuth2 `client_id`. This change enables multiple agents to share a single
         upstream OAuth2 client credential.
+
+        **Issue Token Mode**:
+        When the broker acts as its own OAuth2 authorization server:
+        - Validates the agent's registered `redirect_uris`
+        - If user has an active grant, redirects to `redirect_uri` with `code` and `state`
+        - If no active grant exists, redirects to the consent UI for user approval
+        - Supports PKCE (RFC 7636) with `code_challenge` and `code_challenge_method`
+
+        **Proxy Mode**:
+        When proxying to an upstream OAuth2 server:
+        - Redirects to the upstream authorization endpoint with PKCE parameters
+        - Agent ID is embedded in the state token for callback correlation
+
+        **Error Handling** (RFC 6749 §4.1.2.1):
+        - Invalid `client_id` or `redirect_uri`: Error returned directly (not via redirect)
+        - Other errors: Redirected to `redirect_uri` with `error` and `error_description`
       operationId: oauth2Authorize
       tags:
         - OAuth2 Token
@@ -1277,10 +1294,16 @@ paths:
               - S256
       responses:
         '302':
-          description: Redirect to upstream OAuth2 authorization server
+          description: |
+            Redirect to upstream OAuth2 authorization server, redirect to consent UI
+            if no active grant exists, or redirect to redirect_uri with authorization code.
           headers:
             Location:
-              description: Upstream authorization URL with PKCE and agent ID parameters appended
+              description: |
+                Destination URL:
+                - Upstream authorization URL with PKCE and agent ID parameters (proxy mode)
+                - Consent UI URL if user has no active grant (issue_token mode)
+                - redirect_uri with `code` and `state` query parameters (issue_token mode, active grant)
               schema:
                 type: string
                 format: uri
@@ -1296,6 +1319,11 @@ paths:
                   value:
                     error: "invalid_client"
                     error_description: "client_id must be a valid agent UUID"
+                invalid_redirect_uri:
+                  summary: Invalid redirect_uri (direct error response, not redirected per RFC 6749 §4.1.2.1)
+                  value:
+                    error: "invalid_request"
+                    error_description: "redirect_uri is not registered for this agent"
         '500':
           description: Internal Server Error
           content:
@@ -1304,15 +1332,33 @@ paths:
                 $ref: '#/components/schemas/OAuth2Error'
   /oauth2/token:
     post:
-      summary: Token Exchange (RFC 8693) or Authorization Code Exchange
+      summary: Token Exchange (RFC 8693), Authorization Code Exchange, or Client Credentials
       description: |
-        Exchange a token for another token. This endpoint supports two grant types:
+        Exchange a token for another token, or obtain a token directly. This endpoint
+        supports three grant types:
 
-        ### Authorization Code Grant (RFC 6749 - Existing)
+        ### Client Credentials Grant (RFC 6749 §4.4 - Issue Token Mode)
+        Authenticate the agent directly using broker-issued client credentials and obtain
+        an access token. Used when the broker acts as an OAuth2 authorization server.
+        - `grant_type`: `client_credentials`
+        - `client_id`: Broker-issued client ID
+        - `client_secret`: Broker-issued client secret
+        - `scope`: (optional) Space-delimited requested scopes
+
+        ### Authorization Code Grant (RFC 6749 - Issue Token Mode)
+        Exchange an authorization code for an access token. Supports PKCE for public clients.
+        - `grant_type`: `authorization_code`
+        - `client_id`: Broker-issued client ID
+        - `client_secret`: Broker-issued client secret
+        - `code`: Authorization code from /oauth2/authorize
+        - `redirect_uri`: Must match the URI used in the authorization request
+        - `code_verifier`: (optional) PKCE code verifier (RFC 7636)
+
+        ### Authorization Code Grant (RFC 6749 - Proxy Mode)
         Exchange an authorization code for an access token via the upstream OAuth2 server.
         This is the standard OAuth2 authorization code flow used for initial user consent.
 
-        ### Token Exchange Grant (RFC 8693 - NEW)
+        ### Token Exchange Grant (RFC 8693)
         Exchange a token issued by the Upstream OAuth2 Server for a third-party OAuth2 token
         stored in the token vault.
 
@@ -1348,6 +1394,22 @@ paths:
             schema:
               $ref: '#/components/schemas/TokenExchangeRequest'
             examples:
+              client_credentials:
+                summary: Client Credentials Request (Issue Token Mode)
+                value:
+                  grant_type: "client_credentials"
+                  client_id: "brk_550e8400e29b41d4a716446655440000"
+                  client_secret: "brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+                  scope: "openid profile"
+              authorization_code_issue:
+                summary: Authorization Code Exchange (Issue Token Mode)
+                value:
+                  grant_type: "authorization_code"
+                  client_id: "brk_550e8400e29b41d4a716446655440000"
+                  client_secret: "brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+                  code: "SplxlOBeZQQYbYS6WxSbIA"
+                  redirect_uri: "https://agent.example.com/callback"
+                  code_verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
               token_exchange:
                 summary: Token Exchange Request (RFC 8693)
                 value:
@@ -1357,8 +1419,8 @@ paths:
                   resource: "https://api.github.com"
                   client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
                   client_assertion: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
-              authorization_code:
-                summary: Authorization Code Exchange (RFC 6749)
+              authorization_code_proxy:
+                summary: Authorization Code Exchange (Proxy Mode)
                 value:
                   grant_type: "authorization_code"
                   code: "SplxlOBeZQQYbYS6WxSbIA"
@@ -1403,7 +1465,7 @@ paths:
                     error: "invalid_grant"
                     error_description: "User has no active session with the requested service"
         '401':
-          description: Unauthorized - Invalid client authentication (client_assertion)
+          description: Unauthorized - Invalid client authentication (client_assertion or client credentials)
           content:
             application/json:
               schema:
@@ -1414,6 +1476,11 @@ paths:
                   value:
                     error: "invalid_client"
                     error_description: "Invalid client_assertion signature"
+                invalid_credentials:
+                  summary: Invalid broker client credentials
+                  value:
+                    error: "invalid_client"
+                    error_description: "Invalid client_id or client_secret"
         '403':
           description: Forbidden - User has not granted access or CEL authorization failed
           content:
@@ -1438,6 +1505,109 @@ paths:
                   value:
                     error: "server_error"
                     error_description: "An unexpected error occurred"
+  /oauth2/jwks.json:
+    get:
+      summary: JSON Web Key Set endpoint
+      description: |
+        Returns the broker's public signing keys in JWK Set format (RFC 7517).
+
+        Clients use these keys to verify the signatures of tokens issued by the broker.
+        Only public key material is included — private keys are never exposed.
+
+        **Caching**: Responses include `Cache-Control: public, max-age=300` to allow
+        clients to cache the key set for 5 minutes. Clients should respect this header
+        and implement key rotation by periodically refreshing the JWKS.
+
+        **Key Rotation**: When signing keys are rotated, the new key appears in the
+        JWKS immediately. Previous keys remain in the set until removed by an admin.
+      operationId: getJWKS
+      tags:
+        - OAuth2 Discovery
+      security: []
+      responses:
+        '200':
+          description: JWK Set containing public signing keys
+          headers:
+            Cache-Control:
+              description: Cache directive for JWKS response
+              schema:
+                type: string
+                example: "public, max-age=300"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKSetResponse'
+              example:
+                keys:
+                  - kty: EC
+                    crv: P-256
+                    kid: key-2025-12-19-001
+                    use: sig
+                    alg: ES256
+                    x: "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU"
+                    y: "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: RFC 8414 OAuth2 Authorization Server Metadata
+      description: |
+        Returns the broker's OAuth2 authorization server metadata as defined
+        in RFC 8414. This enables dynamic client discovery of the broker's
+        OAuth2 capabilities and endpoints.
+
+        **Caching**: Responses include `Cache-Control: public, max-age=3600` to allow
+        clients to cache metadata for 1 hour.
+
+        **No Authentication**: This endpoint is publicly accessible as required by RFC 8414.
+      operationId: getOAuth2ServerMetadata
+      tags:
+        - OAuth2 Discovery
+      security: []
+      responses:
+        '200':
+          description: OAuth2 Authorization Server Metadata
+          headers:
+            Cache-Control:
+              description: Cache directive for metadata response
+              schema:
+                type: string
+                example: "public, max-age=3600"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2MetadataResponse'
+              example:
+                issuer: https://broker.example.com
+                authorization_endpoint: https://broker.example.com/oauth2/authorize
+                token_endpoint: https://broker.example.com/oauth2/token
+                jwks_uri: https://broker.example.com/oauth2/jwks.json
+                response_types_supported:
+                  - code
+                grant_types_supported:
+                  - authorization_code
+                  - client_credentials
+                  - "urn:ietf:params:oauth:grant-type:token-exchange"
+                token_endpoint_auth_methods_supported:
+                  - client_secret_basic
+                  - client_secret_post
+                  - private_key_jwt
+                code_challenge_methods_supported:
+                  - S256
+                scopes_supported:
+                  - openid
+                  - profile
+                  - email
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
 components:
   securitySchemes:
     SessionAuth:
@@ -2234,6 +2404,62 @@ components:
           description: Scopes supported by this server
           example: [openid, profile, email]
 
+    JWKSetResponse:
+      type: object
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          description: |
+            Array of JSON Web Keys (RFC 7517). Each key contains only public
+            key material — private keys are never exposed.
+          items:
+            type: object
+            required:
+              - kty
+              - kid
+              - use
+              - alg
+            properties:
+              kty:
+                type: string
+                description: Key type (e.g., EC, RSA)
+                example: EC
+              crv:
+                type: string
+                description: Curve name (for EC keys)
+                example: P-256
+              kid:
+                type: string
+                description: Key identifier
+                example: key-2025-12-19-001
+              use:
+                type: string
+                enum:
+                  - sig
+                description: Key usage (always "sig" for signing)
+                example: sig
+              alg:
+                type: string
+                description: Algorithm (e.g., ES256, RS256)
+                example: ES256
+              x:
+                type: string
+                description: X coordinate (for EC keys, base64url-encoded)
+                example: "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU"
+              y:
+                type: string
+                description: Y coordinate (for EC keys, base64url-encoded)
+                example: "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+              n:
+                type: string
+                description: Modulus (for RSA keys, base64url-encoded)
+              e:
+                type: string
+                description: Exponent (for RSA keys, base64url-encoded)
+                example: "AQAB"
+
     # Error Response Schemas
     ErrorResponse:
       type: object
@@ -2382,36 +2608,74 @@ components:
           description: Human-readable error message
     TokenExchangeRequest:
       type: object
+      description: |
+        Unified token endpoint request schema supporting multiple OAuth2 grant types.
+        Required fields vary by grant_type:
+
+        **client_credentials**: requires client_id, client_secret. Optional: scope.
+        **authorization_code** (issue_token): requires client_id, client_secret, code, redirect_uri. Optional: code_verifier.
+        **authorization_code** (proxy): requires client_id, client_secret, code, redirect_uri.
+        **token-exchange** (RFC 8693): requires subject_token, subject_token_type, resource, client_assertion_type, client_assertion.
       required:
         - grant_type
-        - subject_token
-        - subject_token_type
-        - resource
-        - client_assertion_type
-        - client_assertion
       properties:
         grant_type:
           type: string
           enum:
             - "urn:ietf:params:oauth:grant-type:token-exchange"
             - "authorization_code"
+            - "client_credentials"
           description: |
             The OAuth2 grant type:
             - `urn:ietf:params:oauth:grant-type:token-exchange` for RFC 8693 token exchange
-            - `authorization_code` for standard OAuth2 authorization code flow (proxied)
+            - `authorization_code` for standard OAuth2 authorization code flow (proxied or issue_token)
+            - `client_credentials` for broker-issued client credentials (issue_token mode)
           example: "urn:ietf:params:oauth:grant-type:token-exchange"
+        client_id:
+          type: string
+          description: |
+            Broker-issued client identifier (for client_credentials and authorization_code
+            grant types in issue_token mode) or upstream OAuth2 client ID (proxy mode).
+          example: "brk_550e8400e29b41d4a716446655440000"
+        client_secret:
+          type: string
+          description: |
+            Broker-issued client secret (for client_credentials and authorization_code
+            grant types in issue_token mode) or upstream OAuth2 client secret (proxy mode).
+          example: "brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+        code:
+          type: string
+          description: |
+            Authorization code received from the /oauth2/authorize endpoint.
+            Required for authorization_code grant type.
+          example: "SplxlOBeZQQYbYS6WxSbIA"
+        redirect_uri:
+          type: string
+          format: uri
+          description: |
+            Redirect URI used in the original authorization request.
+            Required for authorization_code grant type. Must match the URI
+            used in the authorization request exactly.
+          example: "https://agent.example.com/callback"
+        code_verifier:
+          type: string
+          description: |
+            PKCE code verifier (RFC 7636). Required if code_challenge was
+            provided in the authorization request.
+          example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         subject_token:
           type: string
           description: |
             JWT issued by the Upstream OAuth2 Server containing both:
             - User principal (extracted via configurable CEL, default: 'sub' claim)
             - Agent identifier (extracted via configurable CEL, default: 'azp' claim)
+            Required for token-exchange grant type.
           example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
         subject_token_type:
           type: string
           enum:
             - "urn:ietf:params:oauth:token-type:access_token"
-          description: Type of the subject_token. Must be access_token type.
+          description: Type of the subject_token. Must be access_token type. Required for token-exchange grant type.
           example: "urn:ietf:params:oauth:token-type:access_token"
         resource:
           type: string
@@ -2419,20 +2683,20 @@ components:
           description: |
             The target resource URI. Must match a protected_resource configured on
             a ThirdpartyOAuth2Service. URI is normalized (trailing slashes removed)
-            before matching.
+            before matching. Required for token-exchange grant type.
           example: "https://api.github.com"
         client_assertion_type:
           type: string
           enum:
             - "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-          description: The client authentication method. Must be JWT bearer.
+          description: The client authentication method. Must be JWT bearer. Required for token-exchange grant type.
           example: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
         client_assertion:
           type: string
           description: |
             JWT authenticating the gateway making the request. Issued by the
             Upstream OAuth2 Server. The 'sub' claim identifies the gateway for
-            audit logging.
+            audit logging. Required for token-exchange grant type.
           example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
         scope:
           type: string

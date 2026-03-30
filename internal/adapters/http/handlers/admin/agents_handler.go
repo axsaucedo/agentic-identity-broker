@@ -58,6 +58,8 @@ type AgentRequest struct {
 	UserDocumentationURL *string                     `json:"user_documentation_url,omitempty"`
 	AgentInterfaceURL    *string                     `json:"agent_interface_url,omitempty"`
 	ServiceRequirements  []ServiceRequirementRequest `json:"service_requirements,omitempty"`
+	RedirectURIs         []string                    `json:"redirect_uris,omitempty"`
+	AllowedScopes        []string                    `json:"allowed_scopes,omitempty"`
 }
 
 // ServiceRequirementResponse represents a service requirement in the response.
@@ -79,6 +81,8 @@ type AgentResponse struct {
 	UserDocumentationURL *string                      `json:"user_documentation_url,omitempty"`
 	AgentInterfaceURL    *string                      `json:"agent_interface_url,omitempty"`
 	ServiceRequirements  []ServiceRequirementResponse `json:"service_requirements,omitempty"`
+	RedirectURIs         []string                     `json:"redirect_uris,omitempty"`
+	AllowedScopes        []string                     `json:"allowed_scopes,omitempty"`
 	CreatedAt            string                       `json:"created_at"`
 	UpdatedAt            string                       `json:"updated_at"`
 }
@@ -135,6 +139,8 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		UserDocumentationURL: req.UserDocumentationURL,
 		AgentInterfaceURL:    req.AgentInterfaceURL,
 		ServiceRequirements:  serviceReqs,
+		RedirectURIs:         req.RedirectURIs,
+		AllowedScopes:        req.AllowedScopes,
 		CreatedAt:            now,
 		UpdatedAt:            now,
 	}
@@ -254,6 +260,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		UserDocumentationURL: req.UserDocumentationURL,
 		AgentInterfaceURL:    req.AgentInterfaceURL,
 		ServiceRequirements:  serviceReqs,
+		RedirectURIs:         req.RedirectURIs,
+		AllowedScopes:        req.AllowedScopes,
 		CreatedAt:            existing.CreatedAt,
 		UpdatedAt:            time.Now().UTC(),
 	}
@@ -377,6 +385,8 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 		GovernanceURL:        agent.GovernanceURL,
 		UserDocumentationURL: agent.UserDocumentationURL,
 		AgentInterfaceURL:    agent.AgentInterfaceURL,
+		RedirectURIs:         agent.RedirectURIs,
+		AllowedScopes:        agent.AllowedScopes,
 		CreatedAt:            agent.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:            agent.UpdatedAt.Format(time.RFC3339),
 	}

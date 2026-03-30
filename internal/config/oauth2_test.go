@@ -3,6 +3,7 @@ package config
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -156,4 +157,99 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestOAuth2AuthServerConfig_IssueTokenMode tests issue_token mode validation (T003).
+func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
+	t.Run("issue_token mode requires issuer_uri", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "issue_token",
+			// IssuerURI is missing
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "issuer_uri")
+	})
+
+	t.Run("issue_token mode with issuer_uri succeeds", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:      "issue_token",
+			IssuerURI: "https://broker.example.com",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("issue_token mode defaults token_ttl to 1h", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:      "issue_token",
+			IssuerURI: "https://broker.example.com",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Equal(t, time.Hour, cfg.TokenTTL, "TokenTTL should default to 1 hour")
+	})
+
+	t.Run("issue_token mode preserves custom token_ttl", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:      "issue_token",
+			IssuerURI: "https://broker.example.com",
+			TokenTTL:  30 * time.Minute,
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Equal(t, 30*time.Minute, cfg.TokenTTL, "custom TokenTTL should be preserved")
+	})
+
+	t.Run("issue_token mode does not require upstream fields", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:      "issue_token",
+			IssuerURI: "https://broker.example.com",
+			// No upstream_issuer_uri, upstream_authorize_endpoint, upstream_token_endpoint
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("issue_token mode sets default response types and grant types", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:      "issue_token",
+			IssuerURI: "https://broker.example.com",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Contains(t, cfg.SupportedResponseTypes, "code")
+		assert.Contains(t, cfg.SupportedGrantTypes, "authorization_code")
+		assert.Contains(t, cfg.SupportedGrantTypes, "client_credentials")
+	})
+
+	t.Run("proxy mode unchanged - still requires upstream fields", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			// Missing upstream fields
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "upstream_issuer_uri")
+	})
+
+	t.Run("default mode is proxy", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			UpstreamIssuerURI:         "https://auth.example.com",
+			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+			UpstreamTokenEndpoint:     "https://auth.example.com/token",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Equal(t, "proxy", cfg.Mode)
+	})
+
+	t.Run("invalid mode rejected", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "invalid_mode",
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "mode")
+	})
 }

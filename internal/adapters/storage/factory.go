@@ -24,12 +24,15 @@ type lifecycleAdapter interface {
 // Adapters implement repository interfaces (UserRepository, etc.)
 // This struct is returned by NewAdapter factory function.
 type Adapter struct {
-	lifecycle    lifecycleAdapter
-	users        ports.UserRepository
-	agents       ports.AgentRepository
-	providers    ports.ThirdpartyOAuth2ProviderRepository
-	userGrants   ports.UserGrantRepository
-	userSessions ports.UserSessionRepository
+	lifecycle          lifecycleAdapter
+	users              ports.UserRepository
+	agents             ports.AgentRepository
+	providers          ports.ThirdpartyOAuth2ProviderRepository
+	userGrants         ports.UserGrantRepository
+	userSessions       ports.UserSessionRepository
+	brokerCredentials  ports.BrokerClientCredentialRepository
+	signingKeys        ports.SigningKeyRepository
+	authorizationCodes ports.AuthorizationCodeRepository
 }
 
 // NewAdapter creates a storage adapter based on configuration.
@@ -61,12 +64,15 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		return nil, err
 	}
 	return &Adapter{
-		lifecycle:    memAdapter,
-		users:        memAdapter,
-		agents:       memory.NewAgentRepository(),
-		providers:    memory.NewInMemoryThirdpartyOAuth2ProviderRepository(),
-		userGrants:   memory.NewUserGrantRepository(),
-		userSessions: memory.NewInMemoryUserSessionRepository(),
+		lifecycle:          memAdapter,
+		users:              memAdapter,
+		agents:             memory.NewAgentRepository(),
+		providers:          memory.NewInMemoryThirdpartyOAuth2ProviderRepository(),
+		userGrants:         memory.NewUserGrantRepository(),
+		userSessions:       memory.NewInMemoryUserSessionRepository(),
+		brokerCredentials:  memory.NewBrokerClientCredentialStore(),
+		signingKeys:        memory.NewSigningKeyStore(),
+		authorizationCodes: memory.NewAuthorizationCodeStore(),
 	}, nil
 }
 
@@ -81,12 +87,15 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 	}
 
 	return &Adapter{
-		lifecycle:    pgAdapter,
-		users:        pgAdapter,
-		agents:       postgres.NewAgentRepository(pgAdapter),
-		providers:    postgres.NewPostgresThirdpartyOAuth2ProviderRepository(pgAdapter),
-		userGrants:   postgres.NewUserGrantRepository(pgAdapter),
-		userSessions: postgres.NewUserSessionRepository(pgAdapter),
+		lifecycle:          pgAdapter,
+		users:              pgAdapter,
+		agents:             postgres.NewAgentRepository(pgAdapter),
+		providers:          postgres.NewPostgresThirdpartyOAuth2ProviderRepository(pgAdapter),
+		userGrants:         postgres.NewUserGrantRepository(pgAdapter),
+		userSessions:       postgres.NewUserSessionRepository(pgAdapter),
+		brokerCredentials:  postgres.NewBrokerClientCredentialRepo(pgAdapter),
+		signingKeys:        postgres.NewSigningKeyRepo(pgAdapter),
+		authorizationCodes: postgres.NewAuthorizationCodeRepo(pgAdapter),
 	}, nil
 }
 
@@ -158,4 +167,19 @@ func (a *Adapter) UserGrants() ports.UserGrantRepository {
 // Used for user session CRUD operations.
 func (a *Adapter) UserSessions() ports.UserSessionRepository {
 	return a.userSessions
+}
+
+// BrokerCredentials returns the BrokerClientCredentialRepository interface implementation.
+func (a *Adapter) BrokerCredentials() ports.BrokerClientCredentialRepository {
+	return a.brokerCredentials
+}
+
+// SigningKeys returns the SigningKeyRepository interface implementation.
+func (a *Adapter) SigningKeys() ports.SigningKeyRepository {
+	return a.signingKeys
+}
+
+// AuthorizationCodes returns the AuthorizationCodeRepository interface implementation.
+func (a *Adapter) AuthorizationCodes() ports.AuthorizationCodeRepository {
+	return a.authorizationCodes
 }

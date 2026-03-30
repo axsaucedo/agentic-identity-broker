@@ -293,6 +293,21 @@ multi_agent_client:
 
 > **Breaking change (Feature 021)**: The `agent_id_expression: "subject_token.azp"` expression is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)` (feature disabled) or `subject_token.<claim_name>` (feature enabled). See [docs/changelog.md](../../docs/changelog.md).
 
+### OAuth2 Server Mode (`oauth2-server-mode.yaml`)
+
+Configures the broker as a standalone OAuth2 authorization server using `issue_token` mode. The broker mints its own JWT access tokens signed with managed ES256/RS256 keys, supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
+
+Key settings:
+- `mode: "issue_token"` — switches from proxy mode to local token minting
+- `issuer_uri` — the issuer identifier for JWTs and discovery (required in issue_token mode)
+- `token_ttl` — access token validity period (default: 1h)
+- `token_claims_expression` — optional CEL expression for custom JWT claims
+
+**Usage:**
+```bash
+./agentic-identity-broker --config ./examples/config/oauth2-server-mode.yaml
+```
+
 ## Configuration Sources and Precedence
 
 The application loads configuration from multiple sources with this precedence (highest to lowest):

@@ -6,6 +6,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/admin"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/consent"
+	enduserHandlers "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 )
 
@@ -17,6 +18,12 @@ type AdminHandlers struct {
 
 	// Services handler for admin API - manages OAuth2 service CRUD operations
 	Services *admin.ServicesHandler
+
+	// ClientCredentials handler for admin API - manages broker client credentials
+	ClientCredentials *admin.ClientCredentialsHandler
+
+	// SigningKeys handler for admin API - manages signing key lifecycle
+	SigningKeys *admin.SigningKeysHandler
 }
 
 // EnduserHandlers groups all handler instances needed by the enduser server.
@@ -35,10 +42,13 @@ type EnduserHandlers struct {
 	// OAuth2 sessions handler for /api/third-party routes
 	OAuth2Sessions *oauth2_sessions.Handler
 
-	// OAuth2 authorization server handlers
+	// OAuth2 authorization server handlers (serve both proxy and issue_token mode)
 	OAuth2Authorize *enduser.OAuth2AuthorizeHandler
 	OAuth2Token     *enduser.OAuth2TokenHandler
 	OAuth2Metadata  *enduser.OAuth2MetadataHandler
+
+	// JWKS handler (issue_token mode only — serves signing key public material)
+	JWKS *enduserHandlers.JWKSHandler
 
 	// SPA handler for serving static files (must be last)
 	SPA *handlers.SPAHandler

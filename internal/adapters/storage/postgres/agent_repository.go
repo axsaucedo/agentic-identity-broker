@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/lib/pq"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -89,8 +90,8 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		INSERT INTO agents (
 			id, client_id, external_id, display_name, description,
 			governance_url, user_documentation_url, agent_interface_url,
-			service_requirements, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
 	_, err = r.adapter.db.ExecContext(
@@ -105,6 +106,8 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
 		serviceReqsJSON, // NULL if empty
+		pq.Array(agent.RedirectURIs),
+		pq.Array(agent.AllowedScopes),
 		agent.CreatedAt,
 		agent.UpdatedAt,
 	)
@@ -189,7 +192,7 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       service_requirements, created_at, updated_at
+		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
 		FROM agents
 		WHERE id = $1
 	`
@@ -205,6 +208,8 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 		&agent.UserDocumentationURL,
 		&agent.AgentInterfaceURL,
 		&serviceReqsJSON,
+		pq.Array(&agent.RedirectURIs),
+		pq.Array(&agent.AllowedScopes),
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
@@ -309,7 +314,9 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		    user_documentation_url = $7,
 		    agent_interface_url = $8,
 		    service_requirements = $9,
-		    updated_at = $10
+		    redirect_uris = $10,
+		    allowed_scopes = $11,
+		    updated_at = $12
 		WHERE id = $1
 	`
 
@@ -325,6 +332,8 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
 		serviceReqsJSON, // NULL if empty
+		pq.Array(agent.RedirectURIs),
+		pq.Array(agent.AllowedScopes),
 		agent.UpdatedAt,
 	)
 
@@ -447,7 +456,7 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       created_at, updated_at
+		       redirect_uris, allowed_scopes, created_at, updated_at
 		FROM agents
 		ORDER BY created_at DESC
 	`
@@ -508,7 +517,7 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       created_at, updated_at
+		       redirect_uris, allowed_scopes, created_at, updated_at
 		FROM agents
 		WHERE client_id = $1
 	`

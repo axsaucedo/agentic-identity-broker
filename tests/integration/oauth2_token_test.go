@@ -36,9 +36,13 @@ func newIntegrationStubAgentRepo(agentID id.AgentID) *integrationStubAgentRepo {
 func (r *integrationStubAgentRepo) Get(_ context.Context, _ id.AgentID) (*domainstorage.Agent, error) {
 	return r.agent, r.err
 }
-func (r *integrationStubAgentRepo) Create(_ context.Context, _ *domainstorage.Agent) error { return nil }
-func (r *integrationStubAgentRepo) Update(_ context.Context, _ *domainstorage.Agent) error { return nil }
-func (r *integrationStubAgentRepo) Delete(_ context.Context, _ id.AgentID) error           { return nil }
+func (r *integrationStubAgentRepo) Create(_ context.Context, _ *domainstorage.Agent) error {
+	return nil
+}
+func (r *integrationStubAgentRepo) Update(_ context.Context, _ *domainstorage.Agent) error {
+	return nil
+}
+func (r *integrationStubAgentRepo) Delete(_ context.Context, _ id.AgentID) error { return nil }
 func (r *integrationStubAgentRepo) List(_ context.Context) ([]*domainstorage.Agent, error) {
 	return nil, nil
 }

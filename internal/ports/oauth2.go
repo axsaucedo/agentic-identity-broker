@@ -49,7 +49,10 @@ type AuthorizationRequest struct {
 // AuthorizationDecision represents the broker's decision for an authorization request.
 // Either redirects to upstream or to consent UI, or returns an error.
 type AuthorizationDecision struct {
-	// Action determines the response: "redirect_to_upstream", "redirect_to_consent", or "error"
+	// Action determines the response: "proceed", "redirect_to_consent", or "error".
+	// "proceed" means the user has an active grant and the request can continue.
+	// In proxy mode the handler redirects to the upstream OAuth2 server;
+	// in issue_token mode the handler issues a local authorization code.
 	Action string
 
 	// RedirectURL is the target URL for HTTP 302 redirect
@@ -88,4 +91,41 @@ type MetadataResponse struct {
 
 	// OPTIONAL: Claim types supported
 	ClaimTypesSupported []string `json:"claim_types_supported,omitempty"`
+
+	// OPTIONAL: JWKS URI for public key discovery (present in issue_token mode)
+	JWKSURI string `json:"jwks_uri,omitempty"`
+
+	// OPTIONAL: Supported PKCE code challenge methods (present in issue_token mode)
+	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
+}
+
+// TokenMintingStrategy abstracts how the token endpoint handles grant types.
+// In proxy mode, grants are forwarded to an upstream OAuth2 server.
+// In issue_token mode, grants are processed locally by the oauth2server.Provider.
+type TokenMintingStrategy interface {
+	// HandleClientCredentials processes a client_credentials grant type request.
+	// Returns the token response or an error.
+	HandleClientCredentials(ctx context.Context, clientID, clientSecret, scope string) (*TokenResponse, error)
+
+	// HandleAuthorizationCodeExchange processes an authorization_code grant type request.
+	// Returns the token response or an error.
+	HandleAuthorizationCodeExchange(ctx context.Context, clientID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
+}
+
+// TokenResponse represents a successful OAuth2 token response from a minting strategy.
+type TokenResponse struct {
+	AccessToken string
+	TokenType   string
+	ExpiresIn   int64
+	Scope       string
+}
+
+// AuthorizationCodeIssuer abstracts how the authorize endpoint issues authorization codes.
+// In proxy mode, this is nil and the handler redirects to an upstream OAuth2 server.
+// In issue_token mode, the endpoint issues authorization codes locally.
+type AuthorizationCodeIssuer interface {
+	// IssueAuthorizationCode processes a validated authorization request and returns
+	// an authorization code. The handler is responsible for redirect_uri validation
+	// and PKCE enforcement before calling this method.
+	IssueAuthorizationCode(ctx context.Context, req *AuthorizationRequest, principal string) (code string, err error)
 }

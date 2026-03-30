@@ -95,18 +95,31 @@ data:
       {{- end }}
     {{- end }}
 
-    {{- if .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
+    {{- if or .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri (eq .Values.broker.oauth2AuthorizationServer.mode "issue_token") }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
+      {{- if .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
       upstream_issuer_uri: {{ .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
       upstream_authorize_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamAuthorizeEndpoint }}
       upstream_token_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamTokenEndpoint }}
+      {{- end }}
       supported_response_types:
         {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedResponseTypes | nindent 8 }}
       supported_grant_types:
         {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedGrantTypes | nindent 8 }}
+      {{- if .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
       upstream_timeout_seconds: {{ .Values.broker.oauth2AuthorizationServer.upstreamTimeoutSeconds }}
+      {{- end }}
       mode: {{ .Values.broker.oauth2AuthorizationServer.mode }}
+      {{- if .Values.broker.oauth2AuthorizationServer.issuerUri }}
+      issuer_uri: {{ .Values.broker.oauth2AuthorizationServer.issuerUri | quote }}
+      {{- end }}
+      {{- if .Values.broker.oauth2AuthorizationServer.tokenTtl }}
+      token_ttl: {{ .Values.broker.oauth2AuthorizationServer.tokenTtl | quote }}
+      {{- end }}
+      {{- if .Values.broker.oauth2AuthorizationServer.tokenClaimsExpression }}
+      token_claims_expression: {{ .Values.broker.oauth2AuthorizationServer.tokenClaimsExpression | quote }}
+      {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
       multi_agent_client:
         enabled: {{ .enabled }}

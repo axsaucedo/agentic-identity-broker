@@ -775,6 +775,49 @@ oauth2_authorization_server:
 
 See `examples/config/oauth2-authorization-server.yaml` for a complete configuration example with both modes commented.
 
+### OAuth2 Server Mode Configuration
+
+#### oauth2.auth_server
+
+**Description**: Controls the broker's OAuth2 operating mode. In the default `proxy` mode, OAuth2 requests are forwarded to an upstream authorization server. In `issue_token` mode, the broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. Issue token mode supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
+
+**Configuration block** (nested under `oauth2.auth_server`):
+
+| Option | Type | Default | Valid Values | Required? | Environment Variable | CLI Flag | Description |
+|--------|------|---------|--------------|-----------|----------------------|----------|-------------|
+| `oauth2.auth_server.mode` | enum | `proxy` | `proxy`, `issue_token` | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE` | `--oauth2.auth-server.mode` | Operating mode. `proxy` forwards to upstream; `issue_token` mints tokens locally. |
+| `oauth2.auth_server.issuer_uri` | string | — | Valid HTTPS URI | Yes (if `issue_token`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_ISSUER_URI` | `--oauth2.auth-server.issuer-uri` | Issuer identifier used in JWT `iss` claim and `/.well-known/oauth-authorization-server` discovery. Must be a publicly reachable URI. |
+| `oauth2.auth_server.token_ttl` | duration | `1h` | Go duration (e.g. `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_TOKEN_TTL` | `--oauth2.auth-server.token-ttl` | Validity period for issued JWT access tokens. |
+| `oauth2.auth_server.token_claims_expression` | string | `""` | CEL expression | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_TOKEN_CLAIMS_EXPRESSION` | `--oauth2.auth-server.token-claims-expression` | CEL expression evaluated at token issuance to inject custom claims into the JWT. Available variables: `agent`, `principal`, `request`. Base claims (`iss`, `sub`, `exp`, `iat`, `jti`, `kid`, `agent_id`, `scope`) cannot be overridden. |
+
+**Startup validation**: If `mode` is `issue_token` and `issuer_uri` is empty, the broker fails to start with a clear error message.
+
+**Proxy mode (default)**:
+```yaml
+oauth2:
+  auth_server:
+    mode: "proxy"   # default — forward to upstream authorization server
+```
+
+**Issue token mode**:
+```yaml
+oauth2:
+  auth_server:
+    mode: "issue_token"
+    issuer_uri: "https://broker.example.com"
+    token_ttl: "1h"
+    token_claims_expression: '{"team": agent.display_name}'
+```
+
+**Security notes**:
+- PKCE is always enforced (S256 only) for authorization code grants. No plaintext challenge method.
+- Client secrets are hashed with Argon2id and never stored in plaintext.
+- Signing key private material is encrypted at rest via `EncryptionPort`.
+- Authorization codes are single-use with 60-second TTL, stored as SHA-256 hashes.
+- Signing key decryption failure prevents token issuance (fail-closed).
+
+See [docs/features/oauth2-server-mode.md](docs/features/oauth2-server-mode.md) for comprehensive end-user documentation.
+
 ## Observability / OpenTelemetry
 
 The Identity Broker supports configurable OpenTelemetry (OTel) tracing, metrics, and logging export via OTLP (gRPC or HTTP). When disabled (default), the OTel SDK is never initialized and there is zero overhead.

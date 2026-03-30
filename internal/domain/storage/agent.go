@@ -21,6 +21,8 @@ type Agent struct {
 	UserDocumentationURL *string              `json:"user_documentation_url,omitempty" db:"user_documentation_url"`
 	AgentInterfaceURL    *string              `json:"agent_interface_url,omitempty" db:"agent_interface_url"`
 	ServiceRequirements  []ServiceRequirement `json:"service_requirements,omitempty" db:"service_requirements"`
+	RedirectURIs         []string             `json:"redirect_uris" db:"redirect_uris"`
+	AllowedScopes        []string             `json:"allowed_scopes" db:"allowed_scopes"`
 	CreatedAt            time.Time            `json:"created_at" db:"created_at"`
 	UpdatedAt            time.Time            `json:"updated_at" db:"updated_at"`
 }
@@ -118,6 +120,14 @@ func (a *Agent) Copy() *Agent {
 				RequiredScopes:  append([]string(nil), sr.RequiredScopes...),
 			}
 		}
+	}
+
+	// Deep copy redirect URIs and allowed scopes
+	if a.RedirectURIs != nil {
+		copy.RedirectURIs = append([]string(nil), a.RedirectURIs...)
+	}
+	if a.AllowedScopes != nil {
+		copy.AllowedScopes = append([]string(nil), a.AllowedScopes...)
 	}
 
 	return copy
