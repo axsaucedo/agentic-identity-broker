@@ -128,14 +128,14 @@ func TestUserGrant_Validate(t *testing.T) {
 			wantErr: "valid_until must be in the future",
 		},
 		{
-			name: "no delegations",
+			name: "no delegations (allowed - agent may have only optional requirements)",
 			grant: &UserGrant{
 				ID:                    id.MustParseGrantID("750e8400-e29b-41d4-a716-446655440002"),
 				Principal:             id.Principal("user123@example.com"),
 				AgentID:               id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DelegatedOAuth2Tokens: []DelegatedToken{},
 			},
-			wantErr: "at least one delegated service is required",
+			wantErr: "",
 		},
 		{
 			name: "delegation missing service_id",

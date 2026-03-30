@@ -15,12 +15,18 @@ import type { DelegatedToken } from '../types/consent';
  * Returns array of error messages (empty if valid).
  * Works with internal frontend format (camelCase).
  *
- * @param request - Grant request to validate with internal format
+ * @param request - Grant request to validate
+ * @param request.delegatedTokens - Selected delegated service tokens
+ * @param request.validUntil - Optional grant expiration date
+ * @param request.requireAtLeastOneService - When true (default), at least one delegated token
+ *   is required. Pass false for agents that have only optional service requirements, where
+ *   approval without selecting any services is permitted.
  * @returns Array of validation error messages
  */
 export function validateGrantRequest(request: {
   delegatedTokens: DelegatedToken[];
   validUntil?: string | null;
+  requireAtLeastOneService?: boolean;
 }): string[] {
   const errors: string[] = [];
 
@@ -30,8 +36,8 @@ export function validateGrantRequest(request: {
     return errors;
   }
 
-  // Must have at least one delegated token
-  if (request.delegatedTokens.length === 0) {
+  // Require at least one delegated token only when mandatory service requirements exist
+  if ((request.requireAtLeastOneService ?? true) && request.delegatedTokens.length === 0) {
     errors.push('Please select at least one service with scopes');
     return errors;
   }
