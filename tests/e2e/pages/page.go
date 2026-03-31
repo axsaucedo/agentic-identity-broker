@@ -296,9 +296,15 @@ func (p *Page) TakeScreenshot(ctx context.Context, name string) error {
 	// Build full file path
 	filePath := filepath.Join(p.screenshotDir, name+".png")
 
-	// Set timeout for screenshot operation
-	_, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	// Wait for network to be idle before capturing to avoid intermediate loading states
+	// (spinners, skeleton screens) that cause screenshot flicker between runs.
+	screenshotTimeout := float64(10_000) // 10 seconds in milliseconds
+	if err := p.page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State:   playwright.LoadStateNetworkidle,
+		Timeout: &screenshotTimeout,
+	}); err != nil {
+		return fmt.Errorf("failed waiting for network idle before screenshot %s: %w", name, err)
+	}
 
 	// Take screenshot
 	data, err := p.page.Screenshot()
