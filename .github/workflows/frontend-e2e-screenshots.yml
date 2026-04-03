@@ -79,25 +79,70 @@ jobs:
         run: E2E_FRONTEND_MODE=built ginkgo -v ./tests/e2e/frontend/
         continue-on-error: true
 
-      - name: Sync screenshots to tracked directory
+      - name: Build screenshot diff tool
+        if: steps.skip-check.outputs.skip != 'true'
+        run: go build -o /tmp/imgdiff ./tools/imgdiff
+
+      - name: Sync screenshots to tracked directory (threshold comparison)
         if: steps.skip-check.outputs.skip != 'true'
         run: |
           SRC="tests/e2e/frontend/coverage/screenshots"
           DEST="tests/e2e/screenshots"
-          if [ -d "$SRC" ]; then
-            # Collect new screenshots
-            NEW_FILES=$(find "$SRC" -name "*.png" -type f 2>/dev/null)
-            if [ -n "$NEW_FILES" ]; then
-              echo "Syncing screenshots from $SRC to $DEST"
-              # Remove old screenshots and replace with fresh ones
-              rm -f "$DEST"/*.png
-              cp "$SRC"/*.png "$DEST/"
-            else
-              echo "No screenshots found in $SRC"
-            fi
-          else
+          # Pixel-difference threshold (percentage). Screenshots that differ
+          # by less than this amount are considered unchanged, which avoids
+          # noisy commits caused by sub-pixel anti-aliasing or font-rendering
+          # differences across CI runner environments.
+          THRESHOLD=0.5
+
+          if [ ! -d "$SRC" ]; then
             echo "Screenshot source directory does not exist: $SRC"
+            exit 0
           fi
+
+          NEW_FILES=$(find "$SRC" -name "*.png" -type f 2>/dev/null)
+          if [ -z "$NEW_FILES" ]; then
+            echo "No screenshots found in $SRC"
+            exit 0
+          fi
+
+          echo "Syncing screenshots from $SRC to $DEST (threshold ${THRESHOLD}%)"
+          mkdir -p "$DEST"
+
+          # --- copy new / update changed screenshots ----------------------
+          for src_file in "$SRC"/*.png; do
+            name=$(basename "$src_file")
+            dest_file="$DEST/$name"
+
+            if [ ! -f "$dest_file" ]; then
+              echo "  NEW   $name"
+              cp "$src_file" "$dest_file"
+              continue
+            fi
+
+            # imgdiff compares two PNGs pixel-by-pixel using Go's image/png
+            # (same approach as Playwright's pixelmatch). Exit 0 = below
+            # threshold, exit 1 = above threshold, exit 2 = error.
+            pct=$(/tmp/imgdiff "$src_file" "$dest_file" "$THRESHOLD") && rc=0 || rc=$?
+            if [ "$rc" -eq 0 ]; then
+              echo "  SKIP   $name (${pct}% changed — below threshold)"
+            elif [ "$rc" -eq 2 ]; then
+              echo "  COPY   $name (comparison failed, copying unconditionally)"
+              cp "$src_file" "$dest_file"
+            else
+              echo "  UPDATE $name (${pct}% changed)"
+              cp "$src_file" "$dest_file"
+            fi
+          done
+
+          # --- remove screenshots that no longer exist in source ----------
+          for dest_file in "$DEST"/*.png; do
+            [ -f "$dest_file" ] || continue
+            name=$(basename "$dest_file")
+            if [ ! -f "$SRC/$name" ]; then
+              echo "  REMOVE $name (no longer generated)"
+              rm "$dest_file"
+            fi
+          done
 
       - name: Commit and push screenshot changes
         if: steps.skip-check.outputs.skip != 'true'

@@ -306,8 +306,13 @@ func (p *Page) TakeScreenshot(ctx context.Context, name string) error {
 		return fmt.Errorf("failed waiting for network idle before screenshot %s: %w", name, err)
 	}
 
-	// Take screenshot
-	data, err := p.page.Screenshot()
+	// Take screenshot with animations disabled so that CSS transitions
+	// (e.g. modal dialog entrance animations) are fast-forwarded to their
+	// final state.  This avoids flaky captures where a dialog is mid-fade.
+	data, err := p.page.Screenshot(playwright.PageScreenshotOptions{
+		Animations: playwright.ScreenshotAnimationsDisabled,
+		FullPage:   playwright.Bool(true),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to take screenshot %s: %w", filePath, err)
 	}
