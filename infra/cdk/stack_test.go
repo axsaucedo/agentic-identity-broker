@@ -421,6 +421,31 @@ func TestAllResourcesTagged(t *testing.T) {
 	})
 }
 
+func TestEnvironmentTagCannotBeOverriddenByCustomTags(t *testing.T) {
+	app := awscdk.NewApp(nil)
+	stack := NewEncryptionStack(app, "TestStack", &EncryptionStackProps{
+		StackProps: awscdk.StackProps{
+			Env: &awscdk.Environment{
+				Account: jsii.String("123456789012"),
+				Region:  jsii.String("eu-central-1"),
+			},
+		},
+		Environment:           "prod",
+		ServiceAccountSubject: "system:serviceaccount:ns:sa",
+		Tags:                  map[string]string{"environment": "staging"},
+	})
+	template := assertions.Template_FromStack(stack, nil)
+
+	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
+		"Tags": assertions.Match_ArrayWith(&[]interface{}{
+			assertions.Match_ObjectLike(&map[string]interface{}{
+				"Key":   "environment",
+				"Value": "prod",
+			}),
+		}),
+	})
+}
+
 // --- CloudWatch Dashboard Tests ---
 
 func TestDashboardCreated(t *testing.T) {

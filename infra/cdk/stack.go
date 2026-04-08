@@ -379,11 +379,11 @@ func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
 	allTags := map[string]string{
 		"application": "agentic-identity-broker",
 		"component":   "encryption-vault",
-		"environment": props.Environment,
 	}
 	for key, value := range props.Tags {
 		allTags[key] = value
 	}
+	allTags["environment"] = props.Environment // always overrides user-provided value
 	for key, value := range allTags {
 		awscdk.Tags_Of(stack).Add(jsii.String(key), jsii.String(value), nil)
 	}
