@@ -56,7 +56,7 @@ A single `EncryptionStack` provisions:
 
 3. **IAM Role** — least-privilege access for encryption operations
    - Name: `AgenticIdentityBrokerEncryptionRole-{env}`
-   - Trust principal configurable via IRSA params (`-c oidcProviderArn=ARN -c k8sNamespace=NS -c k8sServiceAccountName=SA`)
+   - Trust principal configurable via `-c serviceAccountSubject=<oidc-subject>`
    - Defaults to same-account root (for non-production convenience)
    - Permissions:
      - KMS: Encrypt, Decrypt, GenerateDataKey, ReEncrypt*, DescribeKey
@@ -76,9 +76,7 @@ A single `EncryptionStack` provisions:
 ```bash
 cdk deploy -c env=test                   # test defaults
 cdk deploy -c env=prod \
-  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/... \
-  -c k8sNamespace=identity-broker \
-  -c k8sServiceAccountName=agentic-identity-broker
+  -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker
 ```
 
 ### Tagging

@@ -48,23 +48,17 @@ export K8S_SERVICE_ACCOUNT="broker-sa"
 cd infra/cdk
 npx cdk synth \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 
 # 4. Preview infrastructure changes
 npx cdk diff \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 
 # 5. Deploy with confirmation prompt
 npx cdk deploy \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
 ### Legacy Trust Principal Deployment (Deprecated)
@@ -492,9 +486,6 @@ All outputs from the CDK stack `AgenticIdentityBrokerEncryptionVault-{env}`:
 | `IamRoleName` | IAM role name (`AgenticIdentityBrokerEncryptionRole-{env}`) | IRSA annotation: `iam.amazonaws.com/role={IamRoleName}` |
 | `KMSThrottleAlarmArn` | CloudWatch alarm (KMS throttling) | Link to SNS for alerts |
 | `KMSErrorAlarmArn` | CloudWatch alarm (KMS errors) | Link to SNS for alerts |
-| `ServiceAccountNamespace` | Kubernetes namespace | Reference: `{namespace}:{serviceAccountName}` |
-| `ServiceAccountName` | Kubernetes service account | Reference: `{namespace}:{serviceAccountName}` |
-| `ServiceAccountFullName` | Full service account reference | Format: `namespace:serviceAccountName` |
 
 ---
 

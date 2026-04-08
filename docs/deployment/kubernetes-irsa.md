@@ -160,9 +160,7 @@ The AWS CDK CLI will invoke the Go code to generate a CloudFormation template:
 ```bash
 npx cdk synth \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
 This command:
@@ -176,9 +174,7 @@ Review the synthesized template: `cdk.out/AgenticIdentityBrokerEncryptionVault-p
 ```bash
 npx cdk diff \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
 #### 1.5 Deploy Stack
@@ -186,9 +182,7 @@ npx cdk diff \
 ```bash
 npx cdk deploy \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
 Deployment takes approximately 3-5 minutes.
@@ -239,9 +233,6 @@ Expected outputs:
 - `BranchKeyTableName`: DynamoDB table name (e.g., `AgenticIdentityBrokerBranchKeys-prod`)
 - `EncryptionRoleARN`: IAM role ARN (e.g., `arn:aws:iam::ACCOUNT:role/AgenticIdentityBrokerEncryptionRole-prod`)
 - `IamRoleName`: IAM role name (e.g., `AgenticIdentityBrokerEncryptionRole-prod`)
-- `ServiceAccountNamespace`: Kubernetes namespace (`identity-broker`)
-- `ServiceAccountName`: Service account name (`broker-sa`)
-- `ServiceAccountFullName`: Full reference (`identity-broker:broker-sa`)
 
 ### Step 3: Verify IAM Role Trust Policy
 
@@ -708,11 +699,8 @@ Compare actual vs expected:
 kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.spec.serviceAccountName}'
 kubectl get pod $POD_NAME -n ${K8S_NAMESPACE} -o jsonpath='{.metadata.namespace}'
 
-# Expected from CDK outputs
-aws cloudformation describe-stacks \
-  --stack-name $STACK_NAME \
-  --query 'Stacks[0].Outputs[?OutputKey==`ServiceAccountFullName`].OutputValue' \
-  --output text
+# Expected subject used at deploy time (serviceAccountSubject parameter)
+# Format: system:serviceaccount:<namespace>:<service-account-name>
 ```
 
 **Solutions**:
@@ -838,9 +826,7 @@ jobs:
           npm install -g aws-cdk
           npx cdk deploy \
             -c env=prod \
-            -c oidcProviderArn=${{ secrets.OIDC_PROVIDER_ARN }} \
-            -c k8sNamespace=identity-broker \
-            -c k8sServiceAccountName=broker-sa \
+            -c serviceAccountSubject=system:serviceaccount:identity-broker:broker-sa \
             --require-approval never
 
       - name: Extract Stack Outputs
