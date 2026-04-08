@@ -6,7 +6,9 @@
 //
 // Usage:
 //
-//	cdk synth -c env=test
+//	cdk synth -c env=test \
+//	  -c k8sNamespace=agentic-identity-broker \
+//	  -c k8sServiceAccountName=agentic-identity-broker
 //	cdk synth -c env=sandbox \
 //	  -c k8sNamespace=agentic-identity-broker-sandbox \
 //	  -c k8sServiceAccountName=agentic-identity-broker
@@ -52,22 +54,17 @@ func main() {
 	}
 
 	// Read service account parameters for Zalando CDP trust relationship.
-	// Defaults are provided per environment; override via context if needed.
-	defaultNamespaces := map[string]string{
-		"test":    "agentic-identity-broker",
-		"sandbox": "agentic-identity-broker-sandbox",
-		"prod":    "agentic-identity-broker",
-	}
-	k8sNamespace := defaultNamespaces[env]
+	// Production requires explicit values; NewEncryptionStack panics if they are empty.
+	k8sNamespace := ""
 	if v := app.Node().TryGetContext(jsii.String("k8sNamespace")); v != nil {
-		if s, ok := v.(string); ok && s != "" {
+		if s, ok := v.(string); ok {
 			k8sNamespace = s
 		}
 	}
 
-	k8sServiceAccountName := "agentic-identity-broker"
+	k8sServiceAccountName := ""
 	if v := app.Node().TryGetContext(jsii.String("k8sServiceAccountName")); v != nil {
-		if s, ok := v.(string); ok && s != "" {
+		if s, ok := v.(string); ok {
 			k8sServiceAccountName = s
 		}
 	}

@@ -445,6 +445,26 @@ func TestDashboardNameFollowsConvention(t *testing.T) {
 	})
 }
 
+func TestDashboardKMSWidgetUsesThrottleCount(t *testing.T) {
+	_, template := createTestStack(t, "test", "", "")
+
+	templateJSON := template.ToJSON()
+	dashboards := findResourcesByType(t, templateJSON, "AWS::CloudWatch::Dashboard")
+	require.NotEmpty(t, dashboards)
+
+	for _, d := range dashboards {
+		dMap, ok := d.(map[string]interface{})
+		require.True(t, ok)
+		props, ok := dMap["Properties"].(map[string]interface{})
+		require.True(t, ok)
+		bodyBytes, err := json.Marshal(props["DashboardBody"])
+		require.NoError(t, err)
+		body := string(bodyBytes)
+		assert.Contains(t, body, "ThrottleCount", "KMS throttle widget must use ThrottleCount metric")
+		assert.NotContains(t, body, "UserErrorCount", "KMS widget must not use UserErrorCount (belongs to alarms only)")
+	}
+}
+
 // --- CloudWatch Alarms Tests ---
 
 func TestKMSThrottleAlarmCreated(t *testing.T) {

@@ -421,7 +421,7 @@ func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
 //
 // Metrics displayed:
 //   - KMS ApiCalls (Sum): Number of KMS API calls for encryption/decryption
-//   - KMS UserErrorCount (Sum): Errors from KMS operations (throttling, access denied)
+//   - KMS ThrottleCount (Sum): Throttled KMS API requests
 //   - DynamoDB ConsumedReadCapacityUnits (Sum): Branch key cache read operations
 //   - DynamoDB ConsumedWriteCapacityUnits (Sum): Branch key cache write operations
 //
