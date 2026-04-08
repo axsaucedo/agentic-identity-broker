@@ -14,14 +14,6 @@
 - [ ] CloudFormation template reviewed (cdk diff)
 - [ ] Backup/rollback plan documented
 
-### For Legacy Trust Principal Deployments (Deprecated)
-
-> **Note**: Trust principal support is being migrated to IRSA-only. Use IRSA for all Kubernetes deployments.
-
-- [ ] Trust principal ARN prepared (ECS task role, Lambda role, etc.)
-- [ ] Environment set correctly (-c env=prod for production)
-- [ ] AWS credentials configured
-- [ ] CloudFormation template reviewed
 
 ## Deployment Steps
 
@@ -205,28 +197,6 @@ npx cdk deploy \
     -H "X-Remote-User: testuser@example.com"
   ```
 
-### For Legacy Trust Principal Deployments
-
-- [ ] **Configure application environment variables**:
-  ```bash
-  # Extract stack outputs and set environment variables
-  STACK_NAME="AgenticIdentityBrokerEncryptionVault-prod"
-
-  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
-    --query 'Stacks[0].Outputs[?OutputKey==`EncryptionKeyARN`].OutputValue' --output text)
-
-  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
-    --query 'Stacks[0].Outputs[?OutputKey==`BranchKeyTableName`].OutputValue' --output text)
-
-  # Optional: Use role assumption if required for cross-account access
-  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
-    --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' --output text)
-  ```
-
-  This automatically populates the required variables from CDK stack outputs.
 
 - [ ] **Run smoke test** (OAuth2 session management):
   ```bash
