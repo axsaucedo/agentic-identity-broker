@@ -58,12 +58,6 @@ func main() {
 		"sandbox": "agentic-identity-broker-sandbox",
 		"prod":    "agentic-identity-broker",
 	}
-	defaultServiceAccounts := map[string]string{
-		"test":    "agentic-identity-broker",
-		"sandbox": "agentic-identity-broker",
-		"prod":    "agentic-identity-broker",
-	}
-
 	k8sNamespace := defaultNamespaces[env]
 	if v := app.Node().TryGetContext(jsii.String("k8sNamespace")); v != nil {
 		if s, ok := v.(string); ok && s != "" {
@@ -71,7 +65,7 @@ func main() {
 		}
 	}
 
-	k8sServiceAccountName := defaultServiceAccounts[env]
+	k8sServiceAccountName := "agentic-identity-broker"
 	if v := app.Node().TryGetContext(jsii.String("k8sServiceAccountName")); v != nil {
 		if s, ok := v.(string); ok && s != "" {
 			k8sServiceAccountName = s

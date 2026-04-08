@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -308,7 +309,7 @@ func TestStackOutputsExist(t *testing.T) {
 				continue
 			}
 			desc, _ := outMap["Description"].(string)
-			if desc != "" && containsSubstring(desc, envVar) {
+			if desc != "" && strings.Contains(desc, envVar) {
 				found = true
 				break
 			}
@@ -488,10 +489,10 @@ func TestKMSAlarmsOutputsExist(t *testing.T) {
 			continue
 		}
 		desc, _ := outMap["Description"].(string)
-		if containsSubstring(desc, "KMS throttling") {
+		if strings.Contains(desc, "KMS throttling") {
 			foundThrottleAlarm = true
 		}
-		if containsSubstring(desc, "KMS errors") {
+		if strings.Contains(desc, "KMS errors") {
 			foundErrorAlarm = true
 		}
 	}
@@ -612,16 +613,16 @@ func TestServiceAccountOutputs(t *testing.T) {
 			continue
 		}
 		desc, _ := outMap["Description"].(string)
-		if containsSubstring(desc, "namespace for service account") {
+		if strings.Contains(desc, "namespace for service account") {
 			foundNamespace = true
 		}
-		if containsSubstring(desc, "service account name") && !containsSubstring(desc, "Full") {
+		if strings.Contains(desc, "service account name") && !strings.Contains(desc, "Full") {
 			foundSAName = true
 		}
-		if containsSubstring(desc, "Full service account reference") {
+		if strings.Contains(desc, "Full service account reference") {
 			foundFullName = true
 		}
-		if containsSubstring(desc, "iam.amazonaws.com/role annotation") {
+		if strings.Contains(desc, "iam.amazonaws.com/role annotation") {
 			foundRoleName = true
 		}
 	}
@@ -791,16 +792,3 @@ func extractSection(t *testing.T, templateJSON interface{}, section string) inte
 	return result[section]
 }
 
-// containsSubstring checks if s contains substr.
-func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

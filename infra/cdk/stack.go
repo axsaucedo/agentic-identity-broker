@@ -92,13 +92,11 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	if isProd {
 		if props.K8sNamespace == "" {
 			panic("ERROR: Production deployments require k8sNamespace.\n" +
-				"Usage: cdk synth -c env=prod -c k8sNamespace=agentic-identity-broker\n" +
-				"Example: cdk synth -c env=prod -c k8sNamespace=agentic-identity-broker")
+				"Usage: cdk synth -c env=prod -c k8sNamespace=agentic-identity-broker")
 		}
 		if props.K8sServiceAccountName == "" {
 			panic("ERROR: Production deployments require k8sServiceAccountName.\n" +
-				"Usage: cdk synth -c env=prod -c k8sServiceAccountName=agentic-identity-broker\n" +
-				"Example: cdk synth -c env=prod -c k8sServiceAccountName=agentic-identity-broker")
+				"Usage: cdk synth -c env=prod -c k8sServiceAccountName=agentic-identity-broker")
 		}
 	}
 
@@ -373,7 +371,6 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	return stack
 }
 
-
 // removalPolicy returns RETAIN for production, DESTROY for non-production.
 func removalPolicy(isProd bool) awscdk.RemovalPolicy {
 	if isProd {
@@ -449,7 +446,7 @@ func createDashboard(stack awscdk.Stack, kmsKey awskms.IKey, table awsdynamodb.I
 	// KMS Throttled Requests Metric - monitors throttling issues.
 	kmsThrottleMetric := awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
 		Namespace:  jsii.String("AWS/KMS"),
-		MetricName: jsii.String("UserErrorCount"),
+		MetricName: jsii.String("ThrottleCount"),
 		DimensionsMap: &map[string]*string{
 			"KeyId": kmsKey.KeyId(),
 		},
