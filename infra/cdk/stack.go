@@ -87,17 +87,19 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 
 	// ─── Service Account Validation ──────────────────────────────────────
 	//
-	// Production deployments MUST specify service account parameters to ensure
-	// the CDP trust relationship template is bound to the correct Kubernetes identity.
-	if isProd {
-		if props.K8sNamespace == "" {
-			panic("ERROR: Production deployments require k8sNamespace.\n" +
-				"Usage: cdk synth -c env=prod -c k8sNamespace=agentic-identity-broker")
-		}
-		if props.K8sServiceAccountName == "" {
-			panic("ERROR: Production deployments require k8sServiceAccountName.\n" +
-				"Usage: cdk synth -c env=prod -c k8sServiceAccountName=agentic-identity-broker")
-		}
+	// Both parameters are required for all environments — omitting them produces
+	// SERVICE_ACCOUNT=":" in the CDP trust policy, making the role unusable.
+	if props.K8sNamespace == "" {
+		panic(fmt.Sprintf(
+			"ERROR: k8sNamespace is required for env=%s.\n"+
+				"Usage: cdk synth -c env=%s -c k8sNamespace=<namespace>",
+			props.Environment, props.Environment))
+	}
+	if props.K8sServiceAccountName == "" {
+		panic(fmt.Sprintf(
+			"ERROR: k8sServiceAccountName is required for env=%s.\n"+
+				"Usage: cdk synth -c env=%s -c k8sServiceAccountName=<service-account>",
+			props.Environment, props.Environment))
 	}
 
 	// ─── Tags ───────────────────────────────────────────────────────────

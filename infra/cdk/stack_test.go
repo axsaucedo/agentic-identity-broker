@@ -13,8 +13,16 @@ import (
 )
 
 // helper to create a stack for testing.
+// Empty namespace or sa default to "agentic-identity-broker" to satisfy the
+// universal validation added in NewEncryptionStack.
 func createTestStack(t *testing.T, env, namespace, sa string) (awscdk.Stack, assertions.Template) {
 	t.Helper()
+	if namespace == "" {
+		namespace = "agentic-identity-broker"
+	}
+	if sa == "" {
+		sa = "agentic-identity-broker"
+	}
 	app := awscdk.NewApp(nil)
 
 	stack := NewEncryptionStack(app, "TestStack", &EncryptionStackProps{
@@ -569,20 +577,34 @@ func TestProductionWithServiceAccountSucceeds(t *testing.T) {
 	assert.NotNil(t, stack)
 }
 
-func TestNonProductionAllowsEmptyServiceAccountParameters(t *testing.T) {
+func TestNonProductionRequiresK8sNamespace(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected panic for test env without k8sNamespace")
+		}
+	}()
+
 	app := awscdk.NewApp(nil)
-	stack := NewEncryptionStack(app, "test", &EncryptionStackProps{
-		StackProps: awscdk.StackProps{
-			Env: &awscdk.Environment{
-				Account: jsii.String("123456789012"),
-				Region:  jsii.String("eu-central-1"),
-			},
-		},
+	NewEncryptionStack(app, "test", &EncryptionStackProps{
 		Environment:           "test",
-		K8sNamespace:          "",
-		K8sServiceAccountName: "",
+		K8sNamespace:          "", // Missing!
+		K8sServiceAccountName: "agentic-identity-broker",
 	})
-	assert.NotNil(t, stack)
+}
+
+func TestNonProductionRequiresK8sServiceAccountName(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected panic for test env without k8sServiceAccountName")
+		}
+	}()
+
+	app := awscdk.NewApp(nil)
+	NewEncryptionStack(app, "test", &EncryptionStackProps{
+		Environment:           "test",
+		K8sNamespace:          "agentic-identity-broker",
+		K8sServiceAccountName: "", // Missing!
+	})
 }
 
 // --- CDP Trust Policy Tests ---
