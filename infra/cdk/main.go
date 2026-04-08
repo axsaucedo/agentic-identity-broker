@@ -7,14 +7,11 @@
 // Usage:
 //
 //	cdk synth -c env=test \
-//	  -c k8sNamespace=agentic-identity-broker \
-//	  -c k8sServiceAccountName=agentic-identity-broker
+//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker:agentic-identity-broker
 //	cdk synth -c env=sandbox \
-//	  -c k8sNamespace=agentic-identity-broker-sandbox \
-//	  -c k8sServiceAccountName=agentic-identity-broker
+//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker-sandbox:agentic-identity-broker
 //	cdk synth -c env=prod \
-//	  -c k8sNamespace=agentic-identity-broker \
-//	  -c k8sServiceAccountName=agentic-identity-broker
+//	  -c serviceAccountSubject=system:serviceaccount:agentic-identity-broker:agentic-identity-broker
 //
 // Custom Tags (optional):
 //
@@ -53,19 +50,12 @@ func main() {
 		env = "prod"
 	}
 
-	// Read service account parameters for Zalando CDP trust relationship.
-	// Production requires explicit values; NewEncryptionStack panics if they are empty.
-	k8sNamespace := ""
-	if v := app.Node().TryGetContext(jsii.String("k8sNamespace")); v != nil {
+	// Read the OIDC subject claim for the CDP trust relationship.
+	// NewEncryptionStack panics if this is empty.
+	serviceAccountSubject := ""
+	if v := app.Node().TryGetContext(jsii.String("serviceAccountSubject")); v != nil {
 		if s, ok := v.(string); ok {
-			k8sNamespace = s
-		}
-	}
-
-	k8sServiceAccountName := ""
-	if v := app.Node().TryGetContext(jsii.String("k8sServiceAccountName")); v != nil {
-		if s, ok := v.(string); ok {
-			k8sServiceAccountName = s
+			serviceAccountSubject = s
 		}
 	}
 
@@ -94,8 +84,7 @@ func main() {
 			}),
 		},
 		Environment:           env,
-		K8sNamespace:          k8sNamespace,
-		K8sServiceAccountName: k8sServiceAccountName,
+		ServiceAccountSubject: serviceAccountSubject,
 		Tags:                  customTags,
 	})
 

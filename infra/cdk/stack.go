@@ -40,11 +40,9 @@ type EncryptionStackProps struct {
 	// Environment is the deployment environment: "test", "sandbox", or "prod".
 	Environment string
 
-	// K8sNamespace is the Kubernetes namespace where the service account resides.
-	K8sNamespace string
-
-	// K8sServiceAccountName is the name of the Kubernetes service account.
-	K8sServiceAccountName string
+	// ServiceAccountSubject is the full OIDC subject claim bound in the trust policy condition.
+	// For Kubernetes workloads this is typically "system:serviceaccount:<namespace>:<sa-name>".
+	ServiceAccountSubject string
 
 	// Tags is a map of optional resource tags to apply to all taggable resources.
 	// Standard tags (Project, Component, Environment, ManagedBy) are applied by default.
@@ -87,18 +85,12 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 
 	// ─── Service Account Validation ──────────────────────────────────────
 	//
-	// Both parameters are required for all environments — omitting them produces
-	// SERVICE_ACCOUNT=":" in the CDP trust policy, making the role unusable.
-	if props.K8sNamespace == "" {
+	// ServiceAccountSubject is required for all environments — omitting it
+	// leaves an empty subject in the CDP trust policy, making the role unusable.
+	if props.ServiceAccountSubject == "" {
 		panic(fmt.Sprintf(
-			"ERROR: k8sNamespace is required for env=%s.\n"+
-				"Usage: cdk synth -c env=%s -c k8sNamespace=<namespace>",
-			props.Environment, props.Environment))
-	}
-	if props.K8sServiceAccountName == "" {
-		panic(fmt.Sprintf(
-			"ERROR: k8sServiceAccountName is required for env=%s.\n"+
-				"Usage: cdk synth -c env=%s -c k8sServiceAccountName=<service-account>",
+			"ERROR: serviceAccountSubject is required for env=%s.\n"+
+				"Usage: cdk synth -c env=%s -c serviceAccountSubject=<subject>",
 			props.Environment, props.Environment))
 	}
 
@@ -225,19 +217,28 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		MaxSessionDuration: awscdk.Duration_Hours(jsii.Number(MaxSessionDurationHours)),
 	})
 
-	// Override trust policy with Zalando's CDP template.
-	// CDP substitutes {{{CDP_IAM_ROLE_TRUST_RELATIONSHIP_TEMPLATE}}} at pipeline time,
-	// then CloudFormation resolves ${SERVICE_ACCOUNT} via Fn::Sub.
-	serviceAccount := fmt.Sprintf("%s:%s", props.K8sNamespace, props.K8sServiceAccountName)
+	// Override trust policy with a manual Zalando CDP trust relationship.
+	// CDP substitutes {{{CDP_OIDC_PROVIDER_ARN}}} and {{{CDP_OIDC_SUBJECT_KEY}}} at pipeline time.
 	cfnRole := encryptionRole.Node().DefaultChild().(awsiam.CfnRole)
 	cfnRole.AddPropertyOverride(
 		jsii.String("AssumeRolePolicyDocument"),
-		awscdk.Fn_Sub(
-			jsii.String("{{{CDP_IAM_ROLE_TRUST_RELATIONSHIP_TEMPLATE}}}"),
-			&map[string]*string{
-				"SERVICE_ACCOUNT": jsii.String(serviceAccount),
+		map[string]interface{}{
+			"Version": "2012-10-17",
+			"Statement": []interface{}{
+				map[string]interface{}{
+					"Effect": "Allow",
+					"Principal": map[string]interface{}{
+						"Federated": "{{{CDP_OIDC_PROVIDER_ARN}}}",
+					},
+					"Action": "sts:AssumeRoleWithWebIdentity",
+					"Condition": map[string]interface{}{
+						"StringEquals": map[string]interface{}{
+							"{{{CDP_OIDC_SUBJECT_KEY}}}": props.ServiceAccountSubject,
+						},
+					},
+				},
 			},
-		),
+		},
 	)
 
 	// KMS permissions: encrypt, decrypt, generate/re-encrypt data keys.
@@ -337,28 +338,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-KMSErrorAlarmArn", props.Environment)),
 	})
 
-	// ─── Service Account Outputs ─────────────────────────────────────────
-	//
-	// Service account information for Kubernetes/Helm deployment.
-	// Use IamRoleName for the iam.amazonaws.com/role annotation.
-	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountNamespace"), &awscdk.CfnOutputProps{
-		Value:       jsii.String(props.K8sNamespace),
-		Description: jsii.String("Kubernetes namespace for service account"),
-		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountNamespace", props.Environment)),
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountName"), &awscdk.CfnOutputProps{
-		Value:       jsii.String(props.K8sServiceAccountName),
-		Description: jsii.String("Kubernetes service account name"),
-		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountName", props.Environment)),
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountFullName"), &awscdk.CfnOutputProps{
-		Value:       jsii.String(fmt.Sprintf("%s:%s", props.K8sNamespace, props.K8sServiceAccountName)),
-		Description: jsii.String("Full service account reference (namespace:name)"),
-		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountFullName", props.Environment)),
-	})
-
+	// ─── IAM Role Output ─────────────────────────────────────────────────
 	awscdk.NewCfnOutput(stack, jsii.String("IamRoleName"), &awscdk.CfnOutputProps{
 		Value:       encryptionRole.RoleName(),
 		Description: jsii.String("IAM role name for iam.amazonaws.com/role annotation in Kubernetes ServiceAccount"),
