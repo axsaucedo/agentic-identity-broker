@@ -367,7 +367,7 @@ All AWS KMS configuration can be set via environment variables:
 ### Before Production Deployment
 
 - [ ] All HIGH priority fixes implemented and tested
-- [ ] Production trust principal enforced (panic if missing)
+- [ ] `serviceAccountSubject` enforced (panic if missing)
 - [ ] Environment validation prevents typos (dev/staging/prod only)
 - [ ] KMS key rotation backward compatibility tested
 - [ ] Security review completed
