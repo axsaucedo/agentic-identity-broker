@@ -31,6 +31,7 @@ const (
 	KMSThrottleEvalPeriods = 2  // evaluation periods for throttle alarm
 	KMSErrorThreshold      = 5  // error count over 1 evaluation period
 	KMSErrorEvalPeriods    = 1  // evaluation periods for error alarm
+
 )
 
 // EncryptionStackProps extends StackProps with encryption-specific parameters.
@@ -64,7 +65,7 @@ type EncryptionStackProps struct {
 // Props is required; if nil, the function will panic with a clear error message.
 func NewEncryptionStack(scope constructs.Construct, id string, props *EncryptionStackProps) awscdk.Stack {
 	if props == nil {
-		panic("NewEncryptionStack requires props to be non-nil; provide EncryptionStackProps with Environment, K8sNamespace, and K8sServiceAccountName")
+		panic("NewEncryptionStack requires props to be non-nil; provide EncryptionStackProps with Environment and ServiceAccountSubject")
 	}
 
 	stack := awscdk.NewStack(scope, &id, &props.StackProps)
@@ -208,12 +209,12 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// ─── IAM Role (Encryption Operations) ───────────────────────────────
 	//
 	// Dedicated role with least-privilege access to KMS and DynamoDB.
-	// Uses Zalando's CDP trust relationship template so pods annotated with
-	// iam.amazonaws.com/role: <role-name> can assume this role.
+	// The trust policy is fully replaced below via AddPropertyOverride to inject
+	// CDP OIDC variable placeholders that the CDK typed API cannot express.
 	encryptionRole := awsiam.NewRole(stack, jsii.String("EncryptionRole"), &awsiam.RoleProps{
 		RoleName:           jsii.String(fmt.Sprintf("AgenticIdentityBrokerEncryptionRole-%s", props.Environment)),
 		Description:        jsii.String("IAM role for Agentic Identity Broker encryption operations (KMS + DynamoDB)"),
-		AssumedBy:          awsiam.NewAccountRootPrincipal(), // overridden below via CDP trust template
+		AssumedBy:          awsiam.NewAccountRootPrincipal(), // placeholder; replaced below
 		MaxSessionDuration: awscdk.Duration_Hours(jsii.Number(MaxSessionDurationHours)),
 	})
 
@@ -375,24 +376,14 @@ func pendingWindow(isProd bool) awscdk.Duration {
 // Environment is always set to match props.Environment.
 // User-provided Tags in props override or extend the defaults.
 func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
-	// Build default tags
-	defaultTags := map[string]string{
+	allTags := map[string]string{
 		"application": "agentic-identity-broker",
 		"component":   "encryption-vault",
+		"environment": props.Environment,
 	}
-
-	// Merge user-provided tags into defaults (user tags override defaults)
-	allTags := defaultTags
-	if props.Tags != nil {
-		for key, value := range props.Tags {
-			allTags[key] = value
-		}
+	for key, value := range props.Tags {
+		allTags[key] = value
 	}
-
-	// Always set Environment to match props.Environment
-	allTags["environment"] = props.Environment
-
-	// Apply all tags to the stack
 	for key, value := range allTags {
 		awscdk.Tags_Of(stack).Add(jsii.String(key), jsii.String(value), nil)
 	}

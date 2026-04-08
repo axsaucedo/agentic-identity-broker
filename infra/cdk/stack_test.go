@@ -178,17 +178,7 @@ func TestIAMRoleTrustPolicyCDPForTest(t *testing.T) {
 	require.NotEmpty(t, roles)
 
 	for _, role := range roles {
-		roleMap, ok := role.(map[string]interface{})
-		require.True(t, ok)
-		props, ok := roleMap["Properties"].(map[string]interface{})
-		require.True(t, ok)
-		trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
-		require.True(t, ok)
-		stmts, ok := trustDoc["Statement"].([]interface{})
-		require.True(t, ok, "trust policy should have Statement")
-		require.Len(t, stmts, 1)
-		stmt, ok := stmts[0].(map[string]interface{})
-		require.True(t, ok)
+		stmt := extractTrustStatement(t, role)
 		principal, ok := stmt["Principal"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "{{{CDP_OIDC_PROVIDER_ARN}}}", principal["Federated"])
@@ -206,18 +196,7 @@ func TestIAMRoleTrustPolicyCDP(t *testing.T) {
 	require.NotEmpty(t, roles)
 
 	for _, role := range roles {
-		roleMap, ok := role.(map[string]interface{})
-		require.True(t, ok)
-		props, ok := roleMap["Properties"].(map[string]interface{})
-		require.True(t, ok)
-		trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
-		require.True(t, ok, "AssumeRolePolicyDocument should be a map")
-		assert.Equal(t, "2012-10-17", trustDoc["Version"])
-		stmts, ok := trustDoc["Statement"].([]interface{})
-		require.True(t, ok)
-		require.Len(t, stmts, 1)
-		stmt, ok := stmts[0].(map[string]interface{})
-		require.True(t, ok)
+		stmt := extractTrustStatement(t, role)
 		principal, ok := stmt["Principal"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "{{{CDP_OIDC_PROVIDER_ARN}}}", principal["Federated"])
@@ -591,16 +570,7 @@ func TestCDPTrustPolicyServiceAccount(t *testing.T) {
 	require.NotEmpty(t, roles)
 
 	for _, role := range roles {
-		roleMap, ok := role.(map[string]interface{})
-		require.True(t, ok)
-		props, ok := roleMap["Properties"].(map[string]interface{})
-		require.True(t, ok)
-		trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
-		require.True(t, ok)
-		stmts, ok := trustDoc["Statement"].([]interface{})
-		require.True(t, ok)
-		stmt, ok := stmts[0].(map[string]interface{})
-		require.True(t, ok)
+		stmt := extractTrustStatement(t, role)
 		condition, ok := stmt["Condition"].(map[string]interface{})
 		require.True(t, ok)
 		stringEquals, ok := condition["StringEquals"].(map[string]interface{})
@@ -727,16 +697,7 @@ func TestSandboxTrustPolicy(t *testing.T) {
 	require.NotEmpty(t, roles)
 
 	for _, role := range roles {
-		roleMap, ok := role.(map[string]interface{})
-		require.True(t, ok)
-		props, ok := roleMap["Properties"].(map[string]interface{})
-		require.True(t, ok)
-		trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
-		require.True(t, ok)
-		stmts, ok := trustDoc["Statement"].([]interface{})
-		require.True(t, ok)
-		stmt, ok := stmts[0].(map[string]interface{})
-		require.True(t, ok)
+		stmt := extractTrustStatement(t, role)
 		condition, ok := stmt["Condition"].(map[string]interface{})
 		require.True(t, ok)
 		stringEquals, ok := condition["StringEquals"].(map[string]interface{})
@@ -746,6 +707,23 @@ func TestSandboxTrustPolicy(t *testing.T) {
 }
 
 // --- Helpers ---
+
+// extractTrustStatement returns Statement[0] from the AssumeRolePolicyDocument of a role resource map.
+func extractTrustStatement(t *testing.T, role interface{}) map[string]interface{} {
+	t.Helper()
+	roleMap, ok := role.(map[string]interface{})
+	require.True(t, ok)
+	props, ok := roleMap["Properties"].(map[string]interface{})
+	require.True(t, ok)
+	trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
+	require.True(t, ok)
+	stmts, ok := trustDoc["Statement"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, stmts, 1)
+	stmt, ok := stmts[0].(map[string]interface{})
+	require.True(t, ok)
+	return stmt
+}
 
 // findResourcesByType extracts all CloudFormation resources of a given type.
 func findResourcesByType(t *testing.T, templateJSON interface{}, resourceType string) []interface{} {
