@@ -61,21 +61,6 @@ npx cdk deploy \
   -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
-### Legacy Trust Principal Deployment (Deprecated)
-
-> **Warning**: This approach is deprecated. Migrate to IRSA for Kubernetes deployments.
-
-```bash
-# 1. Synthesize CloudFormation template
-cd infra/cdk
-npx cdk synth -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
-
-# 2. Preview infrastructure changes
-npx cdk diff -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
-
-# 3. Deploy with confirmation prompt
-npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
-```
 
 ## Post-Deployment Verification
 

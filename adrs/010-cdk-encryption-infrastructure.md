@@ -56,8 +56,7 @@ A single `EncryptionStack` provisions:
 
 3. **IAM Role** — least-privilege access for encryption operations
    - Name: `AgenticIdentityBrokerEncryptionRole-{env}`
-   - Trust principal configurable via `-c serviceAccountSubject=<oidc-subject>`
-   - Defaults to same-account root (for non-production convenience)
+   - Trust principal set via `-c serviceAccountSubject=<oidc-subject>` (required for all environments)
    - Permissions:
      - KMS: Encrypt, Decrypt, GenerateDataKey, ReEncrypt*, DescribeKey
      - KMS: CreateGrant (conditioned on `kms:GrantIsForAWSResource`)
@@ -74,7 +73,8 @@ A single `EncryptionStack` provisions:
 ### Environment Parameterization
 
 ```bash
-cdk deploy -c env=test                   # test defaults
+cdk deploy -c env=test \
+  -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker
 cdk deploy -c env=prod \
   -c serviceAccountSubject=system:serviceaccount:identity-broker:agentic-identity-broker
 ```
