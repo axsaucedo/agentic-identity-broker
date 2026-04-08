@@ -6,19 +6,17 @@
 //
 // Usage:
 //
-//	cdk deploy -c env=test
-//	cdk deploy -c env=sandbox \
-//	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/kube-1.corporate-iam.zalan.do \
+//	cdk synth -c env=test
+//	cdk synth -c env=sandbox \
 //	  -c k8sNamespace=agentic-identity-broker-sandbox \
 //	  -c k8sServiceAccountName=agentic-identity-broker
-//	cdk deploy -c env=prod \
-//	  -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLEID \
-//	  -c k8sNamespace=default \
+//	cdk synth -c env=prod \
+//	  -c k8sNamespace=agentic-identity-broker \
 //	  -c k8sServiceAccountName=agentic-identity-broker
 //
 // Custom Tags (optional):
 //
-//	cdk deploy -c env=test -c 'customTags={"Application":"TokenVault","Team":"Security","CostCenter":"CC123"}'
+//	cdk synth -c env=test -c 'customTags={"Application":"TokenVault","Team":"Security","CostCenter":"CC123"}'
 package main
 
 import (
@@ -53,30 +51,35 @@ func main() {
 		env = "prod"
 	}
 
-	// Read IRSA parameters for Kubernetes IAM Roles for Service Accounts.
-	var oidcProviderArn string
-	if v := app.Node().TryGetContext(jsii.String("oidcProviderArn")); v != nil {
-		if s, ok := v.(string); ok {
-			oidcProviderArn = s
-		}
+	// Read service account parameters for Zalando CDP trust relationship.
+	// Defaults are provided per environment; override via context if needed.
+	defaultNamespaces := map[string]string{
+		"test":    "agentic-identity-broker",
+		"sandbox": "agentic-identity-broker-sandbox",
+		"prod":    "agentic-identity-broker",
+	}
+	defaultServiceAccounts := map[string]string{
+		"test":    "agentic-identity-broker",
+		"sandbox": "agentic-identity-broker",
+		"prod":    "agentic-identity-broker",
 	}
 
-	var k8sNamespace string
+	k8sNamespace := defaultNamespaces[env]
 	if v := app.Node().TryGetContext(jsii.String("k8sNamespace")); v != nil {
-		if s, ok := v.(string); ok {
+		if s, ok := v.(string); ok && s != "" {
 			k8sNamespace = s
 		}
 	}
 
-	var k8sServiceAccountName string
+	k8sServiceAccountName := defaultServiceAccounts[env]
 	if v := app.Node().TryGetContext(jsii.String("k8sServiceAccountName")); v != nil {
-		if s, ok := v.(string); ok {
+		if s, ok := v.(string); ok && s != "" {
 			k8sServiceAccountName = s
 		}
 	}
 
 	// Read custom tags from CDK context (optional).
-	// Usage: cdk deploy -c customTags='{"Application":"TokenVault","Team":"Security"}'
+	// Usage: cdk synth -c customTags='{"Application":"TokenVault","Team":"Security"}'
 	customTags := make(map[string]string)
 	if v := app.Node().TryGetContext(jsii.String("customTags")); v != nil {
 		if m, ok := v.(map[string]interface{}); ok {
@@ -88,39 +91,18 @@ func main() {
 		}
 	}
 
-	// Validate IRSA parameters for production deployments.
-	isProd := env == "prod" || env == "production"
-	if isProd {
-		if oidcProviderArn == "" {
-			panic("ERROR: Production deployments require oidcProviderArn.\n" +
-				"Usage: cdk deploy -c env=prod -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/oidc.eks.REGION.amazonaws.com/id/ID\n" +
-				"Example: cdk deploy -c env=prod -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE")
-		}
-		if k8sNamespace == "" {
-			panic("ERROR: Production deployments require k8sNamespace.\n" +
-				"Usage: cdk deploy -c env=prod -c k8sNamespace=default\n" +
-				"Example: cdk deploy -c env=prod -c k8sNamespace=identity-broker")
-		}
-		if k8sServiceAccountName == "" {
-			panic("ERROR: Production deployments require k8sServiceAccountName.\n" +
-				"Usage: cdk deploy -c env=prod -c k8sServiceAccountName=agentic-identity-broker\n" +
-				"Example: cdk deploy -c env=prod -c k8sServiceAccountName=identity-broker-sa")
-		}
-	}
-
 	stackName := "AgenticIdentityBrokerEncryptionVault-" + env
 
 	NewEncryptionStack(app, stackName, &EncryptionStackProps{
 		StackProps: awscdk.StackProps{
 			StackName:   jsii.String(stackName),
-			Description: jsii.String("Agentic Identity Broker - Token Vault encryption infrastructure (KMS + DynamoDB + IAM) with IRSA support"),
+			Description: jsii.String("Agentic Identity Broker - Token Vault encryption infrastructure (KMS + DynamoDB + IAM)"),
 			Env:         makeEnv(),
 			Synthesizer: awscdk.NewDefaultStackSynthesizer(&awscdk.DefaultStackSynthesizerProps{
 				GenerateBootstrapVersionRule: jsii.Bool(false),
 			}),
 		},
 		Environment:           env,
-		OIDCProviderArn:       oidcProviderArn,
 		K8sNamespace:          k8sNamespace,
 		K8sServiceAccountName: k8sServiceAccountName,
 		Tags:                  customTags,

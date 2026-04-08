@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// helper to create a stack for testing with IRSA parameters.
-func createTestStack(t *testing.T, env string, oidcArn, namespace, sa string) (awscdk.Stack, assertions.Template) {
+// helper to create a stack for testing.
+func createTestStack(t *testing.T, env, namespace, sa string) (awscdk.Stack, assertions.Template) {
 	t.Helper()
 	app := awscdk.NewApp(nil)
 
@@ -24,7 +24,6 @@ func createTestStack(t *testing.T, env string, oidcArn, namespace, sa string) (a
 			},
 		},
 		Environment:           env,
-		OIDCProviderArn:       oidcArn,
 		K8sNamespace:          namespace,
 		K8sServiceAccountName: sa,
 	})
@@ -36,7 +35,7 @@ func createTestStack(t *testing.T, env string, oidcArn, namespace, sa string) (a
 // --- KMS Key Tests ---
 
 func TestKMSKeyIsSymmetricWithRotation(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::KMS::Key"), map[string]interface{}{
 		"KeySpec":           "SYMMETRIC_DEFAULT",
@@ -47,7 +46,7 @@ func TestKMSKeyIsSymmetricWithRotation(t *testing.T) {
 }
 
 func TestKMSKeyAliasFollowsNamingConvention(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::KMS::Alias"), map[string]interface{}{
 		"AliasName": "alias/agentic-identity-broker/test/token-vault-kek",
@@ -55,7 +54,7 @@ func TestKMSKeyAliasFollowsNamingConvention(t *testing.T) {
 }
 
 func TestKMSKeyProdRetention(t *testing.T) {
-	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
+	_, template := createTestStack(t, "prod", "default", "test-sa")
 
 	// Prod KMS key should have RETAIN deletion policy.
 	templateJSON := template.ToJSON()
@@ -71,7 +70,7 @@ func TestKMSKeyProdRetention(t *testing.T) {
 }
 
 func TestKMSKeyNonProdDeletion(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	templateJSON := template.ToJSON()
 	resources := findResourcesByType(t, templateJSON, "AWS::KMS::Key")
@@ -87,7 +86,7 @@ func TestKMSKeyNonProdDeletion(t *testing.T) {
 // --- DynamoDB Table Tests ---
 
 func TestDynamoDBTableSchema(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	// The AWS Encryption SDK KeyStore requires branch-key-id (S) + type (S).
 	// This matches the schema used by the KeyStore client:
@@ -117,7 +116,7 @@ func TestDynamoDBTableSchema(t *testing.T) {
 }
 
 func TestDynamoDBTablePayPerRequest(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"BillingMode": "PAY_PER_REQUEST",
@@ -125,7 +124,7 @@ func TestDynamoDBTablePayPerRequest(t *testing.T) {
 }
 
 func TestDynamoDBTableNameFollowsConvention(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"TableName": "AgenticIdentityBrokerBranchKeys-test",
@@ -133,7 +132,7 @@ func TestDynamoDBTableNameFollowsConvention(t *testing.T) {
 }
 
 func TestDynamoDBTableProdDeletionProtection(t *testing.T) {
-	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
+	_, template := createTestStack(t, "prod", "default", "test-sa")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"DeletionProtectionEnabled": true,
@@ -144,7 +143,7 @@ func TestDynamoDBTableProdDeletionProtection(t *testing.T) {
 }
 
 func TestDynamoDBTableNonProdNoDeletionProtection(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	templateJSON := template.ToJSON()
 	resources := findResourcesByType(t, templateJSON, "AWS::DynamoDB::Table")
@@ -160,72 +159,64 @@ func TestDynamoDBTableNonProdNoDeletionProtection(t *testing.T) {
 // --- IAM Role Tests ---
 
 func TestIAMRoleCreated(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
 		"RoleName": "AgenticIdentityBrokerEncryptionRole-test",
 	})
 }
 
-func TestIAMRoleTrustPolicyDefaultAccountRoot(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+func TestIAMRoleTrustPolicyCDPForTest(t *testing.T) {
+	_, template := createTestStack(t, "test", "", "")
 
-	// When no OIDC provider is specified, the role trusts the account root.
-	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"AssumeRolePolicyDocument": map[string]interface{}{
-			"Statement": []interface{}{
-				map[string]interface{}{
-					"Action": "sts:AssumeRole",
-					"Effect": "Allow",
-					"Principal": map[string]interface{}{
-						"AWS": map[string]interface{}{
-							"Fn::Join": []interface{}{
-								"",
-								[]interface{}{
-									"arn:",
-									map[string]interface{}{"Ref": "AWS::Partition"},
-									":iam::123456789012:root",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	})
+	// Trust policy always uses the CDP template, even for test environments.
+	templateJSON := template.ToJSON()
+	roles := findResourcesByType(t, templateJSON, "AWS::IAM::Role")
+	require.NotEmpty(t, roles)
+
+	for _, role := range roles {
+		roleMap, ok := role.(map[string]interface{})
+		require.True(t, ok)
+		props, ok := roleMap["Properties"].(map[string]interface{})
+		require.True(t, ok)
+		trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
+		require.True(t, ok)
+		_, hasFnSub := trustDoc["Fn::Sub"]
+		assert.True(t, hasFnSub, "trust policy should use Fn::Sub with CDP template")
+	}
 }
 
-func TestIAMRoleTrustPolicyIRSA(t *testing.T) {
-	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE"
+func TestIAMRoleTrustPolicyCDP(t *testing.T) {
 	namespace := "identity-broker"
 	sa := "agentic-identity-broker"
 
-	_, template := createTestStack(t, "prod", oidcProviderArn, namespace, sa)
+	_, template := createTestStack(t, "prod", namespace, sa)
 
-	// Verify federated principal with web identity trust policy
-	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"AssumeRolePolicyDocument": map[string]interface{}{
-			"Statement": []interface{}{
-				map[string]interface{}{
-					"Action": "sts:AssumeRoleWithWebIdentity",
-					"Effect": "Allow",
-					"Principal": map[string]interface{}{
-						"Federated": oidcProviderArn,
-					},
-					"Condition": map[string]interface{}{
-						"StringEquals": map[string]interface{}{
-							"oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE:sub": "system:serviceaccount:identity-broker:agentic-identity-broker",
-							"oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE:aud": "sts.amazonaws.com",
-						},
-					},
-				},
-			},
-		},
-	})
+	// Verify trust policy uses Zalando's CDP template with the correct SERVICE_ACCOUNT binding.
+	templateJSON := template.ToJSON()
+	roles := findResourcesByType(t, templateJSON, "AWS::IAM::Role")
+	require.NotEmpty(t, roles)
+
+	for _, role := range roles {
+		roleMap, ok := role.(map[string]interface{})
+		require.True(t, ok)
+		props, ok := roleMap["Properties"].(map[string]interface{})
+		require.True(t, ok)
+		trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
+		require.True(t, ok, "AssumeRolePolicyDocument should be a map")
+
+		subArgs, ok := trustDoc["Fn::Sub"].([]interface{})
+		require.True(t, ok, "trust policy should use Fn::Sub")
+		require.Len(t, subArgs, 2)
+		assert.Equal(t, "{{{CDP_IAM_ROLE_TRUST_RELATIONSHIP_TEMPLATE}}}", subArgs[0])
+		vars, ok := subArgs[1].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "identity-broker:agentic-identity-broker", vars["SERVICE_ACCOUNT"])
+	}
 }
 
 func TestIAMRoleHasKMSPermissions(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
 		"PolicyDocument": map[string]interface{}{
@@ -245,7 +236,7 @@ func TestIAMRoleHasKMSPermissions(t *testing.T) {
 }
 
 func TestIAMRoleHasDynamoDBPermissions(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
 		"PolicyDocument": map[string]interface{}{
@@ -265,7 +256,7 @@ func TestIAMRoleHasDynamoDBPermissions(t *testing.T) {
 }
 
 func TestIAMRoleHasCreateGrantPermission(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Policy"), map[string]interface{}{
 		"PolicyDocument": map[string]interface{}{
@@ -286,7 +277,7 @@ func TestIAMRoleHasCreateGrantPermission(t *testing.T) {
 }
 
 func TestIAMRoleMaxSessionDurationOneHour(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
 		"MaxSessionDuration": 3600,
@@ -296,7 +287,7 @@ func TestIAMRoleMaxSessionDurationOneHour(t *testing.T) {
 // --- Stack Outputs Tests ---
 
 func TestStackOutputsExist(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	templateJSON := template.ToJSON()
 	outputsRaw := extractSection(t, templateJSON, "Outputs")
@@ -307,7 +298,6 @@ func TestStackOutputsExist(t *testing.T) {
 	expectedDescriptions := map[string]string{
 		"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN":             "EncryptionKeyARN",
 		"IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME": "BranchKeyTableName",
-		"IDENTITY_BROKER_ENCRYPTION_IAM_ROLE_ARN":                "EncryptionRoleARN",
 	}
 
 	for envVar, outputID := range expectedDescriptions {
@@ -328,7 +318,7 @@ func TestStackOutputsExist(t *testing.T) {
 }
 
 func TestStackOutputExportNames(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	templateJSON := template.ToJSON()
 	outputsRaw := extractSection(t, templateJSON, "Outputs")
@@ -362,7 +352,7 @@ func TestStackOutputExportNames(t *testing.T) {
 // --- Resource Count Tests ---
 
 func TestResourceCount(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.ResourceCountIs(jsii.String("AWS::KMS::Key"), jsii.Number(1))
 	template.ResourceCountIs(jsii.String("AWS::KMS::Alias"), jsii.Number(1))
@@ -376,7 +366,7 @@ func TestResourceCount(t *testing.T) {
 func TestRequiredTagsApplied(t *testing.T) {
 	// Test that required tags are applied to resources.
 	// This validates the tagging policy specified in the REMEDIATION_PLAN.md.
-	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
+	_, template := createTestStack(t, "prod", "default", "test-sa")
 
 	// Verify application tag on DynamoDB table (critical for cost allocation and resource identification)
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
@@ -411,7 +401,7 @@ func TestRequiredTagsApplied(t *testing.T) {
 }
 
 func TestAllResourcesTagged(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	// DynamoDB table should be tagged (CDK reliably propagates tags to DynamoDB).
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
@@ -441,13 +431,13 @@ func TestAllResourcesTagged(t *testing.T) {
 // --- CloudWatch Dashboard Tests ---
 
 func TestDashboardCreated(t *testing.T) {
-	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
+	_, template := createTestStack(t, "prod", "default", "test-sa")
 
 	template.ResourceCountIs(jsii.String("AWS::CloudWatch::Dashboard"), jsii.Number(1))
 }
 
 func TestDashboardNameFollowsConvention(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Dashboard"), map[string]interface{}{
 		"DashboardName": "AgenticIdentityBroker-Encryption-test",
@@ -457,7 +447,7 @@ func TestDashboardNameFollowsConvention(t *testing.T) {
 // --- CloudWatch Alarms Tests ---
 
 func TestKMSThrottleAlarmCreated(t *testing.T) {
-	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
+	_, template := createTestStack(t, "prod", "default", "test-sa")
 
 	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Alarm"), map[string]interface{}{
 		"AlarmName":          "AgenticIdentityBroker-Encryption-prod-KMS-Throttle",
@@ -470,7 +460,7 @@ func TestKMSThrottleAlarmCreated(t *testing.T) {
 }
 
 func TestKMSErrorAlarmCreated(t *testing.T) {
-	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
+	_, template := createTestStack(t, "prod", "default", "test-sa")
 
 	template.HasResourceProperties(jsii.String("AWS::CloudWatch::Alarm"), map[string]interface{}{
 		"AlarmName":          "AgenticIdentityBroker-Encryption-prod-KMS-Errors",
@@ -483,7 +473,7 @@ func TestKMSErrorAlarmCreated(t *testing.T) {
 }
 
 func TestKMSAlarmsOutputsExist(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	templateJSON := template.ToJSON()
 	outputsRaw := extractSection(t, templateJSON, "Outputs")
@@ -512,25 +502,7 @@ func TestKMSAlarmsOutputsExist(t *testing.T) {
 
 // --- Production Security Tests ---
 
-func TestProductionRequiresOIDCProviderArn(t *testing.T) {
-	// Should panic when env=prod and no oidcProviderArn
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic for production without oidcProviderArn")
-		}
-	}()
-
-	app := awscdk.NewApp(nil)
-	NewEncryptionStack(app, "test", &EncryptionStackProps{
-		Environment:           "prod",
-		OIDCProviderArn:       "", // Missing!
-		K8sNamespace:          "default",
-		K8sServiceAccountName: "test-sa",
-	})
-}
-
 func TestProductionRequiresK8sNamespace(t *testing.T) {
-	// Should panic when env=prod and no k8sNamespace
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("Expected panic for production without k8sNamespace")
@@ -540,14 +512,12 @@ func TestProductionRequiresK8sNamespace(t *testing.T) {
 	app := awscdk.NewApp(nil)
 	NewEncryptionStack(app, "test", &EncryptionStackProps{
 		Environment:           "prod",
-		OIDCProviderArn:       "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE",
 		K8sNamespace:          "", // Missing!
 		K8sServiceAccountName: "test-sa",
 	})
 }
 
 func TestProductionRequiresK8sServiceAccountName(t *testing.T) {
-	// Should panic when env=prod and no k8sServiceAccountName
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("Expected panic for production without k8sServiceAccountName")
@@ -557,14 +527,12 @@ func TestProductionRequiresK8sServiceAccountName(t *testing.T) {
 	app := awscdk.NewApp(nil)
 	NewEncryptionStack(app, "test", &EncryptionStackProps{
 		Environment:           "prod",
-		OIDCProviderArn:       "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE",
 		K8sNamespace:          "default",
 		K8sServiceAccountName: "", // Missing!
 	})
 }
 
-func TestProductionWithIRSAParametersSucceeds(t *testing.T) {
-	// Should NOT panic when env=prod WITH all IRSA parameters
+func TestProductionWithServiceAccountSucceeds(t *testing.T) {
 	app := awscdk.NewApp(nil)
 	stack := NewEncryptionStack(app, "test", &EncryptionStackProps{
 		StackProps: awscdk.StackProps{
@@ -574,15 +542,13 @@ func TestProductionWithIRSAParametersSucceeds(t *testing.T) {
 			},
 		},
 		Environment:           "prod",
-		OIDCProviderArn:       "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE",
-		K8sNamespace:          "identity-broker",
+		K8sNamespace:          "agentic-identity-broker",
 		K8sServiceAccountName: "agentic-identity-broker",
 	})
 	assert.NotNil(t, stack)
 }
 
-func TestNonProductionAllowsEmptyIRSAParameters(t *testing.T) {
-	// Should NOT panic for test environment without IRSA parameters
+func TestNonProductionAllowsEmptyServiceAccountParameters(t *testing.T) {
 	app := awscdk.NewApp(nil)
 	stack := NewEncryptionStack(app, "test", &EncryptionStackProps{
 		StackProps: awscdk.StackProps{
@@ -592,58 +558,53 @@ func TestNonProductionAllowsEmptyIRSAParameters(t *testing.T) {
 			},
 		},
 		Environment:           "test",
-		OIDCProviderArn:       "",
 		K8sNamespace:          "",
 		K8sServiceAccountName: "",
 	})
 	assert.NotNil(t, stack)
 }
 
-// --- IRSA-Specific Tests ---
+// --- CDP Trust Policy Tests ---
 
-func TestIRSAConditions(t *testing.T) {
-	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/TESTID12345"
+func TestCDPTrustPolicyServiceAccount(t *testing.T) {
 	namespace := "my-namespace"
 	sa := "my-service-account"
 
-	_, template := createTestStack(t, "prod", oidcProviderArn, namespace, sa)
+	_, template := createTestStack(t, "prod", namespace, sa)
 
-	// Verify IRSA conditions are correctly formatted
-	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"AssumeRolePolicyDocument": map[string]interface{}{
-			"Statement": []interface{}{
-				map[string]interface{}{
-					"Action": "sts:AssumeRoleWithWebIdentity",
-					"Effect": "Allow",
-					"Principal": map[string]interface{}{
-						"Federated": oidcProviderArn,
-					},
-					"Condition": map[string]interface{}{
-						"StringEquals": map[string]interface{}{
-							"oidc.eks.us-west-2.amazonaws.com/id/TESTID12345:sub": "system:serviceaccount:my-namespace:my-service-account",
-							"oidc.eks.us-west-2.amazonaws.com/id/TESTID12345:aud": "sts.amazonaws.com",
-						},
-					},
-				},
-			},
-		},
-	})
+	templateJSON := template.ToJSON()
+	roles := findResourcesByType(t, templateJSON, "AWS::IAM::Role")
+	require.NotEmpty(t, roles)
+
+	for _, role := range roles {
+		roleMap, ok := role.(map[string]interface{})
+		require.True(t, ok)
+		props, ok := roleMap["Properties"].(map[string]interface{})
+		require.True(t, ok)
+		trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
+		require.True(t, ok)
+		subArgs, ok := trustDoc["Fn::Sub"].([]interface{})
+		require.True(t, ok, "trust policy should use Fn::Sub")
+		require.Len(t, subArgs, 2)
+		vars, ok := subArgs[1].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "my-namespace:my-service-account", vars["SERVICE_ACCOUNT"])
+	}
 }
 
-func TestIRSAOutputs(t *testing.T) {
-	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE"
+func TestServiceAccountOutputs(t *testing.T) {
 	namespace := "identity-broker"
 	sa := "agentic-identity-broker"
 
-	_, template := createTestStack(t, "prod", oidcProviderArn, namespace, sa)
+	_, template := createTestStack(t, "prod", namespace, sa)
 
-	// Verify IRSA-specific outputs exist
+	// Verify service account outputs exist
 	templateJSON := template.ToJSON()
 	outputsRaw := extractSection(t, templateJSON, "Outputs")
 	outputs, ok := outputsRaw.(map[string]interface{})
 	require.True(t, ok, "Outputs should be a map")
 
-	// Check for IRSA outputs
+	// Check for expected outputs
 	var foundNamespace, foundSAName, foundFullName, foundRoleName bool
 	for _, output := range outputs {
 		outMap, ok := output.(map[string]interface{})
@@ -671,76 +632,13 @@ func TestIRSAOutputs(t *testing.T) {
 	assert.True(t, foundRoleName, "expected IamRoleName output")
 }
 
-func TestIRSAConditionKeysFormatting(t *testing.T) {
-	// Test various OIDC provider ARN formats to ensure condition keys are extracted correctly
-	testCases := []struct {
-		name            string
-		oidcArn         string
-		expectedHost    string
-		namespace       string
-		sa              string
-		expectedSubject string
-	}{
-		{
-			name:            "us-east-1 EKS OIDC provider",
-			oidcArn:         "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLE1",
-			expectedHost:    "oidc.eks.us-east-1.amazonaws.com/id/EXAMPLE1",
-			namespace:       "default",
-			sa:              "test-sa",
-			expectedSubject: "system:serviceaccount:default:test-sa",
-		},
-		{
-			name:            "eu-west-1 EKS OIDC provider",
-			oidcArn:         "arn:aws:iam::987654321098:oidc-provider/oidc.eks.eu-west-1.amazonaws.com/id/EXAMPLE2",
-			expectedHost:    "oidc.eks.eu-west-1.amazonaws.com/id/EXAMPLE2",
-			namespace:       "production",
-			sa:              "identity-broker",
-			expectedSubject: "system:serviceaccount:production:identity-broker",
-		},
-		{
-			name:            "ap-southeast-2 EKS OIDC provider",
-			oidcArn:         "arn:aws:iam::111111111111:oidc-provider/oidc.eks.ap-southeast-2.amazonaws.com/id/EXAMPLE3",
-			expectedHost:    "oidc.eks.ap-southeast-2.amazonaws.com/id/EXAMPLE3",
-			namespace:       "kube-system",
-			sa:              "aws-load-balancer-controller",
-			expectedSubject: "system:serviceaccount:kube-system:aws-load-balancer-controller",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, template := createTestStack(t, "prod", tc.oidcArn, tc.namespace, tc.sa)
-
-			// Verify the condition keys are formatted correctly
-			template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-				"AssumeRolePolicyDocument": map[string]interface{}{
-					"Statement": []interface{}{
-						map[string]interface{}{
-							"Action": "sts:AssumeRoleWithWebIdentity",
-							"Effect": "Allow",
-							"Principal": map[string]interface{}{
-								"Federated": tc.oidcArn,
-							},
-							"Condition": map[string]interface{}{
-								"StringEquals": map[string]interface{}{
-									tc.expectedHost + ":sub": tc.expectedSubject,
-									tc.expectedHost + ":aud": "sts.amazonaws.com",
-								},
-							},
-						},
-					},
-				},
-			})
-		})
-	}
-}
 
 // --- Template Metadata Tests ---
 
 func TestTemplateMetadataHeader(t *testing.T) {
 	// CI/CD pipeline requires Metadata.StackName and Metadata.Tags.application
 	// in the synthesized CloudFormation template to identify deployment manifests.
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	templateJSON := template.ToJSON()
 	metadataRaw := extractSection(t, templateJSON, "Metadata")
@@ -762,7 +660,7 @@ func TestTemplateMetadataHeader(t *testing.T) {
 // --- Environment Parameterization Tests ---
 
 func TestEnvironmentParameterizationTest(t *testing.T) {
-	_, template := createTestStack(t, "test", "", "", "")
+	_, template := createTestStack(t, "test", "", "")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"TableName": "AgenticIdentityBrokerBranchKeys-test",
@@ -773,7 +671,7 @@ func TestEnvironmentParameterizationTest(t *testing.T) {
 }
 
 func TestEnvironmentParameterizationProd(t *testing.T) {
-	_, template := createTestStack(t, "prod", "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE", "default", "test-sa")
+	_, template := createTestStack(t, "prod", "default", "test-sa")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"TableName": "AgenticIdentityBrokerBranchKeys-prod",
@@ -784,8 +682,7 @@ func TestEnvironmentParameterizationProd(t *testing.T) {
 }
 
 func TestEnvironmentParameterizationSandbox(t *testing.T) {
-	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/kube-1.corporate-iam.zalan.do"
-	_, template := createTestStack(t, "sandbox", oidcProviderArn, "agentic-identity-broker-sandbox", "agentic-identity-broker")
+	_, template := createTestStack(t, "sandbox", "agentic-identity-broker-sandbox", "agentic-identity-broker")
 
 	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
 		"TableName": "AgenticIdentityBrokerBranchKeys-sandbox",
@@ -799,8 +696,7 @@ func TestEnvironmentParameterizationSandbox(t *testing.T) {
 }
 
 func TestSandboxHasNonProdRetentionSettings(t *testing.T) {
-	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/kube-1.corporate-iam.zalan.do"
-	_, template := createTestStack(t, "sandbox", oidcProviderArn, "agentic-identity-broker-sandbox", "agentic-identity-broker")
+	_, template := createTestStack(t, "sandbox", "agentic-identity-broker-sandbox", "agentic-identity-broker")
 
 	templateJSON := template.ToJSON()
 
@@ -822,32 +718,30 @@ func TestSandboxHasNonProdRetentionSettings(t *testing.T) {
 	})
 }
 
-func TestSandboxIRSAConditions(t *testing.T) {
-	oidcProviderArn := "arn:aws:iam::123456789012:oidc-provider/kube-1.corporate-iam.zalan.do"
+func TestSandboxTrustPolicy(t *testing.T) {
 	namespace := "agentic-identity-broker-sandbox"
 	sa := "agentic-identity-broker"
 
-	_, template := createTestStack(t, "sandbox", oidcProviderArn, namespace, sa)
+	_, template := createTestStack(t, "sandbox", namespace, sa)
 
-	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
-		"AssumeRolePolicyDocument": map[string]interface{}{
-			"Statement": []interface{}{
-				map[string]interface{}{
-					"Action": "sts:AssumeRoleWithWebIdentity",
-					"Effect": "Allow",
-					"Principal": map[string]interface{}{
-						"Federated": oidcProviderArn,
-					},
-					"Condition": map[string]interface{}{
-						"StringEquals": map[string]interface{}{
-							"kube-1.corporate-iam.zalan.do:sub": "system:serviceaccount:agentic-identity-broker-sandbox:agentic-identity-broker",
-							"kube-1.corporate-iam.zalan.do:aud": "sts.amazonaws.com",
-						},
-					},
-				},
-			},
-		},
-	})
+	templateJSON := template.ToJSON()
+	roles := findResourcesByType(t, templateJSON, "AWS::IAM::Role")
+	require.NotEmpty(t, roles)
+
+	for _, role := range roles {
+		roleMap, ok := role.(map[string]interface{})
+		require.True(t, ok)
+		props, ok := roleMap["Properties"].(map[string]interface{})
+		require.True(t, ok)
+		trustDoc, ok := props["AssumeRolePolicyDocument"].(map[string]interface{})
+		require.True(t, ok)
+		subArgs, ok := trustDoc["Fn::Sub"].([]interface{})
+		require.True(t, ok, "trust policy should use Fn::Sub")
+		require.Len(t, subArgs, 2)
+		vars, ok := subArgs[1].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "agentic-identity-broker-sandbox:agentic-identity-broker", vars["SERVICE_ACCOUNT"])
+	}
 }
 
 // --- Helpers ---
