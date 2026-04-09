@@ -358,7 +358,6 @@ func TestResourceCount(t *testing.T) {
 
 func TestRequiredTagsApplied(t *testing.T) {
 	// Test that required tags are applied to resources.
-	// This validates the tagging policy specified in the REMEDIATION_PLAN.md.
 	_, template := createTestStack(t, "prod", "system:serviceaccount:default:test-sa")
 
 	// Verify application tag on DynamoDB table (critical for cost allocation and resource identification)
@@ -390,7 +389,6 @@ func TestRequiredTagsApplied(t *testing.T) {
 		"AliasName": "alias/agentic-identity-broker/prod/token-vault-kek",
 	})
 
-	t.Log("Required tagging policy validated: application, component, environment tags present; environment embedded in resource names")
 }
 
 func TestAllResourcesTagged(t *testing.T) {
@@ -626,7 +624,6 @@ func TestServiceAccountOutputs(t *testing.T) {
 	assert.True(t, foundRoleName, "expected IamRoleName output")
 }
 
-
 // --- Template Metadata Tests ---
 
 func TestTemplateMetadataHeader(t *testing.T) {
@@ -822,4 +819,3 @@ func extractSection(t *testing.T, templateJSON interface{}, section string) inte
 	require.NoError(t, err)
 	return result[section]
 }
-

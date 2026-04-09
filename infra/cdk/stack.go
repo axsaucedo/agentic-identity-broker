@@ -220,7 +220,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	encryptionRole := awsiam.NewRole(stack, jsii.String("EncryptionRole"), &awsiam.RoleProps{
 		RoleName:           jsii.String(fmt.Sprintf("AgenticIdentityBrokerEncryptionRole-%s", props.Environment)),
 		Description:        jsii.String("IAM role for Agentic Identity Broker encryption operations (KMS + DynamoDB)"),
-		AssumedBy:          awsiam.NewAccountRootPrincipal(), // placeholder; replaced below
+		AssumedBy:          awsiam.NewAccountRootPrincipal(), // overridden below — without the override this role is assumable by any principal in the account
 		MaxSessionDuration: awscdk.Duration_Hours(jsii.Number(MaxSessionDurationHours)),
 	})
 
