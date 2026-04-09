@@ -46,7 +46,7 @@ type EncryptionStackProps struct {
 	ServiceAccountSubject string
 
 	// Tags is a map of optional resource tags to apply to all taggable resources.
-	// Standard tags (Project, Component, Environment, ManagedBy) are applied by default.
+	// Standard tags (Project, Component, Environment) are applied by default.
 	// Tags provided here will override defaults or add additional tags (e.g., Application, Team, CostCenter).
 	// Example: map[string]string{"Application": "TokenVault", "Team": "Security"}
 	Tags map[string]string
@@ -378,7 +378,7 @@ func pendingWindow(isProd bool) awscdk.Duration {
 }
 
 // applyStackTags applies default and custom tags to all stack resources.
-// Default tags (Project, Component, ManagedBy) are always applied.
+// Default tags are always applied.
 // Environment is always set to match props.Environment.
 // User-provided Tags in props override or extend the defaults.
 func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
