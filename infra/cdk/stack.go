@@ -68,6 +68,11 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		panic("NewEncryptionStack requires props to be non-nil; provide EncryptionStackProps with Environment and ServiceAccountSubject")
 	}
 
+	if props.Environment == "production" {
+		props.Environment = "prod"
+	}
+	isProd := props.Environment == "prod"
+
 	stack := awscdk.NewStack(scope, &id, &props.StackProps)
 
 	// Add the required CloudFormation template Metadata header.
@@ -81,8 +86,6 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 			"environment": props.Environment,
 		},
 	})
-
-	isProd := props.Environment == "prod" || props.Environment == "production"
 
 	// ─── Service Account Validation ──────────────────────────────────────
 	//
