@@ -675,6 +675,34 @@ func TestEnvironmentParameterizationProd(t *testing.T) {
 	})
 }
 
+func TestEnvironmentParameterizationProductionNormalized(t *testing.T) {
+	subject := "system:serviceaccount:default:test-sa"
+	originalProps := &EncryptionStackProps{
+		StackProps: awscdk.StackProps{
+			Env: &awscdk.Environment{
+				Account: jsii.String("123456789012"),
+				Region:  jsii.String("eu-central-1"),
+			},
+		},
+		Environment:           "production",
+		ServiceAccountSubject: subject,
+	}
+	app := awscdk.NewApp(nil)
+	stack := NewEncryptionStack(app, "TestStack", originalProps)
+	template := assertions.Template_FromStack(stack, nil)
+
+	template.HasResourceProperties(jsii.String("AWS::DynamoDB::Table"), map[string]interface{}{
+		"TableName": "AgenticIdentityBrokerBranchKeys-prod",
+	})
+	template.HasResourceProperties(jsii.String("AWS::IAM::Role"), map[string]interface{}{
+		"RoleName": "AgenticIdentityBrokerEncryptionRole-prod",
+	})
+	template.HasResourceProperties(jsii.String("AWS::KMS::Alias"), map[string]interface{}{
+		"AliasName": "alias/agentic-identity-broker/prod/token-vault-kek",
+	})
+	assert.Equal(t, "production", originalProps.Environment, "NewEncryptionStack must not mutate caller's Environment field")
+}
+
 func TestEnvironmentParameterizationSandbox(t *testing.T) {
 	_, template := createTestStack(t, "sandbox", "system:serviceaccount:agentic-identity-broker-sandbox:agentic-identity-broker")
 

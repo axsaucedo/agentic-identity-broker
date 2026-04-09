@@ -68,9 +68,12 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		panic("NewEncryptionStack requires props to be non-nil; provide EncryptionStackProps with Environment and ServiceAccountSubject")
 	}
 
-	if props.Environment == "production" {
-		props.Environment = "prod"
+	// Normalize into a local copy so the caller's struct is not mutated.
+	normalized := *props
+	if normalized.Environment == "production" {
+		normalized.Environment = "prod"
 	}
+	props = &normalized
 	isProd := props.Environment == "prod"
 
 	stack := awscdk.NewStack(scope, &id, &props.StackProps)
