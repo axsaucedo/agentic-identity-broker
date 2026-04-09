@@ -164,11 +164,9 @@ func TestMemoryAdapter_ConcurrentOperations(t *testing.T) {
 
 // TestMemoryAdapter_TimeoutHandling tests operation timeouts
 func TestMemoryAdapter_TimeoutHandling(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-	defer cancel()
-
-	// Give the context just enough time to be created, but not to perform operations
-	time.Sleep(2 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel immediately so the context is already done when the operation runs
+	cancel()
 
 	config := &ports.StorageConfig{
 		Backend: "memory",
