@@ -11,23 +11,27 @@ import (
 
 // AgentRepository provides in-memory storage for Agent entities.
 // Thread-safe implementation using sync.RWMutex.
+//
+// The byClientID index is a 1:many map to correctly support multi-agent sharing
+// (multiple agents sharing the same upstream OAuth2 client_id).
 type AgentRepository struct {
 	mu         sync.RWMutex
 	agents     map[id.AgentID]*storage.Agent // ID -> Agent
-	byClientID map[id.ClientID]id.AgentID    // ClientID -> ID
+	byClientID map[id.ClientID][]id.AgentID  // ClientID -> []ID (1:many for multi-agent support)
 }
 
 // NewAgentRepository creates a new in-memory agent repository.
 func NewAgentRepository() *AgentRepository {
 	return &AgentRepository{
 		agents:     make(map[id.AgentID]*storage.Agent),
-		byClientID: make(map[id.ClientID]id.AgentID),
+		byClientID: make(map[id.ClientID][]id.AgentID),
 	}
 }
 
 // Create creates a new agent entity in storage.
 // Generates a UUID for the agent if ID is empty.
-// Returns StorageError with Kind=Conflict if agent ID or client_id already exists.
+// Returns StorageError with Kind=Conflict if agent ID already exists.
+// Multiple agents may share the same client_id (multi-agent mode support).
 func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -59,7 +63,7 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 
 	// Store deep copy to prevent external mutation
 	r.agents[agent.ID] = agent.Copy()
-	r.byClientID[agent.ClientID] = agent.ID
+	r.byClientID[agent.ClientID] = append(r.byClientID[agent.ClientID], agent.ID)
 
 	return nil
 }
@@ -101,19 +105,12 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
-	// If client_id changed, check for conflicts
+	// If client_id changed, update the secondary index.
+	// No conflict check here: uniqueness enforcement is the app handler's responsibility.
+	// Multiple agents may share a client_id in multi-agent mode.
 	if existing.ClientID != agent.ClientID {
-		if otherID, exists := r.byClientID[agent.ClientID]; exists && otherID != agent.ID {
-			return storage.NewStorageError(
-				"UpdateAgent",
-				storage.ErrorKindConflict,
-				nil,
-				"agent with this client_id already exists",
-			)
-		}
-		// Update client_id index
-		delete(r.byClientID, existing.ClientID)
-		r.byClientID[agent.ClientID] = agent.ID
+		r.removeFromClientIDIndex(existing.ClientID, agent.ID)
+		r.byClientID[agent.ClientID] = append(r.byClientID[agent.ClientID], agent.ID)
 	}
 
 	// Validate before updating
@@ -140,7 +137,7 @@ func (r *AgentRepository) Delete(ctx context.Context, agentID id.AgentID) error 
 
 	// Get agent to clean up indexes
 	if agent, exists := r.agents[agentID]; exists {
-		delete(r.byClientID, agent.ClientID)
+		r.removeFromClientIDIndex(agent.ClientID, agentID)
 		delete(r.agents, agentID)
 	}
 
@@ -162,14 +159,14 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 }
 
 // GetByClientID retrieves an agent entity by client_id.
-// Returns StorageError with Kind=NotFound if agent not found.
+// When multiple agents share the same client_id (multi-agent mode), returns the first registered one.
+// Returns StorageError with Kind=NotFound if no agent with that client_id exists.
 func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// Use existing byClientID index
-	agentID, exists := r.byClientID[clientID]
-	if !exists {
+	ids, exists := r.byClientID[clientID]
+	if !exists || len(ids) == 0 {
 		return nil, storage.NewStorageError(
 			"GetAgentByClientID",
 			storage.ErrorKindNotFound,
@@ -178,7 +175,24 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 		)
 	}
 
-	agent := r.agents[agentID]
+	agent := r.agents[ids[0]]
 	// Return deep copy to prevent external mutation
 	return agent.Copy(), nil
+}
+
+// removeFromClientIDIndex removes a specific agentID from the byClientID slice for clientID.
+// Deletes the map entry if the slice becomes empty. Must be called with r.mu held (write lock).
+func (r *AgentRepository) removeFromClientIDIndex(clientID id.ClientID, agentID id.AgentID) {
+	ids := r.byClientID[clientID]
+	for i, v := range ids {
+		if v == agentID {
+			ids = append(ids[:i], ids[i+1:]...)
+			break
+		}
+	}
+	if len(ids) == 0 {
+		delete(r.byClientID, clientID)
+	} else {
+		r.byClientID[clientID] = ids
+	}
 }

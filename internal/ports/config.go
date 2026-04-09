@@ -316,6 +316,11 @@ type OAuth2AuthServerConfig struct {
 // Validate validates the OAuth2AuthServerConfig structure.
 // Sets defaults for empty fields and returns an error for missing required fields.
 func (c *OAuth2AuthServerConfig) Validate() error {
+	// If no OAuth2 Authorization Server is configured, skip validation.
+	if c.UpstreamAuthorizeEndpoint == "" && c.UpstreamTokenEndpoint == "" && c.UpstreamIssuerURI == "" {
+		return nil
+	}
+
 	// Check required fields
 	if c.UpstreamIssuerURI == "" {
 		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")

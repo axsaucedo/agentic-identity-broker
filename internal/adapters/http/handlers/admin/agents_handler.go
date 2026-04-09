@@ -435,6 +435,11 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 // checkClientIDUniqueness returns true when it is safe to proceed (client_id is not taken
 // by another agent). When excludeID is non-nil, that agent is exempt from the conflict check
 // (used for self-update). Writes an HTTP error and returns false otherwise.
+//
+// NOTE: This is an application-layer check with a TOCTOU race for concurrent creates.
+// The DB-level UNIQUE constraint was dropped in migration 008 to support multi-agent mode.
+// Concurrent admin creates could both pass this check and both succeed. This is acceptable
+// for an infrequent admin operation.
 func (h *AgentsHandler) checkClientIDUniqueness(ctx context.Context, w http.ResponseWriter, clientID id.ClientID, excludeID *id.AgentID) bool {
 	other, lookupErr := h.repo.GetByClientID(ctx, clientID)
 	if lookupErr == nil {

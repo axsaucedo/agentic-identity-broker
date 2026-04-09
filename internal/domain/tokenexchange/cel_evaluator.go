@@ -277,12 +277,12 @@ func (e *CELEvaluator) ExtractPrincipal(subjectTokenClaims map[string]interface{
 	return principal, nil
 }
 
-// ExtractAgentClientID extracts the agent identifier from subject_token JWT claims.
+// ExtractAgentID extracts the agent identifier from subject_token JWT claims.
 // Uses the configured agent_id_expression (default: "subject_token.azp").
 //
 // Returns the extracted agent identifier string or ServerError on evaluation failure/timeout.
 // Per T060, this is used to look up the agent for grant verification.
-func (e *CELEvaluator) ExtractAgentClientID(subjectTokenClaims map[string]interface{}) (string, error) {
+func (e *CELEvaluator) ExtractAgentID(subjectTokenClaims map[string]interface{}) (string, error) {
 	// Create evaluation context
 	ctx, cancel := context.WithTimeout(context.Background(), e.evaluationTimeout)
 	defer cancel()
@@ -302,11 +302,11 @@ func (e *CELEvaluator) ExtractAgentClientID(subjectTokenClaims map[string]interf
 	}
 
 	// Convert result to string
-	agentClientID, ok := result.(string)
+	agentID, ok := result.(string)
 	if !ok {
 		// Try to convert from CEL string type
 		if val, ok := result.(types.String); ok {
-			agentClientID = string(val)
+			agentID = string(val)
 		} else {
 			return "", NewServerErrorWithDetails(
 				"agent ID extraction did not return a string",
@@ -315,14 +315,14 @@ func (e *CELEvaluator) ExtractAgentClientID(subjectTokenClaims map[string]interf
 		}
 	}
 
-	if agentClientID == "" {
+	if agentID == "" {
 		return "", NewServerErrorWithDetails(
 			"agent ID extraction returned empty value",
 			"agent_id_extraction_empty",
 		)
 	}
 
-	return agentClientID, nil
+	return agentID, nil
 }
 
 // AuthorizePrivilegedClient evaluates the authorization expression to determine if a privileged client
@@ -437,18 +437,18 @@ type CELRequestContext struct {
 	// Principal is the user principal extracted from subject_token
 	Principal string
 
-	// AgentClientID is the agent identifier extracted from subject_token
-	AgentClientID string
+	// AgentID is the agent identifier extracted from subject_token
+	AgentID string
 }
 
 // ToMap converts CELRequestContext to a map for CEL evaluation.
 // This provides a typed and documented way to prepare request context for CEL expressions.
 func (r CELRequestContext) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"resource":        r.Resource,
-		"grant_type":      r.GrantType,
-		"scope":           r.Scope,
-		"principal":       r.Principal,
-		"agent_client_id": r.AgentClientID,
+		"resource":   r.Resource,
+		"grant_type": r.GrantType,
+		"scope":      r.Scope,
+		"principal":  r.Principal,
+		"agent_id":   r.AgentID,
 	}
 }
