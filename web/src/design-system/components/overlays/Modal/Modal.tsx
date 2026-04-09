@@ -156,7 +156,7 @@ export const Modal = React.forwardRef<HTMLDivElement, ModalProps>(
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <div className="fixed inset-0 bg-[rgba(13,24,41,0.5)] backdrop-blur-lg" />
+            <div className="fixed inset-0 bg-[rgba(13,24,41,0.5)]" />
           </Transition.Child>
 
           {/* Full-screen container */}
