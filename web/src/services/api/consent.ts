@@ -206,19 +206,6 @@ export class ConsentApiService {
   }
 
   /**
-   * Revoke a grant by creating an empty grant (no delegated tokens).
-   *
-   * @param agentId - Unique agent identifier
-   * @returns Updated grant (empty delegations) or null if revoked
-   * @throws {ApiError} if request fails
-   */
-  async revokeGrant(agentId: string): Promise<UserGrant | null> {
-    return this.createOrUpdateGrant(agentId, {
-      delegated_oauth2_tokens: [],
-    });
-  }
-
-  /**
    * Delete all grants for a specific agent (hard delete).
    * Calls DELETE /consent/agent/{agentId}/grants.
    * Invalidates relevant caches after successful deletion.

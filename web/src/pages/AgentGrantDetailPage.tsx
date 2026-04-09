@@ -102,10 +102,21 @@ export function AgentGrantDetailPage() {
   const validateForm = (): boolean => {
     const errors: string[] = [];
 
+    // Require at least one service when the agent has mandatory service requirements.
+    // Agents with only optional requirements allow approval without selecting any services
+    // in non-redirect flows. In redirect flows (redirectUri present), always require at
+    // least one service to avoid backend revoke (204) without redirect handling.
+    const hasMandatoryRequirements = services.some(
+      (s) => s.requirementType === 'mandatory',
+    );
+    const requireAtLeastOneService =
+      hasMandatoryRequirements || Boolean(redirectUri);
+
     // Validate grant request
     const grantErrors = validateGrantRequest({
       delegatedTokens,
       validUntil: getValidUntil(),
+      requireAtLeastOneService,
     });
     errors.push(...grantErrors);
 

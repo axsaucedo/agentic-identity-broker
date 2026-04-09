@@ -123,12 +123,11 @@ func (h *GrantsHandler) GetGrants(w http.ResponseWriter, r *http.Request) {
 }
 
 // CreateGrant handles POST /api/consent/agent/:agent-id/grants
-// Creates or updates a grant (upsert semantics).
-// Special case: empty delegated_oauth2_tokens array = revoke.
+// Creates or updates a grant (upsert semantics). Empty delegated_oauth2_tokens
+// is valid and creates a grant with no service delegations (e.g. optional-only agents).
 //
 // Response codes:
 // - 201 Created: Grant created/updated
-// - 204 No Content: Grant revoked (empty tokens)
 // - 400 Bad Request: Invalid request body or validation error
 // - 401 Unauthorized: No principal in context
 // - 404 Not Found: Agent doesn't exist
@@ -159,26 +158,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			"principal", principalValue,
 			"agent_id", agentID)
 		h.writeError(w, http.StatusBadRequest, "invalid request", "request body must be valid JSON")
-		return
-	}
-
-	// Special case: empty tokens = revoke (idempotent for POST — RevokeConsent returns nil if no grant)
-	if len(req.DelegatedOAuth2Tokens) == 0 {
-		if err := h.consentService.RevokeConsent(r.Context(), id.Principal(principalValue), parsedAgentID); err != nil {
-			h.logger.Error("failed to revoke consent",
-				"agent_id", agentID,
-				"principal", principalValue,
-				"error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
-
-		h.logger.Info("grant revoked via POST",
-			"action", "grant_revoked",
-			"agent_id", agentID,
-			"principal", principalValue)
-
-		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 

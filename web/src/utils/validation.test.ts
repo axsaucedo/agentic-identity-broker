@@ -163,7 +163,28 @@ describe('validateGrantRequest', () => {
     expect(errors).toContain('delegatedTokens field is required');
   });
 
-  it('should require at least one delegated token', () => {
+  it('should require at least one delegated token when mandatory requirements exist', () => {
+    const request = {
+      delegatedTokens: [],
+      requireAtLeastOneService: true,
+    };
+
+    const errors = validateGrantRequest(request);
+    expect(errors).toContain('Please select at least one service with scopes');
+  });
+
+  it('should not require a delegated token when only optional requirements exist', () => {
+    const request = {
+      delegatedTokens: [],
+      requireAtLeastOneService: false,
+    };
+
+    const errors = validateGrantRequest(request);
+    expect(errors).not.toContain('Please select at least one service with scopes');
+    expect(errors).toHaveLength(0);
+  });
+
+  it('should require at least one delegated token by default (no requireAtLeastOneService flag)', () => {
     const request = {
       delegatedTokens: [],
     };

@@ -125,49 +125,6 @@ func TestCreateGrant_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestCreateGrant_EmptyTokensRevokes(t *testing.T) {
-	t.Parallel()
-	testAgentID := id.NewAgentID()
-	revokeCalled := false
-	mockService := &mockConsentService{
-		revokeConsentFunc: func(ctx context.Context, p id.Principal, agentID id.AgentID) error {
-			revokeCalled = true
-			if p != id.Principal("user@example.com") {
-				t.Errorf("expected principal 'user@example.com', got '%s'", p)
-			}
-			if agentID != testAgentID {
-				t.Errorf("expected agentID '%s', got '%s'", testAgentID, agentID)
-			}
-			return nil
-		},
-	}
-	handler := NewGrantsHandler(mockService, nil)
-
-	// Create request with empty tokens (revoke)
-	reqBody := GrantRequest{
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{},
-	}
-
-	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", reqBody)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", testAgentID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-
-	rr := httptest.NewRecorder()
-
-	handler.CreateGrant(rr, req)
-
-	// Verify RevokeConsent was called
-	if !revokeCalled {
-		t.Error("expected RevokeConsent to be called")
-	}
-
-	// Verify response
-	if rr.Code != http.StatusNoContent {
-		t.Errorf("expected status %d, got %d", http.StatusNoContent, rr.Code)
-	}
-}
-
 func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 	t.Parallel()
 	handler := NewGrantsHandler(nil, nil)

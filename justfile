@@ -2,6 +2,7 @@
 NAME := "agentic-identity-broker"
 IMAGE_NAME := env_var_or_default("IMAGE_NAME", "agentic-identity-broker")
 GINKGO_PROCS := env_var_or_default("GINKGO_PROCS", "4")
+NUM_CPUS := num_cpus()
 VERSION := `git describe --tags --always 2>/dev/null || echo "latest"`
 
 # Determine container runtime (docker or podman)
@@ -64,8 +65,7 @@ test:
 test-junit:
     @echo "Running Go tests with JUnit output..."
     @mkdir -p test-results
-    @go test -v -race ./... 2>&1 | tee test-results/go-test-output.txt | go-junit-report -set-exit-code > test-results/junit.xml
-    @echo "JUnit report generated at test-results/junit.xml"
+    @go test -json -race ./... > test-results/go-test-output.json; TEST_EXIT=$$?; go-junit-report -parser gojson < test-results/go-test-output.json > test-results/junit.xml; REPORT_EXIT=$$?; if [ $$REPORT_EXIT -ne 0 ]; then echo "go-junit-report failed (exit $$REPORT_EXIT)" >&2; exit $$REPORT_EXIT; fi; echo "JUnit report generated at test-results/junit.xml"; exit $$TEST_EXIT
 
 # Run tests with coverage report
 test-coverage:
@@ -230,110 +230,115 @@ test-integration:
 test-integration-junit:
     @echo "Running integration tests with JUnit output..."
     @mkdir -p test-results
-    @go test -tags=integration -v ./tests/integration/storage/... ./internal/adapters/storage/postgres/... 2>&1 | tee test-results/integration-test-output.txt | go-junit-report -set-exit-code > test-results/integration-junit.xml
-    @echo "JUnit report generated at test-results/integration-junit.xml"
+    @go test -json -tags=integration -p {{NUM_CPUS}} ./tests/integration/storage/... ./internal/adapters/storage/postgres/... > test-results/integration-test-output.json; TEST_EXIT=$$?; go-junit-report -parser gojson < test-results/integration-test-output.json > test-results/integration-junit.xml; REPORT_EXIT=$$?; if [ $$REPORT_EXIT -ne 0 ]; then echo "go-junit-report failed (exit $$REPORT_EXIT)" >&2; exit $$REPORT_EXIT; fi; echo "JUnit report generated at test-results/integration-junit.xml"; exit $$TEST_EXIT
 
 # Run all tests (unit, integration, E2E, E2E frontend) and generate consolidated JUnit XML report
 test-all-junit:
     #!/usr/bin/env bash
     set +e  # Don't exit on errors; we'll handle them at the end
 
-    echo "Running all tests (unit + integration + E2E) with JUnit output..."
+    echo "Running all tests in parallel (unit + integration + E2E) with JUnit output..."
     mkdir -p test-results
 
-    # Initialize exit code tracking
-    UNIT_EXIT=0
-    INTEGRATION_EXIT=0
-    E2E_EXIT=0
-    E2E_EXTPROC_EXIT=0
-    E2E_FRONTEND_EXIT=0
-    MERGER_EXIT=0
-
-    # ===== UNIT TESTS =====
+    # ===== LAUNCH ALL SUITES IN PARALLEL =====
     echo ""
-    echo "==> Running unit tests (cmd/ and internal/)..."
-    if go test -v -race ./cmd/... ./internal/... 2>&1 | tee test-results/unit-tests-output.txt | go-junit-report -set-exit-code > test-results/unit-junit.xml; then
-        echo "✓ Unit tests passed"
-    else
-        UNIT_EXIT=$?
-        echo "✗ Unit tests failed (exit code: $UNIT_EXIT)"
+    echo "==> Launching all test suites in parallel..."
+
+    go test -json -race -p {{NUM_CPUS}} ./cmd/... ./internal/... \
+        > test-results/unit-tests-output.json 2>&1 &
+    UNIT_PID=$!
+    echo "  [unit]        PID $UNIT_PID"
+
+    go test -json ./tests/integration/... \
+        > test-results/integration-tests-output.json 2>&1 &
+    INTEGRATION_PID=$!
+    echo "  [integration] PID $INTEGRATION_PID"
+
+    go test -json -tags=integration -p {{NUM_CPUS}} \
+        ./tests/integration/storage/... ./internal/adapters/storage/postgres/... \
+        > test-results/storage-tests-output.json 2>&1 &
+    STORAGE_PID=$!
+    echo "  [storage]     PID $STORAGE_PID"
+
+    ginkgo run -v --procs={{GINKGO_PROCS}} \
+        --junit-report=test-results/e2e-junit.xml ./tests/e2e/ \
+        > test-results/e2e.log 2>&1 &
+    E2E_PID=$!
+    echo "  [e2e]         PID $E2E_PID"
+
+    ginkgo run -v --procs={{GINKGO_PROCS}} \
+        --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/ \
+        > test-results/extproc.log 2>&1 &
+    EXTPROC_PID=$!
+    echo "  [extproc]     PID $EXTPROC_PID"
+
+    # NOTE: No --procs here. BeforeSuite calls ensureFrontendBuilt() via npm;
+    # multiple procs would trigger concurrent npm builds (race on web/dist/).
+    ginkgo run -v \
+        --junit-report=test-results/e2e-frontend-junit.xml ./tests/e2e/frontend/ \
+        > test-results/frontend.log 2>&1 &
+    FRONTEND_PID=$!
+    echo "  [frontend]    PID $FRONTEND_PID"
+
+    # ===== WAIT FOR ALL SUITES =====
+    echo ""
+    echo "==> Waiting for all test suites to complete..."
+
+    wait $UNIT_PID;        UNIT_EXIT=$?
+    wait $INTEGRATION_PID; INTEGRATION_EXIT=$?
+    wait $STORAGE_PID;     STORAGE_EXIT=$?
+    wait $E2E_PID;         E2E_EXIT=$?
+    wait $EXTPROC_PID;     EXTPROC_EXIT=$?
+    wait $FRONTEND_PID;    FRONTEND_EXIT=$?
+
+    # ===== GENERATE JUNIT XML FROM JSON OUTPUT =====
+    # Ginkgo wrote its own --junit-report files directly; only go test suites need conversion
+    go-junit-report -parser gojson \
+        < test-results/unit-tests-output.json > test-results/unit-junit.xml || true
+    go-junit-report -parser gojson \
+        < test-results/integration-tests-output.json > test-results/integration-junit.xml || true
+    go-junit-report -parser gojson \
+        < test-results/storage-tests-output.json > test-results/storage-junit.xml || true
+
+    # ===== PRINT LOGS FOR FAILED SUITES (inline for CDP console) =====
+    if [ $UNIT_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Unit test output (FAILED) ---"
+        cat test-results/unit-tests-output.json
     fi
-
-    # ===== INTEGRATION TESTS =====
-    echo ""
-    echo "==> Running integration tests..."
-    if go test -v ./tests/integration/... 2>&1 | tee test-results/integration-tests-output.txt | go-junit-report -set-exit-code > test-results/integration-junit.xml; then
-        echo "✓ Integration tests passed"
-    else
-        INTEGRATION_EXIT=$?
-        echo "✗ Integration tests failed (exit code: $INTEGRATION_EXIT)"
+    if [ $INTEGRATION_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Integration test output (FAILED) ---"
+        cat test-results/integration-tests-output.json
     fi
-
-    # Run storage-specific integration tests with PostgreSQL containers
-    echo ""
-    echo "==> Running storage integration tests (PostgreSQL)..."
-    if go test -v -tags=integration ./tests/integration/storage/... ./internal/adapters/storage/postgres/... 2>&1 | tee test-results/storage-tests-output.txt | go-junit-report -set-exit-code > test-results/storage-junit.xml; then
-        echo "✓ Storage integration tests passed"
-    else
-        STORAGE_EXIT=$?
-        echo "✗ Storage integration tests failed (exit code: $STORAGE_EXIT)"
-        INTEGRATION_EXIT=$STORAGE_EXIT
+    if [ $STORAGE_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- Storage integration test output (FAILED) ---"
+        cat test-results/storage-tests-output.json
     fi
-
-    # ===== E2E TESTS =====
-    echo ""
-    echo "==> Running E2E tests (Ginkgo)..."
-    if ! command -v ginkgo > /dev/null; then
-        echo "✗ ginkgo not installed"
-        echo "  Run 'just install-tools' to install required development tools"
-        E2E_EXIT=1
-    else
-        if ginkgo run -v --procs={{GINKGO_PROCS}} --junit-report=test-results/e2e-junit.xml ./tests/e2e/; then
-            echo "✓ E2E tests passed"
-        else
-            E2E_EXIT=$?
-            echo "✗ E2E tests failed (exit code: $E2E_EXIT)"
-        fi
+    if [ $E2E_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- E2E test output (FAILED) ---"
+        cat test-results/e2e.log
     fi
-
-    # ===== E2E EXTPROC TESTS =====
-    echo ""
-    echo "==> Running E2E ExtProc tests (Ginkgo)..."
-    if ! command -v ginkgo > /dev/null; then
-        echo "✗ ginkgo not installed"
-        echo "  Run 'just install-tools' to install required development tools"
-        E2E_EXTPROC_EXIT=1
-    else
-        if ginkgo run -v --procs={{GINKGO_PROCS}} --junit-report=test-results/e2e-extproc-junit.xml ./tests/e2e/extproc/; then
-            echo "✓ E2E ExtProc tests passed"
-        else
-            E2E_EXTPROC_EXIT=$?
-            echo "✗ E2E ExtProc tests failed (exit code: $E2E_EXTPROC_EXIT)"
-        fi
+    if [ $EXTPROC_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- E2E ExtProc test output (FAILED) ---"
+        cat test-results/extproc.log
     fi
-
-    # ===== E2E FRONTEND TESTS =====
-    echo ""
-    echo "==> Running E2E frontend tests (Ginkgo)..."
-
-    if ! command -v ginkgo > /dev/null; then
-        echo "✗ ginkgo not installed"
-        echo "  Run 'just install-tools' to install required development tools"
-        E2E_FRONTEND_EXIT=1
-    else
-        if ginkgo run -v --junit-report=test-results/e2e-frontend-junit.xml ./tests/e2e/frontend/; then
-            echo "✓ E2E frontend tests passed"
-        else
-            E2E_FRONTEND_EXIT=$?
-            echo "✗ E2E frontend tests failed (exit code: $E2E_FRONTEND_EXIT)"
-        fi
+    if [ $FRONTEND_EXIT -ne 0 ]; then
+        echo ""
+        echo "--- E2E Frontend test output (FAILED) ---"
+        cat test-results/frontend.log
     fi
 
     # ===== MERGE JUNIT REPORTS =====
     echo ""
     echo "==> Merging JUnit reports..."
+    MERGER_EXIT=0
     if command -v npx > /dev/null; then
-        if npx -y junit-report-merger@9.0.3 test-results/all-tests-junit.xml test-results/*-junit.xml; then
+        if npx -y junit-report-merger@9.0.3 \
+            test-results/all-tests-junit.xml test-results/*-junit.xml; then
             echo "✓ Merged report generated at test-results/all-tests-junit.xml"
         else
             MERGER_EXIT=$?
@@ -341,22 +346,23 @@ test-all-junit:
         fi
     else
         echo "⚠ npx not found, junit-report-merger not available"
-        echo "  Install Node.js to use junit-report-merger, or reports will not be merged"
+        MERGER_EXIT=1
     fi
 
     # ===== FINAL SUMMARY =====
     echo ""
     echo "=== Test Summary ==="
-    echo "Unit tests exit code: $UNIT_EXIT"
-    echo "Integration tests exit code: $INTEGRATION_EXIT"
-    echo "E2E tests exit code: $E2E_EXIT"
-    echo "E2E ExtProc tests exit code: $E2E_EXTPROC_EXIT"
-    echo "E2E frontend tests exit code: $E2E_FRONTEND_EXIT"
-    echo "JUnit XML merger exit code: $MERGER_EXIT"
+    [ $UNIT_EXIT -eq 0 ]        && echo "✓ Unit tests"        || echo "✗ Unit tests ($UNIT_EXIT)"
+    [ $INTEGRATION_EXIT -eq 0 ] && echo "✓ Integration tests" || echo "✗ Integration tests ($INTEGRATION_EXIT)"
+    [ $STORAGE_EXIT -eq 0 ]     && echo "✓ Storage tests"     || echo "✗ Storage tests ($STORAGE_EXIT)"
+    [ $E2E_EXIT -eq 0 ]         && echo "✓ E2E tests"         || echo "✗ E2E tests ($E2E_EXIT)"
+    [ $EXTPROC_EXIT -eq 0 ]     && echo "✓ E2E ExtProc tests" || echo "✗ E2E ExtProc tests ($EXTPROC_EXIT)"
+    [ $FRONTEND_EXIT -eq 0 ]    && echo "✓ E2E Frontend tests" || echo "✗ E2E Frontend tests ($FRONTEND_EXIT)"
     echo ""
 
-    # Fail if any test suite failed
-    if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ] || [ $E2E_EXIT -ne 0 ] || [ $E2E_EXTPROC_EXIT -ne 0 ] || [ $E2E_FRONTEND_EXIT -ne 0 ] || [ $MERGER_EXIT -ne 0 ]; then
+    if [ $UNIT_EXIT -ne 0 ] || [ $INTEGRATION_EXIT -ne 0 ] || [ $STORAGE_EXIT -ne 0 ] || \
+       [ $E2E_EXIT -ne 0 ] || [ $EXTPROC_EXIT -ne 0 ] || [ $FRONTEND_EXIT -ne 0 ] || \
+       [ $MERGER_EXIT -ne 0 ]; then
         echo "✗ Some tests failed"
         exit 1
     fi
