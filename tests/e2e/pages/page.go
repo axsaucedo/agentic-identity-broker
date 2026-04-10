@@ -306,6 +306,14 @@ func (p *Page) TakeScreenshot(ctx context.Context, name string) error {
 		return fmt.Errorf("failed waiting for network idle before screenshot %s: %w", name, err)
 	}
 
+	// Scroll to the top of the page before capturing so that the sticky
+	// header is always positioned at y=0 in the full-page composite image.
+	// Without this, the header's pixel position shifts depending on the
+	// current scroll offset at capture time, producing spurious diffs.
+	if _, err := p.page.Evaluate("window.scrollTo(0, 0)"); err != nil {
+		return fmt.Errorf("failed to scroll to top before screenshot %s: %w", name, err)
+	}
+
 	// Take screenshot with animations disabled so that CSS transitions
 	// (e.g. modal dialog entrance animations) are fast-forwarded to their
 	// final state.  This avoids flaky captures where a dialog is mid-fade.
