@@ -6,6 +6,7 @@ package pages
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -97,6 +98,33 @@ func (cp *ConsentPage) NavigateToAgent(ctx context.Context, agentID string) erro
 	// Wait for agent name heading to ensure page is interactive
 	if err := cp.waitForAgentNameHeading(ctx); err != nil {
 		return fmt.Errorf("agent name heading not found (page may not have loaded): %w", err)
+	}
+
+	return nil
+}
+
+// NavigateToAgentWithRedirectURI navigates to the consent page for a specific agent
+// with a redirect_uri query parameter, simulating the OAuth2 authorization flow redirect.
+//
+// Parameters:
+//   - ctx: Context for cancellation
+//   - agentID: UUID of the agent
+//   - redirectURI: Redirect URI to include as a query parameter (e.g., "/some-callback")
+//
+// Returns:
+//   - error: If navigation fails or the page does not load
+func (cp *ConsentPage) NavigateToAgentWithRedirectURI(ctx context.Context, agentID, redirectURI string) error {
+	if agentID == "" {
+		return fmt.Errorf("agentID cannot be empty")
+	}
+
+	path := fmt.Sprintf("%s?redirect_uri=%s", fmt.Sprintf(agentDetailPath, agentID), url.QueryEscape(redirectURI))
+	if err := cp.Navigate(ctx, path); err != nil {
+		return fmt.Errorf("failed to navigate to agent consent page with redirect_uri: %w", err)
+	}
+
+	if err := cp.waitForAgentNameHeading(ctx); err != nil {
+		return fmt.Errorf("agent name heading not found after navigation with redirect_uri: %w", err)
 	}
 
 	return nil
@@ -623,6 +651,40 @@ func (cp *ConsentPage) HasError(ctx context.Context) (bool, error) {
 	}
 
 	return count > 0, nil
+}
+
+// WaitForNoValidationError asserts that no validation alert appears on the page within
+// the given timeout window. It works by waiting for an alert role element to become
+// visible; a timeout (meaning no alert appeared) is treated as success.
+//
+// This avoids the false-negative that the previous "wait for hidden" approach had: if
+// the alert is not yet in the DOM when WaitFor is called, Playwright considers the
+// locator already "hidden" and returns immediately — so a late-appearing alert would
+// not be caught. By waiting for the alert to become *visible* and treating a timeout as
+// the expected "no error" outcome, we cover the full React state-update window.
+//
+// Parameters:
+//   - ctx: Context for cancellation
+//   - timeoutMs: Maximum wait in milliseconds (default 2000 if ≤ 0)
+//
+// Returns:
+//   - error: If an alert becomes visible within the timeout window
+func (cp *ConsentPage) WaitForNoValidationError(ctx context.Context, timeoutMs int) error {
+	if timeoutMs <= 0 {
+		timeoutMs = 2000
+	}
+	alert := cp.page().GetByRole("alert")
+	err := alert.WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(float64(timeoutMs)),
+	})
+	if err != nil {
+		// Timeout means no alert appeared within the window — that is the expected outcome.
+		return nil
+	}
+	// An alert became visible unexpectedly — report it as a validation error.
+	text, _ := alert.TextContent()
+	return fmt.Errorf("unexpected validation error appeared: %s", text)
 }
 
 // GetExpirationDate retrieves the current expiration date value from the input.
