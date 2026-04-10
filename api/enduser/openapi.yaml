@@ -1208,6 +1208,100 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
+  /oauth2/authorize:
+    get:
+      summary: OAuth2 Authorization Endpoint (RFC 6749)
+      description: |
+        Initiates an OAuth2 authorization code flow. The broker validates the agent,
+        checks consent, and redirects to the upstream OAuth2 authorization server.
+
+        **client_id semantics (Breaking Change — Feature 021)**:
+        The `client_id` parameter MUST be the agent's internal UUID (`agent.id`), NOT the
+        upstream OAuth2 `client_id`. This change enables multiple agents to share a single
+        upstream OAuth2 client credential.
+      operationId: oauth2Authorize
+      tags:
+        - OAuth2 Token
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          description: >
+            The internal agent identifier (UUID) registered with the identity broker.
+            This MUST be the agent's `id` field, NOT the upstream OAuth2 `client_id`.
+            Example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          schema:
+            type: string
+            format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        - name: response_type
+          in: query
+          required: true
+          description: OAuth2 response type. Must be "code" for authorization code flow.
+          schema:
+            type: string
+            enum:
+              - code
+        - name: redirect_uri
+          in: query
+          required: true
+          description: Callback URI to redirect to after authorization. Must be pre-registered.
+          schema:
+            type: string
+            format: uri
+        - name: state
+          in: query
+          required: false
+          description: Opaque value used to maintain state between request and callback (CSRF protection).
+          schema:
+            type: string
+        - name: scope
+          in: query
+          required: false
+          description: Space-delimited list of requested OAuth2 scopes.
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          required: false
+          description: PKCE code challenge (RFC 7636). SHA256 hash of code_verifier, base64url-encoded.
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          required: false
+          description: PKCE code challenge method. Must be "S256".
+          schema:
+            type: string
+            enum:
+              - S256
+      responses:
+        '302':
+          description: Redirect to upstream OAuth2 authorization server
+          headers:
+            Location:
+              description: Upstream authorization URL with PKCE and agent ID parameters appended
+              schema:
+                type: string
+                format: uri
+        '400':
+          description: Bad Request - Invalid client_id format, missing required parameters, or unknown agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
+              examples:
+                invalid_client:
+                  summary: Invalid client_id
+                  value:
+                    error: "invalid_client"
+                    error_description: "client_id must be a valid agent UUID"
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuth2Error'
   /oauth2/token:
     post:
       summary: Token Exchange (RFC 8693) or Authorization Code Exchange

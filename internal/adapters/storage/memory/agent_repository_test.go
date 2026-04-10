@@ -71,15 +71,15 @@ func TestAgentRepository_Create(t *testing.T) {
 		assert.Contains(t, err.Error(), "already exists")
 	})
 
-	t.Run("duplicate client_id conflict", func(t *testing.T) {
+	t.Run("duplicate client_id allowed (Feature 021: multiple agents share one upstream client_id)", func(t *testing.T) {
 		repo := NewAgentRepository()
 		agent1 := &storage.Agent{
-			ClientID:    id.ClientID("duplicate-client"),
+			ClientID:    id.ClientID("shared-upstream-client"),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 		}
 		agent2 := &storage.Agent{
-			ClientID:    id.ClientID("duplicate-client"),
+			ClientID:    id.ClientID("shared-upstream-client"),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 		}
@@ -87,9 +87,9 @@ func TestAgentRepository_Create(t *testing.T) {
 		err := repo.Create(ctx, agent1)
 		require.NoError(t, err)
 
+		// Feature 021: duplicate client_id must NOT return an error
 		err = repo.Create(ctx, agent2)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "client_id already exists")
+		require.NoError(t, err, "multiple agents may share the same upstream client_id")
 	})
 
 	t.Run("validation failure", func(t *testing.T) {
@@ -205,7 +205,10 @@ func TestAgentRepository_Update(t *testing.T) {
 		assert.Contains(t, err.Error(), "not found")
 	})
 
-	t.Run("client_id conflict on update", func(t *testing.T) {
+	t.Run("client_id shared on update (multi-agent mode)", func(t *testing.T) {
+		// Feature 021: the repo no longer enforces client_id uniqueness on update.
+		// Uniqueness is the app handler's responsibility (checkClientIDUniqueness).
+		// Multiple agents may share the same upstream client_id.
 		repo := NewAgentRepository()
 
 		agent1 := &storage.Agent{
@@ -226,11 +229,15 @@ func TestAgentRepository_Update(t *testing.T) {
 		err = repo.Create(ctx, agent2)
 		require.NoError(t, err)
 
-		// Try to update agent2 with agent1's client_id
+		// Update agent2 to share agent1's client_id — allowed in multi-agent mode
 		agent2.ClientID = id.ClientID("client-1")
 		err = repo.Update(ctx, agent2)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "client_id already exists")
+		require.NoError(t, err)
+
+		// Both agents should be present in the index for "client-1"
+		found, err := repo.GetByClientID(ctx, id.ClientID("client-1"))
+		require.NoError(t, err)
+		assert.NotNil(t, found)
 	})
 
 	t.Run("validation failure", func(t *testing.T) {
@@ -309,6 +316,48 @@ func TestAgentRepository_Delete(t *testing.T) {
 		}
 		err = repo.Create(ctx, newAgent)
 		require.NoError(t, err)
+	})
+}
+
+func TestAgentRepository_MultipleAgentsShareClientID(t *testing.T) {
+	ctx := context.Background()
+
+	// Regression test for the byClientID 1:1 index bug (Feature 021):
+	// When two agents share a ClientID and one is updated to use a new ClientID,
+	// delete(byClientID, oldClientID) removes the *entire* index entry, making the
+	// other agent invisible via GetByClientID even though its ClientID is unchanged.
+	t.Run("GetByClientID returns remaining agent after sibling client_id is changed", func(t *testing.T) {
+		repo := NewAgentRepository()
+
+		alpha := &storage.Agent{
+			ClientID:    id.ClientID("shared-client"),
+			DisplayName: "Alpha Agent",
+			Description: "First agent sharing a client_id",
+		}
+		beta := &storage.Agent{
+			ClientID:    id.ClientID("shared-client"),
+			DisplayName: "Beta Agent",
+			Description: "Second agent sharing a client_id",
+		}
+
+		err := repo.Create(ctx, alpha)
+		require.NoError(t, err)
+
+		// Feature 021: duplicate client_id is allowed
+		err = repo.Create(ctx, beta)
+		require.NoError(t, err, "multiple agents may share the same upstream client_id")
+
+		// Update alpha to a distinct client_id — this triggers the bug:
+		// delete(byClientID["shared-client"]) removes the ENTIRE entry,
+		// making beta invisible to GetByClientID even though beta is unchanged.
+		alpha.ClientID = id.ClientID("other-client")
+		err = repo.Update(ctx, alpha)
+		require.NoError(t, err)
+
+		// Beta must still be reachable by its original ClientID.
+		retrieved, err := repo.GetByClientID(ctx, id.ClientID("shared-client"))
+		require.NoError(t, err, "beta should still be findable by shared-client after alpha's client_id was changed")
+		assert.Equal(t, beta.ID, retrieved.ID, "GetByClientID(shared-client) should return beta, not an error")
 	})
 }
 

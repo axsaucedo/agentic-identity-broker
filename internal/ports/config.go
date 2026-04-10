@@ -281,6 +281,25 @@ type ThirdPartyOAuth2Config struct {
 	PKCEVerifierLength int `mapstructure:"pkce_verifier_length"`
 }
 
+// MultiAgentClientConfig holds configuration for multi-agent OAuth2 client sharing.
+// When Enabled is true, multiple agents may share the same upstream OAuth2 client ID.
+// All-or-nothing: applies to all agents when enabled.
+type MultiAgentClientConfig struct {
+	// Enabled enables multi-agent client sharing. Default: false.
+	// When false, uniqueness of agent.ClientID is enforced at the application layer.
+	Enabled bool `mapstructure:"enabled"`
+
+	// AgentIDParamName is the query parameter name appended to the upstream
+	// authorization redirect URL carrying the agent's internal ID.
+	// Required when Enabled is true. Example: "x_agent_id".
+	AgentIDParamName string `mapstructure:"agent_id_param_name"`
+
+	// AgentIDClaimName is the JWT claim name expected in tokens returned by the
+	// upstream server that contains the agent's internal ID.
+	// Required when Enabled is true. Example: "x_agent_id".
+	AgentIDClaimName string `mapstructure:"agent_id_claim_name"`
+}
+
 // OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
 type OAuth2AuthServerConfig struct {
 	UpstreamIssuerURI         string   `mapstructure:"upstream_issuer_uri"`
@@ -290,11 +309,18 @@ type OAuth2AuthServerConfig struct {
 	SupportedGrantTypes       []string `mapstructure:"supported_grant_types"`
 	UpstreamTimeoutSeconds    int      `mapstructure:"upstream_timeout_seconds"`
 	Mode                      string   `mapstructure:"mode"`
+	// MultiAgentClient holds optional multi-agent client sharing configuration.
+	MultiAgentClient MultiAgentClientConfig `mapstructure:"multi_agent_client"`
 }
 
 // Validate validates the OAuth2AuthServerConfig structure.
 // Sets defaults for empty fields and returns an error for missing required fields.
 func (c *OAuth2AuthServerConfig) Validate() error {
+	// If no OAuth2 Authorization Server is configured, skip validation.
+	if c.UpstreamAuthorizeEndpoint == "" && c.UpstreamTokenEndpoint == "" && c.UpstreamIssuerURI == "" {
+		return nil
+	}
+
 	// Check required fields
 	if c.UpstreamIssuerURI == "" {
 		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")
@@ -325,6 +351,16 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 		c.Mode = "proxy"
 	}
 
+	// Validate multi_agent_client fields when enabled
+	if c.MultiAgentClient.Enabled {
+		if c.MultiAgentClient.AgentIDParamName == "" {
+			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
+		}
+		if c.MultiAgentClient.AgentIDClaimName == "" {
+			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
+		}
+	}
+
 	return nil
 }
 
@@ -341,9 +377,10 @@ type oauth2ValidationError struct {
 	field string
 }
 
-// Error implements the error interface
+// Error implements the error interface.
+// Returns the full field path so callers using ContainSubstring on err.Error() can match field names.
 func (e *oauth2ValidationError) Error() string {
-	return "config validation error"
+	return e.field
 }
 
 // Field returns the error field for test compatibility
@@ -382,13 +419,14 @@ type ClaimExtractionConfig struct {
 	// It is validated at startup (FR-017) and will cause startup failure if invalid.
 	PrincipalExpression string `mapstructure:"principal_expression" validate:"required"`
 
-	// AgentClientIDExpression is a CEL expression that extracts the agent identifier from subject_token.
+	// AgentIDExpression is a CEL expression that extracts the agent identifier from subject_token.
 	// The expression receives the validated subject_token JWT as input.
 	// Default: "subject_token.azp"
-	// Examples: "subject_token.azp", "subject_token['client_id']"
+	// Examples: "resolveAgentIdByClientId(subject_token.azp)" (feature disabled),
+	//           "subject_token.x_agent_id" (feature enabled, use configured agent_id_claim_name)
 	// This value is REQUIRED and MUST be a valid CEL expression.
 	// It is validated at startup (FR-017) and will cause startup failure if invalid.
-	AgentClientIDExpression string `mapstructure:"agent_client_id_expression" validate:"required"`
+	AgentIDExpression string `mapstructure:"agent_id_expression" validate:"required"`
 }
 
 // AuthorizationConfig defines authorization policies for token exchange.

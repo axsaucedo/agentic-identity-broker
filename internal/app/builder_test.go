@@ -294,8 +294,8 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 			},
 			TokenExchange: ports.TokenExchangeConfig{
 				ClaimExtraction: ports.ClaimExtractionConfig{
-					PrincipalExpression:     "subject_token.sub",
-					AgentClientIDExpression: "subject_token.azp",
+					PrincipalExpression: "subject_token.sub",
+					AgentIDExpression:   "subject_token.azp",
 				},
 				Authorization: ports.AuthorizationConfig{
 					Type: "cel",

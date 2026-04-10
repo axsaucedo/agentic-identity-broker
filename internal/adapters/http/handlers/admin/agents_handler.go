@@ -20,20 +20,24 @@ import (
 
 // AgentsHandler handles HTTP requests for agent CRUD operations.
 type AgentsHandler struct {
-	repo            ports.AgentRepository
-	providerService *thirdparty.ThirdpartyOAuth2ProviderService
-	logger          *slog.Logger
+	repo              ports.AgentRepository
+	providerService   *thirdparty.ThirdpartyOAuth2ProviderService
+	logger            *slog.Logger
+	multiAgentEnabled bool // when true, duplicate client_id is allowed (Feature 021)
 }
 
 // NewAgentsHandler creates a new agents handler.
-func NewAgentsHandler(repo ports.AgentRepository, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger) *AgentsHandler {
+// multiAgentEnabled should match OAuth2AuthServerConfig.MultiAgentClient.Enabled:
+// when false (the default), client_id uniqueness is enforced at the application layer.
+func NewAgentsHandler(repo ports.AgentRepository, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger, multiAgentEnabled bool) *AgentsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentsHandler{
-		repo:            repo,
-		providerService: providerService,
-		logger:          logger,
+		repo:              repo,
+		providerService:   providerService,
+		logger:            logger,
+		multiAgentEnabled: multiAgentEnabled,
 	}
 }
 
@@ -109,6 +113,14 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("service requirements validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
 		return
+	}
+
+	// T036: When feature is disabled, enforce client_id uniqueness at the application layer.
+	// (Storage adapters no longer enforce this, per Feature 021 requirement to allow sharing.)
+	if !h.multiAgentEnabled {
+		if !h.checkClientIDUniqueness(ctx, w, id.ClientID(req.ClientID), nil) {
+			return
+		}
 	}
 
 	// Create agent entity
@@ -221,6 +233,14 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("service requirements validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
 		return
+	}
+
+	// T037: When feature is disabled, enforce client_id uniqueness at the application layer,
+	// excluding the current agent (self-update must be allowed).
+	if !h.multiAgentEnabled {
+		if !h.checkClientIDUniqueness(ctx, w, id.ClientID(req.ClientID), &parsedAgentID) {
+			return
+		}
 	}
 
 	// Update agent entity
@@ -410,6 +430,32 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 	}
 
 	return result, nil
+}
+
+// checkClientIDUniqueness returns true when it is safe to proceed (client_id is not taken
+// by another agent). When excludeID is non-nil, that agent is exempt from the conflict check
+// (used for self-update). Writes an HTTP error and returns false otherwise.
+//
+// NOTE: This is an application-layer check with a TOCTOU race for concurrent creates.
+// The DB-level UNIQUE constraint was dropped in migration 008 to support multi-agent mode.
+// Concurrent admin creates could both pass this check and both succeed. This is acceptable
+// for an infrequent admin operation.
+func (h *AgentsHandler) checkClientIDUniqueness(ctx context.Context, w http.ResponseWriter, clientID id.ClientID, excludeID *id.AgentID) bool {
+	other, lookupErr := h.repo.GetByClientID(ctx, clientID)
+	if lookupErr == nil {
+		if excludeID != nil && other.ID == *excludeID {
+			return true // self-update: same agent, safe to proceed
+		}
+		h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
+		return false
+	}
+	var storageErr *storage.StorageError
+	if !errors.As(lookupErr, &storageErr) || storageErr.Kind != storage.ErrorKindNotFound {
+		h.logger.Error("failed to check agent client_id uniqueness", "error", lookupErr, "client_id", clientID)
+		h.writeError(w, http.StatusInternalServerError, "internal error", "failed to check agent uniqueness")
+		return false
+	}
+	return true // NotFound: safe to proceed
 }
 
 // handleStorageError converts storage errors to HTTP responses.

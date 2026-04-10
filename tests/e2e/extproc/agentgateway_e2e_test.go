@@ -77,10 +77,6 @@ var _ = Describe("Agentgateway Integration", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		_, dockerErr := testcontainers.ProviderDocker.GetProvider()
-		if dockerErr != nil {
-			Skip("Skipping agentgateway integration tests: Docker not available")
-		}
 
 		ctx, cancel = context.WithTimeout(context.Background(), 120*time.Second)
 

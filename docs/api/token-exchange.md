@@ -252,7 +252,7 @@ upstream_oauth2:
 token_exchange:
   claim_extraction:
     principal_expression: subject_token.sub
-    agent_client_id_expression: subject_token.azp
+    agent_id_expression: subject_token.azp
 
   authorization:
     type: cel
@@ -270,7 +270,7 @@ token_exchange:
 | `upstream_oauth2.issuer` | string | (required) | Upstream OAuth2 Server issuer URI (shared with other features) |
 | `upstream_oauth2.jwks_uri` | string | (required) | JWKS endpoint for JWT validation (shared with other features) |
 | `token_exchange.claim_extraction.principal_expression` | string | `subject_token.sub` | CEL expression to extract user principal from subject_token |
-| `token_exchange.claim_extraction.agent_client_id_expression` | string | `subject_token.azp` | CEL expression to extract agent client ID from subject_token |
+| `token_exchange.claim_extraction.agent_id_expression` | string | `subject_token.azp` | CEL expression to extract agent client ID from subject_token |
 | `token_exchange.authorization.type` | string | `cel` | Authorization evaluation strategy (currently only `cel` supported) |
 | `token_exchange.authorization.cel.expression` | string | `true` | CEL expression for privileged client authorization (evaluates against client_assertion claims) |
 | `token_exchange.refresh.enabled` | boolean | `true` | Enable automatic refresh when third-party token expired |
@@ -341,7 +341,7 @@ token_exchange:
 ```yaml
 token_exchange:
   claim_extraction:
-    agent_client_id_expression: "subject_token.agent_id || subject_token.azp"
+    agent_id_expression: "subject_token.agent_id || subject_token.azp"
 ```
 
 ## Admin API - Configure Protected Resources

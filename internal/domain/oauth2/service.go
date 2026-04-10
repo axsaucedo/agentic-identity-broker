@@ -12,6 +12,20 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
+// isNotFoundErr returns true if err represents a not-found condition from any storage adapter.
+// Handles both ports.ErrNotFound (used in mocks/tests) and storage.StorageError{Kind: ErrorKindNotFound}
+// (used by production adapters).
+func isNotFoundErr(err error) bool {
+	if errors.Is(err, ports.ErrNotFound) {
+		return true
+	}
+	var storageErr *storage.StorageError
+	if errors.As(err, &storageErr) {
+		return storageErr.Kind == storage.ErrorKindNotFound
+	}
+	return false
+}
+
 // OAuth2Config contains configuration for the OAuth2 service
 type OAuth2Config struct {
 	// Upstream OAuth2 server authorization endpoint
@@ -28,6 +42,10 @@ type OAuth2Config struct {
 
 	// Supported grant types (default: ["authorization_code", "refresh_token"])
 	SupportedGrantTypes []string
+
+	// MultiAgentClient holds optional multi-agent client sharing configuration.
+	// When Enabled, multiple agents may share a single upstream OAuth2 client ID.
+	MultiAgentClient ports.MultiAgentClientConfig
 }
 
 // Service implements the OAuth2Service port
@@ -71,13 +89,27 @@ func NewServiceWithSessions(
 // - redirect_to_upstream: Valid client with active grant
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
+//
+// Feature 021: client_id MUST be the agent's internal UUID (agent.id), NOT agent.client_id.
 func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal string) (*ports.AuthorizationDecision, error) {
-	// Step 1: Validate client_id against registered agents
-	agent, err := s.agentRepo.GetByClientID(ctx, req.ClientID)
+	// Step 1: Validate client_id as a UUID (agent.id) and resolve the agent.
+	// Feature 021: client_id is now the broker's internal agent UUID, not the upstream client_id.
+	agentID, err := id.ParseAgentID(string(req.ClientID))
 	if err != nil {
-		// Check if it's a not found error
-		if storageErr, ok := err.(*storage.StorageError); ok && storageErr.Kind == storage.ErrorKindNotFound {
-			// Invalid client_id - build error redirect
+		// client_id is not a valid UUID → invalid_client
+		redirectURL, _ := buildErrorRedirectURL(req.RedirectURI, req.State, "invalid_client", "client_id must be a valid agent UUID")
+		return &ports.AuthorizationDecision{
+			Action:      "error",
+			ErrorCode:   "invalid_client",
+			ErrorDesc:   "client_id must be a valid agent UUID",
+			RedirectURL: redirectURL,
+		}, nil
+	}
+
+	agent, err := s.agentRepo.Get(ctx, agentID)
+	if err != nil {
+		if isNotFoundErr(err) {
+			// Agent UUID not registered
 			redirectURL, _ := buildErrorRedirectURL(req.RedirectURI, req.State, "invalid_client", "Client not registered")
 			return &ports.AuthorizationDecision{
 				Action:      "error",
@@ -178,7 +210,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	}
 
 	// Active grant exists and all mandatory requirements satisfied - redirect to upstream OAuth2 server
-	upstreamURL := s.buildUpstreamAuthorizeURL(req)
+	upstreamURL := s.buildUpstreamAuthorizeURL(req, agent)
 	return &ports.AuthorizationDecision{
 		Action:      "redirect_to_upstream",
 		RedirectURL: upstreamURL,
@@ -186,13 +218,17 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 }
 
 // buildUpstreamAuthorizeURL constructs the upstream authorization endpoint URL
-// preserving all OAuth2 parameters
-func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest) string {
+// preserving all OAuth2 parameters.
+//
+// Feature 021: uses agent.ClientID (upstream OAuth2 client ID) instead of req.ClientID
+// (which is now the broker's internal agent UUID). When MultiAgentClient.Enabled,
+// appends the agent's internal UUID as the configured AgentIDParamName query parameter.
+func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, agent *storage.Agent) string {
 	u, _ := url.Parse(s.config.UpstreamAuthorizeEndpoint)
 	q := u.Query()
 
-	// Add required parameters
-	q.Set("client_id", req.ClientID.String())
+	// Use agent.ClientID as upstream client_id (NOT the broker's internal agent UUID)
+	q.Set("client_id", agent.ClientID.String())
 	q.Set("redirect_uri", req.RedirectURI)
 	q.Set("response_type", req.ResponseType)
 
@@ -208,6 +244,19 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest) str
 	}
 	if req.CodeChallengeMethod != "" {
 		q.Set("code_challenge_method", req.CodeChallengeMethod)
+	}
+
+	// Feature 021 — multi-agent client sharing: inject agent UUID param so upstream
+	// can embed it as a claim in the returned token (for MultiAgentTokenVerifier).
+	if s.config.MultiAgentClient.Enabled {
+		q.Set(s.config.MultiAgentClient.AgentIDParamName, agent.ID.String())
+		if s.logger != nil {
+			s.logger.Info("AgentIDParamInjected",
+				"agent_id", agent.ID.String(),
+				"param_name", s.config.MultiAgentClient.AgentIDParamName,
+				"upstream_url", s.config.UpstreamAuthorizeEndpoint,
+			)
+		}
 	}
 
 	u.RawQuery = q.Encode()

@@ -56,7 +56,7 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 **Constitution Reference**: Principle VII (Configuration-Driven Design)
 
 - [x] T006 Create example YAML showing all token_exchange config options in examples/config/token-exchange.yaml
-- [x] T006a [P] Document configuration parameters: token_exchange.claim_extraction.principal_expression, agent_client_id_expression, authorization.type, authorization.cel.expression, refresh.enabled
+- [x] T006a [P] Document configuration parameters: token_exchange.claim_extraction.principal_expression, agent_id_expression, authorization.type, authorization.cel.expression, refresh.enabled
 - [x] T006b [P] Update examples/config/README.md to reference token-exchange.yaml configuration section - COMPLETE (README.md lines 135-150)
 
 **Checkpoint**: Configuration requirements designed with YAML examples
@@ -293,7 +293,7 @@ This feature implements RFC 8693 OAuth 2.0 Token Exchange via the existing `/oau
 - [x] T068 [US4] Build CEL environment with client_assertion claims (iss, sub, aud, exp, iat, scope, custom claims)
 - [x] T069 [US4] Build CEL environment with request context (resource, grant_type, scope)
 - [x] T070 [US4] Implement 100ms evaluation timeout (return server_error on timeout)
-- [x] T071 [US4] Implement claim extraction expressions (principal_expression, agent_client_id_expression)
+- [x] T071 [US4] Implement claim extraction expressions (principal_expression, agent_id_expression)
 - [x] T072 [US4] Validate claim extraction expressions at startup
 - [x] T073 [US4] Return 403 access_denied when CEL evaluates to false
 - [x] T074 [P] [US4] Add CEL evaluator unit tests in internal/domain/tokenexchange/cel_evaluator_test.go

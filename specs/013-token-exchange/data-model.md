@@ -245,7 +245,7 @@ type SubjectToken struct {
     
     // Extracted values (via CEL expressions)
     Principal     string // User principal (from principal_expression)
-    AgentClientID string // Agent identifier (from agent_client_id_expression)
+    AgentClientID string // Agent identifier (from agent_id_expression)
     
     // All claims for CEL evaluation
     Claims map[string]interface{}
@@ -481,9 +481,9 @@ type ClaimExtractionConfig struct {
     // Default: "subject_token.sub"
     PrincipalExpression string `mapstructure:"principal_expression"`
     
-    // AgentClientIDExpression is a CEL expression to extract agent ID from subject_token.
+    // AgentIDExpression is a CEL expression to extract agent ID from subject_token.
     // Default: "subject_token.azp"
-    AgentClientIDExpression string `mapstructure:"agent_client_id_expression"`
+    AgentIDExpression string `mapstructure:"agent_id_expression"`
 }
 
 // AuthorizationConfig configures privileged client authorization.
@@ -515,7 +515,7 @@ func DefaultTokenExchangeConfig() TokenExchangeConfig {
     return TokenExchangeConfig{
         ClaimExtraction: ClaimExtractionConfig{
             PrincipalExpression:      "subject_token.sub",
-            AgentClientIDExpression:  "subject_token.azp",
+            AgentIDExpression:  "subject_token.azp",
         },
         Authorization: AuthorizationConfig{
             Type: "cel",
@@ -682,7 +682,7 @@ These invariants MUST be maintained at all times and are enforced through valida
 
 ### Configuration Invariants
 
-15. **CEL Expression Validation at Startup**: All CEL expressions (principal_expression, agent_client_id_expression, authorization.cel.expression) MUST be validated at application startup. Syntax errors cause application startup failure with clear error messages.
+15. **CEL Expression Validation at Startup**: All CEL expressions (principal_expression, agent_id_expression, authorization.cel.expression) MUST be validated at application startup. Syntax errors cause application startup failure with clear error messages.
 
 16. **Configuration Immutability**: TokenExchangeConfig is loaded once at startup and never changed during runtime. Configuration changes require application restart.
 
