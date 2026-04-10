@@ -83,6 +83,9 @@ data:
         {{- if .Values.broker.encryption.awsKms.branchKeyTtl }}
         branch_key_ttl: {{ .Values.broker.encryption.awsKms.branchKeyTtl | quote }}
         {{- end }}
+        {{- if .Values.broker.encryption.awsKms.region }}
+        region: {{ .Values.broker.encryption.awsKms.region | quote }}
+        {{- end }}
         {{- if .Values.broker.encryption.awsKms.dynamodbRegion }}
         dynamodb_region: {{ .Values.broker.encryption.awsKms.dynamodbRegion | quote }}
         {{- end }}

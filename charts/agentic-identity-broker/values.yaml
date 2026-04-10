@@ -412,6 +412,8 @@ broker:
       dynamodbTableName: "IdentityBrokerEncryptionBranchKeys"
       # -- Time-to-live for branch keys (e.g., 1h, 24h)
       branchKeyTtl: "1h"
+      # -- AWS region for KMS and SDK base configuration
+      region: ""
       # -- AWS region of the DynamoDB table
       dynamodbRegion: ""
       # -- Read timeout for DynamoDB operations
