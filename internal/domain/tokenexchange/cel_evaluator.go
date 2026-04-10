@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
 )
 
 // CELEvaluatorConfig holds CEL-specific configuration for expression evaluation.
@@ -16,14 +17,23 @@ type CELEvaluatorConfig struct {
 	// PrincipalExpression is a CEL expression for extracting the principal from subject_token
 	PrincipalExpression string
 
-	// AgentClientIDExpression is a CEL expression for extracting agent client ID from subject_token
-	AgentClientIDExpression string
+	// AgentIDExpression is a CEL expression for extracting agent identifier from subject_token
+	AgentIDExpression string
 
 	// AuthorizationExpression is a CEL expression for privileged client authorization
 	AuthorizationExpression string
 
 	// EvaluationTimeout is the maximum time allowed for CEL expression evaluation
 	EvaluationTimeout time.Duration
+
+	// ResolveAgentIDByClientID is an optional function that maps an upstream OAuth2 client_id
+	// to the broker's internal agent.id (UUID string).
+	// Non-nil only when multi_agent_client.enabled = false.
+	// When non-nil, the CEL function resolveAgentIdByClientId() is registered and available
+	// in agent_id_expression.
+	// When nil (feature enabled), the function is NOT registered.
+	// Injected by app/builder.go from AgentRepository.GetByClientID.
+	ResolveAgentIDByClientID func(clientID string) (agentID string, err error)
 }
 
 // CELEvaluator evaluates CEL expressions for claim extraction and privileged client authorization.
@@ -32,7 +42,7 @@ type CELEvaluatorConfig struct {
 //
 // The evaluator provides methods for:
 // - Extracting principal (user identifier) from subject_token using configurable expressions
-// - Extracting agent_client_id from subject_token using configurable expressions
+// - Extracting agent ID from subject_token using configurable expressions
 // - Evaluating authorization policies to determine if a privileged client is permitted access
 //
 // All expression evaluation is sandboxed (no system access) and includes timeout enforcement
@@ -45,9 +55,9 @@ type CELEvaluator struct {
 	// Compiled at startup, evaluated at runtime
 	principalProgram cel.Program
 
-	// agentClientIDProgram is the compiled CEL program for agent_client_id extraction
+	// agentIDProgram is the compiled CEL program for agent ID extraction
 	// Compiled at startup, evaluated at runtime
-	agentClientIDProgram cel.Program
+	agentIDProgram cel.Program
 
 	// authorizationProgram is the compiled CEL program for privileged client authorization
 	// Compiled at startup, evaluated at runtime
@@ -83,8 +93,8 @@ func NewCELEvaluator(config CELEvaluatorConfig) (*CELEvaluator, error) {
 		return nil, err
 	}
 
-	// Compile agent_client_id extraction expression
-	if err := evaluator.compileAgentClientIDExpression(); err != nil {
+	// Compile agent ID extraction expression
+	if err := evaluator.compileAgentIDExpression(); err != nil {
 		return nil, err
 	}
 
@@ -116,23 +126,23 @@ func (e *CELEvaluator) compilePrincipalExpression() error {
 	return nil
 }
 
-// compileAgentClientIDExpression compiles the agent_client_id extraction CEL expression.
+// compileAgentIDExpression compiles the agent ID extraction CEL expression.
 // Returns ServerError on compilation failure.
-func (e *CELEvaluator) compileAgentClientIDExpression() error {
-	expr := e.config.AgentClientIDExpression
+func (e *CELEvaluator) compileAgentIDExpression() error {
+	expr := e.config.AgentIDExpression
 	if expr == "" {
-		expr = DefaultAgentClientIDExpression
+		expr = DefaultAgentIDExpression
 	}
 
 	program, err := e.compileExpression(expr)
 	if err != nil {
 		return NewServerErrorWithDetails(
-			"invalid agent client ID extraction CEL expression at startup",
-			"agent_client_id_expression_invalid",
+			"invalid agent ID extraction CEL expression at startup",
+			"agent_id_expression_invalid",
 		)
 	}
 
-	e.agentClientIDProgram = program
+	e.agentIDProgram = program
 	return nil
 }
 
@@ -159,12 +169,41 @@ func (e *CELEvaluator) compileAuthorizationExpression() error {
 // compileExpression compiles a single CEL expression into a program.
 // Returns error if the expression is invalid.
 func (e *CELEvaluator) compileExpression(expr string) (cel.Program, error) {
-	// Create CEL environment with sandbox restrictions
-	env, err := cel.NewEnv(
+	// Build CEL environment options: base variables + optional resolveAgentIdByClientId function
+	envOpts := []cel.EnvOption{
 		cel.Variable(CELSubjectTokenVariable, cel.MapType(cel.StringType, cel.AnyType)),
 		cel.Variable("client_assertion", cel.MapType(cel.StringType, cel.AnyType)),
 		cel.Variable("request", cel.MapType(cel.StringType, cel.AnyType)),
-	)
+	}
+
+	// Feature 021 (T031): Register resolveAgentIdByClientId only when the resolver is configured.
+	// When nil (multi-agent sharing enabled), the function is not registered and expressions
+	// using it fail at compile time, surfacing the misconfiguration immediately.
+	if e.config.ResolveAgentIDByClientID != nil {
+		resolver := e.config.ResolveAgentIDByClientID
+		envOpts = append(envOpts, cel.Function(
+			"resolveAgentIdByClientId",
+			cel.Overload(
+				"resolveAgentIdByClientId_string",
+				[]*cel.Type{cel.StringType},
+				cel.StringType,
+				cel.UnaryBinding(func(arg ref.Val) ref.Val {
+					clientID, ok := arg.Value().(string)
+					if !ok {
+						return types.NewErr("resolveAgentIdByClientId: argument must be a string")
+					}
+					agentID, err := resolver(clientID)
+					if err != nil {
+						return types.NewErr("resolveAgentIdByClientId: %v", err)
+					}
+					return types.String(agentID)
+				}),
+			),
+		))
+	}
+
+	// Create CEL environment with sandbox restrictions
+	env, err := cel.NewEnv(envOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
@@ -238,12 +277,12 @@ func (e *CELEvaluator) ExtractPrincipal(subjectTokenClaims map[string]interface{
 	return principal, nil
 }
 
-// ExtractAgentClientID extracts the agent client ID from subject_token JWT claims.
-// Uses the configured agent_client_id_expression (default: "subject_token.azp").
+// ExtractAgentID extracts the agent identifier from subject_token JWT claims.
+// Uses the configured agent_id_expression (default: "subject_token.azp").
 //
-// Returns the extracted agent client ID string or ServerError on evaluation failure/timeout.
+// Returns the extracted agent identifier string or ServerError on evaluation failure/timeout.
 // Per T060, this is used to look up the agent for grant verification.
-func (e *CELEvaluator) ExtractAgentClientID(subjectTokenClaims map[string]interface{}) (string, error) {
+func (e *CELEvaluator) ExtractAgentID(subjectTokenClaims map[string]interface{}) (string, error) {
 	// Create evaluation context
 	ctx, cancel := context.WithTimeout(context.Background(), e.evaluationTimeout)
 	defer cancel()
@@ -254,36 +293,36 @@ func (e *CELEvaluator) ExtractAgentClientID(subjectTokenClaims map[string]interf
 	}
 
 	// Evaluate the expression
-	result, err := e.evaluateWithTimeout(ctx, e.agentClientIDProgram, variables)
+	result, err := e.evaluateWithTimeout(ctx, e.agentIDProgram, variables)
 	if err != nil {
 		return "", NewServerErrorWithDetails(
-			"failed to extract agent client ID from subject_token",
-			"agent_client_id_extraction_failed",
+			"failed to extract agent ID from subject_token",
+			"agent_id_extraction_failed",
 		)
 	}
 
 	// Convert result to string
-	agentClientID, ok := result.(string)
+	agentID, ok := result.(string)
 	if !ok {
 		// Try to convert from CEL string type
 		if val, ok := result.(types.String); ok {
-			agentClientID = string(val)
+			agentID = string(val)
 		} else {
 			return "", NewServerErrorWithDetails(
-				"agent client ID extraction did not return a string",
-				"agent_client_id_extraction_type_error",
+				"agent ID extraction did not return a string",
+				"agent_id_extraction_type_error",
 			)
 		}
 	}
 
-	if agentClientID == "" {
+	if agentID == "" {
 		return "", NewServerErrorWithDetails(
-			"agent client ID extraction returned empty value",
-			"agent_client_id_extraction_empty",
+			"agent ID extraction returned empty value",
+			"agent_id_extraction_empty",
 		)
 	}
 
-	return agentClientID, nil
+	return agentID, nil
 }
 
 // AuthorizePrivilegedClient evaluates the authorization expression to determine if a privileged client
@@ -398,18 +437,18 @@ type CELRequestContext struct {
 	// Principal is the user principal extracted from subject_token
 	Principal string
 
-	// AgentClientID is the agent identifier extracted from subject_token
-	AgentClientID string
+	// AgentID is the agent identifier extracted from subject_token
+	AgentID string
 }
 
 // ToMap converts CELRequestContext to a map for CEL evaluation.
 // This provides a typed and documented way to prepare request context for CEL expressions.
 func (r CELRequestContext) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"resource":        r.Resource,
-		"grant_type":      r.GrantType,
-		"scope":           r.Scope,
-		"principal":       r.Principal,
-		"agent_client_id": r.AgentClientID,
+		"resource":   r.Resource,
+		"grant_type": r.GrantType,
+		"scope":      r.Scope,
+		"principal":  r.Principal,
+		"agent_id":   r.AgentID,
 	}
 }

@@ -143,7 +143,7 @@ Administrators need to configure which resource URIs map to which third-party se
 ### Edge Cases
 
 - **Token refresh during exchange fails**: When access_token is expired and refresh attempt fails (invalid_grant from third-party), system returns error=invalid_grant with description indicating refresh failed and re-authentication required
-- **Subject token missing required claim**: When subject_token JWT is missing the claim targeted by principal_expression or agent_client_id_expression, system returns error=invalid_request with description indicating which claim extraction failed
+- **Subject token missing required claim**: When subject_token JWT is missing the claim targeted by principal_expression or agent_id_expression, system returns error=invalid_request with description indicating which claim extraction failed
 - **Resource parameter missing**: When token exchange request omits resource parameter, system returns error=invalid_request with description "resource parameter is required"
 - **Multiple resources in request**: RFC 8693 allows multiple resource parameters; system validates that all resources map to the same service, otherwise returns error=invalid_target
 - **Client assertion signature verification fails**: When client_assertion JWT signature cannot be verified against Upstream OAuth2 Server's JWKS, system returns error=invalid_client
@@ -192,7 +192,7 @@ Administrators need to configure which resource URIs map to which third-party se
 
 **Configuration Parameters**:
 - **token_exchange.claim_extraction.principal_expression**: (string) CEL expression to extract user principal from subject_token. Default: `subject_token.sub`
-- **token_exchange.claim_extraction.agent_client_id_expression**: (string) CEL expression to extract agent identifier from subject_token. Default: `subject_token.azp`
+- **token_exchange.claim_extraction.agent_id_expression**: (string) CEL expression to extract agent identifier from subject_token. Default: `subject_token.azp`
 - **token_exchange.authorization.type**: (string) Authorization method: "cel" or "opa" (OPA reserved for future). Default: "cel"
 - **token_exchange.authorization.cel.expression**: (string) CEL expression for privileged client authorization. Default: "true" (allow all valid privileged clients)
 - **token_exchange.refresh.enabled**: (boolean) Enable automatic token refresh. Default: true
@@ -220,7 +220,7 @@ token_exchange:
     # CEL expression to extract user principal from subject_token
     principal_expression: "subject_token.sub"
     # CEL expression to extract agent identifier from subject_token
-    agent_client_id_expression: "subject_token.azp"
+    agent_id_expression: "subject_token.azp"
   authorization:
     type: cel
     cel:

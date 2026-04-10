@@ -16,14 +16,23 @@ token_exchange:
     #   - "subject_token.preferred_username"     # Custom: use preferred_username
     principal_expression: "subject_token.sub"
 
-    # agent_client_id_expression extracts the agent/application client ID from subject_token.
-    # Expression should return a string identifying the requesting agent.
-    # Default: "subject_token.azp" (extracts the 'azp' claim - authorized party)
-    # Examples:
-    #   - "subject_token.azp"                    # Standard azp claim (authorized party)
-    #   - "subject_token.client_id"              # Custom: use client_id claim
-    #   - "subject_token.claims.agent_id"        # Custom: use nested claim
-    agent_client_id_expression: "subject_token.azp"
+    # agent_id_expression extracts the agent/application client ID from subject_token.
+    # Expression MUST return the agent's internal UUID (agent.id), NOT the upstream client_id string.
+    #
+    # IMPORTANT: Choose the correct expression based on your multi_agent_client configuration:
+    #
+    # When multi_agent_client.enabled = false (default — recommended for existing deployments):
+    #   Use the resolveAgentIdByClientId() CEL helper to map upstream client_id → broker agent.id:
+    #   agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+    #
+    # When multi_agent_client.enabled = true:
+    #   Use the configured agent_id_claim_name claim directly (contains agent.id UUID):
+    #   agent_id_expression: "subject_token.x_agent_id"  # use configured claim name
+    #
+    # DEPRECATED (no longer valid): "subject_token.azp" was previously used directly.
+    # Token exchange now resolves agents by agent.id (UUID), not agent.client_id.
+    # Operators MUST update this expression.
+    agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
 
   # Authorization configures privileged client authorization rules
   authorization:
@@ -77,12 +86,25 @@ token_exchange:
 #
 # These are referenced in token exchange but configured separately in the main config.yaml
 
-# COMPLETE MINIMAL EXAMPLE
-# ========================
+# COMPLETE MINIMAL EXAMPLE (multi_agent_client.enabled = false — default)
+# ========================================================================
 # token_exchange:
 #   claim_extraction:
 #     principal_expression: "subject_token.sub"
-#     agent_client_id_expression: "subject_token.azp"
+#     agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
+#   authorization:
+#     type: "cel"
+#     cel:
+#       expression: "true"
+#   refresh:
+#     enabled: true
+
+# COMPLETE MINIMAL EXAMPLE (multi_agent_client.enabled = true)
+# =============================================================
+# token_exchange:
+#   claim_extraction:
+#     principal_expression: "subject_token.sub"
+#     agent_id_expression: "subject_token.x_agent_id"  # use configured agent_id_claim_name
 #   authorization:
 #     type: "cel"
 #     cel:
@@ -95,7 +117,7 @@ token_exchange:
 # token_exchange:
 #   claim_extraction:
 #     principal_expression: "subject_token.sub"
-#     agent_client_id_expression: "subject_token.azp"
+#     agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
 #   authorization:
 #     type: "cel"
 #     cel:

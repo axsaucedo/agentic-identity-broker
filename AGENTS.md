@@ -154,3 +154,25 @@ Use `just` command runner for all tasks. Run `just --list` for full listing.
 ```bash
 just check  # fmt → vet → lint → test — all must pass
 ```
+
+## Database Migrations
+
+Migrations live in `/migrations/` and use the go-migrate naming convention (`NNN_description.{up,down}.sql`).
+
+### PostgreSQL Index Creation in Migrations
+
+Use `CREATE INDEX CONCURRENTLY` for production-safe index creation on large tables. Without `CONCURRENTLY`, PostgreSQL holds an `ACCESS EXCLUSIVE` lock for the duration of the build, blocking all reads and writes.
+
+**Important constraint**: `CONCURRENTLY` cannot be used inside a transaction.
+
+go-migrate wraps migrations in transactions by default. To use `CONCURRENTLY`, the migration must opt out of the transaction wrapper via a no-transaction directive at the top of the file:
+
+```sql
+-- migrate:no-transaction
+```
+
+(Verify the exact directive for the go-migrate version used in this project by checking `cmd/migrate/` or the go-migrate documentation.)
+
+**Migration 008 note**: Migration 008 (`008_drop_agent_client_id_unique`) used non-concurrent index recreation (`CREATE INDEX IF NOT EXISTS`) without `CONCURRENTLY` because the `agents` table is small at migration time and the transactional safety outweighed the lock duration concern.
+
+**Future guidance**: Migrations that create or recreate indexes on tables expected to be large in production should use no-transaction migrations with `CREATE INDEX CONCURRENTLY` to avoid downtime.

@@ -141,9 +141,9 @@ const (
 	// Extracts the 'sub' claim from the JWT.
 	DefaultPrincipalExpression = "subject_token.sub"
 
-	// DefaultAgentClientIDExpression is the default CEL expression for extracting the agent client ID from subject_token.
+	// DefaultAgentIDExpression is the default CEL expression for extracting the agent identifier from subject_token.
 	// Extracts the 'azp' (authorized party) claim from the JWT.
-	DefaultAgentClientIDExpression = "subject_token.azp"
+	DefaultAgentIDExpression = "subject_token.azp"
 
 	// DefaultAuthorizationExpression is the default CEL authorization expression.
 	// Allows all valid gateways (returns true for all inputs).

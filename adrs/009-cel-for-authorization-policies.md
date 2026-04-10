@@ -63,7 +63,7 @@ token_exchange:
     # Principal extraction: default subject_token.sub
     principal_expression: "subject_token.sub"
     # Agent ID extraction: default subject_token.azp
-    agent_client_id_expression: "subject_token.azp"
+    agent_id_expression: "subject_token.azp"
 
   authorization:
     # Type: "cel" or "opa" (OPA reserved for future)
@@ -120,7 +120,7 @@ claims.iat > now.seconds(cutoff_time)
 // For principal_expression
 subject_token // The subject_token JWT as a map of claims
 
-// For agent_client_id_expression
+// For agent_id_expression
 subject_token // The subject_token JWT as a map of claims
 ```
 

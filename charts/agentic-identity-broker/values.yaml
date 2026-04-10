@@ -440,6 +440,43 @@ broker:
     upstreamTimeoutSeconds: 10
     # -- Operation mode (proxy or authorization_server)
     mode: proxy
+    # Multi-agent client sharing (Feature 021)
+    # When enabled, multiple agents may share the same upstream OAuth2 client_id.
+    # Requires both agentIdParamName and agentIdClaimName when enabled.
+    multiAgentClient:
+      # -- Enable multi-agent client sharing. Default: false.
+      # When false, upstream client_id uniqueness per agent is enforced and the
+      # resolveAgentIdByClientId CEL helper is registered for token exchange policies.
+      enabled: false
+      # -- Name of the query parameter injected into the upstream authorize redirect
+      # carrying the agent's internal UUID (e.g. "x_agent_id"). Required when enabled.
+      agentIdParamName: ""
+      # -- Name of the JWT claim the upstream server embeds in minted tokens containing
+      # the agent's internal UUID (e.g. "x_agent_id"). Required when enabled.
+      agentIdClaimName: ""
+
+  # Token exchange configuration (RFC 8693)
+  tokenExchange:
+    claimExtraction:
+      # -- CEL expression to extract the user principal from subject_token.
+      # Default: "subject_token.sub"
+      principalExpression: "subject_token.sub"
+      # -- CEL expression to extract the agent identifier from subject_token.
+      # When multiAgentClient.enabled = false (default): use resolveAgentIdByClientId to map
+      # upstream client_id → broker agent.id UUID:
+      #   "resolveAgentIdByClientId(subject_token.azp)"
+      # When multiAgentClient.enabled = true: read the agent ID claim directly:
+      #   "subject_token.x_agent_id"  (use your configured agentIdClaimName)
+      agentIdExpression: "resolveAgentIdByClientId(subject_token.azp)"
+    authorization:
+      # -- Authorization type: "cel" (recommended)
+      type: "cel"
+      cel:
+        # -- CEL boolean expression evaluated per token exchange request.
+        # Default: "true" (allow all valid clients with valid JWTs).
+        expression: "true"
+        # -- CEL evaluation timeout (e.g. "100ms", "5s")
+        evaluationTimeout: "100ms"
 
   # Security configuration
   security:

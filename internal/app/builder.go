@@ -30,6 +30,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
@@ -148,6 +149,11 @@ func (b *Builder) Build() (*App, error) {
 		return nil, fmt.Errorf("logger is required")
 	}
 
+	// Validate OAuth2AuthServer config (handles the empty-config case internally).
+	if err := b.config.OAuth2AuthServer.Validate(); err != nil {
+		return nil, fmt.Errorf("oauth2_authorization_server configuration invalid: %w", err)
+	}
+
 	app := &App{
 		Config:  b.config,
 		Storage: b.storage,
@@ -252,7 +258,9 @@ func (b *Builder) Build() (*App, error) {
 		)
 	}
 
-	// Create OAuth2 service if configuration available
+	// Create OAuth2 service if configuration available.
+	// T038: Use NewServiceWithSessions (enables mandatory requirement validation + multi-agent
+	// client config) and pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient.
 	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" {
 		app.OAuth2Service = oauth2service.NewServiceWithSessions(
 			b.storage.Agents(),
@@ -264,6 +272,7 @@ func (b *Builder) Build() (*App, error) {
 				PublicURL:                 b.config.Server.EndUser.PublicURL,
 				SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
 				SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
+				MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,
 			},
 			b.logger,
 		)
@@ -339,10 +348,27 @@ func (b *Builder) Build() (*App, error) {
 		// Create CEL evaluator with configuration
 		celConfig := tokenexchange.CELEvaluatorConfig{
 			PrincipalExpression:     b.config.TokenExchange.ClaimExtraction.PrincipalExpression,
-			AgentClientIDExpression: b.config.TokenExchange.ClaimExtraction.AgentClientIDExpression,
+			AgentIDExpression:       b.config.TokenExchange.ClaimExtraction.AgentIDExpression,
 			AuthorizationExpression: b.config.TokenExchange.Authorization.CEL.Expression,
 			EvaluationTimeout:       b.config.TokenExchange.Authorization.CEL.EvaluationTimeout,
 		}
+
+		// T039: When feature is disabled, register resolveAgentIdByClientId CEL function so
+		// agent_id_expression can look up an agent by its upstream client_id.
+		// When enabled, the expression receives the UUID directly from the token — no lookup needed.
+		if !b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
+			agentRepo := b.storage.Agents()
+			celConfig.ResolveAgentIDByClientID = func(clientID string) (string, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				agent, err := agentRepo.GetByClientID(ctx, id.ClientID(clientID))
+				if err != nil {
+					return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
+				}
+				return agent.ID.String(), nil
+			}
+		}
+
 		celEvaluator, err := tokenexchange.NewCELEvaluator(celConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CEL evaluator for token exchange: %w", err)
@@ -458,7 +484,7 @@ func (b *Builder) Build() (*App, error) {
 
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
-		Agents:   admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger),
+		Agents:   admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger, b.config.OAuth2AuthServer.MultiAgentClient.Enabled),
 		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
@@ -467,6 +493,57 @@ func (b *Builder) Build() (*App, error) {
 		WithAgentRepository(b.storage.Agents()).
 		WithSessionRepository(b.storage.UserSessions()).
 		WithProviderService(app.ProviderService)
+
+	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
+	// Config validation makes this error unreachable in practice, but structural fail-closed
+	// guarantees (SR-001) are not conditional on upstream validation alone.
+	oauth2TokenHandler := &enduser.OAuth2TokenHandler{
+		UpstreamTokenURL: b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+		Client:           upstreamClient,
+		TokenExchange:    app.TokenExchangeService,
+		Logger:           b.logger,
+		AgentRepository:  b.storage.Agents(),
+	}
+	if b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
+		// Discover JWKS URI for multi-agent token signature verification (defense-in-depth, SR-001).
+		// The broker is the relying party and must verify that the upstream token has not been tampered with.
+		multiAgentDiscoveryCtx, multiAgentDiscoveryCancel := context.WithTimeout(
+			context.Background(),
+			time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds)*time.Second,
+		)
+		multiAgentDiscovered, err := domstorage.DiscoverOAuth2Endpoints(
+			multiAgentDiscoveryCtx,
+			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			nil, // use standard /.well-known/oauth-authorization-server path
+			b.config.Security.SkipThirdpartyHTTPSValidation,
+		)
+		multiAgentDiscoveryCancel()
+		if err != nil {
+			return nil, fmt.Errorf("failed to discover OAuth2 server metadata for multi-agent verifier: %w", err)
+		}
+		if multiAgentDiscovered.JWKsURI == "" {
+			return nil, fmt.Errorf("OAuth2 server metadata did not include a jwks_uri (required for multi-agent token verification)")
+		}
+
+		multiAgentJWKSAdapter, err := jwks.NewJWKSAdapter(
+			multiAgentDiscovered.JWKsURI,
+			upstreamClient,
+			15*time.Minute,
+			1*time.Hour,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWKS adapter for multi-agent verifier: %w", err)
+		}
+
+		verifier, err := oauth2service.NewMultiAgentTokenVerifier(
+			b.config.OAuth2AuthServer.MultiAgentClient.AgentIDClaimName,
+			multiAgentJWKSAdapter,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create multi-agent token verifier: %w", err)
+		}
+		oauth2TokenHandler.MultiAgentVerifier = verifier
+	}
 
 	// Enduser handlers
 	app.EnduserHandlers = &EnduserHandlers{
@@ -480,12 +557,7 @@ func (b *Builder) Build() (*App, error) {
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
 			Service: app.OAuth2Service,
 		},
-		OAuth2Token: &enduser.OAuth2TokenHandler{
-			UpstreamTokenURL: b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
-			Client:           upstreamClient,
-			TokenExchange:    app.TokenExchangeService,
-			Logger:           b.logger,
-		},
+		OAuth2Token: oauth2TokenHandler,
 		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
 			Service: app.OAuth2Service,
 		},

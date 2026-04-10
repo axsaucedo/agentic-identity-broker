@@ -90,8 +90,10 @@ token_exchange:
   claim_extraction:
     # Extract user principal from the subject_token's sub claim
     principal_expression: "subject_token.sub"
-    # Extract agent client ID from the subject_token's azp (authorized party) claim
-    agent_client_id_expression: "subject_token.azp"
+    # Extract agent identifier from the subject_token's azp (authorized party) claim.
+    # When multi_agent_client is disabled (default), use resolveAgentIdByClientId to map
+    # the upstream client_id claim to the broker's internal agent.id UUID.
+    agent_id_expression: "resolveAgentIdByClientId(subject_token.azp)"
   authorization:
     type: "cel"
     cel:

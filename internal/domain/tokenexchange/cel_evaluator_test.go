@@ -1,6 +1,7 @@
 package tokenexchange
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func TestNewCELEvaluatorSuccessfulCompilation(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, evaluator)
 	assert.NotNil(t, evaluator.principalProgram)
-	assert.NotNil(t, evaluator.agentClientIDProgram)
+	assert.NotNil(t, evaluator.agentIDProgram)
 	assert.NotNil(t, evaluator.authorizationProgram)
 }
 
@@ -38,11 +39,11 @@ func TestNewCELEvaluatorInvalidPrincipalExpression(t *testing.T) {
 	assert.Equal(t, 500, tokExErr.HTTPStatus())
 }
 
-// TestNewCELEvaluatorInvalidAgentClientIDExpression tests startup failure with invalid agent_client_id expression.
-func TestNewCELEvaluatorInvalidAgentClientIDExpression(t *testing.T) {
+// TestNewCELEvaluatorInvalidAgentIDExpression tests startup failure with invalid agent_id expression.
+func TestNewCELEvaluatorInvalidAgentIDExpression(t *testing.T) {
 	t.Parallel()
 	config := validTokenExchangeConfig(t)
-	config.AgentClientIDExpression = "invalid !@#$ syntax"
+	config.AgentIDExpression = "invalid !@#$ syntax"
 
 	evaluator, err := NewCELEvaluator(config)
 
@@ -175,8 +176,8 @@ func TestExtractPrincipalWrongType(t *testing.T) {
 	assert.True(t, IsTokenExchangeError(err))
 }
 
-// TestExtractAgentClientIDDefaultExpression tests agent_client_id extraction with default expression.
-func TestExtractAgentClientIDDefaultExpression(t *testing.T) {
+// TestExtractAgentIDDefaultExpression tests agent_id extraction with default expression.
+func TestExtractAgentIDDefaultExpression(t *testing.T) {
 	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
@@ -186,17 +187,17 @@ func TestExtractAgentClientIDDefaultExpression(t *testing.T) {
 		"azp": "agent-app-1",
 	}
 
-	agentID, err := evaluator.ExtractAgentClientID(claims)
+	agentID, err := evaluator.ExtractAgentID(claims)
 
 	require.NoError(t, err)
 	assert.Equal(t, "agent-app-1", agentID)
 }
 
-// TestExtractAgentClientIDCustomExpression tests agent_client_id extraction with custom expression.
-func TestExtractAgentClientIDCustomExpression(t *testing.T) {
+// TestExtractAgentIDCustomExpression tests agent_id extraction with custom expression.
+func TestExtractAgentIDCustomExpression(t *testing.T) {
 	t.Parallel()
 	config := validTokenExchangeConfig(t)
-	config.AgentClientIDExpression = "subject_token.client_id"
+	config.AgentIDExpression = "subject_token.client_id"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
@@ -204,14 +205,14 @@ func TestExtractAgentClientIDCustomExpression(t *testing.T) {
 		"client_id": "app-agent",
 	}
 
-	agentID, err := evaluator.ExtractAgentClientID(claims)
+	agentID, err := evaluator.ExtractAgentID(claims)
 
 	require.NoError(t, err)
 	assert.Equal(t, "app-agent", agentID)
 }
 
-// TestExtractAgentClientIDMissingClaim tests error when claim is missing.
-func TestExtractAgentClientIDMissingClaim(t *testing.T) {
+// TestExtractAgentIDMissingClaim tests error when claim is missing.
+func TestExtractAgentIDMissingClaim(t *testing.T) {
 	t.Parallel()
 	config := validTokenExchangeConfig(t)
 	evaluator, err := NewCELEvaluator(config)
@@ -221,7 +222,7 @@ func TestExtractAgentClientIDMissingClaim(t *testing.T) {
 		// Missing 'azp' claim
 	}
 
-	agentID, err := evaluator.ExtractAgentClientID(claims)
+	agentID, err := evaluator.ExtractAgentID(claims)
 
 	assert.Error(t, err)
 	assert.Empty(t, agentID)
@@ -243,11 +244,11 @@ func TestAuthorizePrivilegedClientDefaultExpression(t *testing.T) {
 		"sub": "user123",
 	}
 	request := CELRequestContext{
-		Resource:      "https://api.example.com",
-		GrantType:     TokenExchangeGrantType,
-		Scope:         "read",
-		Principal:     "user123",
-		AgentClientID: "agent-app-1",
+		Resource:  "https://api.example.com",
+		GrantType: TokenExchangeGrantType,
+		Scope:     "read",
+		Principal: "user123",
+		AgentID:   "agent-app-1",
 	}
 
 	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
@@ -272,10 +273,10 @@ func TestAuthorizePrivilegedClientCustomExpressionAllow(t *testing.T) {
 		"sub": "user123",
 	}
 	request := CELRequestContext{
-		Resource:      "https://api.example.com",
-		GrantType:     TokenExchangeGrantType,
-		Principal:     "user123",
-		AgentClientID: "agent-app-1",
+		Resource:  "https://api.example.com",
+		GrantType: TokenExchangeGrantType,
+		Principal: "user123",
+		AgentID:   "agent-app-1",
 	}
 
 	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
@@ -300,10 +301,10 @@ func TestAuthorizePrivilegedClientCustomExpressionDeny(t *testing.T) {
 		"sub": "user123",
 	}
 	request := CELRequestContext{
-		Resource:      "https://api.example.com",
-		GrantType:     TokenExchangeGrantType,
-		Principal:     "user123",
-		AgentClientID: "agent-app-1",
+		Resource:  "https://api.example.com",
+		GrantType: TokenExchangeGrantType,
+		Principal: "user123",
+		AgentID:   "agent-app-1",
 	}
 
 	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
@@ -334,10 +335,10 @@ func TestAuthorizePrivilegedClientComplexExpression(t *testing.T) {
 		"roles": []any{"admin", "user"},
 	}
 	request := CELRequestContext{
-		Resource:      "https://api.example.com",
-		GrantType:     TokenExchangeGrantType,
-		Principal:     "user123",
-		AgentClientID: "trusted-privileged-client",
+		Resource:  "https://api.example.com",
+		GrantType: TokenExchangeGrantType,
+		Principal: "user123",
+		AgentID:   "trusted-privileged-client",
 	}
 
 	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
@@ -365,10 +366,10 @@ func TestAuthorizePrivilegedClientComplexExpressionFailsAdminCheck(t *testing.T)
 		"roles": []any{"user"}, // Missing admin role
 	}
 	request := CELRequestContext{
-		Resource:      "https://api.example.com",
-		GrantType:     TokenExchangeGrantType,
-		Principal:     "user123",
-		AgentClientID: "trusted-privileged-client",
+		Resource:  "https://api.example.com",
+		GrantType: TokenExchangeGrantType,
+		Principal: "user123",
+		AgentID:   "trusted-privileged-client",
 	}
 
 	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
@@ -394,10 +395,10 @@ func TestAuthorizePrivilegedClientWithTimeout(t *testing.T) {
 		"sub": "user123",
 	}
 	request := CELRequestContext{
-		Resource:      "https://api.example.com",
-		GrantType:     TokenExchangeGrantType,
-		Principal:     "user123",
-		AgentClientID: "agent-app-1",
+		Resource:  "https://api.example.com",
+		GrantType: TokenExchangeGrantType,
+		Principal: "user123",
+		AgentID:   "agent-app-1",
 	}
 
 	// Even a simple true expression might timeout with 1ms limit
@@ -433,11 +434,11 @@ func TestExtractPrincipalWithComplexNestedClaims(t *testing.T) {
 	assert.Equal(t, "user-456", principal)
 }
 
-// TestExtractAgentClientIDWithComplexNestedClaims tests agent_client_id extraction from complex nested structure.
-func TestExtractAgentClientIDWithComplexNestedClaims(t *testing.T) {
+// TestExtractAgentIDWithComplexNestedClaims tests agent_id extraction from complex nested structure.
+func TestExtractAgentIDWithComplexNestedClaims(t *testing.T) {
 	t.Parallel()
 	config := validTokenExchangeConfig(t)
-	config.AgentClientIDExpression = "subject_token.agent.client_id"
+	config.AgentIDExpression = "subject_token.agent.client_id"
 	evaluator, err := NewCELEvaluator(config)
 	require.NoError(t, err)
 
@@ -448,7 +449,7 @@ func TestExtractAgentClientIDWithComplexNestedClaims(t *testing.T) {
 		},
 	}
 
-	agentID, err := evaluator.ExtractAgentClientID(claims)
+	agentID, err := evaluator.ExtractAgentID(claims)
 
 	require.NoError(t, err)
 	assert.Equal(t, "agent-789", agentID)
@@ -469,10 +470,10 @@ func TestAuthorizePrivilegedClientWithRequestContext(t *testing.T) {
 		"sub": "user123",
 	}
 	request := CELRequestContext{
-		Resource:      "https://api.example.com",
-		GrantType:     TokenExchangeGrantType,
-		Principal:     "user123",
-		AgentClientID: "agent-app-1",
+		Resource:  "https://api.example.com",
+		GrantType: TokenExchangeGrantType,
+		Principal: "user123",
+		AgentID:   "agent-app-1",
 	}
 
 	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
@@ -496,10 +497,10 @@ func TestAuthorizePrivilegedClientWithRequestContextMismatch(t *testing.T) {
 		"sub": "user123",
 	}
 	request := CELRequestContext{
-		Resource:      "https://other-api.example.com", // Different resource
-		GrantType:     TokenExchangeGrantType,
-		Principal:     "user123",
-		AgentClientID: "agent-app-1",
+		Resource:  "https://other-api.example.com", // Different resource
+		GrantType: TokenExchangeGrantType,
+		Principal: "user123",
+		AgentID:   "agent-app-1",
 	}
 
 	authorized, err := evaluator.AuthorizePrivilegedClient(clientAssertion, subjectToken, request)
@@ -535,8 +536,74 @@ func TestNewCELEvaluatorWithCustomTimeout(t *testing.T) {
 func validTokenExchangeConfig(_ *testing.T) CELEvaluatorConfig {
 	return CELEvaluatorConfig{
 		PrincipalExpression:     DefaultPrincipalExpression,
-		AgentClientIDExpression: DefaultAgentClientIDExpression,
+		AgentIDExpression:       DefaultAgentIDExpression,
 		AuthorizationExpression: DefaultAuthorizationExpression,
 		EvaluationTimeout:       time.Duration(DefaultEvaluationTimeoutMs) * time.Millisecond,
 	}
+}
+
+// --- T028: resolveAgentIdByClientId CEL function tests (Feature 021 US2) ---
+
+// TestCELEvaluator_ResolveAgentIdByClientId_CorrectResult verifies that when
+// ResolveAgentIDByClientID is non-nil, the resolveAgentIdByClientId CEL function is
+// registered and returns the agent UUID string returned by the resolver.
+// [T028] Written before T031 implementation — must FAIL until T031 registers the function.
+func TestCELEvaluator_ResolveAgentIdByClientId_CorrectResult(t *testing.T) {
+	agentUUID := "550e8400-e29b-41d4-a716-446655440000"
+
+	config := validTokenExchangeConfig(t)
+	// Register a mock resolver that maps "upstream-client-1" → agentUUID
+	config.ResolveAgentIDByClientID = func(clientID string) (string, error) {
+		if clientID == "upstream-client-1" {
+			return agentUUID, nil
+		}
+		return "", fmt.Errorf("unknown client_id: %s", clientID)
+	}
+	// Use the resolveAgentIdByClientId function in the expression
+	config.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+	evaluator, err := NewCELEvaluator(config)
+	require.NoError(t, err, "NewCELEvaluator should succeed when resolver is registered")
+	require.NotNil(t, evaluator)
+
+	result, err := evaluator.ExtractAgentID(map[string]interface{}{
+		"azp": "upstream-client-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agentUUID, result)
+}
+
+// TestCELEvaluator_ResolveAgentIdByClientId_UnknownClientIDReturnsErr verifies that when
+// the resolver returns an error (unknown clientID), ExtractAgentID returns an error.
+// [T028] Written before T031 implementation — must FAIL until T031 registers the function.
+func TestCELEvaluator_ResolveAgentIdByClientId_UnknownClientIDReturnsErr(t *testing.T) {
+	config := validTokenExchangeConfig(t)
+	config.ResolveAgentIDByClientID = func(clientID string) (string, error) {
+		return "", fmt.Errorf("unknown client_id: %s", clientID)
+	}
+	config.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+	evaluator, err := NewCELEvaluator(config)
+	require.NoError(t, err, "NewCELEvaluator should succeed when resolver is registered")
+
+	_, err = evaluator.ExtractAgentID(map[string]interface{}{
+		"azp": "unknown-client",
+	})
+	assert.Error(t, err, "ExtractAgentID should return error when resolver fails")
+}
+
+// TestCELEvaluator_ResolveAgentIdByClientId_NotRegisteredWhenNil verifies that when
+// ResolveAgentIDByClientID is nil, an expression using resolveAgentIdByClientId fails at
+// compile time with an undeclared reference error (feature disabled — function absent).
+// [T028] This test guards the contract that nil resolver → function NOT registered.
+// It passes both before and after T031 (the function is only registered when non-nil).
+func TestCELEvaluator_ResolveAgentIdByClientId_NotRegisteredWhenNil(t *testing.T) {
+	config := validTokenExchangeConfig(t)
+	config.ResolveAgentIDByClientID = nil // Feature disabled
+	config.AgentIDExpression = "resolveAgentIdByClientId(subject_token.azp)"
+
+	evaluator, err := NewCELEvaluator(config)
+	assert.Error(t, err, "NewCELEvaluator should fail when nil resolver and expression uses resolveAgentIdByClientId")
+	assert.Nil(t, evaluator)
+	assert.True(t, IsTokenExchangeError(err), "error should be a TokenExchangeError")
 }

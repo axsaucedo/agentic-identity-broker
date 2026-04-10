@@ -72,7 +72,15 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID id.Cli
 // and are available here because both files share the same package admin.
 func newAgentsHandlerForTest(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger) *AgentsHandler {
 	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
-	return NewAgentsHandler(mockRepo, svc, logger)
+	// Use multiAgentEnabled=true so existing CRUD tests don't need GetByClientID expectations.
+	// T033 tests use newAgentsHandlerForTestWithMultiAgent with explicit flags.
+	return NewAgentsHandler(mockRepo, svc, logger, true)
+}
+
+// newAgentsHandlerForTestWithMultiAgent creates an AgentsHandler with the given multiAgentEnabled flag.
+func newAgentsHandlerForTestWithMultiAgent(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger, multiAgentEnabled bool) *AgentsHandler {
+	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
+	return NewAgentsHandler(mockRepo, svc, logger, multiAgentEnabled)
 }
 
 func TestAgentsHandler_CreateAgent(t *testing.T) {
@@ -561,6 +569,157 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 
+		mockRepo.AssertExpectations(t)
+	})
+}
+
+// T033: Unit tests for admin agents handler client_id uniqueness gating.
+func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
+	logger := slog.Default()
+
+	existingAgentID := id.NewAgentID()
+
+	t.Run("Create: !multiAgentEnabled + duplicate client_id → 409 Conflict", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTestWithMultiAgent(mockRepo, mockServiceRepo, logger, false)
+
+		existingAgent := &storage.Agent{
+			ID:          existingAgentID,
+			ClientID:    id.ClientID("shared-client"),
+			DisplayName: "Existing Agent",
+			Description: "Already registered",
+		}
+
+		// Handler should call GetByClientID before Create; return a conflict
+		mockRepo.On("GetByClientID", mock.Anything, id.ClientID("shared-client")).Return(existingAgent, nil)
+
+		reqBody := AgentRequest{
+			ClientID:    "shared-client",
+			DisplayName: "New Agent",
+			Description: "Duplicate client_id",
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusConflict, w.Code)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("Create: multiAgentEnabled=true + duplicate client_id → no 409", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTestWithMultiAgent(mockRepo, mockServiceRepo, logger, true)
+
+		// GetByClientID must NOT be called when feature is enabled
+		mockRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
+
+		reqBody := AgentRequest{
+			ClientID:    "shared-client",
+			DisplayName: "New Agent",
+			Description: "Allowed duplicate",
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		mockRepo.AssertNotCalled(t, "GetByClientID")
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("Update: !multiAgentEnabled + client_id taken by another agent → 409 Conflict", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTestWithMultiAgent(mockRepo, mockServiceRepo, logger, false)
+
+		targetAgentID := id.NewAgentID()
+		otherAgentID := id.NewAgentID() // different agent that already owns the client_id
+
+		targetAgent := &storage.Agent{
+			ID:          targetAgentID,
+			ClientID:    id.ClientID("old-client"),
+			DisplayName: "Target Agent",
+			Description: "Being updated",
+		}
+		otherAgent := &storage.Agent{
+			ID:          otherAgentID,
+			ClientID:    id.ClientID("shared-client"),
+			DisplayName: "Other Agent",
+			Description: "Already has shared-client",
+		}
+
+		mockRepo.On("Get", mock.Anything, targetAgentID).Return(targetAgent, nil)
+		// GetByClientID for the new client_id returns a DIFFERENT agent — conflict
+		mockRepo.On("GetByClientID", mock.Anything, id.ClientID("shared-client")).Return(otherAgent, nil)
+
+		reqBody := AgentRequest{
+			ClientID:    "shared-client",
+			DisplayName: "Target Agent Updated",
+			Description: "Trying to steal client_id",
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+targetAgentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Inject chi URL param
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", targetAgentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		w := httptest.NewRecorder()
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusConflict, w.Code)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("Update: !multiAgentEnabled + client_id belongs to self → no 409", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTestWithMultiAgent(mockRepo, mockServiceRepo, logger, false)
+
+		targetAgentID := id.NewAgentID()
+		targetAgent := &storage.Agent{
+			ID:          targetAgentID,
+			ClientID:    id.ClientID("my-client"),
+			DisplayName: "Target Agent",
+			Description: "Being updated",
+		}
+
+		mockRepo.On("Get", mock.Anything, targetAgentID).Return(targetAgent, nil)
+		// GetByClientID returns the SAME agent — no conflict (self-update)
+		mockRepo.On("GetByClientID", mock.Anything, id.ClientID("my-client")).Return(targetAgent, nil)
+		mockRepo.On("Update", mock.Anything, mock.Anything).Return(nil)
+
+		reqBody := AgentRequest{
+			ClientID:    "my-client",
+			DisplayName: "Target Agent Updated",
+			Description: "Self-update allowed",
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+targetAgentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", targetAgentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		w := httptest.NewRecorder()
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
 		mockRepo.AssertExpectations(t)
 	})
 }

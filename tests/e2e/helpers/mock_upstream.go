@@ -144,6 +144,25 @@ func (m *MockUpstreamOAuth2Server) WithExpiresIn(seconds int) *MockUpstreamOAuth
 	return m
 }
 
+// ReturnTokenWithClaim configures the server to return a signed JWT access token
+// that includes the specified claim name and value.
+// The JWT is signed with the server's RSA private key (same key as the JWKS endpoint).
+// This is used for multi-agent scenarios where the upstream embeds the agent ID as a claim.
+func (m *MockUpstreamOAuth2Server) ReturnTokenWithClaim(claimName, value string) *MockUpstreamOAuth2Server {
+	claims := NewJWTClaims().
+		WithClaim(claimName, value).
+		Build()
+
+	signed, err := SignTestJWT(claims, m.privateKeyPEM)
+	if err != nil {
+		panic(fmt.Sprintf("ReturnTokenWithClaim: failed to sign JWT with claim %q: %v", claimName, err))
+	}
+
+	m.successfulTokenResp = true
+	m.accessToken = signed
+	return m
+}
+
 // GetLastRequest returns the last captured request (thread-safe).
 func (m *MockUpstreamOAuth2Server) GetLastRequest() *http.Request {
 	m.requestMutex.RLock()

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -27,6 +28,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 		logger         *slog.Logger
 		ctx            context.Context
 		storageFactory *bootstrap.StorageFactory
+		testAgent      *storage.Agent // registered agent used in token endpoint tests
 	)
 
 	BeforeEach(func() {
@@ -40,6 +42,11 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		ctx = context.Background()
+
+		// Register a shared test agent so all token endpoint tests can look it up
+		// by UUID when the broker resolves client_id → upstream client_id.
+		testAgent = fixtures.ValidAgent()
+		Expect(testStorage.Agents().Create(ctx, testAgent)).ToNot(HaveOccurred())
 
 		config := fixtures.DefaultOAuth2Config()
 		factory := bootstrap.NewServerFactory(config, logger)
@@ -139,7 +146,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			redirectURI := "https://client.example.com/callback"
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=abc123",
-					agent.ClientID, url.QueryEscape(redirectURI)),
+					agent.ID.String(), url.QueryEscape(redirectURI)),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -249,9 +256,11 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 		It("should accept valid Content-Type (application/x-www-form-urlencoded)", func() {
 			// Given: Token endpoint with mock upstream
 			// When: POST with valid Content-Type
+			// client_id must be a valid agent UUID (broker-internal identifier)
 			bodyStr := url.Values{
 				"grant_type": []string{"authorization_code"},
 				"code":       []string{"abc123"},
+				"client_id":  []string{testAgent.ID.String()},
 			}.Encode()
 
 			resp, err := server.DirectRequest(
@@ -300,7 +309,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request token endpoint
-			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"invalid"}}.Encode()
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"invalid"}, "client_id": []string{testAgent.ID.String()}}.Encode()
 			resp, err := server.DirectRequest(
 				"POST",
 				"/oauth2/token",
@@ -341,7 +351,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request token endpoint
-			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"test"}}.Encode()
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"test"}, "client_id": []string{testAgent.ID.String()}}.Encode()
 			resp, err := server.DirectRequest(
 				"POST",
 				"/oauth2/token",
@@ -387,7 +398,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request token endpoint
-			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"abc123"}}.Encode()
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"abc123"}, "client_id": []string{testAgent.ID.String()}}.Encode()
 			resp, err := server.DirectRequest(
 				"POST",
 				"/oauth2/token",
@@ -432,7 +444,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request token endpoint
-			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"abc123"}}.Encode()
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"abc123"}, "client_id": []string{testAgent.ID.String()}}.Encode()
 			resp, err := server.DirectRequest(
 				"POST",
 				"/oauth2/token",
@@ -482,7 +495,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// When: Request includes Connection header
-			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"abc123"}}.Encode()
+			// client_id must be a valid agent UUID (broker-internal identifier)
+			bodyStr := url.Values{"grant_type": []string{"authorization_code"}, "code": []string{"abc123"}, "client_id": []string{testAgent.ID.String()}}.Encode()
 			resp, err := server.DirectRequest(
 				"POST",
 				"/oauth2/token",

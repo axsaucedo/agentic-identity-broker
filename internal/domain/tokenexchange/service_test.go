@@ -2,10 +2,15 @@ package tokenexchange
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -313,8 +318,8 @@ func TestNewTokenExchangeServiceForTest(t *testing.T) {
 			agentRepository:      &MockAgentRepository{},
 			config: &ports.TokenExchangeConfig{
 				ClaimExtraction: ports.ClaimExtractionConfig{
-					PrincipalExpression:     "subject_token.sub",
-					AgentClientIDExpression: "subject_token.azp",
+					PrincipalExpression: "subject_token.sub",
+					AgentIDExpression:   "subject_token.azp",
 				},
 				Authorization: ports.AuthorizationConfig{
 					Type: "cel",
@@ -426,8 +431,8 @@ func TestExchange_InvalidRequest(t *testing.T) {
 	ctx := context.Background()
 	config := &ports.TokenExchangeConfig{
 		ClaimExtraction: ports.ClaimExtractionConfig{
-			PrincipalExpression:     "subject_token.sub",
-			AgentClientIDExpression: "subject_token.azp",
+			PrincipalExpression: "subject_token.sub",
+			AgentIDExpression:   "subject_token.azp",
 		},
 		Authorization: ports.AuthorizationConfig{
 			Type: "cel",
@@ -719,4 +724,222 @@ func TestMockOAuth2SessionService_NewMethods(t *testing.T) {
 		assert.Equal(t, "custom-token", token)
 		assert.Equal(t, customSession, session)
 	})
+}
+
+// --- T029: Agent lookup unit tests (Feature 021 US2) ---
+// These tests verify that after T030, the service uses id.ParseAgentID + Get (not GetByClientID).
+// Written before T030 implementation — must FAIL semantically until T030 is implemented.
+
+// trackingAgentRepository is a spy that records whether Get or GetByClientID was called.
+// Returns ErrNotFound for all lookups to stop execution after the agent lookup step.
+type trackingAgentRepository struct {
+	getCalled           bool
+	getByClientIDCalled bool
+}
+
+func (r *trackingAgentRepository) Get(_ context.Context, _ id.AgentID) (*storagedomain.Agent, error) {
+	r.getCalled = true
+	return nil, ports.ErrNotFound
+}
+
+func (r *trackingAgentRepository) GetByClientID(_ context.Context, _ id.ClientID) (*storagedomain.Agent, error) {
+	r.getByClientIDCalled = true
+	return nil, ports.ErrNotFound
+}
+
+func (r *trackingAgentRepository) Create(_ context.Context, _ *storagedomain.Agent) error { return nil }
+
+func (r *trackingAgentRepository) Update(_ context.Context, _ *storagedomain.Agent) error { return nil }
+
+func (r *trackingAgentRepository) Delete(_ context.Context, _ id.AgentID) error { return nil }
+
+func (r *trackingAgentRepository) List(_ context.Context) ([]*storagedomain.Agent, error) {
+	return nil, nil
+}
+
+// generateTestRSAKeySet generates an RSA key pair and returns the private key plus a JWKS set
+// containing the corresponding public key. Used to set up JWTValidator in T029 tests.
+func generateTestRSAKeySet(t *testing.T) (*rsa.PrivateKey, jwk.Set) {
+	t.Helper()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	jwkKey, err := jwk.Import(&privateKey.PublicKey)
+	require.NoError(t, err)
+	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, "test-key"))
+	require.NoError(t, jwkKey.Set(jwk.AlgorithmKey, jwa.RS256()))
+
+	keySet := jwk.NewSet()
+	require.NoError(t, keySet.AddKey(jwkKey))
+	return privateKey, keySet
+}
+
+// signServiceTestJWT signs a JWT with the given RSA private key for use in service tests.
+func signServiceTestJWT(t *testing.T, privateKey *rsa.PrivateKey, claims map[string]interface{}) string {
+	t.Helper()
+	tok := jwt.New()
+	for k, v := range claims {
+		require.NoError(t, tok.Set(k, v))
+	}
+	jwkPrivKey, err := jwk.Import(privateKey)
+	require.NoError(t, err)
+	require.NoError(t, jwkPrivKey.Set(jwk.KeyIDKey, "test-key"))
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), jwkPrivKey))
+	require.NoError(t, err)
+	return string(signed)
+}
+
+// newServiceForStep9Test builds a TokenExchangeService wired to reach step 9 (agent lookup).
+// The service is configured with:
+//   - A real JWTValidator backed by the supplied JWKS set (RSA key pair)
+//   - A real CELEvaluator with "subject_token.azp" as agentClientID expression
+//   - A MockServiceRepository that always returns a non-nil provider entity
+//   - The supplied agentRepo for step 9 (the code under test)
+func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentRepository) *TokenExchangeService {
+	t.Helper()
+	jwtValidator, err := NewJWTValidator(
+		&MockJWKSProvider{keySet: keySet},
+		"https://auth.example.com",
+		"agentic-identity-broker",
+		60,
+	)
+	require.NoError(t, err)
+
+	celEvaluator, err := NewCELEvaluator(CELEvaluatorConfig{
+		PrincipalExpression:     "subject_token.sub",
+		AgentIDExpression:       "subject_token.azp",
+		AuthorizationExpression: "true",
+		EvaluationTimeout:       100 * time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	providerEntity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          id.NewServiceID(),
+		DisplayName: "Test Service",
+		ClientID:    id.ClientID("test-client"),
+		// MockEncryption Decrypt is a pass-through; decryptSecret requires an encrypted secret
+		Secret: model.NewEncryptedSecret([]byte("placeholder")),
+	}
+	providerRepo := &MockServiceRepository{service: providerEntity}
+
+	consentSvc := consent.NewService(
+		&MockAgentRepository{},
+		newTestProviderService(&MockServiceRepository{}),
+		&MockGrantRepository{err: ports.ErrNotFound},
+		slog.Default(),
+	)
+
+	svc, err := NewTokenExchangeServiceForTest(
+		jwtValidator,
+		celEvaluator,
+		newTestProviderService(providerRepo),
+		&oauth2session.OAuth2SessionService{},
+		consentSvc,
+		agentRepo,
+		&ports.TokenExchangeConfig{
+			ClaimExtraction: ports.ClaimExtractionConfig{
+				PrincipalExpression: "subject_token.sub",
+				AgentIDExpression:   "subject_token.azp",
+			},
+			Authorization: ports.AuthorizationConfig{
+				Type: "cel",
+				CEL:  ports.CELAuthorizationConfig{Expression: "true"},
+			},
+		},
+	)
+	require.NoError(t, err)
+	return svc
+}
+
+// TestExchange_AgentLookup_UsesGetNotGetByClientID verifies that after T030 the service
+// calls agentRepository.Get(agentID) (parsed UUID) rather than GetByClientID(clientID).
+// [T029] Written before T030 — fails semantically until T030 replaces GetByClientID with Get.
+func TestExchange_AgentLookup_UsesGetNotGetByClientID(t *testing.T) {
+	privateKey, keySet := generateTestRSAKeySet(t)
+
+	agentUUID := id.NewAgentID()
+	tracker := &trackingAgentRepository{}
+	svc := newServiceForStep9Test(t, keySet, tracker)
+
+	now := time.Now()
+	commonClaims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "user@example.com",
+		"exp": now.Add(1 * time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+
+	subjectClaims := map[string]interface{}{}
+	for k, v := range commonClaims {
+		subjectClaims[k] = v
+	}
+	// azp = valid UUID string (the agent's internal ID)
+	subjectClaims["azp"] = agentUUID.String()
+
+	subjectToken := signServiceTestJWT(t, privateKey, subjectClaims)
+	clientAssertion := signServiceTestJWT(t, privateKey, commonClaims)
+
+	req := NewTokenExchangeRequest(
+		TokenExchangeGrantType,
+		subjectToken,
+		AccessTokenType,
+		clientAssertion,
+		JWTBearerType,
+		"https://api.example.com/resource",
+		"",
+	)
+
+	_, _ = svc.Exchange(context.Background(), req)
+
+	// After T030: Get is called (with parsed UUID). Before T030: GetByClientID is called.
+	assert.True(t, tracker.getCalled, "agentRepository.Get should be called (not GetByClientID) after T030")
+	assert.False(t, tracker.getByClientIDCalled, "agentRepository.GetByClientID must NOT be called after T030")
+}
+
+// TestExchange_AgentLookup_InvalidUUIDReturnsInvalidRequest verifies that when the CEL
+// expression returns a non-UUID string, the service returns an invalid_request error.
+// [T029] Written before T030 — fails until T030 adds id.ParseAgentID and returns invalid_request.
+func TestExchange_AgentLookup_InvalidUUIDReturnsInvalidRequest(t *testing.T) {
+	privateKey, keySet := generateTestRSAKeySet(t)
+
+	tracker := &trackingAgentRepository{}
+	svc := newServiceForStep9Test(t, keySet, tracker)
+
+	now := time.Now()
+	commonClaims := map[string]interface{}{
+		"iss": "https://auth.example.com",
+		"aud": "agentic-identity-broker",
+		"sub": "user@example.com",
+		"exp": now.Add(1 * time.Hour).Unix(),
+		"iat": now.Unix(),
+	}
+
+	subjectClaims := map[string]interface{}{}
+	for k, v := range commonClaims {
+		subjectClaims[k] = v
+	}
+	// azp = not a valid UUID → id.ParseAgentID will fail after T030
+	subjectClaims["azp"] = "not-a-valid-uuid"
+
+	subjectToken := signServiceTestJWT(t, privateKey, subjectClaims)
+	clientAssertion := signServiceTestJWT(t, privateKey, commonClaims)
+
+	req := NewTokenExchangeRequest(
+		TokenExchangeGrantType,
+		subjectToken,
+		AccessTokenType,
+		clientAssertion,
+		JWTBearerType,
+		"https://api.example.com/resource",
+		"",
+	)
+
+	_, err := svc.Exchange(context.Background(), req)
+
+	require.Error(t, err)
+	tokenErr, ok := err.(*TokenExchangeError)
+	require.True(t, ok, "error must be a *TokenExchangeError, got %T: %v", err, err)
+	assert.Equal(t, "invalid_request", tokenErr.Code(),
+		"non-UUID agentClientID must return invalid_request (not access_denied)")
 }

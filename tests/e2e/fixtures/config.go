@@ -99,8 +99,8 @@ func OAuth2ConfigWithTokenExchange(upstreamURL string) *ports.Config {
 	config := OAuth2ConfigWithUpstream(upstreamURL)
 	config.TokenExchange = ports.TokenExchangeConfig{
 		ClaimExtraction: ports.ClaimExtractionConfig{
-			PrincipalExpression:     "subject_token.sub",
-			AgentClientIDExpression: "subject_token.azp",
+			PrincipalExpression: "subject_token.sub",
+			AgentIDExpression:   "subject_token.azp",
 		},
 		Authorization: ports.AuthorizationConfig{
 			Type: "cel",
@@ -172,8 +172,8 @@ func TokenExchangeConfigWithInvalidCELSyntax(invalidExpression string) *ports.Co
 	config := DefaultOAuth2Config()
 	config.TokenExchange = ports.TokenExchangeConfig{
 		ClaimExtraction: ports.ClaimExtractionConfig{
-			PrincipalExpression:     "subject_token.sub",
-			AgentClientIDExpression: "subject_token.azp",
+			PrincipalExpression: "subject_token.sub",
+			AgentIDExpression:   "subject_token.azp",
 		},
 		Authorization: ports.AuthorizationConfig{
 			Type: "cel",
@@ -295,7 +295,7 @@ func TelemetryHTTPConfig() *ports.Config {
 func TokenExchangeConfigWithClaimExtraction(upstreamURL, principalExpr, agentExpr string) *ports.Config {
 	config := OAuth2ConfigWithTokenExchange(upstreamURL)
 	config.TokenExchange.ClaimExtraction.PrincipalExpression = principalExpr
-	config.TokenExchange.ClaimExtraction.AgentClientIDExpression = agentExpr
+	config.TokenExchange.ClaimExtraction.AgentIDExpression = agentExpr
 	return config
 }
 

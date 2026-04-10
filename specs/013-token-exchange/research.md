@@ -449,7 +449,7 @@ token_exchange:
     
     # CEL expression to extract agent identifier from subject_token  
     # Default: subject_token.azp
-    agent_client_id_expression: "subject_token.azp"
+    agent_id_expression: "subject_token.azp"
   
   authorization:
     type: cel  # "cel" or "opa" (opa reserved for future)

@@ -110,6 +110,31 @@ data:
         {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedGrantTypes | nindent 8 }}
       upstream_timeout_seconds: {{ .Values.broker.oauth2AuthorizationServer.upstreamTimeoutSeconds }}
       mode: {{ .Values.broker.oauth2AuthorizationServer.mode }}
+      {{- with .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
+      multi_agent_client:
+        enabled: {{ .enabled }}
+        {{- if .agentIdParamName }}
+        agent_id_param_name: {{ .agentIdParamName | quote }}
+        {{- end }}
+        {{- if .agentIdClaimName }}
+        agent_id_claim_name: {{ .agentIdClaimName | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- with .Values.broker.tokenExchange }}
+    # Token exchange configuration (RFC 8693)
+    token_exchange:
+      claim_extraction:
+        principal_expression: {{ .claimExtraction.principalExpression | quote }}
+        agent_id_expression: {{ .claimExtraction.agentIdExpression | quote }}
+      authorization:
+        type: {{ .authorization.type | quote }}
+        cel:
+          expression: {{ .authorization.cel.expression | quote }}
+          {{- if .authorization.cel.evaluationTimeout }}
+          evaluation_timeout: {{ .authorization.cel.evaluationTimeout | quote }}
+          {{- end }}
     {{- end }}
 
     # Security configuration

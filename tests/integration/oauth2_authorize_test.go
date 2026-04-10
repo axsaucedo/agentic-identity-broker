@@ -143,7 +143,7 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 		Service: svc,
 	}
 
-	originalURL := "https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123"
+	originalURL := "https://broker.example.com/oauth2/authorize?client_id=" + agent.ID.String() + "&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123"
 	req := httptest.NewRequest("GET", originalURL, nil)
 	req.Header.Set("X-Remote-User", "user@example.com")
 	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
@@ -199,7 +199,7 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123&scope=openid+profile",
+		"https://broker.example.com/oauth2/authorize?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123&scope=openid+profile",
 		nil,
 	)
 	req.Header.Set("X-Remote-User", "user@example.com")
@@ -265,7 +265,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123",
+		"https://broker.example.com/oauth2/authorize?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123",
 		nil,
 	)
 	req.Header.Set("X-Remote-User", "user@example.com")
@@ -326,7 +326,7 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123",
+		"https://broker.example.com/oauth2/authorize?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123",
 		nil,
 	)
 	req.Header.Set("X-Remote-User", "user@example.com")
@@ -381,7 +381,7 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123&code_challenge=E9Mrozoa2owQB2dSBnnNBvjrNqtPTUAwY5uQp41VN-I&code_challenge_method=S256",
+		"https://broker.example.com/oauth2/authorize?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123&code_challenge=E9Mrozoa2owQB2dSBnnNBvjrNqtPTUAwY5uQp41VN-I&code_challenge_method=S256",
 		nil,
 	)
 	req.Header.Set("X-Remote-User", "user@example.com")

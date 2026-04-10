@@ -14,16 +14,21 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // OAuth2TokenHandler handles OAuth2 token endpoint requests
 // Routes between token exchange (RFC 8693) and standard OAuth2 token requests
 type OAuth2TokenHandler struct {
-	UpstreamTokenURL string
-	Client           *http.Client
-	TokenExchange    *tokenexchange.TokenExchangeService // RFC 8693 token exchange service
-	Logger           *slog.Logger                        // For structured logging
+	UpstreamTokenURL   string
+	Client             *http.Client
+	TokenExchange      *tokenexchange.TokenExchangeService // RFC 8693 token exchange service
+	Logger             *slog.Logger                        // For structured logging
+	MultiAgentVerifier ports.MultiAgentVerifier            // nil = feature disabled; non-nil = verify agent ID claim
+	AgentRepository    ports.AgentRepository               // resolves broker agent UUID → upstream client_id
 }
 
 // ServeHTTP implements http.Handler for the token endpoint
@@ -238,11 +243,90 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 	}
 }
 
-// proxyToUpstream forwards requests to upstream OAuth2 server (for non-token-exchange flows)
+// proxyToUpstream forwards requests to upstream OAuth2 server (for non-token-exchange flows).
+//
+// The client_id in the token request is always the agent ID (broker-internal UUID).
+// This is validated unconditionally: a missing or malformed client_id is rejected before
+// forwarding to upstream (fail-closed per SR-001).
+//
+// When MultiAgentVerifier is non-nil, the upstream response body is additionally buffered
+// so the agent ID claim in the returned token can be verified before forwarding the
+// response. On verification failure the response is withheld and an OAuth2 server_error is
+// returned to the client (fail-closed per SR-001). When MultiAgentVerifier is nil the body
+// is streamed unchanged.
 func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Request, body string) {
 	ctx, span := otel.Tracer("upstream").Start(r.Context(), "oauth2.token_proxy")
 	defer span.End()
 	span.SetAttributes(attribute.String("http.method", "POST"))
+
+	// The client_id is always the agent UUID from the broker's perspective.
+	// Validate it unconditionally so that only agents with a recognised UUID can
+	// reach the upstream OAuth2 server.
+	formData, err := url.ParseQuery(body)
+	if err != nil {
+		// Fail closed: malformed form body means we cannot reliably determine agent ID.
+		if h.Logger != nil {
+			h.Logger.Error("TokenRequestFormParseError",
+				slog.String("error", err.Error()),
+			)
+		}
+		h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "token request body is not valid form-encoded data")
+		return
+	}
+
+	rawClientID := formData.Get("client_id")
+	if rawClientID == "" {
+		// Fail closed when client_id is missing: we cannot determine the expected agent.
+		if h.Logger != nil {
+			h.Logger.Error("MissingClientIDInTokenRequest")
+		}
+		h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "client_id is required")
+		return
+	}
+
+	agentID, parseErr := id.ParseAgentID(rawClientID)
+	if parseErr != nil {
+		// Fail closed per SR-001: reject immediately rather than forwarding
+		// a non-agent client_id to upstream.
+		if h.Logger != nil {
+			h.Logger.Error("AgentIDParseError",
+				"received_client_id", rawClientID,
+				"error", parseErr,
+			)
+		}
+		h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "client_id is not a valid agent UUID")
+		return
+	}
+
+	// Resolve the upstream client_id from the broker-internal agent UUID.
+	// The broker exposes agent UUIDs as client_ids, but the upstream OAuth2 server
+	// uses the agent's configured ClientID (agent.client_id) for authentication.
+	// Per review comment r2995280734: the upstream does not know about agent UUIDs.
+	//
+	// The nil guard is defensive: builder.go always wires AgentRepository, but direct
+	// handler construction in tests or future code may omit it. Fail closed (per SR-001)
+	// rather than forwarding the agent UUID to an upstream that cannot interpret it.
+	if h.AgentRepository == nil {
+		if h.Logger != nil {
+			h.Logger.Error("AgentRepositoryNotConfigured")
+		}
+		h.writeOAuth2Error(w, http.StatusInternalServerError, "server_error", "agent repository not configured")
+		return
+	}
+	agent, agentErr := h.AgentRepository.Get(ctx, agentID)
+	if agentErr != nil {
+		if h.Logger != nil {
+			h.Logger.Error("AgentLookupFailed",
+				"agent_id", agentID.String(),
+				"error", agentErr,
+			)
+		}
+		h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "agent not found")
+		return
+	}
+	// Replace the broker-internal UUID with the upstream client_id before forwarding.
+	formData.Set("client_id", string(agent.ClientID))
+	body = formData.Encode()
 
 	// Create upstream request with traced context
 	upstreamReq, err := http.NewRequestWithContext(ctx, "POST", h.UpstreamTokenURL, strings.NewReader(body))
@@ -289,32 +373,96 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	// Copy response status code
-	w.WriteHeader(upstreamResp.StatusCode)
+	// Feature 021: when verifier is set, buffer the response body and verify the agent ID claim
+	// before forwarding. This prevents a compromised upstream from returning tokens for the
+	// wrong agent (fail-closed per SR-001).
+	if h.MultiAgentVerifier != nil && upstreamResp.StatusCode == http.StatusOK {
+		responseBody, readErr := io.ReadAll(upstreamResp.Body)
+		if readErr != nil {
+			if h.Logger != nil {
+				h.Logger.Error("AgentIDClaimMissing",
+					"agent_id", agentID.String(),
+					"reason", "failed to read upstream response body",
+					"error", readErr,
+				)
+			}
+			w.Header().Del("Content-Length")
+			w.Header().Del("Transfer-Encoding")
+			h.writeOAuth2Error(w, http.StatusInternalServerError, "server_error", "failed to read upstream response")
+			return
+		}
 
-	// Stream response body from upstream
+		if verifyErr := h.MultiAgentVerifier.VerifyAgentIDClaim(r.Context(), responseBody, agentID); verifyErr != nil {
+			if h.Logger != nil {
+				if mismatch, ok := verifyErr.(*oauth2.AgentIDMismatchError); ok {
+					// T027: AgentIDClaimMismatch audit log (Error) — structured fields for SIEM
+					h.Logger.Error("AgentIDClaimMismatch",
+						"expected_agent_id", mismatch.Expected,
+						"received_agent_id", mismatch.Received,
+						"claim_name", mismatch.ClaimName,
+					)
+				} else {
+					// T027: AgentIDClaimMissing audit log (Error)
+					h.Logger.Error("AgentIDClaimMissing",
+						"agent_id", agentID.String(),
+						"error", verifyErr.Error(),
+					)
+				}
+			}
+			// Clear upstream headers before writing error response.
+			// Upstream Content-Length would mismatch the error JSON body size,
+			// causing HTTP/1.1 connection hangs (blocking architect fix).
+			w.Header().Del("Content-Length")
+			w.Header().Del("Transfer-Encoding")
+			h.writeOAuth2Error(w, http.StatusInternalServerError, "server_error", "agent ID claim verification failed")
+			return
+		}
+
+		// T027: AgentIDClaimVerified audit log (Info)
+		if h.Logger != nil {
+			h.Logger.Info("AgentIDClaimVerified",
+				"agent_id", agentID.String(),
+			)
+		}
+
+		// Write buffered body
+		w.WriteHeader(upstreamResp.StatusCode)
+		_, _ = w.Write(responseBody)
+		return
+	}
+
+	// No verification needed — copy response status code and stream body
+	w.WriteHeader(upstreamResp.StatusCode)
 	if _, err := io.Copy(w, upstreamResp.Body); err != nil {
 		_, _ = fmt.Fprintf(w, "error streaming response: %v", err)
 	}
 }
 
-// isHopByHopHeader returns true if the header is a hop-by-hop header per RFC 7230
+// writeOAuth2Error writes an RFC 6749/8693-style JSON error response.
+func (h *OAuth2TokenHandler) writeOAuth2Error(w http.ResponseWriter, status int, code, description string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":             code,
+		"error_description": description,
+	})
+}
+
+// hopByHopHeaders is the set of hop-by-hop headers per RFC 7230 that must not be forwarded.
+var hopByHopHeaders = map[string]bool{
+	"connection":          true,
+	"keep-alive":          true,
+	"proxy-authenticate":  true,
+	"proxy-authorization": true,
+	"te":                  true,
+	"trailers":            true,
+	"transfer-encoding":   true,
+	"upgrade":             true,
+}
+
+// isHopByHopHeader returns true if the header is a hop-by-hop header per RFC 7230.
 func isHopByHopHeader(headerName string) bool {
-	// Normalize to lowercase for comparison
-	header := strings.ToLower(headerName)
-
-	hopByHopHeaders := map[string]bool{
-		"connection":          true,
-		"keep-alive":          true,
-		"proxy-authenticate":  true,
-		"proxy-authorization": true,
-		"te":                  true,
-		"trailers":            true,
-		"transfer-encoding":   true,
-		"upgrade":             true,
-	}
-
-	return hopByHopHeaders[header]
+	return hopByHopHeaders[strings.ToLower(headerName)]
 }
 
 // NewOAuth2TokenHandler creates a new token handler
