@@ -91,7 +91,7 @@ cdk destroy             # Tear down (non-prod only)
 
 - Stack resources **must** match what the encryption adapter at `internal/adapters/encryption/aws/` expects. The adapter reads `EncryptionConfig` env vars that map to stack outputs.
 - DynamoDB table schema **must** match the AWS Encryption SDK KeyStore spec: `branch-key-id` (S) + `type` (S). Changing this breaks the hierarchical keyring.
-- All resources tagged with: `Project=agentic-identity-broker`, `Component=encryption-vault`, `Environment={env}`, `ManagedBy=aws-cdk`. Custom tags via `EncryptionStackProps.Tags`.
+- All resources tagged with: `Project=agentic-identity-broker`, `Component=encryption-vault`, `Environment={env}`. Custom tags via `EncryptionStackProps.Tags`.
 - Keep documentation in sync: `docs/operations/deployment-checklist.md`, `docs/deployment/kubernetes-irsa.md`, and ADR 010.
 
 ## Testing

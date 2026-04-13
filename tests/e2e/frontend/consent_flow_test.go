@@ -78,6 +78,67 @@ var _ = Describe("Consent Flow", func() {
 		}
 	})
 
+	Context("when agent has only optional service requirements", func() {
+		BeforeEach(func() {
+			// Create two optional services using fixtures; customize only the IDs to avoid
+			// conflicts with the service created in the outer BeforeEach (…440000).
+			githubService := fixtures.ServiceWithID("550e8400-e29b-41d4-a716-446655440001")
+			err := GetTestStorage().Services().Create(ctx, githubService)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create optional GitHub service")
+
+			gitlabService := fixtures.ServiceWithID("550e8400-e29b-41d4-a716-446655440002")
+			err = GetTestStorage().Services().Create(ctx, gitlabService)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create optional GitLab service")
+
+			// Create agent with both services as OPTIONAL requirements.
+			// Use AnotherAgent() to avoid client_id conflict with the outer BeforeEach
+			// which creates a ValidAgent() with ClientID "test-client-valid".
+			agent := fixtures.AnotherAgent()
+			testAgentID = agent.ID.String()
+			agent.ServiceRequirements = []storage.ServiceRequirement{
+				{
+					ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440001"),
+					RequirementType: storage.RequirementTypeOptional,
+					RequiredScopes:  []string{"read"},
+				},
+				{
+					ServiceID:       id.MustParseServiceID("550e8400-e29b-41d4-a716-446655440002"),
+					RequirementType: storage.RequirementTypeOptional,
+					RequiredScopes:  []string{"write"},
+				},
+			}
+			err = GetTestStorage().Agents().Create(ctx, agent)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create optional-only agent")
+		})
+
+		It("should allow approving consent without delegating any optional service", func() {
+			// specs/011-agent-permission-requirements/spec.md — User Story 2, Acceptance Scenario 6:
+			// "Given optional service requirements, When the authorization endpoint processes the
+			// request, Then optional services do not block the authorization flow."
+
+			// Navigate with redirect_uri to exercise the code path that previously triggered
+			// a spurious "Please select at least one service" validation error for optional-only
+			// agents.
+			err := consentPage.NavigateToAgentWithRedirectURI(ctx, testAgentID, "/some-callback")
+			Expect(err).NotTo(HaveOccurred(), "Failed to navigate to consent page with redirect_uri")
+
+			// Verify the "Approve & Delegate" button is enabled:
+			// optional-only agents must never disable the button
+			enabled, err := consentPage.IsConsentButtonEnabled(ctx)
+			Expect(err).NotTo(HaveOccurred(), "Failed to check consent button state")
+			Expect(enabled).To(BeTrue(), "Approve & Delegate button should be enabled for optional-only agent")
+
+			// Click "Approve & Delegate" WITHOUT connecting any services
+			err = consentPage.SubmitConsent(ctx)
+			Expect(err).NotTo(HaveOccurred(), "SubmitConsent should succeed when button is enabled")
+
+			// Regression guard: no validation error must appear after clicking Approve.
+			// WaitForNoValidationError waits for an alert to become visible within the timeout
+			// window and treats a timeout as the expected "no error" outcome.
+			Expect(consentPage.WaitForNoValidationError(ctx, 2000)).To(Succeed(), "Expected no validation error for optional-only agent")
+		})
+	})
+
 	// Minimal test: Verify Playwright works and frontend renders
 	It("should load consent page and display basic UI elements", func() {
 		// When: Navigate to consent page for the test agent

@@ -8,6 +8,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // AgentIDMismatchError is returned by VerifyAgentIDClaim when the claim value in the
@@ -32,19 +33,26 @@ func (e *AgentIDMismatchError) Error() string {
 // authorization request (fail-closed per SR-001).
 //
 // The verifier parses the JSON token response body, extracts the access_token JWT,
-// and verifies the configured claim without signature validation. Signature verification
-// was already performed by the upstream OAuth2 server; we only need the claim value here.
+// verifies its signature using the upstream JWKS (defense-in-depth), and reads the
+// configured custom claim.
 type MultiAgentTokenVerifier struct {
 	agentIDClaimName string
+	jwksPort         ports.JWKSPort
 }
 
-// NewMultiAgentTokenVerifier creates a new MultiAgentTokenVerifier with the given claim name.
-// Returns an error if agentIDClaimName is empty.
-func NewMultiAgentTokenVerifier(agentIDClaimName string) (*MultiAgentTokenVerifier, error) {
+// NewMultiAgentTokenVerifier creates a new MultiAgentTokenVerifier.
+// Returns an error if agentIDClaimName is empty or jwksPort is nil.
+func NewMultiAgentTokenVerifier(agentIDClaimName string, jwksPort ports.JWKSPort) (*MultiAgentTokenVerifier, error) {
 	if agentIDClaimName == "" {
 		return nil, fmt.Errorf("agentIDClaimName cannot be empty")
 	}
-	return &MultiAgentTokenVerifier{agentIDClaimName: agentIDClaimName}, nil
+	if jwksPort == nil {
+		return nil, fmt.Errorf("jwksPort cannot be nil")
+	}
+	return &MultiAgentTokenVerifier{
+		agentIDClaimName: agentIDClaimName,
+		jwksPort:         jwksPort,
+	}, nil
 }
 
 // VerifyAgentIDClaim verifies that the upstream token response body contains an access_token
@@ -52,15 +60,14 @@ func NewMultiAgentTokenVerifier(agentIDClaimName string) (*MultiAgentTokenVerifi
 //
 // Steps:
 //  1. Parse JSON response body to extract "access_token"
-//  2. Parse access_token JWT without signature verification (upstream already validated it)
-//  3. Marshal token to JSON and extract all claims as a map
-//  4. Look up the configured claim name in the claims map
-//  5. Compare the claim value against expectedAgentID.String()
+//  2. Fetch JWKS and verify JWT signature (defense-in-depth: broker is the relying party)
+//  3. Look up the configured claim name directly in the parsed token
+//  4. Compare the claim value against expectedAgentID.String()
 //
 // Returns nil on success.
 // Returns error with "agent ID claim absent" prefix if the claim is missing or cannot be extracted.
 // Returns error with "agent ID claim mismatch" prefix if the claim value does not match.
-func (v *MultiAgentTokenVerifier) VerifyAgentIDClaim(_ context.Context, responseBody []byte, expectedAgentID id.AgentID) error {
+func (v *MultiAgentTokenVerifier) VerifyAgentIDClaim(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error {
 	// Step 1: Extract access_token from JSON response body
 	var tokenResponse struct {
 		AccessToken string `json:"access_token"`
@@ -72,27 +79,26 @@ func (v *MultiAgentTokenVerifier) VerifyAgentIDClaim(_ context.Context, response
 		return fmt.Errorf("agent ID claim absent from upstream token: access_token not found in response")
 	}
 
-	// Step 2: Parse JWT without signature verification.
-	// Upstream already validated the token; we only need to read the custom claim value.
-	tok, err := jwt.ParseInsecure([]byte(tokenResponse.AccessToken))
+	// Step 2: Fetch JWKS and verify JWT signature.
+	// The broker is the relying party — a manipulated upstream response body could inject a
+	// forged agent ID claim if we skip signature verification (defense-in-depth per SR-001).
+	keySet, err := v.jwksPort.GetKeySet(ctx)
 	if err != nil {
-		return fmt.Errorf("agent ID claim absent from upstream token: failed to parse access_token as JWT: %w", err)
+		return fmt.Errorf("agent ID claim absent from upstream token: failed to fetch JWKS for signature verification: %w", err)
 	}
 
-	// Step 3: Marshal token to JSON and unmarshal into a flat claims map.
-	// This provides uniform access to both standard and custom claims.
-	tokenJSON, err := json.Marshal(tok)
+	tok, err := jwt.Parse([]byte(tokenResponse.AccessToken),
+		jwt.WithVerify(true),
+		jwt.WithKeySet(keySet),
+		jwt.WithValidate(false), // only verify signature; upstream handles full token validation
+	)
 	if err != nil {
-		return fmt.Errorf("agent ID claim absent from upstream token: failed to marshal JWT claims: %w", err)
-	}
-	var claims map[string]interface{}
-	if err := json.Unmarshal(tokenJSON, &claims); err != nil {
-		return fmt.Errorf("agent ID claim absent from upstream token: failed to unmarshal JWT claims: %w", err)
+		return fmt.Errorf("agent ID claim absent from upstream token: failed to verify access_token signature: %w", err)
 	}
 
-	// Step 4: Look up the configured claim
-	claimValue, exists := claims[v.agentIDClaimName]
-	if !exists {
+	// Step 3: Look up the configured claim directly.
+	var claimValue interface{}
+	if err := tok.Get(v.agentIDClaimName, &claimValue); err != nil {
 		return fmt.Errorf("agent ID claim absent from upstream token: claim %q not found in JWT", v.agentIDClaimName)
 	}
 
@@ -101,7 +107,7 @@ func (v *MultiAgentTokenVerifier) VerifyAgentIDClaim(_ context.Context, response
 		return fmt.Errorf("agent ID claim absent from upstream token: claim %q has type %T, expected string", v.agentIDClaimName, claimValue)
 	}
 
-	// Step 5: Compare against expected agent ID
+	// Step 4: Compare against expected agent ID
 	if claimStr != expectedAgentID.String() {
 		return &AgentIDMismatchError{
 			Expected:  expectedAgentID.String(),

@@ -341,7 +341,12 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 
 // validateProxyMode validates configuration for proxy mode (upstream OAuth2 server).
 func (c *OAuth2AuthServerConfig) validateProxyMode() error {
-	// Check required upstream fields
+	// If no OAuth2 Authorization Server is configured, skip validation.
+	if c.UpstreamAuthorizeEndpoint == "" && c.UpstreamTokenEndpoint == "" && c.UpstreamIssuerURI == "" {
+		return nil
+	}
+
+	// Check required fields
 	if c.UpstreamIssuerURI == "" {
 		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")
 	}
@@ -397,6 +402,16 @@ func (c *OAuth2AuthServerConfig) validateIssueTokenMode() error {
 
 	if len(c.SupportedGrantTypes) == 0 {
 		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
+	}
+
+	// Validate multi_agent_client fields when enabled
+	if c.MultiAgentClient.Enabled {
+		if c.MultiAgentClient.AgentIDParamName == "" {
+			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
+		}
+		if c.MultiAgentClient.AgentIDClaimName == "" {
+			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
+		}
 	}
 
 	return nil

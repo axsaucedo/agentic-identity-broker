@@ -31,27 +31,22 @@ const (
 	KMSThrottleEvalPeriods = 2  // evaluation periods for throttle alarm
 	KMSErrorThreshold      = 5  // error count over 1 evaluation period
 	KMSErrorEvalPeriods    = 1  // evaluation periods for error alarm
+
 )
 
 // EncryptionStackProps extends StackProps with encryption-specific parameters.
 type EncryptionStackProps struct {
 	awscdk.StackProps
 
-	// Environment is the deployment environment: "test" or "prod".
+	// Environment is the deployment environment: "test", "sandbox", or "prod".
 	Environment string
 
-	// OIDCProviderArn is the full ARN of the EKS OIDC provider for IRSA.
-	// Format: arn:aws:iam::ACCOUNT:oidc-provider/oidc.eks.REGION.amazonaws.com/id/EXAMPLEID
-	OIDCProviderArn string
-
-	// K8sNamespace is the Kubernetes namespace where the service account resides.
-	K8sNamespace string
-
-	// K8sServiceAccountName is the name of the Kubernetes service account.
-	K8sServiceAccountName string
+	// ServiceAccountSubject is the full OIDC subject claim bound in the trust policy condition.
+	// For Kubernetes workloads this is typically "system:serviceaccount:<namespace>:<sa-name>".
+	ServiceAccountSubject string
 
 	// Tags is a map of optional resource tags to apply to all taggable resources.
-	// Standard tags (Project, Component, Environment, ManagedBy) are applied by default.
+	// Standard tags (Project, Component, Environment) are applied by default.
 	// Tags provided here will override defaults or add additional tags (e.g., Application, Team, CostCenter).
 	// Example: map[string]string{"Application": "TokenVault", "Team": "Security"}
 	Tags map[string]string
@@ -70,8 +65,16 @@ type EncryptionStackProps struct {
 // Props is required; if nil, the function will panic with a clear error message.
 func NewEncryptionStack(scope constructs.Construct, id string, props *EncryptionStackProps) awscdk.Stack {
 	if props == nil {
-		panic("NewEncryptionStack requires props to be non-nil; provide EncryptionStackProps with Environment, OIDCProviderArn, K8sNamespace, and K8sServiceAccountName")
+		panic("NewEncryptionStack requires props to be non-nil; provide EncryptionStackProps with Environment and ServiceAccountSubject")
 	}
+
+	// Normalize into a local copy so the caller's struct is not mutated.
+	normalized := *props
+	if normalized.Environment == "production" {
+		normalized.Environment = "prod"
+	}
+	props = &normalized
+	isProd := props.Environment == "prod"
 
 	stack := awscdk.NewStack(scope, &id, &props.StackProps)
 
@@ -87,28 +90,15 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		},
 	})
 
-	isProd := props.Environment == "prod" || props.Environment == "production"
-
-	// ─── IRSA Parameters Validation ─────────────────────────────────────
+	// ─── Service Account Validation ──────────────────────────────────────
 	//
-	// Production deployments MUST specify all IRSA parameters to enable
-	// Kubernetes pod authentication via IAM Roles for Service Accounts.
-	if isProd {
-		if props.OIDCProviderArn == "" {
-			panic("ERROR: Production deployments require oidcProviderArn.\n" +
-				"Usage: cdk deploy -c env=prod -c oidcProviderArn=arn:aws:iam::ACCOUNT:oidc-provider/oidc.eks.REGION.amazonaws.com/id/ID\n" +
-				"Example: cdk deploy -c env=prod -c oidcProviderArn=arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE")
-		}
-		if props.K8sNamespace == "" {
-			panic("ERROR: Production deployments require k8sNamespace.\n" +
-				"Usage: cdk deploy -c env=prod -c k8sNamespace=default\n" +
-				"Example: cdk deploy -c env=prod -c k8sNamespace=identity-broker")
-		}
-		if props.K8sServiceAccountName == "" {
-			panic("ERROR: Production deployments require k8sServiceAccountName.\n" +
-				"Usage: cdk deploy -c env=prod -c k8sServiceAccountName=agentic-identity-broker\n" +
-				"Example: cdk deploy -c env=prod -c k8sServiceAccountName=identity-broker-sa")
-		}
+	// ServiceAccountSubject is required for all environments — omitting it
+	// leaves an empty subject in the CDP trust policy, making the role unusable.
+	if props.ServiceAccountSubject == "" {
+		panic(fmt.Sprintf(
+			"ERROR: serviceAccountSubject is required for env=%s.\n"+
+				"Usage: cdk synth -c env=%s -c serviceAccountSubject=<subject>",
+			props.Environment, props.Environment))
 	}
 
 	// ─── Tags ───────────────────────────────────────────────────────────
@@ -225,15 +215,38 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	// ─── IAM Role (Encryption Operations) ───────────────────────────────
 	//
 	// Dedicated role with least-privilege access to KMS and DynamoDB.
-	// Uses IRSA (IAM Roles for Service Accounts) trust policy for Kubernetes pods.
-	trustPrincipal := buildIRSATrustPrincipal(stack, props.OIDCProviderArn, props.K8sNamespace, props.K8sServiceAccountName)
-
+	// The trust policy is fully replaced below via AddPropertyOverride to inject
+	// CDP OIDC variable placeholders that the CDK typed API cannot express.
 	encryptionRole := awsiam.NewRole(stack, jsii.String("EncryptionRole"), &awsiam.RoleProps{
 		RoleName:           jsii.String(fmt.Sprintf("AgenticIdentityBrokerEncryptionRole-%s", props.Environment)),
-		Description:        jsii.String("IAM role for Agentic Identity Broker encryption operations (KMS + DynamoDB) via IRSA"),
-		AssumedBy:          trustPrincipal,
+		Description:        jsii.String("IAM role for Agentic Identity Broker encryption operations (KMS + DynamoDB)"),
+		AssumedBy:          awsiam.NewAccountRootPrincipal(), // overridden below — without the override this role is assumable by any principal in the account
 		MaxSessionDuration: awscdk.Duration_Hours(jsii.Number(MaxSessionDurationHours)),
 	})
+
+	// Override trust policy with a manual Zalando CDP trust relationship.
+	// CDP substitutes {{{CDP_OIDC_PROVIDER_ARN}}} and {{{CDP_OIDC_SUBJECT_KEY}}} at pipeline time.
+	cfnRole := encryptionRole.Node().DefaultChild().(awsiam.CfnRole)
+	cfnRole.AddPropertyOverride(
+		jsii.String("AssumeRolePolicyDocument"),
+		map[string]interface{}{
+			"Version": "2012-10-17",
+			"Statement": []interface{}{
+				map[string]interface{}{
+					"Effect": "Allow",
+					"Principal": map[string]interface{}{
+						"Federated": "{{{CDP_OIDC_PROVIDER_ARN}}}",
+					},
+					"Action": "sts:AssumeRoleWithWebIdentity",
+					"Condition": map[string]interface{}{
+						"StringEquals": map[string]interface{}{
+							"{{{CDP_OIDC_SUBJECT_KEY}}}": props.ServiceAccountSubject,
+						},
+					},
+				},
+			},
+		},
+	)
 
 	// KMS permissions: encrypt, decrypt, generate/re-encrypt data keys.
 	// These are the minimum permissions required by the hierarchical keyring.
@@ -316,7 +329,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 
 	awscdk.NewCfnOutput(stack, jsii.String("EncryptionRoleARN"), &awscdk.CfnOutputProps{
 		Value:       encryptionRole.RoleArn(),
-		Description: jsii.String("IAM role ARN → IDENTITY_BROKER_ENCRYPTION_IAM_ROLE_ARN"),
+		Description: jsii.String("IAM role ARN (for reference)"),
 		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-EncryptionRoleARN", props.Environment)),
 	})
 
@@ -332,28 +345,7 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-KMSErrorAlarmArn", props.Environment)),
 	})
 
-	// ─── IRSA Outputs ───────────────────────────────────────────────────
-	//
-	// Service account information for Kubernetes/Helm deployment.
-	// Use IamRoleName for the iam.amazonaws.com/role annotation.
-	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountNamespace"), &awscdk.CfnOutputProps{
-		Value:       jsii.String(props.K8sNamespace),
-		Description: jsii.String("Kubernetes namespace for service account"),
-		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountNamespace", props.Environment)),
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountName"), &awscdk.CfnOutputProps{
-		Value:       jsii.String(props.K8sServiceAccountName),
-		Description: jsii.String("Kubernetes service account name"),
-		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountName", props.Environment)),
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("ServiceAccountFullName"), &awscdk.CfnOutputProps{
-		Value:       jsii.String(fmt.Sprintf("%s:%s", props.K8sNamespace, props.K8sServiceAccountName)),
-		Description: jsii.String("Full service account reference (namespace:name)"),
-		ExportName:  jsii.String(fmt.Sprintf("AgenticIdentityBroker-%s-ServiceAccountFullName", props.Environment)),
-	})
-
+	// ─── IAM Role Output ─────────────────────────────────────────────────
 	awscdk.NewCfnOutput(stack, jsii.String("IamRoleName"), &awscdk.CfnOutputProps{
 		Value:       encryptionRole.RoleName(),
 		Description: jsii.String("IAM role name for iam.amazonaws.com/role annotation in Kubernetes ServiceAccount"),
@@ -366,72 +358,6 @@ func NewEncryptionStack(scope constructs.Construct, id string, props *Encryption
 	createDashboard(stack, kmsKey, branchKeyTable, props)
 
 	return stack
-}
-
-// buildIRSATrustPrincipal constructs the IAM trust principal for IRSA.
-// Creates a federated principal with web identity conditions for the service account.
-//
-// Trust policy structure:
-//
-//	Principal:
-//	  Federated: "arn:aws:iam::ACCOUNT:oidc-provider/oidc.eks.REGION.amazonaws.com/id/ID"
-//	Action: "sts:AssumeRoleWithWebIdentity"
-//	Condition:
-//	  StringEquals:
-//	    "oidc.eks.REGION.amazonaws.com/id/ID:sub": "system:serviceaccount:NAMESPACE:SERVICE_ACCOUNT"
-//	    "oidc.eks.REGION.amazonaws.com/id/ID:aud": "sts.amazonaws.com"
-func buildIRSATrustPrincipal(stack awscdk.Stack, oidcProviderArn, k8sNamespace, k8sServiceAccountName string) awsiam.IPrincipal {
-	// If OIDC provider is not specified, default to account root principal for dev/test.
-	if oidcProviderArn == "" {
-		return awsiam.NewAccountRootPrincipal()
-	}
-
-	// Extract OIDC provider host from ARN for condition keys.
-	// Input:  arn:aws:iam::ACCOUNT:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLEID
-	// Output: oidc.eks.us-east-1.amazonaws.com/id/EXAMPLEID
-	oidcProviderHost := extractOIDCProviderHost(oidcProviderArn)
-
-	// Create federated principal for web identity (IRSA).
-	federatedPrincipal := awsiam.NewFederatedPrincipal(
-		jsii.String(oidcProviderArn),
-		&map[string]interface{}{
-			"StringEquals": map[string]*string{
-				// Subject condition: must match the specific service account
-				fmt.Sprintf("%s:sub", oidcProviderHost): jsii.String(fmt.Sprintf("system:serviceaccount:%s:%s", k8sNamespace, k8sServiceAccountName)),
-				// Audience condition: must be STS endpoint
-				fmt.Sprintf("%s:aud", oidcProviderHost): jsii.String("sts.amazonaws.com"),
-			},
-		},
-		jsii.String("sts:AssumeRoleWithWebIdentity"),
-	)
-
-	return federatedPrincipal
-}
-
-// extractOIDCProviderHost extracts the host portion from an OIDC provider ARN.
-// Input:  arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE
-// Output: oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE
-func extractOIDCProviderHost(oidcProviderArn string) string {
-	// OIDC provider ARN format: arn:aws:iam::ACCOUNT:oidc-provider/HOST
-	// We need to extract everything after "oidc-provider/"
-	const prefix = "oidc-provider/"
-
-	// Find the position of "oidc-provider/" in the ARN
-	idx := len(oidcProviderArn)
-	for i := 0; i < len(oidcProviderArn)-len(prefix); i++ {
-		if oidcProviderArn[i:i+len(prefix)] == prefix {
-			idx = i + len(prefix)
-			break
-		}
-	}
-
-	// Return everything after "oidc-provider/"
-	if idx < len(oidcProviderArn) {
-		return oidcProviderArn[idx:]
-	}
-
-	// Fallback: return the full ARN if parsing fails (should never happen with valid ARN)
-	return oidcProviderArn
 }
 
 // removalPolicy returns RETAIN for production, DESTROY for non-production.
@@ -452,28 +378,18 @@ func pendingWindow(isProd bool) awscdk.Duration {
 }
 
 // applyStackTags applies default and custom tags to all stack resources.
-// Default tags (Project, Component, ManagedBy) are always applied.
+// Default tags are always applied.
 // Environment is always set to match props.Environment.
 // User-provided Tags in props override or extend the defaults.
 func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
-	// Build default tags
-	defaultTags := map[string]string{
+	allTags := map[string]string{
 		"application": "agentic-identity-broker",
 		"component":   "encryption-vault",
 	}
-
-	// Merge user-provided tags into defaults (user tags override defaults)
-	allTags := defaultTags
-	if props.Tags != nil {
-		for key, value := range props.Tags {
-			allTags[key] = value
-		}
+	for key, value := range props.Tags {
+		allTags[key] = value
 	}
-
-	// Always set Environment to match props.Environment
-	allTags["environment"] = props.Environment
-
-	// Apply all tags to the stack
+	allTags["environment"] = props.Environment // always overrides user-provided value
 	for key, value := range allTags {
 		awscdk.Tags_Of(stack).Add(jsii.String(key), jsii.String(value), nil)
 	}
@@ -484,7 +400,7 @@ func applyStackTags(stack awscdk.Stack, props *EncryptionStackProps) {
 //
 // Metrics displayed:
 //   - KMS ApiCalls (Sum): Number of KMS API calls for encryption/decryption
-//   - KMS UserErrorCount (Sum): Errors from KMS operations (throttling, access denied)
+//   - KMS ThrottleCount (Sum): Throttled KMS API requests
 //   - DynamoDB ConsumedReadCapacityUnits (Sum): Branch key cache read operations
 //   - DynamoDB ConsumedWriteCapacityUnits (Sum): Branch key cache write operations
 //
@@ -509,7 +425,7 @@ func createDashboard(stack awscdk.Stack, kmsKey awskms.IKey, table awsdynamodb.I
 	// KMS Throttled Requests Metric - monitors throttling issues.
 	kmsThrottleMetric := awscloudwatch.NewMetric(&awscloudwatch.MetricProps{
 		Namespace:  jsii.String("AWS/KMS"),
-		MetricName: jsii.String("UserErrorCount"),
+		MetricName: jsii.String("ThrottleCount"),
 		DimensionsMap: &map[string]*string{
 			"KeyId": kmsKey.KeyId(),
 		},

@@ -722,7 +722,7 @@ For compliance and troubleshooting, check the JSON audit log (first output on st
   "keys": ["log.level", "log.format"],
   "redacted_keys": []
 }
-```
+```<<<<<<< ours
 
 ### OAuth2 Authorization Server Configuration
 
@@ -817,6 +817,61 @@ oauth2:
 - Signing key decryption failure prevents token issuance (fail-closed).
 
 See [docs/features/oauth2-server-mode.md](docs/features/oauth2-server-mode.md) for comprehensive end-user documentation.
+||||||| original
+
+=======
+
+### OAuth2 Authorization Server Configuration
+
+#### oauth2_authorization_server.multi_agent_client
+
+**Description**: Controls whether multiple agents may share the same upstream OAuth2 `client_id` (stored as `agent.client_id`). When disabled (default), the broker enforces per-agent *upstream* `client_id` uniqueness; incoming OAuth2 requests are always resolved by the agent's internal UUID (`agent.id`), regardless of this setting. When enabled, multiple agents can share one upstream OAuth2 application, and agent identity is additionally verified via a custom claim injected into the upstream authorize redirect and checked in the upstream token response.
+
+**Configuration block** (nested under `oauth2_authorization_server`):
+
+| Option | Type | Default | Valid Values | Required | Description |
+|--------|------|---------|--------------|----------|-------------|
+| `multi_agent_client.enabled` | boolean | `false` | `true`, `false` | No | Allow multiple agents to share one upstream OAuth2 `client_id`. When `false`, duplicate `client_id` on agent create/update returns `409 Conflict`. |
+| `multi_agent_client.agent_id_param_name` | string | — | Any URL-safe string | Yes if `enabled=true` | Query parameter appended to the upstream authorization redirect URL carrying the agent's internal UUID. Must match the claim name expected by your upstream OAuth2 server. |
+| `multi_agent_client.agent_id_claim_name` | string | — | Any string | Yes if `enabled=true` | JWT claim in the upstream token response carrying the agent's internal UUID. The broker verifies this claim on every token proxy response; tokens lacking it are rejected (fail closed). |
+
+**Startup validation**: If `enabled = true` and either `agent_id_param_name` or `agent_id_claim_name` is empty, the broker fails to start with a clear error message.
+
+**Feature disabled (default)**:
+```yaml
+oauth2_authorization_server:
+  upstream_issuer_uri: "https://auth.example.com"
+  upstream_token_endpoint: "https://auth.example.com/token"
+  public_base_url: "https://broker.example.com"
+
+  multi_agent_client:
+    enabled: false   # default — each agent must have a unique client_id
+```
+
+**Feature enabled**:
+```yaml
+oauth2_authorization_server:
+  upstream_issuer_uri: "https://auth.example.com"
+  upstream_token_endpoint: "https://auth.example.com/token"
+  public_base_url: "https://broker.example.com"
+
+  multi_agent_client:
+    enabled: true
+    agent_id_param_name: "x_agent_id"   # injected into authorize redirect as ?x_agent_id=<agent.id>
+    agent_id_claim_name: "x_agent_id"   # expected in upstream token response JWT
+```
+
+**Token exchange CEL expression update**: When using `multi_agent_client`, you must also update `token_exchange.claim_extraction.agent_id_expression` in your configuration:
+
+| Feature mode | Required CEL expression | Notes |
+|---|---|---|
+| `enabled = false` (default) | `resolveAgentIdByClientId(subject_token.azp)` | Uses the `resolveAgentIdByClientId` helper to map upstream `client_id` → `agent.id` |
+| `enabled = true` | `subject_token.x_agent_id` (use your `agent_id_claim_name`) | Reads the agent UUID directly from the token claim |
+
+> **Breaking change**: The previous expression `subject_token.azp` is no longer valid. Token exchange resolves agents by `agent.id` (UUID), not `agent.client_id`. See [docs/changelog.md](../docs/changelog.md) for migration instructions.
+
+See `examples/config/oauth2-authorization-server.yaml` for a complete configuration example with both modes commented.
+>>>>>>> theirs
 
 ## Observability / OpenTelemetry
 

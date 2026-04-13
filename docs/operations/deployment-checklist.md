@@ -14,14 +14,6 @@
 - [ ] CloudFormation template reviewed (cdk diff)
 - [ ] Backup/rollback plan documented
 
-### For Legacy Trust Principal Deployments (Deprecated)
-
-> **Note**: Trust principal support is being migrated to IRSA-only. Use IRSA for all Kubernetes deployments.
-
-- [ ] Trust principal ARN prepared (ECS task role, Lambda role, etc.)
-- [ ] Environment set correctly (-c env=prod for production)
-- [ ] AWS credentials configured
-- [ ] CloudFormation template reviewed
 
 ## Deployment Steps
 
@@ -48,40 +40,19 @@ export K8S_SERVICE_ACCOUNT="broker-sa"
 cd infra/cdk
 npx cdk synth \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 
 # 4. Preview infrastructure changes
 npx cdk diff \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 
 # 5. Deploy with confirmation prompt
 npx cdk deploy \
   -c env=prod \
-  -c oidcProviderArn="${OIDC_PROVIDER_ARN}" \
-  -c k8sNamespace="${K8S_NAMESPACE}" \
-  -c k8sServiceAccountName="${K8S_SERVICE_ACCOUNT}"
+  -c serviceAccountSubject="system:serviceaccount:${K8S_NAMESPACE}:${K8S_SERVICE_ACCOUNT}"
 ```
 
-### Legacy Trust Principal Deployment (Deprecated)
-
-> **Warning**: This approach is deprecated. Migrate to IRSA for Kubernetes deployments.
-
-```bash
-# 1. Synthesize CloudFormation template
-cd infra/cdk
-npx cdk synth -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
-
-# 2. Preview infrastructure changes
-npx cdk diff -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
-
-# 3. Deploy with confirmation prompt
-npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
-```
 
 ## Post-Deployment Verification
 
@@ -226,28 +197,6 @@ npx cdk deploy -c env=prod -c trustPrincipal=arn:aws:iam::ACCOUNT:role/ROLE_NAME
     -H "X-Remote-User: testuser@example.com"
   ```
 
-### For Legacy Trust Principal Deployments
-
-- [ ] **Configure application environment variables**:
-  ```bash
-  # Extract stack outputs and set environment variables
-  STACK_NAME="AgenticIdentityBrokerEncryptionVault-prod"
-
-  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
-    --query 'Stacks[0].Outputs[?OutputKey==`EncryptionKeyARN`].OutputValue' --output text)
-
-  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_DYNAMODB_TABLE_NAME=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
-    --query 'Stacks[0].Outputs[?OutputKey==`BranchKeyTableName`].OutputValue' --output text)
-
-  # Optional: Use role assumption if required for cross-account access
-  export IDENTITY_BROKER_ENCRYPTION_AWS_KMS_ASSUME_ROLE_ARN=$(aws cloudformation describe-stacks \
-    --stack-name $STACK_NAME \
-    --query 'Stacks[0].Outputs[?OutputKey==`EncryptionRoleARN`].OutputValue' --output text)
-  ```
-
-  This automatically populates the required variables from CDK stack outputs.
 
 - [ ] **Run smoke test** (OAuth2 session management):
   ```bash
@@ -418,7 +367,7 @@ All AWS KMS configuration can be set via environment variables:
 ### Before Production Deployment
 
 - [ ] All HIGH priority fixes implemented and tested
-- [ ] Production trust principal enforced (panic if missing)
+- [ ] `serviceAccountSubject` enforced (panic if missing)
 - [ ] Environment validation prevents typos (dev/staging/prod only)
 - [ ] KMS key rotation backward compatibility tested
 - [ ] Security review completed
@@ -492,9 +441,6 @@ All outputs from the CDK stack `AgenticIdentityBrokerEncryptionVault-{env}`:
 | `IamRoleName` | IAM role name (`AgenticIdentityBrokerEncryptionRole-{env}`) | IRSA annotation: `iam.amazonaws.com/role={IamRoleName}` |
 | `KMSThrottleAlarmArn` | CloudWatch alarm (KMS throttling) | Link to SNS for alerts |
 | `KMSErrorAlarmArn` | CloudWatch alarm (KMS errors) | Link to SNS for alerts |
-| `ServiceAccountNamespace` | Kubernetes namespace | Reference: `{namespace}:{serviceAccountName}` |
-| `ServiceAccountName` | Kubernetes service account | Reference: `{namespace}:{serviceAccountName}` |
-| `ServiceAccountFullName` | Full service account reference | Format: `namespace:serviceAccountName` |
 
 ---
 

@@ -269,6 +269,19 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 		}
 	}
 
+	// Feature 021 — multi-agent client sharing: inject agent UUID param so upstream
+	// can embed it as a claim in the returned token (for MultiAgentTokenVerifier).
+	if s.config.MultiAgentClient.Enabled {
+		q.Set(s.config.MultiAgentClient.AgentIDParamName, agent.ID.String())
+		if s.logger != nil {
+			s.logger.Info("AgentIDParamInjected",
+				"agent_id", agent.ID.String(),
+				"param_name", s.config.MultiAgentClient.AgentIDParamName,
+				"upstream_url", s.config.UpstreamAuthorizeEndpoint,
+			)
+		}
+	}
+
 	u.RawQuery = q.Encode()
 	return u.String()
 }

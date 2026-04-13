@@ -532,7 +532,40 @@ func (b *Builder) Build() (*App, error) {
 		AgentRepository:  b.storage.Agents(),
 	}
 	if b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
-		verifier, err := oauth2service.NewMultiAgentTokenVerifier(b.config.OAuth2AuthServer.MultiAgentClient.AgentIDClaimName)
+		// Discover JWKS URI for multi-agent token signature verification (defense-in-depth, SR-001).
+		// The broker is the relying party and must verify that the upstream token has not been tampered with.
+		multiAgentDiscoveryCtx, multiAgentDiscoveryCancel := context.WithTimeout(
+			context.Background(),
+			time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds)*time.Second,
+		)
+		multiAgentDiscovered, err := domstorage.DiscoverOAuth2Endpoints(
+			multiAgentDiscoveryCtx,
+			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			nil, // use standard /.well-known/oauth-authorization-server path
+			b.config.Security.SkipThirdpartyHTTPSValidation,
+		)
+		multiAgentDiscoveryCancel()
+		if err != nil {
+			return nil, fmt.Errorf("failed to discover OAuth2 server metadata for multi-agent verifier: %w", err)
+		}
+		if multiAgentDiscovered.JWKsURI == "" {
+			return nil, fmt.Errorf("OAuth2 server metadata did not include a jwks_uri (required for multi-agent token verification)")
+		}
+
+		multiAgentJWKSAdapter, err := jwks.NewJWKSAdapter(
+			multiAgentDiscovered.JWKsURI,
+			upstreamClient,
+			15*time.Minute,
+			1*time.Hour,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWKS adapter for multi-agent verifier: %w", err)
+		}
+
+		verifier, err := oauth2service.NewMultiAgentTokenVerifier(
+			b.config.OAuth2AuthServer.MultiAgentClient.AgentIDClaimName,
+			multiAgentJWKSAdapter,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create multi-agent token verifier: %w", err)
 		}

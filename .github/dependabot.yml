@@ -7,69 +7,16 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
       time: "06:00"
     labels:
       - "dependabot"
       - "go"
       - "backend"
+      - "minor"
     groups:
       go-dependencies:
-        patterns:
-          - "*"
-    allow:
-      - dependency-type: "direct"
-    open-pull-requests-limit: 5
-    pull-request-branch-name:
-      separator: "/"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    reviewers:
-      - "jan-brennenstuhl_zse"
-      - "magnus-jungsbluth_zse"
-
-  # npm Dependencies (Frontend React Application)
-  - package-ecosystem: "npm"
-    directory: "/web"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
-    labels:
-      - "dependabot"
-      - "npm"
-      - "frontend"
-    groups:
-      frontend-dependencies:
-        patterns:
-          - "*"
-    allow:
-      - dependency-type: "direct"
-    open-pull-requests-limit: 5
-    pull-request-branch-name:
-      separator: "/"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    reviewers:
-      - "jan-brennenstuhl_zse"
-      - "magnus-jungsbluth_zse"
-
-  # npm Dependencies (Docusaurus Documentation Site)
-  - package-ecosystem: "npm"
-    directory: "/assets/docusaurus"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
-    labels:
-      - "dependabot"
-      - "npm"
-      - "documentation"
-    groups:
-      documentation-dependencies:
         patterns:
           - "*"
     allow:

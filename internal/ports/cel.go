@@ -88,9 +88,9 @@ type CELRequestContext struct {
 	// This is extracted using ClaimExtractionConfig.PrincipalExpression.
 	Principal string
 
-	// AgentClientID is the agent identifier extracted from subject_token.
+	// AgentID is the agent identifier extracted from subject_token.
 	// This is extracted using ClaimExtractionConfig.AgentIDExpression.
-	AgentClientID string
+	AgentID string
 }
 
 // CELClaimExtractionContext represents the context for claim extraction expressions.

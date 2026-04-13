@@ -412,6 +412,8 @@ broker:
       dynamodbTableName: "IdentityBrokerEncryptionBranchKeys"
       # -- Time-to-live for branch keys (e.g., 1h, 24h)
       branchKeyTtl: "1h"
+      # -- AWS region for KMS and SDK base configuration
+      region: ""
       # -- AWS region of the DynamoDB table
       dynamodbRegion: ""
       # -- Read timeout for DynamoDB operations
@@ -436,16 +438,8 @@ broker:
       - refresh_token
     # -- Upstream request timeout (seconds)
     upstreamTimeoutSeconds: 10
-    # -- Operation mode (proxy or issue_token)
+    # -- Operation mode (proxy or authorization_server)
     mode: proxy
-    # -- Issuer URI: Required in issue_token mode. Issuer identifier for issued tokens.
-    # This value appears in the "iss" claim and /.well-known/oauth-authorization-server.
-    issuerUri: ""
-    # -- Token TTL: Access token validity period. Default: "1h"
-    tokenTtl: "1h"
-    # -- Token claims CEL expression: Evaluated at token issuance to produce custom JWT claims.
-    # Empty string means no custom claims.
-    tokenClaimsExpression: ""
     # Multi-agent client sharing (Feature 021)
     # When enabled, multiple agents may share the same upstream OAuth2 client_id.
     # Requires both agentIdParamName and agentIdClaimName when enabled.
