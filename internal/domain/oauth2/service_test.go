@@ -722,6 +722,78 @@ func TestService_GenerateMetadata(t *testing.T) {
 	}
 }
 
+// TestService_HandleAuthorization_MultiAgentParamInjection tests that the agent UUID
+// is appended to the upstream authorize URL when multi_agent_client is enabled,
+// and is absent when the feature is disabled (Feature 021).
+func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+
+	makeRepos := func() (*MockAgentRepository, *MockGrantRepository) {
+		agentRepo := NewMockAgentRepository()
+		grantRepo := NewMockGrantRepository()
+
+		agent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    id.ClientID("shared-upstream-client"),
+			DisplayName: "Test Agent",
+		}
+		_ = agentRepo.Create(context.Background(), agent)
+
+		grant := &storage.UserGrant{
+			ID:        id.NewGrantID(),
+			Principal: id.Principal("user@example.com"),
+			AgentID:   agentID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
+			},
+		}
+		_ = grantRepo.Create(context.Background(), grant)
+		return agentRepo, grantRepo
+	}
+
+	req := &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()),
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		State:        "state-xyz",
+	}
+
+	t.Run("param injected when multi_agent_client enabled", func(t *testing.T) {
+		agentRepo, grantRepo := makeRepos()
+		svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+			PublicURL:                 "https://broker.example.com",
+			MultiAgentClient: ports.MultiAgentClientConfig{
+				Enabled:          true,
+				AgentIDParamName: "x_agent_id",
+				AgentIDClaimName: "x_agent_id",
+			},
+		})
+
+		decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
+		require.NoError(t, err)
+		assert.Equal(t, "proceed", decision.Action)
+		assert.Contains(t, decision.RedirectURL, "x_agent_id="+agentID.String(),
+			"agent UUID must be injected as x_agent_id param when multi_agent_client is enabled")
+	})
+
+	t.Run("param absent when multi_agent_client disabled", func(t *testing.T) {
+		agentRepo, grantRepo := makeRepos()
+		svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+			PublicURL:                 "https://broker.example.com",
+			MultiAgentClient:          ports.MultiAgentClientConfig{Enabled: false},
+		})
+
+		decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
+		require.NoError(t, err)
+		assert.Equal(t, "proceed", decision.Action)
+		assert.NotContains(t, decision.RedirectURL, "x_agent_id",
+			"agent UUID param must not be present when multi_agent_client is disabled")
+	})
+}
+
 // TestService_GenerateMetadata_RFC8414Compliance tests RFC 8414 compliance
 func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 	agentRepo := NewMockAgentRepository()
