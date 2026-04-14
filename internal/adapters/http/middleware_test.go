@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestLoggingMiddleware_SkipsHealthEndpoint(t *testing.T) {
+func TestLoggingMiddlewareSkipsHealthEndpoint(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
@@ -30,7 +30,7 @@ func TestLoggingMiddleware_SkipsHealthEndpoint(t *testing.T) {
 	}
 }
 
-func TestLoggingMiddleware_LogsOtherPaths(t *testing.T) {
+func TestLoggingMiddlewareLogsOtherPaths(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
