@@ -434,6 +434,7 @@ func TestThirdpartyOAuth2ProviderService_CrossServiceProtection(t *testing.T) {
 	_, ptErr := result.Secret.GetPlaintext()
 	assert.Error(t, ptErr, "GetPlaintext must fail for encrypted secret — prevents cross-service token swap")
 	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
 }
 
 func TestThirdpartyOAuth2ProviderService_Get_DecryptionFailure_ReturnsEncryptedEntity(t *testing.T) {
@@ -461,6 +462,7 @@ func TestThirdpartyOAuth2ProviderService_Get_DecryptionFailure_ReturnsEncryptedE
 	assert.Equal(t, "GitHub", result.DisplayName)
 	assert.True(t, result.Secret.IsEncrypted(), "secret should remain encrypted on decryption failure")
 	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
 }
 
 // =============================================================================
@@ -568,13 +570,15 @@ func TestThirdpartyOAuth2ProviderService_List_GracefulDecryptionFailure(t *testi
 	require.Len(t, results, 2)
 
 	// First entity is decrypted successfully
-	pt1, _ := results[0].Secret.GetPlaintext()
+	pt1, err := results[0].Secret.GetPlaintext()
+	require.NoError(t, err)
 	assert.Equal(t, "secret-1", pt1)
 
 	// Second entity is returned with encrypted secret (decryption failed gracefully)
 	assert.True(t, results[1].Secret.IsEncrypted(), "failed entity should retain encrypted secret")
 	assert.Equal(t, svc2ID, results[1].ID)
 	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
 }
 
 // =============================================================================

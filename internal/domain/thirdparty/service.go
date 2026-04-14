@@ -333,7 +333,9 @@ func (s *ThirdpartyOAuth2ProviderService) ValidateServiceRequirements(
 	return nil
 }
 
-// decryptSecret decrypts the entity's Secret field in place (returns a copy with plaintext).
+// decryptSecret decrypts the entity's Secret field and returns a copy with the
+// plaintext secret. It does not log on failure — callers are responsible for
+// logging at the appropriate severity level for their use case.
 func (s *ThirdpartyOAuth2ProviderService) decryptSecret(
 	ctx context.Context,
 	entity *model.ThirdpartyOAuth2ProviderEntity,
@@ -347,9 +349,6 @@ func (s *ThirdpartyOAuth2ProviderService) decryptSecret(
 
 	plaintext, err := s.encryption.Decrypt(ctx, ciphertext, encContext)
 	if err != nil {
-		s.logger.Error("decryption_failed",
-			"service_id", entity.ID,
-			"reason", err)
 		return nil, fmt.Errorf("failed to decrypt client secret: %w", err)
 	}
 
