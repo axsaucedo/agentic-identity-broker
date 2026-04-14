@@ -9,10 +9,7 @@ import (
 	"time"
 )
 
-// LoggingMiddleware returns a middleware that logs HTTP requests with structured logging.
-// Logs method, path, response status, and request duration.
-//
-// logPrefixes defines a whitelist of path prefixes that should be logged (e.g. "/api/").
+// LoggingMiddleware logPrefixes defines a whitelist of path prefixes that should be logged (e.g. "/api/").
 // Requests whose path does not start with any of the given prefixes are silently passed
 // through without producing a log entry, which avoids noise from infrastructure probes
 // (e.g. /health) and static-asset serving.
