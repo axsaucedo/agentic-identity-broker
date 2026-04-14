@@ -20,7 +20,6 @@ import (
 func LoggingMiddleware(logger *slog.Logger, logPrefixes ...string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Only log paths that match one of the whitelisted prefixes.
 			if len(logPrefixes) > 0 {
 				matched := false
 				for _, prefix := range logPrefixes {
