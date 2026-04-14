@@ -143,6 +143,43 @@ jobs:
           branch_name="auto-integration-$suffix"
           git checkout -B "$branch_name"
           echo "INTEGRATION_BRANCH=$branch_name" >> "$GITHUB_ENV"
+          echo "INTEGRATION_SUFFIX=$suffix" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------
+      # Merge conflict-resolution branches first so that manual fixes
+      # are applied before any PR branch is merged. Only branches
+      # scoped to this integration label suffix are included
+      # (conflict-resolution/integration/<suffix>/*), discovered via
+      # git ls-remote so only currently-existing remote branches are
+      # merged (no stale remote-tracking refs).
+      # -----------------------------------------------------------------
+      - name: Merge conflict-resolution branches
+        run: |
+          git ls-remote --heads origin "refs/heads/conflict-resolution/integration/$INTEGRATION_SUFFIX/*" \
+            | awk '{print $2}' \
+            | sed 's|^refs/heads/||' \
+            | sort \
+            > /tmp/conflict-resolution-branches.txt
+
+          if [ ! -s /tmp/conflict-resolution-branches.txt ]; then
+            echo "No conflict-resolution branches found, skipping."
+          else
+            echo "Conflict-resolution branches to merge:"
+            cat /tmp/conflict-resolution-branches.txt
+          fi
+
+          while IFS= read -r branch; do
+            [ -z "$branch" ] && continue
+            echo "::group::Merging conflict-resolution branch: $branch"
+            if git merge --no-edit --no-ff "origin/$branch"; then
+              echo "✅ Successfully merged conflict-resolution branch $branch"
+            else
+              echo "::error::❌ Failed to merge conflict-resolution branch $branch – aborting."
+              git merge --abort || true
+              exit 1
+            fi
+            echo "::endgroup::"
+          done < /tmp/conflict-resolution-branches.txt
 
       # -----------------------------------------------------------------
       # Merge every discovered PR branch. Each merge is individually
