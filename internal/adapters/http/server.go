@@ -116,7 +116,7 @@ func (s *Server) Listen() (net.Listener, error) {
 func NewHandler(config ServerConfig, routeSetup func(chi.Router), logger *slog.Logger) *chi.Mux {
 	router := chi.NewRouter()
 	router.Use(RecoveryMiddleware(logger))
-	router.Use(LoggingMiddleware(logger))
+	router.Use(LoggingMiddleware(logger, "/api/", "/oauth2/", "/.well-known/"))
 	router.Use(middleware.OptionalPrincipalMiddleware(config.Authentication, config.JWTAuthenticator, logger))
 	routeSetup(router)
 	return router
