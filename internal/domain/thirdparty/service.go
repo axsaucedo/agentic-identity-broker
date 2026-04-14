@@ -130,7 +130,13 @@ func (s *ThirdpartyOAuth2ProviderService) Create(
 }
 
 // Get retrieves a provider by ID and decrypts its secret.
-// Returns entity with Secret in plaintext state.
+// Returns entity with Secret in plaintext state when decryption succeeds.
+// If decryption fails (e.g. after switching encryption backends), the entity
+// is returned with its Secret still in encrypted state and a nil error.
+// This enables admin workflows (list, view, update) to continue operating
+// even when the encryption backend has changed and old ciphertexts cannot
+// be decrypted. Callers that require the plaintext secret (e.g. OAuth2
+// session flows) should check entity.Secret.IsPlaintext() before use.
 func (s *ThirdpartyOAuth2ProviderService) Get(
 	ctx context.Context,
 	serviceID id.ServiceID,
@@ -148,7 +154,15 @@ func (s *ThirdpartyOAuth2ProviderService) Get(
 		return nil, fmt.Errorf("provider ID mismatch: expected %s, got %s", serviceID, entity.ID)
 	}
 
-	return s.decryptSecret(ctx, entity)
+	dec, decErr := s.decryptSecret(ctx, entity)
+	if decErr != nil {
+		s.logger.Warn("secret_decryption_failed_returning_encrypted",
+			"operation", "get",
+			"service_id", entity.ID,
+			"reason", decErr)
+		return entity, nil
+	}
+	return dec, nil
 }
 
 // Update validates, encrypts the secret, and stores the updated entity.
@@ -188,7 +202,10 @@ func (s *ThirdpartyOAuth2ProviderService) Update(
 }
 
 // List retrieves all providers and decrypts their secrets.
-// Fails fast on first decryption error for operational visibility.
+// If decryption fails for individual entities (e.g. after switching encryption
+// backends), those entities are returned with their Secret still in encrypted
+// state. A warning is logged for each decryption failure. This enables admin
+// workflows to continue operating even when old ciphertexts cannot be decrypted.
 func (s *ThirdpartyOAuth2ProviderService) List(
 	ctx context.Context,
 ) ([]*model.ThirdpartyOAuth2ProviderEntity, error) {
@@ -197,16 +214,21 @@ func (s *ThirdpartyOAuth2ProviderService) List(
 		return nil, err
 	}
 
-	decrypted := make([]*model.ThirdpartyOAuth2ProviderEntity, 0, len(entities))
+	result := make([]*model.ThirdpartyOAuth2ProviderEntity, 0, len(entities))
 	for _, entity := range entities {
 		dec, err := s.decryptSecret(ctx, entity)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt provider %s: %w", entity.ID, err)
+			s.logger.Warn("secret_decryption_failed_returning_encrypted",
+				"operation", "list",
+				"service_id", entity.ID,
+				"reason", err)
+			result = append(result, entity)
+			continue
 		}
-		decrypted = append(decrypted, dec)
+		result = append(result, dec)
 	}
 
-	return decrypted, nil
+	return result, nil
 }
 
 // Delete removes a provider from storage.
@@ -223,6 +245,10 @@ func (s *ThirdpartyOAuth2ProviderService) Delete(
 }
 
 // FindByProtectedResource retrieves a provider by resource URI and decrypts its secret.
+// If decryption fails (e.g. after switching encryption backends), the entity is
+// returned with its Secret still in encrypted state. This ensures that callers
+// performing existence/ID checks (such as duplicate resource URI detection in
+// PUT/POST handlers) continue to work even when old ciphertexts cannot be decrypted.
 func (s *ThirdpartyOAuth2ProviderService) FindByProtectedResource(
 	ctx context.Context,
 	resourceURI string,
@@ -232,7 +258,15 @@ func (s *ThirdpartyOAuth2ProviderService) FindByProtectedResource(
 		return nil, err
 	}
 
-	return s.decryptSecret(ctx, entity)
+	dec, decErr := s.decryptSecret(ctx, entity)
+	if decErr != nil {
+		s.logger.Warn("secret_decryption_failed_returning_encrypted",
+			"operation", "find_by_protected_resource",
+			"service_id", entity.ID,
+			"reason", decErr)
+		return entity, nil
+	}
+	return dec, nil
 }
 
 // CountGrantsReferencingService returns the number of grants referencing this provider.
