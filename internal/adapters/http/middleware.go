@@ -10,9 +10,16 @@ import (
 
 // LoggingMiddleware returns a middleware that logs HTTP requests with structured logging.
 // Logs method, path, response status, and request duration.
+// Requests to /health are not logged to reduce infrastructure polling noise.
 func LoggingMiddleware(logger *slog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip logging for health endpoint to reduce infrastructure polling noise.
+			if r.URL.Path == "/health" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			start := time.Now()
 
 			// Wrap ResponseWriter to capture status code
