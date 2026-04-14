@@ -151,15 +151,9 @@ func (b *Builder) Build() (*App, error) {
 		return nil, fmt.Errorf("logger is required")
 	}
 
-	// Validate OAuth2AuthServer config when present. Mirrors internal/config/validator.go
-	// validateOAuth2AuthServerConfig — ensures multi_agent_client required fields are
-	// enforced regardless of startup path (cmd or test bootstrap).
-	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" ||
-		b.config.OAuth2AuthServer.UpstreamTokenEndpoint != "" ||
-		b.config.OAuth2AuthServer.UpstreamIssuerURI != "" {
-		if err := b.config.OAuth2AuthServer.Validate(); err != nil {
-			return nil, fmt.Errorf("oauth2_authorization_server configuration invalid: %w", err)
-		}
+	// Validate OAuth2AuthServer config (handles the empty-config case internally).
+	if err := b.config.OAuth2AuthServer.Validate(); err != nil {
+		return nil, fmt.Errorf("oauth2_authorization_server configuration invalid: %w", err)
 	}
 
 	app := &App{

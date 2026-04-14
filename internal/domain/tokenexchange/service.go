@@ -122,7 +122,7 @@ func NewTokenExchangeService(
 // 2. Validate subject_token JWT (signature, issuer, audience, expiration)
 // 3. Validate client_assertion JWT (signature, issuer, audience, expiration)
 // 4. Extract principal from subject_token via CEL
-// 5. Extract agent_client_id from subject_token via CEL
+// 5. Extract agent_id from subject_token via CEL
 // 6. Authorize privileged client via CEL expression evaluation
 // 7. Normalize resource URI (remove trailing slashes)
 // 8. Lookup service by resource URI
@@ -180,8 +180,8 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 		return nil, err
 	}
 
-	// Step 5: Extract agent_client_id from subject_token via CEL
-	agentClientID, err := s.celEvaluator.ExtractAgentClientID(subjectTokenClaims)
+	// Step 5: Extract agent_id from subject_token via CEL
+	agentID, err := s.celEvaluator.ExtractAgentID(subjectTokenClaims)
 	if err != nil {
 		return nil, err
 	}
@@ -189,11 +189,11 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	// Step 6: Authorize privileged client via CEL expression evaluation
 	clientAssertionClaims := jwtToClaims(clientAssertionJWT)
 	requestContext := &CELRequestContext{
-		Resource:      req.Resource,
-		GrantType:     req.GrantType,
-		Scope:         req.Scope,
-		Principal:     principal,
-		AgentClientID: agentClientID,
+		Resource:  req.Resource,
+		GrantType: req.GrantType,
+		Scope:     req.Scope,
+		Principal: principal,
+		AgentID:   agentID,
 	}
 	authorized, err := s.celEvaluator.AuthorizePrivilegedClient(clientAssertionClaims, subjectTokenClaims, *requestContext)
 	if err != nil {
@@ -221,21 +221,21 @@ func (s *TokenExchangeService) Exchange(ctx context.Context, req *TokenExchangeR
 	// This prevents information leakage: if grant is missing, return access_denied (no permission).
 	// Only if grant exists but session is missing do we return invalid_grant (no session).
 	//
-	// T059: Agent client ID extracted from subject_token (already done in Step 5)
-	// T060 (Feature 021): agentClientID is the broker-internal agent UUID (resolved by CEL).
+	// T059: Agent ID extracted from subject_token (already done in Step 5)
+	// T060 (Feature 021): agentID is the broker-internal agent UUID (resolved by CEL).
 	// Parse it as UUID and look up by primary key — no GetByClientID needed.
-	agentID, parseErr := id.ParseAgentID(agentClientID)
+	parsedAgentID, parseErr := id.ParseAgentID(agentID)
 	if parseErr != nil {
 		return nil, NewInvalidRequestError(
-			fmt.Sprintf("agent_id %q extracted from subject_token is not a valid agent UUID", agentClientID),
+			fmt.Sprintf("agent_id %q extracted from subject_token is not a valid agent UUID", agentID),
 		)
 	}
-	agent, err := s.agentRepository.Get(ctx, agentID)
+	agent, err := s.agentRepository.Get(ctx, parsedAgentID)
 	if err != nil {
 		if errors.Is(err, ports.ErrNotFound) {
 			return nil, NewAccessDeniedErrorWithDetails(
 				"user has not granted permission for this agent to access the requested service",
-				fmt.Sprintf("agent with id %q not found", agentClientID),
+				fmt.Sprintf("agent with id %q not found", agentID),
 			)
 		}
 		return nil, NewServerErrorWithCause("failed to lookup agent by agent_id", err)

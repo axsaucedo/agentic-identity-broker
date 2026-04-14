@@ -1,7 +1,9 @@
 package e2e_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -13,6 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	storagedomain "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -237,6 +240,89 @@ var _ = Describe("Multi-Agent Client Delegation", func() {
 
 				// Then: Claim mismatch — broker returns OAuth2 error and withholds token
 				Expect(resp).To(matchers.HaveOAuth2Error("server_error"))
+			})
+
+			// Bug regression – no scenario number yet; to be assigned when the fix lands.
+			// When two agents share the same upstream ClientID and one is updated to use a new
+			// ClientID, the in-memory byClientID index incorrectly removes the shared entry,
+			// making the other agent invisible via GetByClientID.
+			It("should keep all agents accessible after one shared-client agent has its client_id updated", Label("US1"), func() {
+				ctx := context.Background()
+
+				// Build a dedicated admin + end-user server pair for this test so we can issue
+				// an admin PUT without touching the shared `server` created in BeforeEach.
+				config := fixtures.MultiAgentEnabledConfig(mockUpstream.URL())
+				sf := bootstrap.NewServerFactory(config, logger)
+				appInstance, err := sf.BuildApp(testStorage)
+				Expect(err).ToNot(HaveOccurred())
+
+				adminSrv, err := bootstrap.NewAdminTestServer(appInstance, logger)
+				Expect(err).ToNot(HaveOccurred())
+				defer adminSrv.Close()
+
+				enduserSrv, err := bootstrap.NewEndUserTestServer(appInstance, logger)
+				Expect(err).ToNot(HaveOccurred())
+				defer enduserSrv.Close()
+
+				// Given: alpha and beta both have SharedUpstreamClientID (created in outer BeforeEach).
+
+				// When: Admin changes alpha's client_id to a unique value.
+				updatePayload := map[string]interface{}{
+					"client_id":    "other-unique-client", // new, distinct from SharedUpstreamClientID
+					"display_name": alpha.DisplayName,
+					"description":  alpha.Description,
+				}
+				body, err := json.Marshal(updatePayload)
+				Expect(err).ToNot(HaveOccurred())
+
+				putResp, err := adminSrv.DirectRequest(
+					"PUT", "/api/agents/"+alpha.ID.String(), "admin@example.com",
+					map[string]string{"Content-Type": "application/json"},
+					bytes.NewReader(body),
+				)
+				Expect(err).ToNot(HaveOccurred())
+				defer func() { _ = putResp.Body.Close() }()
+				Expect(putResp.StatusCode).To(Equal(http.StatusOK))
+
+				// Then: GET /api/agents/{beta.ID} still returns beta with the original client_id.
+				getResp, err := adminSrv.DirectRequest(
+					"GET", "/api/agents/"+beta.ID.String(), "admin@example.com",
+					nil, nil,
+				)
+				Expect(err).ToNot(HaveOccurred())
+				defer func() { _ = getResp.Body.Close() }()
+				Expect(getResp.StatusCode).To(Equal(http.StatusOK))
+
+				var betaJSON map[string]interface{}
+				Expect(json.NewDecoder(getResp.Body).Decode(&betaJSON)).ToNot(HaveOccurred())
+				Expect(betaJSON["client_id"]).To(Equal(fixtures.SharedUpstreamClientID))
+
+				// Then: beta must still be resolvable via its SharedUpstreamClientID.
+				// Bug: delete(byClientID["shared"]) wipes the entry when alpha's client_id changes,
+				// so GetByClientID("shared") returns not-found even though beta is unchanged.
+				// This assertion FAILS on the current buggy implementation.
+				betaByClientID, err := testStorage.Agents().GetByClientID(ctx, id.ClientID(fixtures.SharedUpstreamClientID))
+				Expect(err).ToNot(HaveOccurred(), "beta should still be findable by SharedUpstreamClientID after alpha's client_id was updated")
+				Expect(betaByClientID.ID).To(Equal(beta.ID))
+
+				// Also: beta's full authorize->token flow must succeed.
+				mockUpstream.WithSuccessfulTokenResponse().
+					ReturnTokenWithClaim("x_agent_id", beta.ID.String())
+
+				formData := url.Values{
+					"grant_type":   []string{"authorization_code"},
+					"code":         []string{"mock-auth-code-123"},
+					"client_id":    []string{beta.ID.String()},
+					"redirect_uri": []string{"https://client.example.com/cb"},
+				}
+				tokenResp, err := enduserSrv.DirectRequest(
+					"POST", "/oauth2/token", "",
+					map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+					strings.NewReader(formData.Encode()),
+				)
+				Expect(err).ToNot(HaveOccurred())
+				defer func() { _ = tokenResp.Body.Close() }()
+				Expect(tokenResp).To(matchers.HaveStatusCode(http.StatusOK))
 			})
 
 			// US1 Scenario 5 from specs/021-multi-agent-clientid/spec.md

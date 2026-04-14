@@ -1,7 +1,6 @@
 package enduser
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,15 +21,6 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// MultiAgentVerifier verifies agent ID claims in proxied upstream token responses.
-// When non-nil (feature enabled), VerifyAgentIDClaim is called after buffering the
-// upstream response body. If verification fails, the response is withheld and an
-// OAuth2 server_error is returned to the client (fail closed per SR-001).
-// Nil means feature disabled — upstream response is passed through unchanged.
-type MultiAgentVerifier interface {
-	VerifyAgentIDClaim(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error
-}
-
 // OAuth2TokenHandler handles OAuth2 token endpoint requests
 // Routes between token exchange (RFC 8693) and standard OAuth2 token requests.
 // When TokenMinting is set (issue_token mode), client_credentials and authorization_code
@@ -40,7 +30,7 @@ type OAuth2TokenHandler struct {
 	Client             *http.Client
 	TokenExchange      *tokenexchange.TokenExchangeService // RFC 8693 token exchange service
 	Logger             *slog.Logger                        // For structured logging
-	MultiAgentVerifier MultiAgentVerifier                  // nil = feature disabled; non-nil = verify agent ID claim
+	MultiAgentVerifier ports.MultiAgentVerifier            // nil = feature disabled; non-nil = verify agent ID claim
 	AgentRepository    ports.AgentRepository               // resolves broker agent UUID → upstream client_id
 	TokenMinting       ports.TokenMintingStrategy          // nil = proxy mode; non-nil = local minting (issue_token mode)
 }

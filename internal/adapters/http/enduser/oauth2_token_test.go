@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -270,7 +271,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 
 	tests := []struct {
 		name             string
-		verifier         MultiAgentVerifier
+		verifier         ports.MultiAgentVerifier
 		clientID         string // form body client_id
 		wantStatusCode   int
 		wantBodyContains string
@@ -387,7 +388,7 @@ func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
 
 	verifiers := []struct {
 		name     string
-		verifier MultiAgentVerifier
+		verifier ports.MultiAgentVerifier
 	}{
 		{"without verifier", nil},
 		{"with verifier", &mockMultiAgentVerifier{verifyFn: func(_ context.Context, _ []byte, _ id.AgentID) error { return nil }}},
