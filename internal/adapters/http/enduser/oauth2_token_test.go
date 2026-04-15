@@ -18,6 +18,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// mockTokenMintingStrategy is a configurable test double for ports.TokenMintingStrategy.
+type mockTokenMintingStrategy struct {
+	clientCredentialsFn         func(context.Context, string, string, string) (*ports.TokenResponse, error)
+	authorizationCodeExchangeFn func(context.Context, string, string, string, string, string) (*ports.TokenResponse, error)
+}
+
+func (m *mockTokenMintingStrategy) HandleClientCredentials(ctx context.Context, clientID, clientSecret, scope string) (*ports.TokenResponse, error) {
+	return m.clientCredentialsFn(ctx, clientID, clientSecret, scope)
+}
+
+func (m *mockTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, clientID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
+	return m.authorizationCodeExchangeFn(ctx, clientID, clientSecret, code, redirectURI, codeVerifier)
+}
+
+// fixedMinting returns a mock strategy that always returns the given response/error for both grant types.
+func fixedMinting(resp *ports.TokenResponse, err error) *mockTokenMintingStrategy {
+	return &mockTokenMintingStrategy{
+		clientCredentialsFn: func(_ context.Context, _, _, _ string) (*ports.TokenResponse, error) {
+			return resp, err
+		},
+		authorizationCodeExchangeFn: func(_ context.Context, _, _, _, _, _ string) (*ports.TokenResponse, error) {
+			return resp, err
+		},
+	}
+}
+
 // mockMultiAgentVerifier is a test double for MultiAgentVerifier
 type mockMultiAgentVerifier struct {
 	verifyFn func(ctx context.Context, responseBody []byte, expectedAgentID id.AgentID) error
@@ -561,6 +587,200 @@ func TestWriteTokenResponse(t *testing.T) {
 		assert.NoError(t, json.NewDecoder(w.Body).Decode(&body))
 		assert.Equal(t, "read write", body["scope"])
 	})
+}
+
+// TestHandleLocalMinting_ClientCredentials covers the client_credentials path through
+// handleLocalMinting: success, input validation failures, and strategy error mapping.
+func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
+	successResp := &ports.TokenResponse{AccessToken: "tok123", TokenType: "Bearer", ExpiresIn: 3600, Scope: "read"}
+
+	tests := []struct {
+		name          string
+		body          string
+		mintingErr    error // nil = return successResp
+		wantStatus    int
+		wantErrorCode string // empty = expect success
+	}{
+		{
+			name:       "success returns 200 with all token fields",
+			body:       "grant_type=client_credentials&client_id=broker_abc&client_secret=secret&scope=read",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:          "missing client_id returns 400 invalid_request",
+			body:          "grant_type=client_credentials&client_secret=secret",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "missing client_secret returns 400 invalid_request",
+			body:          "grant_type=client_credentials&client_id=broker_abc",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "strategy ErrInvalidClient returns 401 invalid_client",
+			body:          "grant_type=client_credentials&client_id=broker_abc&client_secret=wrong",
+			mintingErr:    oauth2server.ErrInvalidClient,
+			wantStatus:    http.StatusUnauthorized,
+			wantErrorCode: "invalid_client",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			minting := &mockTokenMintingStrategy{
+				clientCredentialsFn: func(_ context.Context, _, _, _ string) (*ports.TokenResponse, error) {
+					if tt.mintingErr != nil {
+						return nil, tt.mintingErr
+					}
+					return successResp, nil
+				},
+			}
+			handler := &OAuth2TokenHandler{TokenMinting: minting}
+			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			var body map[string]interface{}
+			_ = json.NewDecoder(w.Body).Decode(&body)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, body["error"])
+			} else {
+				assert.Equal(t, "tok123", body["access_token"])
+				assert.Equal(t, "Bearer", body["token_type"])
+				assert.EqualValues(t, 3600, body["expires_in"])
+				assert.Equal(t, "read", body["scope"])
+			}
+		})
+	}
+}
+
+// TestHandleLocalMinting_AuthorizationCode covers the authorization_code path through
+// handleLocalMinting: success, input validation failures, and strategy error mapping.
+func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
+	successResp := &ports.TokenResponse{AccessToken: "tok456", TokenType: "Bearer", ExpiresIn: 900}
+
+	tests := []struct {
+		name          string
+		body          string
+		mintingErr    error
+		wantStatus    int
+		wantErrorCode string
+	}{
+		{
+			name:       "success returns 200 with all token fields",
+			body:       "grant_type=authorization_code&client_id=broker_abc&client_secret=secret&code=authcode123&redirect_uri=https://example.com/cb&code_verifier=verifier",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:          "missing client_id returns 400 invalid_request",
+			body:          "grant_type=authorization_code&client_secret=secret&code=abc",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "missing client_secret returns 400 invalid_request",
+			body:          "grant_type=authorization_code&client_id=broker_abc&code=abc",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "missing code returns 400 invalid_request",
+			body:          "grant_type=authorization_code&client_id=broker_abc&client_secret=secret",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "strategy ErrInvalidGrant returns 400 invalid_grant",
+			body:          "grant_type=authorization_code&client_id=broker_abc&client_secret=secret&code=expired",
+			mintingErr:    oauth2server.ErrInvalidGrant,
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_grant",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			minting := &mockTokenMintingStrategy{
+				authorizationCodeExchangeFn: func(_ context.Context, _, _, _, _, _ string) (*ports.TokenResponse, error) {
+					if tt.mintingErr != nil {
+						return nil, tt.mintingErr
+					}
+					return successResp, nil
+				},
+			}
+			handler := &OAuth2TokenHandler{TokenMinting: minting}
+			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			var body map[string]interface{}
+			_ = json.NewDecoder(w.Body).Decode(&body)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, body["error"])
+			} else {
+				assert.Equal(t, "tok456", body["access_token"])
+				assert.Equal(t, "Bearer", body["token_type"])
+				assert.EqualValues(t, 900, body["expires_in"])
+			}
+		})
+	}
+}
+
+// TestHandleLocalMinting_UnsupportedGrantType verifies the default branch returns
+// 400 unsupported_grant_type for any grant type other than client_credentials or
+// authorization_code (e.g. password, implicit, device_code).
+func TestHandleLocalMinting_UnsupportedGrantType(t *testing.T) {
+	handler := &OAuth2TokenHandler{TokenMinting: fixedMinting(nil, nil)}
+	req := httptest.NewRequest("POST", "/oauth2/token",
+		strings.NewReader("grant_type=password&username=user&password=secret"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "unsupported_grant_type", body["error"])
+}
+
+// TestHandleMintingError_RFC6749StatusCodes verifies the complete RFC 6749 error code →
+// HTTP status mapping in handleMintingError.
+func TestHandleMintingError_RFC6749StatusCodes(t *testing.T) {
+	tests := []struct {
+		name          string
+		err           error
+		wantStatus    int
+		wantErrorCode string
+	}{
+		{"ErrInvalidClient → 401 invalid_client", oauth2server.ErrInvalidClient, http.StatusUnauthorized, "invalid_client"},
+		{"ErrInvalidScope → 400 invalid_scope", oauth2server.ErrInvalidScope, http.StatusBadRequest, "invalid_scope"},
+		{"ErrInvalidGrant → 400 invalid_grant", oauth2server.ErrInvalidGrant, http.StatusBadRequest, "invalid_grant"},
+		{"unknown error → 500 server_error", errors.New("unexpected db failure"), http.StatusInternalServerError, "server_error"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &OAuth2TokenHandler{}
+			w := httptest.NewRecorder()
+
+			h.handleMintingError(w, tt.err, "client_credentials", "broker_test")
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+			var body map[string]interface{}
+			_ = json.NewDecoder(w.Body).Decode(&body)
+			assert.Equal(t, tt.wantErrorCode, body["error"])
+		})
+	}
 }
 
 func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
