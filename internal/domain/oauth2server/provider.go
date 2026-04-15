@@ -282,6 +282,13 @@ func (p *Provider) HandleAuthorizeByAgentID(
 	}
 
 	scopes := splitScope(scope)
+	if len(bc.agent.AllowedScopes) > 0 && len(scopes) > 0 {
+		for _, s := range scopes {
+			if !contains(bc.agent.AllowedScopes, s) {
+				return "", fmt.Errorf("%w: scope %q not allowed for this agent", ErrInvalidScope, s)
+			}
+		}
+	}
 
 	// Build fosite authorize request — use broker_client_id as the client_id in the code record
 	session := &fosite.DefaultSession{
