@@ -223,8 +223,9 @@ func (s *FositeStorage) buildClient(ctx context.Context, agentID id.AgentID) (fo
 }
 
 func extractAgentID(client fosite.Client) id.AgentID {
-	if bc, ok := client.(*brokerClient); ok {
-		return bc.agent.ID
+	bc, ok := client.(*brokerClient)
+	if !ok {
+		panic(fmt.Sprintf("extractAgentID: expected *brokerClient, got %T", client))
 	}
-	return id.AgentID{} // Should never happen
+	return bc.agent.ID
 }

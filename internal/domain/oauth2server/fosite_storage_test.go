@@ -183,6 +183,20 @@ func TestFositeStorage_PKCESessions(t *testing.T) {
 	})
 }
 
+func TestExtractAgentID(t *testing.T) {
+	t.Run("returns agent ID for brokerClient", func(t *testing.T) {
+		agent := testAgent()
+		bc := &brokerClient{agent: agent}
+		assert.Equal(t, agent.ID, extractAgentID(bc))
+	})
+
+	t.Run("panics for unexpected client type", func(t *testing.T) {
+		assert.Panics(t, func() {
+			extractAgentID(&fosite.DefaultClient{ID: "unexpected"})
+		})
+	})
+}
+
 func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 	connectionErr := dstorage.NewStorageError("FindByCodeHash", dstorage.ErrorKindConnection, nil, "connection refused")
 	timeoutErr := dstorage.NewStorageError("GetByBrokerClientID", dstorage.ErrorKindTimeout, nil, "query timeout")
