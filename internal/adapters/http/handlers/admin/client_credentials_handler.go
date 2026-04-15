@@ -26,12 +26,13 @@ type ClientCredentialsHandler struct {
 func NewClientCredentialsHandler(
 	credentialRepo ports.BrokerClientCredentialRepository,
 	agentRepo ports.AgentRepository,
+	clientAuth *oauth2server.ClientAuthService,
 	logger *slog.Logger,
 ) *ClientCredentialsHandler {
 	return &ClientCredentialsHandler{
 		credentialRepo: credentialRepo,
 		agentRepo:      agentRepo,
-		clientAuth:     oauth2server.NewClientAuthService(credentialRepo, agentRepo, logger),
+		clientAuth:     clientAuth,
 		logger:         logger,
 	}
 }
