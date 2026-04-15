@@ -203,7 +203,7 @@ func (p *Provider) HandleAuthorize(
 	if codeChallenge == "" {
 		return "", fmt.Errorf("%w: code_challenge is required (PKCE mandatory)", ErrInvalidRequest)
 	}
-	if codeChallengeMethod != "S256" && codeChallengeMethod != "" {
+	if codeChallengeMethod != "S256" {
 		return "", fmt.Errorf("%w: only S256 code_challenge_method is supported", ErrInvalidRequest)
 	}
 
@@ -283,7 +283,7 @@ func (p *Provider) HandleAuthorizeByAgentID(
 	if codeChallenge == "" {
 		return "", fmt.Errorf("%w: code_challenge is required (PKCE mandatory)", ErrInvalidRequest)
 	}
-	if codeChallengeMethod != "S256" && codeChallengeMethod != "" {
+	if codeChallengeMethod != "S256" {
 		return "", fmt.Errorf("%w: only S256 code_challenge_method is supported", ErrInvalidRequest)
 	}
 

@@ -217,6 +217,48 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidRequest)
 	})
 
+	t.Run("empty code_challenge_method rejected", func(t *testing.T) {
+		provider := newTestProvider(t)
+		agent, cred, _ := setupTestCredentials(t, provider)
+		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
+
+		_, err := provider.HandleAuthorize(
+			context.Background(),
+			cred.BrokerClientID,
+			"http://localhost:8080/callback",
+			"code",
+			"read",
+			"state",
+			"challenge123",
+			"", // missing method — must not default to plain
+			id.NewPrincipal("user@example.com"),
+		)
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidRequest)
+	})
+
+	t.Run("plain code_challenge_method rejected", func(t *testing.T) {
+		provider := newTestProvider(t)
+		agent, cred, _ := setupTestCredentials(t, provider)
+		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
+
+		_, err := provider.HandleAuthorize(
+			context.Background(),
+			cred.BrokerClientID,
+			"http://localhost:8080/callback",
+			"code",
+			"read",
+			"state",
+			"challenge123",
+			"plain",
+			id.NewPrincipal("user@example.com"),
+		)
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidRequest)
+	})
+
 	t.Run("unregistered redirect_uri rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
 		agent, cred, _ := setupTestCredentials(t, provider)
