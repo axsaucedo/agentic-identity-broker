@@ -2,6 +2,7 @@ package oauth2server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/ory/fosite/handler/pkce"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -59,7 +61,7 @@ func NewProvider(
 	codeStrategy := &RandomCodeStrategy{}
 
 	// Storage adapters
-	storage := NewFositeStorage(codeRepo, agentRepo, credRepo)
+	storage := NewFositeStorage(codeRepo, agentRepo, credRepo, logger)
 
 	config := &fosite.Config{
 		AuthorizeCodeLifespan:          60 * time.Second,
@@ -109,16 +111,8 @@ func (p *Provider) SigningKeyService() *SigningKeyService {
 	return p.signingKeyService
 }
 
-// TokenResponse represents the result of a token endpoint request.
-type TokenResponse struct {
-	AccessToken string
-	TokenType   string
-	ExpiresIn   int64
-	Scope       string
-}
-
 // HandleClientCredentials processes a client_credentials grant type request.
-func (p *Provider) HandleClientCredentials(ctx context.Context, clientID id.BrokerClientID, secret string, requestedScope string) (*TokenResponse, error) {
+func (p *Provider) HandleClientCredentials(ctx context.Context, clientID id.BrokerClientID, secret string, requestedScope string) (*ports.TokenResponse, error) {
 	// Authenticate client
 	authClient, err := p.clientAuth.Authenticate(ctx, clientID, secret)
 	if err != nil {
@@ -166,7 +160,7 @@ func (p *Provider) HandleClientCredentials(ctx context.Context, clientID id.Brok
 	resp.SetExtra("scope", requestedScope)
 	_ = sig // Signature used for storage lookup (stateless JWT, not stored)
 
-	return &TokenResponse{
+	return &ports.TokenResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
@@ -203,7 +197,7 @@ func (p *Provider) HandleAuthorize(
 	if codeChallenge == "" {
 		return "", fmt.Errorf("%w: code_challenge is required (PKCE mandatory)", ErrInvalidRequest)
 	}
-	if codeChallengeMethod != "S256" && codeChallengeMethod != "" {
+	if codeChallengeMethod != "S256" {
 		return "", fmt.Errorf("%w: only S256 code_challenge_method is supported", ErrInvalidRequest)
 	}
 
@@ -283,11 +277,18 @@ func (p *Provider) HandleAuthorizeByAgentID(
 	if codeChallenge == "" {
 		return "", fmt.Errorf("%w: code_challenge is required (PKCE mandatory)", ErrInvalidRequest)
 	}
-	if codeChallengeMethod != "S256" && codeChallengeMethod != "" {
+	if codeChallengeMethod != "S256" {
 		return "", fmt.Errorf("%w: only S256 code_challenge_method is supported", ErrInvalidRequest)
 	}
 
 	scopes := splitScope(scope)
+	if len(bc.agent.AllowedScopes) > 0 && len(scopes) > 0 {
+		for _, s := range scopes {
+			if !contains(bc.agent.AllowedScopes, s) {
+				return "", fmt.Errorf("%w: scope %q not allowed for this agent", ErrInvalidScope, s)
+			}
+		}
+	}
 
 	// Build fosite authorize request — use broker_client_id as the client_id in the code record
 	session := &fosite.DefaultSession{
@@ -335,9 +336,9 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	code string,
 	redirectURI string,
 	codeVerifier string,
-) (*TokenResponse, error) {
+) (*ports.TokenResponse, error) {
 	// Authenticate client
-	_, err := p.clientAuth.Authenticate(ctx, clientID, secret)
+	authedClient, err := p.clientAuth.Authenticate(ctx, clientID, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -347,6 +348,16 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	authCode, err := p.fositeStorage.codeRepo.FindByCodeHash(ctx, codeHash)
 	if err != nil {
 		return nil, fmt.Errorf("%w: authorization code not found", ErrInvalidGrant)
+	}
+
+	// Verify the authenticated client is the one the code was issued to (both agent and credential).
+	// The broker_client_id check catches post-rotation redemption: a new credential should not
+	// be able to exchange codes issued to a previous credential for the same agent.
+	if authedClient.Agent.ID != authCode.AgentID {
+		return nil, fmt.Errorf("%w: code was not issued to this client", ErrInvalidGrant)
+	}
+	if authedClient.Credential.BrokerClientID != authCode.BrokerClientID {
+		return nil, fmt.Errorf("%w: code was issued to a different credential", ErrInvalidGrant)
 	}
 
 	// Check code is not used
@@ -369,8 +380,13 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		return nil, fmt.Errorf("%w: PKCE verification failed: %v", ErrInvalidGrant, err)
 	}
 
-	// Mark code as used
+	// Mark code as used — the UPDATE is conditional on used_at IS NULL, so zero rows
+	// affected means a concurrent request won the race and already consumed the code.
 	if err := p.fositeStorage.codeRepo.MarkUsed(ctx, authCode.ID); err != nil {
+		var storageErr *storage.StorageError
+		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
+			return nil, fmt.Errorf("%w: authorization code already used", ErrInvalidGrant)
+		}
 		return nil, fmt.Errorf("failed to mark code as used: %w", err)
 	}
 
@@ -400,7 +416,7 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	return &TokenResponse{
+	return &ports.TokenResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),

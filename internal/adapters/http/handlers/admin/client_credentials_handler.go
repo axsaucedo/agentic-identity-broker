@@ -26,20 +26,30 @@ type ClientCredentialsHandler struct {
 func NewClientCredentialsHandler(
 	credentialRepo ports.BrokerClientCredentialRepository,
 	agentRepo ports.AgentRepository,
+	clientAuth *oauth2server.ClientAuthService,
 	logger *slog.Logger,
 ) *ClientCredentialsHandler {
 	return &ClientCredentialsHandler{
 		credentialRepo: credentialRepo,
 		agentRepo:      agentRepo,
-		clientAuth:     oauth2server.NewClientAuthService(credentialRepo, agentRepo, logger),
+		clientAuth:     clientAuth,
 		logger:         logger,
 	}
 }
 
-// credentialResponse is the JSON response for credential operations.
-type credentialResponse struct {
+// credentialGenerateResponse is the JSON response for POST (generate/rotate).
+// Matches BrokerClientCredentialResponse schema in OpenAPI.
+type credentialGenerateResponse struct {
+	BrokerClientID        string  `json:"broker_client_id"`
+	ClientSecret          string  `json:"client_secret"`
+	CreatedAt             string  `json:"created_at"`
+	PreviousInvalidatedAt *string `json:"previous_invalidated_at,omitempty"`
+}
+
+// credentialMetadataResponse is the JSON response for GET (read-only metadata).
+// Matches BrokerClientCredentialMetadata schema in OpenAPI.
+type credentialMetadataResponse struct {
 	BrokerClientID string  `json:"broker_client_id"`
-	ClientSecret   string  `json:"client_secret,omitempty"` // Only present on generate/rotate
 	CreatedAt      string  `json:"created_at"`
 	RotatedAt      *string `json:"rotated_at,omitempty"`
 }
@@ -70,14 +80,6 @@ func (h *ClientCredentialsHandler) Generate(w http.ResponseWriter, r *http.Reque
 	existing, _ := h.credentialRepo.GetByAgentID(r.Context(), agentID)
 	isRotation := existing != nil
 
-	if isRotation {
-		if err := h.credentialRepo.Delete(r.Context(), agentID); err != nil {
-			h.logger.Error("failed to delete existing credentials during rotation", "agent_id", agentID, "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
-	}
-
 	credential, plaintextSecret, err := h.clientAuth.GenerateCredentials(agentID)
 	if err != nil {
 		h.logger.Error("failed to generate credentials", "agent_id", agentID, "error", err)
@@ -89,22 +91,27 @@ func (h *ClientCredentialsHandler) Generate(w http.ResponseWriter, r *http.Reque
 	credential.CreatedAt = now
 	if isRotation {
 		credential.RotatedAt = &now
+		if err := h.credentialRepo.Rotate(r.Context(), agentID, credential); err != nil {
+			h.logger.Error("failed to rotate credentials", "agent_id", agentID, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
+	} else {
+		if err := h.credentialRepo.Create(r.Context(), credential); err != nil {
+			h.logger.Error("failed to store credentials", "agent_id", agentID, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 	}
 
-	if err := h.credentialRepo.Create(r.Context(), credential); err != nil {
-		h.logger.Error("failed to store credentials", "agent_id", agentID, "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
-	}
-
-	resp := credentialResponse{
+	resp := credentialGenerateResponse{
 		BrokerClientID: credential.BrokerClientID.String(),
 		ClientSecret:   plaintextSecret,
 		CreatedAt:      credential.CreatedAt.Format(time.RFC3339),
 	}
 	if credential.RotatedAt != nil {
 		rotatedStr := credential.RotatedAt.Format(time.RFC3339)
-		resp.RotatedAt = &rotatedStr
+		resp.PreviousInvalidatedAt = &rotatedStr
 	}
 
 	if isRotation {
@@ -159,7 +166,7 @@ func (h *ClientCredentialsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 	)
 
-	resp := credentialResponse{
+	resp := credentialMetadataResponse{
 		BrokerClientID: cred.BrokerClientID.String(),
 		CreatedAt:      cred.CreatedAt.Format(time.RFC3339),
 	}

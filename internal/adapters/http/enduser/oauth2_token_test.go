@@ -2,7 +2,9 @@ package enduser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -517,4 +520,75 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 	respBody, _ := io.ReadAll(w.Body)
 	assert.Contains(t, string(respBody), "invalid_client")
 	assert.False(t, upstreamCalled, "upstream must not be called when agent is not found")
+}
+
+func TestWriteTokenResponse(t *testing.T) {
+	t.Run("success returns 200 with complete JSON body", func(t *testing.T) {
+		h := &OAuth2TokenHandler{}
+		w := httptest.NewRecorder()
+
+		h.writeTokenResponse(w, &ports.TokenResponse{
+			AccessToken: "tok123",
+			TokenType:   "Bearer",
+			ExpiresIn:   3600,
+		})
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+
+		var body map[string]interface{}
+		assert.NoError(t, json.NewDecoder(w.Body).Decode(&body))
+		assert.Equal(t, "tok123", body["access_token"])
+		assert.Equal(t, "Bearer", body["token_type"])
+		assert.EqualValues(t, 3600, body["expires_in"])
+		assert.NotContains(t, body, "scope")
+	})
+
+	t.Run("scope included when non-empty", func(t *testing.T) {
+		h := &OAuth2TokenHandler{}
+		w := httptest.NewRecorder()
+
+		h.writeTokenResponse(w, &ports.TokenResponse{
+			AccessToken: "tok456",
+			TokenType:   "Bearer",
+			ExpiresIn:   900,
+			Scope:       "read write",
+		})
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body map[string]interface{}
+		assert.NoError(t, json.NewDecoder(w.Body).Decode(&body))
+		assert.Equal(t, "read write", body["scope"])
+	})
+}
+
+func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
+	internalDetail := "scope \"read:admin\" not allowed for this agent"
+
+	t.Run("invalid_scope does not leak internal detail", func(t *testing.T) {
+		h := &OAuth2TokenHandler{}
+		w := httptest.NewRecorder()
+
+		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.ErrInvalidScope), "client_credentials", "broker_test")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		body, _ := io.ReadAll(w.Body)
+		assert.Contains(t, string(body), "invalid_scope")
+		assert.NotContains(t, string(body), internalDetail)
+		assert.NotContains(t, string(body), "read:admin")
+	})
+
+	t.Run("invalid_grant does not leak internal detail", func(t *testing.T) {
+		h := &OAuth2TokenHandler{}
+		w := httptest.NewRecorder()
+
+		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.ErrInvalidGrant), "authorization_code", "broker_test")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		body, _ := io.ReadAll(w.Body)
+		assert.Contains(t, string(body), "invalid_grant")
+		assert.NotContains(t, string(body), internalDetail)
+		assert.NotContains(t, string(body), "read:admin")
+	})
 }

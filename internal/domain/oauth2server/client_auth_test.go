@@ -10,7 +10,41 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
+
+type mockCredentialRepo struct {
+	getByBrokerClientIDFunc func(context.Context, id.BrokerClientID) (*storage.BrokerClientCredential, error)
+}
+
+func (m *mockCredentialRepo) Create(_ context.Context, _ *storage.BrokerClientCredential) error {
+	return nil
+}
+func (m *mockCredentialRepo) GetByAgentID(_ context.Context, _ id.AgentID) (*storage.BrokerClientCredential, error) {
+	return nil, nil
+}
+func (m *mockCredentialRepo) GetByBrokerClientID(ctx context.Context, clientID id.BrokerClientID) (*storage.BrokerClientCredential, error) {
+	return m.getByBrokerClientIDFunc(ctx, clientID)
+}
+func (m *mockCredentialRepo) Delete(_ context.Context, _ id.AgentID) error { return nil }
+func (m *mockCredentialRepo) Rotate(_ context.Context, _ id.AgentID, _ *storage.BrokerClientCredential) error {
+	return nil
+}
+
+type mockAgentRepo struct {
+	getFunc func(context.Context, id.AgentID) (*storage.Agent, error)
+}
+
+func (m *mockAgentRepo) Create(_ context.Context, _ *storage.Agent) error { return nil }
+func (m *mockAgentRepo) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
+	return m.getFunc(ctx, agentID)
+}
+func (m *mockAgentRepo) Update(_ context.Context, _ *storage.Agent) error { return nil }
+func (m *mockAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { return nil }
+func (m *mockAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
+func (m *mockAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
+	return nil, nil
+}
 
 func TestArgon2Hasher_HashAndCompare(t *testing.T) {
 	hasher := &Argon2Hasher{}
@@ -146,6 +180,41 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 
 		// Authenticate with wrong secret should fail
 		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, "wrong-secret")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+	})
+
+	t.Run("credential repo connection error returns ErrInvalidClient", func(t *testing.T) {
+		credRepo := &mockCredentialRepo{
+			getByBrokerClientIDFunc: func(_ context.Context, _ id.BrokerClientID) (*storage.BrokerClientCredential, error) {
+				return nil, storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindConnection, nil, "connection refused")
+			},
+		}
+		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), testSlogger())
+
+		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_any"), "secret")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+	})
+
+	t.Run("agent repo timeout error returns ErrInvalidClient", func(t *testing.T) {
+		credRepo := memory.NewBrokerClientCredentialStore()
+		agentID := id.NewAgentID()
+		cred := &storage.BrokerClientCredential{
+			ID:             id.NewCredentialID(),
+			AgentID:        agentID,
+			BrokerClientID: id.NewBrokerClientID("broker_timeout_test"),
+			SecretHash:     "irrelevant",
+		}
+		err := credRepo.Create(context.Background(), cred)
+		require.NoError(t, err)
+
+		agentRepo := &mockAgentRepo{
+			getFunc: func(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+				return nil, storage.NewStorageError("Get", storage.ErrorKindTimeout, nil, "query timeout")
+			},
+		}
+		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
+
+		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, "irrelevant")
 		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 }

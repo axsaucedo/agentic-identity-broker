@@ -22,30 +22,12 @@ func NewIssueTokenMintingStrategy(provider *oauth2server.Provider) *IssueTokenMi
 
 // HandleClientCredentials processes a client_credentials grant locally.
 func (s *IssueTokenMintingStrategy) HandleClientCredentials(ctx context.Context, clientID, clientSecret, scope string) (*ports.TokenResponse, error) {
-	resp, err := s.provider.HandleClientCredentials(ctx, id.NewBrokerClientID(clientID), clientSecret, scope)
-	if err != nil {
-		return nil, err
-	}
-	return &ports.TokenResponse{
-		AccessToken: resp.AccessToken,
-		TokenType:   resp.TokenType,
-		ExpiresIn:   resp.ExpiresIn,
-		Scope:       resp.Scope,
-	}, nil
+	return s.provider.HandleClientCredentials(ctx, id.NewBrokerClientID(clientID), clientSecret, scope)
 }
 
 // HandleAuthorizationCodeExchange processes an authorization_code exchange locally.
 func (s *IssueTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, clientID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
-	resp, err := s.provider.HandleAuthorizationCodeExchange(ctx, id.NewBrokerClientID(clientID), clientSecret, code, redirectURI, codeVerifier)
-	if err != nil {
-		return nil, err
-	}
-	return &ports.TokenResponse{
-		AccessToken: resp.AccessToken,
-		TokenType:   resp.TokenType,
-		ExpiresIn:   resp.ExpiresIn,
-		Scope:       resp.Scope,
-	}, nil
+	return s.provider.HandleAuthorizationCodeExchange(ctx, id.NewBrokerClientID(clientID), clientSecret, code, redirectURI, codeVerifier)
 }
 
 // IssueTokenCodeIssuer implements AuthorizationCodeIssuer by delegating to
@@ -63,7 +45,7 @@ func NewIssueTokenCodeIssuer(provider *oauth2server.Provider) *IssueTokenCodeIss
 func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *ports.AuthorizationRequest, principal string) (string, error) {
 	codeChallengeMethod := req.CodeChallengeMethod
 	if codeChallengeMethod == "" {
-		codeChallengeMethod = "S256"
+		return "", fmt.Errorf("%w: code_challenge_method is required (PKCE mandatory)", oauth2server.ErrInvalidRequest)
 	}
 
 	// Validate PKCE is provided (mandatory in issue_token mode)

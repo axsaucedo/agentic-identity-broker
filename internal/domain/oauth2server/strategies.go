@@ -122,7 +122,10 @@ func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, reques
 
 	// 6. Sign with kid
 	_ = privKey.Set(jwk.KeyIDKey, string(key.KID))
-	alg := algorithmToJWA(key.Algorithm)
+	alg, err := algorithmToJWA(key.Algorithm)
+	if err != nil {
+		return "", "", fmt.Errorf("signing key %s has unrecognized algorithm %q: %w", key.KID, key.Algorithm, err)
+	}
 	signed, err := jwt.Sign(token, jwt.WithKey(alg, privKey))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to sign JWT: %w", err)

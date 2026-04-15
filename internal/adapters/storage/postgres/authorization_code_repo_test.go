@@ -5,6 +5,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -152,6 +153,66 @@ func TestAuthorizationCodeRepo_UniqueCodeHash(t *testing.T) {
 	}
 	err = repo.Create(ctx, code2)
 	assert.Error(t, err, "duplicate code_hash should fail unique constraint")
+}
+
+func TestAuthorizationCodeRepo_FindByCodeHash_ExpiredUnused(t *testing.T) {
+	adapter, cleanup := setupAuthCodeTestDB(t)
+	defer cleanup()
+
+	agent := createTestAgent(t, adapter)
+	repo := NewAuthorizationCodeRepo(adapter)
+	ctx := context.Background()
+
+	codeHash := "expired-unused-" + id.NewAuthorizationCodeID().String()[:10]
+	code := &storage.AuthorizationCode{
+		ID:            id.NewAuthorizationCodeID(),
+		CodeHash:      codeHash,
+		AgentID:       agent.ID,
+		Principal:     id.NewPrincipal("user@example.com"),
+		RedirectURI:   "http://localhost/callback",
+		CodeChallenge: "S256challenge",
+		Scope:         "read",
+		ExpiresAt:     time.Now().UTC().Add(-10 * time.Minute), // expired
+		CreatedAt:     time.Now().UTC().Add(-15 * time.Minute),
+	}
+	err := repo.Create(ctx, code)
+	require.NoError(t, err)
+
+	got, err := repo.FindByCodeHash(ctx, codeHash)
+	require.NoError(t, err)
+	assert.Equal(t, code.ID, got.ID)
+	assert.Nil(t, got.UsedAt, "repo must not filter by expiry — domain layer owns that check")
+}
+
+func TestAuthorizationCodeRepo_FindByCodeHash_NotFound(t *testing.T) {
+	adapter, cleanup := setupAuthCodeTestDB(t)
+	defer cleanup()
+
+	repo := NewAuthorizationCodeRepo(adapter)
+	_, err := repo.FindByCodeHash(context.Background(), "nonexistentcodehash")
+	require.Error(t, err)
+
+	var se *storage.StorageError
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
+}
+
+func TestAuthorizationCodeRepo_FindByCodeHash_Timeout(t *testing.T) {
+	adapter, cleanup := setupAuthCodeTestDB(t)
+	defer cleanup()
+
+	repo := NewAuthorizationCodeRepo(adapter)
+
+	// Use an already-expired deadline so the query immediately gets context.DeadlineExceeded.
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	_, err := repo.FindByCodeHash(ctx, "somehash")
+	require.Error(t, err)
+
+	var se *storage.StorageError
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
 }
 
 func TestAuthorizationCodeRepo_DeleteExpired(t *testing.T) {

@@ -91,12 +91,12 @@ func setupTestContainer(t *testing.T) (testcontainers.Container, string, func())
 	return container, connStr, cleanup
 }
 
-// applyMigrations applies all database migrations (001-012) to the test container.
+// applyMigrations applies all database migrations to the test container.
 // Files are copied into the container and executed via `psql -f` to avoid
 // any issues with passing multi-statement SQL as a command-line argument.
 func applyMigrations(t *testing.T, container testcontainers.Container) {
 	t.Helper()
-	applyMigrationsUpTo(t, container, 12)
+	applyMigrationsUpTo(t, container, 13)
 }
 
 // applyMigrationsUpTo applies migrations sequentially from 001 up to and including
@@ -130,6 +130,7 @@ func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo 
 		{"010_create_broker_client_credentials.up.sql", 10},
 		{"011_create_signing_keys.up.sql", 11},
 		{"012_create_authorization_codes.up.sql", 12},
+		{"013_add_broker_client_id_to_auth_codes.up.sql", 13},
 	}
 
 	for _, migration := range migrations {

@@ -14,11 +14,22 @@ import (
 	dstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
+type mockCodeRepo struct {
+	findByCodeHashFunc func(context.Context, string) (*dstorage.AuthorizationCode, error)
+}
+
+func (m *mockCodeRepo) Create(_ context.Context, _ *dstorage.AuthorizationCode) error { return nil }
+func (m *mockCodeRepo) FindByCodeHash(ctx context.Context, hash string) (*dstorage.AuthorizationCode, error) {
+	return m.findByCodeHashFunc(ctx, hash)
+}
+func (m *mockCodeRepo) MarkUsed(_ context.Context, _ id.AuthorizationCodeID) error { return nil }
+func (m *mockCodeRepo) DeleteExpired(_ context.Context) (int, error)               { return 0, nil }
+
 func newTestFositeStorage() (*FositeStorage, *memory.AuthorizationCodeStore, *memory.AgentRepository, *memory.BrokerClientCredentialStore) {
 	codeRepo := memory.NewAuthorizationCodeStore()
 	agentRepo := memory.NewAgentRepository()
 	credRepo := memory.NewBrokerClientCredentialStore()
-	return NewFositeStorage(codeRepo, agentRepo, credRepo), codeRepo, agentRepo, credRepo
+	return NewFositeStorage(codeRepo, agentRepo, credRepo, testSlogger()), codeRepo, agentRepo, credRepo
 }
 
 func TestFositeStorage_AuthorizeCodeSessions(t *testing.T) {
@@ -169,5 +180,86 @@ func TestFositeStorage_PKCESessions(t *testing.T) {
 
 		assert.NoError(t, store.CreatePKCERequestSession(ctx, "sig", nil))
 		assert.NoError(t, store.DeletePKCERequestSession(ctx, "sig"))
+	})
+}
+
+func TestExtractAgentID(t *testing.T) {
+	t.Run("returns agent ID for brokerClient", func(t *testing.T) {
+		agent := testAgent()
+		bc := &brokerClient{agent: agent}
+		assert.Equal(t, agent.ID, extractAgentID(bc))
+	})
+
+	t.Run("panics for unexpected client type", func(t *testing.T) {
+		assert.Panics(t, func() {
+			extractAgentID(&fosite.DefaultClient{ID: "unexpected"})
+		})
+	})
+}
+
+func TestFositeStorage_InfrastructureErrors(t *testing.T) {
+	connectionErr := dstorage.NewStorageError("FindByCodeHash", dstorage.ErrorKindConnection, nil, "connection refused")
+	timeoutErr := dstorage.NewStorageError("GetByBrokerClientID", dstorage.ErrorKindTimeout, nil, "query timeout")
+
+	t.Run("GetAuthorizeCodeSession connection error is not ErrNotFound", func(t *testing.T) {
+		codeRepo := &mockCodeRepo{
+			findByCodeHashFunc: func(_ context.Context, _ string) (*dstorage.AuthorizationCode, error) {
+				return nil, connectionErr
+			},
+		}
+		store := NewFositeStorage(codeRepo, memory.NewAgentRepository(), memory.NewBrokerClientCredentialStore(), testSlogger())
+
+		_, err := store.GetAuthorizeCodeSession(context.Background(), "anycode", nil)
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, fosite.ErrNotFound)
+	})
+
+	t.Run("GetAuthorizeCodeSession not-found returns ErrNotFound", func(t *testing.T) {
+		notFoundErr := dstorage.NewStorageError("FindByCodeHash", dstorage.ErrorKindNotFound, nil, "not found")
+		codeRepo := &mockCodeRepo{
+			findByCodeHashFunc: func(_ context.Context, _ string) (*dstorage.AuthorizationCode, error) {
+				return nil, notFoundErr
+			},
+		}
+		store := NewFositeStorage(codeRepo, memory.NewAgentRepository(), memory.NewBrokerClientCredentialStore(), testSlogger())
+
+		_, err := store.GetAuthorizeCodeSession(context.Background(), "anycode", nil)
+		assert.ErrorIs(t, err, fosite.ErrNotFound)
+	})
+
+	t.Run("GetClient credential repo timeout is not ErrNotFound", func(t *testing.T) {
+		credRepo := &mockCredentialRepo{
+			getByBrokerClientIDFunc: func(_ context.Context, _ id.BrokerClientID) (*dstorage.BrokerClientCredential, error) {
+				return nil, timeoutErr
+			},
+		}
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), memory.NewAgentRepository(), credRepo, testSlogger())
+
+		_, err := store.GetClient(context.Background(), "broker_any")
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, fosite.ErrNotFound)
+	})
+
+	t.Run("GetClient agent repo timeout is not ErrNotFound", func(t *testing.T) {
+		agentID := id.NewAgentID()
+		cred := &dstorage.BrokerClientCredential{
+			ID:             id.NewCredentialID(),
+			AgentID:        agentID,
+			BrokerClientID: id.NewBrokerClientID("broker_infra_test"),
+			SecretHash:     "hash",
+		}
+		credRepo := memory.NewBrokerClientCredentialStore()
+		require.NoError(t, credRepo.Create(context.Background(), cred))
+
+		agentRepo := &mockAgentRepo{
+			getFunc: func(_ context.Context, _ id.AgentID) (*dstorage.Agent, error) {
+				return nil, dstorage.NewStorageError("Get", dstorage.ErrorKindTimeout, nil, "query timeout")
+			},
+		}
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), agentRepo, credRepo, testSlogger())
+
+		_, err := store.GetClient(context.Background(), cred.BrokerClientID.String())
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, fosite.ErrNotFound)
 	})
 }
