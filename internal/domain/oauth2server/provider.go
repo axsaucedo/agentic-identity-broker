@@ -331,7 +331,7 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	codeVerifier string,
 ) (*ports.TokenResponse, error) {
 	// Authenticate client
-	_, err := p.clientAuth.Authenticate(ctx, clientID, secret)
+	authedClient, err := p.clientAuth.Authenticate(ctx, clientID, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -341,6 +341,11 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	authCode, err := p.fositeStorage.codeRepo.FindByCodeHash(ctx, codeHash)
 	if err != nil {
 		return nil, fmt.Errorf("%w: authorization code not found", ErrInvalidGrant)
+	}
+
+	// Verify the authenticated client is the one the code was issued to
+	if authedClient.Agent.ID != authCode.AgentID {
+		return nil, fmt.Errorf("%w: code was not issued to this client", ErrInvalidGrant)
 	}
 
 	// Check code is not used

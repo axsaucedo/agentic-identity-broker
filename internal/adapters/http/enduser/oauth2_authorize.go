@@ -166,11 +166,13 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 			return
 		}
 		if errors.Is(err, oauth2server.ErrInvalidRequest) {
-			redirectWithError(w, r, authReq.RedirectURI, authReq.State, "invalid_request", "invalid authorization request")
+			// Return 400 directly — redirect_uri may not be validated yet at this point,
+			// so a redirect-based error response risks open redirect.
+			http.Error(w, "invalid_request: invalid authorization request", http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, oauth2server.ErrUnsupportedResponseType) {
-			redirectWithError(w, r, authReq.RedirectURI, authReq.State, "unsupported_response_type", "unsupported response type")
+			http.Error(w, "unsupported_response_type: unsupported response type", http.StatusBadRequest)
 			return
 		}
 		redirectWithError(w, r, authReq.RedirectURI, authReq.State, "server_error", "authorization failed")

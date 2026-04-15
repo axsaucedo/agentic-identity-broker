@@ -37,10 +37,19 @@ func NewClientCredentialsHandler(
 	}
 }
 
-// credentialResponse is the JSON response for credential operations.
-type credentialResponse struct {
+// credentialGenerateResponse is the JSON response for POST (generate/rotate).
+// Matches BrokerClientCredentialResponse schema in OpenAPI.
+type credentialGenerateResponse struct {
+	BrokerClientID        string  `json:"broker_client_id"`
+	ClientSecret          string  `json:"client_secret"`
+	CreatedAt             string  `json:"created_at"`
+	PreviousInvalidatedAt *string `json:"previous_invalidated_at,omitempty"`
+}
+
+// credentialMetadataResponse is the JSON response for GET (read-only metadata).
+// Matches BrokerClientCredentialMetadata schema in OpenAPI.
+type credentialMetadataResponse struct {
 	BrokerClientID string  `json:"broker_client_id"`
-	ClientSecret   string  `json:"client_secret,omitempty"` // Only present on generate/rotate
 	CreatedAt      string  `json:"created_at"`
 	RotatedAt      *string `json:"rotated_at,omitempty"`
 }
@@ -95,14 +104,14 @@ func (h *ClientCredentialsHandler) Generate(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	resp := credentialResponse{
+	resp := credentialGenerateResponse{
 		BrokerClientID: credential.BrokerClientID.String(),
 		ClientSecret:   plaintextSecret,
 		CreatedAt:      credential.CreatedAt.Format(time.RFC3339),
 	}
 	if credential.RotatedAt != nil {
 		rotatedStr := credential.RotatedAt.Format(time.RFC3339)
-		resp.RotatedAt = &rotatedStr
+		resp.PreviousInvalidatedAt = &rotatedStr
 	}
 
 	if isRotation {
@@ -157,7 +166,7 @@ func (h *ClientCredentialsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 	)
 
-	resp := credentialResponse{
+	resp := credentialMetadataResponse{
 		BrokerClientID: cred.BrokerClientID.String(),
 		CreatedAt:      cred.CreatedAt.Format(time.RFC3339),
 	}
