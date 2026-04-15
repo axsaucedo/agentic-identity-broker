@@ -10,7 +10,43 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
+
+// stubCredentialRepo is a hand-rolled stub for BrokerClientCredentialRepository.
+type stubCredentialRepo struct {
+	getByBrokerClientIDErr error
+}
+
+func (s *stubCredentialRepo) Create(_ context.Context, _ *storage.BrokerClientCredential) error {
+	return nil
+}
+func (s *stubCredentialRepo) GetByAgentID(_ context.Context, _ id.AgentID) (*storage.BrokerClientCredential, error) {
+	return nil, nil
+}
+func (s *stubCredentialRepo) GetByBrokerClientID(_ context.Context, _ id.BrokerClientID) (*storage.BrokerClientCredential, error) {
+	return nil, s.getByBrokerClientIDErr
+}
+func (s *stubCredentialRepo) Delete(_ context.Context, _ id.AgentID) error {
+	return nil
+}
+
+// stubAgentRepo is a hand-rolled stub for AgentRepository.
+type stubAgentRepo struct {
+	getErr error
+	agent  *storage.Agent
+}
+
+func (s *stubAgentRepo) Create(_ context.Context, _ *storage.Agent) error { return nil }
+func (s *stubAgentRepo) Get(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+	return s.agent, s.getErr
+}
+func (s *stubAgentRepo) Update(_ context.Context, _ *storage.Agent) error { return nil }
+func (s *stubAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { return nil }
+func (s *stubAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
+func (s *stubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
+	return nil, nil
+}
 
 func TestArgon2Hasher_HashAndCompare(t *testing.T) {
 	hasher := &Argon2Hasher{}
@@ -126,6 +162,35 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
 
 		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_unknown"), "secret")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+	})
+
+	t.Run("infrastructure error on credential lookup returns ErrInvalidClient", func(t *testing.T) {
+		infraErr := storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindConnection, nil, "connection refused")
+		credRepo := &stubCredentialRepo{getByBrokerClientIDErr: infraErr}
+		agentRepo := memory.NewAgentRepository()
+		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
+
+		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_any"), "secret")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+	})
+
+	t.Run("infrastructure error on agent lookup returns ErrInvalidClient", func(t *testing.T) {
+		// Credential exists but agent repo fails with a connection error.
+		credRepo := memory.NewBrokerClientCredentialStore()
+		agent := testAgent()
+		svc := NewClientAuthService(credRepo, nil, testSlogger())
+
+		cred, plaintext, err := svc.GenerateCredentials(agent.ID)
+		require.NoError(t, err)
+		err = credRepo.Create(context.Background(), cred)
+		require.NoError(t, err)
+
+		infraErr := storage.NewStorageError("Get", storage.ErrorKindConnection, nil, "connection refused")
+		agentRepo := &stubAgentRepo{getErr: infraErr}
+		svc = NewClientAuthService(credRepo, agentRepo, testSlogger())
+
+		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, plaintext)
 		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 

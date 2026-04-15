@@ -53,11 +53,17 @@ type AuthenticatedClient struct {
 func (s *ClientAuthService) Authenticate(ctx context.Context, clientID id.BrokerClientID, secret string) (*AuthenticatedClient, error) {
 	cred, err := s.credentialRepo.GetByBrokerClientID(ctx, clientID)
 	if err != nil {
+		if !isNotFoundError(err) {
+			s.logger.ErrorContext(ctx, "infrastructure error looking up client credential", "error", err)
+		}
 		return nil, ErrInvalidClient
 	}
 
 	agent, err := s.agentRepo.Get(ctx, cred.AgentID)
 	if err != nil {
+		if !isNotFoundError(err) {
+			s.logger.ErrorContext(ctx, "infrastructure error looking up agent for client", "agent_id", cred.AgentID, "error", err)
+		}
 		return nil, ErrInvalidClient
 	}
 
