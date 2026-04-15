@@ -259,6 +259,11 @@ type BrokerClientCredentialRepository interface {
 
 	// Delete removes the credential for a given agent.
 	Delete(ctx context.Context, agentID id.AgentID) error
+
+	// Rotate atomically replaces the existing credential for an agent with a new one.
+	// The old credential is only removed after the new one is successfully stored.
+	// Returns an error if no existing credential is found for the agent.
+	Rotate(ctx context.Context, agentID id.AgentID, newCredential *storage.BrokerClientCredential) error
 }
 
 // SigningKeyRepository manages asymmetric signing keys for JWT access tokens.

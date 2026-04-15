@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v3/jwa"
@@ -73,6 +74,7 @@ func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm s
 		Algorithm:           algorithm,
 		PrivateKeyEncrypted: encrypted,
 		IsCurrent:           makeCurrent,
+		CreatedAt:           time.Now().UTC(),
 	}
 
 	if makeCurrent {

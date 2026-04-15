@@ -71,14 +71,6 @@ func (h *ClientCredentialsHandler) Generate(w http.ResponseWriter, r *http.Reque
 	existing, _ := h.credentialRepo.GetByAgentID(r.Context(), agentID)
 	isRotation := existing != nil
 
-	if isRotation {
-		if err := h.credentialRepo.Delete(r.Context(), agentID); err != nil {
-			h.logger.Error("failed to delete existing credentials during rotation", "agent_id", agentID, "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
-	}
-
 	credential, plaintextSecret, err := h.clientAuth.GenerateCredentials(agentID)
 	if err != nil {
 		h.logger.Error("failed to generate credentials", "agent_id", agentID, "error", err)
@@ -90,12 +82,17 @@ func (h *ClientCredentialsHandler) Generate(w http.ResponseWriter, r *http.Reque
 	credential.CreatedAt = now
 	if isRotation {
 		credential.RotatedAt = &now
-	}
-
-	if err := h.credentialRepo.Create(r.Context(), credential); err != nil {
-		h.logger.Error("failed to store credentials", "agent_id", agentID, "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
+		if err := h.credentialRepo.Rotate(r.Context(), agentID, credential); err != nil {
+			h.logger.Error("failed to rotate credentials", "agent_id", agentID, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
+	} else {
+		if err := h.credentialRepo.Create(r.Context(), credential); err != nil {
+			h.logger.Error("failed to store credentials", "agent_id", agentID, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 	}
 
 	resp := credentialResponse{

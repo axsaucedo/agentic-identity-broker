@@ -45,7 +45,7 @@ func NewIssueTokenCodeIssuer(provider *oauth2server.Provider) *IssueTokenCodeIss
 func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *ports.AuthorizationRequest, principal string) (string, error) {
 	codeChallengeMethod := req.CodeChallengeMethod
 	if codeChallengeMethod == "" {
-		codeChallengeMethod = "S256"
+		return "", fmt.Errorf("%w: code_challenge_method is required (PKCE mandatory)", oauth2server.ErrInvalidRequest)
 	}
 
 	// Validate PKCE is provided (mandatory in issue_token mode)

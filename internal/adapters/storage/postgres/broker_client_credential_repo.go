@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -93,6 +94,47 @@ func (r *BrokerClientCredentialRepo) Delete(ctx context.Context, agentID id.Agen
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
 		return storage.NewStorageError("BrokerClientCredentialRepo.Delete", storage.ErrorKindNotFound, nil, "credential not found")
+	}
+	return nil
+}
+
+func (r *BrokerClientCredentialRepo) Rotate(ctx context.Context, agentID id.AgentID, newCredential *storage.BrokerClientCredential) error {
+	if r.adapter.db == nil {
+		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindConnection, nil, "database not initialized")
+	}
+
+	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
+	defer cancel()
+
+	tx, err := r.adapter.db.BeginTxx(execCtx, nil)
+	if err != nil {
+		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindUnknown, err, "failed to begin transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.ExecContext(execCtx,
+		`INSERT INTO broker_client_credentials (id, agent_id, broker_client_id, secret_hash, created_at, rotated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		newCredential.ID, newCredential.AgentID, newCredential.BrokerClientID,
+		newCredential.SecretHash, newCredential.CreatedAt, newCredential.RotatedAt,
+	)
+	if err != nil {
+		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindUnknown, err, "failed to insert new credential")
+	}
+
+	result, err := tx.ExecContext(execCtx,
+		`DELETE FROM broker_client_credentials WHERE agent_id = $1 AND id != $2`, agentID, newCredential.ID)
+	if err != nil {
+		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindUnknown, err, "failed to delete old credential")
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindNotFound, nil,
+			fmt.Sprintf("no existing credential found for agent %s", agentID))
+	}
+
+	if err := tx.Commit(); err != nil {
+		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindUnknown, err, "failed to commit rotation transaction")
 	}
 	return nil
 }

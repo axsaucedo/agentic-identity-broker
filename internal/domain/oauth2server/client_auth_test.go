@@ -27,6 +27,9 @@ func (m *mockCredentialRepo) GetByBrokerClientID(ctx context.Context, clientID i
 	return m.getByBrokerClientIDFunc(ctx, clientID)
 }
 func (m *mockCredentialRepo) Delete(_ context.Context, _ id.AgentID) error { return nil }
+func (m *mockCredentialRepo) Rotate(_ context.Context, _ id.AgentID, _ *storage.BrokerClientCredential) error {
+	return nil
+}
 
 type mockAgentRepo struct {
 	getFunc func(context.Context, id.AgentID) (*storage.Agent, error)

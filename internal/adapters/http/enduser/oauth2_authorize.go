@@ -150,7 +150,12 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 		return
 
 	case "proceed":
-		// Grant is active — fall through to issue local code below
+		// Grant is active — issue local authorization code below
+
+	default:
+		h.logger.Error("unexpected authorization decision action", "action", decision.Action)
+		redirectWithError(w, r, authReq.RedirectURI, authReq.State, "server_error", "unexpected authorization decision")
+		return
 	}
 
 	// Issue authorization code locally via the CodeIssuer strategy
