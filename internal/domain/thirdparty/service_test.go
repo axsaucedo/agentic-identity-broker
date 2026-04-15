@@ -3,7 +3,9 @@ package thirdparty
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -490,6 +492,74 @@ func TestThirdpartyOAuth2ProviderService_Update_WithNewSecret(t *testing.T) {
 	assert.True(t, entity.Secret.IsEncrypted(), "secret must be encrypted after update")
 	mockEnc.AssertExpectations(t)
 	mockRepo.AssertExpectations(t)
+}
+
+func TestThirdpartyOAuth2ProviderService_Update_ProvisionsBranchKey(t *testing.T) {
+	// Verifies that Update provisions the branch key BEFORE encrypting. This is the
+	// migration path: a service created with a different encryption backend (e.g. raw AES)
+	// has no branch key in the KMS key store; Update must provision it so encryption succeeds.
+	// Call-order is asserted via an atomic sequence counter: Create must increment it before
+	// Encrypt reads it, so the value seen by Encrypt is always > 0.
+	mockRepo := new(MockRepository)
+	mockEnc := new(MockEncryption)
+	mockBKM := new(MockBranchKeyManager)
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, mockBKM, false, slog.Default())
+
+	ctx := context.Background()
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("new-secret"))
+
+	var callSeq atomic.Int32 // incremented by each call; used to verify ordering
+
+	var createSeq int32
+	mockBKM.On("Create", ctx, svcID).
+		Return("sentinel-branch-key-id", nil).
+		Run(func(args mock.Arguments) {
+			createSeq = callSeq.Add(1)
+		})
+
+	var encryptSeq int32
+	mockEnc.On("Encrypt", ctx, []byte("new-secret"), map[string]string{"service_id": svcID.String()}).
+		Return([]byte("new-encrypted"), nil).
+		Run(func(args mock.Arguments) {
+			encryptSeq = callSeq.Add(1)
+		})
+
+	mockRepo.On("Update", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+		return e.Secret.IsEncrypted()
+	})).Return(nil)
+
+	err := svc.Update(ctx, entity)
+
+	require.NoError(t, err)
+	assert.True(t, entity.Secret.IsEncrypted(), "secret must be encrypted after update")
+	assert.Less(t, createSeq, encryptSeq, "branch key Create must be called before Encrypt")
+	mockBKM.AssertExpectations(t)
+	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestThirdpartyOAuth2ProviderService_Update_BranchKeyProvisioningFailure_AbortUpdate(t *testing.T) {
+	// If branch key provisioning fails (e.g. DynamoDB unavailable), Update must fail
+	// before attempting encryption so no partial state is written.
+	mockRepo := new(MockRepository)
+	mockEnc := new(MockEncryption)
+	mockBKM := new(MockBranchKeyManager)
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, mockBKM, false, slog.Default())
+
+	ctx := context.Background()
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("new-secret"))
+
+	mockBKM.On("Create", ctx, svcID).Return("", fmt.Errorf("DynamoDB unavailable"))
+
+	err := svc.Update(ctx, entity)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "branch key provisioning failed")
+	mockBKM.AssertExpectations(t)
+	mockEnc.AssertNotCalled(t, "Encrypt")
+	mockRepo.AssertNotCalled(t, "Update")
 }
 
 func TestThirdpartyOAuth2ProviderService_Update_EncryptedSecretFails(t *testing.T) {

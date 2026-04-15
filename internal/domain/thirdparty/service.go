@@ -22,9 +22,10 @@ import (
 //   - Create: validates entity, provisions branch key (if manager present),
 //     encrypts Secret{plaintext} → Secret{ciphertext}, stores entity
 //   - Get/List/Find: retrieves entity with Secret{ciphertext}, decrypts to Secret{plaintext}
-//   - Update: validates entity (requires plaintext Secret), encrypts Secret{plaintext} →
+//   - Update: validates entity (requires plaintext Secret), provisions branch key (if manager
+//     present, idempotent — safe for already-provisioned services), encrypts Secret{plaintext} →
 //     Secret{ciphertext}, stores entity. Encrypted state is rejected to ensure re-encryption
-//     always runs (e.g. during key rotation).
+//     always runs (e.g. during key rotation or after switching encryption backends).
 //
 // The repository (ThirdpartyOAuth2ProviderRepository) is unaware of encryption mechanics
 // and treats Secret ciphertext as opaque binary data.
@@ -169,13 +170,36 @@ func (s *ThirdpartyOAuth2ProviderService) Get(
 // entity.Secret must be in plaintext state — the HTTP contract requires callers to
 // always supply the secret. Passing encrypted state is rejected by ValidateForUpdate.
 // On success, entity.Secret is in encrypted state.
+//
+// If a branchKeyManager is configured, Update provisions the branch key before
+// encrypting. This handles the migration case where a service was originally created
+// with a different encryption backend (e.g. raw AES in-memory) that has no branch key
+// entry in the current KMS key store. branchKeyManager.Create is idempotent: it is safe
+// to call on services whose branch key already exists.
 func (s *ThirdpartyOAuth2ProviderService) Update(
 	ctx context.Context,
 	entity *model.ThirdpartyOAuth2ProviderEntity,
 ) error {
-	// Validate before encryption to prevent wasted KMS calls on invalid input.
+	// Validate before any side effects to prevent wasted KMS calls on invalid input.
 	if err := entity.ValidateForUpdate(s.skipHTTPSValidation); err != nil {
 		return fmt.Errorf("provider validation failed: %w", err)
+	}
+
+	// Provision branch key before encrypting (idempotent — safe for already-provisioned services).
+	// Required when updating a service that was created with a different encryption backend and
+	// therefore has no branch key in the current KMS key store.
+	if s.branchKeyManager != nil {
+		s.logger.Info("ensuring branch key exists for service update", "service_id", entity.ID)
+		branchKeyID, err := s.branchKeyManager.Create(ctx, entity.ID)
+		if err != nil {
+			s.logger.Error("failed to ensure branch key for update",
+				"service_id", entity.ID,
+				"error", err)
+			return fmt.Errorf("branch key provisioning failed: %w", err)
+		}
+		s.logger.Info("branch key ready for update",
+			"service_id", entity.ID,
+			"branch_key_id", branchKeyID)
 	}
 
 	plaintext, err := entity.Secret.GetPlaintext()

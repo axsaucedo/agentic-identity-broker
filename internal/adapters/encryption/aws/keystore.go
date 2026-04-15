@@ -133,8 +133,12 @@ func createKeyStore(ctx context.Context, ksCfg KeyStoreConfig, awsCfg *ports.AWS
 }
 
 // CreateBranchKey creates a branch key in DynamoDB with the specified ID and encryption context.
-// Returns the branch key identifier or error if creation fails.
-// Note: AWS Encryption SDK KeyStore requires encryption context when using custom branch key identifiers.
+// This operation is idempotent: if a branch key with the given ID already exists it is
+// returned without creating a new one. This allows callers (including service Update paths
+// where a service was originally created with a different encryption backend) to call
+// CreateBranchKey unconditionally without failing on pre-existing keys.
+//
+// Returns the branch key identifier or error if provisioning fails.
 func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (string, error) {
 	if ks == nil || ks.client == nil {
 		return "", encryption.NewKEKUnavailableError("KeyStore not initialized", nil)
@@ -143,6 +147,23 @@ func (ks *KeyStore) CreateBranchKey(ctx context.Context, branchKeyID string) (st
 	if branchKeyID == "" {
 		return "", encryption.NewKEKUnavailableError("branchKeyID cannot be empty", nil)
 	}
+
+	// Idempotency check: if the branch key already exists, return it without creating a duplicate.
+	// This handles the migration case where a service was created with a different encryption
+	// backend (e.g. raw AES) and then updated after switching to KMS — the branch key for
+	// that service ID has not yet been provisioned in DynamoDB, but for services already using
+	// KMS the branch key exists and CreateKey would fail.
+	_, getErr := ks.client.GetActiveBranchKey(ctx, keystoretypes.GetActiveBranchKeyInput{
+		BranchKeyIdentifier: branchKeyID,
+	})
+	if getErr == nil {
+		// Branch key already exists; return idempotently.
+		return branchKeyID, nil
+	}
+	// getErr is non-nil: either the key does not exist yet (expected migration path) or
+	// DynamoDB/KMS is temporarily unavailable. We cannot reliably distinguish the two cases
+	// from a KeyStoreException, so we attempt CreateKey regardless. If the infrastructure
+	// is unavailable, CreateKey will also fail and return a clear error to the caller.
 
 	// AWS Encryption SDK KeyStore requires encryption context when using custom branch key identifiers
 	// Extract service_id from branch key ID using the centralized parser
