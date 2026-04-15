@@ -75,6 +75,57 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 
 		assert.Equal(t, sha256Hex(tokenStr), sig)
 	})
+
+	t.Run("signature verifies against JWKS and all required claims are present", func(t *testing.T) {
+		const issuer = "https://issuer.example.com"
+		const agentID = "my-agent"
+		const subject = "user@example.com"
+
+		svc, repo := newTestSigningKeyService()
+		ctx := context.Background()
+		_, err := svc.GenerateAndStoreKey(ctx, "ES256", true)
+		require.NoError(t, err)
+
+		strategy, err := NewJWXAccessTokenStrategy(svc, repo, issuer, time.Hour, nil, testSlogger())
+		require.NoError(t, err)
+
+		tokenStr, _, err := strategy.GenerateAccessToken(ctx, buildTestRequest(agentID, subject, []string{"read", "write"}))
+		require.NoError(t, err)
+
+		jwks, err := svc.BuildJWKS(ctx)
+		require.NoError(t, err)
+
+		tok, err := jwt.Parse([]byte(tokenStr), jwt.WithKeySet(jwks))
+		require.NoError(t, err, "JWT signature must verify against the JWKS public key")
+
+		iss, ok := tok.Issuer()
+		require.True(t, ok, "iss must be present")
+		assert.Equal(t, issuer, iss)
+
+		sub, ok := tok.Subject()
+		require.True(t, ok, "sub must be present")
+		assert.Equal(t, subject, sub)
+
+		iat, ok := tok.IssuedAt()
+		require.True(t, ok, "iat must be present")
+		assert.False(t, iat.IsZero())
+
+		exp, ok := tok.Expiration()
+		require.True(t, ok, "exp must be present")
+		assert.True(t, exp.After(time.Now()), "exp must be in the future")
+
+		jti, ok := tok.JwtID()
+		require.True(t, ok, "jti must be present")
+		assert.NotEmpty(t, jti)
+
+		var gotAgentID string
+		require.NoError(t, tok.Get("agent_id", &gotAgentID), "agent_id must be present")
+		assert.Equal(t, agentID, gotAgentID)
+
+		var scope string
+		require.NoError(t, tok.Get("scope", &scope), "scope must be present")
+		assert.Equal(t, "read write", scope)
+	})
 }
 
 func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {

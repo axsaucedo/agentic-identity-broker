@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -563,6 +564,99 @@ func (r *raceCodeRepo) MarkUsed(_ context.Context, _ id.AuthorizationCodeID) err
 
 func (r *raceCodeRepo) DeleteExpired(ctx context.Context) (int, error) {
 	return r.delegate.DeleteExpired(ctx)
+}
+
+// TestProvider_AccessToken_ClaimsAndSignature verifies that tokens issued via both
+// grant flows carry all required claims and a verifiable ECDSA signature.
+func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
+	const issuer = "https://broker.example.com"
+
+	verifyToken := func(t *testing.T, provider *Provider, tokenStr, wantSub, wantAgentID, wantScope string) {
+		t.Helper()
+		ctx := context.Background()
+
+		jwks, err := provider.signingKeyService.BuildJWKS(ctx)
+		require.NoError(t, err)
+
+		tok, err := jwt.Parse([]byte(tokenStr), jwt.WithKeySet(jwks))
+		require.NoError(t, err, "JWT signature must verify against the JWKS public key")
+
+		iss, ok := tok.Issuer()
+		require.True(t, ok, "iss must be present")
+		assert.Equal(t, issuer, iss)
+
+		sub, ok := tok.Subject()
+		require.True(t, ok, "sub must be present")
+		assert.Equal(t, wantSub, sub)
+
+		iat, ok := tok.IssuedAt()
+		require.True(t, ok, "iat must be present")
+		assert.False(t, iat.IsZero())
+
+		exp, ok := tok.Expiration()
+		require.True(t, ok, "exp must be present")
+		assert.True(t, exp.After(time.Now()), "exp must be in the future")
+
+		jti, ok := tok.JwtID()
+		require.True(t, ok, "jti must be present")
+		assert.NotEmpty(t, jti)
+
+		var gotAgentID string
+		require.NoError(t, tok.Get("agent_id", &gotAgentID), "agent_id must be present")
+		assert.Equal(t, wantAgentID, gotAgentID)
+
+		var scope string
+		require.NoError(t, tok.Get("scope", &scope), "scope must be present")
+		assert.Equal(t, wantScope, scope)
+	}
+
+	t.Run("client_credentials flow", func(t *testing.T) {
+		provider := newTestProvider(t)
+		_, cred, plaintext := setupTestCredentials(t, provider)
+
+		resp, err := provider.HandleClientCredentials(context.Background(), cred.BrokerClientID, plaintext, "read write")
+		require.NoError(t, err)
+
+		// In client_credentials, sub falls back to the broker client ID (no session subject).
+		// agent_id is also the broker client ID (brokerClient.GetID() returns BrokerClientID).
+		verifyToken(t, provider, resp.AccessToken, cred.BrokerClientID.String(), cred.BrokerClientID.String(), "read write")
+	})
+
+	t.Run("authorization_code flow", func(t *testing.T) {
+		provider := newTestProvider(t)
+		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
+
+		verifier := "pkce-verifier-for-claims-test-abcdefghijklm" // 43 chars (RFC 7636 minimum)
+		challenge := generateS256Challenge(verifier)
+
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			cred.BrokerClientID,
+			"http://localhost:8080/callback",
+			"code",
+			"read write",
+			"state",
+			challenge,
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+
+		resp, err := provider.HandleAuthorizationCodeExchange(
+			context.Background(),
+			cred.BrokerClientID,
+			plaintext,
+			code,
+			"http://localhost:8080/callback",
+			verifier,
+		)
+		require.NoError(t, err)
+
+		// agent_id is the broker client ID; sub is the authenticated principal.
+		verifyToken(t, provider, resp.AccessToken, "user@example.com", cred.BrokerClientID.String(), "read write")
+	})
 }
 
 // generateS256Challenge generates a PKCE S256 challenge from a verifier.
