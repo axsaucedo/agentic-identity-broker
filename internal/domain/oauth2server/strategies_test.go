@@ -96,6 +96,8 @@ func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
 		{"query component rejected (RFC 8414)", "https://issuer.example.com?tenant=a", true},
 		{"host-less https rejected", "https:///path", true},
 		{"single-slash https rejected", "https:/issuer.example.com", true},
+		{"port-only host rejected", "https://:443", true},
+		{"empty query component rejected", "https://issuer.example.com?", true},
 		{"whitespace-padded accepted after trim", " https://issuer.example.com ", false},
 		{"valid https accepted", "https://issuer.example.com", false},
 		{"valid http accepted", "http://localhost:8080", false},

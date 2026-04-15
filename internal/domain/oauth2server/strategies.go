@@ -199,10 +199,10 @@ func validateIssuerURI(s string) (string, error) {
 	if parsed.Scheme != "https" && parsed.Scheme != "http" {
 		return "", fmt.Errorf("issuerURI scheme must be http or https (got %q)", parsed.Scheme)
 	}
-	if parsed.Host == "" {
+	if parsed.Hostname() == "" {
 		return "", fmt.Errorf("issuerURI must have a non-empty host (got %q)", s)
 	}
-	if parsed.RawQuery != "" {
+	if parsed.RawQuery != "" || parsed.ForceQuery {
 		return "", fmt.Errorf("issuerURI must not contain a query component (got %q)", s)
 	}
 	if parsed.Fragment != "" {
