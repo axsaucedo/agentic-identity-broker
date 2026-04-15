@@ -1,17 +1,6 @@
 package oauth2server
 
-import (
-	"errors"
-
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-)
-
-// isNotFoundError reports whether err is a storage not-found error.
-// Used to distinguish expected misses (legitimate 401) from infrastructure failures.
-func isNotFoundError(err error) bool {
-	var se *storage.StorageError
-	return errors.As(err, &se) && se.Kind == storage.ErrorKindNotFound
-}
+import "errors"
 
 // Sentinel errors for OAuth2 error classification.
 // These enable callers to use errors.Is() instead of string matching.

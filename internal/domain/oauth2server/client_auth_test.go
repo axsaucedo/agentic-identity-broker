@@ -1,7 +1,9 @@
 package oauth2server
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -12,6 +14,11 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
+
+func bufLogger() (*slog.Logger, *bytes.Buffer) {
+	buf := &bytes.Buffer{}
+	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelError})), buf
+}
 
 type mockCredentialRepo struct {
 	getByBrokerClientIDFunc func(context.Context, id.BrokerClientID) (*storage.BrokerClientCredential, error)
@@ -183,19 +190,35 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 
-	t.Run("credential repo connection error returns ErrInvalidClient", func(t *testing.T) {
+	t.Run("credential repo connection error logs at error level", func(t *testing.T) {
 		credRepo := &mockCredentialRepo{
 			getByBrokerClientIDFunc: func(_ context.Context, _ id.BrokerClientID) (*storage.BrokerClientCredential, error) {
 				return nil, storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindConnection, nil, "connection refused")
 			},
 		}
-		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), testSlogger())
+		logger, buf := bufLogger()
+		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
 
 		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_any"), "secret")
 		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.Contains(t, buf.String(), "storage failure during client authentication")
 	})
 
-	t.Run("agent repo timeout error returns ErrInvalidClient", func(t *testing.T) {
+	t.Run("credential repo not-found does not log an error", func(t *testing.T) {
+		credRepo := &mockCredentialRepo{
+			getByBrokerClientIDFunc: func(_ context.Context, _ id.BrokerClientID) (*storage.BrokerClientCredential, error) {
+				return nil, storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindNotFound, nil, "not found")
+			},
+		}
+		logger, buf := bufLogger()
+		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
+
+		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_unknown"), "secret")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.Empty(t, buf.String(), "not-found must not produce an error log")
+	})
+
+	t.Run("agent repo timeout error logs at error level", func(t *testing.T) {
 		credRepo := memory.NewBrokerClientCredentialStore()
 		agentID := id.NewAgentID()
 		cred := &storage.BrokerClientCredential{
@@ -204,17 +227,42 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 			BrokerClientID: id.NewBrokerClientID("broker_timeout_test"),
 			SecretHash:     "irrelevant",
 		}
-		err := credRepo.Create(context.Background(), cred)
-		require.NoError(t, err)
+		require.NoError(t, credRepo.Create(context.Background(), cred))
 
 		agentRepo := &mockAgentRepo{
 			getFunc: func(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
 				return nil, storage.NewStorageError("Get", storage.ErrorKindTimeout, nil, "query timeout")
 			},
 		}
-		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
+		logger, buf := bufLogger()
+		svc := NewClientAuthService(credRepo, agentRepo, logger)
 
-		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, "irrelevant")
+		_, err := svc.Authenticate(context.Background(), cred.BrokerClientID, "irrelevant")
 		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.Contains(t, buf.String(), "storage failure during client authentication")
+	})
+
+	t.Run("agent repo not-found does not log an error", func(t *testing.T) {
+		credRepo := memory.NewBrokerClientCredentialStore()
+		agentID := id.NewAgentID()
+		cred := &storage.BrokerClientCredential{
+			ID:             id.NewCredentialID(),
+			AgentID:        agentID,
+			BrokerClientID: id.NewBrokerClientID("broker_nf_agent_test"),
+			SecretHash:     "irrelevant",
+		}
+		require.NoError(t, credRepo.Create(context.Background(), cred))
+
+		agentRepo := &mockAgentRepo{
+			getFunc: func(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+				return nil, storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "not found")
+			},
+		}
+		logger, buf := bufLogger()
+		svc := NewClientAuthService(credRepo, agentRepo, logger)
+
+		_, err := svc.Authenticate(context.Background(), cred.BrokerClientID, "irrelevant")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.Empty(t, buf.String(), "not-found on agent lookup must not produce an error log")
 	})
 }
