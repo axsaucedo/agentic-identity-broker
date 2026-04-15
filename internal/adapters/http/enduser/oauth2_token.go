@@ -589,11 +589,6 @@ func (h *OAuth2TokenHandler) handleMintingError(w http.ResponseWriter, err error
 
 // writeTokenResponse writes a successful OAuth2 token response from the minting strategy.
 func (h *OAuth2TokenHandler) writeTokenResponse(w http.ResponseWriter, resp *ports.TokenResponse) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
-	w.WriteHeader(http.StatusOK)
-
 	tokenResp := map[string]interface{}{
 		"access_token": resp.AccessToken,
 		"token_type":   resp.TokenType,
@@ -603,9 +598,18 @@ func (h *OAuth2TokenHandler) writeTokenResponse(w http.ResponseWriter, resp *por
 		tokenResp["scope"] = resp.Scope
 	}
 
-	if err := json.NewEncoder(w).Encode(tokenResp); err != nil {
+	body, err := json.Marshal(tokenResp)
+	if err != nil {
 		if h.Logger != nil {
 			h.Logger.Error("failed to encode token response", "error", err)
 		}
+		http.Error(w, `{"error":"server_error"}`, http.StatusInternalServerError)
+		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
