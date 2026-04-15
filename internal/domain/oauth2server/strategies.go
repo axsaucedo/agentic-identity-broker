@@ -121,7 +121,9 @@ func (s *JWXAccessTokenStrategy) GenerateAccessToken(ctx context.Context, reques
 	}
 
 	// 6. Sign with kid
-	_ = privKey.Set(jwk.KeyIDKey, string(key.KID))
+	if err := privKey.Set(jwk.KeyIDKey, string(key.KID)); err != nil {
+		return "", "", fmt.Errorf("failed to set kid on signing key %s: %w", key.KID, err)
+	}
 	alg := algorithmToJWA(key.Algorithm)
 	signed, err := jwt.Sign(token, jwt.WithKey(alg, privKey))
 	if err != nil {
