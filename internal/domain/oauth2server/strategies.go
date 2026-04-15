@@ -43,6 +43,7 @@ type JWXAccessTokenStrategy struct {
 }
 
 // NewJWXAccessTokenStrategy creates a new JWX-based access token strategy.
+// Returns an error if issuerURI is empty or tokenTTL is not positive.
 func NewJWXAccessTokenStrategy(
 	signingKeyService *SigningKeyService,
 	signingKeyRepo ports.SigningKeyRepository,
@@ -50,7 +51,13 @@ func NewJWXAccessTokenStrategy(
 	tokenTTL time.Duration,
 	customClaimsEval *TokenClaimsEvaluator,
 	logger *slog.Logger,
-) *JWXAccessTokenStrategy {
+) (*JWXAccessTokenStrategy, error) {
+	if issuerURI == "" {
+		return nil, fmt.Errorf("issuerURI must not be empty")
+	}
+	if tokenTTL <= 0 {
+		return nil, fmt.Errorf("tokenTTL must be positive, got %v", tokenTTL)
+	}
 	return &JWXAccessTokenStrategy{
 		signingKeyService: signingKeyService,
 		signingKeyRepo:    signingKeyRepo,
@@ -58,7 +65,7 @@ func NewJWXAccessTokenStrategy(
 		tokenTTL:          tokenTTL,
 		customClaimsEval:  customClaimsEval,
 		logger:            logger,
-	}
+	}, nil
 }
 
 // GenerateAccessToken creates a signed JWT access token.

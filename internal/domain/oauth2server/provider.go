@@ -57,7 +57,10 @@ func NewProvider(
 	clientAuth := NewClientAuthService(credRepo, agentRepo, logger)
 
 	// Our strategies
-	accessStrategy := NewJWXAccessTokenStrategy(signingKeyService, signingKeyRepo, issuerURI, tokenTTL, customClaimsEval, logger)
+	accessStrategy, err := NewJWXAccessTokenStrategy(signingKeyService, signingKeyRepo, issuerURI, tokenTTL, customClaimsEval, logger)
+	if err != nil {
+		return nil, fmt.Errorf("invalid access token strategy configuration: %w", err)
+	}
 	codeStrategy := &RandomCodeStrategy{}
 
 	// Storage adapters

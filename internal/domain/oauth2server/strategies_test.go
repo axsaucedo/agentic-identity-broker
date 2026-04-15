@@ -48,7 +48,8 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 		key, err := svc.GenerateAndStoreKey(ctx, "ES256", true)
 		require.NoError(t, err)
 
-		strategy := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", time.Hour, nil, testSlogger())
+		strategy, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", time.Hour, nil, testSlogger())
+		require.NoError(t, err)
 		tokenStr, sig, err := strategy.GenerateAccessToken(ctx, buildTestRequest("agent", "user@example.com", []string{"read"}))
 		require.NoError(t, err)
 		require.NotEmpty(t, sig)
@@ -67,11 +68,40 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
 		require.NoError(t, err)
 
-		strategy := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", time.Hour, nil, testSlogger())
+		strategy, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", time.Hour, nil, testSlogger())
+		require.NoError(t, err)
 		tokenStr, sig, err := strategy.GenerateAccessToken(context.Background(), buildTestRequest("agent", "user@example.com", []string{"read"}))
 		require.NoError(t, err)
 
 		assert.Equal(t, sha256Hex(tokenStr), sig)
+	})
+}
+
+func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
+	svc, repo := newTestSigningKeyService()
+
+	t.Run("empty issuerURI rejected", func(t *testing.T) {
+		_, err := NewJWXAccessTokenStrategy(svc, repo, "", time.Hour, nil, testSlogger())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "issuerURI")
+	})
+
+	t.Run("zero tokenTTL rejected", func(t *testing.T) {
+		_, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", 0, nil, testSlogger())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tokenTTL")
+	})
+
+	t.Run("negative tokenTTL rejected", func(t *testing.T) {
+		_, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", -time.Second, nil, testSlogger())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tokenTTL")
+	})
+
+	t.Run("valid inputs accepted", func(t *testing.T) {
+		strategy, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", time.Hour, nil, testSlogger())
+		require.NoError(t, err)
+		assert.NotNil(t, strategy)
 	})
 }
 
@@ -83,7 +113,8 @@ func TestJWXAccessTokenStrategy_SubClaimNotOverridable(t *testing.T) {
 	eval, err := NewTokenClaimsEvaluator(`{"sub": "attacker@evil.com", "extra": "ok"}`)
 	require.NoError(t, err)
 
-	strategy := NewJWXAccessTokenStrategy(svc, repo, "https://broker.example.com", time.Hour, eval, testSlogger())
+	strategy, err := NewJWXAccessTokenStrategy(svc, repo, "https://broker.example.com", time.Hour, eval, testSlogger())
+	require.NoError(t, err)
 	req := buildTestRequest("my-agent", "legitimate@example.com", []string{"read"})
 
 	tokenStr, _, err := strategy.GenerateAccessToken(context.Background(), req)
