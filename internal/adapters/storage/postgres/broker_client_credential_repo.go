@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -55,7 +57,10 @@ func (r *BrokerClientCredentialRepo) GetByAgentID(ctx context.Context, agentID i
 		`SELECT id, agent_id, broker_client_id, secret_hash, created_at, rotated_at
 		 FROM broker_client_credentials WHERE agent_id = $1`, agentID)
 	if err != nil {
-		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindNotFound, err, "credential not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindNotFound, err, "credential not found")
+		}
+		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindUnknown, err, "failed to query credential")
 	}
 	return &cred, nil
 }
@@ -73,7 +78,10 @@ func (r *BrokerClientCredentialRepo) GetByBrokerClientID(ctx context.Context, cl
 		`SELECT id, agent_id, broker_client_id, secret_hash, created_at, rotated_at
 		 FROM broker_client_credentials WHERE broker_client_id = $1`, clientID)
 	if err != nil {
-		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindNotFound, err, "credential not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindNotFound, err, "credential not found")
+		}
+		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindUnknown, err, "failed to query credential")
 	}
 	return &cred, nil
 }
