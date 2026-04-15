@@ -1,7 +1,9 @@
 package oauth2server
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -12,6 +14,13 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
+
+// bufLogger returns a logger that writes into buf and a pointer to that buffer.
+func bufLogger() (*slog.Logger, *bytes.Buffer) {
+	buf := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelError}))
+	return logger, buf
+}
 
 // stubCredentialRepo is a hand-rolled stub for BrokerClientCredentialRepository.
 type stubCredentialRepo struct {
@@ -165,33 +174,43 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 
-	t.Run("infrastructure error on credential lookup returns ErrInvalidClient", func(t *testing.T) {
+	t.Run("infrastructure error on credential lookup logs at error level", func(t *testing.T) {
 		infraErr := storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindConnection, nil, "connection refused")
 		credRepo := &stubCredentialRepo{getByBrokerClientIDErr: infraErr}
-		agentRepo := memory.NewAgentRepository()
-		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
+		logger, buf := bufLogger()
+		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
 
 		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_any"), "secret")
 		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.Contains(t, buf.String(), "infrastructure error looking up client credential")
 	})
 
-	t.Run("infrastructure error on agent lookup returns ErrInvalidClient", func(t *testing.T) {
-		// Credential exists but agent repo fails with a connection error.
+	t.Run("not-found on credential lookup does not log an error", func(t *testing.T) {
+		notFoundErr := storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindNotFound, nil, "not found")
+		credRepo := &stubCredentialRepo{getByBrokerClientIDErr: notFoundErr}
+		logger, buf := bufLogger()
+		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
+
+		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_unknown"), "secret")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.Empty(t, buf.String(), "not-found misses must not produce an error log")
+	})
+
+	t.Run("infrastructure error on agent lookup logs at error level", func(t *testing.T) {
 		credRepo := memory.NewBrokerClientCredentialStore()
 		agent := testAgent()
-		svc := NewClientAuthService(credRepo, nil, testSlogger())
-
-		cred, plaintext, err := svc.GenerateCredentials(agent.ID)
+		setupSvc := NewClientAuthService(credRepo, nil, testSlogger())
+		cred, plaintext, err := setupSvc.GenerateCredentials(agent.ID)
 		require.NoError(t, err)
-		err = credRepo.Create(context.Background(), cred)
-		require.NoError(t, err)
+		require.NoError(t, credRepo.Create(context.Background(), cred))
 
 		infraErr := storage.NewStorageError("Get", storage.ErrorKindConnection, nil, "connection refused")
-		agentRepo := &stubAgentRepo{getErr: infraErr}
-		svc = NewClientAuthService(credRepo, agentRepo, testSlogger())
+		logger, buf := bufLogger()
+		svc := NewClientAuthService(credRepo, &stubAgentRepo{getErr: infraErr}, logger)
 
 		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, plaintext)
 		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.Contains(t, buf.String(), "infrastructure error looking up agent for client")
 	})
 
 	t.Run("wrong secret fails", func(t *testing.T) {
