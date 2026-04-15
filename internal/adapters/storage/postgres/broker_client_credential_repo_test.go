@@ -5,6 +5,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -114,6 +115,32 @@ func TestBrokerClientCredentialRepo_GetByBrokerClientID(t *testing.T) {
 	assert.Equal(t, agent.ID, got.AgentID)
 }
 
+func TestBrokerClientCredentialRepo_GetByAgentID_NotFound(t *testing.T) {
+	adapter, cleanup := setupCredentialTestDB(t)
+	defer cleanup()
+
+	repo := NewBrokerClientCredentialRepo(adapter)
+	_, err := repo.GetByAgentID(context.Background(), id.NewAgentID())
+	require.Error(t, err)
+
+	var se *storage.StorageError
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
+}
+
+func TestBrokerClientCredentialRepo_GetByBrokerClientID_NotFound(t *testing.T) {
+	adapter, cleanup := setupCredentialTestDB(t)
+	defer cleanup()
+
+	repo := NewBrokerClientCredentialRepo(adapter)
+	_, err := repo.GetByBrokerClientID(context.Background(), id.NewBrokerClientID("broker_nonexistent12345"))
+	require.Error(t, err)
+
+	var se *storage.StorageError
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
+}
+
 func TestBrokerClientCredentialRepo_Delete(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
@@ -136,7 +163,10 @@ func TestBrokerClientCredentialRepo_Delete(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = repo.GetByAgentID(ctx, agent.ID)
-	assert.Error(t, err)
+	require.Error(t, err)
+	var se *storage.StorageError
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
 }
 
 func TestBrokerClientCredentialRepo_UniqueAgentID(t *testing.T) {

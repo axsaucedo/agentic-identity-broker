@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -61,7 +62,10 @@ func (r *AuthorizationCodeRepo) FindByCodeHash(ctx context.Context, codeHash str
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.NewStorageError("AuthorizationCodeRepo.FindByCodeHash", storage.ErrorKindNotFound, err, "authorization code not found")
 		}
-		return nil, storage.NewStorageError("AuthorizationCodeRepo.FindByCodeHash", storage.ErrorKindUnknown, err, "failed to query authorization code")
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			return nil, storage.NewStorageError("AuthorizationCodeRepo.FindByCodeHash", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return nil, storage.NewStorageError("AuthorizationCodeRepo.FindByCodeHash", storage.ErrorKindConnection, err, "failed to query authorization code")
 	}
 	return &code, nil
 }
