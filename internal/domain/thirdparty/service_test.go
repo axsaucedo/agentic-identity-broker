@@ -3,7 +3,9 @@ package thirdparty
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -399,6 +401,10 @@ func TestThirdpartyOAuth2ProviderService_Get_NotFound(t *testing.T) {
 }
 
 // CRITICAL SECURITY TEST: cross-service token swap prevention via context binding
+// Even though Get is graceful on decryption failure (returns entity with encrypted secret),
+// the security property is maintained: the entity's Secret is NOT in plaintext state,
+// so any caller attempting to use the secret (e.g. OAuth2SessionService) will fail
+// because Secret.GetPlaintext() returns an error for encrypted secrets.
 func TestThirdpartyOAuth2ProviderService_CrossServiceProtection(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
@@ -419,11 +425,46 @@ func TestThirdpartyOAuth2ProviderService_CrossServiceProtection(t *testing.T) {
 	mockEnc.On("Decrypt", ctx, []byte("encrypted-for-a"), map[string]string{"service_id": svcAID.String()}).
 		Return(nil, contextMismatchErr)
 
-	_, err := svc.Get(ctx, svcAID)
+	result, err := svc.Get(ctx, svcAID)
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to decrypt")
+	// Get returns the entity gracefully (no error) but secret remains encrypted
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	// Security assertion: secret is NOT in plaintext state — callers cannot extract it
+	assert.True(t, result.Secret.IsEncrypted(), "secret must remain encrypted when decryption fails")
+	assert.False(t, result.Secret.IsPlaintext(), "secret must NOT be plaintext when decryption fails")
+	_, ptErr := result.Secret.GetPlaintext()
+	assert.Error(t, ptErr, "GetPlaintext must fail for encrypted secret — prevents cross-service token swap")
 	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestThirdpartyOAuth2ProviderService_Get_DecryptionFailure_ReturnsEncryptedEntity(t *testing.T) {
+	mockRepo := new(MockRepository)
+	mockEnc := new(MockEncryption)
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
+
+	ctx := context.Background()
+	svcID := id.NewServiceID()
+	storedEntity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          svcID,
+		DisplayName: "GitHub",
+		Secret:      model.NewEncryptedSecret([]byte("old-encryption-ciphertext")),
+	}
+	mockRepo.On("Get", ctx, svcID).Return(storedEntity, nil)
+	mockEnc.On("Decrypt", ctx, []byte("old-encryption-ciphertext"), map[string]string{"service_id": svcID.String()}).
+		Return(nil, errors.New("decryption failed: wrong encryption backend"))
+
+	result, err := svc.Get(ctx, svcID)
+
+	// Get succeeds gracefully — entity returned with encrypted secret
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, svcID, result.ID)
+	assert.Equal(t, "GitHub", result.DisplayName)
+	assert.True(t, result.Secret.IsEncrypted(), "secret should remain encrypted on decryption failure")
+	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
 }
 
 // =============================================================================
@@ -451,6 +492,74 @@ func TestThirdpartyOAuth2ProviderService_Update_WithNewSecret(t *testing.T) {
 	assert.True(t, entity.Secret.IsEncrypted(), "secret must be encrypted after update")
 	mockEnc.AssertExpectations(t)
 	mockRepo.AssertExpectations(t)
+}
+
+func TestThirdpartyOAuth2ProviderService_Update_ProvisionsBranchKey(t *testing.T) {
+	// Verifies that Update provisions the branch key BEFORE encrypting. This is the
+	// migration path: a service created with a different encryption backend (e.g. raw AES)
+	// has no branch key in the KMS key store; Update must provision it so encryption succeeds.
+	// Call-order is asserted via an atomic sequence counter: Create must increment it before
+	// Encrypt reads it, so the value seen by Encrypt is always > 0.
+	mockRepo := new(MockRepository)
+	mockEnc := new(MockEncryption)
+	mockBKM := new(MockBranchKeyManager)
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, mockBKM, false, slog.Default())
+
+	ctx := context.Background()
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("new-secret"))
+
+	var callSeq atomic.Int32 // incremented by each call; used to verify ordering
+
+	var createSeq int32
+	mockBKM.On("Create", ctx, svcID).
+		Return("sentinel-branch-key-id", nil).
+		Run(func(args mock.Arguments) {
+			createSeq = callSeq.Add(1)
+		})
+
+	var encryptSeq int32
+	mockEnc.On("Encrypt", ctx, []byte("new-secret"), map[string]string{"service_id": svcID.String()}).
+		Return([]byte("new-encrypted"), nil).
+		Run(func(args mock.Arguments) {
+			encryptSeq = callSeq.Add(1)
+		})
+
+	mockRepo.On("Update", ctx, mock.MatchedBy(func(e *model.ThirdpartyOAuth2ProviderEntity) bool {
+		return e.Secret.IsEncrypted()
+	})).Return(nil)
+
+	err := svc.Update(ctx, entity)
+
+	require.NoError(t, err)
+	assert.True(t, entity.Secret.IsEncrypted(), "secret must be encrypted after update")
+	assert.Less(t, createSeq, encryptSeq, "branch key Create must be called before Encrypt")
+	mockBKM.AssertExpectations(t)
+	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
+}
+
+func TestThirdpartyOAuth2ProviderService_Update_BranchKeyProvisioningFailure_AbortUpdate(t *testing.T) {
+	// If branch key provisioning fails (e.g. DynamoDB unavailable), Update must fail
+	// before attempting encryption so no partial state is written.
+	mockRepo := new(MockRepository)
+	mockEnc := new(MockEncryption)
+	mockBKM := new(MockBranchKeyManager)
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, mockBKM, false, slog.Default())
+
+	ctx := context.Background()
+	svcID := id.NewServiceID()
+	entity := minimalValidEntity(svcID, model.NewPlaintextSecret("new-secret"))
+
+	mockBKM.On("Create", ctx, svcID).Return("", fmt.Errorf("DynamoDB unavailable"))
+
+	err := svc.Update(ctx, entity)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "branch key provisioning failed")
+	mockBKM.AssertExpectations(t)
+	mockEnc.AssertNotCalled(t, "Encrypt")
+	mockRepo.AssertNotCalled(t, "Update")
 }
 
 func TestThirdpartyOAuth2ProviderService_Update_EncryptedSecretFails(t *testing.T) {
@@ -506,7 +615,7 @@ func TestThirdpartyOAuth2ProviderService_List_DecryptsAll(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-func TestThirdpartyOAuth2ProviderService_List_FailFastOnDecryptionError(t *testing.T) {
+func TestThirdpartyOAuth2ProviderService_List_GracefulDecryptionFailure(t *testing.T) {
 	mockRepo := new(MockRepository)
 	mockEnc := new(MockEncryption)
 	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
@@ -526,10 +635,20 @@ func TestThirdpartyOAuth2ProviderService_List_FailFastOnDecryptionError(t *testi
 
 	results, err := svc.List(ctx)
 
-	assert.Error(t, err)
-	assert.Nil(t, results)
-	assert.Contains(t, err.Error(), svc2ID.String())
+	// List succeeds even when individual decryption fails
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+
+	// First entity is decrypted successfully
+	pt1, err := results[0].Secret.GetPlaintext()
+	require.NoError(t, err)
+	assert.Equal(t, "secret-1", pt1)
+
+	// Second entity is returned with encrypted secret (decryption failed gracefully)
+	assert.True(t, results[1].Secret.IsEncrypted(), "failed entity should retain encrypted secret")
+	assert.Equal(t, svc2ID, results[1].ID)
 	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
 }
 
 // =============================================================================
@@ -580,9 +699,31 @@ func TestThirdpartyOAuth2ProviderService_FindByProtectedResource_DecryptsSecret(
 	mockRepo.AssertExpectations(t)
 }
 
-// =============================================================================
-// Service ID-only encryption context (ADR 008)
-// =============================================================================
+func TestThirdpartyOAuth2ProviderService_FindByProtectedResource_DecryptionFailure_ReturnsEncryptedEntity(t *testing.T) {
+	mockRepo := new(MockRepository)
+	mockEnc := new(MockEncryption)
+	svc := NewThirdpartyOAuth2ProviderService(mockRepo, mockEnc, nil, false, slog.Default())
+
+	ctx := context.Background()
+	svcID := id.NewServiceID()
+	storedEntity := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:     svcID,
+		Secret: model.NewEncryptedSecret([]byte("old-ciphertext")),
+	}
+	mockRepo.On("FindByProtectedResource", ctx, "https://api.example.com").Return(storedEntity, nil)
+	mockEnc.On("Decrypt", ctx, []byte("old-ciphertext"), map[string]string{"service_id": svcID.String()}).
+		Return(nil, errors.New("decryption failed: wrong encryption backend"))
+
+	result, err := svc.FindByProtectedResource(ctx, "https://api.example.com")
+
+	// Returns entity with encrypted secret instead of failing
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, svcID, result.ID)
+	assert.True(t, result.Secret.IsEncrypted(), "secret should remain encrypted on decryption failure")
+	mockEnc.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
+}
 
 func TestThirdpartyOAuth2ProviderService_Create_ServiceIDOnlyContext(t *testing.T) {
 	mockRepo := new(MockRepository)
