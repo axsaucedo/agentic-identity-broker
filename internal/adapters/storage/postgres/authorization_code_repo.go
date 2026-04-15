@@ -83,14 +83,7 @@ func (r *AuthorizationCodeRepo) MarkUsed(ctx context.Context, codeID id.Authoriz
 	if err != nil {
 		return storage.NewStorageError("AuthorizationCodeRepo.MarkUsed", storage.ErrorKindUnknown, err, "failed to mark code as used")
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return storage.NewStorageError("AuthorizationCodeRepo.MarkUsed", storage.ErrorKindUnknown, err, "failed to determine rows affected")
-	}
-	if rows == 0 {
-		return storage.NewStorageError("AuthorizationCodeRepo.MarkUsed", storage.ErrorKindNotFound, nil, "authorization code not found or already used")
-	}
-	return nil
+	return checkRowsAffected("AuthorizationCodeRepo.MarkUsed", result, "authorization code not found or already used")
 }
 
 func (r *AuthorizationCodeRepo) DeleteExpired(ctx context.Context) (int, error) {
