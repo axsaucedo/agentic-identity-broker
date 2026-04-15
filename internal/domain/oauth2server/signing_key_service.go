@@ -62,12 +62,7 @@ func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm s
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
 	}
 
-	// Encryption context per ADR 008: only service_id for performance.
-	// For signing keys, we use a fixed identifier since they are not per-service.
-	encCtx := map[string]string{
-		"service_id": "signing_key:" + kid.String(),
-	}
-	encrypted, err := s.encryption.Encrypt(ctx, privKeyPEM, encCtx)
+	encrypted, err := s.encryption.Encrypt(ctx, privKeyPEM, signingKeyEncCtx(kid))
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
 	}
@@ -107,11 +102,7 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 
 	set := jwk.NewSet()
 	for _, key := range keys {
-		// Decrypt private key to extract public key
-		encCtx := map[string]string{
-			"service_id": "signing_key:" + key.KID.String(),
-		}
-		privPEM, err := s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, encCtx)
+		privPEM, err := s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, signingKeyEncCtx(key.KID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt key %s: %w", key.KID, err)
 		}
@@ -183,10 +174,19 @@ func (s *SigningKeyService) DeleteKey(ctx context.Context, kid id.KeyID) error {
 
 // DecryptPrivateKey decrypts the private key material of a signing key.
 func (s *SigningKeyService) DecryptPrivateKey(ctx context.Context, key *storage.SigningKey) ([]byte, error) {
-	encCtx := map[string]string{
-		"service_id": "signing_key:" + key.KID.String(),
+	return s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, signingKeyEncCtx(key.KID))
+}
+
+// signingKeyEncCtx returns the encryption context AAD for a signing key.
+//
+// ADR 008 specifies service_id as a UUID identifying a ThirdpartyOAuth2Service.
+// Signing keys are not per-service entities, so we use a prefixed KID instead
+// of a bare UUID to avoid collisions with service IDs while keeping a single
+// context key. This is a documented deviation from the UUID-only invariant.
+func signingKeyEncCtx(kid id.KeyID) map[string]string {
+	return map[string]string{
+		"service_id": "signing_key:" + kid.String(),
 	}
-	return s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, encCtx)
 }
 
 func generateES256KeyPEM() ([]byte, error) {
