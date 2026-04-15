@@ -1967,8 +1967,6 @@ components:
           example: key-2025-12-19-001
         algorithm:
           type: string
-          enum:
-            - ES256
           description: Signing algorithm used by this key
           example: ES256
         is_current:

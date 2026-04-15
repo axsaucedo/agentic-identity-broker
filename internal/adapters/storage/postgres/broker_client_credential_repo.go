@@ -112,6 +112,20 @@ func (r *BrokerClientCredentialRepo) Rotate(ctx context.Context, agentID id.Agen
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// DELETE before INSERT: agent_id is UNIQUE, so we must remove the old row first
+	// to avoid a constraint violation when inserting the replacement.
+	// The transaction guarantees atomicity: if the INSERT fails the DELETE rolls back.
+	result, err := tx.ExecContext(execCtx,
+		`DELETE FROM broker_client_credentials WHERE agent_id = $1`, agentID)
+	if err != nil {
+		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindUnknown, err, "failed to delete old credential")
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindNotFound, nil,
+			fmt.Sprintf("no existing credential found for agent %s", agentID))
+	}
+
 	_, err = tx.ExecContext(execCtx,
 		`INSERT INTO broker_client_credentials (id, agent_id, broker_client_id, secret_hash, created_at, rotated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -120,17 +134,6 @@ func (r *BrokerClientCredentialRepo) Rotate(ctx context.Context, agentID id.Agen
 	)
 	if err != nil {
 		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindUnknown, err, "failed to insert new credential")
-	}
-
-	result, err := tx.ExecContext(execCtx,
-		`DELETE FROM broker_client_credentials WHERE agent_id = $1 AND id != $2`, agentID, newCredential.ID)
-	if err != nil {
-		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindUnknown, err, "failed to delete old credential")
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindNotFound, nil,
-			fmt.Sprintf("no existing credential found for agent %s", agentID))
 	}
 
 	if err := tx.Commit(); err != nil {
