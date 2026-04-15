@@ -350,9 +350,14 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		return nil, fmt.Errorf("%w: authorization code not found", ErrInvalidGrant)
 	}
 
-	// Verify the authenticated client is the one the code was issued to
+	// Verify the authenticated client is the one the code was issued to (both agent and credential).
+	// The broker_client_id check catches post-rotation redemption: a new credential should not
+	// be able to exchange codes issued to a previous credential for the same agent.
 	if authedClient.Agent.ID != authCode.AgentID {
 		return nil, fmt.Errorf("%w: code was not issued to this client", ErrInvalidGrant)
+	}
+	if authedClient.Credential.BrokerClientID != authCode.BrokerClientID {
+		return nil, fmt.Errorf("%w: code was issued to a different credential", ErrInvalidGrant)
 	}
 
 	// Check code is not used

@@ -62,15 +62,16 @@ func (s *FositeStorage) mapStorageError(ctx context.Context, err error) error {
 func (s *FositeStorage) CreateAuthorizeCodeSession(ctx context.Context, code string, req fosite.Requester) error {
 	session := req.GetSession()
 	authCode := &storage.AuthorizationCode{
-		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      sha256Hex(code),
-		AgentID:       extractAgentID(req.GetClient()),
-		Principal:     id.NewPrincipal(session.GetSubject()),
-		RedirectURI:   req.GetRequestForm().Get("redirect_uri"),
-		CodeChallenge: req.GetRequestForm().Get("code_challenge"),
-		Scope:         strings.Join(req.GetRequestedScopes(), " "),
-		ExpiresAt:     session.GetExpiresAt(fosite.AuthorizeCode),
-		CreatedAt:     time.Now(),
+		ID:             id.NewAuthorizationCodeID(),
+		CodeHash:       sha256Hex(code),
+		AgentID:        extractAgentID(req.GetClient()),
+		BrokerClientID: id.NewBrokerClientID(req.GetRequestForm().Get("client_id")),
+		Principal:      id.NewPrincipal(session.GetSubject()),
+		RedirectURI:    req.GetRequestForm().Get("redirect_uri"),
+		CodeChallenge:  req.GetRequestForm().Get("code_challenge"),
+		Scope:          strings.Join(req.GetRequestedScopes(), " "),
+		ExpiresAt:      session.GetExpiresAt(fosite.AuthorizeCode),
+		CreatedAt:      time.Now(),
 	}
 	return s.codeRepo.Create(ctx, authCode)
 }

@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -31,9 +33,9 @@ func (r *AuthorizationCodeRepo) Create(ctx context.Context, code *storage.Author
 	defer cancel()
 
 	_, err := r.adapter.db.ExecContext(execCtx,
-		`INSERT INTO authorization_codes (id, code_hash, agent_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		code.ID, code.CodeHash, code.AgentID, code.Principal,
+		`INSERT INTO authorization_codes (id, code_hash, agent_id, broker_client_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		code.ID, code.CodeHash, code.AgentID, code.BrokerClientID, code.Principal,
 		code.RedirectURI, code.CodeChallenge, code.Scope,
 		code.ExpiresAt, code.UsedAt, code.CreatedAt,
 	)
@@ -53,10 +55,13 @@ func (r *AuthorizationCodeRepo) FindByCodeHash(ctx context.Context, codeHash str
 
 	var code storage.AuthorizationCode
 	err := r.adapter.db.GetContext(queryCtx, &code,
-		`SELECT id, code_hash, agent_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at
+		`SELECT id, code_hash, agent_id, broker_client_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at
 		 FROM authorization_codes WHERE code_hash = $1`, codeHash)
 	if err != nil {
-		return nil, storage.NewStorageError("AuthorizationCodeRepo.FindByCodeHash", storage.ErrorKindNotFound, err, "authorization code not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.NewStorageError("AuthorizationCodeRepo.FindByCodeHash", storage.ErrorKindNotFound, err, "authorization code not found")
+		}
+		return nil, storage.NewStorageError("AuthorizationCodeRepo.FindByCodeHash", storage.ErrorKindUnknown, err, "failed to query authorization code")
 	}
 	return &code, nil
 }
