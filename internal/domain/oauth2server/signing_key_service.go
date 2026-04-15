@@ -126,9 +126,15 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 			return nil, fmt.Errorf("failed to import key %s to JWK: %w", key.KID, err)
 		}
 
-		_ = jwkKey.Set(jwk.KeyIDKey, key.KID.String())
-		_ = jwkKey.Set(jwk.AlgorithmKey, algorithmToJWA(key.Algorithm))
-		_ = jwkKey.Set(jwk.KeyUsageKey, "sig")
+		if err := jwkKey.Set(jwk.KeyIDKey, key.KID.String()); err != nil {
+			return nil, fmt.Errorf("failed to set kid on key %s: %w", key.KID, err)
+		}
+		if err := jwkKey.Set(jwk.AlgorithmKey, algorithmToJWA(key.Algorithm)); err != nil {
+			return nil, fmt.Errorf("failed to set alg on key %s: %w", key.KID, err)
+		}
+		if err := jwkKey.Set(jwk.KeyUsageKey, "sig"); err != nil {
+			return nil, fmt.Errorf("failed to set use on key %s: %w", key.KID, err)
+		}
 
 		if err := set.AddKey(jwkKey); err != nil {
 			return nil, fmt.Errorf("failed to add key %s to JWKS: %w", key.KID, err)
