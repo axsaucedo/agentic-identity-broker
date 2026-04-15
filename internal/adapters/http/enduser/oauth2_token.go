@@ -568,10 +568,10 @@ func (h *OAuth2TokenHandler) handleMintingError(w http.ResponseWriter, err error
 		h.writeOAuth2Error(w, http.StatusUnauthorized, errorCode, "client authentication failed")
 	case errors.Is(err, oauth2server.ErrInvalidScope):
 		errorCode = "invalid_scope"
-		h.writeOAuth2Error(w, http.StatusBadRequest, errorCode, err.Error())
+		h.writeOAuth2Error(w, http.StatusBadRequest, errorCode, "the requested scope is not permitted")
 	case errors.Is(err, oauth2server.ErrInvalidGrant):
 		errorCode = "invalid_grant"
-		h.writeOAuth2Error(w, http.StatusBadRequest, errorCode, err.Error())
+		h.writeOAuth2Error(w, http.StatusBadRequest, errorCode, "the provided grant is invalid or expired")
 	default:
 		errorCode = "server_error"
 		h.writeOAuth2Error(w, http.StatusInternalServerError, errorCode, "internal error")
@@ -583,6 +583,7 @@ func (h *OAuth2TokenHandler) handleMintingError(w http.ResponseWriter, err error
 			"grant_type", grantType,
 			"error_code", errorCode,
 			"client_id", clientID,
+			"detail", err.Error(),
 		)
 	}
 }

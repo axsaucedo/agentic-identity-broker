@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -558,5 +560,35 @@ func TestWriteTokenResponse(t *testing.T) {
 		var body map[string]interface{}
 		assert.NoError(t, json.NewDecoder(w.Body).Decode(&body))
 		assert.Equal(t, "read write", body["scope"])
+	})
+}
+
+func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
+	internalDetail := "scope \"read:admin\" not allowed for this agent"
+
+	t.Run("invalid_scope does not leak internal detail", func(t *testing.T) {
+		h := &OAuth2TokenHandler{}
+		w := httptest.NewRecorder()
+
+		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.ErrInvalidScope), "client_credentials", "broker_test")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		body, _ := io.ReadAll(w.Body)
+		assert.Contains(t, string(body), "invalid_scope")
+		assert.NotContains(t, string(body), internalDetail)
+		assert.NotContains(t, string(body), "read:admin")
+	})
+
+	t.Run("invalid_grant does not leak internal detail", func(t *testing.T) {
+		h := &OAuth2TokenHandler{}
+		w := httptest.NewRecorder()
+
+		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.ErrInvalidGrant), "authorization_code", "broker_test")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		body, _ := io.ReadAll(w.Body)
+		assert.Contains(t, string(body), "invalid_grant")
+		assert.NotContains(t, string(body), internalDetail)
+		assert.NotContains(t, string(body), "read:admin")
 	})
 }
