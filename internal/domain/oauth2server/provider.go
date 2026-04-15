@@ -111,16 +111,8 @@ func (p *Provider) SigningKeyService() *SigningKeyService {
 	return p.signingKeyService
 }
 
-// TokenResponse represents the result of a token endpoint request.
-type TokenResponse struct {
-	AccessToken string
-	TokenType   string
-	ExpiresIn   int64
-	Scope       string
-}
-
 // HandleClientCredentials processes a client_credentials grant type request.
-func (p *Provider) HandleClientCredentials(ctx context.Context, clientID id.BrokerClientID, secret string, requestedScope string) (*TokenResponse, error) {
+func (p *Provider) HandleClientCredentials(ctx context.Context, clientID id.BrokerClientID, secret string, requestedScope string) (*ports.TokenResponse, error) {
 	// Authenticate client
 	authClient, err := p.clientAuth.Authenticate(ctx, clientID, secret)
 	if err != nil {
@@ -168,7 +160,7 @@ func (p *Provider) HandleClientCredentials(ctx context.Context, clientID id.Brok
 	resp.SetExtra("scope", requestedScope)
 	_ = sig // Signature used for storage lookup (stateless JWT, not stored)
 
-	return &TokenResponse{
+	return &ports.TokenResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
@@ -337,7 +329,7 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	code string,
 	redirectURI string,
 	codeVerifier string,
-) (*TokenResponse, error) {
+) (*ports.TokenResponse, error) {
 	// Authenticate client
 	_, err := p.clientAuth.Authenticate(ctx, clientID, secret)
 	if err != nil {
@@ -407,7 +399,7 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	return &TokenResponse{
+	return &ports.TokenResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
