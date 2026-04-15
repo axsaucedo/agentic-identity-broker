@@ -196,6 +196,23 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		assert.Empty(t, buf.String(), "not-found misses must not produce an error log")
 	})
 
+	t.Run("not-found on agent lookup does not log an error", func(t *testing.T) {
+		credRepo := memory.NewBrokerClientCredentialStore()
+		agent := testAgent()
+		setupSvc := NewClientAuthService(credRepo, nil, testSlogger())
+		cred, plaintext, err := setupSvc.GenerateCredentials(agent.ID)
+		require.NoError(t, err)
+		require.NoError(t, credRepo.Create(context.Background(), cred))
+
+		notFoundErr := storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "not found")
+		logger, buf := bufLogger()
+		svc := NewClientAuthService(credRepo, &stubAgentRepo{getErr: notFoundErr}, logger)
+
+		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, plaintext)
+		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.Empty(t, buf.String(), "not-found on agent lookup must not produce an error log")
+	})
+
 	t.Run("infrastructure error on agent lookup logs at error level", func(t *testing.T) {
 		credRepo := memory.NewBrokerClientCredentialStore()
 		agent := testAgent()
