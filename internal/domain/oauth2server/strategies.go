@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -43,7 +44,8 @@ type JWXAccessTokenStrategy struct {
 }
 
 // NewJWXAccessTokenStrategy creates a new JWX-based access token strategy.
-// Returns an error if issuerURI is empty or tokenTTL is not positive.
+// issuerURI must be an absolute http/https URI with no fragment (RFC 8414 §2).
+// tokenTTL must be positive.
 func NewJWXAccessTokenStrategy(
 	signingKeyService *SigningKeyService,
 	signingKeyRepo ports.SigningKeyRepository,
@@ -52,8 +54,8 @@ func NewJWXAccessTokenStrategy(
 	customClaimsEval *TokenClaimsEvaluator,
 	logger *slog.Logger,
 ) (*JWXAccessTokenStrategy, error) {
-	if issuerURI == "" {
-		return nil, fmt.Errorf("issuerURI must not be empty")
+	if err := validateIssuerURI(issuerURI); err != nil {
+		return nil, err
 	}
 	if tokenTTL <= 0 {
 		return nil, fmt.Errorf("tokenTTL must be positive, got %v", tokenTTL)
@@ -175,6 +177,29 @@ func (s *RandomCodeStrategy) AuthorizeCodeSignature(_ context.Context, code stri
 // ValidateAuthorizeCode validates an authorization code.
 // Validation happens in storage (expiry, single-use), not in the strategy.
 func (s *RandomCodeStrategy) ValidateAuthorizeCode(_ context.Context, _ fosite.Requester, _ string) error {
+	return nil
+}
+
+// validateIssuerURI checks that s is a non-empty, absolute http/https URI with no
+// fragment component, as required by RFC 8414 §2 for OAuth2 issuer identifiers.
+func validateIssuerURI(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return fmt.Errorf("issuerURI must not be empty or whitespace-only")
+	}
+	parsed, err := url.Parse(s)
+	if err != nil {
+		return fmt.Errorf("issuerURI is not a valid URI: %w", err)
+	}
+	if !parsed.IsAbs() {
+		return fmt.Errorf("issuerURI must be an absolute URI (got %q)", s)
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return fmt.Errorf("issuerURI scheme must be http or https (got %q)", parsed.Scheme)
+	}
+	if parsed.Fragment != "" {
+		return fmt.Errorf("issuerURI must not contain a fragment (got %q)", s)
+	}
 	return nil
 }
 

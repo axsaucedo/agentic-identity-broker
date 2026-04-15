@@ -79,27 +79,49 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 
 func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
 	svc, repo := newTestSigningKeyService()
+	validIssuer := "https://issuer.example.com"
 
-	t.Run("empty issuerURI rejected", func(t *testing.T) {
-		_, err := NewJWXAccessTokenStrategy(svc, repo, "", time.Hour, nil, testSlogger())
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "issuerURI")
-	})
+	issuerCases := []struct {
+		name    string
+		uri     string
+		wantErr bool
+	}{
+		{"empty string rejected", "", true},
+		{"whitespace-only rejected", "   ", true},
+		{"tab-only rejected", "\t", true},
+		{"relative URI rejected", "/oauth2", true},
+		{"no scheme rejected", "issuer.example.com", true},
+		{"unsupported scheme rejected", "ftp://issuer.example.com", true},
+		{"fragment rejected (RFC 8414)", "https://issuer.example.com#frag", true},
+		{"valid https accepted", "https://issuer.example.com", false},
+		{"valid http accepted", "http://localhost:8080", false},
+		{"https with path accepted", "https://issuer.example.com/realms/myrealm", false},
+	}
+	for _, tc := range issuerCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewJWXAccessTokenStrategy(svc, repo, tc.uri, time.Hour, nil, testSlogger())
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 
 	t.Run("zero tokenTTL rejected", func(t *testing.T) {
-		_, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", 0, nil, testSlogger())
+		_, err := NewJWXAccessTokenStrategy(svc, repo, validIssuer, 0, nil, testSlogger())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "tokenTTL")
 	})
 
 	t.Run("negative tokenTTL rejected", func(t *testing.T) {
-		_, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", -time.Second, nil, testSlogger())
+		_, err := NewJWXAccessTokenStrategy(svc, repo, validIssuer, -time.Second, nil, testSlogger())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "tokenTTL")
 	})
 
 	t.Run("valid inputs accepted", func(t *testing.T) {
-		strategy, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", time.Hour, nil, testSlogger())
+		strategy, err := NewJWXAccessTokenStrategy(svc, repo, validIssuer, time.Hour, nil, testSlogger())
 		require.NoError(t, err)
 		assert.NotNil(t, strategy)
 	})
