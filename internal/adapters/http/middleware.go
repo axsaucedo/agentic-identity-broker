@@ -9,10 +9,7 @@ import (
 	"time"
 )
 
-// LoggingMiddleware returns a middleware that logs HTTP requests with structured logging.
-// Logs method, path, response status, and request duration.
-//
-// logPrefixes defines a whitelist of path prefixes that should be logged (e.g. "/api/").
+// LoggingMiddleware logPrefixes defines a whitelist of path prefixes that should be logged (e.g. "/api/").
 // Requests whose path does not start with any of the given prefixes are silently passed
 // through without producing a log entry, which avoids noise from infrastructure probes
 // (e.g. /health) and static-asset serving.
@@ -20,7 +17,6 @@ import (
 func LoggingMiddleware(logger *slog.Logger, logPrefixes ...string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Only log paths that match one of the whitelisted prefixes.
 			if len(logPrefixes) > 0 {
 				matched := false
 				for _, prefix := range logPrefixes {
