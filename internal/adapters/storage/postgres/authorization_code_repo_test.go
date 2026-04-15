@@ -5,6 +5,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -181,6 +182,37 @@ func TestAuthorizationCodeRepo_FindByCodeHash_ExpiredUnused(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, code.ID, got.ID)
 	assert.Nil(t, got.UsedAt, "repo must not filter by expiry — domain layer owns that check")
+}
+
+func TestAuthorizationCodeRepo_FindByCodeHash_NotFound(t *testing.T) {
+	adapter, cleanup := setupAuthCodeTestDB(t)
+	defer cleanup()
+
+	repo := NewAuthorizationCodeRepo(adapter)
+	_, err := repo.FindByCodeHash(context.Background(), "nonexistentcodehash")
+	require.Error(t, err)
+
+	var se *storage.StorageError
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
+}
+
+func TestAuthorizationCodeRepo_FindByCodeHash_Timeout(t *testing.T) {
+	adapter, cleanup := setupAuthCodeTestDB(t)
+	defer cleanup()
+
+	repo := NewAuthorizationCodeRepo(adapter)
+
+	// Use an already-expired deadline so the query immediately gets context.DeadlineExceeded.
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	_, err := repo.FindByCodeHash(ctx, "somehash")
+	require.Error(t, err)
+
+	var se *storage.StorageError
+	require.True(t, errors.As(err, &se))
+	assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
 }
 
 func TestAuthorizationCodeRepo_DeleteExpired(t *testing.T) {

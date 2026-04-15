@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -61,7 +60,7 @@ func (r *BrokerClientCredentialRepo) GetByAgentID(ctx context.Context, agentID i
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindNotFound, err, "credential not found")
 		}
-		if strings.Contains(err.Error(), "context deadline exceeded") {
+		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
 		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindConnection, err, "failed to query credential")
@@ -85,7 +84,7 @@ func (r *BrokerClientCredentialRepo) GetByBrokerClientID(ctx context.Context, cl
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindNotFound, err, "credential not found")
 		}
-		if strings.Contains(err.Error(), "context deadline exceeded") {
+		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
 		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindConnection, err, "failed to query credential")
