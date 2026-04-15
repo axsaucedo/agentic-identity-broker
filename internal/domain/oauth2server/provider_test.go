@@ -13,6 +13,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	dstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // newTestProvider creates a Provider with in-memory storage and test encryption
@@ -458,6 +459,74 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, ErrInvalidGrant)
 	})
+}
+
+// TestProvider_HandleAuthorizationCodeExchange_ConcurrentReplay verifies that when MarkUsed
+// returns ErrorKindNotFound (the DB-level race guard fired — a concurrent request won and
+// set used_at before ours could), the exchange returns ErrInvalidGrant rather than a 500.
+func TestProvider_HandleAuthorizationCodeExchange_ConcurrentReplay(t *testing.T) {
+	provider := newTestProvider(t)
+	agent, cred, plaintext := setupTestCredentials(t, provider)
+	agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+	_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
+
+	verifier := "concurrent-replay-verifier"
+	challenge := generateS256Challenge(verifier)
+
+	code, err := provider.HandleAuthorize(
+		context.Background(),
+		cred.BrokerClientID,
+		"http://localhost:8080/callback",
+		"code",
+		"read",
+		"state",
+		challenge,
+		"S256",
+		id.NewPrincipal("user@example.com"),
+	)
+	require.NoError(t, err)
+
+	// Replace codeRepo with a wrapper that simulates the race: FindByCodeHash returns the
+	// unused code (used_at IS NULL), but MarkUsed returns ErrorKindNotFound (zero rows
+	// affected because a concurrent request already set used_at in the database).
+	provider.fositeStorage.codeRepo = &raceCodeRepo{
+		delegate:      provider.fositeStorage.codeRepo,
+		markUsedError: dstorage.NewStorageError("AuthorizationCodeRepo.MarkUsed", dstorage.ErrorKindNotFound, nil, "authorization code not found or already used"),
+	}
+
+	_, err = provider.HandleAuthorizationCodeExchange(
+		context.Background(),
+		cred.BrokerClientID,
+		plaintext,
+		code,
+		"http://localhost:8080/callback",
+		verifier,
+	)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidGrant)
+}
+
+// raceCodeRepo wraps an AuthorizationCodeRepository to inject a fixed error on MarkUsed,
+// simulating the concurrent replay scenario where the DB guard fires first.
+type raceCodeRepo struct {
+	delegate      ports.AuthorizationCodeRepository
+	markUsedError error
+}
+
+func (r *raceCodeRepo) Create(ctx context.Context, code *dstorage.AuthorizationCode) error {
+	return r.delegate.Create(ctx, code)
+}
+
+func (r *raceCodeRepo) FindByCodeHash(ctx context.Context, codeHash string) (*dstorage.AuthorizationCode, error) {
+	return r.delegate.FindByCodeHash(ctx, codeHash)
+}
+
+func (r *raceCodeRepo) MarkUsed(_ context.Context, _ id.AuthorizationCodeID) error {
+	return r.markUsedError
+}
+
+func (r *raceCodeRepo) DeleteExpired(ctx context.Context) (int, error) {
+	return r.delegate.DeleteExpired(ctx)
 }
 
 // generateS256Challenge generates a PKCE S256 challenge from a verifier.

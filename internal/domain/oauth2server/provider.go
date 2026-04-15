@@ -2,6 +2,7 @@ package oauth2server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/ory/fosite/handler/pkce"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -369,8 +371,13 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		return nil, fmt.Errorf("%w: PKCE verification failed: %v", ErrInvalidGrant, err)
 	}
 
-	// Mark code as used
+	// Mark code as used — the UPDATE is conditional on used_at IS NULL, so zero rows
+	// affected means a concurrent request won the race and already consumed the code.
 	if err := p.fositeStorage.codeRepo.MarkUsed(ctx, authCode.ID); err != nil {
+		var storageErr *storage.StorageError
+		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
+			return nil, fmt.Errorf("%w: authorization code already used", ErrInvalidGrant)
+		}
 		return nil, fmt.Errorf("failed to mark code as used: %w", err)
 	}
 
