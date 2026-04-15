@@ -346,7 +346,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
-		verifier := "test-verifier-for-replay"
+		verifier := "replay-code-verifier-xxxxxxxxxxxxxxxxxxxxxxxxxxx" // 43 chars (RFC 7636 minimum)
 		challenge := generateS256Challenge(verifier)
 
 		code, err := provider.HandleAuthorize(
@@ -419,6 +419,42 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 			plaintext,
 			rawCode,
 			"http://localhost:8080/callback",
+			verifier,
+		)
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidGrant)
+	})
+
+	t.Run("redirect_uri substitution rejected", func(t *testing.T) {
+		provider := newTestProvider(t)
+		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent.RedirectURIs = []string{"http://localhost:8080/callback", "http://attacker.example.com/callback"}
+		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
+
+		verifier := "test-verifier-for-uri-substitution"
+		challenge := generateS256Challenge(verifier)
+
+		// Authorization was issued to the legitimate URI
+		code, err := provider.HandleAuthorize(
+			context.Background(),
+			cred.BrokerClientID,
+			"http://localhost:8080/callback",
+			"code",
+			"read",
+			"state",
+			challenge,
+			"S256",
+			id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+
+		// Attacker substitutes a different registered URI at token exchange (RFC 6749 §4.1.3)
+		_, err = provider.HandleAuthorizationCodeExchange(
+			context.Background(),
+			cred.BrokerClientID,
+			plaintext,
+			code,
+			"http://attacker.example.com/callback",
 			verifier,
 		)
 		assert.Error(t, err)

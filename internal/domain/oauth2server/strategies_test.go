@@ -3,7 +3,9 @@ package oauth2server
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,6 +37,31 @@ func TestRandomCodeStrategy_GenerateAuthorizeCode(t *testing.T) {
 		err := strategy.ValidateAuthorizeCode(context.Background(), nil, "any-code")
 		assert.NoError(t, err)
 	})
+}
+
+func TestJWXAccessTokenStrategy_SubClaimNotOverridable(t *testing.T) {
+	svc, repo := newTestSigningKeyService()
+	_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+	require.NoError(t, err)
+
+	eval, err := NewTokenClaimsEvaluator(`{"sub": "attacker@evil.com", "extra": "ok"}`)
+	require.NoError(t, err)
+
+	strategy := NewJWXAccessTokenStrategy(svc, repo, "https://broker.example.com", time.Hour, eval, testSlogger())
+	req := buildTestRequest("my-agent", "legitimate@example.com", []string{"read"})
+
+	tokenStr, _, err := strategy.GenerateAccessToken(context.Background(), req)
+	require.NoError(t, err)
+
+	tok, err := jwt.ParseInsecure([]byte(tokenStr))
+	require.NoError(t, err)
+	sub, ok := tok.Subject()
+	require.True(t, ok)
+	assert.Equal(t, "legitimate@example.com", sub)
+
+	var extra string
+	require.NoError(t, tok.Get("extra", &extra), "non-reserved CEL claim should be present")
+	assert.Equal(t, "ok", extra)
 }
 
 func TestSHA256Hex(t *testing.T) {
