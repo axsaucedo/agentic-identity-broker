@@ -122,7 +122,10 @@ func (r *SigningKeyRepo) SetCurrent(ctx context.Context, kid id.KeyID) error {
 	if err != nil {
 		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindUnknown, err, "failed to promote key")
 	}
-	rows, _ := result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindUnknown, err, "failed to determine rows affected")
+	}
 	if rows == 0 {
 		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindNotFound, nil, "signing key not found")
 	}
@@ -144,7 +147,10 @@ func (r *SigningKeyRepo) Delete(ctx context.Context, kid id.KeyID) error {
 	if err != nil {
 		return storage.NewStorageError("SigningKeyRepo.Delete", storage.ErrorKindUnknown, err, "failed to delete signing key")
 	}
-	rows, _ := result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return storage.NewStorageError("SigningKeyRepo.Delete", storage.ErrorKindUnknown, err, "failed to determine rows affected")
+	}
 	if rows == 0 {
 		return storage.NewStorageError("SigningKeyRepo.Delete", storage.ErrorKindNotFound, nil, "signing key not found")
 	}
