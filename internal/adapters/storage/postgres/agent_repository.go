@@ -456,36 +456,48 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       redirect_uris, allowed_scopes, created_at, updated_at
+		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
 		FROM agents
 		ORDER BY created_at DESC
 	`
 
-	var agents []*storage.Agent
-	err := r.adapter.db.SelectContext(queryCtx, &agents, query)
+	rows, err := r.adapter.db.QueryContext(queryCtx, query)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
-			return nil, storage.NewStorageError(
-				"ListAgents",
-				storage.ErrorKindTimeout,
-				err,
-				"operation exceeded timeout",
-			)
+			return nil, storage.NewStorageError("ListAgents", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-		return nil, storage.NewStorageError(
-			"ListAgents",
-			storage.ErrorKindConnection,
-			err,
-			"failed to list agents",
-		)
+		return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "failed to list agents")
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []*storage.Agent
+	for rows.Next() {
+		agent := &storage.Agent{}
+		var serviceReqsJSON []byte
+		if err := rows.Scan(
+			&agent.ID, &agent.ClientID, &agent.ExternalID,
+			&agent.DisplayName, &agent.Description,
+			&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
+			&serviceReqsJSON,
+			pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
+			&agent.CreatedAt, &agent.UpdatedAt,
+		); err != nil {
+			return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "failed to scan agent row")
+		}
+		if len(serviceReqsJSON) > 0 {
+			if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
+				return nil, storage.NewStorageError("ListAgents", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
+			}
+		}
+		result = append(result, agent.Copy())
+	}
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "error iterating agent rows")
 	}
 
-	// Return deep copies to prevent external mutation
-	result := make([]*storage.Agent, len(agents))
-	for i, agent := range agents {
-		result[i] = agent.Copy()
+	if result == nil {
+		result = []*storage.Agent{}
 	}
-
 	return result, nil
 }
 
@@ -513,16 +525,24 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
+	var serviceReqsJSON []byte
 	agent := &storage.Agent{}
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       redirect_uris, allowed_scopes, created_at, updated_at
+		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
 		FROM agents
 		WHERE client_id = $1
 	`
 
-	err := r.adapter.db.GetContext(queryCtx, agent, query, clientID)
+	err := r.adapter.db.QueryRowContext(queryCtx, query, clientID).Scan(
+		&agent.ID, &agent.ClientID, &agent.ExternalID,
+		&agent.DisplayName, &agent.Description,
+		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
+		&serviceReqsJSON,
+		pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
+		&agent.CreatedAt, &agent.UpdatedAt,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, storage.NewStorageError(
@@ -546,6 +566,17 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 			err,
 			"failed to get agent by client_id",
 		)
+	}
+
+	if len(serviceReqsJSON) > 0 {
+		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
+			return nil, storage.NewStorageError(
+				"GetAgentByClientID",
+				storage.ErrorKindValidation,
+				err,
+				"failed to unmarshal service_requirements from JSON",
+			)
+		}
 	}
 
 	// Return deep copy to prevent external mutation

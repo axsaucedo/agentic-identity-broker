@@ -349,6 +349,36 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
 	assert.Contains(t, string(body), "client_id")
 }
 
+// TestOAuth2AuthorizeHandler_IssueTokenMode_NilServiceFails verifies that issue_token mode
+// hard-fails when the consent Service is not wired, rather than silently bypassing consent.
+func TestOAuth2AuthorizeHandler_IssueTokenMode_NilServiceFails(t *testing.T) {
+	handler := &OAuth2AuthorizeHandler{
+		Service:    nil, // misconfigured — Service not wired
+		CodeIssuer: &mockCodeIssuer{},
+	}
+
+	req := httptest.NewRequest(
+		"GET",
+		"https://broker.example.com/oauth2/authorize?client_id=some-client&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz",
+		nil,
+	)
+	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body, _ := io.ReadAll(w.Body)
+	assert.Contains(t, string(body), "consent service unavailable")
+}
+
+type mockCodeIssuer struct{}
+
+func (m *mockCodeIssuer) IssueAuthorizationCode(_ context.Context, _ *ports.AuthorizationRequest, _ string) (string, error) {
+	return "test-code", nil
+}
+
 // Helper functions for test setup
 
 type mockAgentRepository struct {

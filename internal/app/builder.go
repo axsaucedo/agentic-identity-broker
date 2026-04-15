@@ -501,11 +501,13 @@ func (b *Builder) Build() (*App, error) {
 	// Create signing key service for issue_token mode
 	signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
 
+	clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), b.storage.Agents(), b.logger)
+
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
 		Agents:            admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger, b.config.OAuth2AuthServer.MultiAgentClient.Enabled),
 		Services:          admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
-		ClientCredentials: admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), b.logger),
+		ClientCredentials: admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger),
 		SigningKeys:       admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger),
 	}
 

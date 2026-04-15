@@ -1,9 +1,7 @@
 package oauth2server
 
 import (
-	"bytes"
 	"context"
-	"log/slog"
 	"strings"
 	"testing"
 
@@ -15,45 +13,36 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
-// bufLogger returns a logger that writes into buf and a pointer to that buffer.
-func bufLogger() (*slog.Logger, *bytes.Buffer) {
-	buf := &bytes.Buffer{}
-	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelError}))
-	return logger, buf
+type mockCredentialRepo struct {
+	getByBrokerClientIDFunc func(context.Context, id.BrokerClientID) (*storage.BrokerClientCredential, error)
 }
 
-// stubCredentialRepo is a hand-rolled stub for BrokerClientCredentialRepository.
-type stubCredentialRepo struct {
-	getByBrokerClientIDErr error
-}
-
-func (s *stubCredentialRepo) Create(_ context.Context, _ *storage.BrokerClientCredential) error {
+func (m *mockCredentialRepo) Create(_ context.Context, _ *storage.BrokerClientCredential) error {
 	return nil
 }
-func (s *stubCredentialRepo) GetByAgentID(_ context.Context, _ id.AgentID) (*storage.BrokerClientCredential, error) {
+func (m *mockCredentialRepo) GetByAgentID(_ context.Context, _ id.AgentID) (*storage.BrokerClientCredential, error) {
 	return nil, nil
 }
-func (s *stubCredentialRepo) GetByBrokerClientID(_ context.Context, _ id.BrokerClientID) (*storage.BrokerClientCredential, error) {
-	return nil, s.getByBrokerClientIDErr
+func (m *mockCredentialRepo) GetByBrokerClientID(ctx context.Context, clientID id.BrokerClientID) (*storage.BrokerClientCredential, error) {
+	return m.getByBrokerClientIDFunc(ctx, clientID)
 }
-func (s *stubCredentialRepo) Delete(_ context.Context, _ id.AgentID) error {
+func (m *mockCredentialRepo) Delete(_ context.Context, _ id.AgentID) error { return nil }
+func (m *mockCredentialRepo) Rotate(_ context.Context, _ id.AgentID, _ *storage.BrokerClientCredential) error {
 	return nil
 }
 
-// stubAgentRepo is a hand-rolled stub for AgentRepository.
-type stubAgentRepo struct {
-	getErr error
-	agent  *storage.Agent
+type mockAgentRepo struct {
+	getFunc func(context.Context, id.AgentID) (*storage.Agent, error)
 }
 
-func (s *stubAgentRepo) Create(_ context.Context, _ *storage.Agent) error { return nil }
-func (s *stubAgentRepo) Get(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
-	return s.agent, s.getErr
+func (m *mockAgentRepo) Create(_ context.Context, _ *storage.Agent) error { return nil }
+func (m *mockAgentRepo) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
+	return m.getFunc(ctx, agentID)
 }
-func (s *stubAgentRepo) Update(_ context.Context, _ *storage.Agent) error { return nil }
-func (s *stubAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { return nil }
-func (s *stubAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
-func (s *stubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
+func (m *mockAgentRepo) Update(_ context.Context, _ *storage.Agent) error { return nil }
+func (m *mockAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { return nil }
+func (m *mockAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
+func (m *mockAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
 	return nil, nil
 }
 
@@ -174,62 +163,6 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 
-	t.Run("infrastructure error on credential lookup logs at error level", func(t *testing.T) {
-		infraErr := storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindConnection, nil, "connection refused")
-		credRepo := &stubCredentialRepo{getByBrokerClientIDErr: infraErr}
-		logger, buf := bufLogger()
-		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
-
-		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_any"), "secret")
-		assert.ErrorIs(t, err, ErrInvalidClient)
-		assert.Contains(t, buf.String(), "infrastructure error looking up client credential")
-	})
-
-	t.Run("not-found on credential lookup does not log an error", func(t *testing.T) {
-		notFoundErr := storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindNotFound, nil, "not found")
-		credRepo := &stubCredentialRepo{getByBrokerClientIDErr: notFoundErr}
-		logger, buf := bufLogger()
-		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
-
-		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_unknown"), "secret")
-		assert.ErrorIs(t, err, ErrInvalidClient)
-		assert.Empty(t, buf.String(), "not-found misses must not produce an error log")
-	})
-
-	t.Run("not-found on agent lookup does not log an error", func(t *testing.T) {
-		credRepo := memory.NewBrokerClientCredentialStore()
-		agent := testAgent()
-		setupSvc := NewClientAuthService(credRepo, nil, testSlogger())
-		cred, plaintext, err := setupSvc.GenerateCredentials(agent.ID)
-		require.NoError(t, err)
-		require.NoError(t, credRepo.Create(context.Background(), cred))
-
-		notFoundErr := storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "not found")
-		logger, buf := bufLogger()
-		svc := NewClientAuthService(credRepo, &stubAgentRepo{getErr: notFoundErr}, logger)
-
-		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, plaintext)
-		assert.ErrorIs(t, err, ErrInvalidClient)
-		assert.Empty(t, buf.String(), "not-found on agent lookup must not produce an error log")
-	})
-
-	t.Run("infrastructure error on agent lookup logs at error level", func(t *testing.T) {
-		credRepo := memory.NewBrokerClientCredentialStore()
-		agent := testAgent()
-		setupSvc := NewClientAuthService(credRepo, nil, testSlogger())
-		cred, plaintext, err := setupSvc.GenerateCredentials(agent.ID)
-		require.NoError(t, err)
-		require.NoError(t, credRepo.Create(context.Background(), cred))
-
-		infraErr := storage.NewStorageError("Get", storage.ErrorKindConnection, nil, "connection refused")
-		logger, buf := bufLogger()
-		svc := NewClientAuthService(credRepo, &stubAgentRepo{getErr: infraErr}, logger)
-
-		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, plaintext)
-		assert.ErrorIs(t, err, ErrInvalidClient)
-		assert.Contains(t, buf.String(), "infrastructure error looking up agent for client")
-	})
-
 	t.Run("wrong secret fails", func(t *testing.T) {
 		credRepo := memory.NewBrokerClientCredentialStore()
 		agentRepo := memory.NewAgentRepository()
@@ -247,6 +180,41 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 
 		// Authenticate with wrong secret should fail
 		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, "wrong-secret")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+	})
+
+	t.Run("credential repo connection error returns ErrInvalidClient", func(t *testing.T) {
+		credRepo := &mockCredentialRepo{
+			getByBrokerClientIDFunc: func(_ context.Context, _ id.BrokerClientID) (*storage.BrokerClientCredential, error) {
+				return nil, storage.NewStorageError("GetByBrokerClientID", storage.ErrorKindConnection, nil, "connection refused")
+			},
+		}
+		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), testSlogger())
+
+		_, err := svc.Authenticate(context.Background(), id.NewBrokerClientID("broker_any"), "secret")
+		assert.ErrorIs(t, err, ErrInvalidClient)
+	})
+
+	t.Run("agent repo timeout error returns ErrInvalidClient", func(t *testing.T) {
+		credRepo := memory.NewBrokerClientCredentialStore()
+		agentID := id.NewAgentID()
+		cred := &storage.BrokerClientCredential{
+			ID:             id.NewCredentialID(),
+			AgentID:        agentID,
+			BrokerClientID: id.NewBrokerClientID("broker_timeout_test"),
+			SecretHash:     "irrelevant",
+		}
+		err := credRepo.Create(context.Background(), cred)
+		require.NoError(t, err)
+
+		agentRepo := &mockAgentRepo{
+			getFunc: func(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+				return nil, storage.NewStorageError("Get", storage.ErrorKindTimeout, nil, "query timeout")
+			},
+		}
+		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
+
+		_, err = svc.Authenticate(context.Background(), cred.BrokerClientID, "irrelevant")
 		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 }

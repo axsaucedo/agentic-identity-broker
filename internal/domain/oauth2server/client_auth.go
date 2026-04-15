@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -53,17 +54,13 @@ type AuthenticatedClient struct {
 func (s *ClientAuthService) Authenticate(ctx context.Context, clientID id.BrokerClientID, secret string) (*AuthenticatedClient, error) {
 	cred, err := s.credentialRepo.GetByBrokerClientID(ctx, clientID)
 	if err != nil {
-		if !isNotFoundError(err) {
-			s.logger.ErrorContext(ctx, "infrastructure error looking up client credential", "error", err)
-		}
+		s.logStorageFailure(ctx, err)
 		return nil, ErrInvalidClient
 	}
 
 	agent, err := s.agentRepo.Get(ctx, cred.AgentID)
 	if err != nil {
-		if !isNotFoundError(err) {
-			s.logger.ErrorContext(ctx, "infrastructure error looking up agent for client", "agent_id", cred.AgentID, "error", err)
-		}
+		s.logStorageFailure(ctx, err)
 		return nil, ErrInvalidClient
 	}
 
@@ -75,6 +72,18 @@ func (s *ClientAuthService) Authenticate(ctx context.Context, clientID id.Broker
 		Agent:      agent,
 		Credential: cred,
 	}, nil
+}
+
+// logStorageFailure logs infrastructure-level storage errors (connection, timeout, unknown)
+// while silently ignoring not-found errors which are expected during authentication.
+func (s *ClientAuthService) logStorageFailure(ctx context.Context, err error) {
+	var se *storage.StorageError
+	if errors.As(err, &se) && se.Kind != storage.ErrorKindNotFound {
+		s.logger.ErrorContext(ctx, "storage failure during client authentication",
+			"storage_op", se.Operation,
+			"storage_kind", string(se.Kind),
+		)
+	}
 }
 
 // GenerateCredentials generates a new broker client ID and secret.

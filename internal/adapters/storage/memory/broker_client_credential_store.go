@@ -91,3 +91,29 @@ func (s *BrokerClientCredentialStore) Delete(ctx context.Context, agentID id.Age
 	delete(s.byClientID, cred.BrokerClientID)
 	return nil
 }
+
+func (s *BrokerClientCredentialStore) Rotate(ctx context.Context, agentID id.AgentID, newCredential *storage.BrokerClientCredential) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	old, exists := s.byAgentID[agentID]
+	if !exists {
+		return storage.NewStorageError("BrokerClientCredentialStore.Rotate", storage.ErrorKindNotFound, nil,
+			fmt.Sprintf("no existing credential for agent %s", agentID))
+	}
+
+	if _, exists := s.byClientID[newCredential.BrokerClientID]; exists {
+		return storage.NewStorageError("BrokerClientCredentialStore.Rotate", storage.ErrorKindConflict, nil,
+			fmt.Sprintf("broker_client_id %s already exists", newCredential.BrokerClientID))
+	}
+
+	// Store new credential first, then remove old — single lock covers both operations.
+	newCred := *newCredential
+	s.byID[newCred.ID] = &newCred
+	s.byAgentID[newCred.AgentID] = &newCred
+	s.byClientID[newCred.BrokerClientID] = &newCred
+
+	delete(s.byID, old.ID)
+	delete(s.byClientID, old.BrokerClientID)
+	return nil
+}

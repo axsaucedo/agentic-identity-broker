@@ -2,6 +2,8 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -50,11 +52,18 @@ type signingKeyAddRequest struct {
 func (h *SigningKeysHandler) Add(w http.ResponseWriter, r *http.Request) {
 	var req signingKeyAddRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Default to ES256 if no body provided
+		if !errors.Is(err, io.EOF) {
+			h.writeError(w, http.StatusBadRequest, "invalid request body", "")
+			return
+		}
 		req.Algorithm = "ES256"
 	}
 	if req.Algorithm == "" {
 		req.Algorithm = "ES256"
+	}
+	if req.Algorithm != "ES256" {
+		h.writeError(w, http.StatusBadRequest, "unsupported algorithm", "algorithm must be ES256")
+		return
 	}
 
 	key, err := h.signingKeyService.GenerateAndStoreKey(r.Context(), req.Algorithm, true)
