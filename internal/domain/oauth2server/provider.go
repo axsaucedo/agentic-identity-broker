@@ -61,7 +61,7 @@ func NewProvider(
 	codeStrategy := &RandomCodeStrategy{}
 
 	// Storage adapters
-	storage := NewFositeStorage(codeRepo, agentRepo, credRepo)
+	storage := NewFositeStorage(codeRepo, agentRepo, credRepo, logger)
 
 	config := &fosite.Config{
 		AuthorizeCodeLifespan:          60 * time.Second,
