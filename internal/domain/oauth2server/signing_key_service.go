@@ -126,8 +126,12 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 			return nil, fmt.Errorf("failed to import key %s to JWK: %w", key.KID, err)
 		}
 
+		jwaAlg, err := algorithmToJWA(key.Algorithm)
+		if err != nil {
+			return nil, fmt.Errorf("key %s has unrecognized algorithm %q: %w", key.KID, key.Algorithm, err)
+		}
 		_ = jwkKey.Set(jwk.KeyIDKey, key.KID.String())
-		_ = jwkKey.Set(jwk.AlgorithmKey, algorithmToJWA(key.Algorithm))
+		_ = jwkKey.Set(jwk.AlgorithmKey, jwaAlg)
 		_ = jwkKey.Set(jwk.KeyUsageKey, "sig")
 
 		if err := set.AddKey(jwkKey); err != nil {
@@ -227,13 +231,13 @@ func publicKeyFromPEM(privPEM []byte, algorithm string) (interface{}, error) {
 	}
 }
 
-func algorithmToJWA(algorithm string) jwa.SignatureAlgorithm {
+func algorithmToJWA(algorithm string) (jwa.SignatureAlgorithm, error) {
 	switch algorithm {
 	case "ES256":
-		return jwa.ES256()
+		return jwa.ES256(), nil
 	case "RS256":
-		return jwa.RS256()
+		return jwa.RS256(), nil
 	default:
-		return jwa.ES256()
+		return jwa.ES256(), fmt.Errorf("unrecognized algorithm: %q", algorithm)
 	}
 }

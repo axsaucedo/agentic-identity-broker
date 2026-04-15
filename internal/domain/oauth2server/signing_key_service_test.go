@@ -6,10 +6,14 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
 // testEncryptor is a minimal encryption implementation for testing.
@@ -128,6 +132,50 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		jwks, err := svc.BuildJWKS(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, 0, jwks.Len())
+	})
+
+	t.Run("unrecognized algorithm returns error", func(t *testing.T) {
+		_, repo := newTestSigningKeyService()
+		ctx := context.Background()
+
+		// Build a key record with a bogus algorithm directly in the store,
+		// bypassing GenerateAndStoreKey which rejects unknown algorithms.
+		privPEM, err := generateES256KeyPEM()
+		require.NoError(t, err)
+		encrypted := append([]byte("ENC:"), privPEM...)
+
+		kid := id.NewKeyID(uuid.New().String())
+		err = repo.Create(ctx, &storage.SigningKey{
+			ID:                  id.NewSigningKeyID(),
+			KID:                 kid,
+			Algorithm:           "BOGUS",
+			PrivateKeyEncrypted: encrypted,
+			IsCurrent:           true,
+		})
+		require.NoError(t, err)
+
+		svc := NewSigningKeyService(repo, &testEncryptor{}, testSlogger())
+		_, err = svc.BuildJWKS(ctx)
+		assert.Error(t, err)
+	})
+}
+
+func TestAlgorithmToJWA(t *testing.T) {
+	t.Run("ES256", func(t *testing.T) {
+		alg, err := algorithmToJWA("ES256")
+		require.NoError(t, err)
+		assert.Equal(t, jwa.ES256(), alg)
+	})
+
+	t.Run("RS256", func(t *testing.T) {
+		alg, err := algorithmToJWA("RS256")
+		require.NoError(t, err)
+		assert.Equal(t, jwa.RS256(), alg)
+	})
+
+	t.Run("unrecognized algorithm returns error", func(t *testing.T) {
+		_, err := algorithmToJWA("BOGUS")
+		assert.ErrorContains(t, err, "unrecognized algorithm")
 	})
 }
 
