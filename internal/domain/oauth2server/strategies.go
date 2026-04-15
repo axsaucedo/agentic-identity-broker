@@ -54,7 +54,8 @@ func NewJWXAccessTokenStrategy(
 	customClaimsEval *TokenClaimsEvaluator,
 	logger *slog.Logger,
 ) (*JWXAccessTokenStrategy, error) {
-	if err := validateIssuerURI(issuerURI); err != nil {
+	normalized, err := validateIssuerURI(issuerURI)
+	if err != nil {
 		return nil, err
 	}
 	if tokenTTL <= 0 {
@@ -63,7 +64,7 @@ func NewJWXAccessTokenStrategy(
 	return &JWXAccessTokenStrategy{
 		signingKeyService: signingKeyService,
 		signingKeyRepo:    signingKeyRepo,
-		issuerURI:         issuerURI,
+		issuerURI:         normalized,
 		tokenTTL:          tokenTTL,
 		customClaimsEval:  customClaimsEval,
 		logger:            logger,
@@ -180,27 +181,34 @@ func (s *RandomCodeStrategy) ValidateAuthorizeCode(_ context.Context, _ fosite.R
 	return nil
 }
 
-// validateIssuerURI checks that s is a non-empty, absolute http/https URI with no
-// fragment component, as required by RFC 8414 §2 for OAuth2 issuer identifiers.
-func validateIssuerURI(s string) error {
+// validateIssuerURI checks that s is a valid OAuth2 issuer identifier per RFC 8414 §2:
+// absolute http/https URI, non-empty host, no query, no fragment.
+// Returns the trimmed, normalized value on success.
+func validateIssuerURI(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return fmt.Errorf("issuerURI must not be empty or whitespace-only")
+		return "", fmt.Errorf("issuerURI must not be empty or whitespace-only")
 	}
 	parsed, err := url.Parse(s)
 	if err != nil {
-		return fmt.Errorf("issuerURI is not a valid URI: %w", err)
+		return "", fmt.Errorf("issuerURI is not a valid URI: %w", err)
 	}
 	if !parsed.IsAbs() {
-		return fmt.Errorf("issuerURI must be an absolute URI (got %q)", s)
+		return "", fmt.Errorf("issuerURI must be an absolute URI (got %q)", s)
 	}
 	if parsed.Scheme != "https" && parsed.Scheme != "http" {
-		return fmt.Errorf("issuerURI scheme must be http or https (got %q)", parsed.Scheme)
+		return "", fmt.Errorf("issuerURI scheme must be http or https (got %q)", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("issuerURI must have a non-empty host (got %q)", s)
+	}
+	if parsed.RawQuery != "" {
+		return "", fmt.Errorf("issuerURI must not contain a query component (got %q)", s)
 	}
 	if parsed.Fragment != "" {
-		return fmt.Errorf("issuerURI must not contain a fragment (got %q)", s)
+		return "", fmt.Errorf("issuerURI must not contain a fragment (got %q)", s)
 	}
-	return nil
+	return s, nil
 }
 
 // sha256Hex returns the hex-encoded SHA-256 hash of the input.

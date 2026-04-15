@@ -93,6 +93,10 @@ func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
 		{"no scheme rejected", "issuer.example.com", true},
 		{"unsupported scheme rejected", "ftp://issuer.example.com", true},
 		{"fragment rejected (RFC 8414)", "https://issuer.example.com#frag", true},
+		{"query component rejected (RFC 8414)", "https://issuer.example.com?tenant=a", true},
+		{"host-less https rejected", "https:///path", true},
+		{"single-slash https rejected", "https:/issuer.example.com", true},
+		{"whitespace-padded accepted after trim", " https://issuer.example.com ", false},
 		{"valid https accepted", "https://issuer.example.com", false},
 		{"valid http accepted", "http://localhost:8080", false},
 		{"https with path accepted", "https://issuer.example.com/realms/myrealm", false},
@@ -124,6 +128,22 @@ func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
 		strategy, err := NewJWXAccessTokenStrategy(svc, repo, validIssuer, time.Hour, nil, testSlogger())
 		require.NoError(t, err)
 		assert.NotNil(t, strategy)
+	})
+
+	t.Run("whitespace-padded issuer is stored trimmed", func(t *testing.T) {
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		require.NoError(t, err)
+		strategy, err := NewJWXAccessTokenStrategy(svc, repo, "  "+validIssuer+"  ", time.Hour, nil, testSlogger())
+		require.NoError(t, err)
+
+		tokenStr, _, err := strategy.GenerateAccessToken(context.Background(), buildTestRequest("agent", "user@example.com", []string{"read"}))
+		require.NoError(t, err)
+
+		tok, err := jwt.ParseInsecure([]byte(tokenStr))
+		require.NoError(t, err)
+		iss, ok := tok.Issuer()
+		require.True(t, ok)
+		assert.Equal(t, validIssuer, iss, "stored issuer must be trimmed, not padded")
 	})
 }
 
