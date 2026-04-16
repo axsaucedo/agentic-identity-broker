@@ -1234,9 +1234,17 @@ paths:
         - Agent ID is embedded in the state token for callback correlation
 
         **Error Handling** (RFC 6749 §4.1.2.1):
-        - Invalid `client_id` or `redirect_uri`: Error returned directly as JSON (not via redirect)
-        - `invalid_scope` (requested scope exceeds allowed_scopes): Redirect to `redirect_uri` with `error=invalid_scope`
-        - Other errors where `redirect_uri` is valid: Redirected to `redirect_uri` with `error` and `error_description`
+
+        Direct JSON responses (no redirect):
+        - `invalid_client`: Unknown or malformed `client_id` — `redirect_uri` not yet validated
+        - `invalid_redirect_uri`: `redirect_uri` not registered on the agent
+        - `invalid_request`: Missing PKCE parameters
+        - `unsupported_response_type`: `response_type` is not `code`
+        - `server_error`: Internal infrastructure failure — HTTP 500
+
+        Redirect responses (appended to `redirect_uri` as query params):
+        - `invalid_scope`: Requested scope exceeds the agent's `allowed_scopes`
+        - `access_denied`: User denied consent or no active grant exists
       operationId: oauth2Authorize
       tags:
         - OAuth2 Token
