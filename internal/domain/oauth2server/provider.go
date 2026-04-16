@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -199,9 +200,12 @@ func (p *Provider) HandleAuthorize(
 		return "", fmt.Errorf("internal error: expected *brokerClient, got %T", fositeClient)
 	}
 
-	// Validate redirect_uri
+	// Validate redirect_uri: must be registered and use HTTPS (or loopback HTTP).
 	if !contains(bc.agent.RedirectURIs, redirectURI) {
 		return "", fmt.Errorf("%w: %s not registered for agent", ErrInvalidRedirectURI, redirectURI)
+	}
+	if !isHTTPSOrLoopback(redirectURI) {
+		return "", fmt.Errorf("%w: redirect_uri must use HTTPS for non-local hosts", ErrInvalidRedirectURI)
 	}
 
 	// Enforce PKCE
@@ -367,6 +371,24 @@ func contains(list []string, item string) bool {
 		if v == item {
 			return true
 		}
+	}
+	return false
+}
+
+// isHTTPSOrLoopback reports whether uri uses HTTPS, or HTTP for loopback hosts.
+// Used to enforce HTTPS at runtime on legacy redirect URIs stored before
+// Agent.ValidateForCreate began rejecting non-loopback http:// URIs.
+func isHTTPSOrLoopback(uriStr string) bool {
+	u, err := url.Parse(uriStr)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if u.Scheme == "https" {
+		return true
+	}
+	if u.Scheme == "http" {
+		host := u.Hostname()
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
 	}
 	return false
 }

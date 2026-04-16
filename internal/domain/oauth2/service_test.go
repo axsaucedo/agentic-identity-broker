@@ -840,6 +840,13 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 			wantAction:    "error",
 			wantErrorCode: "invalid_redirect_uri",
 		},
+		{
+			name:          "non-local http URI in registry rejected at runtime (legacy data guard)",
+			redirectURIs:  []string{"http://legacy.example.com/callback"},
+			requestURI:    "http://legacy.example.com/callback",
+			wantAction:    "error",
+			wantErrorCode: "invalid_redirect_uri",
+		},
 	}
 
 	for _, tt := range tests {
@@ -991,4 +998,58 @@ func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 	// Verify endpoints are HTTPS
 	assert.True(t, strings.HasPrefix(metadata.AuthorizationEndpoint, "https://"), "authorization_endpoint must use HTTPS")
 	assert.True(t, strings.HasPrefix(metadata.TokenEndpoint, "https://"), "token_endpoint must use HTTPS")
+}
+
+// errorGrantRepository is a mock that returns a configurable error from FindByPrincipalAndAgent.
+type errorGrantRepository struct {
+	MockGrantRepository
+	findErr error
+}
+
+func (r *errorGrantRepository) FindByPrincipalAndAgent(_ context.Context, _ id.Principal, _ id.AgentID) (*storage.UserGrant, error) {
+	return nil, r.findErr
+}
+
+// TestService_HandleAuthorization_GrantLookupError verifies that when the grant repository
+// returns a non-not-found error (e.g., connection failure) after redirect_uri is validated,
+// the service returns a server_error decision with a redirect URL (safe to redirect because
+// redirect_uri has already been verified).
+func TestService_HandleAuthorization_GrantLookupError(t *testing.T) {
+	agentID := id.NewAgentID()
+	connErr := storage.NewStorageError("FindByPrincipalAndAgent", storage.ErrorKindConnection, nil, "connection refused")
+
+	agentRepo := NewMockAgentRepository()
+	_ = agentRepo.Create(context.Background(), &storage.Agent{
+		ID:           agentID,
+		ClientID:     id.ClientID("client-1"),
+		DisplayName:  "Test Agent",
+		RedirectURIs: []string{"https://client.example.com/callback"},
+	})
+
+	grantRepo := &errorGrantRepository{
+		MockGrantRepository: *NewMockGrantRepository(),
+		findErr:             connErr,
+	}
+
+	svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+		PublicURL: "https://broker.example.com",
+	})
+
+	req := &ports.AuthorizationRequest{
+		ClientID:     agentID,
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		State:        "abc123",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize",
+	}
+
+	decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
+
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	assert.Equal(t, "error", decision.Action)
+	assert.Equal(t, "server_error", decision.ErrorCode)
+	assert.NotEmpty(t, decision.RedirectURL, "post-validation server_error should carry a redirect URL")
+	assert.Contains(t, decision.RedirectURL, "https://client.example.com/callback")
+	assert.Contains(t, decision.RedirectURL, "error=server_error")
 }

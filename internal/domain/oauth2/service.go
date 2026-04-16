@@ -144,6 +144,17 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}, nil
 	}
 
+	// Step 1b-runtime: Enforce HTTPS for non-loopback hosts even on legacy data.
+	// Write-time validation (Agent.Validate/ValidateForCreate) prevents new non-HTTPS
+	// registrations, but this guard closes the gap for pre-existing stored URIs.
+	if !isHTTPSOrLoopbackURI(req.RedirectURI) {
+		return &ports.AuthorizationDecision{
+			Action:    "error",
+			ErrorCode: "invalid_redirect_uri",
+			ErrorDesc: "redirect_uri must use HTTPS for non-local hosts",
+		}, nil
+	}
+
 	// Step 1c: Validate requested scopes against agent's allowed scopes.
 	// redirect_uri is validated above, so a redirect-with-error is now safe.
 	if len(agent.AllowedScopes) > 0 && req.Scope != "" {
@@ -166,11 +177,12 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	// Step 2: Check if user has active grant for this agent
 	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agent.ID)
 	if err != nil && !errors.Is(err, ports.ErrNotFound) {
-		// Only treat as error if it's not a "not found" condition (which is valid)
+		// redirect_uri is validated above so a redirect-with-error is safe here.
 		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: "server_error",
-			ErrorDesc: "Failed to check grant",
+			Action:      "error",
+			ErrorCode:   "server_error",
+			ErrorDesc:   "Failed to check grant",
+			RedirectURL: buildErrorRedirect(req.RedirectURI, req.State, "server_error", "server error"),
 		}, nil
 	}
 
@@ -330,6 +342,24 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	}
 
 	return metadata, nil
+}
+
+// isHTTPSOrLoopbackURI reports whether uri uses HTTPS, or HTTP for localhost/loopback.
+// Used to enforce the HTTPS requirement at runtime for legacy redirect URIs that
+// predate the write-time validation introduced in Agent.ValidateForCreate.
+func isHTTPSOrLoopbackURI(uriStr string) bool {
+	u, err := url.Parse(uriStr)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if u.Scheme == "https" {
+		return true
+	}
+	if u.Scheme == "http" {
+		host := u.Hostname()
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	}
+	return false
 }
 
 // buildErrorRedirect constructs an RFC 6749 error redirect URL by appending error
