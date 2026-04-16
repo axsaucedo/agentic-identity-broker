@@ -325,12 +325,14 @@ HTTP 400
 
 | Error Code | Delivery | Description |
 |---|---|---|
+| `invalid_client` | Direct JSON 400 | `client_id` is not a valid UUID — `redirect_uri` cannot be validated |
+| `invalid_redirect_uri` | Direct JSON 400 | `redirect_uri` not registered on agent — no redirect performed |
 | `invalid_request` | Direct JSON 400 | Missing `code_challenge` or `code_challenge_method` |
-| `invalid_client` | Direct JSON 400 | Unknown `client_id` (no redirect performed — `redirect_uri` not yet validated) |
-| `invalid_redirect_uri` | Direct JSON 400 | `redirect_uri` not registered on agent (no redirect performed) |
-| `invalid_scope` | Redirect to `redirect_uri` | Requested scopes exceed the agent's `allowed_scopes` |
-| `access_denied` | Redirect to `redirect_uri` | User denied consent |
 | `unsupported_response_type` | Direct JSON 400 | `response_type` is not `code` |
+| `server_error` | Direct JSON 500 | Internal infrastructure failure |
+| `invalid_client` | Redirect to `redirect_uri` | Well-formed UUID but no registered agent |
+| `invalid_scope` | Redirect to `redirect_uri` | Requested scopes exceed the agent's `allowed_scopes` |
+| `access_denied` | Redirect to `redirect_uri` | User explicitly denied consent |
 
 **Flow**:
 1. Validate `client_id` → parse as agent UUID → resolve agent from `AgentRepository` → resolve credentials from `BrokerClientCredentialRepository`
