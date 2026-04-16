@@ -1076,7 +1076,7 @@ Define any project-specific terms or acronyms.)
 
 **AuthorizationCode**: Ephemeral, single-use code issued by the authorization endpoint and exchanged for an access token. Stored as SHA-256 hash. Expires after 60 seconds. Invalidated atomically on first use via `UPDATE ... SET used_at WHERE used_at IS NULL`. PKCE (S256) always required. Located in `internal/domain/storage/authorization_code.go`.
 
-**BrokerClientID**: String-typed identifier for broker-issued OAuth2 client credentials. Format: `broker_` prefix + 22 random base64url characters. Globally unique. Used as `client_id` in OAuth2 token requests. Located in `internal/domain/id/string_ids.go`.
+**BrokerClientID**: String-typed identifier for broker-issued OAuth2 client credentials. Format: `broker_` prefix + 22 random base64url characters. Globally unique. Internal-only: used for credential rotation safety (bound to authorization codes). Agents always use their `agent.id` (UUID) as `client_id` at runtime — `BrokerClientID` is never exposed as a runtime OAuth2 identifier. Located in `internal/domain/id/string_ids.go`.
 
 **KeyID**: String-typed identifier for JWT signing keys (`kid` claim). UUID format, immutable after creation. Used in JWT headers to identify the signing key for token validation. Located in `internal/domain/id/string_ids.go`.
 

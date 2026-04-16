@@ -474,8 +474,8 @@ sequenceDiagram
     AdminAPI-->>Operator: 201 {broker_client_id, client_secret}
 
     Note over Agent,JWKS: Phase 2 - Token Acquisition
-    Agent->>TokenEP: POST /oauth2/token (client_credentials)
-    TokenEP->>DB: Lookup by broker_client_id
+    Agent->>TokenEP: POST /oauth2/token (client_credentials, client_id=agent.id)
+    TokenEP->>DB: Lookup credential by agent UUID
     TokenEP->>TokenEP: argon2id.Compare(secret, hash)
     TokenEP->>DB: Get current signing key
     TokenEP->>TokenEP: Sign JWT with ES256

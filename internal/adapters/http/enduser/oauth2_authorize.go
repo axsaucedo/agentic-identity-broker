@@ -48,7 +48,7 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"client_id must be a valid agent UUID"}`)
+		_, _ = fmt.Fprintf(w, `{"error":"invalid_client","error_description":"client_id must be a valid agent UUID"}`)
 		return
 	}
 

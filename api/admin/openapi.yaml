@@ -759,8 +759,13 @@ paths:
         credentials. This allows the broker to act as an OAuth2 authorization server
         and authenticate agents directly.
 
+        **Runtime usage**: Agents always use their `agent.id` (UUID) as `client_id` at
+        the `/oauth2/authorize` and `/oauth2/token` endpoints. The `broker_client_id`
+        returned here is internal metadata used for rotation safety — it is never sent
+        by agents in OAuth2 flows.
+
         **First Generation** (no existing credentials):
-        - Returns `201 Created` with new `broker_client_id` and `client_secret`
+        - Returns `201 Created` with new `broker_client_id` (metadata) and `client_secret`
         - The `client_secret` is only returned in this response — store it securely
 
         **Rotation** (existing credentials):

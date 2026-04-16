@@ -16,7 +16,7 @@ type brokerClient struct {
 var _ fosite.Client = (*brokerClient)(nil)
 
 func (c *brokerClient) GetID() string {
-	return c.credential.BrokerClientID.String()
+	return c.agent.ID.String()
 }
 
 func (c *brokerClient) GetHashedSecret() []byte {

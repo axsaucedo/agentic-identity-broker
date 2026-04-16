@@ -612,19 +612,18 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 
 	t.Run("client_credentials flow", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 
 		resp, err := provider.HandleClientCredentials(context.Background(), agent.ID, plaintext, "read write")
 		require.NoError(t, err)
 
-		// In client_credentials, sub falls back to the broker client ID (no session subject).
-		// agent_id is also the broker client ID (brokerClient.GetID() returns BrokerClientID).
-		verifyToken(t, provider, resp.AccessToken, cred.BrokerClientID.String(), cred.BrokerClientID.String(), "read write")
+		// In client_credentials, sub and agent_id are both the agent UUID (brokerClient.GetID() returns agent.ID).
+		verifyToken(t, provider, resp.AccessToken, agent.ID.String(), agent.ID.String(), "read write")
 	})
 
 	t.Run("authorization_code flow", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
@@ -654,8 +653,8 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		// agent_id is the broker client ID; sub is the authenticated principal.
-		verifyToken(t, provider, resp.AccessToken, "user@example.com", cred.BrokerClientID.String(), "read write")
+		// agent_id is the agent UUID; sub is the authenticated principal.
+		verifyToken(t, provider, resp.AccessToken, "user@example.com", agent.ID.String(), "read write")
 	})
 }
 
