@@ -1317,7 +1317,7 @@ paths:
                 type: string
                 format: uri
         '400':
-          description: Bad Request - Malformed client_id (not a valid UUID) or missing required parameters; unknown-but-well-formed agent UUIDs redirect via the redirect_uri instead
+          description: Bad Request - Malformed client_id (not a valid UUID), unregistered client UUID, invalid redirect_uri, or missing required parameters; all client-identity errors return direct JSON (no redirect per RFC 6749 §4.1.2.1)
           content:
             application/json:
               schema:

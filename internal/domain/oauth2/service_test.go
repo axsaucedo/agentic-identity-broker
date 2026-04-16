@@ -785,6 +785,169 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 	})
 }
 
+// TestService_HandleAuthorization_RedirectURIValidation verifies that when an agent has
+// registered redirect URIs, only those URIs are accepted. Agents with no registered URIs
+// allow any redirect_uri (backward-compatible default).
+func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
+	agentID := id.NewAgentID()
+	registeredURI := "https://client.example.com/callback"
+	unregisteredURI := "https://evil.example.com/steal"
+
+	makeAgent := func(uris []string) *storage.Agent {
+		return &storage.Agent{
+			ID:           agentID,
+			ClientID:     id.ClientID("client-1"),
+			DisplayName:  "Test Agent",
+			RedirectURIs: uris,
+		}
+	}
+
+	tests := []struct {
+		name          string
+		redirectURIs  []string // agent's registered URIs
+		requestURI    string   // URI from the incoming request
+		wantAction    string
+		wantErrorCode string
+	}{
+		{
+			name:         "agent with no registered URIs allows any redirect_uri",
+			redirectURIs: nil,
+			requestURI:   unregisteredURI,
+			wantAction:   "redirect_to_consent", // proceeds to grant check; no grant → consent
+		},
+		{
+			name:         "matching registered URI is accepted",
+			redirectURIs: []string{registeredURI},
+			requestURI:   registeredURI,
+			wantAction:   "redirect_to_consent",
+		},
+		{
+			name:          "non-matching URI returns invalid_redirect_uri with no redirect",
+			redirectURIs:  []string{registeredURI},
+			requestURI:    unregisteredURI,
+			wantAction:    "error",
+			wantErrorCode: "invalid_redirect_uri",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agentRepo := NewMockAgentRepository()
+			grantRepo := NewMockGrantRepository()
+			_ = agentRepo.Create(context.Background(), makeAgent(tt.redirectURIs))
+
+			svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+				PublicURL: "https://broker.example.com",
+			})
+
+			req := &ports.AuthorizationRequest{
+				ClientID:     agentID,
+				RedirectURI:  tt.requestURI,
+				ResponseType: "code",
+				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
+			}
+
+			decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
+
+			require.NoError(t, err)
+			require.NotNil(t, decision)
+			assert.Equal(t, tt.wantAction, decision.Action)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, decision.ErrorCode)
+				assert.Empty(t, decision.RedirectURL, "invalid_redirect_uri must not include a redirect URL")
+			}
+		})
+	}
+}
+
+// TestService_HandleAuthorization_ScopeValidation verifies that when an agent has
+// registered allowed scopes, only those scopes may be requested. Agents with no
+// allowed scopes accept any requested scope.
+func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	makeAgent := func(allowed []string) *storage.Agent {
+		return &storage.Agent{
+			ID:            agentID,
+			ClientID:      id.ClientID("client-1"),
+			DisplayName:   "Test Agent",
+			RedirectURIs:  []string{"https://client.example.com/callback"},
+			AllowedScopes: allowed,
+		}
+	}
+
+	tests := []struct {
+		name          string
+		allowedScopes []string
+		requestScope  string
+		wantAction    string
+		wantErrorCode string
+		wantRedirect  bool // true if error should carry a redirect URL
+	}{
+		{
+			name:          "agent with no allowed scopes accepts any requested scope",
+			allowedScopes: nil,
+			requestScope:  "openid profile email",
+			wantAction:    "redirect_to_consent",
+		},
+		{
+			name:          "requesting only allowed scopes is accepted",
+			allowedScopes: []string{"openid", "profile"},
+			requestScope:  "openid profile",
+			wantAction:    "redirect_to_consent",
+		},
+		{
+			name:          "requesting an unauthorized scope returns invalid_scope redirect",
+			allowedScopes: []string{"openid"},
+			requestScope:  "openid admin",
+			wantAction:    "error",
+			wantErrorCode: "invalid_scope",
+			wantRedirect:  true,
+		},
+		{
+			name:          "empty scope with restricted agent is accepted",
+			allowedScopes: []string{"openid"},
+			requestScope:  "",
+			wantAction:    "redirect_to_consent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agentRepo := NewMockAgentRepository()
+			grantRepo := NewMockGrantRepository()
+			_ = agentRepo.Create(context.Background(), makeAgent(tt.allowedScopes))
+
+			svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+				PublicURL: "https://broker.example.com",
+			})
+
+			req := &ports.AuthorizationRequest{
+				ClientID:     agentID,
+				RedirectURI:  "https://client.example.com/callback",
+				ResponseType: "code",
+				Scope:        tt.requestScope,
+				State:        "state-abc",
+				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
+			}
+
+			decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
+
+			require.NoError(t, err)
+			require.NotNil(t, decision)
+			assert.Equal(t, tt.wantAction, decision.Action)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, decision.ErrorCode)
+			}
+			if tt.wantRedirect {
+				assert.NotEmpty(t, decision.RedirectURL, "invalid_scope should include a redirect URL")
+				assert.Contains(t, decision.RedirectURL, "error=invalid_scope")
+				assert.Contains(t, decision.RedirectURL, "state=state-abc")
+			}
+		})
+	}
+}
+
 // TestService_GenerateMetadata_RFC8414Compliance tests RFC 8414 compliance
 func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 	agentRepo := NewMockAgentRepository()

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -116,6 +117,45 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 			ErrorCode: "server_error",
 			ErrorDesc: "Failed to validate client",
 		}, nil
+	}
+
+	// Step 1b: Validate redirect_uri against agent's registered URIs.
+	// Per RFC 6749 §4.1.2.1, MUST NOT redirect if redirect_uri is unverified —
+	// return a direct error response with no RedirectURL.
+	if len(agent.RedirectURIs) > 0 {
+		uriAllowed := false
+		for _, allowed := range agent.RedirectURIs {
+			if req.RedirectURI == allowed {
+				uriAllowed = true
+				break
+			}
+		}
+		if !uriAllowed {
+			return &ports.AuthorizationDecision{
+				Action:    "error",
+				ErrorCode: "invalid_redirect_uri",
+				ErrorDesc: "redirect_uri not registered for this client",
+			}, nil
+		}
+	}
+
+	// Step 1c: Validate requested scopes against agent's allowed scopes.
+	// redirect_uri is validated above, so a redirect-with-error is now safe.
+	if len(agent.AllowedScopes) > 0 && req.Scope != "" {
+		allowedSet := make(map[string]bool, len(agent.AllowedScopes))
+		for _, s := range agent.AllowedScopes {
+			allowedSet[s] = true
+		}
+		for _, s := range strings.Fields(req.Scope) {
+			if !allowedSet[s] {
+				return &ports.AuthorizationDecision{
+					Action:      "error",
+					ErrorCode:   "invalid_scope",
+					ErrorDesc:   "requested scope is not permitted",
+					RedirectURL: buildErrorRedirect(req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted"),
+				}, nil
+			}
+		}
 	}
 
 	// Step 2: Check if user has active grant for this agent
@@ -285,6 +325,24 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	}
 
 	return metadata, nil
+}
+
+// buildErrorRedirect constructs an RFC 6749 error redirect URL by appending error
+// and error_description (and state, if present) to the given redirect_uri.
+// Returns empty string if redirectURI cannot be parsed.
+func buildErrorRedirect(redirectURI, state, errorCode, errorDesc string) string {
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		return ""
+	}
+	q := u.Query()
+	q.Set("error", errorCode)
+	q.Set("error_description", errorDesc)
+	if state != "" {
+		q.Set("state", state)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // anyDelegatedSessionExpired returns true if any existing session for a delegated service is
