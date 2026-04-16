@@ -169,13 +169,17 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 	// Issue authorization code locally via the CodeIssuer strategy
 	code, err := h.CodeIssuer.IssueAuthorizationCode(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
+		// Return 400/500 directly for errors where redirect_uri is not yet validated
+		// (redirect-based error responses risk open redirect when the URI is unverified).
 		if errors.Is(err, oauth2server.ErrUnknownClient) || errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
-			http.Error(w, fmt.Sprintf("authorization error: %v", err), http.StatusBadRequest)
+			http.Error(w, "authorization error: invalid_client", http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, oauth2server.ErrServerError) {
+			http.Error(w, "server_error", http.StatusInternalServerError)
 			return
 		}
 		if errors.Is(err, oauth2server.ErrInvalidRequest) {
-			// Return 400 directly — redirect_uri may not be validated yet at this point,
-			// so a redirect-based error response risks open redirect.
 			http.Error(w, "invalid_request: invalid authorization request", http.StatusBadRequest)
 			return
 		}

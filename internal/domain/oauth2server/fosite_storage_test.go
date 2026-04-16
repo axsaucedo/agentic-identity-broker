@@ -292,6 +292,18 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 		assert.ErrorIs(t, err, fosite.ErrNotFound)
 	})
 
+	t.Run("GetClient agent-exists-but-no-credential returns ErrNotFound", func(t *testing.T) {
+		agentRepo := memory.NewAgentRepository()
+		agentID := id.NewAgentID()
+		agent := &dstorage.Agent{ID: agentID, ClientID: "upstream-client"}
+		require.NoError(t, agentRepo.Create(context.Background(), agent))
+		// No credential created — credential repo is empty
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), agentRepo, memory.NewBrokerClientCredentialStore(), testSlogger())
+
+		_, err := store.GetClient(context.Background(), agentID.String())
+		assert.ErrorIs(t, err, fosite.ErrNotFound)
+	})
+
 	t.Run("GetClient round-trips client.GetID() to agent UUID", func(t *testing.T) {
 		_, _, agentRepo, credRepo := newTestFositeStorage()
 		agentID := id.NewAgentID()

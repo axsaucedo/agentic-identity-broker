@@ -22,3 +22,7 @@ var ErrUnknownClient = errors.New("unknown_client")
 
 // ErrInvalidRedirectURI is returned when redirect_uri doesn't match registered URIs.
 var ErrInvalidRedirectURI = errors.New("invalid_redirect_uri")
+
+// ErrServerError is returned for internal infrastructure failures (timeout, connection error, etc.)
+// that are not attributable to client input. Maps to server_error / HTTP 500.
+var ErrServerError = errors.New("server_error")

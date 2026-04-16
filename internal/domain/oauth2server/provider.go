@@ -187,7 +187,11 @@ func (p *Provider) HandleAuthorize(
 	// Look up client by agent ID (uses GetByAgentID internally)
 	fositeClient, err := p.fositeStorage.buildClient(ctx, agentID)
 	if err != nil {
-		return "", fmt.Errorf("%w for agent %s: %v", ErrUnknownClient, agentID, err)
+		var storageErr *storage.StorageError
+		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
+			return "", fmt.Errorf("%w: agent %s not found", ErrUnknownClient, agentID)
+		}
+		return "", fmt.Errorf("%w: client lookup failed", ErrServerError)
 	}
 
 	bc, ok := fositeClient.(*brokerClient)
