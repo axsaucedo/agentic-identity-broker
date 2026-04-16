@@ -1236,15 +1236,15 @@ paths:
         **Error Handling** (RFC 6749 §4.1.2.1):
 
         Direct JSON responses (no redirect):
-        - `invalid_client` (400): `client_id` is not a valid UUID — `redirect_uri` cannot be validated
-        - `invalid_redirect_uri` (400): `redirect_uri` not registered on the agent — no redirect performed
+        - `invalid_client` (400): `client_id` is not a valid UUID
+        - `invalid_redirect_uri` (400): `redirect_uri` not registered on the agent
         - `invalid_request` (400): Missing PKCE parameters
         - `unsupported_response_type` (400): `response_type` is not `code`
         - `server_error` (500): Internal infrastructure failure
 
-        Redirect responses (`redirect_uri` validated; error appended as query params):
-        - `invalid_client`: Well-formed UUID but no registered agent — redirects to `redirect_uri`
-        - `invalid_scope`: Requested scope exceeds the agent's `allowed_scopes`
+        Redirect responses (error appended to `redirect_uri` as query params):
+        - `invalid_client`: Well-formed UUID but no registered agent (redirect_uri is taken from the request as-is, no prior agent record to validate against)
+        - `invalid_scope`: Requested scope exceeds the agent's `allowed_scopes` (agent is found; redirect_uri was validated against registered URIs)
         - `access_denied`: User explicitly denied consent
       operationId: oauth2Authorize
       tags:
