@@ -141,7 +141,7 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 - What happens when an authorization code is presented twice? The second use is rejected with `invalid_grant`; the associated code is invalidated immediately on first use.
 - What happens when a PKCE `code_challenge` is absent from an authorization request? The request is rejected immediately with `invalid_request`; no code is issued.
 - What happens when no signing key exists in the database at startup in `issue_token` mode? The broker auto-generates an initial signing key, logs the event, and starts normally.
-- What happens when the broker is in `proxy` mode and a client attempts to authenticate with broker-issued credentials? The request is rejected; proxy mode forwards all token requests upstream.
+- What happens when the broker is in `proxy` mode and a client attempts to authenticate with broker-issued credentials? The request is rejected; proxy mode forwards all token requests upstream. Note: clients NEVER use `broker_client_id` at any endpoint — they always use the agent UUID as `client_id`. The `broker_client_id` is an internal broker implementation detail used for credential rotation safety and is never exposed to agents at runtime.
 - What happens when an authorization code flow is attempted for an agent with no registered `redirect_uris`? The authorization endpoint returns `invalid_request` — no code is issued and no redirect is performed.
 - What happens when the `token_claims_expression` fails at runtime (e.g., references a missing `principal.email`)? Token issuance is rejected (fail closed); the broker returns a `server_error` OAuth2 error response and logs the evaluation failure with full context. No token with partial claims is ever issued.
 
@@ -149,7 +149,7 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 
 ### Functional Requirements
 
-- **FR-001**: System MUST support a new `issue_token` value for `oauth2_authorization_server.mode` in addition to the existing proxy mode
+- **FR-001**: System MUST support a new `issue_token` value for `oauth2_authorization_server.mode` in addition to the existing proxy mode. The `proxy` and `issue_token` modes are **mutually exclusive** — the broker operates in exactly one mode at runtime, selected by `oauth2_authorization_server.mode`. A future hybrid mode may be introduced in a separate spec.
 - **FR-002**: System MUST default to existing proxy mode behavior when no `mode` is set, preserving full backward compatibility
 - **FR-003**: Admin API MUST expose an endpoint to generate (or rotate) broker-issued OAuth2 client credentials for a given agent
 - **FR-004**: Admin API MUST expose an endpoint to retrieve broker-issued credential metadata (client ID, creation time, rotation time) for a given agent, without ever returning the plaintext secret
@@ -158,12 +158,12 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 - **FR-006b**: The Admin API for agent create/update MUST accept an optional `redirect_uris` field (list of HTTPS URIs); agents may be created or updated with an empty list regardless of the broker's operating mode
 - **FR-006c**: The authorization endpoint MUST reject any `redirect_uri` in an authorization request that is not an exact match of one of the agent's registered redirect URIs, or if the agent has no registered redirect URIs; no redirect is performed on rejection
 - **FR-006d**: The Admin API for agent create/update MUST accept an optional `allowed_scopes` field (list of strings); when non-empty, it defines the maximum set of scopes the agent may request in token or authorization requests; when empty, the agent may request any scope; the token endpoint MUST return `invalid_scope` if requested scopes are not a subset of the agent's `allowed_scopes`
-- **FR-007**: In `issue_token` mode, the token endpoint MUST accept `grant_type=client_credentials` requests authenticated with broker-issued credentials and return locally-signed access tokens
+- **FR-007**: In `issue_token` mode, the token endpoint MUST accept `grant_type=client_credentials` requests authenticated with broker-issued credentials and return locally-signed access tokens. The `client_id` at the token endpoint MUST be the agent's internal UUID (`agent.id`). The broker resolves the bound `BrokerClientCredential` by agent UUID internally — clients never present `broker_client_id` at any endpoint.
 - **FR-007b**: In `issue_token` mode, the authorization endpoint MUST accept `grant_type=authorization_code` flow, issuing authorization codes itself by trusting the identity established by the configured preauth method (X-Remote-User header or JWT preauth) — no upstream OAuth2 redirect is performed
-- **FR-007c**: In `issue_token` mode, the authorization endpoint MUST validate the `client_id` against registered agents and enforce existing consent checks before issuing an authorization code
+- **FR-007c**: In `issue_token` mode, the authorization endpoint MUST validate the `client_id` against registered agents and enforce existing consent checks before issuing an authorization code. The `client_id` at the authorization endpoint MUST be the agent's internal UUID (`agent.id`), NOT a broker-issued `broker_client_id`. The broker resolves credentials transparently by agent UUID.
 - **FR-007d**: Authorization codes issued by the broker MUST expire after 60 seconds
 - **FR-007e**: PKCE (RFC 7636) MUST be required for all authorization code flows; the broker MUST reject authorization requests that do not include a `code_challenge` and `code_challenge_method`; only `S256` is accepted
-- **FR-008**: In `issue_token` mode, issued access tokens MUST include the agent's broker-internal ID as both the `sub` claim and an explicit `agent_id` claim
+- **FR-008**: In `issue_token` mode, issued access tokens MUST include the agent's UUID (`agent.id`) as both the `sub` claim and an explicit `agent_id` claim. The `client_id` at the token endpoint is always the agent UUID; the broker resolves credentials by agent UUID at the token endpoint.
 - **FR-009**: In `issue_token` mode, the JWKS endpoint MUST expose all currently active public signing keys, each identified by a unique `kid` claim
 - **FR-009b**: The broker MUST always sign new tokens with the current (latest) key; previously active keys remain in the JWKS until explicitly removed or expired
 - **FR-009c**: An Admin API endpoint MUST allow operators to add a new signing key (making it current) and remove an old key; removing a key from JWKS immediately stops validating tokens signed with it

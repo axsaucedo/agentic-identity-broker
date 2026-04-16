@@ -227,7 +227,7 @@ All admin endpoints require admin-level access (no principal authentication — 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `grant_type` | string | Yes | Must be `client_credentials` |
-| `client_id` | string | Yes | Broker-issued client ID |
+| `client_id` | string | Yes | Agent UUID (broker-internal identifier, `agent.id`) |
 | `client_secret` | string | Yes | Broker-issued client secret |
 | `scope` | string | No | Space-delimited requested scopes |
 
@@ -273,7 +273,7 @@ All admin endpoints require admin-level access (no principal authentication — 
 | `grant_type` | string | Yes | Must be `authorization_code` |
 | `code` | string | Yes | Authorization code from `/oauth2/authorize` |
 | `redirect_uri` | string | Yes | Must match the URI from the authorization request |
-| `client_id` | string | Yes | Broker-issued client ID |
+| `client_id` | string | Yes | Agent UUID (broker-internal identifier, `agent.id`) |
 | `code_verifier` | string | Yes | PKCE code verifier (RFC 7636) |
 
 **Response `200 OK`**: Same format as client credentials grant.
@@ -295,7 +295,7 @@ All admin endpoints require admin-level access (no principal authentication — 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `response_type` | string | Yes | Must be `code` |
-| `client_id` | string | Yes | Broker-issued client ID |
+| `client_id` | string | Yes | Agent UUID (broker-internal identifier, `agent.id`) |
 | `redirect_uri` | string | Yes | Must match a registered redirect URI |
 | `state` | string | Recommended | CSRF protection value |
 | `code_challenge` | string | Yes | PKCE code challenge (S256) |
@@ -332,7 +332,7 @@ HTTP 400
 | `unsupported_response_type` | `response_type` is not `code` |
 
 **Flow**:
-1. Validate `client_id` → lookup agent via `BrokerClientCredentialRepository`
+1. Validate `client_id` → parse as agent UUID → resolve agent from `AgentRepository` → resolve credentials from `BrokerClientCredentialRepository`
 2. Validate `redirect_uri` → exact match against agent's `redirect_uris`
 3. Validate PKCE → `code_challenge` and `code_challenge_method=S256` required
 4. Check consent → redirect to consent UI if no active grant
