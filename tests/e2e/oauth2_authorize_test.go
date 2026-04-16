@@ -133,6 +133,9 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
+			// Must be a direct 400 — no redirect to the unvalidated redirect_uri
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp.Header.Get("Location")).To(BeEmpty())
 			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
 		})
 	})

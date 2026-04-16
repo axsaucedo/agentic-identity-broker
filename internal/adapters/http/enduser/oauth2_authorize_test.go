@@ -140,8 +140,9 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 	assert.Contains(t, string(body), `"invalid_client"`)
 }
 
-// TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent tests redirect-with-error for a valid UUID
-// client_id that does not match any registered agent.
+// TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent tests that a valid UUID client_id
+// that does not match any registered agent returns a direct 400 JSON response.
+// RFC 6749 §4.1.2.1: MUST NOT redirect when the client cannot be verified.
 func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
 	svc := oauth2.NewService(
 		newMockAgentRepo(),
@@ -169,18 +170,13 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
 
 	handler.ServeHTTP(w, req)
 
-	// Should redirect with error parameters
-	assert.Equal(t, http.StatusFound, w.Code)
-	redirectURL, err := url.Parse(w.Header().Get("Location"))
-	require.NoError(t, err)
-	assert.Equal(t, "https", redirectURL.Scheme)
-	assert.Equal(t, "client.example.com", redirectURL.Host)
-	assert.Equal(t, "/callback", redirectURL.Path)
-
-	query := redirectURL.Query()
-	assert.Equal(t, "invalid_client", query.Get("error"))
-	assert.NotEmpty(t, query.Get("error_description"))
-	assert.Equal(t, "xyz123", query.Get("state"))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Empty(t, w.Header().Get("Location"))
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	var errResp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(t, "invalid_client", errResp["error"])
+	assert.NotEmpty(t, errResp["error_description"])
 }
 
 // TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent tests redirect to consent UI when no active grant
