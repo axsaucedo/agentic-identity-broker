@@ -78,7 +78,7 @@ GET /oauth2/jwks.json
 ```bash
 curl -X POST http://localhost:8000/oauth2/token \
   -d "grant_type=client_credentials" \
-  -d "client_id=broker_xxxx" \
+  -d "client_id=550e8400-e29b-41d4-a716-446655440000" \
   -d "client_secret=yyyy" \
   -d "scope=read write"
 ```
@@ -86,12 +86,12 @@ curl -X POST http://localhost:8000/oauth2/token \
 **Authorization Code Grant (with PKCE):**
 ```bash
 # 1. Authorization request (browser redirect)
-GET /oauth2/authorize?response_type=code&client_id=broker_xxxx&redirect_uri=http://app/callback&code_challenge=xxxx&code_challenge_method=S256&state=random
+GET /oauth2/authorize?response_type=code&client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=http://app/callback&code_challenge=xxxx&code_challenge_method=S256&state=random
 
 # 2. Exchange code for token
 curl -X POST http://localhost:8000/oauth2/token \
   -d "grant_type=authorization_code" \
-  -d "client_id=broker_xxxx" \
+  -d "client_id=550e8400-e29b-41d4-a716-446655440000" \
   -d "client_secret=yyyy" \
   -d "code=zzzz" \
   -d "redirect_uri=http://app/callback" \

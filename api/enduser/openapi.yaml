@@ -1341,14 +1341,14 @@ paths:
         Authenticate the agent directly using broker-issued client credentials and obtain
         an access token. Used when the broker acts as an OAuth2 authorization server.
         - `grant_type`: `client_credentials`
-        - `client_id`: Broker-issued client ID
+        - `client_id`: Agent UUID (`agent.id`)
         - `client_secret`: Broker-issued client secret
         - `scope`: (optional) Space-delimited requested scopes
 
         ### Authorization Code Grant (RFC 6749 - Issue Token Mode)
         Exchange an authorization code for an access token. Supports PKCE for public clients.
         - `grant_type`: `authorization_code`
-        - `client_id`: Broker-issued client ID
+        - `client_id`: Agent UUID (`agent.id`)
         - `client_secret`: Broker-issued client secret
         - `code`: Authorization code from /oauth2/authorize
         - `redirect_uri`: Must match the URI used in the authorization request
@@ -1398,14 +1398,14 @@ paths:
                 summary: Client Credentials Request (Issue Token Mode)
                 value:
                   grant_type: "client_credentials"
-                  client_id: "brk_550e8400e29b41d4a716446655440000"
+                  client_id: "550e8400-e29b-41d4-a716-446655440000"
                   client_secret: "brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
                   scope: "openid profile"
               authorization_code_issue:
                 summary: Authorization Code Exchange (Issue Token Mode)
                 value:
                   grant_type: "authorization_code"
-                  client_id: "brk_550e8400e29b41d4a716446655440000"
+                  client_id: "550e8400-e29b-41d4-a716-446655440000"
                   client_secret: "brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
                   code: "SplxlOBeZQQYbYS6WxSbIA"
                   redirect_uri: "https://agent.example.com/callback"
@@ -2634,9 +2634,9 @@ components:
         client_id:
           type: string
           description: |
-            Broker-issued client identifier (for client_credentials and authorization_code
-            grant types in issue_token mode) or upstream OAuth2 client ID (proxy mode).
-          example: "brk_550e8400e29b41d4a716446655440000"
+            Agent UUID (`agent.id`) for client_credentials and authorization_code
+            grant types in issue_token mode, or upstream OAuth2 client ID (proxy mode).
+          example: "550e8400-e29b-41d4-a716-446655440000"
         client_secret:
           type: string
           description: |

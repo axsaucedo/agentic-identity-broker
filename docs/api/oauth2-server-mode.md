@@ -58,7 +58,7 @@ Initiates an authorization code grant flow. The user is redirected to the consen
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `response_type` | Yes | Must be `code` |
-| `client_id` | Yes | Broker-issued client ID (e.g. `broker_xxxx`) |
+| `client_id` | Yes | Agent UUID (e.g. `550e8400-e29b-41d4-a716-446655440000`) |
 | `redirect_uri` | Yes | Registered callback URI |
 | `code_challenge` | Yes | PKCE code challenge (S256) |
 | `code_challenge_method` | Yes | Must be `S256` |
@@ -85,7 +85,7 @@ Issues JWT access tokens. Supports `client_credentials` and `authorization_code`
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `grant_type` | Yes | `client_credentials` |
-| `client_id` | Yes | Broker-issued client ID |
+| `client_id` | Yes | Agent UUID (e.g. `550e8400-e29b-41d4-a716-446655440000`) |
 | `client_secret` | Yes | Broker-issued client secret |
 | `scope` | No | Space-delimited requested scopes |
 
@@ -94,7 +94,7 @@ Issues JWT access tokens. Supports `client_credentials` and `authorization_code`
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `grant_type` | Yes | `authorization_code` |
-| `client_id` | Yes | Broker-issued client ID |
+| `client_id` | Yes | Agent UUID (e.g. `550e8400-e29b-41d4-a716-446655440000`) |
 | `client_secret` | Yes | Broker-issued client secret |
 | `code` | Yes | Authorization code from authorize endpoint |
 | `redirect_uri` | Yes | Must match the original authorization request |
