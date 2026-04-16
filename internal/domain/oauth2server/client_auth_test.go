@@ -29,7 +29,10 @@ func (m *mockCredentialRepo) Create(_ context.Context, _ *storage.BrokerClientCr
 	return nil
 }
 func (m *mockCredentialRepo) GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.BrokerClientCredential, error) {
-	return m.getByAgentIDFunc(ctx, agentID)
+	if m.getByAgentIDFunc != nil {
+		return m.getByAgentIDFunc(ctx, agentID)
+	}
+	return nil, storage.NewStorageError("mockCredentialRepo.GetByAgentID", storage.ErrorKindNotFound, nil, "not found")
 }
 func (m *mockCredentialRepo) GetByBrokerClientID(ctx context.Context, clientID id.BrokerClientID) (*storage.BrokerClientCredential, error) {
 	if m.getByBrokerClientIDFunc != nil {

@@ -8,6 +8,9 @@ import (
 	"github.com/ory/fosite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
 func TestNewTokenClaimsEvaluator(t *testing.T) {
@@ -59,13 +62,15 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 	})
 
 	t.Run("expression with agent context works", func(t *testing.T) {
-		eval, err := NewTokenClaimsEvaluator(`{"agent_name": agent.client_id}`)
+		eval, err := NewTokenClaimsEvaluator(`{"agent_name": agent.client_id, "agent_uuid": agent.id}`)
 		require.NoError(t, err)
 
-		req := buildTestRequest("my-agent-id", "user@example.com", []string{"read"})
+		req := buildTestRequest("upstream-client-id", "user@example.com", []string{"read"})
 		claims, err := eval.Evaluate(context.Background(), req)
 		require.NoError(t, err)
-		assert.Equal(t, "my-agent-id", claims["agent_name"])
+		assert.Equal(t, "upstream-client-id", claims["agent_name"])
+		// agent.id is the agent UUID (brokerClient.GetID())
+		assert.NotEmpty(t, claims["agent_uuid"])
 	})
 
 	t.Run("expression with principal variable works", func(t *testing.T) {
@@ -80,6 +85,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 }
 
 // buildTestRequest creates a fosite.Requester for testing CEL evaluation.
+// clientID is set as Agent.ClientID (upstream OAuth2 client ID); agent.id is a fresh UUID.
 func buildTestRequest(clientID, subject string, scopes []string) fosite.Requester {
 	session := &fosite.DefaultSession{
 		Subject: subject,
@@ -87,10 +93,12 @@ func buildTestRequest(clientID, subject string, scopes []string) fosite.Requeste
 			fosite.AccessToken: time.Now().Add(time.Hour),
 		},
 	}
+	agent := &storage.Agent{
+		ID:       id.NewAgentID(),
+		ClientID: id.ClientID(clientID),
+	}
 	return &fosite.Request{
-		Client: &fosite.DefaultClient{
-			ID: clientID,
-		},
+		Client:       &brokerClient{agent: agent, credential: &storage.BrokerClientCredential{}},
 		Session:      session,
 		GrantedScope: scopes,
 	}

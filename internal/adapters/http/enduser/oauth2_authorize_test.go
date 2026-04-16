@@ -38,7 +38,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 	// MustFromContext panics when principal is missing
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=client-1&redirect_uri=https://client.example.com/callback&response_type=code",
+		"https://broker.example.com/oauth2/authorize?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https://client.example.com/callback&response_type=code",
 		nil,
 	)
 	w := httptest.NewRecorder()
@@ -77,12 +77,12 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 		},
 		{
 			name:      "missing redirect_uri",
-			queryPath: "?client_id=client-1&response_type=code",
+			queryPath: "?client_id=550e8400-e29b-41d4-a716-446655440000&response_type=code",
 			wantError: "redirect_uri",
 		},
 		{
 			name:      "missing response_type",
-			queryPath: "?client_id=client-1&redirect_uri=https://client.example.com/callback",
+			queryPath: "?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https://client.example.com/callback",
 			wantError: "response_type",
 		},
 	}
@@ -275,7 +275,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
 	assert.Contains(t, redirectURL, "https://auth.example.com/authorize")
-	assert.Contains(t, redirectURL, "client_id=client-1")
+	assert.Contains(t, redirectURL, "client_id=550e8400-e29b-41d4-a716-446655440000")
 	assert.Contains(t, redirectURL, "state=xyz123")
 	assert.Contains(t, redirectURL, "response_type=code")
 }

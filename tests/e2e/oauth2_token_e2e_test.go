@@ -26,7 +26,6 @@ var _ = Describe("US3: Client Credentials Grant (issue_token mode)", func() {
 		testStorage    *storageadapter.Adapter
 		logger         *slog.Logger
 		agent          *domainstorage.Agent
-		brokerClientID string
 		clientSecret   string
 	)
 
@@ -61,7 +60,6 @@ var _ = Describe("US3: Client Credentials Grant (issue_token mode)", func() {
 
 		var creds map[string]interface{}
 		Expect(json.NewDecoder(resp.Body).Decode(&creds)).ToNot(HaveOccurred())
-		brokerClientID = creds["broker_client_id"].(string)
 		clientSecret = creds["client_secret"].(string)
 	})
 
@@ -80,7 +78,7 @@ var _ = Describe("US3: Client Credentials Grant (issue_token mode)", func() {
 	It("client_credentials grant issues signed token", func() {
 		form := url.Values{
 			"grant_type":    {"client_credentials"},
-			"client_id":     {brokerClientID},
+			"client_id":     {agent.ID.String()},
 			"client_secret": {clientSecret},
 		}
 		resp, err := http.Post(
@@ -101,7 +99,7 @@ var _ = Describe("US3: Client Credentials Grant (issue_token mode)", func() {
 	It("invalid credentials returns 401", func() {
 		form := url.Values{
 			"grant_type":    {"client_credentials"},
-			"client_id":     {brokerClientID},
+			"client_id":     {agent.ID.String()},
 			"client_secret": {"wrong-secret"},
 		}
 		resp, err := http.Post(
@@ -118,7 +116,7 @@ var _ = Describe("US3: Client Credentials Grant (issue_token mode)", func() {
 		// Get token
 		form := url.Values{
 			"grant_type":    {"client_credentials"},
-			"client_id":     {brokerClientID},
+			"client_id":     {agent.ID.String()},
 			"client_secret": {clientSecret},
 		}
 		resp, err := http.Post(
@@ -153,7 +151,7 @@ var _ = Describe("US3: Client Credentials Grant (issue_token mode)", func() {
 
 		form := url.Values{
 			"grant_type":    {"client_credentials"},
-			"client_id":     {brokerClientID},
+			"client_id":     {agent.ID.String()},
 			"client_secret": {clientSecret},
 			"scope":         {"admin"},
 		}

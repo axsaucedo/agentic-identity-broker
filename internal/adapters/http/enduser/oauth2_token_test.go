@@ -603,7 +603,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 	}{
 		{
 			name:       "success returns 200 with all token fields",
-			body:       "grant_type=client_credentials&client_id=broker_abc&client_secret=secret&scope=read",
+			body:       "grant_type=client_credentials&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret&scope=read",
 			wantStatus: http.StatusOK,
 		},
 		{
@@ -613,14 +613,20 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 			wantErrorCode: "invalid_request",
 		},
 		{
+			name:          "non-UUID client_id returns 400 invalid_client",
+			body:          "grant_type=client_credentials&client_id=broker_abc&client_secret=secret",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_client",
+		},
+		{
 			name:          "missing client_secret returns 400 invalid_request",
-			body:          "grant_type=client_credentials&client_id=broker_abc",
+			body:          "grant_type=client_credentials&client_id=550e8400-e29b-41d4-a716-446655440000",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "invalid_request",
 		},
 		{
 			name:          "strategy ErrInvalidClient returns 401 invalid_client",
-			body:          "grant_type=client_credentials&client_id=broker_abc&client_secret=wrong",
+			body:          "grant_type=client_credentials&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=wrong",
 			mintingErr:    oauth2server.ErrInvalidClient,
 			wantStatus:    http.StatusUnauthorized,
 			wantErrorCode: "invalid_client",
@@ -673,7 +679,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 	}{
 		{
 			name:       "success returns 200 with all token fields",
-			body:       "grant_type=authorization_code&client_id=broker_abc&client_secret=secret&code=authcode123&redirect_uri=https://example.com/cb&code_verifier=verifier",
+			body:       "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret&code=authcode123&redirect_uri=https://example.com/cb&code_verifier=verifier",
 			wantStatus: http.StatusOK,
 		},
 		{
@@ -683,20 +689,26 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 			wantErrorCode: "invalid_request",
 		},
 		{
+			name:          "non-UUID client_id returns 400 invalid_client",
+			body:          "grant_type=authorization_code&client_id=broker_abc&client_secret=secret&code=abc",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_client",
+		},
+		{
 			name:          "missing client_secret returns 400 invalid_request",
-			body:          "grant_type=authorization_code&client_id=broker_abc&code=abc",
+			body:          "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&code=abc",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "invalid_request",
 		},
 		{
 			name:          "missing code returns 400 invalid_request",
-			body:          "grant_type=authorization_code&client_id=broker_abc&client_secret=secret",
+			body:          "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret",
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "invalid_request",
 		},
 		{
 			name:          "strategy ErrInvalidGrant returns 400 invalid_grant",
-			body:          "grant_type=authorization_code&client_id=broker_abc&client_secret=secret&code=expired",
+			body:          "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret&code=expired",
 			mintingErr:    oauth2server.ErrInvalidGrant,
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "invalid_grant",
