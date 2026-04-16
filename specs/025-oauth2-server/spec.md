@@ -236,8 +236,8 @@ sequenceDiagram
     Operator->>AdminAPI: POST /agents/{id}/client-credentials
     AdminAPI-->>Operator: 201 Created {broker_client_id, client_secret (once)}
 
-    Agent->>TokenEndpoint: POST /oauth2/token (client_credentials grant)
-    TokenEndpoint->>TokenEndpoint: Validate broker_client_id + secret hash
+    Agent->>TokenEndpoint: POST /oauth2/token (client_credentials grant, client_id=agent.id)
+    TokenEndpoint->>TokenEndpoint: Resolve credential by agent UUID, verify secret hash
     TokenEndpoint-->>Agent: 200 OK {access_token, token_type, expires_in}
 
     Agent->>JWKS: GET /oauth2/jwks.json
