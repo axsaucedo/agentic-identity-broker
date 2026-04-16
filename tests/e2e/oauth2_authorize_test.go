@@ -12,6 +12,7 @@ import (
 
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	storagememory "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -105,19 +106,33 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 		})
 	})
 
-	// Scenario 2: Invalid client_id - returns OAuth2 error response indicating invalid_client
-	Describe("when authorization request has invalid client_id", func() {
-		It("should return OAuth2 error response indicating invalid_client", func() {
-			// Given: No agents registered (so client_id won't match anything)
-			// When: Authorization request with invalid client_id (authenticated as default user)
+	// Scenario 2a: Malformed client_id (not a UUID) - returns direct 400 invalid_client
+	Describe("when authorization request has a malformed (non-UUID) client_id", func() {
+		It("should return direct 400 invalid_client without redirect", func() {
 			resp, err := server.AuthenticatedGET(
-				"/oauth2/authorize?client_id=non-existent-client&redirect_uri=https://client.example.com/cb&response_type=code",
+				"/oauth2/authorize?client_id=not-a-uuid&redirect_uri=https://client.example.com/cb&response_type=code",
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Returns OAuth2 error with invalid_client
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
+		})
+	})
+
+	// Scenario 2b: Valid UUID but unregistered agent - redirects with error=invalid_client
+	Describe("when authorization request has an unknown agent UUID", func() {
+		It("should redirect to redirect_uri with error=invalid_client", func() {
+			// Given: No agents registered; UUID is well-formed but unknown
+			unknownAgentID := id.NewAgentID().String()
+			resp, err := server.AuthenticatedGET(
+				"/oauth2/authorize?client_id="+unknownAgentID+"&redirect_uri=https://client.example.com/cb&response_type=code&state=st1",
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
 			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
 		})
 	})

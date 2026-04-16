@@ -21,48 +21,63 @@ import (
 	"log/slog"
 )
 
-// TestOAuth2AuthorizeEndpoint_InvalidClientError tests complete flow with invalid client
-func TestOAuth2AuthorizeEndpoint_InvalidClientError(t *testing.T) {
-	// Setup in-memory repositories
+// TestOAuth2AuthorizeEndpoint_NonUUIDClientIDError tests that a non-UUID client_id
+// returns a direct 400 invalid_client (not a redirect).
+func TestOAuth2AuthorizeEndpoint_NonUUIDClientIDError(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
-	// Create service
-	svc := oauth2.NewService(
-		agentRepo,
-		grantRepo,
-		&oauth2.OAuth2Config{
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			PublicURL:                 "https://broker.example.com",
-			SupportedResponseTypes:    []string{"code"},
-			SupportedGrantTypes:       []string{"authorization_code"},
-		},
-	)
+	svc := oauth2.NewService(agentRepo, grantRepo, &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+		SupportedResponseTypes:    []string{"code"},
+		SupportedGrantTypes:       []string{"authorization_code"},
+	})
+	handler := &enduser.OAuth2AuthorizeHandler{Service: svc}
 
-	// Create handler
-	handler := &enduser.OAuth2AuthorizeHandler{
-		Service: svc,
-	}
-
-	// Make request with unknown client
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=unknown&redirect_uri=https://client.example.com/callback&response_type=code&state=abc123",
+		"https://broker.example.com/oauth2/authorize?client_id=not-a-uuid&redirect_uri=https://client.example.com/callback&response_type=code&state=abc123",
 		nil,
 	)
-	req.Header.Set("X-Remote-User", "user@example.com")
 	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
 
-	// Verify response
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestOAuth2AuthorizeEndpoint_UnknownAgentUUIDRedirectsWithError tests that a well-formed
+// UUID that is not registered as an agent redirects with error=invalid_client.
+func TestOAuth2AuthorizeEndpoint_UnknownAgentUUIDRedirectsWithError(t *testing.T) {
+	agentRepo := newInMemoryAgentRepo()
+	grantRepo := newInMemoryGrantRepo()
+
+	svc := oauth2.NewService(agentRepo, grantRepo, &oauth2.OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+		SupportedResponseTypes:    []string{"code"},
+		SupportedGrantTypes:       []string{"authorization_code"},
+	})
+	handler := &enduser.OAuth2AuthorizeHandler{Service: svc}
+
+	unknownUUID := id.NewAgentID().String()
+	req := httptest.NewRequest(
+		"GET",
+		"https://broker.example.com/oauth2/authorize?client_id="+unknownUUID+"&redirect_uri=https://client.example.com/callback&response_type=code&state=abc123",
+		nil,
+	)
+	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL, err := url.Parse(w.Header().Get("Location"))
 	require.NoError(t, err)
-
-	// Verify error redirect
 	query := redirectURL.Query()
 	assert.Equal(t, "invalid_client", query.Get("error"))
 	assert.Equal(t, "abc123", query.Get("state"))
@@ -87,13 +102,14 @@ func TestOAuth2AuthorizeEndpoint_MissingParameterError(t *testing.T) {
 		Service: svc,
 	}
 
+	validUUID := id.NewAgentID().String()
 	tests := []struct {
 		name        string
 		queryString string
 	}{
 		{"missing client_id", "?redirect_uri=https://client.example.com/callback&response_type=code"},
-		{"missing redirect_uri", "?client_id=client-1&response_type=code"},
-		{"missing response_type", "?client_id=client-1&redirect_uri=https://client.example.com/callback"},
+		{"missing redirect_uri", "?client_id=" + validUUID + "&response_type=code"},
+		{"missing response_type", "?client_id=" + validUUID + "&redirect_uri=https://client.example.com/callback"},
 	}
 
 	for _, tt := range tests {

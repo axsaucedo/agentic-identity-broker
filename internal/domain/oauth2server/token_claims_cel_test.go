@@ -2,6 +2,7 @@ package oauth2server
 
 import (
 	"context"
+	"net/url"
 	"testing"
 	"time"
 
@@ -88,14 +89,55 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		assert.Equal(t, agentID.String(), claims["agent_uuid"])
 	})
 
-	t.Run("expression with principal variable works", func(t *testing.T) {
-		eval, err := NewTokenClaimsEvaluator(`{"user": principal}`)
+	t.Run("expression with principal.id works", func(t *testing.T) {
+		eval, err := NewTokenClaimsEvaluator(`{"user": principal.id}`)
 		require.NoError(t, err)
 
 		req := buildTestRequest("my-agent", "admin@example.com", []string{"read"})
 		claims, err := eval.Evaluate(context.Background(), req)
 		require.NoError(t, err)
 		assert.Equal(t, "admin@example.com", claims["user"])
+	})
+
+	t.Run("expression with agent.display_name works", func(t *testing.T) {
+		eval, err := NewTokenClaimsEvaluator(`{"name": agent.display_name}`)
+		require.NoError(t, err)
+
+		req := &fosite.Request{
+			Client: &brokerClient{
+				agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c", DisplayName: "My Agent"},
+				credential: &storage.BrokerClientCredential{},
+			},
+			Session: &fosite.DefaultSession{
+				Subject:   "user@example.com",
+				ExpiresAt: map[fosite.TokenType]time.Time{fosite.AccessToken: time.Now().Add(time.Hour)},
+			},
+			GrantedScope: []string{"read"},
+		}
+		claims, err := eval.Evaluate(context.Background(), req)
+		require.NoError(t, err)
+		assert.Equal(t, "My Agent", claims["name"])
+	})
+
+	t.Run("expression with request.grant_type works", func(t *testing.T) {
+		eval, err := NewTokenClaimsEvaluator(`{"grant": request.grant_type}`)
+		require.NoError(t, err)
+
+		req := &fosite.Request{
+			Client: &brokerClient{
+				agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c"},
+				credential: &storage.BrokerClientCredential{},
+			},
+			Session: &fosite.DefaultSession{
+				Subject:   "user@example.com",
+				ExpiresAt: map[fosite.TokenType]time.Time{fosite.AccessToken: time.Now().Add(time.Hour)},
+			},
+			GrantedScope: []string{"read"},
+			Form:         url.Values{"grant_type": {"client_credentials"}},
+		}
+		claims, err := eval.Evaluate(context.Background(), req)
+		require.NoError(t, err)
+		assert.Equal(t, "client_credentials", claims["grant"])
 	})
 }
 

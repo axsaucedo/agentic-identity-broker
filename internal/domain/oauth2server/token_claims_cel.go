@@ -25,7 +25,8 @@ func NewTokenClaimsEvaluator(expression string) (*TokenClaimsEvaluator, error) {
 
 	env, err := cel.NewEnv(
 		cel.Variable("agent", cel.MapType(cel.StringType, cel.DynType)),
-		cel.Variable("principal", cel.StringType),
+		cel.Variable("principal", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("request", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("scope", cel.ListType(cel.StringType)),
 	)
 	if err != nil {
@@ -60,20 +61,38 @@ func (e *TokenClaimsEvaluator) Evaluate(_ context.Context, requester fosite.Requ
 		return nil, nil
 	}
 
-	// Build agent context map from explicit agent metadata.
-	// agent.id is the agent UUID; agent.client_id is the upstream OAuth2 client ID (Agent.ClientID field).
-	// Using GetID() for agent.id is consistent with JWT sub/agent_id claims.
+	// Build agent context: id=agent UUID, client_id=upstream OAuth2 client ID,
+	// display_name and metadata from the agent entity if available.
 	agentCtx := map[string]interface{}{
-		"id":        requester.GetClient().GetID(),
-		"client_id": "",
+		"id":           requester.GetClient().GetID(),
+		"client_id":    "",
+		"display_name": "",
+		"metadata":     map[string]interface{}{},
 	}
 	if bc, ok := requester.GetClient().(*brokerClient); ok && bc != nil && bc.agent != nil {
 		agentCtx["client_id"] = string(bc.agent.ClientID)
+		agentCtx["display_name"] = bc.agent.DisplayName
+	}
+
+	// Build principal context: id=subject (principal string), email and display_name optional.
+	subject := requester.GetSession().GetSubject()
+	principalCtx := map[string]interface{}{
+		"id":           subject,
+		"email":        subject,
+		"display_name": "",
+	}
+
+	// Build request context: grant_type and scopes from the requester.
+	grantType := requester.GetRequestForm().Get("grant_type")
+	requestCtx := map[string]interface{}{
+		"grant_type": grantType,
+		"scopes":     requester.GetGrantedScopes(),
 	}
 
 	activation := map[string]interface{}{
 		"agent":     agentCtx,
-		"principal": requester.GetSession().GetSubject(),
+		"principal": principalCtx,
+		"request":   requestCtx,
 		"scope":     requester.GetGrantedScopes(),
 	}
 
