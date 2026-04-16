@@ -60,11 +60,15 @@ func (s *FositeStorage) mapStorageError(ctx context.Context, err error) error {
 
 // CreateAuthorizeCodeSession stores an authorization code issued by the authorization endpoint.
 func (s *FositeStorage) CreateAuthorizeCodeSession(ctx context.Context, code string, req fosite.Requester) error {
+	agentID, err := extractAgentID(req.GetClient())
+	if err != nil {
+		return fmt.Errorf("CreateAuthorizeCodeSession: %w", err)
+	}
 	session := req.GetSession()
 	authCode := &storage.AuthorizationCode{
 		ID:             id.NewAuthorizationCodeID(),
 		CodeHash:       sha256Hex(code),
-		AgentID:        extractAgentID(req.GetClient()),
+		AgentID:        agentID,
 		BrokerClientID: id.NewBrokerClientID(req.GetRequestForm().Get("client_id")),
 		Principal:      id.NewPrincipal(session.GetSubject()),
 		RedirectURI:    req.GetRequestForm().Get("redirect_uri"),
@@ -223,10 +227,10 @@ func (s *FositeStorage) buildClient(ctx context.Context, agentID id.AgentID) (fo
 	return &brokerClient{agent: agent, credential: cred}, nil
 }
 
-func extractAgentID(client fosite.Client) id.AgentID {
+func extractAgentID(client fosite.Client) (id.AgentID, error) {
 	bc, ok := client.(*brokerClient)
 	if !ok {
-		panic(fmt.Sprintf("extractAgentID: expected *brokerClient, got %T", client))
+		return id.AgentID{}, fmt.Errorf("expected *brokerClient, got %T", client)
 	}
-	return bc.agent.ID
+	return bc.agent.ID, nil
 }

@@ -187,14 +187,34 @@ func TestExtractAgentID(t *testing.T) {
 	t.Run("returns agent ID for brokerClient", func(t *testing.T) {
 		agent := testAgent()
 		bc := &brokerClient{agent: agent}
-		assert.Equal(t, agent.ID, extractAgentID(bc))
+		gotID, err := extractAgentID(bc)
+		require.NoError(t, err)
+		assert.Equal(t, agent.ID, gotID)
 	})
 
-	t.Run("panics for unexpected client type", func(t *testing.T) {
-		assert.Panics(t, func() {
-			extractAgentID(&fosite.DefaultClient{ID: "unexpected"})
-		})
+	t.Run("returns error for unexpected client type", func(t *testing.T) {
+		_, err := extractAgentID(&fosite.DefaultClient{ID: "unexpected"})
+		require.Error(t, err)
 	})
+}
+
+func TestCreateAuthorizeCodeSession_WrongClientType(t *testing.T) {
+	store := NewFositeStorage(
+		&mockCodeRepo{},
+		&mockAgentRepo{},
+		&mockCredentialRepo{},
+		testSlogger(),
+	)
+
+	req := &fosite.Request{
+		Client:  &fosite.DefaultClient{ID: "not-a-broker-client"},
+		Session: &fosite.DefaultSession{Subject: "user@example.com"},
+		Form:    map[string][]string{},
+	}
+
+	err := store.CreateAuthorizeCodeSession(context.Background(), "somecode", req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "CreateAuthorizeCodeSession")
 }
 
 func TestFositeStorage_InfrastructureErrors(t *testing.T) {
