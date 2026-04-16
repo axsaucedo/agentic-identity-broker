@@ -429,7 +429,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 	t.Run("redirect_uri substitution rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
 		agent, _, plaintext := setupTestCredentials(t, provider)
-		agent.RedirectURIs = []string{"http://localhost:8080/callback", "http://attacker.example.com/callback"}
+		agent.RedirectURIs = []string{"http://localhost:8080/callback", "https://attacker.example.com/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
 		verifier := "test-verifier-for-uri-substitution"
@@ -455,7 +455,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 			agent.ID,
 			plaintext,
 			code,
-			"http://attacker.example.com/callback",
+			"https://attacker.example.com/callback",
 			verifier,
 		)
 		assert.Error(t, err)

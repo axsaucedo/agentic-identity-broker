@@ -121,9 +121,9 @@ func (h *OAuth2AuthorizeHandler) handleProxyMode(w http.ResponseWriter, r *http.
 		if decision.RedirectURL != "" {
 			http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
 		} else {
-			// Return error response as JSON or plain text
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
+			statusCode := errorDecisionStatus(decision.ErrorCode)
+			w.WriteHeader(statusCode)
 			_, _ = fmt.Fprintf(w, `{"error":"%s","error_description":"%s"}`, decision.ErrorCode, decision.ErrorDesc)
 		}
 
@@ -158,7 +158,8 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 			http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
 		} else {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
+			statusCode := errorDecisionStatus(decision.ErrorCode)
+			w.WriteHeader(statusCode)
 			_, _ = fmt.Fprintf(w, `{"error":"%s","error_description":"%s"}`, decision.ErrorCode, decision.ErrorDesc)
 		}
 		return
@@ -238,6 +239,15 @@ func NewOAuth2AuthorizeHandler(service ports.OAuth2Service) *OAuth2AuthorizeHand
 	return &OAuth2AuthorizeHandler{
 		Service: service,
 	}
+}
+
+// errorDecisionStatus maps an OAuth2 error code to an HTTP status for direct (non-redirect)
+// error responses. Infrastructure errors map to 500; all others map to 400.
+func errorDecisionStatus(errorCode string) int {
+	if errorCode == "server_error" {
+		return http.StatusInternalServerError
+	}
+	return http.StatusBadRequest
 }
 
 // redirectWithError performs an OAuth2 error redirect per RFC 6749 Section 4.1.2.1.

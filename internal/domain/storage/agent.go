@@ -86,17 +86,16 @@ func isValidURL(urlStr string) bool {
 	return u.Scheme == "http" || u.Scheme == "https"
 }
 
-// isValidRedirectURI validates a redirect URI with stricter rules than isValidURL:
-// - Must be absolute HTTP or HTTPS
+// isValidRedirectURI validates a redirect URI per RFC 6749 §3.1.2:
+// - Must be absolute (https for non-local, http only for loopback)
 // - Must have a non-empty host
-// - Must not contain a fragment (RFC 6749 §3.1.2 forbids fragments in redirect URIs)
+// - Must not contain a fragment
 //
-// Uses url.ParseRequestURI (stricter than url.Parse) and also rejects any raw '#'
-// in the input string — url.ParseRequestURI strips the fragment before parsing and
-// would otherwise accept "https://example.com/cb#" as valid.
+// HTTP is only allowed for localhost and loopback addresses (127.0.0.1, [::1])
+// to support development. All other callbacks require HTTPS.
 func isValidRedirectURI(uriStr string) bool {
-	// Reject raw fragment or whitespace characters before parsing.
-	// url.ParseRequestURI would accept them by percent-encoding rather than erroring.
+	// Reject raw fragment or whitespace before parsing — url.ParseRequestURI
+	// percent-encodes these instead of erroring.
 	if strings.ContainsAny(uriStr, "# \t\n\r") {
 		return false
 	}
@@ -104,13 +103,19 @@ func isValidRedirectURI(uriStr string) bool {
 	if err != nil {
 		return false
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return false
-	}
 	if u.Host == "" {
 		return false
 	}
-	return true
+	switch u.Scheme {
+	case "https":
+		return true
+	case "http":
+		// Allow HTTP only for loopback (development-mode callbacks)
+		host := u.Hostname()
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	default:
+		return false
+	}
 }
 
 // Copy creates a deep copy of the Agent to prevent external mutation.

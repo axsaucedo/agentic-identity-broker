@@ -1098,3 +1098,54 @@ func TestValidateMandatoryRequirements(t *testing.T) {
 		})
 	}
 }
+
+// errorAgentRepository returns a configurable error from Get to simulate infrastructure failures.
+type errorAgentRepository struct {
+	mockAgentRepository
+	getErr error
+}
+
+func (r *errorAgentRepository) Get(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+	return nil, r.getErr
+}
+
+// TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500 verifies that a storage-level
+// error in the service layer (no valid redirect_uri to redirect to) produces HTTP 500, not 400.
+func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
+	storageErr := storage.NewStorageError("Get", storage.ErrorKindConnection, nil, "connection refused")
+	agentRepo := &errorAgentRepository{
+		mockAgentRepository: *newMockAgentRepo(),
+		getErr:              storageErr,
+	}
+
+	svc := oauth2.NewService(
+		agentRepo,
+		newMockGrantRepo(),
+		&oauth2.OAuth2Config{
+			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+			PublicURL:                 "https://broker.example.com",
+		},
+	)
+	handler := &OAuth2AuthorizeHandler{Service: svc}
+
+	agentID := id.NewAgentID()
+	req := httptest.NewRequest(
+		"GET",
+		"https://broker.example.com/oauth2/authorize?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/callback&response_type=code",
+		nil,
+	)
+	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	var body struct {
+		Error string `json:"error"`
+	}
+	err := json.NewDecoder(w.Body).Decode(&body)
+	require.NoError(t, err)
+	assert.Equal(t, "server_error", body.Error)
+}

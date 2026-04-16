@@ -516,9 +516,13 @@ func TestIsValidRedirectURI(t *testing.T) {
 		want  bool
 	}{
 		{"valid https", "https://client.example.com/callback", true},
-		{"valid http", "http://client.example.com/callback", true},
-		{"valid with port", "https://client.example.com:8080/cb", true},
-		{"valid with query", "https://client.example.com/cb?foo=bar", true},
+		{"valid https with port", "https://client.example.com:8080/cb", true},
+		{"valid https with query", "https://client.example.com/cb?foo=bar", true},
+		{"http localhost allowed", "http://localhost/callback", true},
+		{"http 127.0.0.1 allowed", "http://127.0.0.1/callback", true},
+		{"http ::1 allowed", "http://[::1]/callback", true},
+		{"http non-local rejected", "http://client.example.com/callback", false},
+		{"http non-local with port rejected", "http://client.example.com:8080/cb", false},
 		{"empty string", "", false},
 		{"no scheme", "client.example.com/callback", false},
 		{"non-http scheme", "ftp://client.example.com/callback", false},
