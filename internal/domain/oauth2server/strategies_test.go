@@ -89,7 +89,8 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 		strategy, err := NewJWXAccessTokenStrategy(svc, repo, issuer, time.Hour, nil, testSlogger())
 		require.NoError(t, err)
 
-		tokenStr, _, err := strategy.GenerateAccessToken(ctx, buildTestRequest(agentID, subject, []string{"read", "write"}))
+		req := buildTestRequest(agentID, subject, []string{"read", "write"})
+		tokenStr, _, err := strategy.GenerateAccessToken(ctx, req)
 		require.NoError(t, err)
 
 		jwks, err := svc.BuildJWKS(ctx)
@@ -120,7 +121,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 
 		var gotAgentID string
 		require.NoError(t, tok.Get("agent_id", &gotAgentID), "agent_id must be present")
-		assert.Equal(t, agentID, gotAgentID)
+		assert.Equal(t, req.GetClient().GetID(), gotAgentID)
 
 		var scope string
 		require.NoError(t, tok.Get("scope", &scope), "scope must be present")

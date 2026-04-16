@@ -302,8 +302,8 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 		})
 
 		It("should accept valid redirect_uri and proxy to upstream", func() {
-			// Given: Valid agent with active grant and valid redirect_uri
-			redirectURI := "https://client.example.com/callback"
+			// Given: Valid agent with active grant and valid redirect_uri (must match registered URI)
+			redirectURI := "https://client.example.com/cb"
 
 			// When: Authorization request with valid redirect_uri
 			resp, err := server.AuthenticatedGET(

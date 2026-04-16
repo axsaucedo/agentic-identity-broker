@@ -187,7 +187,7 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 		if errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"invalid_redirect_uri","error_description":"redirect_uri not registered for this client"}`)
+			_, _ = fmt.Fprintf(w, `{"error":"invalid_redirect_uri","error_description":"invalid redirect_uri"}`)
 			return
 		}
 		if errors.Is(err, oauth2server.ErrServerError) {

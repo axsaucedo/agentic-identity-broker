@@ -298,7 +298,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			// Given: Upstream URL points to non-existent server
 			// When: Authorization request to unreachable upstream
 			path := fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
-				agent.ClientID)
+				agent.ID.String())
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -534,16 +534,16 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			// Given: Server is running with multiple agents
 			// When: Make requests from different agents with different states
 			resp1, err := server.AuthenticatedGET(
-				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client1.example.com/cb&response_type=code&state=state1",
-					agent1.ClientID),
+				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=state1",
+					agent1.ID.String()),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp1.Body.Close() }()
 
 			resp2, err := server.AuthenticatedGET(
-				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client2.example.com/cb&response_type=code&state=state2",
-					agent2.ClientID),
+				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=state2",
+					agent2.ID.String()),
 				fixtures.AnotherPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())

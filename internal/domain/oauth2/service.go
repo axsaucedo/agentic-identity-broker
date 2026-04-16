@@ -209,9 +209,10 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.DelegatedOAuth2Tokens)
 		if err != nil {
 			return &ports.AuthorizationDecision{
-				Action:    "error",
-				ErrorCode: "server_error",
-				ErrorDesc: "Failed to check session status",
+				Action:      "error",
+				ErrorCode:   "server_error",
+				ErrorDesc:   "Failed to check session status",
+				RedirectURL: buildErrorRedirect(req.RedirectURI, req.State, "server_error", "server error"),
 			}, nil
 		}
 		if expired {
@@ -348,7 +349,10 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 // Used to enforce the HTTPS requirement at runtime for legacy redirect URIs that
 // predate the write-time validation introduced in Agent.ValidateForCreate.
 func isHTTPSOrLoopbackURI(uriStr string) bool {
-	u, err := url.Parse(uriStr)
+	if strings.ContainsAny(uriStr, "# \t\n\r") {
+		return false
+	}
+	u, err := url.ParseRequestURI(uriStr)
 	if err != nil || u.Host == "" {
 		return false
 	}
