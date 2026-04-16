@@ -176,7 +176,7 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 - **FR-013**: In `issue_token` mode, the broker MUST support an optional `token_claims_expression` (CEL expression) that is evaluated at token issuance time to produce additional custom claims merged into locally-issued access tokens; the expression is configured globally under `oauth2_authorization_server` and applies to all agents
 - **FR-013b**: The `token_claims_expression` MUST be compiled and validated at startup; if the expression is syntactically invalid or type-incorrect, the broker MUST fail to start with a clear error message
 - **FR-013c**: The CEL expression MUST return a `map<string, dyn>`; claims returned by the expression are merged into the token payload alongside the base claims (`iss`, `sub`, `iat`, `exp`, `jti`, `kid`); expression-returned claims MUST NOT override base claims
-- **FR-013d**: The CEL expression evaluation context MUST provide the following variables: `agent` (object: `id`, `client_id`, `display_name`, `metadata`), `principal` (object: `id` always present, `email` and `display_name` optional/may be empty), and `request` (object: `grant_type`, `scopes`)
+- **FR-013d**: The CEL expression evaluation context MUST provide the following variables: `agent` (object: `id`, `client_id`, `display_name`), `principal` (object: `id` always present, `email` and `display_name` optional/may be empty), and `request` (object: `grant_type`, `scopes`)
 - **FR-013e**: If the `token_claims_expression` fails at runtime (evaluation error, unexpected return type, timeout), token issuance MUST be rejected — no token is returned; the broker MUST log the error with full context (agent ID, principal, expression error details)
 
 ### Domain Model
@@ -265,7 +265,7 @@ sequenceDiagram
 - **`oauth2_authorization_server.mode`**: String, operating mode: `proxy` (default, existing behavior) or `issue_token` (local minting). Default: `proxy`
 - **`oauth2_authorization_server.issuer_uri`**: String, the broker's own issuer URI used in locally-minted tokens and the discovery document (required when `mode: issue_token`)
 - **`oauth2_authorization_server.token_ttl`**: Duration, lifetime of locally-issued access tokens. Default: 1 hour
-- **`oauth2_authorization_server.token_claims_expression`**: String, a CEL expression evaluated at token issuance time to produce custom claims for locally-issued access tokens. The expression receives `agent` (object: `id`, `client_id`, `display_name`, `metadata`), `principal` (object: `id` always present, `email` and `display_name` optional), and `request` (object: `grant_type`, `scopes`). MUST return a `map<string, dyn>` of additional claims to merge into the token. Default: `{}` (no additional claims). Only applicable in `issue_token` mode. Compiled and validated at startup.
+- **`oauth2_authorization_server.token_claims_expression`**: String, a CEL expression evaluated at token issuance time to produce custom claims for locally-issued access tokens. The expression receives `agent` (object: `id`, `client_id`, `display_name`), `principal` (object: `id` always present, `email` and `display_name` optional), and `request` (object: `grant_type`, `scopes`). MUST return a `map<string, dyn>` of additional claims to merge into the token. Default: `{}` (no additional claims). Only applicable in `issue_token` mode. Compiled and validated at startup.
 
 Note: signing key material is NOT configured via env var or config file — keys are provisioned and managed exclusively via the Admin API and stored in the database.
 

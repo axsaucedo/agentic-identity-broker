@@ -19,7 +19,7 @@ oauth2_authorization_server:
   issuer_uri: https://broker.example.com # Required in issue_token mode
   token_ttl: 1h                          # Default: 1h
   token_claims_expression: |             # Optional CEL expression for custom token claims
-    {"team": agent.metadata.team, "environment": "production"}
+    {"team": agent.display_name, "environment": "production"}
   # upstream_* fields ignored in issue_token mode (warning logged)
 ```
 
