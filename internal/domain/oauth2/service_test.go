@@ -798,7 +798,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 
 // TestService_HandleAuthorization_RedirectURIValidation verifies that when an agent has
 // registered redirect URIs, only those URIs are accepted. Agents with no registered URIs
-// allow any redirect_uri (backward-compatible default).
+// are rejected — fail closed per RFC 6749 §4.1.2.1.
 func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 	agentID := id.NewAgentID()
 	registeredURI := "https://client.example.com/callback"
@@ -821,10 +821,11 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 		wantErrorCode string
 	}{
 		{
-			name:         "agent with no registered URIs allows any redirect_uri (legacy gate)",
-			redirectURIs: nil,
-			requestURI:   unregisteredURI,
-			wantAction:   "redirect_to_consent", // no registered URIs → skips validation; no grant → consent
+			name:          "agent with no registered URIs rejects any redirect_uri (fail closed)",
+			redirectURIs:  nil,
+			requestURI:    unregisteredURI,
+			wantAction:    "error",
+			wantErrorCode: "invalid_redirect_uri",
 		},
 		{
 			name:         "matching registered URI is accepted",

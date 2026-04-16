@@ -68,24 +68,28 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		queryPath string
-		wantError string
+		name             string
+		queryPath        string
+		wantErrorCode    string
+		wantErrorDescKey string
 	}{
 		{
-			name:      "missing client_id",
-			queryPath: "?redirect_uri=https://client.example.com/callback&response_type=code",
-			wantError: "client_id",
+			name:             "missing client_id",
+			queryPath:        "?redirect_uri=https://client.example.com/callback&response_type=code",
+			wantErrorCode:    "invalid_request",
+			wantErrorDescKey: "client_id",
 		},
 		{
-			name:      "missing redirect_uri",
-			queryPath: "?client_id=550e8400-e29b-41d4-a716-446655440000&response_type=code",
-			wantError: "redirect_uri",
+			name:             "missing redirect_uri",
+			queryPath:        "?client_id=550e8400-e29b-41d4-a716-446655440000&response_type=code",
+			wantErrorCode:    "invalid_request",
+			wantErrorDescKey: "redirect_uri",
 		},
 		{
-			name:      "missing response_type",
-			queryPath: "?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https://client.example.com/callback",
-			wantError: "response_type",
+			name:             "missing response_type",
+			queryPath:        "?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https://client.example.com/callback",
+			wantErrorCode:    "invalid_request",
+			wantErrorDescKey: "response_type",
 		},
 	}
 
@@ -104,8 +108,16 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 			handler.ServeHTTP(w, req)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
-			body, _ := io.ReadAll(w.Body)
-			assert.Contains(t, string(body), tt.wantError)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+			var body struct {
+				Error            string `json:"error"`
+				ErrorDescription string `json:"error_description"`
+			}
+			err := json.NewDecoder(w.Body).Decode(&body)
+			require.NoError(t, err, "response body must be valid JSON")
+			assert.Equal(t, tt.wantErrorCode, body.Error)
+			assert.Contains(t, body.ErrorDescription, tt.wantErrorDescKey)
 		})
 	}
 }
@@ -184,9 +196,10 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 	agentRepo := newMockAgentRepo()
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    "client-1",
-		DisplayName: "Test Client",
+		ID:           agentID,
+		ClientID:     "client-1",
+		DisplayName:  "Test Client",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -225,9 +238,10 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 	agentID := id.NewAgentID()
 	serviceID := id.NewServiceID()
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    "client-1",
-		DisplayName: "Test Client",
+		ID:           agentID,
+		ClientID:     "client-1",
+		DisplayName:  "Test Client",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -284,9 +298,10 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 	agentID := id.NewAgentID()
 	serviceID := id.NewServiceID()
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    "client-1",
-		DisplayName: "Test Client",
+		ID:           agentID,
+		ClientID:     "client-1",
+		DisplayName:  "Test Client",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 

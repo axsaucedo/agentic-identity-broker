@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -89,8 +90,17 @@ func isValidURL(urlStr string) bool {
 // - Must be absolute HTTP or HTTPS
 // - Must have a non-empty host
 // - Must not contain a fragment (RFC 6749 §3.1.2 forbids fragments in redirect URIs)
+//
+// Uses url.ParseRequestURI (stricter than url.Parse) and also rejects any raw '#'
+// in the input string — url.ParseRequestURI strips the fragment before parsing and
+// would otherwise accept "https://example.com/cb#" as valid.
 func isValidRedirectURI(uriStr string) bool {
-	u, err := url.Parse(uriStr)
+	// Reject raw fragment or whitespace characters before parsing.
+	// url.ParseRequestURI would accept them by percent-encoding rather than erroring.
+	if strings.ContainsAny(uriStr, "# \t\n\r") {
+		return false
+	}
+	u, err := url.ParseRequestURI(uriStr)
 	if err != nil {
 		return false
 	}
@@ -100,7 +110,7 @@ func isValidRedirectURI(uriStr string) bool {
 	if u.Host == "" {
 		return false
 	}
-	return u.Fragment == ""
+	return true
 }
 
 // Copy creates a deep copy of the Agent to prevent external mutation.

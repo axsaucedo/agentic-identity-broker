@@ -121,30 +121,27 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 
 	// Step 1b: Validate redirect_uri against agent's registered URIs.
 	// Per RFC 6749 §4.1.2.1, MUST NOT redirect if redirect_uri is unverified.
-	// When redirect_uris is populated, enforce exact-match validation.
-	// When empty (legacy/unconfigured agents), all URIs are accepted with a
-	// deprecation warning — operators must register redirect_uris to gain enforcement.
-	if len(agent.RedirectURIs) > 0 {
-		uriAllowed := false
-		for _, allowed := range agent.RedirectURIs {
-			if req.RedirectURI == allowed {
-				uriAllowed = true
-				break
-			}
+	// Agents with no registered URIs are rejected — fail closed.
+	if len(agent.RedirectURIs) == 0 {
+		return &ports.AuthorizationDecision{
+			Action:    "error",
+			ErrorCode: "invalid_redirect_uri",
+			ErrorDesc: "redirect_uri not registered for this client",
+		}, nil
+	}
+	uriAllowed := false
+	for _, allowed := range agent.RedirectURIs {
+		if req.RedirectURI == allowed {
+			uriAllowed = true
+			break
 		}
-		if !uriAllowed {
-			return &ports.AuthorizationDecision{
-				Action:    "error",
-				ErrorCode: "invalid_redirect_uri",
-				ErrorDesc: "redirect_uri not registered for this client",
-			}, nil
-		}
-	} else if s.logger != nil {
-		s.logger.Warn("RedirectURIValidationSkipped",
-			"agent_id", agent.ID,
-			"redirect_uri", req.RedirectURI,
-			"reason", "no redirect_uris registered for agent",
-		)
+	}
+	if !uriAllowed {
+		return &ports.AuthorizationDecision{
+			Action:    "error",
+			ErrorCode: "invalid_redirect_uri",
+			ErrorDesc: "redirect_uri not registered for this client",
+		}, nil
 	}
 
 	// Step 1c: Validate requested scopes against agent's allowed scopes.

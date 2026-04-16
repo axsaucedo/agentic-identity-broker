@@ -508,3 +508,30 @@ func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
 		assert.Len(t, copy.ServiceRequirements, 0)
 	})
 }
+
+func TestIsValidRedirectURI(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"valid https", "https://client.example.com/callback", true},
+		{"valid http", "http://client.example.com/callback", true},
+		{"valid with port", "https://client.example.com:8080/cb", true},
+		{"valid with query", "https://client.example.com/cb?foo=bar", true},
+		{"empty string", "", false},
+		{"no scheme", "client.example.com/callback", false},
+		{"non-http scheme", "ftp://client.example.com/callback", false},
+		{"no host", "https:///callback", false},
+		{"fragment present", "https://client.example.com/callback#section", false},
+		{"empty fragment", "https://client.example.com/callback#", false},
+		{"space in path", "https://client.example.com/call back", false},
+		{"relative path", "/callback", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isValidRedirectURI(tt.input))
+		})
+	}
+}
