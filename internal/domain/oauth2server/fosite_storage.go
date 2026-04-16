@@ -232,5 +232,14 @@ func extractAgentID(client fosite.Client) (id.AgentID, error) {
 	if !ok {
 		return id.AgentID{}, fmt.Errorf("expected *brokerClient, got %T", client)
 	}
+	if bc == nil {
+		return id.AgentID{}, fmt.Errorf("brokerClient is nil")
+	}
+	if bc.agent == nil {
+		return id.AgentID{}, fmt.Errorf("brokerClient.agent is nil")
+	}
+	if bc.agent.ID.IsZero() {
+		return id.AgentID{}, fmt.Errorf("brokerClient.agent.ID is zero")
+	}
 	return bc.agent.ID, nil
 }

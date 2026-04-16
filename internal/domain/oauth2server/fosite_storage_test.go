@@ -196,6 +196,24 @@ func TestExtractAgentID(t *testing.T) {
 		_, err := extractAgentID(&fosite.DefaultClient{ID: "unexpected"})
 		require.Error(t, err)
 	})
+
+	t.Run("returns error for typed-nil *brokerClient", func(t *testing.T) {
+		var bc *brokerClient
+		_, err := extractAgentID(bc)
+		require.Error(t, err)
+	})
+
+	t.Run("returns error when agent is nil", func(t *testing.T) {
+		_, err := extractAgentID(&brokerClient{agent: nil})
+		require.Error(t, err)
+	})
+
+	t.Run("returns error when agent ID is zero", func(t *testing.T) {
+		agent := testAgent()
+		agent.ID = id.AgentID{}
+		_, err := extractAgentID(&brokerClient{agent: agent})
+		require.Error(t, err)
+	})
 }
 
 func TestCreateAuthorizeCodeSession_WrongClientType(t *testing.T) {
