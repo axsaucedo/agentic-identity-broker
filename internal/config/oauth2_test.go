@@ -299,4 +299,22 @@ func TestOAuth2AuthServerConfig_PartialConfigFails(t *testing.T) {
 		err := cfg.Validate()
 		assert.Error(t, err, "partial config with only supported_response_types must fail")
 	})
+
+	// Regression: len()==0 collapsed nil and []string{} so an explicitly empty list
+	// was indistinguishable from "field not set" and the block was silently skipped.
+	t.Run("explicit empty supported_response_types fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			SupportedResponseTypes: []string{},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "explicitly empty supported_response_types must not be skipped as unconfigured")
+	})
+
+	t.Run("explicit empty supported_grant_types fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			SupportedGrantTypes: []string{},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "explicitly empty supported_grant_types must not be skipped as unconfigured")
+	})
 }

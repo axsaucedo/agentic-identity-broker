@@ -326,8 +326,8 @@ func (c *OAuth2AuthServerConfig) isZero() bool {
 		c.UpstreamIssuerURI == "" &&
 		c.UpstreamAuthorizeEndpoint == "" &&
 		c.UpstreamTokenEndpoint == "" &&
-		len(c.SupportedResponseTypes) == 0 &&
-		len(c.SupportedGrantTypes) == 0 &&
+		c.SupportedResponseTypes == nil &&
+		c.SupportedGrantTypes == nil &&
 		c.UpstreamTimeoutSeconds == 0 &&
 		c.IssuerURI == "" &&
 		c.TokenTTL == 0 &&
