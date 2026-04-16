@@ -194,16 +194,13 @@ func (s *FositeStorage) DeletePKCERequestSession(_ context.Context, _ string) er
 
 // GetClient satisfies the fosite.Storage interface. It is not called in the normal flow;
 // broker code uses buildClient(agentID) or Authenticate(agentID) directly.
+// clientID is expected to be the agent UUID, consistent with brokerClient.GetID().
 func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.Client, error) {
-	cred, err := s.credRepo.GetByBrokerClientID(ctx, id.NewBrokerClientID(clientID))
+	agentID, err := id.ParseAgentID(clientID)
 	if err != nil {
-		return nil, s.mapStorageError(ctx, err)
+		return nil, fosite.ErrNotFound
 	}
-	agent, err := s.agentRepo.Get(ctx, cred.AgentID)
-	if err != nil {
-		return nil, s.mapStorageError(ctx, err)
-	}
-	return &brokerClient{agent: agent, credential: cred}, nil
+	return s.buildClient(ctx, agentID)
 }
 
 // ClientAssertionJWTValid checks for JWT assertion replay — not supported.

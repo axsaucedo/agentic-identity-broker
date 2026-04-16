@@ -237,7 +237,6 @@ func TestCreateAuthorizeCodeSession_WrongClientType(t *testing.T) {
 
 func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 	connectionErr := dstorage.NewStorageError("FindByCodeHash", dstorage.ErrorKindConnection, nil, "connection refused")
-	timeoutErr := dstorage.NewStorageError("GetByBrokerClientID", dstorage.ErrorKindTimeout, nil, "query timeout")
 
 	t.Run("GetAuthorizeCodeSession connection error is not ErrNotFound", func(t *testing.T) {
 		codeRepo := &mockCodeRepo{
@@ -265,39 +264,43 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 		assert.ErrorIs(t, err, fosite.ErrNotFound)
 	})
 
-	t.Run("GetClient credential repo timeout is not ErrNotFound", func(t *testing.T) {
-		credRepo := &mockCredentialRepo{
-			getByBrokerClientIDFunc: func(_ context.Context, _ id.BrokerClientID) (*dstorage.BrokerClientCredential, error) {
-				return nil, timeoutErr
-			},
-		}
-		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), memory.NewAgentRepository(), credRepo, testSlogger())
+	t.Run("GetClient non-UUID input returns ErrNotFound", func(t *testing.T) {
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), memory.NewAgentRepository(), memory.NewBrokerClientCredentialStore(), testSlogger())
 
 		_, err := store.GetClient(context.Background(), "broker_any")
-		assert.Error(t, err)
-		assert.NotErrorIs(t, err, fosite.ErrNotFound)
+		assert.ErrorIs(t, err, fosite.ErrNotFound)
 	})
 
 	t.Run("GetClient agent repo timeout is not ErrNotFound", func(t *testing.T) {
 		agentID := id.NewAgentID()
-		cred := &dstorage.BrokerClientCredential{
-			ID:             id.NewCredentialID(),
-			AgentID:        agentID,
-			BrokerClientID: id.NewBrokerClientID("broker_infra_test"),
-			SecretHash:     "hash",
-		}
-		credRepo := memory.NewBrokerClientCredentialStore()
-		require.NoError(t, credRepo.Create(context.Background(), cred))
-
 		agentRepo := &mockAgentRepo{
 			getFunc: func(_ context.Context, _ id.AgentID) (*dstorage.Agent, error) {
 				return nil, dstorage.NewStorageError("Get", dstorage.ErrorKindTimeout, nil, "query timeout")
 			},
 		}
-		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), agentRepo, credRepo, testSlogger())
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), agentRepo, memory.NewBrokerClientCredentialStore(), testSlogger())
 
-		_, err := store.GetClient(context.Background(), cred.BrokerClientID.String())
+		_, err := store.GetClient(context.Background(), agentID.String())
 		assert.Error(t, err)
 		assert.NotErrorIs(t, err, fosite.ErrNotFound)
+	})
+
+	t.Run("GetClient round-trips client.GetID() to agent UUID", func(t *testing.T) {
+		_, _, agentRepo, credRepo := newTestFositeStorage()
+		agentID := id.NewAgentID()
+		agent := &dstorage.Agent{ID: agentID, ClientID: "upstream-client"}
+		require.NoError(t, agentRepo.Create(context.Background(), agent))
+		cred := &dstorage.BrokerClientCredential{
+			ID:             id.NewCredentialID(),
+			AgentID:        agentID,
+			BrokerClientID: id.NewBrokerClientID("broker_rt_test"),
+			SecretHash:     "hash",
+		}
+		require.NoError(t, credRepo.Create(context.Background(), cred))
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), agentRepo, credRepo, testSlogger())
+
+		client, err := store.GetClient(context.Background(), agentID.String())
+		require.NoError(t, err)
+		assert.Equal(t, agentID.String(), client.GetID())
 	})
 }

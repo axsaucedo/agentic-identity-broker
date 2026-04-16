@@ -2634,8 +2634,9 @@ components:
         client_id:
           type: string
           description: |
-            Agent UUID (`agent.id`) for client_credentials and authorization_code
-            grant types in issue_token mode, or upstream OAuth2 client ID (proxy mode).
+            The agent's internal UUID (`agent.id`) in all modes. The broker resolves
+            the upstream OAuth2 client ID internally from the agent record — callers
+            never send the upstream client ID directly.
           example: "550e8400-e29b-41d4-a716-446655440000"
         client_secret:
           type: string
