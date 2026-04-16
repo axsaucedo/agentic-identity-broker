@@ -42,6 +42,39 @@ func (r *SigningKeyRepo) Create(ctx context.Context, key *storage.SigningKey) er
 	return nil
 }
 
+func (r *SigningKeyRepo) CreateAndSetCurrent(ctx context.Context, key *storage.SigningKey) error {
+	if r.adapter.db == nil {
+		return storage.NewStorageError("SigningKeyRepo.CreateAndSetCurrent", storage.ErrorKindConnection, nil, "database not initialized")
+	}
+
+	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
+	defer cancel()
+
+	tx, err := r.adapter.db.BeginTxx(execCtx, nil)
+	if err != nil {
+		return storage.NewStorageError("SigningKeyRepo.CreateAndSetCurrent", storage.ErrorKindUnknown, err, "failed to begin transaction")
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Demote all existing current keys before inserting the new one.
+	_, err = tx.ExecContext(execCtx, `UPDATE signing_keys SET is_current = false WHERE is_current = true`)
+	if err != nil {
+		return storage.NewStorageError("SigningKeyRepo.CreateAndSetCurrent", storage.ErrorKindUnknown, err, "failed to demote existing keys")
+	}
+
+	_, err = tx.ExecContext(execCtx,
+		`INSERT INTO signing_keys (id, kid, algorithm, private_key_encrypted, is_current, created_at, removed_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		key.ID, key.KID, key.Algorithm, key.PrivateKeyEncrypted,
+		true, key.CreatedAt, key.RemovedAt,
+	)
+	if err != nil {
+		return storage.NewStorageError("SigningKeyRepo.CreateAndSetCurrent", storage.ErrorKindUnknown, err, "failed to insert signing key")
+	}
+
+	return tx.Commit()
+}
+
 func (r *SigningKeyRepo) GetByKID(ctx context.Context, kid id.KeyID) (*storage.SigningKey, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindConnection, nil, "database not initialized")

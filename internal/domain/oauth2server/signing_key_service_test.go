@@ -2,7 +2,6 @@ package oauth2server
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -210,41 +209,28 @@ func TestSigningKeyService_EnsureKeyExists(t *testing.T) {
 	})
 }
 
-// partialFailureKeyRepo wraps an in-memory store and injects a SetCurrent failure.
-type partialFailureKeyRepo struct {
-	*memory.SigningKeyStore
-	setCurrrentErr error
-	deletedKIDs    []id.KeyID
-}
+func TestSigningKeyService_GenerateAndStoreKey_Atomic(t *testing.T) {
+	t.Run("CreateAndSetCurrent demotes previous current key", func(t *testing.T) {
+		svc, repo := newTestSigningKeyService()
+		ctx := context.Background()
 
-func (r *partialFailureKeyRepo) SetCurrent(_ context.Context, kid id.KeyID) error {
-	return r.setCurrrentErr
-}
+		key1, err := svc.GenerateAndStoreKey(ctx, "ES256", true)
+		require.NoError(t, err)
+		require.True(t, key1.IsCurrent)
 
-func (r *partialFailureKeyRepo) Delete(ctx context.Context, kid id.KeyID) error {
-	r.deletedKIDs = append(r.deletedKIDs, kid)
-	return r.SigningKeyStore.Delete(ctx, kid)
-}
+		key2, err := svc.GenerateAndStoreKey(ctx, "ES256", true)
+		require.NoError(t, err)
+		require.True(t, key2.IsCurrent)
 
-func TestSigningKeyService_GenerateAndStoreKey_CompensatingDelete(t *testing.T) {
-	t.Run("deletes orphaned key when SetCurrent fails", func(t *testing.T) {
-		repo := &partialFailureKeyRepo{
-			SigningKeyStore: memory.NewSigningKeyStore(),
-			setCurrrentErr: fmt.Errorf("simulated SetCurrent failure"),
-		}
-		svc := NewSigningKeyService(repo, &testEncryptor{}, testSlogger())
+		// key1 must no longer be current.
+		stored1, err := repo.GetByKID(ctx, key1.KID)
+		require.NoError(t, err)
+		assert.False(t, stored1.IsCurrent, "previous key must be demoted")
 
-		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to set key as current")
-
-		// The compensating Delete must have been called for the orphaned key.
-		require.Len(t, repo.deletedKIDs, 1)
-
-		// The key must not appear in ListActive after the compensating delete.
-		active, listErr := repo.ListActive(context.Background())
-		require.NoError(t, listErr)
-		assert.Empty(t, active, "orphaned key should be removed from active keys")
+		// Exactly one current key must exist.
+		current, err := repo.GetCurrent(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, key2.KID, current.KID)
 	})
 }
 

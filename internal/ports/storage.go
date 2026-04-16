@@ -271,6 +271,10 @@ type SigningKeyRepository interface {
 	// Create stores a new signing key.
 	Create(ctx context.Context, key *storage.SigningKey) error
 
+	// CreateAndSetCurrent stores a new signing key and atomically promotes it to
+	// current while demoting all other keys, in a single transaction.
+	CreateAndSetCurrent(ctx context.Context, key *storage.SigningKey) error
+
 	// GetByKID retrieves a signing key by its key ID (kid).
 	GetByKID(ctx context.Context, kid id.KeyID) (*storage.SigningKey, error)
 

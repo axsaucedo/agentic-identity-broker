@@ -45,6 +45,27 @@ func (s *SigningKeyStore) Create(ctx context.Context, key *storage.SigningKey) e
 	return nil
 }
 
+func (s *SigningKeyStore) CreateAndSetCurrent(ctx context.Context, key *storage.SigningKey) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.byKID[key.KID]; exists {
+		return storage.NewStorageError("SigningKeyStore.CreateAndSetCurrent", storage.ErrorKindConflict, nil,
+			fmt.Sprintf("signing key with kid %s already exists", key.KID))
+	}
+
+	// Demote all existing keys, then insert the new one as current.
+	for _, existing := range s.byID {
+		existing.IsCurrent = false
+	}
+	k := *key
+	k.IsCurrent = true
+	k.PrivateKeyEncrypted = append([]byte(nil), key.PrivateKeyEncrypted...)
+	s.byID[k.ID] = &k
+	s.byKID[k.KID] = &k
+	return nil
+}
+
 func (s *SigningKeyStore) GetByKID(ctx context.Context, kid id.KeyID) (*storage.SigningKey, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
