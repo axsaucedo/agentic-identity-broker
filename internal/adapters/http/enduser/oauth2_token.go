@@ -445,7 +445,9 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 	// No verification needed — copy response status code and stream body
 	w.WriteHeader(upstreamResp.StatusCode)
 	if _, err := io.Copy(w, upstreamResp.Body); err != nil {
-		h.Logger.ErrorContext(r.Context(), "failed to stream upstream token response", "error", err)
+		if h.Logger != nil {
+			h.Logger.ErrorContext(r.Context(), "failed to stream upstream token response", "error", err)
+		}
 	}
 }
 
