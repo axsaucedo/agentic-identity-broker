@@ -169,26 +169,36 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 	// Issue authorization code locally via the CodeIssuer strategy
 	code, err := h.CodeIssuer.IssueAuthorizationCode(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
-		// Return 400/500 directly for errors where redirect_uri is not yet validated
+		// Return JSON errors directly for errors where redirect_uri is not yet validated
 		// (redirect-based error responses risk open redirect when the URI is unverified).
 		if errors.Is(err, oauth2server.ErrUnknownClient) {
-			http.Error(w, "invalid_client", http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, `{"error":"invalid_client","error_description":"unknown client"}`)
 			return
 		}
 		if errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
-			http.Error(w, "invalid_redirect_uri", http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, `{"error":"invalid_redirect_uri","error_description":"redirect_uri not registered for this client"}`)
 			return
 		}
 		if errors.Is(err, oauth2server.ErrServerError) {
-			http.Error(w, "server_error", http.StatusInternalServerError)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprintf(w, `{"error":"server_error","error_description":"internal server error"}`)
 			return
 		}
 		if errors.Is(err, oauth2server.ErrInvalidRequest) {
-			http.Error(w, "invalid_request: invalid authorization request", http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"invalid authorization request"}`)
 			return
 		}
 		if errors.Is(err, oauth2server.ErrUnsupportedResponseType) {
-			http.Error(w, "unsupported_response_type: unsupported response type", http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, `{"error":"unsupported_response_type","error_description":"unsupported response type"}`)
 			return
 		}
 		redirectWithError(w, r, authReq.RedirectURI, authReq.State, "server_error", "authorization failed")
