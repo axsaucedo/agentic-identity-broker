@@ -171,8 +171,12 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 	if err != nil {
 		// Return 400/500 directly for errors where redirect_uri is not yet validated
 		// (redirect-based error responses risk open redirect when the URI is unverified).
-		if errors.Is(err, oauth2server.ErrUnknownClient) || errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
-			http.Error(w, "authorization error: invalid_client", http.StatusBadRequest)
+		if errors.Is(err, oauth2server.ErrUnknownClient) {
+			http.Error(w, "invalid_client", http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
+			http.Error(w, "invalid_redirect_uri", http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, oauth2server.ErrServerError) {
