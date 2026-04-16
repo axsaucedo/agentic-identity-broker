@@ -18,6 +18,15 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// emptyIfNil converts a nil string slice to an empty slice.
+// pq.Array returns SQL NULL for a nil slice, which violates NOT NULL constraints.
+func emptyIfNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
 // AgentRepository implements ports.AgentRepository using PostgreSQL.
 type AgentRepository struct {
 	adapter *Adapter
@@ -106,8 +115,8 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
 		serviceReqsJSON, // NULL if empty
-		pq.Array(agent.RedirectURIs),
-		pq.Array(agent.AllowedScopes),
+		pq.Array(emptyIfNil(agent.RedirectURIs)),
+		pq.Array(emptyIfNil(agent.AllowedScopes)),
 		agent.CreatedAt,
 		agent.UpdatedAt,
 	)
@@ -332,8 +341,8 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
 		serviceReqsJSON, // NULL if empty
-		pq.Array(agent.RedirectURIs),
-		pq.Array(agent.AllowedScopes),
+		pq.Array(emptyIfNil(agent.RedirectURIs)),
+		pq.Array(emptyIfNil(agent.AllowedScopes)),
 		agent.UpdatedAt,
 	)
 

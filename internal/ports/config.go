@@ -341,12 +341,6 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 
 // validateProxyMode validates configuration for proxy mode (upstream OAuth2 server).
 func (c *OAuth2AuthServerConfig) validateProxyMode() error {
-	// If no OAuth2 Authorization Server is configured, skip upstream field validation.
-	// However, multi_agent_client must still be validated even when upstream fields are empty.
-	if c.UpstreamAuthorizeEndpoint == "" && c.UpstreamTokenEndpoint == "" && c.UpstreamIssuerURI == "" && !c.MultiAgentClient.Enabled {
-		return nil
-	}
-
 	// Check required fields
 	if c.UpstreamIssuerURI == "" {
 		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")
