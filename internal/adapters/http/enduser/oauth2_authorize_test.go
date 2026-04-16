@@ -2,6 +2,7 @@ package enduser
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -466,7 +467,10 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
 			assert.Equal(t, tc.wantStatus, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 			body, _ := io.ReadAll(w.Body)
-			assert.Contains(t, string(body), `"error":"`+tc.wantErrCode+`"`)
+			var errResp map[string]string
+			require.NoError(t, json.Unmarshal(body, &errResp), "body must be valid JSON: %s", string(body))
+			assert.Equal(t, tc.wantErrCode, errResp["error"])
+			assert.NotEmpty(t, errResp["error_description"])
 		})
 	}
 }
