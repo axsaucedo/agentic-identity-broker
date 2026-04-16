@@ -2,6 +2,7 @@ package oauth2server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -206,6 +207,44 @@ func TestSigningKeyService_EnsureKeyExists(t *testing.T) {
 		count, err := repo.CountActive(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, 1, count, "should still have exactly 1 key")
+	})
+}
+
+// partialFailureKeyRepo wraps an in-memory store and injects a SetCurrent failure.
+type partialFailureKeyRepo struct {
+	*memory.SigningKeyStore
+	setCurrrentErr error
+	deletedKIDs    []id.KeyID
+}
+
+func (r *partialFailureKeyRepo) SetCurrent(_ context.Context, kid id.KeyID) error {
+	return r.setCurrrentErr
+}
+
+func (r *partialFailureKeyRepo) Delete(ctx context.Context, kid id.KeyID) error {
+	r.deletedKIDs = append(r.deletedKIDs, kid)
+	return r.SigningKeyStore.Delete(ctx, kid)
+}
+
+func TestSigningKeyService_GenerateAndStoreKey_CompensatingDelete(t *testing.T) {
+	t.Run("deletes orphaned key when SetCurrent fails", func(t *testing.T) {
+		repo := &partialFailureKeyRepo{
+			SigningKeyStore: memory.NewSigningKeyStore(),
+			setCurrrentErr: fmt.Errorf("simulated SetCurrent failure"),
+		}
+		svc := NewSigningKeyService(repo, &testEncryptor{}, testSlogger())
+
+		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "failed to set key as current")
+
+		// The compensating Delete must have been called for the orphaned key.
+		require.Len(t, repo.deletedKIDs, 1)
+
+		// The key must not appear in ListActive after the compensating delete.
+		active, listErr := repo.ListActive(context.Background())
+		require.NoError(t, listErr)
+		assert.Empty(t, active, "orphaned key should be removed from active keys")
 	})
 }
 

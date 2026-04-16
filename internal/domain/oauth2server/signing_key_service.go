@@ -77,17 +77,20 @@ func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm s
 		CreatedAt:           time.Now().UTC(),
 	}
 
+	if err := s.repo.Create(ctx, key); err != nil {
+		return nil, fmt.Errorf("failed to store signing key: %w", err)
+	}
+
 	if makeCurrent {
-		// Demote existing current key by using SetCurrent after Create
-		if err := s.repo.Create(ctx, key); err != nil {
-			return nil, fmt.Errorf("failed to store signing key: %w", err)
-		}
 		if err := s.repo.SetCurrent(ctx, kid); err != nil {
+			// Compensating delete: remove the orphaned key so it never becomes
+			// reachable via ListActive while also not being the current key.
+			// Use a detached context so a cancelled request does not skip cleanup.
+			if delErr := s.repo.Delete(context.WithoutCancel(ctx), kid); delErr != nil {
+				s.logger.Error("failed to delete orphaned signing key after SetCurrent failure",
+					"kid", kid, "set_current_err", err, "delete_err", delErr)
+			}
 			return nil, fmt.Errorf("failed to set key as current: %w", err)
-		}
-	} else {
-		if err := s.repo.Create(ctx, key); err != nil {
-			return nil, fmt.Errorf("failed to store signing key: %w", err)
 		}
 	}
 
