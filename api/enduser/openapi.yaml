@@ -1321,7 +1321,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuth2Error'
+                $ref: '#/components/schemas/OAuth2ErrorResponse'
               examples:
                 invalid_client:
                   summary: Invalid client_id
@@ -1331,8 +1331,8 @@ paths:
                 invalid_redirect_uri:
                   summary: Invalid redirect_uri (direct error response, not redirected per RFC 6749 §4.1.2.1)
                   value:
-                    error: "invalid_request"
-                    error_description: "redirect_uri is not registered for this agent"
+                    error: "invalid_redirect_uri"
+                    error_description: "redirect_uri is not registered for this client"
         '500':
           description: Internal Server Error
           content:
@@ -2219,6 +2219,7 @@ components:
           type: string
           enum:
             - invalid_request
+            - invalid_redirect_uri
             - unauthorized_client
             - access_denied
             - unsupported_response_type

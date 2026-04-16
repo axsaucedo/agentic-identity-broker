@@ -140,9 +140,10 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 
 	// Register agent
 	agent := &storage.Agent{
-		ID:          id.NewAgentID(),
-		ClientID:    id.NewClientID("client-1"),
-		DisplayName: "Test Client",
+		ID:           id.NewAgentID(),
+		ClientID:     id.NewClientID("client-1"),
+		DisplayName:  "Test Client",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -182,9 +183,10 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 	// Register agent
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    id.NewClientID("client-1"),
-		DisplayName: "Test Client",
+		ID:           agentID,
+		ClientID:     id.NewClientID("client-1"),
+		DisplayName:  "Test Client",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -247,9 +249,10 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	// Register agent
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    id.NewClientID("client-1"),
-		DisplayName: "Test Client",
+		ID:           agentID,
+		ClientID:     id.NewClientID("client-1"),
+		DisplayName:  "Test Client",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -305,9 +308,10 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    id.NewClientID("client-1"),
-		DisplayName: "Test Client",
+		ID:           agentID,
+		ClientID:     id.NewClientID("client-1"),
+		DisplayName:  "Test Client",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -365,9 +369,10 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    id.NewClientID("client-1"),
-		DisplayName: "Test Client",
+		ID:           agentID,
+		ClientID:     id.NewClientID("client-1"),
+		DisplayName:  "Test Client",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 

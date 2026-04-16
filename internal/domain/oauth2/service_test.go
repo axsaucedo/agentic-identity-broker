@@ -257,9 +257,10 @@ func TestService_HandleAuthorization(t *testing.T) {
 			name: "valid UUID client_id with no grant redirects to consent UI",
 			setupAgent: func(r *MockAgentRepository) {
 				agent := &storage.Agent{
-					ID:          testAgentID,
-					ClientID:    id.ClientID("client-1"),
-					DisplayName: "Test Client",
+					ID:           testAgentID,
+					ClientID:     id.ClientID("client-1"),
+					DisplayName:  "Test Client",
+					RedirectURIs: []string{"https://client.example.com/callback"},
 				}
 				_ = r.Create(context.Background(), agent)
 			},
@@ -278,9 +279,10 @@ func TestService_HandleAuthorization(t *testing.T) {
 			name: "valid UUID client_id with active grant redirects to upstream",
 			setupAgent: func(r *MockAgentRepository) {
 				agent := &storage.Agent{
-					ID:          testAgentID,
-					ClientID:    id.ClientID("client-1"),
-					DisplayName: "Test Client",
+					ID:           testAgentID,
+					ClientID:     id.ClientID("client-1"),
+					DisplayName:  "Test Client",
+					RedirectURIs: []string{"https://client.example.com/callback"},
 				}
 				_ = r.Create(context.Background(), agent)
 			},
@@ -310,9 +312,10 @@ func TestService_HandleAuthorization(t *testing.T) {
 			name: "expired grant redirects to consent UI",
 			setupAgent: func(r *MockAgentRepository) {
 				agent := &storage.Agent{
-					ID:          testAgentID,
-					ClientID:    id.ClientID("client-1"),
-					DisplayName: "Test Client",
+					ID:           testAgentID,
+					ClientID:     id.ClientID("client-1"),
+					DisplayName:  "Test Client",
+					RedirectURIs: []string{"https://client.example.com/callback"},
 				}
 				_ = r.Create(context.Background(), agent)
 			},
@@ -450,9 +453,10 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 			sessionRepo := NewMockSessionRepository()
 
 			_ = agentRepo.Create(context.Background(), &storage.Agent{
-				ID:          agentID,
-				ClientID:    id.ClientID("client-1"),
-				DisplayName: "Test Client",
+				ID:           agentID,
+				ClientID:     id.ClientID("client-1"),
+				DisplayName:  "Test Client",
+				RedirectURIs: []string{"https://client.example.com/callback"},
 			})
 			activeGrant(grantRepo)
 			tt.setupSession(sessionRepo)
@@ -477,7 +481,11 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	serviceID := id.NewServiceID()
 
 	// Add agent
-	agent := &storage.Agent{ID: agentID, ClientID: id.ClientID("client-1")}
+	agent := &storage.Agent{
+		ID:           agentID,
+		ClientID:     id.ClientID("client-1"),
+		RedirectURIs: []string{"https://client.example.com/callback"},
+	}
 	_ = agentRepo.Create(context.Background(), agent)
 
 	// Add active grant
@@ -532,9 +540,10 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 
 	setupAgent := func(r *MockAgentRepository) {
 		agent := &storage.Agent{
-			ID:          agentID,
-			ClientID:    id.ClientID("upstream-client-1"), // upstream OAuth2 client ID
-			DisplayName: "Test Agent",
+			ID:           agentID,
+			ClientID:     id.ClientID("upstream-client-1"), // upstream OAuth2 client ID
+			DisplayName:  "Test Agent",
+			RedirectURIs: []string{"https://client.example.com/callback"},
 		}
 		_ = r.Create(context.Background(), agent)
 	}
@@ -624,9 +633,10 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	grantRepo := NewMockGrantRepository()
 
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    id.ClientID("upstream-client-abc"), // this is what should appear in upstream URL
-		DisplayName: "Test Agent",
+		ID:           agentID,
+		ClientID:     id.ClientID("upstream-client-abc"), // this is what should appear in upstream URL
+		DisplayName:  "Test Agent",
+		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
@@ -725,9 +735,10 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 		grantRepo := NewMockGrantRepository()
 
 		agent := &storage.Agent{
-			ID:          agentID,
-			ClientID:    id.ClientID("shared-upstream-client"),
-			DisplayName: "Test Agent",
+			ID:           agentID,
+			ClientID:     id.ClientID("shared-upstream-client"),
+			DisplayName:  "Test Agent",
+			RedirectURIs: []string{"https://client.example.com/callback"},
 		}
 		_ = agentRepo.Create(context.Background(), agent)
 
@@ -810,10 +821,11 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 		wantErrorCode string
 	}{
 		{
-			name:         "agent with no registered URIs allows any redirect_uri",
-			redirectURIs: nil,
-			requestURI:   unregisteredURI,
-			wantAction:   "redirect_to_consent", // proceeds to grant check; no grant → consent
+			name:          "agent with no registered URIs rejects any redirect_uri",
+			redirectURIs:  nil,
+			requestURI:    unregisteredURI,
+			wantAction:    "error",
+			wantErrorCode: "invalid_redirect_uri",
 		},
 		{
 			name:         "matching registered URI is accepted",

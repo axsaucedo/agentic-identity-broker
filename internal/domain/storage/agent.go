@@ -61,6 +61,13 @@ func (a *Agent) Validate() error {
 		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
 	}
 
+	// Redirect URI validation
+	for i, uri := range a.RedirectURIs {
+		if !isValidURL(uri) {
+			return fmt.Errorf("redirect_uris[%d] is not a valid HTTP/HTTPS URL", i)
+		}
+	}
+
 	// Service requirements validation
 	if err := a.ValidateServiceRequirements(); err != nil {
 		return fmt.Errorf("service_requirements validation failed: %w", err)
@@ -161,6 +168,13 @@ func (a *Agent) ValidateForCreate() error {
 	}
 	if a.AgentInterfaceURL != nil && !isValidURL(*a.AgentInterfaceURL) {
 		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
+	}
+
+	// Redirect URI validation
+	for i, uri := range a.RedirectURIs {
+		if !isValidURL(uri) {
+			return fmt.Errorf("redirect_uris[%d] is not a valid HTTP/HTTPS URL", i)
+		}
 	}
 
 	// Service requirements validation
