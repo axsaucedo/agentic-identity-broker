@@ -325,14 +325,13 @@ Location: https://agent.example.com/callback?error=ERROR_CODE&error_description=
 
 | Error Code | Delivery | Description |
 |---|---|---|
-| `invalid_client` | Direct JSON 400 | `client_id` is not a valid UUID |
+| `invalid_client` | Direct JSON 400 | `client_id` is not a valid UUID OR no agent with that UUID exists (RFC 6749 §4.1.2.1 — no redirect when client is unverified) |
 | `invalid_redirect_uri` | Direct JSON 400 | `redirect_uri` not registered on agent — no redirect performed |
 | `invalid_request` | Direct JSON 400 | Missing `code_challenge` or `code_challenge_method` |
 | `unsupported_response_type` | Direct JSON 400 | `response_type` is not `code` |
 | `server_error` | Direct JSON 500 | Internal infrastructure failure |
-| `invalid_client` | Redirect to `redirect_uri` | Well-formed UUID but no registered agent (redirect_uri taken from request, not validated against agent) |
-| `invalid_scope` | Redirect to `redirect_uri` | Requested scopes exceed the agent's `allowed_scopes` (agent found; redirect_uri validated) |
-| `access_denied` | Redirect to `redirect_uri` | User explicitly denied consent |
+| `invalid_scope` | Redirect to `redirect_uri` | Requested scopes exceed the agent's `allowed_scopes` (redirect_uri validated) |
+| `access_denied` | Redirect to `redirect_uri` | User explicitly denied consent (redirect_uri validated) |
 
 **Flow**:
 1. Validate `client_id` → parse as agent UUID → resolve agent from `AgentRepository` → resolve credentials from `BrokerClientCredentialRepository`

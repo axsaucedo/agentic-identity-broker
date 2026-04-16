@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -49,9 +50,10 @@ func TestOAuth2AuthorizeEndpoint_NonUUIDClientIDError(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// TestOAuth2AuthorizeEndpoint_UnknownAgentUUIDRedirectsWithError tests that a well-formed
-// UUID that is not registered as an agent redirects with error=invalid_client.
-func TestOAuth2AuthorizeEndpoint_UnknownAgentUUIDRedirectsWithError(t *testing.T) {
+// TestOAuth2AuthorizeEndpoint_UnknownAgentUUIDDirectError tests that a well-formed
+// UUID that is not registered as an agent returns a direct 400 invalid_client JSON
+// response (no redirect, per RFC 6749 §4.1.2.1 — redirect_uri cannot be validated).
+func TestOAuth2AuthorizeEndpoint_UnknownAgentUUIDDirectError(t *testing.T) {
 	agentRepo := newInMemoryAgentRepo()
 	grantRepo := newInMemoryGrantRepo()
 
@@ -75,13 +77,11 @@ func TestOAuth2AuthorizeEndpoint_UnknownAgentUUIDRedirectsWithError(t *testing.T
 
 	handler.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusFound, w.Code)
-	redirectURL, err := url.Parse(w.Header().Get("Location"))
-	require.NoError(t, err)
-	query := redirectURL.Query()
-	assert.Equal(t, "invalid_client", query.Get("error"))
-	assert.Equal(t, "abc123", query.Get("state"))
-	assert.NotEmpty(t, query.Get("error_description"))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var errResp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(t, "invalid_client", errResp["error"])
+	assert.NotEmpty(t, errResp["error_description"])
 }
 
 // TestOAuth2AuthorizeEndpoint_MissingParameterError tests validation of required parameters

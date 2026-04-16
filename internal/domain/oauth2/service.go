@@ -103,13 +103,11 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	agent, err := s.agentRepo.Get(ctx, req.ClientID)
 	if err != nil {
 		if isNotFoundErr(err) {
-			// Agent UUID not registered
-			redirectURL, _ := buildErrorRedirectURL(req.RedirectURI, req.State, "invalid_client", "Client not registered")
+			// Agent UUID not registered — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)
 			return &ports.AuthorizationDecision{
-				Action:      "error",
-				ErrorCode:   "invalid_client",
-				ErrorDesc:   "Client not registered",
-				RedirectURL: redirectURL,
+				Action:    "error",
+				ErrorCode: "invalid_client",
+				ErrorDesc: "Client not registered",
 			}, nil
 		}
 		// Other error (connection, timeout)

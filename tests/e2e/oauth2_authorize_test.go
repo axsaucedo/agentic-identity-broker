@@ -121,9 +121,9 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 		})
 	})
 
-	// Scenario 2b: Valid UUID but unregistered agent - redirects with error=invalid_client
+	// Scenario 2b: Valid UUID but unregistered agent - returns direct 400 invalid_client (RFC 6749 §4.1.2.1)
 	Describe("when authorization request has an unknown agent UUID", func() {
-		It("should redirect to redirect_uri with error=invalid_client", func() {
+		It("should return direct 400 invalid_client without redirect (redirect_uri unvalidated)", func() {
 			// Given: No agents registered; UUID is well-formed but unknown
 			unknownAgentID := id.NewAgentID().String()
 			resp, err := server.AuthenticatedGET(
