@@ -253,3 +253,50 @@ func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
 		assert.Contains(t, err.Error(), "mode")
 	})
 }
+
+// TestOAuth2AuthServerConfig_PartialConfigFails is a regression test ensuring that a
+// partially populated OAuth2AuthServerConfig (non-zero but incomplete) is rejected rather
+// than silently skipped by the unconfigured-block guard.
+func TestOAuth2AuthServerConfig_PartialConfigFails(t *testing.T) {
+	t.Run("only token_ttl set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			TokenTTL: 30 * time.Minute,
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only token_ttl must fail, not be silently skipped")
+	})
+
+	t.Run("only token_claims_expression set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			TokenClaimsExpression: `{"sub": subject_token.sub}`,
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only token_claims_expression must fail")
+	})
+
+	t.Run("only upstream_timeout_seconds set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			UpstreamTimeoutSeconds: 60,
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only upstream_timeout_seconds must fail")
+	})
+
+	t.Run("only multi_agent_client.agent_id_param_name set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			MultiAgentClient: ports.MultiAgentClientConfig{
+				AgentIDParamName: "x_agent_id",
+			},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only multi_agent_client.agent_id_param_name must fail")
+	})
+
+	t.Run("only supported_response_types set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			SupportedResponseTypes: []string{"code"},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only supported_response_types must fail")
+	})
+}

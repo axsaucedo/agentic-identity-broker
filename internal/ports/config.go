@@ -319,15 +319,31 @@ type OAuth2AuthServerConfig struct {
 	MultiAgentClient MultiAgentClientConfig `mapstructure:"multi_agent_client"`
 }
 
+// isZero reports whether the config is entirely unset (zero value for every field).
+// Only a truly zero config is skipped; any partial population must be validated.
+func (c *OAuth2AuthServerConfig) isZero() bool {
+	return c.Mode == "" &&
+		c.UpstreamIssuerURI == "" &&
+		c.UpstreamAuthorizeEndpoint == "" &&
+		c.UpstreamTokenEndpoint == "" &&
+		len(c.SupportedResponseTypes) == 0 &&
+		len(c.SupportedGrantTypes) == 0 &&
+		c.UpstreamTimeoutSeconds == 0 &&
+		c.IssuerURI == "" &&
+		c.TokenTTL == 0 &&
+		c.TokenClaimsExpression == "" &&
+		!c.MultiAgentClient.Enabled &&
+		c.MultiAgentClient.AgentIDParamName == "" &&
+		c.MultiAgentClient.AgentIDClaimName == ""
+}
+
 // Validate validates the OAuth2AuthServerConfig structure.
 // Sets defaults for empty fields and returns an error for missing required fields.
 // Validation is mode-conditional: proxy mode requires upstream fields, issue_token
 // mode requires issuer_uri and has its own defaults.
-// Returns nil immediately when the entire block is unconfigured (no mode, no
-// upstream fields, no issue_token fields, MultiAgentClient disabled).
+// Returns nil immediately when every field is at its zero value (unconfigured block).
 func (c *OAuth2AuthServerConfig) Validate() error {
-	if c.Mode == "" && c.UpstreamIssuerURI == "" && c.UpstreamAuthorizeEndpoint == "" &&
-		c.UpstreamTokenEndpoint == "" && c.IssuerURI == "" && !c.MultiAgentClient.Enabled {
+	if c.isZero() {
 		return nil
 	}
 
