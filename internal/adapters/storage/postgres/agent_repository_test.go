@@ -198,13 +198,10 @@ func TestAgentRepository_Create(t *testing.T) {
 			UpdatedAt:   now,
 		}
 
+		// Feature 021: multiple agents may share the same upstream client_id
 		err = repo.Create(ctx, agent2)
-		require.Error(t, err)
-
-		storageErr, ok := err.(*storage.StorageError)
-		require.True(t, ok)
-		assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
-		assert.Contains(t, storageErr.Message, "client_id already exists")
+		require.NoError(t, err)
+		assert.NotEqual(t, agent1.ID, agent2.ID, "both agents must have distinct IDs")
 	})
 
 	t.Run("validation failure - empty client_id", func(t *testing.T) {
@@ -439,14 +436,14 @@ func TestAgentRepository_Update(t *testing.T) {
 		err = repo.Create(ctx, agent2)
 		require.NoError(t, err)
 
-		// Try to update agent2 with agent1's client_id
+		// Feature 021: duplicate client_id is allowed — update must succeed
 		agent2.ClientID = "client-1"
 		err = repo.Update(ctx, agent2)
-		require.Error(t, err)
+		require.NoError(t, err)
 
-		storageErr, ok := err.(*storage.StorageError)
-		require.True(t, ok)
-		assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+		retrieved, err := repo.Get(ctx, agent2.ID)
+		require.NoError(t, err)
+		assert.Equal(t, id.ClientID("client-1"), retrieved.ClientID)
 	})
 
 	t.Run("validation failure on update", func(t *testing.T) {
