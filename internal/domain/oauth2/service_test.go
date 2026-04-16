@@ -821,11 +821,10 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 		wantErrorCode string
 	}{
 		{
-			name:          "agent with no registered URIs rejects any redirect_uri",
-			redirectURIs:  nil,
-			requestURI:    unregisteredURI,
-			wantAction:    "error",
-			wantErrorCode: "invalid_redirect_uri",
+			name:         "agent with no registered URIs allows any redirect_uri (legacy gate)",
+			redirectURIs: nil,
+			requestURI:   unregisteredURI,
+			wantAction:   "redirect_to_consent", // no registered URIs → skips validation; no grant → consent
 		},
 		{
 			name:         "matching registered URI is accepted",

@@ -40,7 +40,9 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	// Extract required OAuth2 parameters
 	rawClientID := query.Get("client_id")
 	if rawClientID == "" {
-		http.Error(w, "missing required parameter: client_id", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"missing required parameter: client_id"}`)
 		return
 	}
 
@@ -54,13 +56,17 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	redirectURI := query.Get("redirect_uri")
 	if redirectURI == "" {
-		http.Error(w, "missing required parameter: redirect_uri", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"missing required parameter: redirect_uri"}`)
 		return
 	}
 
 	responseType := query.Get("response_type")
 	if responseType == "" {
-		http.Error(w, "missing required parameter: response_type", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"missing required parameter: response_type"}`)
 		return
 	}
 

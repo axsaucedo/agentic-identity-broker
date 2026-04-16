@@ -61,10 +61,10 @@ func (a *Agent) Validate() error {
 		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
 	}
 
-	// Redirect URI validation
+	// Redirect URI validation (stricter than isValidURL: requires non-empty host, no fragment)
 	for i, uri := range a.RedirectURIs {
-		if !isValidURL(uri) {
-			return fmt.Errorf("redirect_uris[%d] is not a valid HTTP/HTTPS URL", i)
+		if !isValidRedirectURI(uri) {
+			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
 		}
 	}
 
@@ -83,6 +83,24 @@ func isValidURL(urlStr string) bool {
 		return false
 	}
 	return u.Scheme == "http" || u.Scheme == "https"
+}
+
+// isValidRedirectURI validates a redirect URI with stricter rules than isValidURL:
+// - Must be absolute HTTP or HTTPS
+// - Must have a non-empty host
+// - Must not contain a fragment (RFC 6749 §3.1.2 forbids fragments in redirect URIs)
+func isValidRedirectURI(uriStr string) bool {
+	u, err := url.Parse(uriStr)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	if u.Host == "" {
+		return false
+	}
+	return u.Fragment == ""
 }
 
 // Copy creates a deep copy of the Agent to prevent external mutation.
@@ -170,10 +188,10 @@ func (a *Agent) ValidateForCreate() error {
 		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
 	}
 
-	// Redirect URI validation
+	// Redirect URI validation (stricter than isValidURL: requires non-empty host, no fragment)
 	for i, uri := range a.RedirectURIs {
-		if !isValidURL(uri) {
-			return fmt.Errorf("redirect_uris[%d] is not a valid HTTP/HTTPS URL", i)
+		if !isValidRedirectURI(uri) {
+			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
 		}
 	}
 
