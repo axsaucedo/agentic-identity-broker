@@ -69,7 +69,11 @@ Initiates an authorization code grant flow. The user is redirected to the consen
 
 **Error Responses:**
 - `400 Bad Request` — Missing or invalid parameters
-- `401 Unauthorized` — Unknown client_id
+- `400 Bad Request` — Invalid or unknown `client_id`; returns a direct JSON OAuth error response and does not redirect:
+  ```json
+  {
+    "error": "invalid_client"
+  }
 - `403 Forbidden` — User denied consent
 
 ### Token Endpoint
