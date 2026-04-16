@@ -503,21 +503,27 @@ func NewOAuth2TokenHandler(upstreamTokenURL string, client *http.Client) *OAuth2
 func (h *OAuth2TokenHandler) handleLocalMinting(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values) {
 	switch grantType {
 	case "client_credentials":
-		clientID := formData.Get("client_id")
+		rawClientID := formData.Get("client_id")
 		clientSecret := formData.Get("client_secret")
 		scope := formData.Get("scope")
 
-		if clientID == "" || clientSecret == "" {
+		if rawClientID == "" || clientSecret == "" {
 			h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required")
 			return
 		}
 
-		resp, err := h.TokenMinting.HandleClientCredentials(r.Context(), clientID, clientSecret, scope)
+		agentID, err := id.ParseAgentID(rawClientID)
+		if err != nil {
+			h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "client_id is not a valid agent UUID")
+			return
+		}
+
+		resp, err := h.TokenMinting.HandleClientCredentials(r.Context(), agentID, clientSecret, scope)
 		if err != nil {
 			if h.Logger != nil {
-				h.Logger.Error("client_credentials grant failed", "error", err, "client_id", clientID)
+				h.Logger.Error("client_credentials grant failed", "error", err, "client_id", rawClientID)
 			}
-			h.handleMintingError(w, err, "client_credentials", clientID)
+			h.handleMintingError(w, err, "client_credentials", rawClientID)
 			return
 		}
 
@@ -525,7 +531,7 @@ func (h *OAuth2TokenHandler) handleLocalMinting(w http.ResponseWriter, r *http.R
 			h.Logger.Info("TokenIssued",
 				"event", "TokenIssued",
 				"grant_type", "client_credentials",
-				"client_id", clientID,
+				"client_id", rawClientID,
 				"scope", scope,
 			)
 		}
@@ -533,13 +539,13 @@ func (h *OAuth2TokenHandler) handleLocalMinting(w http.ResponseWriter, r *http.R
 		h.writeTokenResponse(w, resp)
 
 	case "authorization_code":
-		clientID := formData.Get("client_id")
+		rawClientID := formData.Get("client_id")
 		clientSecret := formData.Get("client_secret")
 		code := formData.Get("code")
 		redirectURI := formData.Get("redirect_uri")
 		codeVerifier := formData.Get("code_verifier")
 
-		if clientID == "" || clientSecret == "" {
+		if rawClientID == "" || clientSecret == "" {
 			h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required")
 			return
 		}
@@ -548,12 +554,18 @@ func (h *OAuth2TokenHandler) handleLocalMinting(w http.ResponseWriter, r *http.R
 			return
 		}
 
-		resp, err := h.TokenMinting.HandleAuthorizationCodeExchange(r.Context(), clientID, clientSecret, code, redirectURI, codeVerifier)
+		agentID, err := id.ParseAgentID(rawClientID)
+		if err != nil {
+			h.writeOAuth2Error(w, http.StatusUnauthorized, "invalid_client", "client_id is not a valid agent UUID")
+			return
+		}
+
+		resp, err := h.TokenMinting.HandleAuthorizationCodeExchange(r.Context(), agentID, clientSecret, code, redirectURI, codeVerifier)
 		if err != nil {
 			if h.Logger != nil {
-				h.Logger.Error("authorization_code exchange failed", "error", err, "client_id", clientID)
+				h.Logger.Error("authorization_code exchange failed", "error", err, "client_id", rawClientID)
 			}
-			h.handleMintingError(w, err, "authorization_code", clientID)
+			h.handleMintingError(w, err, "authorization_code", rawClientID)
 			return
 		}
 
@@ -561,7 +573,7 @@ func (h *OAuth2TokenHandler) handleLocalMinting(w http.ResponseWriter, r *http.R
 			h.Logger.Info("TokenIssued",
 				"event", "TokenIssued",
 				"grant_type", "authorization_code",
-				"client_id", clientID,
+				"client_id", rawClientID,
 			)
 		}
 

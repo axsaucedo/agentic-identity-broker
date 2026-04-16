@@ -21,7 +21,7 @@ type MultiAgentVerifier interface {
 type OAuth2Service interface {
 	// HandleAuthorization processes an OAuth2 authorization request, checking
 	// client validity and user consent status, returning a decision (redirect URL or error).
-	HandleAuthorization(ctx context.Context, req *AuthorizationRequest, principal string) (*AuthorizationDecision, error)
+	HandleAuthorization(ctx context.Context, req *AuthorizationRequest, principal id.Principal) (*AuthorizationDecision, error)
 
 	// GenerateMetadata returns RFC 8414 OAuth2 metadata for auto-discovery.
 	GenerateMetadata(ctx context.Context) (*MetadataResponse, error)
@@ -30,8 +30,8 @@ type OAuth2Service interface {
 // AuthorizationRequest represents an OAuth2 authorization request (RFC 6749 Section 4.1.1).
 // Fields are parsed from HTTP query parameters.
 type AuthorizationRequest struct {
-	// REQUIRED: OAuth2 client identifier (maps to registered Agent.ClientID)
-	ClientID id.ClientID
+	// REQUIRED: Agent UUID — the sole external client_id at all endpoints
+	ClientID id.AgentID
 
 	// REQUIRED: Client's callback URL for authorization code
 	RedirectURI string
@@ -114,11 +114,11 @@ type MetadataResponse struct {
 type TokenMintingStrategy interface {
 	// HandleClientCredentials processes a client_credentials grant type request.
 	// Returns the token response or an error.
-	HandleClientCredentials(ctx context.Context, clientID, clientSecret, scope string) (*TokenResponse, error)
+	HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*TokenResponse, error)
 
 	// HandleAuthorizationCodeExchange processes an authorization_code grant type request.
 	// Returns the token response or an error.
-	HandleAuthorizationCodeExchange(ctx context.Context, clientID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
+	HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
 }
 
 // TokenResponse represents a successful OAuth2 token response from a minting strategy.
@@ -136,5 +136,5 @@ type AuthorizationCodeIssuer interface {
 	// IssueAuthorizationCode processes a validated authorization request and returns
 	// an authorization code. The handler is responsible for redirect_uri validation
 	// and PKCE enforcement before calling this method.
-	IssueAuthorizationCode(ctx context.Context, req *AuthorizationRequest, principal string) (code string, err error)
+	IssueAuthorizationCode(ctx context.Context, req *AuthorizationRequest, principal id.Principal) (code string, err error)
 }

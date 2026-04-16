@@ -21,13 +21,13 @@ func NewIssueTokenMintingStrategy(provider *oauth2server.Provider) *IssueTokenMi
 }
 
 // HandleClientCredentials processes a client_credentials grant locally.
-func (s *IssueTokenMintingStrategy) HandleClientCredentials(ctx context.Context, clientID, clientSecret, scope string) (*ports.TokenResponse, error) {
-	return s.provider.HandleClientCredentials(ctx, id.NewBrokerClientID(clientID), clientSecret, scope)
+func (s *IssueTokenMintingStrategy) HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*ports.TokenResponse, error) {
+	return s.provider.HandleClientCredentials(ctx, agentID, clientSecret, scope)
 }
 
 // HandleAuthorizationCodeExchange processes an authorization_code exchange locally.
-func (s *IssueTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, clientID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
-	return s.provider.HandleAuthorizationCodeExchange(ctx, id.NewBrokerClientID(clientID), clientSecret, code, redirectURI, codeVerifier)
+func (s *IssueTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
+	return s.provider.HandleAuthorizationCodeExchange(ctx, agentID, clientSecret, code, redirectURI, codeVerifier)
 }
 
 // IssueTokenCodeIssuer implements AuthorizationCodeIssuer by delegating to
@@ -42,7 +42,7 @@ func NewIssueTokenCodeIssuer(provider *oauth2server.Provider) *IssueTokenCodeIss
 }
 
 // IssueAuthorizationCode issues a local authorization code via the Provider.
-func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *ports.AuthorizationRequest, principal string) (string, error) {
+func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (string, error) {
 	codeChallengeMethod := req.CodeChallengeMethod
 	if codeChallengeMethod == "" {
 		return "", fmt.Errorf("%w: code_challenge_method is required (PKCE mandatory)", oauth2server.ErrInvalidRequest)
@@ -63,23 +63,17 @@ func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *
 		return "", fmt.Errorf("%w: only 'code' response_type is supported", oauth2server.ErrUnsupportedResponseType)
 	}
 
-	// In issue_token mode, client_id from the authorize request is the agent UUID.
-	// Use HandleAuthorizeByAgentID which resolves the agent's broker credentials internally.
-	agentID, err := id.ParseAgentID(string(req.ClientID))
-	if err != nil {
-		return "", fmt.Errorf("%w: client_id must be a valid agent UUID: %v", oauth2server.ErrUnknownClient, err)
-	}
-
-	code, err := s.provider.HandleAuthorizeByAgentID(
+	// req.ClientID is already id.AgentID (parsed at the HTTP handler boundary).
+	code, err := s.provider.HandleAuthorize(
 		ctx,
-		agentID,
+		req.ClientID,
 		req.RedirectURI,
 		req.ResponseType,
 		req.Scope,
 		req.State,
 		req.CodeChallenge,
 		codeChallengeMethod,
-		id.NewPrincipal(principal),
+		principal,
 	)
 	if err != nil {
 		// Provider already uses sentinel errors — just propagate them

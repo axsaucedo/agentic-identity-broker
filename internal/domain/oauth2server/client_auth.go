@@ -51,14 +51,14 @@ type AuthenticatedClient struct {
 }
 
 // Authenticate verifies client credentials and returns the associated agent.
-func (s *ClientAuthService) Authenticate(ctx context.Context, clientID id.BrokerClientID, secret string) (*AuthenticatedClient, error) {
-	cred, err := s.credentialRepo.GetByBrokerClientID(ctx, clientID)
+func (s *ClientAuthService) Authenticate(ctx context.Context, agentID id.AgentID, secret string) (*AuthenticatedClient, error) {
+	cred, err := s.credentialRepo.GetByAgentID(ctx, agentID)
 	if err != nil {
 		s.logStorageFailure(ctx, err)
 		return nil, ErrInvalidClient
 	}
 
-	agent, err := s.agentRepo.Get(ctx, cred.AgentID)
+	agent, err := s.agentRepo.Get(ctx, agentID)
 	if err != nil {
 		s.logStorageFailure(ctx, err)
 		return nil, ErrInvalidClient

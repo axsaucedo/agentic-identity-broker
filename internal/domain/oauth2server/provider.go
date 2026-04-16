@@ -115,9 +115,9 @@ func (p *Provider) SigningKeyService() *SigningKeyService {
 }
 
 // HandleClientCredentials processes a client_credentials grant type request.
-func (p *Provider) HandleClientCredentials(ctx context.Context, clientID id.BrokerClientID, secret string, requestedScope string) (*ports.TokenResponse, error) {
+func (p *Provider) HandleClientCredentials(ctx context.Context, agentID id.AgentID, secret string, requestedScope string) (*ports.TokenResponse, error) {
 	// Authenticate client
-	authClient, err := p.clientAuth.Authenticate(ctx, clientID, secret)
+	authClient, err := p.clientAuth.Authenticate(ctx, agentID, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -171,85 +171,9 @@ func (p *Provider) HandleClientCredentials(ctx context.Context, clientID id.Brok
 	}, nil
 }
 
-// HandleAuthorize processes an authorization endpoint request.
+// HandleAuthorize processes an authorization endpoint request using the agent's UUID
+// as the client identifier. Resolves the agent's broker credentials internally.
 func (p *Provider) HandleAuthorize(
-	ctx context.Context,
-	clientID id.BrokerClientID,
-	redirectURI string,
-	responseType string,
-	scope string,
-	state string,
-	codeChallenge string,
-	codeChallengeMethod string,
-	principal id.Principal,
-) (code string, err error) {
-	// Look up client
-	fositeClient, err := p.fositeStorage.GetClient(ctx, clientID.String())
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrUnknownClient, err)
-	}
-
-	bc := fositeClient.(*brokerClient)
-
-	// Validate redirect_uri
-	if !contains(bc.agent.RedirectURIs, redirectURI) {
-		return "", fmt.Errorf("%w: %s not registered for agent", ErrInvalidRedirectURI, redirectURI)
-	}
-
-	// Enforce PKCE
-	if codeChallenge == "" {
-		return "", fmt.Errorf("%w: code_challenge is required (PKCE mandatory)", ErrInvalidRequest)
-	}
-	if codeChallengeMethod != "S256" {
-		return "", fmt.Errorf("%w: only S256 code_challenge_method is supported", ErrInvalidRequest)
-	}
-
-	scopes := splitScope(scope)
-
-	// Build fosite authorize request
-	session := &fosite.DefaultSession{
-		Subject: principal.String(),
-		ExpiresAt: map[fosite.TokenType]time.Time{
-			fosite.AuthorizeCode: time.Now().Add(60 * time.Second),
-		},
-	}
-
-	authReq := fosite.NewAuthorizeRequest()
-	authReq.Client = fositeClient
-	authReq.ResponseTypes = fosite.Arguments{responseType}
-	authReq.RequestedScope = scopes
-	authReq.GrantedScope = scopes
-	authReq.State = state
-	authReq.Session = session
-	authReq.Form = map[string][]string{
-		"redirect_uri":          {redirectURI},
-		"code_challenge":        {codeChallenge},
-		"code_challenge_method": {"S256"},
-		"response_type":         {responseType},
-		"client_id":             {clientID.String()},
-		"scope":                 {scope},
-		"state":                 {state},
-	}
-
-	// Generate authorization code
-	authCode, _, err := (&RandomCodeStrategy{}).GenerateAuthorizeCode(ctx, authReq)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate authorization code: %w", err)
-	}
-
-	// Store the code session
-	if err := p.fositeStorage.CreateAuthorizeCodeSession(ctx, authCode, authReq); err != nil {
-		return "", fmt.Errorf("failed to store authorization code: %w", err)
-	}
-
-	return authCode, nil
-}
-
-// HandleAuthorizeByAgentID processes an authorization endpoint request using the agent's UUID
-// as the client identifier. This is used in issue_token mode where the /authorize endpoint
-// accepts the agent UUID (matching the OAuth2Service consent check), but tokens are issued
-// using the agent's broker credentials.
-func (p *Provider) HandleAuthorizeByAgentID(
 	ctx context.Context,
 	agentID id.AgentID,
 	redirectURI string,
@@ -334,14 +258,14 @@ func (p *Provider) HandleAuthorizeByAgentID(
 
 func (p *Provider) HandleAuthorizationCodeExchange(
 	ctx context.Context,
-	clientID id.BrokerClientID,
+	agentID id.AgentID,
 	secret string,
 	code string,
 	redirectURI string,
 	codeVerifier string,
 ) (*ports.TokenResponse, error) {
 	// Authenticate client
-	authedClient, err := p.clientAuth.Authenticate(ctx, clientID, secret)
+	authedClient, err := p.clientAuth.Authenticate(ctx, agentID, secret)
 	if err != nil {
 		return nil, err
 	}

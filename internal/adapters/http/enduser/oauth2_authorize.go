@@ -38,9 +38,17 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	query := r.URL.Query()
 
 	// Extract required OAuth2 parameters
-	clientID := query.Get("client_id")
-	if clientID == "" {
+	rawClientID := query.Get("client_id")
+	if rawClientID == "" {
 		http.Error(w, "missing required parameter: client_id", http.StatusBadRequest)
+		return
+	}
+
+	agentID, err := id.ParseAgentID(rawClientID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"client_id must be a valid agent UUID"}`)
 		return
 	}
 
@@ -64,7 +72,7 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	// Build authorization request
 	authReq := &ports.AuthorizationRequest{
-		ClientID:            id.ClientID(clientID),
+		ClientID:            agentID,
 		RedirectURI:         redirectURI,
 		ResponseType:        responseType,
 		Scope:               scope,
@@ -88,7 +96,7 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 // handleProxyMode processes authorization requests in proxy mode by delegating
 // entirely to the OAuth2Service.
 func (h *OAuth2AuthorizeHandler) handleProxyMode(w http.ResponseWriter, r *http.Request, authReq *ports.AuthorizationRequest, principalValue string) {
-	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, principalValue)
+	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("authorization error: %v", err), http.StatusInternalServerError)
 		return
@@ -127,7 +135,7 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 		return
 	}
 
-	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, principalValue)
+	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("authorization error: %v", err), http.StatusInternalServerError)
 		return
@@ -159,7 +167,7 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 	}
 
 	// Issue authorization code locally via the CodeIssuer strategy
-	code, err := h.CodeIssuer.IssueAuthorizationCode(r.Context(), authReq, principalValue)
+	code, err := h.CodeIssuer.IssueAuthorizationCode(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
 		if errors.Is(err, oauth2server.ErrUnknownClient) || errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
 			http.Error(w, fmt.Sprintf("authorization error: %v", err), http.StatusBadRequest)

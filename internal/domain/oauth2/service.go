@@ -99,22 +99,8 @@ func NewServiceWithSessions(
 // - error: Invalid client or server error
 //
 // Feature 021: client_id MUST be the agent's internal UUID (agent.id), NOT agent.client_id.
-func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal string) (*ports.AuthorizationDecision, error) {
-	// Step 1: Validate client_id as a UUID (agent.id) and resolve the agent.
-	// Feature 021: client_id is now the broker's internal agent UUID, not the upstream client_id.
-	agentID, err := id.ParseAgentID(string(req.ClientID))
-	if err != nil {
-		// client_id is not a valid UUID → invalid_client
-		redirectURL, _ := buildErrorRedirectURL(req.RedirectURI, req.State, "invalid_client", "client_id must be a valid agent UUID")
-		return &ports.AuthorizationDecision{
-			Action:      "error",
-			ErrorCode:   "invalid_client",
-			ErrorDesc:   "client_id must be a valid agent UUID",
-			RedirectURL: redirectURL,
-		}, nil
-	}
-
-	agent, err := s.agentRepo.Get(ctx, agentID)
+func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
+	agent, err := s.agentRepo.Get(ctx, req.ClientID)
 	if err != nil {
 		if isNotFoundErr(err) {
 			// Agent UUID not registered
@@ -135,7 +121,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	}
 
 	// Step 2: Check if user has active grant for this agent
-	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, id.Principal(principal), agent.ID)
+	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agent.ID)
 	if err != nil && !errors.Is(err, ports.ErrNotFound) {
 		// Only treat as error if it's not a "not found" condition (which is valid)
 		return &ports.AuthorizationDecision{
@@ -165,7 +151,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	// the user can re-authenticate with the affected service instead of getting
 	// a cryptic error later.
 	if s.sessionRepo != nil {
-		expired, err := s.anyDelegatedSessionExpired(ctx, id.Principal(principal), grant.DelegatedOAuth2Tokens)
+		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.DelegatedOAuth2Tokens)
 		if err != nil {
 			return &ports.AuthorizationDecision{
 				Action:    "error",
@@ -195,7 +181,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 
 	// Step 5: Validate mandatory service requirements (if session repo available)
 	if s.sessionRepo != nil && len(agent.ServiceRequirements) > 0 {
-		err := s.validateMandatoryRequirements(ctx, principal, agent)
+		err := s.validateMandatoryRequirements(ctx, principal.String(), agent)
 		if err != nil {
 			// Mandatory requirement not met - redirect to consent screen
 			if s.logger != nil {
@@ -219,8 +205,11 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 
 	// Active grant exists and all mandatory requirements satisfied — proceed.
 	// In proxy mode, the handler redirects to the upstream OAuth2 server.
-	// In issue_token mode, the handler issues a local authorization code.
-	upstreamURL := s.buildUpstreamAuthorizeURL(req, agent)
+	// In issue_token mode, UpstreamAuthorizeEndpoint is empty — skip URL construction.
+	var upstreamURL string
+	if s.config.UpstreamAuthorizeEndpoint != "" {
+		upstreamURL = s.buildUpstreamAuthorizeURL(req, agent)
+	}
 	return &ports.AuthorizationDecision{
 		Action:      "proceed",
 		RedirectURL: upstreamURL,

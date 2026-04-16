@@ -192,7 +192,8 @@ func (s *FositeStorage) DeletePKCERequestSession(_ context.Context, _ string) er
 	return nil // Cleaned up with authorization code
 }
 
-// GetClient retrieves a client from the credential repository.
+// GetClient satisfies the fosite.Storage interface. It is not called in the normal flow;
+// broker code uses buildClient(agentID) or Authenticate(agentID) directly.
 func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.Client, error) {
 	cred, err := s.credRepo.GetByBrokerClientID(ctx, id.NewBrokerClientID(clientID))
 	if err != nil {
