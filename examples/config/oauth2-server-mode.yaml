@@ -6,7 +6,7 @@
 # In this mode ("issue_token"), the broker:
 #   - Issues JWT access tokens directly (no upstream OAuth2 server needed)
 #   - Supports client_credentials and authorization_code (with PKCE) grant types
-#   - Manages signing keys (ES256/RS256) with encrypted private material
+#   - Manages ES256 signing keys with encrypted private material
 #   - Exposes RFC 8414 discovery and JWKS endpoints
 #
 # Upstream OAuth2 URI fields are not required in issue_token mode.
