@@ -705,7 +705,7 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
-		verifier := "pkce-verifier-for-grant-type-test-abcdefgh" // 43 chars
+		verifier := "pkce-verifier-for-grant-type-test-abcdefghi" // 43 chars
 		challenge := generateS256Challenge(verifier)
 
 		code, err := provider.HandleAuthorize(
