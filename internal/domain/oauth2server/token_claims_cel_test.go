@@ -2,7 +2,6 @@ package oauth2server
 
 import (
 	"context"
-	"net/url"
 	"testing"
 	"time"
 
@@ -123,19 +122,19 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		eval, err := NewTokenClaimsEvaluator(`{"grant": request.grant_type}`)
 		require.NoError(t, err)
 
-		req := &fosite.Request{
-			Client: &brokerClient{
-				agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c"},
-				credential: &storage.BrokerClientCredential{},
-			},
-			Session: &fosite.DefaultSession{
-				Subject:   "user@example.com",
-				ExpiresAt: map[fosite.TokenType]time.Time{fosite.AccessToken: time.Now().Add(time.Hour)},
-			},
-			GrantedScope: []string{"read"},
-			Form:         url.Values{"grant_type": {"client_credentials"}},
+		session := &fosite.DefaultSession{
+			Subject:   "user@example.com",
+			ExpiresAt: map[fosite.TokenType]time.Time{fosite.AccessToken: time.Now().Add(time.Hour)},
 		}
-		claims, err := eval.Evaluate(context.Background(), req)
+		ar := fosite.NewAccessRequest(session)
+		ar.Client = &brokerClient{
+			agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c"},
+			credential: &storage.BrokerClientCredential{},
+		}
+		ar.GrantTypes = fosite.Arguments{"client_credentials"}
+		ar.GrantedScope = fosite.Arguments{"read"}
+
+		claims, err := eval.Evaluate(context.Background(), ar)
 		require.NoError(t, err)
 		assert.Equal(t, "client_credentials", claims["grant"])
 	})

@@ -62,28 +62,32 @@ func (e *TokenClaimsEvaluator) Evaluate(_ context.Context, requester fosite.Requ
 	}
 
 	// Build agent context: id=agent UUID, client_id=upstream OAuth2 client ID,
-	// display_name and metadata from the agent entity if available.
+	// display_name from the agent entity if available.
 	agentCtx := map[string]interface{}{
 		"id":           requester.GetClient().GetID(),
 		"client_id":    "",
 		"display_name": "",
-		"metadata":     map[string]interface{}{},
 	}
 	if bc, ok := requester.GetClient().(*brokerClient); ok && bc != nil && bc.agent != nil {
 		agentCtx["client_id"] = string(bc.agent.ClientID)
 		agentCtx["display_name"] = bc.agent.DisplayName
 	}
 
-	// Build principal context: id=subject (principal string), email and display_name optional.
+	// Build principal context: id=subject (principal string).
+	// email and display_name are not available from the session alone and are left empty;
+	// they may be populated in a future extension when profile attributes are persisted.
 	subject := requester.GetSession().GetSubject()
 	principalCtx := map[string]interface{}{
 		"id":           subject,
-		"email":        subject,
+		"email":        "",
 		"display_name": "",
 	}
 
-	// Build request context: grant_type and scopes from the requester.
-	grantType := requester.GetRequestForm().Get("grant_type")
+	// Build request context: grant_type from the access request (if available), scopes from the requester.
+	grantType := ""
+	if ar, ok := requester.(*fosite.AccessRequest); ok && len(ar.GetGrantTypes()) > 0 {
+		grantType = ar.GetGrantTypes()[0]
+	}
 	requestCtx := map[string]interface{}{
 		"grant_type": grantType,
 		"scopes":     requester.GetGrantedScopes(),
