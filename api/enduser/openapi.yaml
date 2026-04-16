@@ -1234,8 +1234,9 @@ paths:
         - Agent ID is embedded in the state token for callback correlation
 
         **Error Handling** (RFC 6749 §4.1.2.1):
-        - Invalid `client_id` or `redirect_uri`: Error returned directly (not via redirect)
-        - Other errors: Redirected to `redirect_uri` with `error` and `error_description`
+        - Invalid `client_id` or `redirect_uri`: Error returned directly as JSON (not via redirect)
+        - `invalid_scope` (requested scope exceeds allowed_scopes): Redirect to `redirect_uri` with `error=invalid_scope`
+        - Other errors where `redirect_uri` is valid: Redirected to `redirect_uri` with `error` and `error_description`
       operationId: oauth2Authorize
       tags:
         - OAuth2 Token

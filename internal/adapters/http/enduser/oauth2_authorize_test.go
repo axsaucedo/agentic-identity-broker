@@ -470,11 +470,14 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
 
 			assert.Equal(t, tc.wantStatus, w.Code)
 			if tc.isRedirect {
-				// Scope errors redirect to redirect_uri with error query parameter
+				// Scope errors redirect to redirect_uri with error query parameters
 				loc := w.Header().Get("Location")
 				redirectURL, err := url.Parse(loc)
 				require.NoError(t, err)
-				assert.Equal(t, tc.wantErrCode, redirectURL.Query().Get("error"))
+				q := redirectURL.Query()
+				assert.Equal(t, tc.wantErrCode, q.Get("error"))
+				assert.NotEmpty(t, q.Get("error_description"))
+				assert.Equal(t, "xyz", q.Get("state"))
 			} else {
 				assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 				body, _ := io.ReadAll(w.Body)

@@ -323,13 +323,14 @@ HTTP 400
 }
 ```
 
-| Error Code | Description |
-|---|---|
-| `invalid_request` | Missing `code_challenge` or `code_challenge_method` |
-| `invalid_client` | Unknown `client_id` |
-| `invalid_redirect_uri` | `redirect_uri` not registered on agent (no redirect performed) |
-| `access_denied` | User denied consent |
-| `unsupported_response_type` | `response_type` is not `code` |
+| Error Code | Delivery | Description |
+|---|---|---|
+| `invalid_request` | Direct JSON 400 | Missing `code_challenge` or `code_challenge_method` |
+| `invalid_client` | Direct JSON 400 | Unknown `client_id` (no redirect performed — `redirect_uri` not yet validated) |
+| `invalid_redirect_uri` | Direct JSON 400 | `redirect_uri` not registered on agent (no redirect performed) |
+| `invalid_scope` | Redirect to `redirect_uri` | Requested scopes exceed the agent's `allowed_scopes` |
+| `access_denied` | Redirect to `redirect_uri` | User denied consent |
+| `unsupported_response_type` | Direct JSON 400 | `response_type` is not `code` |
 
 **Flow**:
 1. Validate `client_id` → parse as agent UUID → resolve agent from `AgentRepository` → resolve credentials from `BrokerClientCredentialRepository`
