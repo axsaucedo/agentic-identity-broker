@@ -295,7 +295,7 @@ multi_agent_client:
 
 ### OAuth2 Server Mode (`oauth2-server-mode.yaml`)
 
-Configures the broker as a standalone OAuth2 authorization server using `issue_token` mode. The broker mints its own JWT access tokens signed with managed ES256/RS256 keys, supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
+Configures the broker as a standalone OAuth2 authorization server using `issue_token` mode. The broker mints its own JWT access tokens signed with managed ES256 keys, supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
 
 Key settings:
 - `mode: "issue_token"` — switches from proxy mode to local token minting
