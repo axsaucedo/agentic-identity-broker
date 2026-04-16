@@ -115,8 +115,9 @@ token_claims_expression: '{"department": "engineering", "env": "production"}'
 ```
 
 Available variables in CEL:
-- `agent` — the Agent struct (display_name, description, etc.)
-- `principal` — the authenticated user identifier (string)
-- `request` — request context (map)
+- `agent` — map with fields: `id` (agent UUID), `client_id` (upstream OAuth2 client ID), `display_name`
+- `principal` — map with fields: `id` (subject), `email` (empty if not available), `display_name` (empty if not available)
+- `request` — map with fields: `grant_type` (e.g. `client_credentials`, `authorization_code`), `scopes` (list of granted scopes)
+- `scope` — alias for `request.scopes` (list of granted scope strings)
 
 Base claims (`iss`, `sub`, `exp`, `iat`, `jti`, `kid`, `agent_id`, `scope`) cannot be overridden.

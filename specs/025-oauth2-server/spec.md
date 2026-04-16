@@ -20,7 +20,7 @@
 - Q: What is the JWKS endpoint path? → A: `/oauth2/jwks.json` on the end-user server, consistent with existing `/oauth2/` routing.
 - Q: When are `redirect_uris` enforced on agents? → A: At authorization request time only — agents may be created/updated with an empty `redirect_uris` list; the authorization endpoint rejects the request if no redirect URIs are registered for the agent.
 - Q: Where should the CEL token-claims expression be configured? → A: Global config under `oauth2_authorization_server.token_claims_expression` — a single CEL expression in the `issue_token` mode config block, applied to all locally-issued tokens.
-- Q: What variables should the CEL token-claims expression have access to? → A: Agent entity (`agent.id`, `agent.client_id`, `agent.display_name`, `agent.metadata`), principal as an object (`principal.id` always present, `principal.email` and `principal.display_name` optional), and request context (`request.grant_type`, `request.scopes`).
+- Q: What variables should the CEL token-claims expression have access to? → A: Agent entity (`agent.id`, `agent.client_id`, `agent.display_name`), principal as an object (`principal.id` always present, `principal.email` and `principal.display_name` optional), and request context (`request.grant_type`, `request.scopes`).
 - Q: Should CEL expression runtime failure block token issuance or fall back to base claims? → A: Fail closed — token issuance is rejected with an error; no token is returned. Consistent with Security-First constitution principle.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -276,7 +276,7 @@ oauth2_authorization_server:
   issuer_uri: https://broker.example.com
   token_ttl: 1h
   token_claims_expression: |
-    {"team": agent.metadata.team, "environment": "production"}
+    {"team": agent.display_name, "environment": "production"}
 ```
 
 **Configuration Location**: Will be added to `examples/config/oauth2-server-mode.yaml` and referenced in `examples/config/README.md`
