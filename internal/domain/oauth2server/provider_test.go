@@ -658,6 +658,73 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 	})
 }
 
+// TestProvider_CEL_RequestGrantType verifies that request.grant_type is correctly
+// populated for both client_credentials and authorization_code flows end-to-end.
+func TestProvider_CEL_RequestGrantType(t *testing.T) {
+	newProviderWithCEL := func(t *testing.T, expr string) *Provider {
+		t.Helper()
+		codeRepo := memory.NewAuthorizationCodeStore()
+		credRepo := memory.NewBrokerClientCredentialStore()
+		agentRepo := memory.NewAgentRepository()
+		signingKeyRepo := memory.NewSigningKeyStore()
+		enc := &testEncryptor{}
+		logger := testSlogger()
+
+		p, err := NewProvider(codeRepo, credRepo, agentRepo, signingKeyRepo, enc,
+			"https://broker.example.com", time.Hour, expr, logger)
+		require.NoError(t, err)
+
+		svc := NewSigningKeyService(signingKeyRepo, enc, logger)
+		_, err = svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		require.NoError(t, err)
+		return p
+	}
+
+	getCustomClaim := func(t *testing.T, tokenStr, claim string) string {
+		t.Helper()
+		tok, err := jwt.Parse([]byte(tokenStr), jwt.WithValidate(false), jwt.WithVerify(false))
+		require.NoError(t, err)
+		var v string
+		require.NoError(t, tok.Get(claim, &v))
+		return v
+	}
+
+	t.Run("client_credentials grant populates request.grant_type", func(t *testing.T) {
+		provider := newProviderWithCEL(t, `{"grant": request.grant_type}`)
+		agent, _, plaintext := setupTestCredentials(t, provider)
+
+		resp, err := provider.HandleClientCredentials(context.Background(), agent.ID, plaintext, "read")
+		require.NoError(t, err)
+
+		assert.Equal(t, "client_credentials", getCustomClaim(t, resp.AccessToken, "grant"))
+	})
+
+	t.Run("authorization_code grant populates request.grant_type", func(t *testing.T) {
+		provider := newProviderWithCEL(t, `{"grant": request.grant_type}`)
+		agent, _, plaintext := setupTestCredentials(t, provider)
+		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
+		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
+
+		verifier := "pkce-verifier-for-grant-type-test-abcdefgh" // 43 chars
+		challenge := generateS256Challenge(verifier)
+
+		code, err := provider.HandleAuthorize(
+			context.Background(), agent.ID,
+			"http://localhost:8080/callback", "code", "read", "state",
+			challenge, "S256", id.NewPrincipal("user@example.com"),
+		)
+		require.NoError(t, err)
+
+		resp, err := provider.HandleAuthorizationCodeExchange(
+			context.Background(), agent.ID, plaintext,
+			code, "http://localhost:8080/callback", verifier,
+		)
+		require.NoError(t, err)
+
+		assert.Equal(t, "authorization_code", getCustomClaim(t, resp.AccessToken, "grant"))
+	})
+}
+
 // generateS256Challenge generates a PKCE S256 challenge from a verifier.
 func generateS256Challenge(verifier string) string {
 	hash := sha256.Sum256([]byte(verifier))
