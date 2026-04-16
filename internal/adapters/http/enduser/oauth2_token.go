@@ -453,12 +453,20 @@ func (h *OAuth2TokenHandler) proxyToUpstream(w http.ResponseWriter, r *http.Requ
 
 // writeOAuth2Error writes an RFC 6749/8693-style JSON error response.
 func (h *OAuth2TokenHandler) writeOAuth2Error(w http.ResponseWriter, status int, code, description string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	body, err := json.Marshal(map[string]string{
 		"error":             code,
 		"error_description": description,
 	})
+	if err != nil {
+		if h.Logger != nil {
+			h.Logger.Error("failed to encode OAuth2 error response", "error", err)
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
 }
 
 // hopByHopHeaders is the set of hop-by-hop headers per RFC 7230 that must not be forwarded.
