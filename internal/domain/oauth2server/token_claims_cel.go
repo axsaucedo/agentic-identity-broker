@@ -60,9 +60,15 @@ func (e *TokenClaimsEvaluator) Evaluate(_ context.Context, requester fosite.Requ
 		return nil, nil
 	}
 
-	// Build agent context map from client metadata
+	// Build agent context map from explicit agent metadata.
+	// agent.id is the agent UUID; agent.client_id is the upstream OAuth2 client ID (Agent.ClientID field).
+	// Using GetID() for agent.id is consistent with JWT sub/agent_id claims.
 	agentCtx := map[string]interface{}{
-		"client_id": requester.GetClient().GetID(),
+		"id":        requester.GetClient().GetID(),
+		"client_id": "",
+	}
+	if bc, ok := requester.GetClient().(*brokerClient); ok && bc != nil && bc.agent != nil {
+		agentCtx["client_id"] = string(bc.agent.ClientID)
 	}
 
 	activation := map[string]interface{}{

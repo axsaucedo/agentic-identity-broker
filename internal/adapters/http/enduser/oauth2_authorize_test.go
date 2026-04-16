@@ -108,8 +108,39 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 	}
 }
 
-// TestOAuth2AuthorizeHandler_ServeHTTP_InvalidClient tests handler when client not registered
-func TestOAuth2AuthorizeHandler_ServeHTTP_InvalidClient(t *testing.T) {
+// TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID tests direct 400 for a non-UUID client_id.
+// The handler rejects non-UUID values before any redirect logic (client_id must be agent UUID per spec).
+func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
+	handler := &OAuth2AuthorizeHandler{
+		Service: oauth2.NewService(
+			newMockAgentRepo(),
+			newMockGrantRepo(),
+			&oauth2.OAuth2Config{
+				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+				PublicURL:                 "https://broker.example.com",
+			},
+		),
+	}
+
+	req := httptest.NewRequest(
+		"GET",
+		"https://broker.example.com/oauth2/authorize?client_id=not-a-uuid&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123",
+		nil,
+	)
+	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	body, _ := io.ReadAll(w.Body)
+	assert.Contains(t, string(body), `"invalid_client"`)
+}
+
+// TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent tests redirect-with-error for a valid UUID
+// client_id that does not match any registered agent.
+func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
 	svc := oauth2.NewService(
 		newMockAgentRepo(),
 		newMockGrantRepo(),
@@ -123,9 +154,10 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_InvalidClient(t *testing.T) {
 		Service: svc,
 	}
 
+	unknownUUID := id.NewAgentID().String()
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=unknown-client&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123",
+		"https://broker.example.com/oauth2/authorize?client_id="+unknownUUID+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz123",
 		nil,
 	)
 	req.Header.Set("X-Remote-User", "user@example.com")
@@ -143,7 +175,6 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_InvalidClient(t *testing.T) {
 	assert.Equal(t, "client.example.com", redirectURL.Host)
 	assert.Equal(t, "/callback", redirectURL.Path)
 
-	// Verify error parameters in redirect
 	query := redirectURL.Query()
 	assert.Equal(t, "invalid_client", query.Get("error"))
 	assert.NotEmpty(t, query.Get("error_description"))
