@@ -135,7 +135,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 		It("should handle missing response_type parameter", func() {
 			// When: Request without response_type
 			path := fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb",
-				agent.ClientID)
+				agent.ID.String())
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
@@ -152,7 +152,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 		It("should reject unsupported response_type values", func() {
 			// When: Request with unsupported response_type (e.g., "token" instead of "code")
 			path := fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=token",
-				agent.ClientID)
+				agent.ID.String())
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
@@ -185,7 +185,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 		It("should validate and reject malformed redirect_uri", func() {
 			// When: Request with malformed redirect_uri (not a valid URL)
 			path := fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=not-a-valid-url&response_type=code",
-				agent.ClientID)
+				agent.ID.String())
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
@@ -202,7 +202,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 		It("should handle redirect_uri parameter variations safely", func() {
 			// When: Request with redirect_uri containing query parameters
 			pathWithSpecialChars := "/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb?query=1&response_type=code&state=state123"
-			path := fmt.Sprintf(pathWithSpecialChars, agent.ClientID)
+			path := fmt.Sprintf(pathWithSpecialChars, agent.ID.String())
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
@@ -469,7 +469,7 @@ var _ = Describe("OAuth2 Edge Cases and Error Scenarios", func() {
 			encodedPayload := url.QueryEscape(xssPayload)
 			path := fmt.Sprintf(
 				"/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=%s",
-				agent.ClientID, encodedPayload)
+				agent.ID.String(), encodedPayload)
 
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())

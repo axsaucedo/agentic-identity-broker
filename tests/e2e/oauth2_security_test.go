@@ -77,7 +77,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			// When: Request without X-Remote-User header
 			resp, err := server.PublicGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
-					agent.ClientID),
+					agent.ID.String()),
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -97,7 +97,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			oversizedPrincipal := fixtures.OversizedPrincipal().String()
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
-					agent.ClientID),
+					agent.ID.String()),
 				oversizedPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -521,7 +521,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			xssPayload := fixtures.XSSPayload()
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s",
-					agent.ClientID, "https://client.example.com/cb", url.QueryEscape(xssPayload)),
+					agent.ID.String(), "https://client.example.com/cb", url.QueryEscape(xssPayload)),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -546,7 +546,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			sqlPayload := fixtures.SQLInjectionPayload()
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=%s",
-					agent.ClientID, url.QueryEscape(sqlPayload)),
+					agent.ID.String(), url.QueryEscape(sqlPayload)),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
