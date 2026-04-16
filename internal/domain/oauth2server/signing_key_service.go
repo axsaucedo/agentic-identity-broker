@@ -240,6 +240,6 @@ func algorithmToJWA(algorithm string) (jwa.SignatureAlgorithm, error) {
 	case "RS256":
 		return jwa.RS256(), nil
 	default:
-		return jwa.ES256(), fmt.Errorf("unrecognized algorithm: %q", algorithm)
+		return jwa.SignatureAlgorithm{}, fmt.Errorf("unrecognized algorithm: %q", algorithm)
 	}
 }

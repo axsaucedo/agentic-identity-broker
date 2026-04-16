@@ -173,9 +173,10 @@ func TestAlgorithmToJWA(t *testing.T) {
 		assert.Equal(t, jwa.RS256(), alg)
 	})
 
-	t.Run("unrecognized algorithm returns error", func(t *testing.T) {
-		_, err := algorithmToJWA("BOGUS")
+	t.Run("unrecognized algorithm returns error and zero value", func(t *testing.T) {
+		alg, err := algorithmToJWA("BOGUS")
 		assert.ErrorContains(t, err, "unrecognized algorithm")
+		assert.Equal(t, jwa.SignatureAlgorithm{}, alg)
 	})
 }
 
