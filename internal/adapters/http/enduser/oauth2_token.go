@@ -466,7 +466,11 @@ func (h *OAuth2TokenHandler) writeOAuth2Error(w http.ResponseWriter, status int,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	if _, err := w.Write(body); err != nil {
+		if h.Logger != nil {
+			h.Logger.Error("failed to write OAuth2 error response body", "error", err)
+		}
+	}
 }
 
 // hopByHopHeaders is the set of hop-by-hop headers per RFC 7230 that must not be forwarded.
