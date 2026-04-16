@@ -275,7 +275,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
 	assert.Contains(t, redirectURL, "https://auth.example.com/authorize")
-	assert.Contains(t, redirectURL, "client_id=550e8400-e29b-41d4-a716-446655440000")
+	assert.Contains(t, redirectURL, "client_id=client-1")
 	assert.Contains(t, redirectURL, "state=xyz123")
 	assert.Contains(t, redirectURL, "response_type=code")
 }

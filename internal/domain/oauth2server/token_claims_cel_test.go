@@ -65,12 +65,27 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		eval, err := NewTokenClaimsEvaluator(`{"agent_name": agent.client_id, "agent_uuid": agent.id}`)
 		require.NoError(t, err)
 
-		req := buildTestRequest("upstream-client-id", "user@example.com", []string{"read"})
+		agentID := id.NewAgentID()
+		req := &fosite.Request{
+			Client: &brokerClient{
+				agent: &storage.Agent{
+					ID:       agentID,
+					ClientID: id.ClientID("upstream-client-id"),
+				},
+				credential: &storage.BrokerClientCredential{},
+			},
+			Session: &fosite.DefaultSession{
+				Subject: "user@example.com",
+				ExpiresAt: map[fosite.TokenType]time.Time{
+					fosite.AccessToken: time.Now().Add(time.Hour),
+				},
+			},
+			GrantedScope: []string{"read"},
+		}
 		claims, err := eval.Evaluate(context.Background(), req)
 		require.NoError(t, err)
 		assert.Equal(t, "upstream-client-id", claims["agent_name"])
-		// agent.id is the agent UUID (brokerClient.GetID())
-		assert.NotEmpty(t, claims["agent_uuid"])
+		assert.Equal(t, agentID.String(), claims["agent_uuid"])
 	})
 
 	t.Run("expression with principal variable works", func(t *testing.T) {

@@ -613,9 +613,9 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 			wantErrorCode: "invalid_request",
 		},
 		{
-			name:          "non-UUID client_id returns 400 invalid_client",
+			name:          "non-UUID client_id returns 401 invalid_client",
 			body:          "grant_type=client_credentials&client_id=broker_abc&client_secret=secret",
-			wantStatus:    http.StatusBadRequest,
+			wantStatus:    http.StatusUnauthorized,
 			wantErrorCode: "invalid_client",
 		},
 		{
@@ -689,9 +689,9 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 			wantErrorCode: "invalid_request",
 		},
 		{
-			name:          "non-UUID client_id returns 400 invalid_client",
+			name:          "non-UUID client_id returns 401 invalid_client",
 			body:          "grant_type=authorization_code&client_id=broker_abc&client_secret=secret&code=abc",
-			wantStatus:    http.StatusBadRequest,
+			wantStatus:    http.StatusUnauthorized,
 			wantErrorCode: "invalid_client",
 		},
 		{
