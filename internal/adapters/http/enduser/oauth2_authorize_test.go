@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -408,6 +409,66 @@ type mockCodeIssuer struct{}
 
 func (m *mockCodeIssuer) IssueAuthorizationCode(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (string, error) {
 	return "test-code", nil
+}
+
+type errCodeIssuer struct{ err error }
+
+func (m *errCodeIssuer) IssueAuthorizationCode(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (string, error) {
+	return "", m.err
+}
+
+type proceedOAuth2Service struct{}
+
+func (s *proceedOAuth2Service) HandleAuthorization(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (*ports.AuthorizationDecision, error) {
+	return &ports.AuthorizationDecision{Action: "proceed"}, nil
+}
+
+func (s *proceedOAuth2Service) GenerateMetadata(_ context.Context) (*ports.MetadataResponse, error) {
+	return &ports.MetadataResponse{}, nil
+}
+
+// TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors tests that IssueAuthorizationCode
+// domain errors produce correct HTTP status codes and JSON bodies.
+func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
+	cases := []struct {
+		name        string
+		err         error
+		wantStatus  int
+		wantErrCode string
+	}{
+		{"unknown client", oauth2server.ErrUnknownClient, http.StatusBadRequest, "invalid_client"},
+		{"invalid redirect uri", oauth2server.ErrInvalidRedirectURI, http.StatusBadRequest, "invalid_redirect_uri"},
+		{"server error", oauth2server.ErrServerError, http.StatusInternalServerError, "server_error"},
+		{"invalid request", oauth2server.ErrInvalidRequest, http.StatusBadRequest, "invalid_request"},
+		{"unsupported response type", oauth2server.ErrUnsupportedResponseType, http.StatusBadRequest, "unsupported_response_type"},
+	}
+
+	agentID := id.NewAgentID()
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := &OAuth2AuthorizeHandler{
+				Service:    &proceedOAuth2Service{},
+				CodeIssuer: &errCodeIssuer{err: tc.err},
+			}
+
+			req := httptest.NewRequest(
+				"GET",
+				"https://broker.example.com/oauth2/authorize?client_id="+agentID.String()+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz",
+				nil,
+			)
+			ctx := principal.WithPrincipal(req.Context(), "user@example.com")
+			req = req.WithContext(ctx)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.wantStatus, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+			body, _ := io.ReadAll(w.Body)
+			assert.Contains(t, string(body), `"error":"`+tc.wantErrCode+`"`)
+		})
+	}
 }
 
 // Helper functions for test setup
