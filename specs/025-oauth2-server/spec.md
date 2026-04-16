@@ -313,7 +313,7 @@ oauth2_authorization_server:
 - **SR-002**: Client secrets MUST be stored only as a strong one-way hash (e.g., Argon2id or bcrypt); plaintext MUST be discarded after hashing
 - **SR-003**: Token signing MUST use asymmetric keys (RS256 or ES256); symmetric signing is not permitted
 - **SR-004**: Signing key private material MUST be encrypted at rest in the database using the existing encryption vault (consistent with the project's encryption pattern for secrets); raw private key bytes MUST never be stored in plaintext
-- **SR-005**: Locally-issued tokens MUST include `iss`, `sub` (agent broker ID), `iat`, `exp`, and `jti` claims in the payload at minimum; the JWT header MUST include `kid` identifying the signing key used
+- **SR-005**: Locally-issued tokens MUST include `iss`, `sub`, `iat`, `exp`, and `jti` claims in the payload at minimum; `sub` MUST be the agent UUID for `client_credentials` grants and the authenticated principal for `authorization_code` grants (per FR-008); the JWT header MUST include `kid` identifying the signing key used
 - **SR-005b**: PKCE with `S256` method MUST be enforced for all authorization code flows; `plain` method and absent `code_challenge` MUST be rejected
 - **SR-005c**: Authorization codes MUST be single-use; replay MUST be rejected with an `invalid_grant` error
 - **SR-006**: The broker MUST fail closed: if a signing key exists in the database but its encrypted material cannot be decrypted or parsed, startup MUST fail with a clear error (corrupt key is not auto-replaced); absence of any key triggers auto-generation per FR-010, which is not an error condition

@@ -254,8 +254,8 @@ All admin endpoints require admin-level access (no principal authentication — 
 }
 ```
 
-- `sub`: Agent's broker-internal ID (UUID) per FR-008
-- `agent_id`: Same as `sub` for explicit identification
+- `sub`: For `client_credentials` grants: the agent UUID. For `authorization_code` grants: the authenticated principal (user identity), per FR-008.
+- `agent_id`: Always the agent UUID, regardless of grant type
 - `kid`: Signing key identifier (in JWT header, not payload)
 
 **Error Responses**:
@@ -276,7 +276,7 @@ All admin endpoints require admin-level access (no principal authentication — 
 | `client_id` | string | Yes | Agent UUID (broker-internal identifier, `agent.id`) |
 | `code_verifier` | string | Yes | PKCE code verifier (RFC 7636) |
 
-**Response `200 OK`**: Same format as client credentials grant.
+**Response `200 OK`**: Same format as client credentials grant, except `sub` is the authenticated principal (user identity) and `agent_id` carries the agent UUID.
 
 **Error Responses**:
 | Status | Error Code | Description |

@@ -390,9 +390,11 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_NilServiceFails(t *testing.T) {
 		CodeIssuer: &mockCodeIssuer{},
 	}
 
+	// client_id must be a valid agent UUID to pass the UUID parse step and reach the nil-service check
+	agentUUID := id.NewAgentID().String()
 	req := httptest.NewRequest(
 		"GET",
-		"https://broker.example.com/oauth2/authorize?client_id=some-client&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz",
+		"https://broker.example.com/oauth2/authorize?client_id="+agentUUID+"&redirect_uri=https://client.example.com/callback&response_type=code&state=xyz",
 		nil,
 	)
 	ctx := principal.WithPrincipal(req.Context(), "user@example.com")
@@ -436,12 +438,14 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
 		err         error
 		wantStatus  int
 		wantErrCode string
+		isRedirect  bool
 	}{
-		{"unknown client", oauth2server.ErrUnknownClient, http.StatusBadRequest, "invalid_client"},
-		{"invalid redirect uri", oauth2server.ErrInvalidRedirectURI, http.StatusBadRequest, "invalid_redirect_uri"},
-		{"server error", oauth2server.ErrServerError, http.StatusInternalServerError, "server_error"},
-		{"invalid request", oauth2server.ErrInvalidRequest, http.StatusBadRequest, "invalid_request"},
-		{"unsupported response type", oauth2server.ErrUnsupportedResponseType, http.StatusBadRequest, "unsupported_response_type"},
+		{"unknown client", oauth2server.ErrUnknownClient, http.StatusBadRequest, "invalid_client", false},
+		{"invalid redirect uri", oauth2server.ErrInvalidRedirectURI, http.StatusBadRequest, "invalid_redirect_uri", false},
+		{"server error", oauth2server.ErrServerError, http.StatusInternalServerError, "server_error", false},
+		{"invalid request", oauth2server.ErrInvalidRequest, http.StatusBadRequest, "invalid_request", false},
+		{"unsupported response type", oauth2server.ErrUnsupportedResponseType, http.StatusBadRequest, "unsupported_response_type", false},
+		{"invalid scope", oauth2server.ErrInvalidScope, http.StatusFound, "invalid_scope", true},
 	}
 
 	agentID := id.NewAgentID()
@@ -465,12 +469,20 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
 			handler.ServeHTTP(w, req)
 
 			assert.Equal(t, tc.wantStatus, w.Code)
-			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
-			body, _ := io.ReadAll(w.Body)
-			var errResp map[string]string
-			require.NoError(t, json.Unmarshal(body, &errResp), "body must be valid JSON: %s", string(body))
-			assert.Equal(t, tc.wantErrCode, errResp["error"])
-			assert.NotEmpty(t, errResp["error_description"])
+			if tc.isRedirect {
+				// Scope errors redirect to redirect_uri with error query parameter
+				loc := w.Header().Get("Location")
+				redirectURL, err := url.Parse(loc)
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantErrCode, redirectURL.Query().Get("error"))
+			} else {
+				assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+				body, _ := io.ReadAll(w.Body)
+				var errResp map[string]string
+				require.NoError(t, json.Unmarshal(body, &errResp), "body must be valid JSON: %s", string(body))
+				assert.Equal(t, tc.wantErrCode, errResp["error"])
+				assert.NotEmpty(t, errResp["error_description"])
+			}
 		})
 	}
 }

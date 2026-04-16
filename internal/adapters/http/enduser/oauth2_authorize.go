@@ -201,6 +201,11 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 			_, _ = fmt.Fprintf(w, `{"error":"unsupported_response_type","error_description":"unsupported response type"}`)
 			return
 		}
+		if errors.Is(err, oauth2server.ErrInvalidScope) {
+			// redirect_uri is validated before scope checking, so redirect is safe here
+			redirectWithError(w, r, authReq.RedirectURI, authReq.State, "invalid_scope", "requested scope is not permitted")
+			return
+		}
 		redirectWithError(w, r, authReq.RedirectURI, authReq.State, "server_error", "authorization failed")
 		return
 	}
