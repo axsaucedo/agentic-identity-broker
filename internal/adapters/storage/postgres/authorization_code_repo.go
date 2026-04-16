@@ -2,9 +2,10 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
+
+	pgx "github.com/jackc/pgx/v5"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -58,7 +59,7 @@ func (r *AuthorizationCodeRepo) FindByCodeHash(ctx context.Context, codeHash str
 		`SELECT id, code_hash, agent_id, broker_client_id, principal, redirect_uri, code_challenge, scope, expires_at, used_at, created_at
 		 FROM authorization_codes WHERE code_hash = $1`, codeHash)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, storage.NewStorageError("AuthorizationCodeRepo.FindByCodeHash", storage.ErrorKindNotFound, err, "authorization code not found")
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
