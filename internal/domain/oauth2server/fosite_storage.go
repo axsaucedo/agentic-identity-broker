@@ -200,7 +200,11 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 	if err != nil {
 		return nil, fosite.ErrNotFound
 	}
-	return s.buildClient(ctx, agentID)
+	client, err := s.buildClient(ctx, agentID)
+	if err != nil {
+		return nil, s.mapStorageError(ctx, err)
+	}
+	return client, nil
 }
 
 // ClientAssertionJWTValid checks for JWT assertion replay — not supported.

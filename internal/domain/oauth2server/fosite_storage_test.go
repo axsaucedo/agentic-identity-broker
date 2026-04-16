@@ -285,6 +285,13 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 		assert.NotErrorIs(t, err, fosite.ErrNotFound)
 	})
 
+	t.Run("GetClient valid-but-unknown agent UUID returns ErrNotFound", func(t *testing.T) {
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), memory.NewAgentRepository(), memory.NewBrokerClientCredentialStore(), testSlogger())
+
+		_, err := store.GetClient(context.Background(), id.NewAgentID().String())
+		assert.ErrorIs(t, err, fosite.ErrNotFound)
+	})
+
 	t.Run("GetClient round-trips client.GetID() to agent UUID", func(t *testing.T) {
 		_, _, agentRepo, credRepo := newTestFositeStorage()
 		agentID := id.NewAgentID()
