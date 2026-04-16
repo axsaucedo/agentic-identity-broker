@@ -20,25 +20,25 @@ import (
 
 // mockTokenMintingStrategy is a configurable test double for ports.TokenMintingStrategy.
 type mockTokenMintingStrategy struct {
-	clientCredentialsFn         func(context.Context, string, string, string) (*ports.TokenResponse, error)
-	authorizationCodeExchangeFn func(context.Context, string, string, string, string, string) (*ports.TokenResponse, error)
+	clientCredentialsFn         func(context.Context, id.AgentID, string, string) (*ports.TokenResponse, error)
+	authorizationCodeExchangeFn func(context.Context, id.AgentID, string, string, string, string) (*ports.TokenResponse, error)
 }
 
-func (m *mockTokenMintingStrategy) HandleClientCredentials(ctx context.Context, clientID, clientSecret, scope string) (*ports.TokenResponse, error) {
-	return m.clientCredentialsFn(ctx, clientID, clientSecret, scope)
+func (m *mockTokenMintingStrategy) HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*ports.TokenResponse, error) {
+	return m.clientCredentialsFn(ctx, agentID, clientSecret, scope)
 }
 
-func (m *mockTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, clientID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
-	return m.authorizationCodeExchangeFn(ctx, clientID, clientSecret, code, redirectURI, codeVerifier)
+func (m *mockTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
+	return m.authorizationCodeExchangeFn(ctx, agentID, clientSecret, code, redirectURI, codeVerifier)
 }
 
 // fixedMinting returns a mock strategy that always returns the given response/error for both grant types.
 func fixedMinting(resp *ports.TokenResponse, err error) *mockTokenMintingStrategy {
 	return &mockTokenMintingStrategy{
-		clientCredentialsFn: func(_ context.Context, _, _, _ string) (*ports.TokenResponse, error) {
+		clientCredentialsFn: func(_ context.Context, _ id.AgentID, _, _ string) (*ports.TokenResponse, error) {
 			return resp, err
 		},
-		authorizationCodeExchangeFn: func(_ context.Context, _, _, _, _, _ string) (*ports.TokenResponse, error) {
+		authorizationCodeExchangeFn: func(_ context.Context, _ id.AgentID, _, _, _, _ string) (*ports.TokenResponse, error) {
 			return resp, err
 		},
 	}
@@ -630,7 +630,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			minting := &mockTokenMintingStrategy{
-				clientCredentialsFn: func(_ context.Context, _, _, _ string) (*ports.TokenResponse, error) {
+				clientCredentialsFn: func(_ context.Context, _ id.AgentID, _, _ string) (*ports.TokenResponse, error) {
 					if tt.mintingErr != nil {
 						return nil, tt.mintingErr
 					}
@@ -706,7 +706,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			minting := &mockTokenMintingStrategy{
-				authorizationCodeExchangeFn: func(_ context.Context, _, _, _, _, _ string) (*ports.TokenResponse, error) {
+				authorizationCodeExchangeFn: func(_ context.Context, _ id.AgentID, _, _, _, _ string) (*ports.TokenResponse, error) {
 					if tt.mintingErr != nil {
 						return nil, tt.mintingErr
 					}

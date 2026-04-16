@@ -375,7 +375,7 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_NilServiceFails(t *testing.T) {
 
 type mockCodeIssuer struct{}
 
-func (m *mockCodeIssuer) IssueAuthorizationCode(_ context.Context, _ *ports.AuthorizationRequest, _ string) (string, error) {
+func (m *mockCodeIssuer) IssueAuthorizationCode(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (string, error) {
 	return "test-code", nil
 }
 

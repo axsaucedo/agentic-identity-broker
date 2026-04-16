@@ -237,21 +237,20 @@ func TestService_HandleAuthorization(t *testing.T) {
 		setupAgent func(*MockAgentRepository)
 		setupGrant func(*MockGrantRepository)
 		authReq    *ports.AuthorizationRequest
-		principal  string
+		principal  id.Principal
 		wantAction string
 	}{
 		{
-			name:       "non-UUID client_id returns error redirect",
+			name:       "unregistered agent UUID returns error redirect",
 			setupAgent: func(r *MockAgentRepository) {},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
-				// Feature 021: client_id must be a UUID; "unknown-client" is not
-				ClientID:     id.ClientID("unknown-client"),
+				ClientID:     id.NewAgentID(), // valid UUID but not in repo
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
 			},
-			principal:  "user@example.com",
+			principal:  id.NewPrincipal("user@example.com"),
 			wantAction: "error",
 		},
 		{
@@ -266,14 +265,13 @@ func TestService_HandleAuthorization(t *testing.T) {
 			},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
-				// Feature 021: client_id is now the agent's internal UUID
-				ClientID:     id.ClientID(testAgentID.String()),
+				ClientID:     testAgentID,
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
 				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + testAgentID.String(),
 			},
-			principal:  "user@example.com",
+			principal:  id.NewPrincipal("user@example.com"),
 			wantAction: "redirect_to_consent",
 		},
 		{
@@ -299,13 +297,13 @@ func TestService_HandleAuthorization(t *testing.T) {
 				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     id.ClientID(testAgentID.String()),
+				ClientID:     testAgentID,
 				RedirectURI:  "https://client.example.com/callback",
 				Scope:        "openid profile",
 				State:        "xyz123",
 				ResponseType: "code",
 			},
-			principal:  "user@example.com",
+			principal:  id.NewPrincipal("user@example.com"),
 			wantAction: "proceed",
 		},
 		{
@@ -332,13 +330,13 @@ func TestService_HandleAuthorization(t *testing.T) {
 				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     id.ClientID(testAgentID.String()),
+				ClientID:     testAgentID,
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
 				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + testAgentID.String(),
 			},
-			principal:  "user@example.com",
+			principal:  id.NewPrincipal("user@example.com"),
 			wantAction: "redirect_to_consent",
 		},
 	}
@@ -393,7 +391,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 	}
 
 	authReq := &ports.AuthorizationRequest{
-		ClientID:     id.ClientID(agentID.String()),
+		ClientID:     agentID,
 		RedirectURI:  "https://client.example.com/callback",
 		ResponseType: "code",
 		OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
@@ -461,7 +459,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 
 			svc := NewServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg, nil)
 
-			decision, err := svc.HandleAuthorization(context.Background(), authReq, "user@example.com")
+			decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
 
 			require.NoError(t, err)
 			require.NotNil(t, decision)
@@ -500,7 +498,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	})
 
 	authReq := &ports.AuthorizationRequest{
-		ClientID:            id.ClientID(agentID.String()), // Feature 021: client_id is now the agent UUID
+		ClientID:            agentID,
 		RedirectURI:         "https://client.example.com/callback",
 		Scope:               "openid profile email",
 		State:               "state123",
@@ -509,7 +507,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 		CodeChallengeMethod: "S256",
 	}
 
-	decision, err := svc.HandleAuthorization(context.Background(), authReq, "user@example.com")
+	decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
 
 	require.NoError(t, err)
 	require.Equal(t, "proceed", decision.Action)
@@ -553,36 +551,29 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 		_ = r.Create(context.Background(), grant)
 	}
 
+	unknownAgentID := id.NewAgentID()
+
 	tests := []struct {
-		name            string
-		setupAgent      func(*MockAgentRepository)
-		setupGrant      func(*MockGrantRepository)
-		clientID        string
-		wantAction      string
-		wantErrorCode   string
-		wantRedirectURL string // substring check
+		name          string
+		setupAgent    func(*MockAgentRepository)
+		setupGrant    func(*MockGrantRepository)
+		clientID      id.AgentID
+		wantAction    string
+		wantErrorCode string
 	}{
 		{
 			name:          "valid agent UUID resolves agent and redirects to upstream",
 			setupAgent:    setupAgent,
 			setupGrant:    setupActiveGrant,
-			clientID:      agentID.String(),
+			clientID:      agentID,
 			wantAction:    "proceed",
 			wantErrorCode: "",
-		},
-		{
-			name:          "non-UUID client_id returns invalid_client",
-			setupAgent:    setupAgent,
-			setupGrant:    func(r *MockGrantRepository) {},
-			clientID:      "not-a-uuid",
-			wantAction:    "error",
-			wantErrorCode: "invalid_client",
 		},
 		{
 			name:          "well-formed UUID that is not a registered agent returns invalid_client",
 			setupAgent:    func(r *MockAgentRepository) {}, // empty repo
 			setupGrant:    func(r *MockGrantRepository) {},
-			clientID:      id.NewAgentID().String(), // valid UUID but not in repo
+			clientID:      unknownAgentID,
 			wantAction:    "error",
 			wantErrorCode: "invalid_client",
 		},
@@ -603,14 +594,14 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			})
 
 			req := &ports.AuthorizationRequest{
-				ClientID:     id.ClientID(tt.clientID),
+				ClientID:     tt.clientID,
 				RedirectURI:  "https://client.example.com/callback",
 				ResponseType: "code",
 				State:        "state123",
-				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + tt.clientID,
+				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + tt.clientID.String(),
 			}
 
-			decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
+			decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
 
 			require.NoError(t, err)
 			require.NotNil(t, decision)
@@ -655,13 +646,13 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	})
 
 	req := &ports.AuthorizationRequest{
-		ClientID:     id.ClientID(agentID.String()), // UUID
+		ClientID:     agentID,
 		RedirectURI:  "https://client.example.com/callback",
 		ResponseType: "code",
 		State:        "state123",
 	}
 
-	decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
+	decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
 
 	require.NoError(t, err)
 	assert.Equal(t, "proceed", decision.Action)
@@ -753,7 +744,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 	}
 
 	req := &ports.AuthorizationRequest{
-		ClientID:     id.ClientID(agentID.String()),
+		ClientID:     agentID,
 		RedirectURI:  "https://client.example.com/callback",
 		ResponseType: "code",
 		State:        "state-xyz",
@@ -771,7 +762,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 			},
 		})
 
-		decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
+		decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
 		require.NoError(t, err)
 		assert.Equal(t, "proceed", decision.Action)
 		assert.Contains(t, decision.RedirectURL, "x_agent_id="+agentID.String(),
@@ -786,7 +777,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 			MultiAgentClient:          ports.MultiAgentClientConfig{Enabled: false},
 		})
 
-		decision, err := svc.HandleAuthorization(context.Background(), req, "user@example.com")
+		decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
 		require.NoError(t, err)
 		assert.Equal(t, "proceed", decision.Action)
 		assert.NotContains(t, decision.RedirectURL, "x_agent_id",

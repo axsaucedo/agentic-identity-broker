@@ -27,7 +27,6 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 		testStorage    *storageadapter.Adapter
 		logger         *slog.Logger
 		agent          *domainstorage.Agent
-		brokerClientID string
 		clientSecret   string
 	)
 
@@ -74,7 +73,6 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 
 		var creds map[string]interface{}
 		Expect(json.NewDecoder(resp.Body).Decode(&creds)).ToNot(HaveOccurred())
-		brokerClientID = creds["broker_client_id"].(string)
 		clientSecret = creds["client_secret"].(string)
 	})
 
@@ -128,7 +126,7 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 		// Step 2: Exchange code for token
 		form := url.Values{
 			"grant_type":    {"authorization_code"},
-			"client_id":     {brokerClientID},
+			"client_id":     {agent.ID.String()},
 			"client_secret": {clientSecret},
 			"code":          {code},
 			"redirect_uri":  {"http://localhost:9999/callback"},
@@ -247,7 +245,7 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 		// Exchange with wrong verifier
 		form := url.Values{
 			"grant_type":    {"authorization_code"},
-			"client_id":     {brokerClientID},
+			"client_id":     {agent.ID.String()},
 			"client_secret": {clientSecret},
 			"code":          {code},
 			"redirect_uri":  {"http://localhost:9999/callback"},
@@ -290,7 +288,7 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 
 		form := url.Values{
 			"grant_type":    {"authorization_code"},
-			"client_id":     {brokerClientID},
+			"client_id":     {agent.ID.String()},
 			"client_secret": {clientSecret},
 			"code":          {code},
 			"redirect_uri":  {"http://localhost:9999/callback"},

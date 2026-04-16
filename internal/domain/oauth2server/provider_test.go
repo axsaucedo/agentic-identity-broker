@@ -77,11 +77,11 @@ func setupTestCredentials(t *testing.T, provider *Provider) (*dstorage.Agent, *d
 func TestProvider_HandleClientCredentials(t *testing.T) {
 	t.Run("valid credentials return signed JWT", func(t *testing.T) {
 		provider := newTestProvider(t)
-		_, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 
 		resp, err := provider.HandleClientCredentials(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			"read write",
 		)
@@ -96,23 +96,23 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 
 	t.Run("invalid credentials return error", func(t *testing.T) {
 		provider := newTestProvider(t)
-		_, cred, _ := setupTestCredentials(t, provider)
+		agent, _, _ := setupTestCredentials(t, provider)
 
 		_, err := provider.HandleClientCredentials(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"wrong-secret",
 			"read",
 		)
 		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 
-	t.Run("unknown client_id returns error", func(t *testing.T) {
+	t.Run("unknown agent_id returns error", func(t *testing.T) {
 		provider := newTestProvider(t)
 
 		_, err := provider.HandleClientCredentials(
 			context.Background(),
-			id.NewBrokerClientID("broker_unknown"),
+			id.NewAgentID(),
 			"secret",
 			"read",
 		)
@@ -121,11 +121,11 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 
 	t.Run("empty scope works", func(t *testing.T) {
 		provider := newTestProvider(t)
-		_, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 
 		resp, err := provider.HandleClientCredentials(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			"",
 		)
@@ -137,13 +137,13 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 func TestProvider_HandleAuthorize(t *testing.T) {
 	t.Run("redirect_uri exact match required", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, _ := setupTestCredentials(t, provider)
+		agent, _, _ := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
 		_, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost/callback/extra", // has extra path segment
 			"code",
 			"read",
@@ -158,12 +158,12 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 
 	t.Run("empty redirect_uris list rejects", func(t *testing.T) {
 		provider := newTestProvider(t)
-		_, cred, _ := setupTestCredentials(t, provider)
+		agent, _, _ := setupTestCredentials(t, provider)
 		// Agent created by setupTestCredentials has no RedirectURIs (empty slice)
 
 		_, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -178,14 +178,14 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 
 	t.Run("valid request returns authorization code", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, _ := setupTestCredentials(t, provider)
+		agent, _, _ := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		// Update agent with redirect URIs
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
 		code, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -200,13 +200,13 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 
 	t.Run("missing code_challenge rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, _ := setupTestCredentials(t, provider)
+		agent, _, _ := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
 		_, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -221,13 +221,13 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 
 	t.Run("empty code_challenge_method rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, _ := setupTestCredentials(t, provider)
+		agent, _, _ := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
 		_, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -242,13 +242,13 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 
 	t.Run("plain code_challenge_method rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, _ := setupTestCredentials(t, provider)
+		agent, _, _ := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
 		_, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -263,13 +263,13 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 
 	t.Run("unregistered redirect_uri rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, _ := setupTestCredentials(t, provider)
+		agent, _, _ := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
 		_, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://evil.example.com/callback", // not registered
 			"code",
 			"read",
@@ -282,12 +282,12 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidRedirectURI)
 	})
 
-	t.Run("unknown client_id rejected", func(t *testing.T) {
+	t.Run("unknown agent_id rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
 
 		_, err := provider.HandleAuthorize(
 			context.Background(),
-			id.NewBrokerClientID("broker_unknown"),
+			id.NewAgentID(),
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -304,7 +304,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 	t.Run("valid code exchange returns token", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
@@ -314,7 +314,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 
 		code, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -329,7 +329,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		// Exchange the code
 		resp, err := provider.HandleAuthorizationCodeExchange(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			code,
 			"http://localhost:8080/callback",
@@ -343,7 +343,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 
 	t.Run("code replay rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
@@ -352,7 +352,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 
 		code, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -366,7 +366,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		// First exchange succeeds
 		_, err = provider.HandleAuthorizationCodeExchange(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			code,
 			"http://localhost:8080/callback",
@@ -377,7 +377,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		// Second exchange (replay) should fail
 		_, err = provider.HandleAuthorizationCodeExchange(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			code,
 			"http://localhost:8080/callback",
@@ -389,7 +389,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 
 	t.Run("expired code rejects", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
@@ -416,7 +416,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		// Attempt exchange — should fail because code is expired
 		_, err = provider.HandleAuthorizationCodeExchange(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			rawCode,
 			"http://localhost:8080/callback",
@@ -428,7 +428,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 
 	t.Run("redirect_uri substitution rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback", "http://attacker.example.com/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
@@ -438,7 +438,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		// Authorization was issued to the legitimate URI
 		code, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -452,7 +452,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		// Attacker substitutes a different registered URI at token exchange (RFC 6749 §4.1.3)
 		_, err = provider.HandleAuthorizationCodeExchange(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			code,
 			"http://attacker.example.com/callback",
@@ -464,7 +464,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 
 	t.Run("PKCE mismatch rejected", func(t *testing.T) {
 		provider := newTestProvider(t)
-		agent, cred, plaintext := setupTestCredentials(t, provider)
+		agent, _, plaintext := setupTestCredentials(t, provider)
 		agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 		_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
@@ -473,7 +473,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 
 		code, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read",
@@ -487,7 +487,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 		// Exchange with wrong verifier
 		_, err = provider.HandleAuthorizationCodeExchange(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			code,
 			"http://localhost:8080/callback",
@@ -503,7 +503,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 // set used_at before ours could), the exchange returns ErrInvalidGrant rather than a 500.
 func TestProvider_HandleAuthorizationCodeExchange_ConcurrentReplay(t *testing.T) {
 	provider := newTestProvider(t)
-	agent, cred, plaintext := setupTestCredentials(t, provider)
+	agent, _, plaintext := setupTestCredentials(t, provider)
 	agent.RedirectURIs = []string{"http://localhost:8080/callback"}
 	_ = provider.fositeStorage.agentRepo.Update(context.Background(), agent)
 
@@ -512,7 +512,7 @@ func TestProvider_HandleAuthorizationCodeExchange_ConcurrentReplay(t *testing.T)
 
 	code, err := provider.HandleAuthorize(
 		context.Background(),
-		cred.BrokerClientID,
+		agent.ID,
 		"http://localhost:8080/callback",
 		"code",
 		"read",
@@ -533,7 +533,7 @@ func TestProvider_HandleAuthorizationCodeExchange_ConcurrentReplay(t *testing.T)
 
 	_, err = provider.HandleAuthorizationCodeExchange(
 		context.Background(),
-		cred.BrokerClientID,
+		agent.ID,
 		plaintext,
 		code,
 		"http://localhost:8080/callback",
@@ -612,9 +612,9 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 
 	t.Run("client_credentials flow", func(t *testing.T) {
 		provider := newTestProvider(t)
-		_, cred, plaintext := setupTestCredentials(t, provider)
+		agent, cred, plaintext := setupTestCredentials(t, provider)
 
-		resp, err := provider.HandleClientCredentials(context.Background(), cred.BrokerClientID, plaintext, "read write")
+		resp, err := provider.HandleClientCredentials(context.Background(), agent.ID, plaintext, "read write")
 		require.NoError(t, err)
 
 		// In client_credentials, sub falls back to the broker client ID (no session subject).
@@ -633,7 +633,7 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 
 		code, err := provider.HandleAuthorize(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			"http://localhost:8080/callback",
 			"code",
 			"read write",
@@ -646,7 +646,7 @@ func TestProvider_AccessToken_ClaimsAndSignature(t *testing.T) {
 
 		resp, err := provider.HandleAuthorizationCodeExchange(
 			context.Background(),
-			cred.BrokerClientID,
+			agent.ID,
 			plaintext,
 			code,
 			"http://localhost:8080/callback",
