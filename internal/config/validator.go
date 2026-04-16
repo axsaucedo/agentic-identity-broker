@@ -355,12 +355,8 @@ func validateThirdPartyOAuth2Config(cfg *ports.ThirdPartyOAuth2Config) error {
 }
 
 // validateOAuth2AuthServerConfig validates the OAuth2 Authorization Server configuration.
-// OAuth2AuthServer is optional; if no fields are set, validation is skipped.
+// OAuth2AuthServer is optional; Validate() handles the unconfigured case internally.
 func validateOAuth2AuthServerConfig(cfg *ports.OAuth2AuthServerConfig) error {
-	if cfg.Mode == "" && cfg.UpstreamIssuerURI == "" && cfg.UpstreamAuthorizeEndpoint == "" &&
-		cfg.UpstreamTokenEndpoint == "" && cfg.IssuerURI == "" && !cfg.MultiAgentClient.Enabled {
-		return nil
-	}
 	if err := cfg.Validate(); err != nil {
 		return formatValidationError(
 			"oauth2_authorization_server",

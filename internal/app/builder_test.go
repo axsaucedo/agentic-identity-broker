@@ -342,3 +342,54 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 		}
 	})
 }
+
+// TestBuilder_EmptyOAuth2AuthServerConfig is a regression test ensuring that
+// Build() succeeds when OAuth2AuthServerConfig is the zero value (no oauth2_authorization_server
+// block in config). Previously a refactor moved the unconfigured-skip guard out of Validate(),
+// causing the builder's direct Validate() call to error with "missing upstream_issuer_uri".
+func TestBuilder_EmptyOAuth2AuthServerConfig(t *testing.T) {
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	adapter, err := storage.NewAdapter(&ports.StorageConfig{
+		Backend:  "memory",
+		Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+	})
+	if err != nil {
+		t.Fatalf("failed to create storage adapter: %v", err)
+	}
+
+	cfg := &ports.Config{
+		Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+		Server: ports.ServerConfig{
+			EndUser: ports.ServerInstanceConfig{
+				Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+				Authentication: ports.AuthenticationConfig{
+					Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+				},
+			},
+			Admin: ports.ServerInstanceConfig{
+				Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+				Authentication: ports.AuthenticationConfig{
+					Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+				},
+			},
+			Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+		},
+		Storage: ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		},
+		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+		Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+		// OAuth2AuthServer intentionally omitted — zero value must be accepted
+	}
+
+	app, err := NewBuilder().WithConfig(cfg).WithStorage(adapter).WithLogger(logger).Build()
+	if err != nil {
+		t.Fatalf("Build() with empty OAuth2AuthServerConfig must succeed, got: %v", err)
+	}
+	if app == nil {
+		t.Fatal("expected non-nil app")
+	}
+}

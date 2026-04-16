@@ -323,7 +323,14 @@ type OAuth2AuthServerConfig struct {
 // Sets defaults for empty fields and returns an error for missing required fields.
 // Validation is mode-conditional: proxy mode requires upstream fields, issue_token
 // mode requires issuer_uri and has its own defaults.
+// Returns nil immediately when the entire block is unconfigured (no mode, no
+// upstream fields, no issue_token fields, MultiAgentClient disabled).
 func (c *OAuth2AuthServerConfig) Validate() error {
+	if c.Mode == "" && c.UpstreamIssuerURI == "" && c.UpstreamAuthorizeEndpoint == "" &&
+		c.UpstreamTokenEndpoint == "" && c.IssuerURI == "" && !c.MultiAgentClient.Enabled {
+		return nil
+	}
+
 	// Default mode to proxy if not set
 	if c.Mode == "" {
 		c.Mode = "proxy"
