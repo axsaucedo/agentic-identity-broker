@@ -21,9 +21,6 @@ func (p *PKCESession) Validate() error {
 	if p.CodeChallenge == "" {
 		return NewStorageError("PKCESession.Validate", ErrorKindValidation, nil, "code_challenge is required")
 	}
-	if p.CodeChallengeMethod == "" {
-		return NewStorageError("PKCESession.Validate", ErrorKindValidation, nil, "code_challenge_method is required")
-	}
 	if p.ExpiresAt.IsZero() {
 		return NewStorageError("PKCESession.Validate", ErrorKindValidation, nil, "expires_at is required")
 	}

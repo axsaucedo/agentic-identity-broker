@@ -297,7 +297,7 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	// Domain-level credential pre-check: fosite verifies agent-level client identity but does
 	// not know about credential rotation. Peek at the stored code to enforce that codes issued
 	// to a previous credential cannot be exchanged by a newly rotated one.
-	authCode, err := p.fositeStorage.codeRepo.FindByCodeHash(ctx, sha256Hex(code))
+	authCode, err := p.fositeStorage.codeRepo.FindByCodeHash(ctx, p.authCodeHandler.AuthorizeCodeStrategy.AuthorizeCodeSignature(ctx, code))
 	if err != nil {
 		var storageErr *storage.StorageError
 		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {

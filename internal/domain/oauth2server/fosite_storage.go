@@ -202,6 +202,9 @@ func (s *FositeStorage) CreatePKCERequestSession(ctx context.Context, signature 
 		ExpiresAt:           req.GetSession().GetExpiresAt(fosite.AuthorizeCode),
 		CreatedAt:           time.Now(),
 	}
+	if err := session.Validate(); err != nil {
+		return err
+	}
 	return s.pkceRepo.Create(ctx, session)
 }
 
