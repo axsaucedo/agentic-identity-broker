@@ -342,6 +342,9 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	if err := p.authCodeHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
 		return nil, mapFositeGrantError(err)
 	}
+	if err := p.pkceHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
+		return nil, mapFositeGrantError(err)
+	}
 
 	return &ports.TokenResponse{
 		AccessToken: resp.GetAccessToken(),
