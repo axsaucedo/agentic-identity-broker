@@ -36,11 +36,12 @@ func NewSigningKeysHandler(
 }
 
 type signingKeyResponse struct {
-	KID       string  `json:"kid"`
-	Algorithm string  `json:"algorithm"`
-	IsCurrent bool    `json:"is_current"`
-	CreatedAt string  `json:"created_at"`
-	RemovedAt *string `json:"removed_at,omitempty"`
+	KID         string  `json:"kid"`
+	Algorithm   string  `json:"algorithm"`
+	IsCurrent   bool    `json:"is_current"`
+	ActivatesAt string  `json:"activates_at"`
+	CreatedAt   string  `json:"created_at"`
+	RemovedAt   *string `json:"removed_at,omitempty"`
 }
 
 type signingKeyAddRequest struct {
@@ -74,13 +75,14 @@ func (h *SigningKeysHandler) Add(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := signingKeyResponse{
-		KID:       key.KID.String(),
-		Algorithm: key.Algorithm,
-		IsCurrent: key.IsCurrent,
-		CreatedAt: key.CreatedAt.Format(time.RFC3339),
+		KID:         key.KID.String(),
+		Algorithm:   key.Algorithm,
+		IsCurrent:   key.IsCurrent,
+		ActivatesAt: key.ActivatesAt.Format(time.RFC3339),
+		CreatedAt:   key.CreatedAt.Format(time.RFC3339),
 	}
 
-	h.logger.Info("signing key added", "kid", key.KID, "algorithm", key.Algorithm)
+	h.logger.Info("signing key added", "kid", key.KID, "algorithm", key.Algorithm, "activates_at", key.ActivatesAt)
 	h.writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -97,10 +99,11 @@ func (h *SigningKeysHandler) List(w http.ResponseWriter, r *http.Request) {
 	items := make([]signingKeyResponse, 0, len(keys))
 	for _, key := range keys {
 		items = append(items, signingKeyResponse{
-			KID:       key.KID.String(),
-			Algorithm: key.Algorithm,
-			IsCurrent: key.IsCurrent,
-			CreatedAt: key.CreatedAt.Format(time.RFC3339),
+			KID:         key.KID.String(),
+			Algorithm:   key.Algorithm,
+			IsCurrent:   key.IsCurrent,
+			ActivatesAt: key.ActivatesAt.Format(time.RFC3339),
+			CreatedAt:   key.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
@@ -135,10 +138,11 @@ func (h *SigningKeysHandler) SetCurrent(w http.ResponseWriter, r *http.Request) 
 	}
 
 	resp := signingKeyResponse{
-		KID:       key.KID.String(),
-		Algorithm: key.Algorithm,
-		IsCurrent: key.IsCurrent,
-		CreatedAt: key.CreatedAt.Format(time.RFC3339),
+		KID:         key.KID.String(),
+		Algorithm:   key.Algorithm,
+		IsCurrent:   key.IsCurrent,
+		ActivatesAt: key.ActivatesAt.Format(time.RFC3339),
+		CreatedAt:   key.CreatedAt.Format(time.RFC3339),
 	}
 
 	h.logger.Info("signing key promoted to current", "kid", kid)

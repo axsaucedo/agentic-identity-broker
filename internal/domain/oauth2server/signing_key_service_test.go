@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v3/jwa"
@@ -70,14 +71,31 @@ func TestSigningKeyService_GenerateAndStoreKey(t *testing.T) {
 		assert.Contains(t, err.Error(), "unsupported algorithm")
 	})
 
-	t.Run("makeCurrent sets key as current", func(t *testing.T) {
+	t.Run("makeCurrent marks key as is_current", func(t *testing.T) {
 		svc, repo := newTestSigningKeyService()
-		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		key, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
 		require.NoError(t, err)
 
-		current, err := repo.GetCurrent(context.Background())
+		// Key is stored as is_current=true even though it is in the grace period.
+		stored, err := repo.GetByKID(context.Background(), key.KID)
 		require.NoError(t, err)
-		assert.True(t, current.IsCurrent)
+		assert.True(t, stored.IsCurrent)
+	})
+
+	t.Run("new current key has future activates_at (grace period)", func(t *testing.T) {
+		svc, repo := newTestSigningKeyService()
+		before := time.Now()
+		key, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		require.NoError(t, err)
+
+		stored, err := repo.GetByKID(context.Background(), key.KID)
+		require.NoError(t, err)
+		assert.True(t, stored.ActivatesAt.After(before.Add(jwksGracePeriod-time.Second)),
+			"activates_at should be approximately now+jwksGracePeriod")
+
+		// GetCurrent must not return this key while it is in its grace period.
+		_, err = repo.GetCurrent(context.Background())
+		assert.Error(t, err, "key should not be available for signing during grace period")
 	})
 
 	t.Run("private key is encrypted (has ENC: prefix)", func(t *testing.T) {
@@ -227,10 +245,10 @@ func TestSigningKeyService_GenerateAndStoreKey_Atomic(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, stored1.IsCurrent, "previous key must be demoted")
 
-		// Exactly one current key must exist.
-		current, err := repo.GetCurrent(ctx)
+		// key2 is flagged is_current but still in grace period — GetCurrent falls back to key1.
+		stored2, err := repo.GetByKID(ctx, key2.KID)
 		require.NoError(t, err)
-		assert.Equal(t, key2.KID, current.KID)
+		assert.True(t, stored2.IsCurrent, "key2 must be flagged is_current")
 	})
 }
 

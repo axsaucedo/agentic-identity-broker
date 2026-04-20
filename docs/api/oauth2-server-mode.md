@@ -30,6 +30,8 @@ Returns RFC 8414 authorization server metadata including supported grant types, 
 
 Returns the JSON Web Key Set containing the broker's public signing keys. Clients use these keys to verify JWT access tokens issued by the broker.
 
+**Caching:** Responses include `Cache-Control: public, max-age=300`. Clients should cache the JWKS for up to 5 minutes.
+
 **Response:** `200 OK`
 ```json
 {
@@ -174,7 +176,7 @@ Revokes the agent's broker-issued credentials. Tokens already issued remain vali
 
 **Endpoint:** `POST /api/oauth2-server/signing-keys`
 
-Generates a new asymmetric signing key pair. The new key becomes the current signing key.
+Generates a new asymmetric signing key pair. The new key is published to the JWKS endpoint immediately, but does not start signing tokens until `activates_at` (10 minutes after creation). This grace period — 2 × the JWKS `Cache-Control: max-age` value — ensures every client cache has learned about the new key before the first token signed with it is issued.
 
 **Request Body:**
 ```json
@@ -189,6 +191,7 @@ Generates a new asymmetric signing key pair. The new key becomes the current sig
   "kid": "key-2025-01-15-abc123",
   "algorithm": "ES256",
   "is_current": true,
+  "activates_at": "2025-01-15T10:10:00Z",
   "created_at": "2025-01-15T10:00:00Z"
 }
 ```
@@ -202,11 +205,12 @@ Returns all active signing keys with metadata.
 **Response:** `200 OK`
 ```json
 {
-  "keys": [
+  "items": [
     {
       "kid": "key-2025-01-15-abc123",
       "algorithm": "ES256",
       "is_current": true,
+      "activates_at": "2025-01-15T10:10:00Z",
       "created_at": "2025-01-15T10:00:00Z"
     }
   ]
@@ -217,7 +221,7 @@ Returns all active signing keys with metadata.
 
 **Endpoint:** `PUT /api/oauth2-server/signing-keys/{kid}/current`
 
-Promotes the specified key to the current signing key. Previously current key remains active for verification.
+Promotes the specified key to the current signing key and sets `activates_at = now`, so it begins signing tokens immediately. The key must already be present in the JWKS (i.e., not removed). Previously current key remains active for verification.
 
 **Response:** `200 OK`
 

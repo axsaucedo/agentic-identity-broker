@@ -31,10 +31,10 @@ func (r *SigningKeyRepo) Create(ctx context.Context, key *storage.SigningKey) er
 	defer cancel()
 
 	_, err := r.adapter.db.ExecContext(execCtx,
-		`INSERT INTO signing_keys (id, kid, algorithm, private_key_encrypted, is_current, created_at, removed_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		`INSERT INTO signing_keys (id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at, removed_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		key.ID, key.KID, key.Algorithm, key.PrivateKeyEncrypted,
-		key.IsCurrent, key.CreatedAt, key.RemovedAt,
+		key.IsCurrent, key.ActivatesAt, key.CreatedAt, key.RemovedAt,
 	)
 	if err != nil {
 		return storage.NewStorageError("SigningKeyRepo.Create", storage.ErrorKindUnknown, err, "failed to create signing key")
@@ -63,10 +63,10 @@ func (r *SigningKeyRepo) CreateAndSetCurrent(ctx context.Context, key *storage.S
 	}
 
 	_, err = tx.ExecContext(execCtx,
-		`INSERT INTO signing_keys (id, kid, algorithm, private_key_encrypted, is_current, created_at, removed_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		`INSERT INTO signing_keys (id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at, removed_at)
+		 VALUES ($1, $2, $3, $4, true, $5, $6, $7)`,
 		key.ID, key.KID, key.Algorithm, key.PrivateKeyEncrypted,
-		true, key.CreatedAt, key.RemovedAt,
+		key.ActivatesAt, key.CreatedAt, key.RemovedAt,
 	)
 	if err != nil {
 		return storage.NewStorageError("SigningKeyRepo.CreateAndSetCurrent", storage.ErrorKindUnknown, err, "failed to insert signing key")
@@ -85,7 +85,7 @@ func (r *SigningKeyRepo) GetByKID(ctx context.Context, kid id.KeyID) (*storage.S
 
 	var key storage.SigningKey
 	err := r.adapter.db.GetContext(queryCtx, &key,
-		`SELECT id, kid, algorithm, private_key_encrypted, is_current, created_at, removed_at
+		`SELECT id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at, removed_at
 		 FROM signing_keys WHERE kid = $1 AND removed_at IS NULL`, kid)
 	if err != nil {
 		return nil, storage.NewStorageError("SigningKeyRepo.GetByKID", storage.ErrorKindNotFound, err, "signing key not found")
@@ -93,6 +93,10 @@ func (r *SigningKeyRepo) GetByKID(ctx context.Context, kid id.KeyID) (*storage.S
 	return &key, nil
 }
 
+// GetCurrent returns the signing key to use for token issuance. It prefers the key flagged
+// as is_current provided its activates_at has passed. If the current key is still in its
+// grace period, it falls back to the most recently activated key, keeping token issuance
+// uninterrupted while JWKS caches learn about the new key.
 func (r *SigningKeyRepo) GetCurrent(ctx context.Context) (*storage.SigningKey, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindConnection, nil, "database not initialized")
@@ -103,8 +107,13 @@ func (r *SigningKeyRepo) GetCurrent(ctx context.Context) (*storage.SigningKey, e
 
 	var key storage.SigningKey
 	err := r.adapter.db.GetContext(queryCtx, &key,
-		`SELECT id, kid, algorithm, private_key_encrypted, is_current, created_at, removed_at
-		 FROM signing_keys WHERE is_current = true AND removed_at IS NULL`)
+		`SELECT id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at, removed_at
+		 FROM signing_keys
+		 WHERE removed_at IS NULL AND activates_at <= NOW()
+		 ORDER BY
+		   CASE WHEN is_current THEN 0 ELSE 1 END,
+		   activates_at DESC
+		 LIMIT 1`)
 	if err != nil {
 		return nil, storage.NewStorageError("SigningKeyRepo.GetCurrent", storage.ErrorKindNotFound, err, "no current signing key")
 	}
@@ -121,7 +130,7 @@ func (r *SigningKeyRepo) ListActive(ctx context.Context) ([]*storage.SigningKey,
 
 	var keys []*storage.SigningKey
 	err := r.adapter.db.SelectContext(queryCtx, &keys,
-		`SELECT id, kid, algorithm, private_key_encrypted, is_current, created_at, removed_at
+		`SELECT id, kid, algorithm, private_key_encrypted, is_current, activates_at, created_at, removed_at
 		 FROM signing_keys WHERE removed_at IS NULL ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, storage.NewStorageError("SigningKeyRepo.ListActive", storage.ErrorKindUnknown, err, "failed to list signing keys")
@@ -129,6 +138,8 @@ func (r *SigningKeyRepo) ListActive(ctx context.Context) ([]*storage.SigningKey,
 	return keys, nil
 }
 
+// SetCurrent promotes a key to be the current signing key and sets activates_at = NOW()
+// because an explicit admin promotion targets a key already present in the JWKS.
 func (r *SigningKeyRepo) SetCurrent(ctx context.Context, kid id.KeyID) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindConnection, nil, "database not initialized")
@@ -149,9 +160,9 @@ func (r *SigningKeyRepo) SetCurrent(ctx context.Context, kid id.KeyID) error {
 		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindUnknown, err, "failed to demote keys")
 	}
 
-	// Promote the target key
+	// Promote the target key and reset activates_at to NOW() so it starts signing immediately.
 	result, err := tx.ExecContext(execCtx,
-		`UPDATE signing_keys SET is_current = true WHERE kid = $1 AND removed_at IS NULL`, kid)
+		`UPDATE signing_keys SET is_current = true, activates_at = NOW() WHERE kid = $1 AND removed_at IS NULL`, kid)
 	if err != nil {
 		return storage.NewStorageError("SigningKeyRepo.SetCurrent", storage.ErrorKindUnknown, err, "failed to promote key")
 	}

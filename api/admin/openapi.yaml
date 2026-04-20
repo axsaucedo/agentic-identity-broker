@@ -885,18 +885,22 @@ paths:
 
   /api/oauth2-server/signing-keys:
     post:
-      summary: Add a new signing key (becomes current)
+      summary: Add a new signing key
       description: |
         Generate a new signing key for the broker's OAuth2 server.
-        The new key automatically becomes the current signing key used
-        for issuing new tokens.
+        The new key is marked as `is_current: true` but does not start signing tokens
+        until `activates_at` has passed (grace period = 2 × JWKS `Cache-Control: max-age`
+        value, currently 600 s). During this window the key is already present in the JWKS
+        response, so every client cache will have learned about it before the first token
+        signed with it appears.
 
         **Algorithm Support**:
         - `ES256`: ECDSA using P-256 curve and SHA-256 (default, only supported algorithm)
 
         **Key Lifecycle**:
-        - New key is immediately marked as `is_current: true`
-        - Previous current key remains active for token verification
+        - New key is immediately published to `GET /oauth2/jwks.json`
+        - New key starts signing tokens only after `activates_at` (now + 600 s)
+        - Previous current key continues signing during the grace period
         - Private key material is never exposed via the API
       operationId: createSigningKey
       tags:
@@ -926,6 +930,7 @@ paths:
                 kid: key-2025-12-19-001
                 algorithm: ES256
                 is_current: true
+                activates_at: '2025-12-19T10:40:00Z'
                 created_at: '2025-12-19T10:30:00Z'
         '400':
           description: Invalid algorithm specified
@@ -966,10 +971,12 @@ paths:
                       - kid: key-2025-12-19-001
                         algorithm: ES256
                         is_current: true
+                        activates_at: '2025-12-19T10:40:00Z'
                         created_at: '2025-12-19T10:30:00Z'
                       - kid: key-2025-12-01-001
                         algorithm: ES256
                         is_current: false
+                        activates_at: '2025-12-01T09:00:00Z'
                         created_at: '2025-12-01T09:00:00Z'
                 single_key:
                   summary: Single signing key
@@ -978,7 +985,8 @@ paths:
                       - kid: key-2025-12-19-001
                         algorithm: ES256
                         is_current: true
-                        created_at: '2025-12-19T10:30:00Z'
+                        activates_at: '2025-12-19T10:00:00Z'
+                        created_at: '2025-12-19T10:00:00Z'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1964,6 +1972,7 @@ components:
         - kid
         - algorithm
         - is_current
+        - activates_at
         - created_at
       properties:
         kid:
@@ -1976,8 +1985,18 @@ components:
           example: ES256
         is_current:
           type: boolean
-          description: Whether this key is the current signing key used for new tokens
+          description: Whether this key is the designated current signing key
           example: true
+        activates_at:
+          type: string
+          format: date-time
+          description: |
+            Timestamp when the key starts signing tokens (RFC3339 format).
+            For keys created via POST, this is `created_at + 600 s` (2 × JWKS Cache-Control
+            max-age value). The key is present in the JWKS response immediately so clients
+            can cache it before it becomes active. For keys promoted via PUT /…/current,
+            this equals the promotion time.
+          example: '2025-12-19T10:40:00Z'
         created_at:
           type: string
           format: date-time

@@ -2,11 +2,16 @@ package enduser
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 )
+
+// jwksCacheMaxAgeSeconds is the Cache-Control max-age value for the JWKS endpoint.
+// The signing key grace period in signing_key_service.go must be a multiple of this value.
+const jwksCacheMaxAgeSeconds = 300
 
 // JWKSHandler serves the JWKS endpoint for public key discovery.
 type JWKSHandler struct {
@@ -36,7 +41,7 @@ func (h *JWKSHandler) ServeJWKS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", jwksCacheMaxAgeSeconds))
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(jwks); err != nil {
 		h.logger.Error("failed to encode JWKS response", "error", err)

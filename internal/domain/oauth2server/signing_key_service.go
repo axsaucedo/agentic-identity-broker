@@ -20,6 +20,16 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
+// jwksCacheMaxAge is the max-age value (in seconds) sent in the Cache-Control header on
+// GET /oauth2/jwks.json. The grace period below must be a multiple of this value.
+// Keep in sync with the constant in internal/adapters/http/handlers/enduser/jwks_handler.go.
+const jwksCacheMaxAge = 300 * time.Second
+
+// jwksGracePeriod is how long a newly created current key waits before it starts signing tokens.
+// During this window the key is already present in the JWKS response, so every client cache
+// will have learned about it before the first token signed with it appears.
+const jwksGracePeriod = 2 * jwksCacheMaxAge
+
 // SigningKeyService manages signing key lifecycle including generation,
 // encryption, storage, and JWKS building.
 type SigningKeyService struct {
@@ -42,8 +52,20 @@ func NewSigningKeyService(
 }
 
 // GenerateAndStoreKey generates a new ES256 signing key, encrypts the private material,
-// stores it, and optionally marks it as current.
+// and stores it. When makeCurrent is true the key is marked as current but will not begin
+// signing tokens until jwksGracePeriod has elapsed, giving JWKS caches time to pick up the
+// new key before any token signed with it is issued.
 func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm string, makeCurrent bool) (*storage.SigningKey, error) {
+	activatesAt := time.Now().UTC()
+	if makeCurrent {
+		activatesAt = activatesAt.Add(jwksGracePeriod)
+	}
+	return s.generateAndStore(ctx, algorithm, makeCurrent, activatesAt)
+}
+
+// generateAndStore creates and persists a signing key with an explicit activatesAt timestamp.
+// Called directly by EnsureKeyExists to bypass the grace period at startup (no clients yet).
+func (s *SigningKeyService) generateAndStore(ctx context.Context, algorithm string, makeCurrent bool, activatesAt time.Time) (*storage.SigningKey, error) {
 	if algorithm == "" {
 		algorithm = "ES256"
 	}
@@ -74,6 +96,7 @@ func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm s
 		Algorithm:           algorithm,
 		PrivateKeyEncrypted: encrypted,
 		IsCurrent:           makeCurrent,
+		ActivatesAt:         activatesAt,
 		CreatedAt:           time.Now().UTC(),
 	}
 
@@ -87,11 +110,13 @@ func (s *SigningKeyService) GenerateAndStoreKey(ctx context.Context, algorithm s
 		}
 	}
 
-	s.logger.Info("signing key generated", "kid", kid, "algorithm", algorithm, "is_current", makeCurrent)
+	s.logger.Info("signing key generated", "kid", kid, "algorithm", algorithm, "is_current", makeCurrent, "activates_at", activatesAt)
 	return key, nil
 }
 
 // BuildJWKS constructs a JWK Set from all active signing keys (public keys only).
+// All active keys are included regardless of activates_at, so new keys appear in the
+// JWKS during the grace period and clients can cache them before they start signing.
 func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 	keys, err := s.repo.ListActive(ctx)
 	if err != nil {
@@ -132,6 +157,8 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 }
 
 // EnsureKeyExists checks if any signing key exists and auto-generates one if not.
+// The generated key activates immediately (no grace period) because no clients have
+// cached a previous JWKS yet.
 func (s *SigningKeyService) EnsureKeyExists(ctx context.Context) error {
 	count, err := s.repo.CountActive(ctx)
 	if err != nil {
@@ -139,7 +166,7 @@ func (s *SigningKeyService) EnsureKeyExists(ctx context.Context) error {
 	}
 
 	if count == 0 {
-		_, err := s.GenerateAndStoreKey(ctx, "ES256", true)
+		_, err := s.generateAndStore(ctx, "ES256", true, time.Now().UTC())
 		if err != nil {
 			return fmt.Errorf("failed to auto-generate signing key: %w", err)
 		}

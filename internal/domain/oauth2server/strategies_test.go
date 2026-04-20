@@ -45,7 +45,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 		svc, repo := newTestSigningKeyService()
 		ctx := context.Background()
 
-		key, err := svc.GenerateAndStoreKey(ctx, "ES256", true)
+		key, err := svc.generateAndStore(ctx, "ES256", true, time.Now())
 		require.NoError(t, err)
 
 		strategy, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", time.Hour, nil, testSlogger())
@@ -65,7 +65,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 
 	t.Run("signature equals SHA-256 of the token string", func(t *testing.T) {
 		svc, repo := newTestSigningKeyService()
-		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		_, err := svc.generateAndStore(context.Background(), "ES256", true, time.Now())
 		require.NoError(t, err)
 
 		strategy, err := NewJWXAccessTokenStrategy(svc, repo, "https://issuer.example.com", time.Hour, nil, testSlogger())
@@ -83,7 +83,7 @@ func TestJWXAccessTokenStrategy_GenerateAccessToken(t *testing.T) {
 
 		svc, repo := newTestSigningKeyService()
 		ctx := context.Background()
-		_, err := svc.GenerateAndStoreKey(ctx, "ES256", true)
+		_, err := svc.generateAndStore(ctx, "ES256", true, time.Now())
 		require.NoError(t, err)
 
 		strategy, err := NewJWXAccessTokenStrategy(svc, repo, issuer, time.Hour, nil, testSlogger())
@@ -185,7 +185,7 @@ func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
 	})
 
 	t.Run("whitespace-padded issuer is stored trimmed", func(t *testing.T) {
-		_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		_, err := svc.generateAndStore(context.Background(), "ES256", true, time.Now())
 		require.NoError(t, err)
 		strategy, err := NewJWXAccessTokenStrategy(svc, repo, "  "+validIssuer+"  ", time.Hour, nil, testSlogger())
 		require.NoError(t, err)
@@ -203,7 +203,7 @@ func TestNewJWXAccessTokenStrategy_Validation(t *testing.T) {
 
 func TestJWXAccessTokenStrategy_SubClaimNotOverridable(t *testing.T) {
 	svc, repo := newTestSigningKeyService()
-	_, err := svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+	_, err := svc.generateAndStore(context.Background(), "ES256", true, time.Now())
 	require.NoError(t, err)
 
 	eval, err := NewTokenClaimsEvaluator(`{"sub": "attacker@evil.com", "extra": "ok"}`)

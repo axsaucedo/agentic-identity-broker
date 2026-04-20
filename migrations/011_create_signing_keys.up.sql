@@ -4,6 +4,7 @@ CREATE TABLE signing_keys (
     algorithm             VARCHAR(10) NOT NULL DEFAULT 'ES256',
     private_key_encrypted BYTEA NOT NULL,
     is_current            BOOLEAN NOT NULL DEFAULT false,
+    activates_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     removed_at            TIMESTAMPTZ
 );

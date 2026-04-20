@@ -43,7 +43,7 @@ func newTestProvider(t *testing.T) *Provider {
 
 	// Generate a signing key
 	signingKeySvc := NewSigningKeyService(signingKeyRepo, enc, logger)
-	_, err = signingKeySvc.GenerateAndStoreKey(context.Background(), "ES256", true)
+	_, err = signingKeySvc.generateAndStore(context.Background(), "ES256", true, time.Now())
 	require.NoError(t, err)
 
 	return provider
@@ -675,7 +675,7 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 		require.NoError(t, err)
 
 		svc := NewSigningKeyService(signingKeyRepo, enc, logger)
-		_, err = svc.GenerateAndStoreKey(context.Background(), "ES256", true)
+		_, err = svc.generateAndStore(context.Background(), "ES256", true, time.Now())
 		require.NoError(t, err)
 		return p
 	}

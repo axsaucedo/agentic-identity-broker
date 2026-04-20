@@ -80,17 +80,39 @@ func (s *SigningKeyStore) GetByKID(ctx context.Context, kid id.KeyID) (*storage.
 	return &result, nil
 }
 
+// GetCurrent returns the signing key to use for token issuance. It prefers the key flagged
+// as is_current provided its activates_at has passed. If the current key is still in its
+// grace period, it falls back to the most recently activated key.
 func (s *SigningKeyStore) GetCurrent(ctx context.Context) (*storage.SigningKey, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	now := time.Now()
+
+	// First preference: is_current=true and already activated.
 	for _, key := range s.byID {
-		if key.IsCurrent && key.RemovedAt == nil {
+		if key.IsCurrent && key.RemovedAt == nil && !key.ActivatesAt.After(now) {
 			result := *key
 			result.PrivateKeyEncrypted = append([]byte(nil), key.PrivateKeyEncrypted...)
 			return &result, nil
 		}
 	}
+
+	// Fallback: most recently activated key (current key is still in grace period).
+	var best *storage.SigningKey
+	for _, key := range s.byID {
+		if key.RemovedAt == nil && !key.ActivatesAt.After(now) {
+			if best == nil || key.ActivatesAt.After(best.ActivatesAt) {
+				best = key
+			}
+		}
+	}
+	if best != nil {
+		result := *best
+		result.PrivateKeyEncrypted = append([]byte(nil), best.PrivateKeyEncrypted...)
+		return &result, nil
+	}
+
 	return nil, storage.NewStorageError("SigningKeyStore.GetCurrent", storage.ErrorKindNotFound, nil, "no current signing key")
 }
 
@@ -109,6 +131,8 @@ func (s *SigningKeyStore) ListActive(ctx context.Context) ([]*storage.SigningKey
 	return result, nil
 }
 
+// SetCurrent promotes a key to be the current signing key and resets activates_at to now
+// because an explicit admin promotion targets a key already present in the JWKS.
 func (s *SigningKeyStore) SetCurrent(ctx context.Context, kid id.KeyID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -119,11 +143,11 @@ func (s *SigningKeyStore) SetCurrent(ctx context.Context, kid id.KeyID) error {
 			fmt.Sprintf("signing key with kid %s not found", kid))
 	}
 
-	// Demote all other keys
 	for _, key := range s.byID {
 		key.IsCurrent = false
 	}
 	target.IsCurrent = true
+	target.ActivatesAt = time.Now()
 	return nil
 }
 
