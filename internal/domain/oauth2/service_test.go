@@ -585,6 +585,14 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			wantAction:    "error",
 			wantErrorCode: "invalid_client",
 		},
+		{
+			name:          "malformed UUID string returns invalid_client",
+			setupAgent:    func(r *MockAgentRepository) {},
+			setupGrant:    func(r *MockGrantRepository) {},
+			clientID:      id.ClientID("not-a-uuid"),
+			wantAction:    "error",
+			wantErrorCode: "invalid_client",
+		},
 	}
 
 	for _, tt := range tests {
