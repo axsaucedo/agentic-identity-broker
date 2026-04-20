@@ -57,6 +57,7 @@ type LogConfig struct {
 // HTTP calls to the identity broker. The circuit breaker prevents a thundering
 // herd when the identity broker recovers after an outage.
 type CircuitBreakerConfig struct {
+	Enabled      bool          `mapstructure:"enabled"`
 	MaxFailures  int           `mapstructure:"max_failures"`
 	ResetTimeout time.Duration `mapstructure:"reset_timeout"`
 }

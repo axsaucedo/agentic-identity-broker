@@ -48,6 +48,7 @@ func testConfig() *extprocconfig.Config {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},

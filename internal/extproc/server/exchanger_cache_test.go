@@ -87,7 +87,7 @@ func TestTokenExchanger_Cache_HitBeforeExpiry_ReturnsCachedToken(t *testing.T) {
 	callsAfterFirst := mocks.exchangeCalls
 
 	// Multiple rapid calls — all should hit cache
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		token, err := exchanger.Exchange(subjectToken, resourceURI)
 		require.NoError(t, err)
 		assert.Equal(t, token1, token, "cache hit must return same token")
@@ -255,12 +255,10 @@ func TestTokenExchanger_Singleflight_ConcurrentRequests_CallExchangeOnce(t *test
 	errors := make([]error, numGoroutines)
 
 	// Launch concurrent goroutines requesting the same key
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			results[idx], errors[idx] = exchanger.Exchange(subjectToken, resourceURI)
-		}(i)
+	for i := range numGoroutines {
+		wg.Go(func() {
+			results[i], errors[i] = exchanger.Exchange(subjectToken, resourceURI)
+		})
 	}
 
 	// Give goroutines time to queue up before releasing the slow server
@@ -370,12 +368,10 @@ func TestTokenExchanger_Singleflight_SharedError_OnExchangeFailure(t *testing.T)
 	errs := make([]error, numGoroutines)
 	var wg sync.WaitGroup
 
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			_, errs[idx] = exchanger.Exchange("user-token", "http://resource.example.com")
-		}(i)
+	for i := range numGoroutines {
+		wg.Go(func() {
+			_, errs[i] = exchanger.Exchange("user-token", "http://resource.example.com")
+		})
 	}
 	wg.Wait()
 
@@ -519,6 +515,7 @@ func TestTokenExchanger_AssertionRefresh_BackgroundRefresh_KeepsAssertionFresh(t
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -616,6 +613,7 @@ func TestTokenExchanger_Concurrent_ExchangeAndShutdown_RaceFree(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -627,24 +625,20 @@ func TestTokenExchanger_Concurrent_ExchangeAndShutdown_RaceFree(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Concurrent exchange calls with unique keys (no singleflight contention needed here)
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
+	for i := range 5 {
+		wg.Go(func() {
 			_, _ = exchanger.Exchange(
-				fmt.Sprintf("token-%d", idx),
-				fmt.Sprintf("http://service-%d:9000/api", idx),
+				fmt.Sprintf("token-%d", i),
+				fmt.Sprintf("http://service-%d:9000/api", i),
 			)
-		}(i)
+		})
 	}
 
 	// Concurrent shutdown
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		time.Sleep(10 * time.Millisecond) // let some exchanges start
 		exchanger.Shutdown()
-	}()
+	})
 
 	wg.Wait()
 	// Test passes if no race conditions are detected by the Go race detector (-race flag)
