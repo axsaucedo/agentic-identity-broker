@@ -122,8 +122,8 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 	}
 }
 
-// TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID tests direct 400 for a non-UUID client_id.
-// The handler rejects non-UUID values before any redirect logic (client_id must be agent UUID per spec).
+// TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID tests direct 400 for an unregistered client_id.
+// The service returns invalid_client when no agent matches, without redirecting to an unverified redirect_uri.
 func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 	handler := &OAuth2AuthorizeHandler{
 		Service: oauth2.NewService(
@@ -401,7 +401,6 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_NilServiceFails(t *testing.T) {
 		CodeIssuer: &mockCodeIssuer{},
 	}
 
-	// client_id must be a valid agent UUID to pass the UUID parse step and reach the nil-service check
 	agentUUID := id.NewAgentID().String()
 	req := httptest.NewRequest(
 		"GET",

@@ -245,7 +245,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 			setupAgent: func(r *MockAgentRepository) {},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     id.NewAgentID(), // valid UUID but not in repo
+				ClientID:     id.ClientID(id.NewAgentID().String()), // valid UUID but not in repo
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
@@ -266,7 +266,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 			},
 			setupGrant: func(r *MockGrantRepository) {},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     testAgentID,
+				ClientID:     id.ClientID(testAgentID.String()),
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
@@ -299,7 +299,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     testAgentID,
+				ClientID:     id.ClientID(testAgentID.String()),
 				RedirectURI:  "https://client.example.com/callback",
 				Scope:        "openid profile",
 				State:        "xyz123",
@@ -333,7 +333,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 				_ = r.Create(context.Background(), grant)
 			},
 			authReq: &ports.AuthorizationRequest{
-				ClientID:     testAgentID,
+				ClientID:     id.ClientID(testAgentID.String()),
 				RedirectURI:  "https://client.example.com/callback",
 				State:        "xyz123",
 				ResponseType: "code",
@@ -394,7 +394,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 	}
 
 	authReq := &ports.AuthorizationRequest{
-		ClientID:     agentID,
+		ClientID:     id.ClientID(agentID.String()),
 		RedirectURI:  "https://client.example.com/callback",
 		ResponseType: "code",
 		OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
@@ -506,7 +506,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	})
 
 	authReq := &ports.AuthorizationRequest{
-		ClientID:            agentID,
+		ClientID:            id.ClientID(agentID.String()),
 		RedirectURI:         "https://client.example.com/callback",
 		Scope:               "openid profile email",
 		State:               "state123",
@@ -531,9 +531,8 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	assert.Contains(t, redirectURL, "code_challenge_method=S256")
 }
 
-// TestService_HandleAuthorization_UUIDResolution tests the new UUID-based agent resolution
-// (Feature 021: Multi-Agent OAuth2 Client Delegation).
-// The client_id parameter MUST be the agent's internal UUID (agent.id), NOT agent.client_id.
+// TestService_HandleAuthorization_UUIDResolution verifies agent resolution via the authorize endpoint.
+// The client_id value is parsed as a UUID internally by the service to look up the agent.
 func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 	agentID := id.NewAgentID()
 	serviceID := id.NewServiceID()
@@ -566,7 +565,7 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 		name          string
 		setupAgent    func(*MockAgentRepository)
 		setupGrant    func(*MockGrantRepository)
-		clientID      id.AgentID
+		clientID      id.ClientID
 		wantAction    string
 		wantErrorCode string
 	}{
@@ -574,7 +573,7 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			name:          "valid agent UUID resolves agent and redirects to upstream",
 			setupAgent:    setupAgent,
 			setupGrant:    setupActiveGrant,
-			clientID:      agentID,
+			clientID:      id.ClientID(agentID.String()),
 			wantAction:    "proceed",
 			wantErrorCode: "",
 		},
@@ -582,7 +581,7 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			name:          "well-formed UUID that is not a registered agent returns invalid_client",
 			setupAgent:    func(r *MockAgentRepository) {}, // empty repo
 			setupGrant:    func(r *MockGrantRepository) {},
-			clientID:      unknownAgentID,
+			clientID:      id.ClientID(unknownAgentID.String()),
 			wantAction:    "error",
 			wantErrorCode: "invalid_client",
 		},
@@ -656,7 +655,7 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	})
 
 	req := &ports.AuthorizationRequest{
-		ClientID:     agentID,
+		ClientID:     id.ClientID(agentID.String()),
 		RedirectURI:  "https://client.example.com/callback",
 		ResponseType: "code",
 		State:        "state123",
@@ -755,7 +754,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 	}
 
 	req := &ports.AuthorizationRequest{
-		ClientID:     agentID,
+		ClientID:     id.ClientID(agentID.String()),
 		RedirectURI:  "https://client.example.com/callback",
 		ResponseType: "code",
 		State:        "state-xyz",
@@ -860,7 +859,7 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 			})
 
 			req := &ports.AuthorizationRequest{
-				ClientID:     agentID,
+				ClientID:     id.ClientID(agentID.String()),
 				RedirectURI:  tt.requestURI,
 				ResponseType: "code",
 				OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
@@ -942,7 +941,7 @@ func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
 			})
 
 			req := &ports.AuthorizationRequest{
-				ClientID:     agentID,
+				ClientID:     id.ClientID(agentID.String()),
 				RedirectURI:  "https://client.example.com/callback",
 				ResponseType: "code",
 				Scope:        tt.requestScope,
@@ -1036,7 +1035,7 @@ func TestService_HandleAuthorization_GrantLookupError(t *testing.T) {
 	})
 
 	req := &ports.AuthorizationRequest{
-		ClientID:     agentID,
+		ClientID:     id.ClientID(agentID.String()),
 		RedirectURI:  "https://client.example.com/callback",
 		ResponseType: "code",
 		State:        "abc123",

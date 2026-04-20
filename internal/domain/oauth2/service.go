@@ -98,10 +98,17 @@ func NewServiceWithSessions(
 // - proceed: Valid client with active grant — handler decides next step
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
-//
-// Feature 021: client_id MUST be the agent's internal UUID (agent.id), NOT agent.client_id.
 func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
-	agent, err := s.agentRepo.Get(ctx, req.ClientID)
+	agentUUID, parseErr := id.ParseAgentID(string(req.ClientID))
+	if parseErr != nil {
+		// client_id is not a valid agent UUID — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)
+		return &ports.AuthorizationDecision{
+			Action:    "error",
+			ErrorCode: "invalid_client",
+			ErrorDesc: "Client not registered",
+		}, nil
+	}
+	agent, err := s.agentRepo.Get(ctx, agentUUID)
 	if err != nil {
 		if isNotFoundErr(err) {
 			// Agent UUID not registered — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)

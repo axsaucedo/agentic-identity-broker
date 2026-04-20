@@ -30,8 +30,8 @@ type OAuth2Service interface {
 // AuthorizationRequest represents an OAuth2 authorization request (RFC 6749 Section 4.1.1).
 // Fields are parsed from HTTP query parameters.
 type AuthorizationRequest struct {
-	// REQUIRED: Agent UUID — the sole external client_id at all endpoints
-	ClientID id.AgentID
+	// REQUIRED: OAuth2 client_id identifying the agent making the request
+	ClientID id.ClientID
 
 	// REQUIRED: Client's callback URL for authorization code
 	RedirectURI string

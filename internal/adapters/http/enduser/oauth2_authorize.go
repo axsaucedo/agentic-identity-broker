@@ -46,14 +46,6 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	agentID, err := id.ParseAgentID(rawClientID)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, `{"error":"invalid_client","error_description":"client_id must be a valid agent UUID"}`)
-		return
-	}
-
 	redirectURI := query.Get("redirect_uri")
 	if redirectURI == "" {
 		w.Header().Set("Content-Type", "application/json")
@@ -78,7 +70,7 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	// Build authorization request
 	authReq := &ports.AuthorizationRequest{
-		ClientID:            agentID,
+		ClientID:            id.ClientID(rawClientID),
 		RedirectURI:         redirectURI,
 		ResponseType:        responseType,
 		Scope:               scope,

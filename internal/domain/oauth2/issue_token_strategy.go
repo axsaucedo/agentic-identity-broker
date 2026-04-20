@@ -63,10 +63,13 @@ func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *
 		return "", fmt.Errorf("%w: only 'code' response_type is supported", oauth2server.ErrUnsupportedResponseType)
 	}
 
-	// req.ClientID is already id.AgentID (parsed at the HTTP handler boundary).
+	agentID, err := id.ParseAgentID(string(req.ClientID))
+	if err != nil {
+		return "", fmt.Errorf("%w: invalid client_id", oauth2server.ErrUnknownClient)
+	}
 	code, err := s.provider.HandleAuthorize(
 		ctx,
-		req.ClientID,
+		agentID,
 		req.RedirectURI,
 		req.ResponseType,
 		req.Scope,
