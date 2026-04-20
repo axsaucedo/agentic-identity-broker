@@ -578,7 +578,8 @@ func (b *Builder) Build() (*App, error) {
 		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
-			Service: app.OAuth2Service,
+			Service:        app.OAuth2Service,
+			ProceedHandler: enduser.NewProxyProceedStrategy(),
 		},
 		OAuth2Token: oauth2TokenHandler,
 		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
@@ -612,9 +613,9 @@ func (b *Builder) Build() (*App, error) {
 		mintingStrategy := oauth2service.NewIssueTokenMintingStrategy(provider)
 		oauth2TokenHandler.TokenMinting = mintingStrategy
 
-		// Wire local code issuer into the existing authorize handler
+		// Wire issue_token proceed strategy into the authorize handler
 		codeIssuer := oauth2service.NewIssueTokenCodeIssuer(provider)
-		app.EnduserHandlers.OAuth2Authorize.CodeIssuer = codeIssuer
+		app.EnduserHandlers.OAuth2Authorize.ProceedHandler = enduser.NewIssueTokenProceedStrategy(codeIssuer, b.logger)
 
 		// Auto-generate signing key if none exists
 		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {

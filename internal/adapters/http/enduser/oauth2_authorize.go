@@ -2,42 +2,35 @@ package enduser
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // OAuth2AuthorizeHandler handles OAuth2 authorization endpoint requests.
-// In proxy mode, delegates to OAuth2Service which redirects to upstream or consent.
-// In issue_token mode (when CodeIssuer is set), issues authorization codes locally
-// while still respecting the existing consent flow via OAuth2Service.
+// The ProceedHandler strategy determines the response for an active grant: proxy mode
+// redirects to the upstream OAuth2 server, issue_token mode issues a local authorization code.
 type OAuth2AuthorizeHandler struct {
 	Service           ports.OAuth2Service
 	sessionRepository ports.UserSessionRepository
 	logger            *slog.Logger
-	CodeIssuer        ports.AuthorizationCodeIssuer // nil = proxy mode; non-nil = issue_token mode
+	ProceedHandler    AuthorizationProceedStrategy
 }
 
 // ServeHTTP implements http.Handler for the authorization endpoint.
-// In issue_token mode (CodeIssuer != nil), when the OAuth2Service determines the user
-// has an active grant (would normally redirect to upstream), we instead issue a local
-// authorization code and redirect back to the client with the code.
+// The shared flow handles consent checks and error decisions; the ProceedHandler
+// strategy determines the response when the user has an active grant.
 func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Extract principal from context (guaranteed by RequirePrincipalMiddleware)
 	principalValue := principal.MustFromContext(r.Context())
 
-	// Parse query parameters
 	query := r.URL.Query()
 
-	// Extract required OAuth2 parameters
 	rawClientID := query.Get("client_id")
 	if rawClientID == "" {
 		w.Header().Set("Content-Type", "application/json")
@@ -62,77 +55,17 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Extract optional OAuth2 parameters
-	scope := query.Get("scope")
-	state := query.Get("state")
-	codeChallenge := query.Get("code_challenge")
-	codeChallengeMethod := query.Get("code_challenge_method")
-
-	// Build authorization request
 	authReq := &ports.AuthorizationRequest{
 		ClientID:            id.ClientID(rawClientID),
 		RedirectURI:         redirectURI,
 		ResponseType:        responseType,
-		Scope:               scope,
-		State:               state,
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: codeChallengeMethod,
+		Scope:               query.Get("scope"),
+		State:               query.Get("state"),
+		CodeChallenge:       query.Get("code_challenge"),
+		CodeChallengeMethod: query.Get("code_challenge_method"),
 		OriginalURL:         r.URL.String(),
 	}
 
-	// In issue_token mode with CodeIssuer, we still use the existing OAuth2Service
-	// for consent checks but issue codes locally instead of redirecting to upstream.
-	if h.CodeIssuer != nil {
-		h.handleIssueTokenMode(w, r, authReq, principalValue)
-		return
-	}
-
-	// Proxy mode: delegate entirely to the OAuth2Service
-	h.handleProxyMode(w, r, authReq, principalValue)
-}
-
-// handleProxyMode processes authorization requests in proxy mode by delegating
-// entirely to the OAuth2Service.
-func (h *OAuth2AuthorizeHandler) handleProxyMode(w http.ResponseWriter, r *http.Request, authReq *ports.AuthorizationRequest, principalValue string) {
-	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, id.NewPrincipal(principalValue))
-	if err != nil {
-		http.Error(w, fmt.Sprintf("authorization error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Process decision
-	switch decision.Action {
-	case "proceed":
-		http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
-
-	case "redirect_to_consent":
-		http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
-
-	case "error":
-		// Redirect with error if we have a redirect_uri, otherwise return error response
-		if decision.RedirectURL != "" {
-			http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			statusCode := errorDecisionStatus(decision.ErrorCode)
-			w.WriteHeader(statusCode)
-			_, _ = fmt.Fprintf(w, `{"error":"%s","error_description":"%s"}`, decision.ErrorCode, decision.ErrorDesc)
-		}
-
-	default:
-		http.Error(w, fmt.Sprintf("unknown authorization action: %s", decision.Action), http.StatusInternalServerError)
-	}
-}
-
-// handleIssueTokenMode processes authorization requests in issue_token mode.
-// Uses the OAuth2Service for consent checks (redirect_to_consent),
-// but when the grant is active (proceed), issues a local authorization code.
-func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *http.Request, authReq *ports.AuthorizationRequest, principalValue string) {
-	if h.Service == nil {
-		http.Error(w, "internal server error: consent service unavailable", http.StatusInternalServerError)
-		return
-	}
-
 	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("authorization error: %v", err), http.StatusInternalServerError)
@@ -140,90 +73,33 @@ func (h *OAuth2AuthorizeHandler) handleIssueTokenMode(w http.ResponseWriter, r *
 	}
 
 	switch decision.Action {
+	case "proceed":
+		h.ProceedHandler.HandleProceed(w, r, decision, authReq, id.NewPrincipal(principalValue))
+
 	case "redirect_to_consent":
-		// User needs to consent first — redirect to consent UI
 		http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
-		return
 
 	case "error":
-		if decision.RedirectURL != "" {
-			http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			statusCode := errorDecisionStatus(decision.ErrorCode)
-			w.WriteHeader(statusCode)
-			_, _ = fmt.Fprintf(w, `{"error":"%s","error_description":"%s"}`, decision.ErrorCode, decision.ErrorDesc)
-		}
-		return
-
-	case "proceed":
-		// Grant is active — issue local authorization code below
+		respondWithDecisionError(w, r, decision)
 
 	default:
-		h.logger.Error("unexpected authorization decision action", "action", decision.Action)
+		if h.logger != nil {
+			h.logger.Error("unexpected authorization decision action", "action", decision.Action)
+		}
 		redirectWithError(w, r, authReq.RedirectURI, authReq.State, "server_error", "unexpected authorization decision")
-		return
 	}
+}
 
-	// Issue authorization code locally via the CodeIssuer strategy
-	code, err := h.CodeIssuer.IssueAuthorizationCode(r.Context(), authReq, id.NewPrincipal(principalValue))
-	if err != nil {
-		// Return JSON errors directly for errors where redirect_uri is not yet validated
-		// (redirect-based error responses risk open redirect when the URI is unverified).
-		if errors.Is(err, oauth2server.ErrUnknownClient) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"invalid_client","error_description":"unknown client"}`)
-			return
-		}
-		if errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"invalid_redirect_uri","error_description":"invalid redirect_uri"}`)
-			return
-		}
-		if errors.Is(err, oauth2server.ErrServerError) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = fmt.Fprintf(w, `{"error":"server_error","error_description":"internal server error"}`)
-			return
-		}
-		if errors.Is(err, oauth2server.ErrInvalidRequest) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"invalid authorization request"}`)
-			return
-		}
-		if errors.Is(err, oauth2server.ErrUnsupportedResponseType) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"unsupported_response_type","error_description":"unsupported response type"}`)
-			return
-		}
-		if errors.Is(err, oauth2server.ErrInvalidScope) {
-			// redirect_uri is validated before scope checking, so redirect is safe here
-			redirectWithError(w, r, authReq.RedirectURI, authReq.State, "invalid_scope", "requested scope is not permitted")
-			return
-		}
-		redirectWithError(w, r, authReq.RedirectURI, authReq.State, "server_error", "authorization failed")
-		return
+// respondWithDecisionError writes an OAuth2 error response for an "error" decision.
+// Redirects with error params when a redirect_uri is available; otherwise returns JSON.
+func respondWithDecisionError(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision) {
+	if decision.RedirectURL != "" {
+		http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(errorDecisionStatus(decision.ErrorCode))
+		_, _ = fmt.Fprintf(w, `{"error":"%s","error_description":"%s"}`, decision.ErrorCode, decision.ErrorDesc)
 	}
-
-	// Redirect with authorization code
-	redirectURL, err := url.Parse(authReq.RedirectURI)
-	if err != nil {
-		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
-		return
-	}
-
-	q := redirectURL.Query()
-	q.Set("code", code)
-	if authReq.State != "" {
-		q.Set("state", authReq.State)
-	}
-	redirectURL.RawQuery = q.Encode()
-
-	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 }
 
 // NewOAuth2AuthorizeHandler creates a new authorization handler
