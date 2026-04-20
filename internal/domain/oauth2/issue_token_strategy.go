@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ory/fosite"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -42,32 +44,14 @@ func NewIssueTokenCodeIssuer(provider *oauth2server.Provider) *IssueTokenCodeIss
 }
 
 // IssueAuthorizationCode issues a local authorization code via the Provider.
+// PKCE enforcement, response_type validation, and scope checking are delegated to the Provider
+// which in turn delegates to fosite handlers.
 func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (string, error) {
-	codeChallengeMethod := req.CodeChallengeMethod
-	if codeChallengeMethod == "" {
-		return "", fmt.Errorf("%w: code_challenge_method is required (PKCE mandatory)", oauth2server.ErrInvalidRequest)
-	}
-
-	// Validate PKCE is provided (mandatory in issue_token mode)
-	if req.CodeChallenge == "" {
-		return "", fmt.Errorf("%w: code_challenge is required (PKCE mandatory)", oauth2server.ErrInvalidRequest)
-	}
-
-	// Validate only S256 is accepted
-	if codeChallengeMethod != "S256" {
-		return "", fmt.Errorf("%w: only S256 code_challenge_method is supported", oauth2server.ErrInvalidRequest)
-	}
-
-	// Validate response_type
-	if req.ResponseType != "code" {
-		return "", fmt.Errorf("%w: only 'code' response_type is supported", oauth2server.ErrUnsupportedResponseType)
-	}
-
 	agentID, err := id.ParseAgentID(string(req.ClientID))
 	if err != nil {
-		return "", fmt.Errorf("%w: invalid client_id", oauth2server.ErrUnknownClient)
+		return "", fmt.Errorf("%w: invalid client_id: %v", fosite.ErrInvalidClient, err)
 	}
-	code, err := s.provider.HandleAuthorize(
+	return s.provider.HandleAuthorize(
 		ctx,
 		agentID,
 		req.RedirectURI,
@@ -75,13 +59,7 @@ func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *
 		req.Scope,
 		req.State,
 		req.CodeChallenge,
-		codeChallengeMethod,
+		req.CodeChallengeMethod,
 		principal,
 	)
-	if err != nil {
-		// Provider already uses sentinel errors — just propagate them
-		return "", err
-	}
-
-	return code, nil
 }

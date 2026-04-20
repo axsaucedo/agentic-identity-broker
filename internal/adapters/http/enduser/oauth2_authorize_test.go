@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ory/fosite"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
@@ -427,12 +429,18 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
 		wantErrCode string
 		isRedirect  bool
 	}{
-		{"unknown client", oauth2server.ErrUnknownClient, http.StatusBadRequest, "invalid_client", false},
-		{"invalid redirect uri", oauth2server.ErrInvalidRedirectURI, http.StatusBadRequest, "invalid_redirect_uri", false},
-		{"server error", oauth2server.ErrServerError, http.StatusInternalServerError, "server_error", false},
-		{"invalid request", oauth2server.ErrInvalidRequest, http.StatusBadRequest, "invalid_request", false},
-		{"unsupported response type", oauth2server.ErrUnsupportedResponseType, http.StatusBadRequest, "unsupported_response_type", false},
-		{"invalid scope", oauth2server.ErrInvalidScope, http.StatusFound, "invalid_scope", true},
+		// fosite.ErrInvalidClient: HTTP 401 per fosite — never redirect (RFC 6749 §4.1.2.1)
+		{"unknown client", fosite.ErrInvalidClient, http.StatusUnauthorized, "invalid_client", false},
+		// ErrInvalidRedirectURI: HTTP 400 — never redirect (redirect_uri unverified)
+		{"invalid redirect uri", oauth2server.ErrInvalidRedirectURI, http.StatusBadRequest, "invalid_request", false},
+		// fosite.ErrServerError: redirect is safe (redirect_uri was validated)
+		{"server error", fosite.ErrServerError, http.StatusFound, "server_error", true},
+		// fosite.ErrInvalidRequest: redirect is safe
+		{"invalid request", fosite.ErrInvalidRequest, http.StatusFound, "invalid_request", true},
+		// fosite.ErrUnsupportedResponseType: redirect is safe
+		{"unsupported response type", fosite.ErrUnsupportedResponseType, http.StatusFound, "unsupported_response_type", true},
+		// fosite.ErrInvalidScope: redirect is safe
+		{"invalid scope", fosite.ErrInvalidScope, http.StatusFound, "invalid_scope", true},
 	}
 
 	agentID := id.NewAgentID()

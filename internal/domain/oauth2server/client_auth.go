@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/ory/fosite"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -55,17 +57,17 @@ func (s *ClientAuthService) Authenticate(ctx context.Context, agentID id.AgentID
 	cred, err := s.credentialRepo.GetByAgentID(ctx, agentID)
 	if err != nil {
 		s.logStorageFailure(ctx, err)
-		return nil, ErrInvalidClient
+		return nil, fosite.ErrInvalidClient
 	}
 
 	agent, err := s.agentRepo.Get(ctx, agentID)
 	if err != nil {
 		s.logStorageFailure(ctx, err)
-		return nil, ErrInvalidClient
+		return nil, fosite.ErrInvalidClient
 	}
 
 	if err := s.hasher.Compare(cred.SecretHash, secret); err != nil {
-		return nil, ErrInvalidClient
+		return nil, fosite.ErrInvalidClient
 	}
 
 	return &AuthenticatedClient{

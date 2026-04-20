@@ -131,27 +131,16 @@ func (p *Provider) SigningKeyService() *SigningKeyService {
 }
 
 // HandleClientCredentials processes a client_credentials grant type request.
+// Scope validation and token generation are fully delegated to fosite's ccHandler.
 func (p *Provider) HandleClientCredentials(ctx context.Context, agentID id.AgentID, secret string, requestedScope string) (*ports.TokenResponse, error) {
-	// Authenticate client
 	authClient, err := p.clientAuth.Authenticate(ctx, agentID, secret)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build fosite client
 	client := &brokerClient{agent: authClient.Agent, credential: authClient.Credential}
-
-	// Validate scopes
 	scopes := splitScope(requestedScope)
-	if len(authClient.Agent.AllowedScopes) > 0 && len(scopes) > 0 {
-		for _, s := range scopes {
-			if !contains(authClient.Agent.AllowedScopes, s) {
-				return nil, fmt.Errorf("%w: scope %q not allowed for this agent", ErrInvalidScope, s)
-			}
-		}
-	}
 
-	// Build fosite request
 	session := &fosite.DefaultSession{
 		Subject: client.GetID(),
 		ExpiresAt: map[fosite.TokenType]time.Time{
@@ -163,32 +152,36 @@ func (p *Provider) HandleClientCredentials(ctx context.Context, agentID id.Agent
 	req.Client = client
 	req.GrantTypes = fosite.Arguments{"client_credentials"}
 	req.RequestedScope = scopes
-	req.GrantedScope = scopes
 
-	resp := fosite.NewAccessResponse()
-
-	// Generate token via our strategy
-	token, sig, err := p.accessStrategy.GenerateAccessToken(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	if err := p.ccHandler.HandleTokenEndpointRequest(ctx, req); err != nil {
+		return nil, err
 	}
 
-	resp.SetAccessToken(token)
-	resp.SetTokenType("Bearer")
-	resp.SetExtra("expires_in", int64(p.config.AccessTokenLifespan.Seconds()))
-	resp.SetExtra("scope", requestedScope)
-	_ = sig // Signature used for storage lookup (stateless JWT, not stored)
+	// fosite v0.49 HandleTokenEndpointRequest validates scopes but does not grant them.
+	for _, scope := range scopes {
+		req.GrantScope(scope)
+	}
+
+	resp := fosite.NewAccessResponse()
+	if err := p.ccHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
+		return nil, err
+	}
 
 	return &ports.TokenResponse{
-		AccessToken: token,
+		AccessToken: resp.GetAccessToken(),
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
-		Scope:       requestedScope,
+		Scope:       strings.Join(req.GetGrantedScopes(), " "),
 	}, nil
 }
 
 // HandleAuthorize processes an authorization endpoint request using the agent's UUID
 // as the client identifier. Resolves the agent's broker credentials internally.
+//
+// PKCE enforcement (EnforcePKCE:true, S256-only) is handled by pkceHandler.
+// Scope validation is handled by the configured ScopeStrategy.
+// Returns ErrInvalidRedirectURI when the redirect_uri has not been validated so HTTP
+// handlers can send a direct JSON response per RFC 6749 §4.1.2.1.
 func (p *Provider) HandleAuthorize(
 	ctx context.Context,
 	agentID id.AgentID,
@@ -200,42 +193,40 @@ func (p *Provider) HandleAuthorize(
 	codeChallengeMethod string,
 	principal id.Principal,
 ) (code string, err error) {
-	// Look up client by agent ID (uses GetByAgentID internally)
 	fositeClient, err := p.fositeStorage.buildClient(ctx, agentID)
 	if err != nil {
-		var storageErr *storage.StorageError
-		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
-			return "", fmt.Errorf("%w: agent %s not found", ErrUnknownClient, agentID)
+		if isStorageNotFound(err) {
+			return "", fosite.ErrInvalidClient.WithHintf("agent %s not found", agentID)
 		}
-		return "", fmt.Errorf("%w: client lookup failed", ErrServerError)
+		return "", fosite.ErrServerError.WithDebugf("client lookup failed: %v", err)
 	}
 
 	bc, ok := fositeClient.(*brokerClient)
 	if !ok {
-		return "", fmt.Errorf("internal error: expected *brokerClient, got %T", fositeClient)
+		return "", fosite.ErrServerError.WithDebugf("internal: expected *brokerClient, got %T", fositeClient)
 	}
 
 	// Validate redirect_uri: must be registered and use HTTPS (or loopback HTTP).
+	// Per RFC 6749 §4.1.2.1 the server must never auto-redirect when redirect_uri is invalid.
+	// Callers check ErrInvalidRedirectURI to distinguish this from redirect-safe errors.
 	if !contains(bc.agent.RedirectURIs, redirectURI) {
-		return "", fmt.Errorf("%w: %s not registered for agent", ErrInvalidRedirectURI, redirectURI)
+		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
+			fosite.ErrInvalidRequest.WithHintf("redirect_uri %q is not registered for this client", redirectURI))
 	}
 	if !isHTTPSOrLoopback(redirectURI) {
-		return "", fmt.Errorf("%w: redirect_uri must use HTTPS for non-local hosts", ErrInvalidRedirectURI)
+		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
+			fosite.ErrInvalidRequest.WithHintf("redirect_uri must use HTTPS for non-loopback hosts"))
 	}
 
-	// Enforce PKCE
-	if codeChallenge == "" {
-		return "", fmt.Errorf("%w: code_challenge is required (PKCE mandatory)", ErrInvalidRequest)
-	}
-	if codeChallengeMethod != "S256" {
-		return "", fmt.Errorf("%w: only S256 code_challenge_method is supported", ErrInvalidRequest)
+	if responseType != "code" {
+		return "", fosite.ErrUnsupportedResponseType.WithHintf("only 'code' response_type is supported")
 	}
 
 	scopes := splitScope(scope)
 	if len(bc.agent.AllowedScopes) > 0 && len(scopes) > 0 {
 		for _, s := range scopes {
 			if !contains(bc.agent.AllowedScopes, s) {
-				return "", fmt.Errorf("%w: scope %q not allowed for this agent", ErrInvalidScope, s)
+				return "", fosite.ErrInvalidScope.WithHintf("scope %q is not allowed for this client", s)
 			}
 		}
 	}
@@ -271,10 +262,10 @@ func (p *Provider) HandleAuthorize(
 
 	resp := fosite.NewAuthorizeResponse()
 	if err := p.authCodeHandler.HandleAuthorizeEndpointRequest(ctx, authReq, resp); err != nil {
-		return "", fmt.Errorf("%w: failed to handle authorize request", ErrServerError)
+		return "", err
 	}
 	if err := p.pkceHandler.HandleAuthorizeEndpointRequest(ctx, authReq, resp); err != nil {
-		return "", fmt.Errorf("%w: failed to store PKCE session", ErrServerError)
+		return "", err
 	}
 
 	return resp.GetCode(), nil
@@ -288,7 +279,6 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	redirectURI string,
 	codeVerifier string,
 ) (*ports.TokenResponse, error) {
-	// Authenticate client
 	authedClient, err := p.clientAuth.Authenticate(ctx, agentID, secret)
 	if err != nil {
 		return nil, err
@@ -299,17 +289,15 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	// to a previous credential cannot be exchanged by a newly rotated one.
 	authCode, err := p.fositeStorage.codeRepo.FindByCodeHash(ctx, p.authCodeHandler.AuthorizeCodeStrategy.AuthorizeCodeSignature(ctx, code))
 	if err != nil {
-		var storageErr *storage.StorageError
-		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
-			return nil, fmt.Errorf("%w: authorization code not found", ErrInvalidGrant)
+		if isStorageNotFound(err) {
+			return nil, fosite.ErrInvalidGrant.WithHintf("authorization code not found")
 		}
-		return nil, fmt.Errorf("failed to look up authorization code: %w", err)
+		return nil, fosite.ErrServerError.WithDebugf("failed to look up authorization code: %v", err)
 	}
 	if authedClient.Credential.ClientID != authCode.ClientID {
-		return nil, fmt.Errorf("%w: code was issued to a different credential", ErrInvalidGrant)
+		return nil, fosite.ErrInvalidGrant.WithHintf("authorization code was issued to a different client credential")
 	}
 
-	// Build fosite access request
 	session := &fosite.DefaultSession{
 		Subject: authCode.Principal.String(),
 		ExpiresAt: map[fosite.TokenType]time.Time{
@@ -327,23 +315,19 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		"grant_type":    {"authorization_code"},
 	}
 
-	// Validate code: expiry, client identity match, redirect_uri
 	if err := p.authCodeHandler.HandleTokenEndpointRequest(ctx, req); err != nil {
-		return nil, mapFositeGrantError(err)
+		return nil, err
 	}
-
-	// Validate PKCE verifier and consume the PKCE session
 	if err := p.pkceHandler.HandleTokenEndpointRequest(ctx, req); err != nil {
-		return nil, mapFositeGrantError(err)
+		return nil, err
 	}
 
-	// Generate access token and mark code as used
 	resp := fosite.NewAccessResponse()
 	if err := p.authCodeHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
-		return nil, mapFositeGrantError(err)
+		return nil, err
 	}
 	if err := p.pkceHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
-		return nil, mapFositeGrantError(err)
+		return nil, err
 	}
 
 	return &ports.TokenResponse{
@@ -388,13 +372,8 @@ func isHTTPSOrLoopback(uriStr string) bool {
 	return false
 }
 
-// mapFositeGrantError translates fosite token endpoint errors to domain errors.
-// invalid_grant (expired, used, wrong client, PKCE failure) and not_found all become ErrInvalidGrant.
-func mapFositeGrantError(err error) error {
-	if errors.Is(err, fosite.ErrInvalidGrant) ||
-		errors.Is(err, fosite.ErrInvalidatedAuthorizeCode) ||
-		errors.Is(err, fosite.ErrNotFound) {
-		return fmt.Errorf("%w: %v", ErrInvalidGrant, err)
-	}
-	return fmt.Errorf("%w: %v", ErrServerError, err)
+// isStorageNotFound returns true when err is a domain storage "not found" error.
+func isStorageNotFound(err error) bool {
+	var se *storage.StorageError
+	return errors.As(err, &se) && se.Kind == storage.ErrorKindNotFound
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ory/fosite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -79,7 +80,7 @@ func TestArgon2Hasher_HashAndCompare(t *testing.T) {
 		require.NoError(t, err)
 
 		err = hasher.Compare(hash, "wrong-secret")
-		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 	})
 
 	t.Run("PHC string format is correct", func(t *testing.T) {
@@ -174,7 +175,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
 
 		_, err := svc.Authenticate(context.Background(), id.NewAgentID(), "secret")
-		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 	})
 
 	t.Run("wrong secret fails", func(t *testing.T) {
@@ -194,7 +195,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 
 		// Authenticate with wrong secret should fail
 		_, err = svc.Authenticate(context.Background(), agent.ID, "wrong-secret")
-		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 	})
 
 	t.Run("credential repo connection error logs at error level", func(t *testing.T) {
@@ -208,7 +209,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
 
 		_, err := svc.Authenticate(context.Background(), agentID, "secret")
-		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 		assert.Contains(t, buf.String(), "storage failure during client authentication")
 	})
 
@@ -223,7 +224,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
 
 		_, err := svc.Authenticate(context.Background(), agentID, "secret")
-		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 		assert.Empty(t, buf.String(), "not-found must not produce an error log")
 	})
 
@@ -247,7 +248,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		svc := NewClientAuthService(credRepo, agentRepo, logger)
 
 		_, err := svc.Authenticate(context.Background(), agentID, "irrelevant")
-		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 		assert.Contains(t, buf.String(), "storage failure during client authentication")
 	})
 
@@ -271,7 +272,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		svc := NewClientAuthService(credRepo, agentRepo, logger)
 
 		_, err := svc.Authenticate(context.Background(), agentID, "irrelevant")
-		assert.ErrorIs(t, err, ErrInvalidClient)
+		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 		assert.Empty(t, buf.String(), "not-found on agent lookup must not produce an error log")
 	})
 }

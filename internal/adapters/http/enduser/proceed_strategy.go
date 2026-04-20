@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/ory/fosite"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -45,43 +47,29 @@ func NewIssueTokenProceedStrategy(issuer ports.AuthorizationCodeIssuer, logger *
 func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, _ *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
 	code, err := s.issuer.IssueAuthorizationCode(r.Context(), req, principal)
 	if err != nil {
-		// Return JSON errors directly for cases where redirect_uri is not yet validated
-		// (redirect-based error responses risk open redirect when the URI is unverified).
-		if errors.Is(err, oauth2server.ErrUnknownClient) {
+		// Per RFC 6749 §4.1.2.1: never redirect when the client or redirect_uri is invalid/unverified.
+		// ErrInvalidClient covers unknown client; ErrInvalidRedirectURI covers redirect URI failures.
+		if errors.Is(err, fosite.ErrInvalidClient) || errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
+			var fositeErr *fosite.RFC6749Error
+			if errors.As(err, &fositeErr) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(fositeErr.CodeField)
+				_, _ = fmt.Fprintf(w, `{"error":%q,"error_description":%q}`, fositeErr.ErrorField, fositeErr.DescriptionField)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"invalid_client","error_description":"unknown client"}`)
+			_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"request validation failed"}`)
 			return
 		}
-		if errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"invalid_redirect_uri","error_description":"invalid redirect_uri"}`)
+
+		// All other OAuth2 errors: redirect with error params (redirect_uri has been validated).
+		var fositeErr *fosite.RFC6749Error
+		if errors.As(err, &fositeErr) {
+			redirectWithError(w, r, req.RedirectURI, req.State, fositeErr.ErrorField, fositeErr.DescriptionField)
 			return
 		}
-		if errors.Is(err, oauth2server.ErrServerError) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = fmt.Fprintf(w, `{"error":"server_error","error_description":"internal server error"}`)
-			return
-		}
-		if errors.Is(err, oauth2server.ErrInvalidRequest) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"invalid authorization request"}`)
-			return
-		}
-		if errors.Is(err, oauth2server.ErrUnsupportedResponseType) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"unsupported_response_type","error_description":"unsupported response type"}`)
-			return
-		}
-		if errors.Is(err, oauth2server.ErrInvalidScope) {
-			// redirect_uri is validated before scope checking, so redirect is safe here
-			redirectWithError(w, r, req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted")
-			return
-		}
+
 		if s.logger != nil {
 			s.logger.Error("unexpected error issuing authorization code", "error", err)
 		}

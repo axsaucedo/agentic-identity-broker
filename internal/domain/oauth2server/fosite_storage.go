@@ -125,10 +125,9 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 		return req, fosite.ErrInvalidatedAuthorizeCode
 	}
 
-	if time.Now().After(authCode.ExpiresAt) {
-		return req, fosite.ErrInvalidatedAuthorizeCode
-	}
-
+	// Expiry is intentionally not checked here. fosite inspects session.GetExpiresAt(AuthorizeCode)
+	// and returns ErrTokenExpired itself. Returning ErrInvalidatedAuthorizeCode for expired codes
+	// would incorrectly trigger fosite's replay-attack revocation path.
 	return req, nil
 }
 

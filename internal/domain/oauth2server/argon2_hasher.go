@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ory/fosite"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -19,9 +20,6 @@ const (
 	argon2SaltLength  = 16
 	argon2KeyLength   = 32
 )
-
-// ErrInvalidClient is returned when client authentication fails.
-var ErrInvalidClient = errors.New("invalid_client")
 
 // Argon2Hasher provides password hashing using Argon2id.
 type Argon2Hasher struct{}
@@ -57,7 +55,7 @@ func (h *Argon2Hasher) Compare(phcString, secret string) error {
 	computed := argon2.IDKey([]byte(secret), salt, params.iterations, params.memory, params.parallelism, uint32(len(hash)))
 
 	if subtle.ConstantTimeCompare(hash, computed) != 1 {
-		return ErrInvalidClient
+		return fosite.ErrInvalidClient
 	}
 	return nil
 }
