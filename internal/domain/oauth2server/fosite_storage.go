@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 // FositeStorage wraps project repositories to implement fosite storage interfaces.
 type FositeStorage struct {
 	codeRepo  ports.AuthorizationCodeRepository
+	pkceRepo  ports.PKCESessionRepository
 	agentRepo ports.AgentRepository
 	credRepo  ports.BrokerClientCredentialRepository
 	logger    *slog.Logger
@@ -26,12 +28,14 @@ type FositeStorage struct {
 // NewFositeStorage creates a new FositeStorage wrapping our repositories.
 func NewFositeStorage(
 	codeRepo ports.AuthorizationCodeRepository,
+	pkceRepo ports.PKCESessionRepository,
 	agentRepo ports.AgentRepository,
 	credRepo ports.BrokerClientCredentialRepository,
 	logger *slog.Logger,
 ) *FositeStorage {
 	return &FositeStorage{
 		codeRepo:  codeRepo,
+		pkceRepo:  pkceRepo,
 		agentRepo: agentRepo,
 		credRepo:  credRepo,
 		logger:    logger,
@@ -177,19 +181,35 @@ func (s *FositeStorage) RevokeAccessToken(_ context.Context, _ string) error {
 	return nil
 }
 
-// CreatePKCERequestSession stores PKCE data (stored alongside the authorization code).
-func (s *FositeStorage) CreatePKCERequestSession(_ context.Context, _ string, _ fosite.Requester) error {
-	return nil // PKCE data is stored in the authorization code record
+// CreatePKCERequestSession stores the PKCE code challenge in a dedicated store keyed by code signature.
+func (s *FositeStorage) CreatePKCERequestSession(ctx context.Context, signature string, req fosite.Requester) error {
+	session := &storage.PKCESession{
+		Signature:           signature,
+		CodeChallenge:       req.GetRequestForm().Get("code_challenge"),
+		CodeChallengeMethod: req.GetRequestForm().Get("code_challenge_method"),
+		ExpiresAt:           req.GetSession().GetExpiresAt(fosite.AuthorizeCode),
+		CreatedAt:           time.Now(),
+	}
+	return s.pkceRepo.Create(ctx, session)
 }
 
-// GetPKCERequestSession retrieves PKCE data.
-func (s *FositeStorage) GetPKCERequestSession(ctx context.Context, signature string, session fosite.Session) (fosite.Requester, error) {
-	return s.GetAuthorizeCodeSession(ctx, signature, session)
+// GetPKCERequestSession retrieves the PKCE challenge for verifying the code verifier at the token endpoint.
+func (s *FositeStorage) GetPKCERequestSession(ctx context.Context, signature string, _ fosite.Session) (fosite.Requester, error) {
+	session, err := s.pkceRepo.FindBySignature(ctx, signature)
+	if err != nil {
+		return nil, s.mapStorageError(ctx, err)
+	}
+	return &fosite.Request{
+		Form: url.Values{
+			"code_challenge":        {session.CodeChallenge},
+			"code_challenge_method": {session.CodeChallengeMethod},
+		},
+	}, nil
 }
 
-// DeletePKCERequestSession deletes PKCE data.
-func (s *FositeStorage) DeletePKCERequestSession(_ context.Context, _ string) error {
-	return nil // Cleaned up with authorization code
+// DeletePKCERequestSession removes the PKCE session after successful token exchange (one-shot).
+func (s *FositeStorage) DeletePKCERequestSession(ctx context.Context, signature string) error {
+	return s.pkceRepo.Delete(ctx, signature)
 }
 
 // GetClient satisfies the fosite.Storage interface. It is not called in the normal flow;

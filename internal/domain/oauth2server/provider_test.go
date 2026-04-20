@@ -30,6 +30,7 @@ func newTestProvider(t *testing.T) *Provider {
 
 	provider, err := NewProvider(
 		codeRepo,
+		memory.NewPKCESessionStore(),
 		credRepo,
 		agentRepo,
 		signingKeyRepo,
@@ -670,7 +671,7 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 		enc := &testEncryptor{}
 		logger := testSlogger()
 
-		p, err := NewProvider(codeRepo, credRepo, agentRepo, signingKeyRepo, enc,
+		p, err := NewProvider(codeRepo, memory.NewPKCESessionStore(), credRepo, agentRepo, signingKeyRepo, enc,
 			"https://broker.example.com", time.Hour, expr, logger)
 		require.NoError(t, err)
 

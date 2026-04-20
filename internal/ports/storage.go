@@ -308,3 +308,20 @@ type AuthorizationCodeRepository interface {
 	// DeleteExpired removes expired authorization codes. Returns the count of deleted codes.
 	DeleteExpired(ctx context.Context) (int, error)
 }
+
+// PKCESessionRepository stores the PKCE challenge for pending authorization codes.
+// The signature (fosite code signature) is the primary key; sessions are one-shot
+// and deleted immediately after the token endpoint consumes them.
+type PKCESessionRepository interface {
+	// Create stores a PKCE session keyed by fosite code signature.
+	Create(ctx context.Context, session *storage.PKCESession) error
+
+	// FindBySignature retrieves a PKCE session by its code signature.
+	FindBySignature(ctx context.Context, signature string) (*storage.PKCESession, error)
+
+	// Delete removes a PKCE session by its code signature.
+	Delete(ctx context.Context, signature string) error
+
+	// DeleteExpired removes PKCE sessions whose authorization codes have expired.
+	DeleteExpired(ctx context.Context) (int, error)
+}

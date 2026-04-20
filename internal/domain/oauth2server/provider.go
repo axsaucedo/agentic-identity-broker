@@ -38,6 +38,7 @@ type Provider struct {
 // NewProvider constructs the OAuth2 server provider with fosite handlers.
 func NewProvider(
 	codeRepo ports.AuthorizationCodeRepository,
+	pkceRepo ports.PKCESessionRepository,
 	credRepo ports.BrokerClientCredentialRepository,
 	agentRepo ports.AgentRepository,
 	signingKeyRepo ports.SigningKeyRepository,
@@ -65,7 +66,7 @@ func NewProvider(
 	codeStrategy := &RandomCodeStrategy{}
 
 	// Storage adapters
-	storage := NewFositeStorage(codeRepo, agentRepo, credRepo, logger)
+	storage := NewFositeStorage(codeRepo, pkceRepo, agentRepo, credRepo, logger)
 
 	config := &fosite.Config{
 		AuthorizeCodeLifespan:          60 * time.Second,

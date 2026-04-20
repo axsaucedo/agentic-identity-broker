@@ -596,6 +596,7 @@ func (b *Builder) Build() (*App, error) {
 		// Construct the OAuth2 server provider for local token minting
 		provider, err := oauth2server.NewProvider(
 			b.storage.AuthorizationCodes(),
+			b.storage.PKCESessions(),
 			b.storage.BrokerCredentials(),
 			b.storage.Agents(),
 			b.storage.SigningKeys(),

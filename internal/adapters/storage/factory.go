@@ -33,6 +33,7 @@ type Adapter struct {
 	brokerCredentials  ports.BrokerClientCredentialRepository
 	signingKeys        ports.SigningKeyRepository
 	authorizationCodes ports.AuthorizationCodeRepository
+	pkceSessions       ports.PKCESessionRepository
 }
 
 // NewAdapter creates a storage adapter based on configuration.
@@ -73,6 +74,7 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		brokerCredentials:  memory.NewBrokerClientCredentialStore(),
 		signingKeys:        memory.NewSigningKeyStore(),
 		authorizationCodes: memory.NewAuthorizationCodeStore(),
+		pkceSessions:       memory.NewPKCESessionStore(),
 	}, nil
 }
 
@@ -96,6 +98,7 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		brokerCredentials:  postgres.NewBrokerClientCredentialRepo(pgAdapter),
 		signingKeys:        postgres.NewSigningKeyRepo(pgAdapter),
 		authorizationCodes: postgres.NewAuthorizationCodeRepo(pgAdapter),
+		pkceSessions:       postgres.NewPKCESessionRepo(pgAdapter),
 	}, nil
 }
 
@@ -182,4 +185,9 @@ func (a *Adapter) SigningKeys() ports.SigningKeyRepository {
 // AuthorizationCodes returns the AuthorizationCodeRepository interface implementation.
 func (a *Adapter) AuthorizationCodes() ports.AuthorizationCodeRepository {
 	return a.authorizationCodes
+}
+
+// PKCESessions returns the PKCESessionRepository interface implementation.
+func (a *Adapter) PKCESessions() ports.PKCESessionRepository {
+	return a.pkceSessions
 }
