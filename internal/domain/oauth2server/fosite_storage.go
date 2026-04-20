@@ -226,8 +226,14 @@ func (s *FositeStorage) DeletePKCERequestSession(ctx context.Context, signature 
 	return s.pkceRepo.Delete(ctx, signature)
 }
 
-// GetClient satisfies the fosite.Storage interface. It is not called in the normal flow;
-// broker code uses buildClient(agentID) or Authenticate(agentID) directly.
+// GetClient satisfies the fosite.Storage interface.
+// This broker uses fosite in library mode: Provider pre-resolves the client via buildClient or
+// Authenticate before constructing the fosite request with req.Client already set. fosite's
+// grant handlers (AuthorizeExplicitGrantHandler, pkce.Handler, ClientCredentialsGrantHandler)
+// therefore never call GetClient — they consume the pre-populated req.Client or the client
+// embedded in GetAuthorizeCodeSession's return value. GetClient would only be called in
+// fosite's framework mode (fosite.Provider.NewAuthorizeRequest / NewAccessRequest), which
+// this code does not use.
 // clientID is expected to be the agent UUID, consistent with brokerClient.GetID().
 func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.Client, error) {
 	agentID, err := id.ParseAgentID(clientID)
