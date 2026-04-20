@@ -113,6 +113,7 @@ func TestTokenExchanger_TLS_InsecureSkipVerify_ConnectsToSelfSignedServer(t *tes
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -162,6 +163,7 @@ func TestTokenExchanger_TLS_NoInsecureSkipVerify_SelfSignedFails(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -230,6 +232,7 @@ func TestTokenExchanger_TLS_CaBundlePath_AllowsCustomCA(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -280,6 +283,7 @@ func TestTokenExchanger_TLS_CaBundlePath_WrongCA_Fails(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -344,10 +348,7 @@ func encodeBase64Lines(data []byte) []byte {
 	// Add line breaks every 64 chars
 	var result []byte
 	for i := 0; i < len(encoded); i += 64 {
-		end := i + 64
-		if end > len(encoded) {
-			end = len(encoded)
-		}
+		end := min(i+64, len(encoded))
 		result = append(result, encoded[i:end]...)
 		result = append(result, '\n')
 	}

@@ -103,6 +103,24 @@ log:
   # Type: string (text|json)
   # Default: "text"
   format: "text"
+
+# Circuit breaker settings for token exchange HTTP calls
+# Only 5xx server errors trip the circuit; 4xx client errors are excluded.
+circuit_breaker:
+  # Enable or disable the circuit breaker
+  # Type: boolean
+  # Default: true
+  enabled: true
+
+  # Consecutive 5xx failures before the circuit opens
+  # Type: integer (>= 1, validated only when enabled)
+  # Default: 5
+  max_failures: 5
+
+  # Duration the circuit stays open before allowing a probe
+  # Type: duration string (e.g., "30s")
+  # Default: "30s"
+  reset_timeout: "30s"
 ```
 
 ## Environment Variable Mapping
@@ -125,6 +143,9 @@ log:
 | `cache.max_ttl` | `EXTPROC_CACHE_MAX_TTL` | Maximum cache TTL cap |
 | `log.level` | `EXTPROC_LOG_LEVEL` | Log level |
 | `log.format` | `EXTPROC_LOG_FORMAT` | Log format |
+| `circuit_breaker.enabled` | `EXTPROC_CIRCUIT_BREAKER_ENABLED` | Enable/disable circuit breaker |
+| `circuit_breaker.max_failures` | `EXTPROC_CIRCUIT_BREAKER_MAX_FAILURES` | Consecutive 5xx failures before opening circuit |
+| `circuit_breaker.reset_timeout` | `EXTPROC_CIRCUIT_BREAKER_RESET_TIMEOUT` | Duration in open state before probing |
 
 ## Validation Rules
 
@@ -140,6 +161,11 @@ log:
 8. `oauth2.token_endpoint` and `oauth2.issuer` must use `https://` scheme unless `oauth2.tls.allow_http: true` is set
 9. `cache.max_ttl` must be a positive duration
 10. `oauth2.exchange_timeout` must be a positive duration
+11. `log.level` must be one of `debug`, `info`, `warn`, `error`
+12. `log.format` must be one of `text`, `json`
+13. `oauth2.client_assertion_type` must be one of `id_token`, `access_token`
+14. `circuit_breaker.max_failures` must be >= 1 (only validated when `circuit_breaker.enabled` is `true`)
+15. `circuit_breaker.reset_timeout` must be a positive duration (only validated when `circuit_breaker.enabled` is `true`)
 
 ### Security
 

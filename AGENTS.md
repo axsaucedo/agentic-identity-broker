@@ -155,6 +155,16 @@ Use `just` command runner for all tasks. Run `just --list` for full listing.
 just check  # fmt → vet → lint → test — all must pass
 ```
 
+## Code Style
+
+These rules apply to all code in the monorepo (Go, TypeScript, CDK).
+
+- **Minimize comments.** Add one only when it provides context that the code itself cannot convey.
+- **Comments must never restate what the code already says.** If removing the comment would not confuse a future reader, do not write it.
+- **No debug artifacts in committed code.** Never leave debug logging, commented-out code, TODO stubs, or references to future implementations unless explicitly asked.
+- **Match the style of surrounding code.** Naming conventions, error handling patterns, and file structure must be consistent with adjacent code.
+- **Prefer explicit over clever.** Reviewers (human and AI) must understand intent immediately without tracing abstractions.
+
 ## Database Migrations
 
 Migrations live in `/migrations/` and use the go-migrate naming convention (`NNN_description.{up,down}.sql`).

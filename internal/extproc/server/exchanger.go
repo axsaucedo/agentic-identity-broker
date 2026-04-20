@@ -139,8 +139,14 @@ func NewTokenExchanger(cfg *extprocconfig.Config, logger *slog.Logger) (*TokenEx
 		client: httpClient,
 		logger: logger,
 		cache:  make(map[tokenCacheKey]*cachedToken),
-		cb:     newGobreakerCB(cfg, logger),
 		stopCh: make(chan struct{}),
+	}
+
+	// Only create the circuit breaker when enabled (default: true).
+	if cfg.CircuitBreaker.Enabled {
+		te.cb = newGobreakerCB(cfg, logger)
+	} else {
+		logger.Info("circuit breaker disabled by configuration")
 	}
 
 	// Fail-fast: acquire initial client assertion at startup.
@@ -169,7 +175,7 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 
 	// Slow path: singleflight-deduplicated exchange.
 	sfKey := subjectToken + "\x00" + resourceURI
-	result, err, _ := te.sfGroup.Do(sfKey, func() (interface{}, error) {
+	result, err, _ := te.sfGroup.Do(sfKey, func() (any, error) {
 		// Re-check cache inside singleflight to handle races.
 		te.cacheMu.RLock()
 		if entry, ok := te.cache[key]; ok && !entry.isExpired() {
@@ -178,12 +184,8 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 		}
 		te.cacheMu.RUnlock()
 
-		// Circuit breaker: wrap doExchange in gobreaker.Execute so that
-		// gobreaker tracks successes/failures and opens/closes automatically.
-		// gobreaker returns ErrOpenState when the circuit is open, or
-		// ErrTooManyRequests when the half-open probe slot is taken.
-		// Both are mapped to ErrCircuitOpen for callers.
-		token, err := te.cb.Execute(func() (string, error) {
+		// doExchangeAndCache performs the exchange and caches the result.
+		doExchangeAndCache := func() (string, error) {
 			tok, ttl, err := te.doExchange(subjectToken, resourceURI)
 			if err != nil {
 				return "", err
@@ -197,7 +199,19 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 			te.cacheMu.Unlock()
 
 			return tok, nil
-		})
+		}
+
+		// When the circuit breaker is disabled (cb == nil), call doExchange directly.
+		// When enabled, wrap in gobreaker.Execute so that gobreaker tracks
+		// successes/failures and opens/closes automatically.
+		// gobreaker returns ErrOpenState when the circuit is open, or
+		// ErrTooManyRequests when the half-open probe slot is taken.
+		// Both are mapped to ErrCircuitOpen for callers.
+		if te.cb == nil {
+			return doExchangeAndCache()
+		}
+
+		token, err := te.cb.Execute(doExchangeAndCache)
 		if err != nil {
 			if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
 				return "", ErrCircuitOpen
@@ -209,7 +223,11 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 	if err != nil {
 		return "", err
 	}
-	return result.(string), nil
+	tok, ok := result.(string)
+	if !ok {
+		return "", fmt.Errorf("singleflight: unexpected result type %T", result)
+	}
+	return tok, nil
 }
 
 // Shutdown signals the background goroutine to stop and releases resources.
@@ -288,10 +306,19 @@ func (te *TokenExchanger) doExchange(subjectToken, resourceURI string) (string, 
 				ErrorURI:    errBody.ErrorURI,
 			}
 		}
+		// Body is absent or not an RFC 8693 error — still return a typed error
+		// carrying the HTTP status code so isServerError can correctly classify
+		// 4xx responses without a parseable error body as client errors.
+		te.logger.Debug("token exchange non-200 response body is not RFC 8693 JSON",
+			"status", resp.StatusCode,
+			"resource", resourceURI)
 		te.logger.Warn("token exchange returned non-200",
 			"status", resp.StatusCode,
 			"resource", resourceURI)
-		return "", 0, fmt.Errorf("token exchange returned status %d", resp.StatusCode)
+		return "", 0, &BrokerExchangeError{
+			StatusCode: resp.StatusCode,
+			Code:       fmt.Sprintf("http_%d", resp.StatusCode),
+		}
 	}
 
 	var exResp tokenExchangeResponse
@@ -378,18 +405,8 @@ func (te *TokenExchanger) refreshClientAssertion() error {
 //   - Assertion refresh: fires every min(DefaultTTL/2, 30s) (floor 1s) to proactively renew
 //     the client assertion before expiry, independent of the eviction cadence.
 func (te *TokenExchanger) runEviction() {
-	evictInterval := te.cfg.Cache.DefaultTTL / 2
-	if evictInterval < time.Second {
-		evictInterval = time.Second
-	}
-
-	assertionInterval := te.cfg.Cache.DefaultTTL / 2
-	if assertionInterval < time.Second {
-		assertionInterval = time.Second
-	}
-	if assertionInterval > 30*time.Second {
-		assertionInterval = 30 * time.Second
-	}
+	evictInterval := max(te.cfg.Cache.DefaultTTL/2, time.Second)
+	assertionInterval := min(max(te.cfg.Cache.DefaultTTL/2, time.Second), 30*time.Second)
 
 	evictTicker := time.NewTicker(evictInterval)
 	assertionTicker := time.NewTicker(assertionInterval)
@@ -434,10 +451,7 @@ func (te *TokenExchanger) maybeRefreshAssertion() {
 		// Fall back to hard floor when lifetime is unknown.
 		lifetime = 0
 	}
-	threshold := lifetime / 5 // 20% of lifetime
-	if threshold < 30*time.Second {
-		threshold = 30 * time.Second
-	}
+	threshold := max(lifetime/5, 30*time.Second) // 20% of lifetime, floor 30s
 
 	if remaining := time.Until(s.expiresAt); remaining < threshold {
 		if err := te.refreshClientAssertion(); err != nil {

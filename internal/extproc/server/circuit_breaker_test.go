@@ -45,6 +45,7 @@ const eventuallyPollInterval = 20 * time.Millisecond
 func circuitBreakerConfig(m *mockServers, maxFailures int, resetTimeout time.Duration) *extprocconfig.Config {
 	cfg := configForMocks(m)
 	cfg.CircuitBreaker = extprocconfig.CircuitBreakerConfig{
+		Enabled:      true,
 		MaxFailures:  maxFailures,
 		ResetTimeout: resetTimeout,
 	}
@@ -70,7 +71,7 @@ func TestCircuitBreaker_OpensAfterMaxFailures(t *testing.T) {
 	defer exchanger.Shutdown()
 
 	// Trigger max_failures consecutive errors (each with a unique key to avoid singleflight caching errors)
-	for i := 0; i < maxFailures; i++ {
+	for i := range maxFailures {
 		_, err := exchanger.Exchange(fmt.Sprintf("token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
 		assert.Error(t, err, "exchange %d should fail", i)
 		assert.NotErrorIs(t, err, server.ErrCircuitOpen,
@@ -110,13 +111,13 @@ func TestCircuitBreaker_OpenCircuit_RejectsImmediately(t *testing.T) {
 	defer exchanger.Shutdown()
 
 	// Trip the circuit
-	for i := 0; i < maxFailures; i++ {
+	for i := range maxFailures {
 		_, _ = exchanger.Exchange(fmt.Sprintf("token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
 	}
 	callsAfterTrip := atomic.LoadInt64(&backendCalls)
 
 	// Additional calls must NOT hit the backend
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_, err := exchanger.Exchange(fmt.Sprintf("token-open-%d", i), fmt.Sprintf("http://resource.example.com/open-%d", i))
 		assert.ErrorIs(t, err, server.ErrCircuitOpen)
 	}
@@ -145,7 +146,7 @@ func TestCircuitBreaker_HalfOpen_SuccessfulProbe_ClosesCircuit(t *testing.T) {
 	// Trip the circuit with failures
 	mocks.exchangeStatus = http.StatusInternalServerError
 	mocks.exchangeErrCode = "server_error"
-	for i := 0; i < maxFailures; i++ {
+	for i := range maxFailures {
 		_, _ = exchanger.Exchange(fmt.Sprintf("token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
 	}
 
@@ -201,7 +202,7 @@ func TestCircuitBreaker_HalfOpen_FailedProbe_ReopensCircuit(t *testing.T) {
 	// Trip the circuit
 	mocks.exchangeStatus = http.StatusInternalServerError
 	mocks.exchangeErrCode = "server_error"
-	for i := 0; i < maxFailures; i++ {
+	for i := range maxFailures {
 		_, _ = exchanger.Exchange(fmt.Sprintf("token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
 	}
 
@@ -252,7 +253,7 @@ func TestCircuitBreaker_CacheHit_BypassesCircuitBreaker(t *testing.T) {
 	// Trip the circuit with failures on different keys
 	mocks.exchangeStatus = http.StatusInternalServerError
 	mocks.exchangeErrCode = "server_error"
-	for i := 0; i < maxFailures; i++ {
+	for i := range maxFailures {
 		_, _ = exchanger.Exchange(fmt.Sprintf("fail-token-%d", i), fmt.Sprintf("http://resource.example.com/fail-%d", i))
 	}
 
@@ -281,7 +282,7 @@ func TestCircuitBreaker_SuccessResetsFailureCount(t *testing.T) {
 	// 2 failures (under threshold)
 	mocks.exchangeStatus = http.StatusInternalServerError
 	mocks.exchangeErrCode = "server_error"
-	for i := 0; i < maxFailures-1; i++ {
+	for i := range maxFailures - 1 {
 		_, _ = exchanger.Exchange(fmt.Sprintf("token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
 	}
 
@@ -294,7 +295,7 @@ func TestCircuitBreaker_SuccessResetsFailureCount(t *testing.T) {
 	// 2 more failures — should NOT trip because count was reset
 	mocks.exchangeStatus = http.StatusInternalServerError
 	mocks.exchangeErrCode = "server_error"
-	for i := 0; i < maxFailures-1; i++ {
+	for i := range maxFailures - 1 {
 		_, err := exchanger.Exchange(fmt.Sprintf("token-after-%d", i), fmt.Sprintf("http://resource.example.com/after-%d", i))
 		assert.Error(t, err)
 		assert.NotErrorIs(t, err, server.ErrCircuitOpen,
@@ -356,6 +357,7 @@ func TestCircuitBreaker_ConcurrentAccess_RaceFree(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  10, // high threshold to avoid opening during test
 			ResetTimeout: 30 * time.Second,
 		},
@@ -366,7 +368,7 @@ func TestCircuitBreaker_ConcurrentAccess_RaceFree(t *testing.T) {
 	defer exchanger.Shutdown()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -407,4 +409,265 @@ func TestServer_Process_CircuitOpen_Returns503(t *testing.T) {
 		"circuit open must return HTTP 503")
 	assert.Contains(t, string(immResp.ImmediateResponse.Body),
 		"circuit breaker", "error body must mention circuit breaker")
+}
+
+// ---------------------------------------------------------------------------
+// Circuit breaker: 4xx client errors do NOT trip the circuit
+// ---------------------------------------------------------------------------
+
+// 4xx broker errors (e.g., invalid subject token → 400/401) are client errors and must
+// NOT count towards the circuit breaker failure threshold. Only 5xx server errors trip it.
+func TestCircuitBreaker_4xxErrors_DoNotTripCircuit(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	const maxFailures = 2
+	cfg := circuitBreakerConfig(mocks, maxFailures, 30*time.Second)
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	// Return 400 Bad Request (e.g., invalid_grant for an invalid subject token)
+	mocks.exchangeStatus = http.StatusBadRequest
+	mocks.exchangeErrCode = "invalid_grant"
+
+	// Send more than maxFailures requests with 4xx errors
+	for i := range maxFailures + 3 {
+		_, err := exchanger.Exchange(fmt.Sprintf("bad-token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
+		assert.Error(t, err, "exchange %d should fail", i)
+		assert.NotErrorIs(t, err, server.ErrCircuitOpen,
+			"exchange %d: 4xx error must NOT trip circuit breaker", i)
+	}
+}
+
+// 401 Unauthorized responses (e.g., expired or revoked subject token) must not trip the circuit.
+func TestCircuitBreaker_401Unauthorized_DoesNotTripCircuit(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	const maxFailures = 2
+	cfg := circuitBreakerConfig(mocks, maxFailures, 30*time.Second)
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	mocks.exchangeStatus = http.StatusUnauthorized
+	mocks.exchangeErrCode = "invalid_token"
+
+	for i := range maxFailures + 3 {
+		_, err := exchanger.Exchange(fmt.Sprintf("expired-token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
+		assert.Error(t, err, "exchange %d should fail", i)
+		assert.NotErrorIs(t, err, server.ErrCircuitOpen,
+			"exchange %d: 401 error must NOT trip circuit breaker", i)
+	}
+}
+
+// 5xx errors still trip the circuit as before.
+func TestCircuitBreaker_5xxErrors_StillTripCircuit(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	const maxFailures = 2
+	cfg := circuitBreakerConfig(mocks, maxFailures, 30*time.Second)
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+
+	for i := range maxFailures {
+		_, _ = exchanger.Exchange(fmt.Sprintf("token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
+	}
+
+	// Circuit should now be open
+	_, err = exchanger.Exchange("token-after-trip", "http://resource.example.com/after")
+	assert.ErrorIs(t, err, server.ErrCircuitOpen,
+		"5xx errors must still trip the circuit breaker")
+}
+
+// Mixed 4xx and 5xx: 4xx in between 5xx errors resets consecutive failure count.
+func TestCircuitBreaker_4xxBetween5xx_DoesNotCountAsFailure(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	const maxFailures = 3
+	cfg := circuitBreakerConfig(mocks, maxFailures, 30*time.Second)
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	// 2 consecutive 5xx errors (under threshold)
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+	for i := range maxFailures - 1 {
+		_, _ = exchanger.Exchange(fmt.Sprintf("token-5xx-%d", i), fmt.Sprintf("http://resource.example.com/5xx-%d", i))
+	}
+
+	// 1 x 4xx error — counts as success for circuit breaker, resets failure counter
+	mocks.exchangeStatus = http.StatusBadRequest
+	mocks.exchangeErrCode = "invalid_grant"
+	_, err = exchanger.Exchange("token-4xx", "http://resource.example.com/4xx")
+	assert.Error(t, err, "4xx should still return an error to the caller")
+	assert.NotErrorIs(t, err, server.ErrCircuitOpen)
+
+	// 2 more 5xx errors — should NOT trip because failure count was reset by 4xx
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+	for i := range maxFailures - 1 {
+		_, err := exchanger.Exchange(fmt.Sprintf("token-after-%d", i), fmt.Sprintf("http://resource.example.com/after-%d", i))
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, server.ErrCircuitOpen,
+			"circuit should not be open — failure count was reset by 4xx success")
+	}
+}
+
+// isServerError classifies errors for circuit-breaker purposes.
+// These tests verify the exact boundary conditions, including the zero-value case.
+func TestIsServerError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil error", nil, false},
+		{"generic non-broker error", errors.New("network timeout"), true},
+		{"status 0 (zero-value BrokerExchangeError)", &server.BrokerExchangeError{StatusCode: 0}, false},
+		{"status 200", &server.BrokerExchangeError{StatusCode: 200}, false},
+		{"status 400", &server.BrokerExchangeError{StatusCode: 400}, false},
+		{"status 401", &server.BrokerExchangeError{StatusCode: 401}, false},
+		{"status 404", &server.BrokerExchangeError{StatusCode: 404}, false},
+		{"status 499", &server.BrokerExchangeError{StatusCode: 499}, false},
+		{"status 500", &server.BrokerExchangeError{StatusCode: 500}, true},
+		{"status 503", &server.BrokerExchangeError{StatusCode: 503}, true},
+		{"wrapped broker error 400", fmt.Errorf("wrapped: %w", &server.BrokerExchangeError{StatusCode: 400}), false},
+		{"wrapped broker error 500", fmt.Errorf("wrapped: %w", &server.BrokerExchangeError{StatusCode: 500}), true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, server.IsServerError(tc.err))
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Circuit breaker: disabled mode bypasses circuit entirely
+// ---------------------------------------------------------------------------
+
+// When circuit_breaker.enabled is false, exchanges bypass the circuit breaker.
+// Backend failures never trigger ErrCircuitOpen.
+func TestCircuitBreaker_Disabled_NeverTrips(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	cfg := configForMocks(mocks)
+	cfg.CircuitBreaker = extprocconfig.CircuitBreakerConfig{
+		Enabled: false,
+		// MaxFailures and ResetTimeout are irrelevant when disabled.
+	}
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	// Return 500 for all requests
+	mocks.exchangeStatus = http.StatusInternalServerError
+	mocks.exchangeErrCode = "server_error"
+
+	// Many consecutive failures should NOT produce ErrCircuitOpen
+	for i := range 20 {
+		_, err := exchanger.Exchange(fmt.Sprintf("token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
+		assert.Error(t, err, "exchange %d should fail with backend error", i)
+		assert.NotErrorIs(t, err, server.ErrCircuitOpen,
+			"exchange %d: disabled circuit breaker must never produce ErrCircuitOpen", i)
+	}
+}
+
+// When circuit_breaker.enabled is false, successful exchanges still work normally.
+func TestCircuitBreaker_Disabled_SuccessfulExchangeWorks(t *testing.T) {
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	cfg := configForMocks(mocks)
+	cfg.CircuitBreaker = extprocconfig.CircuitBreakerConfig{
+		Enabled: false,
+	}
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	token, err := exchanger.Exchange("valid-token", "http://resource.example.com/api")
+	require.NoError(t, err)
+	assert.Equal(t, "exchanged-access-token", token)
+}
+
+// ---------------------------------------------------------------------------
+// Circuit breaker: 4xx without RFC 8693 error body do NOT trip the circuit
+// ---------------------------------------------------------------------------
+
+// When a broker responds with 4xx but no parseable RFC 8693 error body (empty
+// "error" field or completely empty/non-JSON body), the exchange returns a typed
+// BrokerExchangeError with the HTTP status code. isServerError classifies these
+// as client errors, so the circuit must NOT trip.
+
+// 4xx with an empty "error" field in the response body (no RFC 8693 error code).
+func TestCircuitBreaker_4xxEmptyErrorField_DoesNotTripCircuit(t *testing.T) {
+	// Serve 4xx with body `{"error":""}` — errBody.Code will be "" after parse,
+	// which triggers the fallback BrokerExchangeError path in doExchange.
+	exchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprint(w, `{"error":""}`)
+	}))
+	defer exchServer.Close()
+
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	const maxFailures = 2
+	cfg := circuitBreakerConfig(mocks, maxFailures, 30*time.Second)
+	cfg.OAuth2.TokenEndpoint = exchServer.URL + "/oauth2/token"
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	// More than maxFailures 4xx requests — circuit must stay closed.
+	for i := range maxFailures + 3 {
+		_, err := exchanger.Exchange(fmt.Sprintf("bad-token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
+		assert.Error(t, err, "exchange %d should fail", i)
+		assert.NotErrorIs(t, err, server.ErrCircuitOpen,
+			"exchange %d: 4xx with empty error field must NOT trip circuit breaker", i)
+	}
+}
+
+// 4xx with a completely empty response body does NOT trip the circuit.
+func TestCircuitBreaker_4xxEmptyBody_DoesNotTripCircuit(t *testing.T) {
+	exchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		// Write nothing — the broker returned a 401 with no body.
+	}))
+	defer exchServer.Close()
+
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	const maxFailures = 2
+	cfg := circuitBreakerConfig(mocks, maxFailures, 30*time.Second)
+	cfg.OAuth2.TokenEndpoint = exchServer.URL + "/oauth2/token"
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	for i := range maxFailures + 3 {
+		_, err := exchanger.Exchange(fmt.Sprintf("expired-token-%d", i), fmt.Sprintf("http://resource.example.com/%d", i))
+		assert.Error(t, err, "exchange %d should fail", i)
+		assert.NotErrorIs(t, err, server.ErrCircuitOpen,
+			"exchange %d: 4xx with empty body must NOT trip circuit breaker", i)
+	}
 }

@@ -35,6 +35,7 @@ func validConfig() *config.Config {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: config.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -266,6 +267,23 @@ func TestValidate(t *testing.T) {
 			wantErr:     true,
 			errContains: "circuit_breaker.reset_timeout",
 		},
+		// Disabled circuit breaker: rules 14-15 are skipped
+		{
+			name: "disabled circuit breaker: zero max_failures is valid",
+			mutate: func(c *config.Config) {
+				c.CircuitBreaker.Enabled = false
+				c.CircuitBreaker.MaxFailures = 0
+			},
+			wantErr: false,
+		},
+		{
+			name: "disabled circuit breaker: zero reset_timeout is valid",
+			mutate: func(c *config.Config) {
+				c.CircuitBreaker.Enabled = false
+				c.CircuitBreaker.ResetTimeout = 0
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -318,6 +336,7 @@ func TestLoadFromViper_Defaults(t *testing.T) {
 	assert.Equal(t, "", cfg.OAuth2.TLS.CaBundlePath)
 	assert.Equal(t, 5, cfg.CircuitBreaker.MaxFailures)
 	assert.Equal(t, 30*time.Second, cfg.CircuitBreaker.ResetTimeout)
+	assert.True(t, cfg.CircuitBreaker.Enabled, "circuit breaker should be enabled by default")
 }
 
 func TestLoadFromViper_EnvVarExpansion(t *testing.T) {
