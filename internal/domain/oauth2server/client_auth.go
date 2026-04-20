@@ -89,7 +89,6 @@ func (s *ClientAuthService) logStorageFailure(ctx context.Context, err error) {
 // GenerateCredentials generates a new broker client ID and secret.
 // Returns the plaintext secret (shown once to the user) and the credential for storage.
 func (s *ClientAuthService) GenerateCredentials(agentID id.AgentID) (credential *storage.BrokerClientCredential, plaintextSecret string, err error) {
-	// Generate broker_client_id: "broker_" + 22 chars base64url
 	randomBytes := make([]byte, brokerClientIDRandomBytes)
 	if _, err := rand.Read(randomBytes); err != nil {
 		return nil, "", fmt.Errorf("failed to generate client ID: %w", err)
@@ -110,10 +109,10 @@ func (s *ClientAuthService) GenerateCredentials(agentID id.AgentID) (credential 
 	}
 
 	credential = &storage.BrokerClientCredential{
-		ID:             id.NewCredentialID(),
-		AgentID:        agentID,
-		BrokerClientID: id.NewBrokerClientID(brokerClientID),
-		SecretHash:     secretHash,
+		ID:         id.NewCredentialID(),
+		AgentID:    agentID,
+		ClientID:   id.NewClientID(brokerClientID),
+		SecretHash: secretHash,
 	}
 
 	return credential, plaintextSecret, nil

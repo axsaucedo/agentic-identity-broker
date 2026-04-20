@@ -63,7 +63,7 @@ var _ = Describe("US1: Client Credential Management (issue_token mode)", func() 
 
 		var body map[string]interface{}
 		Expect(json.NewDecoder(resp.Body).Decode(&body)).ToNot(HaveOccurred())
-		Expect(body).To(HaveKey("broker_client_id"))
+		Expect(body).To(HaveKey("client_id"))
 		Expect(body).To(HaveKey("client_secret"))
 		Expect(body).To(HaveKey("created_at"))
 	})
@@ -86,7 +86,7 @@ var _ = Describe("US1: Client Credential Management (issue_token mode)", func() 
 
 		var body map[string]interface{}
 		Expect(json.NewDecoder(resp.Body).Decode(&body)).ToNot(HaveOccurred())
-		Expect(body).To(HaveKey("broker_client_id"))
+		Expect(body).To(HaveKey("client_id"))
 		Expect(body).To(HaveKey("client_secret"))
 	})
 
@@ -116,7 +116,7 @@ var _ = Describe("US1: Client Credential Management (issue_token mode)", func() 
 
 		var body map[string]interface{}
 		Expect(json.NewDecoder(resp.Body).Decode(&body)).ToNot(HaveOccurred())
-		Expect(body).To(HaveKey("broker_client_id"))
+		Expect(body).To(HaveKey("client_id"))
 		Expect(body).NotTo(HaveKey("client_secret"))
 	})
 })

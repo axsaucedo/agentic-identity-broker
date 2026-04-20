@@ -21,8 +21,8 @@ func bufLogger() (*slog.Logger, *bytes.Buffer) {
 }
 
 type mockCredentialRepo struct {
-	getByAgentIDFunc        func(context.Context, id.AgentID) (*storage.BrokerClientCredential, error)
-	getByBrokerClientIDFunc func(context.Context, id.BrokerClientID) (*storage.BrokerClientCredential, error)
+	getByAgentIDFunc  func(context.Context, id.AgentID) (*storage.BrokerClientCredential, error)
+	getByClientIDFunc func(context.Context, id.ClientID) (*storage.BrokerClientCredential, error)
 }
 
 func (m *mockCredentialRepo) Create(_ context.Context, _ *storage.BrokerClientCredential) error {
@@ -34,9 +34,9 @@ func (m *mockCredentialRepo) GetByAgentID(ctx context.Context, agentID id.AgentI
 	}
 	return nil, storage.NewStorageError("mockCredentialRepo.GetByAgentID", storage.ErrorKindNotFound, nil, "not found")
 }
-func (m *mockCredentialRepo) GetByBrokerClientID(ctx context.Context, clientID id.BrokerClientID) (*storage.BrokerClientCredential, error) {
-	if m.getByBrokerClientIDFunc != nil {
-		return m.getByBrokerClientIDFunc(ctx, clientID)
+func (m *mockCredentialRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error) {
+	if m.getByClientIDFunc != nil {
+		return m.getByClientIDFunc(ctx, clientID)
 	}
 	return nil, nil
 }
@@ -115,15 +115,15 @@ func TestArgon2Hasher_HashAndCompare(t *testing.T) {
 }
 
 func TestClientAuthService_GenerateCredentials(t *testing.T) {
-	t.Run("generates broker_client_id with correct format", func(t *testing.T) {
+	t.Run("generates client_id with correct format", func(t *testing.T) {
 		svc := &ClientAuthService{hasher: &Argon2Hasher{}}
 		cred, secret, err := svc.GenerateCredentials(testAgentID())
 		require.NoError(t, err)
 		require.NotNil(t, cred)
 		require.NotEmpty(t, secret)
 
-		// Verify broker_client_id format
-		clientID := cred.BrokerClientID.String()
+		// Verify client_id format
+		clientID := cred.ClientID.String()
 		assert.True(t, strings.HasPrefix(clientID, "broker_"), "client ID should start with broker_ prefix")
 		assert.Greater(t, len(clientID), len("broker_"), "client ID should have random suffix")
 
@@ -139,7 +139,7 @@ func TestClientAuthService_GenerateCredentials(t *testing.T) {
 		cred2, secret2, err := svc.GenerateCredentials(testAgentID())
 		require.NoError(t, err)
 
-		assert.NotEqual(t, cred1.BrokerClientID, cred2.BrokerClientID)
+		assert.NotEqual(t, cred1.ClientID, cred2.ClientID)
 		assert.NotEqual(t, secret1, secret2)
 	})
 }
@@ -231,10 +231,10 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		credRepo := memory.NewBrokerClientCredentialStore()
 		agentID := id.NewAgentID()
 		cred := &storage.BrokerClientCredential{
-			ID:             id.NewCredentialID(),
-			AgentID:        agentID,
-			BrokerClientID: id.NewBrokerClientID("broker_timeout_test"),
-			SecretHash:     "irrelevant",
+			ID:         id.NewCredentialID(),
+			AgentID:    agentID,
+			ClientID:   id.NewClientID("broker_timeout_test"),
+			SecretHash: "irrelevant",
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))
 
@@ -255,10 +255,10 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		credRepo := memory.NewBrokerClientCredentialStore()
 		agentID := id.NewAgentID()
 		cred := &storage.BrokerClientCredential{
-			ID:             id.NewCredentialID(),
-			AgentID:        agentID,
-			BrokerClientID: id.NewBrokerClientID("broker_nf_agent_test"),
-			SecretHash:     "irrelevant",
+			ID:         id.NewCredentialID(),
+			AgentID:    agentID,
+			ClientID:   id.NewClientID("broker_nf_agent_test"),
+			SecretHash: "irrelevant",
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))
 

@@ -18,7 +18,7 @@ type BrokerClientCredentialStore struct {
 	mu         sync.RWMutex
 	byID       map[id.CredentialID]*storage.BrokerClientCredential
 	byAgentID  map[id.AgentID]*storage.BrokerClientCredential
-	byClientID map[id.BrokerClientID]*storage.BrokerClientCredential
+	byClientID map[id.ClientID]*storage.BrokerClientCredential
 }
 
 // NewBrokerClientCredentialStore creates a new in-memory broker client credential store.
@@ -26,7 +26,7 @@ func NewBrokerClientCredentialStore() *BrokerClientCredentialStore {
 	return &BrokerClientCredentialStore{
 		byID:       make(map[id.CredentialID]*storage.BrokerClientCredential),
 		byAgentID:  make(map[id.AgentID]*storage.BrokerClientCredential),
-		byClientID: make(map[id.BrokerClientID]*storage.BrokerClientCredential),
+		byClientID: make(map[id.ClientID]*storage.BrokerClientCredential),
 	}
 }
 
@@ -38,15 +38,15 @@ func (s *BrokerClientCredentialStore) Create(ctx context.Context, credential *st
 		return storage.NewStorageError("BrokerClientCredentialStore.Create", storage.ErrorKindConflict, nil,
 			fmt.Sprintf("credential already exists for agent %s", credential.AgentID))
 	}
-	if _, exists := s.byClientID[credential.BrokerClientID]; exists {
+	if _, exists := s.byClientID[credential.ClientID]; exists {
 		return storage.NewStorageError("BrokerClientCredentialStore.Create", storage.ErrorKindConflict, nil,
-			fmt.Sprintf("broker_client_id %s already exists", credential.BrokerClientID))
+			fmt.Sprintf("client_id %s already exists", credential.ClientID))
 	}
 
 	cred := *credential
 	s.byID[cred.ID] = &cred
 	s.byAgentID[cred.AgentID] = &cred
-	s.byClientID[cred.BrokerClientID] = &cred
+	s.byClientID[cred.ClientID] = &cred
 	return nil
 }
 
@@ -63,14 +63,14 @@ func (s *BrokerClientCredentialStore) GetByAgentID(ctx context.Context, agentID 
 	return &result, nil
 }
 
-func (s *BrokerClientCredentialStore) GetByBrokerClientID(ctx context.Context, clientID id.BrokerClientID) (*storage.BrokerClientCredential, error) {
+func (s *BrokerClientCredentialStore) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	cred, exists := s.byClientID[clientID]
 	if !exists {
-		return nil, storage.NewStorageError("BrokerClientCredentialStore.GetByBrokerClientID", storage.ErrorKindNotFound, nil,
-			fmt.Sprintf("no credential for broker_client_id %s", clientID))
+		return nil, storage.NewStorageError("BrokerClientCredentialStore.GetByClientID", storage.ErrorKindNotFound, nil,
+			fmt.Sprintf("no credential for client_id %s", clientID))
 	}
 	result := *cred
 	return &result, nil
@@ -88,7 +88,7 @@ func (s *BrokerClientCredentialStore) Delete(ctx context.Context, agentID id.Age
 
 	delete(s.byID, cred.ID)
 	delete(s.byAgentID, cred.AgentID)
-	delete(s.byClientID, cred.BrokerClientID)
+	delete(s.byClientID, cred.ClientID)
 	return nil
 }
 
@@ -102,18 +102,18 @@ func (s *BrokerClientCredentialStore) Rotate(ctx context.Context, agentID id.Age
 			fmt.Sprintf("no existing credential for agent %s", agentID))
 	}
 
-	if _, exists := s.byClientID[newCredential.BrokerClientID]; exists {
+	if _, exists := s.byClientID[newCredential.ClientID]; exists {
 		return storage.NewStorageError("BrokerClientCredentialStore.Rotate", storage.ErrorKindConflict, nil,
-			fmt.Sprintf("broker_client_id %s already exists", newCredential.BrokerClientID))
+			fmt.Sprintf("client_id %s already exists", newCredential.ClientID))
 	}
 
 	// Store new credential first, then remove old — single lock covers both operations.
 	newCred := *newCredential
 	s.byID[newCred.ID] = &newCred
 	s.byAgentID[newCred.AgentID] = &newCred
-	s.byClientID[newCred.BrokerClientID] = &newCred
+	s.byClientID[newCred.ClientID] = &newCred
 
 	delete(s.byID, old.ID)
-	delete(s.byClientID, old.BrokerClientID)
+	delete(s.byClientID, old.ClientID)
 	return nil
 }

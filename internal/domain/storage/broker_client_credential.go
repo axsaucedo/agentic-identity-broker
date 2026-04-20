@@ -10,12 +10,12 @@ import (
 // and bound to exactly one Agent. Lifecycle: created on demand via Admin API,
 // replaced atomically on rotation, cascade-deleted when the associated Agent is deleted.
 type BrokerClientCredential struct {
-	ID             id.CredentialID   `json:"id" db:"id"`
-	AgentID        id.AgentID        `json:"agent_id" db:"agent_id"`
-	BrokerClientID id.BrokerClientID `json:"broker_client_id" db:"broker_client_id"`
-	SecretHash     string            `json:"-" db:"secret_hash"` // Never serialize
-	CreatedAt      time.Time         `json:"created_at" db:"created_at"`
-	RotatedAt      *time.Time        `json:"rotated_at,omitempty" db:"rotated_at"`
+	ID         id.CredentialID `json:"id" db:"id"`
+	AgentID    id.AgentID      `json:"agent_id" db:"agent_id"`
+	ClientID   id.ClientID     `json:"client_id" db:"client_id"`
+	SecretHash string          `json:"-" db:"secret_hash"` // Never serialize
+	CreatedAt  time.Time       `json:"created_at" db:"created_at"`
+	RotatedAt  *time.Time      `json:"rotated_at,omitempty" db:"rotated_at"`
 }
 
 // Validate validates the BrokerClientCredential fields.
@@ -23,8 +23,8 @@ func (c *BrokerClientCredential) Validate() error {
 	if c.AgentID.IsZero() {
 		return NewStorageError("BrokerClientCredential.Validate", ErrorKindValidation, nil, "agent_id is required")
 	}
-	if c.BrokerClientID.IsZero() {
-		return NewStorageError("BrokerClientCredential.Validate", ErrorKindValidation, nil, "broker_client_id is required")
+	if c.ClientID.IsZero() {
+		return NewStorageError("BrokerClientCredential.Validate", ErrorKindValidation, nil, "client_id is required")
 	}
 	if c.SecretHash == "" {
 		return NewStorageError("BrokerClientCredential.Validate", ErrorKindValidation, nil, "secret_hash is required")

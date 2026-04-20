@@ -66,16 +66,16 @@ func (s *FositeStorage) CreateAuthorizeCodeSession(ctx context.Context, code str
 	}
 	session := req.GetSession()
 	authCode := &storage.AuthorizationCode{
-		ID:             id.NewAuthorizationCodeID(),
-		CodeHash:       sha256Hex(code),
-		AgentID:        agentID,
-		BrokerClientID: id.NewBrokerClientID(req.GetRequestForm().Get("client_id")),
-		Principal:      id.NewPrincipal(session.GetSubject()),
-		RedirectURI:    req.GetRequestForm().Get("redirect_uri"),
-		CodeChallenge:  req.GetRequestForm().Get("code_challenge"),
-		Scope:          strings.Join(req.GetRequestedScopes(), " "),
-		ExpiresAt:      session.GetExpiresAt(fosite.AuthorizeCode),
-		CreatedAt:      time.Now(),
+		ID:            id.NewAuthorizationCodeID(),
+		CodeHash:      sha256Hex(code),
+		AgentID:       agentID,
+		ClientID:      id.NewClientID(req.GetRequestForm().Get("client_id")),
+		Principal:     id.NewPrincipal(session.GetSubject()),
+		RedirectURI:   req.GetRequestForm().Get("redirect_uri"),
+		CodeChallenge: req.GetRequestForm().Get("code_challenge"),
+		Scope:         strings.Join(req.GetRequestedScopes(), " "),
+		ExpiresAt:     session.GetExpiresAt(fosite.AuthorizeCode),
+		CreatedAt:     time.Now(),
 	}
 	return s.codeRepo.Create(ctx, authCode)
 }

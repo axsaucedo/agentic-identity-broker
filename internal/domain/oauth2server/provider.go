@@ -225,7 +225,7 @@ func (p *Provider) HandleAuthorize(
 		}
 	}
 
-	// Build fosite authorize request — use broker_client_id as the client_id in the code record
+	// Build fosite authorize request — use client_id as the client_id in the code record
 	session := &fosite.DefaultSession{
 		Subject: principal.String(),
 		ExpiresAt: map[fosite.TokenType]time.Time{
@@ -245,7 +245,7 @@ func (p *Provider) HandleAuthorize(
 		"code_challenge":        {codeChallenge},
 		"code_challenge_method": {"S256"},
 		"response_type":         {responseType},
-		"client_id":             {bc.credential.BrokerClientID.String()},
+		"client_id":             {bc.credential.ClientID.String()},
 		"scope":                 {scope},
 		"state":                 {state},
 	}
@@ -286,12 +286,12 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	}
 
 	// Verify the authenticated client is the one the code was issued to (both agent and credential).
-	// The broker_client_id check catches post-rotation redemption: a new credential should not
+	// The client_id check catches post-rotation redemption: a new credential should not
 	// be able to exchange codes issued to a previous credential for the same agent.
 	if authedClient.Agent.ID != authCode.AgentID {
 		return nil, fmt.Errorf("%w: code was not issued to this client", ErrInvalidGrant)
 	}
-	if authedClient.Credential.BrokerClientID != authCode.BrokerClientID {
+	if authedClient.Credential.ClientID != authCode.ClientID {
 		return nil, fmt.Errorf("%w: code was issued to a different credential", ErrInvalidGrant)
 	}
 

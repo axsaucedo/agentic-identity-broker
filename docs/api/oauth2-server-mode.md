@@ -127,12 +127,12 @@ Issues JWT access tokens. Supports `client_credentials` and `authorization_code`
 
 **Endpoint:** `POST /api/agents/{agent_id}/client-credentials`
 
-Generates a new `broker_client_id` and `client_secret` for the specified agent. The secret is returned once in plaintext and stored as an Argon2id hash. At runtime, agents use `agent.id` (UUID) as `client_id` — `broker_client_id` is internal metadata used for rotation safety.
+Generates a new `client_id` and `client_secret` for the specified agent. The secret is returned once in plaintext and stored as an Argon2id hash. At runtime, agents use `agent.id` (UUID) as `client_id` — `client_id` is internal metadata used for rotation safety.
 
 **Response:** `201 Created`
 ```json
 {
-  "broker_client_id": "broker_a1b2c3d4",
+  "client_id": "broker_a1b2c3d4",
   "client_secret": "bsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "created_at": "2025-01-15T10:00:00Z"
 }
@@ -141,7 +141,7 @@ Generates a new `broker_client_id` and `client_secret` for the specified agent. 
 **Notes:**
 - The `client_secret` is only returned at creation time. Store it securely.
 - Generating new credentials revokes any previous credentials for the agent.
-- Use `agent.id` (UUID) as `client_id` at the token and authorization endpoints, not `broker_client_id`.
+- Use `agent.id` (UUID) as `client_id` at the token and authorization endpoints, not `client_id`.
 
 #### Get Client Credentials Metadata
 
@@ -152,7 +152,7 @@ Returns metadata about the agent's broker-issued credentials (without the secret
 **Response:** `200 OK`
 ```json
 {
-  "broker_client_id": "broker_a1b2c3d4",
+  "client_id": "broker_a1b2c3d4",
   "created_at": "2025-01-15T10:00:00Z"
 }
 ```

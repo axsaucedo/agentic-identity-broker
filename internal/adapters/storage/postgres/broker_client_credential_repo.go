@@ -33,9 +33,9 @@ func (r *BrokerClientCredentialRepo) Create(ctx context.Context, credential *sto
 	defer cancel()
 
 	_, err := r.adapter.db.ExecContext(execCtx,
-		`INSERT INTO broker_client_credentials (id, agent_id, broker_client_id, secret_hash, created_at, rotated_at)
+		`INSERT INTO broker_client_credentials (id, agent_id, client_id, secret_hash, created_at, rotated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		credential.ID, credential.AgentID, credential.BrokerClientID,
+		credential.ID, credential.AgentID, credential.ClientID,
 		credential.SecretHash, credential.CreatedAt, credential.RotatedAt,
 	)
 	if err != nil {
@@ -54,7 +54,7 @@ func (r *BrokerClientCredentialRepo) GetByAgentID(ctx context.Context, agentID i
 
 	var cred storage.BrokerClientCredential
 	err := r.adapter.db.GetContext(queryCtx, &cred,
-		`SELECT id, agent_id, broker_client_id, secret_hash, created_at, rotated_at
+		`SELECT id, agent_id, client_id, secret_hash, created_at, rotated_at
 		 FROM broker_client_credentials WHERE agent_id = $1`, agentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -68,9 +68,9 @@ func (r *BrokerClientCredentialRepo) GetByAgentID(ctx context.Context, agentID i
 	return &cred, nil
 }
 
-func (r *BrokerClientCredentialRepo) GetByBrokerClientID(ctx context.Context, clientID id.BrokerClientID) (*storage.BrokerClientCredential, error) {
+func (r *BrokerClientCredentialRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error) {
 	if r.adapter.db == nil {
-		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindConnection, nil, "database not initialized")
+		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindConnection, nil, "database not initialized")
 	}
 
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
@@ -78,16 +78,16 @@ func (r *BrokerClientCredentialRepo) GetByBrokerClientID(ctx context.Context, cl
 
 	var cred storage.BrokerClientCredential
 	err := r.adapter.db.GetContext(queryCtx, &cred,
-		`SELECT id, agent_id, broker_client_id, secret_hash, created_at, rotated_at
-		 FROM broker_client_credentials WHERE broker_client_id = $1`, clientID)
+		`SELECT id, agent_id, client_id, secret_hash, created_at, rotated_at
+		 FROM broker_client_credentials WHERE client_id = $1`, clientID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindNotFound, err, "credential not found")
+			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindNotFound, err, "credential not found")
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByBrokerClientID", storage.ErrorKindConnection, err, "failed to query credential")
+		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindConnection, err, "failed to query credential")
 	}
 	return &cred, nil
 }
@@ -141,9 +141,9 @@ func (r *BrokerClientCredentialRepo) Rotate(ctx context.Context, agentID id.Agen
 	}
 
 	_, err = tx.ExecContext(execCtx,
-		`INSERT INTO broker_client_credentials (id, agent_id, broker_client_id, secret_hash, created_at, rotated_at)
+		`INSERT INTO broker_client_credentials (id, agent_id, client_id, secret_hash, created_at, rotated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		newCredential.ID, newCredential.AgentID, newCredential.BrokerClientID,
+		newCredential.ID, newCredential.AgentID, newCredential.ClientID,
 		newCredential.SecretHash, newCredential.CreatedAt, newCredential.RotatedAt,
 	)
 	if err != nil {

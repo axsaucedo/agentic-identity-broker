@@ -130,7 +130,7 @@ func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo 
 		{"010_create_broker_client_credentials.up.sql", 10},
 		{"011_create_signing_keys.up.sql", 11},
 		{"012_create_authorization_codes.up.sql", 12},
-		{"013_add_broker_client_id_to_auth_codes.up.sql", 13},
+		{"013_add_client_id_to_auth_codes.up.sql", 13},
 	}
 
 	for _, migration := range migrations {

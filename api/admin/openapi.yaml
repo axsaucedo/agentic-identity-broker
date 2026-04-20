@@ -760,12 +760,12 @@ paths:
         and authenticate agents directly.
 
         **Runtime usage**: Agents always use their `agent.id` (UUID) as `client_id` at
-        the `/oauth2/authorize` and `/oauth2/token` endpoints. The `broker_client_id`
+        the `/oauth2/authorize` and `/oauth2/token` endpoints. The `client_id`
         returned here is internal metadata used for rotation safety — it is never sent
         by agents in OAuth2 flows.
 
         **First Generation** (no existing credentials):
-        - Returns `201 Created` with new `broker_client_id` (metadata) and `client_secret`
+        - Returns `201 Created` with new `client_id` (metadata) and `client_secret`
         - The `client_secret` is only returned in this response — store it securely
 
         **Rotation** (existing credentials):
@@ -785,7 +785,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BrokerClientCredentialResponse'
               example:
-                broker_client_id: brk_550e8400e29b41d4a716446655440000
+                client_id: brk_550e8400e29b41d4a716446655440000
                 client_secret: brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
                 created_at: '2025-12-19T10:30:00Z'
         '200':
@@ -795,7 +795,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BrokerClientCredentialResponse'
               example:
-                broker_client_id: brk_550e8400e29b41d4a716446655440000
+                client_id: brk_550e8400e29b41d4a716446655440000
                 client_secret: brk_sec_q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
                 created_at: '2025-12-19T15:45:00Z'
                 previous_invalidated_at: '2025-12-19T15:45:00Z'
@@ -819,7 +819,7 @@ paths:
         Retrieve metadata about an agent's broker-issued client credentials.
 
         **Security**: The `client_secret` is never returned by this endpoint.
-        Only the `broker_client_id` and timestamps are returned.
+        Only the `client_id` and timestamps are returned.
 
         Returns `404 Not Found` if no credentials have been generated for the agent.
       operationId: getAgentClientCredentials
@@ -835,7 +835,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BrokerClientCredentialMetadata'
               example:
-                broker_client_id: brk_550e8400e29b41d4a716446655440000
+                client_id: brk_550e8400e29b41d4a716446655440000
                 created_at: '2025-12-19T10:30:00Z'
                 rotated_at: '2025-12-19T15:45:00Z'
         '400':
@@ -1892,11 +1892,11 @@ components:
     BrokerClientCredentialResponse:
       type: object
       required:
-        - broker_client_id
+        - client_id
         - client_secret
         - created_at
       properties:
-        broker_client_id:
+        client_id:
           type: string
           description: Broker-issued client identifier for the agent
           example: brk_550e8400e29b41d4a716446655440000
@@ -1924,10 +1924,10 @@ components:
     BrokerClientCredentialMetadata:
       type: object
       required:
-        - broker_client_id
+        - client_id
         - created_at
       properties:
-        broker_client_id:
+        client_id:
           type: string
           description: Broker-issued client identifier for the agent
           example: brk_550e8400e29b41d4a716446655440000

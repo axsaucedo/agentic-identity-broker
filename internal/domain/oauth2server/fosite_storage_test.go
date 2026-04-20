@@ -43,10 +43,10 @@ func TestFositeStorage_AuthorizeCodeSessions(t *testing.T) {
 		require.NoError(t, err)
 
 		cred := &dstorage.BrokerClientCredential{
-			ID:             id.NewCredentialID(),
-			AgentID:        agent.ID,
-			BrokerClientID: id.NewBrokerClientID("broker_test_client"),
-			SecretHash:     "hash",
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			ClientID:   id.NewClientID("broker_test_client"),
+			SecretHash: "hash",
 		}
 		err = credRepo.Create(ctx, cred)
 		require.NoError(t, err)
@@ -93,10 +93,10 @@ func TestFositeStorage_AuthorizeCodeSessions(t *testing.T) {
 		require.NoError(t, err)
 
 		cred := &dstorage.BrokerClientCredential{
-			ID:             id.NewCredentialID(),
-			AgentID:        agent.ID,
-			BrokerClientID: id.NewBrokerClientID("broker_test_client2"),
-			SecretHash:     "hash",
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			ClientID:   id.NewClientID("broker_test_client2"),
+			SecretHash: "hash",
 		}
 		err = credRepo.Create(ctx, cred)
 		require.NoError(t, err)
@@ -310,10 +310,10 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 		agent := &dstorage.Agent{ID: agentID, ClientID: "upstream-client", DisplayName: "Test Agent", Description: "Test agent for round-trip tests"}
 		require.NoError(t, agentRepo.Create(context.Background(), agent))
 		cred := &dstorage.BrokerClientCredential{
-			ID:             id.NewCredentialID(),
-			AgentID:        agentID,
-			BrokerClientID: id.NewBrokerClientID("broker_rt_test"),
-			SecretHash:     "hash",
+			ID:         id.NewCredentialID(),
+			AgentID:    agentID,
+			ClientID:   id.NewClientID("broker_rt_test"),
+			SecretHash: "hash",
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))
 		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), agentRepo, credRepo, testSlogger())

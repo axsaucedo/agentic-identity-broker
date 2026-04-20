@@ -254,8 +254,8 @@ type BrokerClientCredentialRepository interface {
 	// GetByAgentID retrieves the credential for a given agent.
 	GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.BrokerClientCredential, error)
 
-	// GetByBrokerClientID retrieves the credential by its broker client ID.
-	GetByBrokerClientID(ctx context.Context, clientID id.BrokerClientID) (*storage.BrokerClientCredential, error)
+	// GetByClientID retrieves the credential by its client ID.
+	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error)
 
 	// Delete removes the credential for a given agent.
 	Delete(ctx context.Context, agentID id.AgentID) error

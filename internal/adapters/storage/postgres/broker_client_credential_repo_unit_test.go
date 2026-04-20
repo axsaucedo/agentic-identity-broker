@@ -22,9 +22,9 @@ func TestBrokerClientCredentialRepo_GetByAgentID_NilDB(t *testing.T) {
 	assert.Equal(t, storage.ErrorKindConnection, se.Kind)
 }
 
-func TestBrokerClientCredentialRepo_GetByBrokerClientID_NilDB(t *testing.T) {
+func TestBrokerClientCredentialRepo_GetByClientID_NilDB(t *testing.T) {
 	repo := NewBrokerClientCredentialRepo(&Adapter{db: nil})
-	_, err := repo.GetByBrokerClientID(context.Background(), id.NewBrokerClientID("broker_test"))
+	_, err := repo.GetByClientID(context.Background(), id.NewClientID("broker_test"))
 	require.Error(t, err)
 
 	var se *storage.StorageError
