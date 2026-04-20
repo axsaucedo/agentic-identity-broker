@@ -92,7 +92,7 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 	}
 
 	// Look up the client (agent) — needed even for invalidated codes so fosite can revoke tokens.
-	client, err := s.buildClient(ctx, authCode.AgentID)
+	client, err := s.GetClient(ctx, authCode.AgentID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up client: %w", err)
 	}
@@ -240,11 +240,15 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 	if err != nil {
 		return nil, fosite.ErrNotFound
 	}
-	client, err := s.buildClient(ctx, agentID)
+	agent, err := s.agentRepo.Get(ctx, agentID)
 	if err != nil {
 		return nil, s.mapStorageError(ctx, err)
 	}
-	return client, nil
+	cred, err := s.credRepo.GetByAgentID(ctx, agentID)
+	if err != nil {
+		return nil, s.mapStorageError(ctx, err)
+	}
+	return &brokerClient{agent: agent, credential: cred}, nil
 }
 
 // ClientAssertionJWTValid checks for JWT assertion replay — not supported.
@@ -255,18 +259,6 @@ func (s *FositeStorage) ClientAssertionJWTValid(_ context.Context, _ string) err
 // SetClientAssertionJWT records a JWT assertion — not supported.
 func (s *FositeStorage) SetClientAssertionJWT(_ context.Context, _ string, _ time.Time) error {
 	return nil
-}
-
-func (s *FositeStorage) buildClient(ctx context.Context, agentID id.AgentID) (fosite.Client, error) {
-	agent, err := s.agentRepo.Get(ctx, agentID)
-	if err != nil {
-		return nil, err
-	}
-	cred, err := s.credRepo.GetByAgentID(ctx, agentID)
-	if err != nil {
-		return nil, err
-	}
-	return &brokerClient{agent: agent, credential: cred}, nil
 }
 
 func extractAgentID(client fosite.Client) (id.AgentID, error) {

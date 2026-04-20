@@ -193,9 +193,9 @@ func (p *Provider) HandleAuthorize(
 	codeChallengeMethod string,
 	principal id.Principal,
 ) (code string, err error) {
-	fositeClient, err := p.fositeStorage.buildClient(ctx, agentID)
+	fositeClient, err := p.fositeStorage.GetClient(ctx, agentID.String())
 	if err != nil {
-		if isStorageNotFound(err) {
+		if errors.Is(err, fosite.ErrNotFound) {
 			return "", fosite.ErrInvalidClient.WithHintf("agent %s not found", agentID)
 		}
 		return "", fosite.ErrServerError.WithDebugf("client lookup failed: %v", err)
