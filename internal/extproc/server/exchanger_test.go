@@ -131,6 +131,7 @@ func configForMocks(m *mockServers) *extprocconfig.Config {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -406,6 +407,7 @@ func TestTokenExchanger_ClientAssertion_SendsCorrectGrantRequest(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -614,6 +616,7 @@ func TestTokenExchanger_ClientAssertion_DefaultsIssuerOAuthToken(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -656,6 +659,7 @@ func TestTokenExchanger_New_ClientAssertionFailure_ReturnsError(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
@@ -694,6 +698,7 @@ func TestTokenExchanger_ClientSecret_NotExposedInErrors(t *testing.T) {
 			MaxTTL:     1 * time.Hour,
 		},
 		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},

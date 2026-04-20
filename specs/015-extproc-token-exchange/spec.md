@@ -118,6 +118,9 @@ An operator configures the ExtProc service with gRPC settings and OAuth2 authori
 - **FR-018**: System MUST cap cached token TTL at `extproc.cache.max_ttl` regardless of the `expires_in` value from the token exchange response
 - **FR-016**: System MUST allow configuration to be loaded via the shared configuration infrastructure while using its own schema
 - **FR-017**: System MUST provide a standalone E2E test harness for ExtProc scenarios that does not reuse the existing E2E harness
+- **FR-019**: System MUST protect outbound token exchange calls with a circuit breaker that opens after a configurable number of consecutive server-side failures (`circuit_breaker.max_failures`), fast-failing subsequent requests with 503 until a probe succeeds after `circuit_breaker.reset_timeout`
+- **FR-020**: The circuit breaker MUST only count server-side errors (5xx HTTP status codes, network errors, timeouts) as failures. Client errors (4xx HTTP status codes, e.g., invalid subject tokens returning 400 or 401) MUST NOT count towards the failure threshold and MUST NOT trip the circuit.
+- **FR-021**: System MUST support disabling the circuit breaker via `circuit_breaker.enabled: false`, in which case all token exchange calls bypass the circuit breaker entirely and no requests are fast-failed due to circuit state
 
 ### Configuration Requirements *(if applicable - document before implementation)*
 
@@ -138,6 +141,9 @@ An operator configures the ExtProc service with gRPC settings and OAuth2 authori
 - **extproc.cache.max_ttl**: duration, maximum cache TTL cap regardless of `expires_in`, default `1h`
 - **extproc.log.level**: string, log level (debug/info/warn/error), default `info`
 - **extproc.log.format**: string, log format (text/json), default `text`
+- **extproc.circuit_breaker.enabled**: boolean, enable/disable circuit breaker for token exchange calls, default `true`
+- **extproc.circuit_breaker.max_failures**: integer (>= 1), consecutive server-side (5xx) failures before the circuit opens, default `5`. Only 5xx errors, network errors, and timeouts count as failures; 4xx client errors are excluded.
+- **extproc.circuit_breaker.reset_timeout**: duration, time the circuit stays open before allowing a single probe request, default `30s`
 
 > **Note**: The complete configuration schema including validation rules and environment variable mapping is specified in [contracts/configuration.md](contracts/configuration.md).
 
@@ -156,6 +162,10 @@ oauth2:
 cache:
   default_ttl: "5m"
   max_ttl: "1h"
+circuit_breaker:
+  enabled: true
+  max_failures: 5
+  reset_timeout: "30s"
 log:
   level: "info"
   format: "text"

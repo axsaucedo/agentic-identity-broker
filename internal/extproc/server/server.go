@@ -169,10 +169,10 @@ func (s *Server) processRequestHeaders(headers *extprocv3.HttpHeaders) *extprocv
 				"resource", resourceURI,
 				"code", brokerErr.Code,
 				"error_uri", brokerErr.ErrorURI)
-			return urlElicitationResponse(brokerErr)
+			return s.urlElicitationResponse(brokerErr)
 		}
 		if errors.Is(err, ErrCircuitOpen) {
-			s.logger.Debug("token exchange rejected: circuit breaker is open",
+			s.logger.Warn("token exchange rejected: circuit breaker is open",
 				"resource", resourceURI)
 			return immediateResponse(httpv3.StatusCode_ServiceUnavailable,
 				`{"error":"service_unavailable","error_description":"circuit breaker is open"}`)
@@ -308,7 +308,7 @@ func immediateResponse(code httpv3.StatusCode, body string) *extprocv3.Processin
 // HTTP 200 is used because JSON-RPC errors always travel over HTTP 200.
 // id is always null: the response is returned from the headers phase before the body is read,
 // which is correct per JSON-RPC 2.0 §5 ("if the id cannot be determined, use null").
-func urlElicitationResponse(brokerErr *BrokerExchangeError) *extprocv3.ProcessingResponse {
+func (s *Server) urlElicitationResponse(brokerErr *BrokerExchangeError) *extprocv3.ProcessingResponse {
 	elicitErr := mcp.URLElicitationRequiredError{
 		Elicitations: []mcp.ElicitationParams{
 			{
@@ -324,9 +324,12 @@ func urlElicitationResponse(brokerErr *BrokerExchangeError) *extprocv3.Processin
 	// the client receives context about why re-authentication is required.
 	jsonRPCErr.Error.Message = brokerErr.Description
 
-	// Marshal the response. json.Marshal cannot fail for this struct: all fields are strings,
-	// ints, or slices thereof — no encoding/json.Marshaler implementations that could error.
-	body, _ := json.Marshal(jsonRPCErr)
+	body, err := json.Marshal(jsonRPCErr)
+	if err != nil {
+		s.logger.Error("failed to marshal URLElicitationRequiredError", "error", err)
+		return immediateResponse(httpv3.StatusCode_InternalServerError,
+			`{"error":"internal_error","error_description":"failed to marshal error response"}`)
+	}
 	return immediateResponse(httpv3.StatusCode_OK, string(body))
 }
 

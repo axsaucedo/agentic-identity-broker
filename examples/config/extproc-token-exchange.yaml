@@ -93,8 +93,20 @@ cache:
 
 # Circuit breaker settings for the token exchange HTTP calls to the identity broker.
 # Prevents thundering herd when the identity broker recovers after an outage.
+# Only 5xx server errors trip the circuit; 4xx client errors (e.g., invalid
+# subject tokens) are excluded because they indicate a problem with the specific
+# request, not with the backend infrastructure.
 circuit_breaker:
-  # Number of consecutive exchange failures before the circuit opens.
+  # Enable or disable the circuit breaker entirely.
+  # Set to false to disable all circuit breaking behavior — useful when the
+  # downstream identity broker handles its own rate limiting or when 503
+  # fast-fail behavior is undesirable.
+  # Default: true
+  # Env: EXTPROC_CIRCUIT_BREAKER_ENABLED
+  enabled: true
+
+  # Number of consecutive server-side (5xx) exchange failures before the circuit opens.
+  # Client errors (4xx) do not count towards this threshold.
   # While open, all exchange requests fail immediately with 503.
   # Default: 5
   # Env: EXTPROC_CIRCUIT_BREAKER_MAX_FAILURES

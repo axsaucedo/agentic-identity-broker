@@ -69,6 +69,7 @@ func RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().String("log.level", "", "log level: debug, info, warn, error (default: info)")
 	cmd.Flags().String("log.format", "", "log format: text, json (default: text)")
 	// Circuit breaker flags
+	cmd.Flags().Bool("circuit_breaker.enabled", true, "enable circuit breaker for token exchange calls (default: true)")
 	cmd.Flags().Int("circuit_breaker.max_failures", 0, "consecutive failures before opening circuit (default: 5)")
 	cmd.Flags().Duration("circuit_breaker.reset_timeout", 0, "duration in open state before probing recovery (default: 30s)")
 }
@@ -198,6 +199,10 @@ func bindFlags(v *viper.Viper, cmd *cobra.Command) {
 			func() interface{} { s, _ := cmd.Flags().GetString("log.format"); return s },
 		},
 		{
+			"circuit_breaker.enabled", "circuit_breaker.enabled",
+			func() interface{} { b, _ := cmd.Flags().GetBool("circuit_breaker.enabled"); return b },
+		},
+		{
 			"circuit_breaker.max_failures", "circuit_breaker.max_failures",
 			func() interface{} { i, _ := cmd.Flags().GetInt("circuit_breaker.max_failures"); return i },
 		},
@@ -239,6 +244,7 @@ func applyDefaults(v *viper.Viper) {
 	v.SetDefault("cache.max_ttl", "1h")
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "text")
+	v.SetDefault("circuit_breaker.enabled", true)
 	v.SetDefault("circuit_breaker.max_failures", 5)
 	v.SetDefault("circuit_breaker.reset_timeout", "30s")
 }
