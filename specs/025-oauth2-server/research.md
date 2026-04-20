@@ -112,7 +112,7 @@ type brokerClient struct {
     credential *storage.BrokerClientCredential
 }
 
-func (c *brokerClient) GetID() string            { return string(c.credential.BrokerClientID) }
+func (c *brokerClient) GetID() string            { return string(c.credential.ClientID) }
 func (c *brokerClient) GetHashedSecret() []byte   { return []byte(c.credential.SecretHash) }
 func (c *brokerClient) GetRedirectURIs() []string  { return c.agent.RedirectURIs }
 func (c *brokerClient) GetGrantTypes() fosite.Arguments {
@@ -449,7 +449,7 @@ The `token_claims_cel.go` file in `internal/domain/oauth2server/` will:
 variables := map[string]interface{}{
     "agent": map[string]interface{}{
         "id":           string(agent.ID),
-        "client_id":    string(cred.BrokerClientID),
+        "client_id":    string(cred.ClientID),
         "display_name": agent.DisplayName,
         "metadata":     agent.Metadata, // map[string]string or nil
     },

@@ -141,7 +141,7 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 - What happens when an authorization code is presented twice? The second use is rejected with `invalid_grant`; the associated code is invalidated immediately on first use.
 - What happens when a PKCE `code_challenge` is absent from an authorization request? The request is rejected immediately with `invalid_request`; no code is issued.
 - What happens when no signing key exists in the database at startup in `issue_token` mode? The broker auto-generates an initial signing key, logs the event, and starts normally.
-- What happens when the broker is in `proxy` mode and a client attempts to authenticate with broker-issued credentials? The request is rejected; proxy mode forwards all token requests upstream. Note: clients NEVER use `broker_client_id` at any endpoint — they always use the agent UUID as `client_id`. The `broker_client_id` is an internal broker implementation detail used for credential rotation safety and is never exposed to agents at runtime.
+- What happens when the broker is in `proxy` mode and a client attempts to authenticate with broker-issued credentials? The request is rejected; proxy mode forwards all token requests upstream. Note: agents always use their UUID as `client_id` at every OAuth2 endpoint. The broker-issued credential identifier is an internal implementation detail used for rotation safety and is never presented by agents at runtime.
 - What happens when an authorization code flow is attempted for an agent with no registered `redirect_uris`? The authorization endpoint returns `invalid_request` — no code is issued and no redirect is performed.
 - What happens when the `token_claims_expression` fails at runtime (e.g., references a missing `principal.email`)? Token issuance is rejected (fail closed); the broker returns a `server_error` OAuth2 error response and logs the evaluation failure with full context. No token with partial claims is ever issued.
 
@@ -158,9 +158,9 @@ An OAuth2 client library or API gateway needs to automatically configure itself 
 - **FR-006b**: The Admin API for agent create/update MUST accept an optional `redirect_uris` field (list of HTTPS URIs); agents may be created or updated with an empty list regardless of the broker's operating mode
 - **FR-006c**: The authorization endpoint MUST reject any `redirect_uri` in an authorization request that is not an exact match of one of the agent's registered redirect URIs, or if the agent has no registered redirect URIs; no redirect is performed on rejection
 - **FR-006d**: The Admin API for agent create/update MUST accept an optional `allowed_scopes` field (list of strings); when non-empty, it defines the maximum set of scopes the agent may request in token or authorization requests; when empty, the agent may request any scope; the token endpoint MUST return `invalid_scope` if requested scopes are not a subset of the agent's `allowed_scopes`
-- **FR-007**: In `issue_token` mode, the token endpoint MUST accept `grant_type=client_credentials` requests authenticated with broker-issued credentials and return locally-signed access tokens. The `client_id` at the token endpoint MUST be the agent's internal UUID (`agent.id`). The broker resolves the bound `BrokerClientCredential` by agent UUID internally — clients never present `broker_client_id` at any endpoint.
+- **FR-007**: In `issue_token` mode, the token endpoint MUST accept `grant_type=client_credentials` requests authenticated with broker-issued credentials and return locally-signed access tokens. The `client_id` at the token endpoint MUST be the agent's internal UUID (`agent.id`). The broker resolves the bound `BrokerClientCredential` by agent UUID internally — clients never present a broker-issued `client_id` at any endpoint.
 - **FR-007b**: In `issue_token` mode, the authorization endpoint MUST accept `grant_type=authorization_code` flow, issuing authorization codes itself by trusting the identity established by the configured preauth method (X-Remote-User header or JWT preauth) — no upstream OAuth2 redirect is performed
-- **FR-007c**: In `issue_token` mode, the authorization endpoint MUST validate the `client_id` against registered agents and enforce existing consent checks before issuing an authorization code. The `client_id` at the authorization endpoint MUST be the agent's internal UUID (`agent.id`), NOT a broker-issued `broker_client_id`. The broker resolves credentials transparently by agent UUID.
+- **FR-007c**: In `issue_token` mode, the authorization endpoint MUST validate the `client_id` against registered agents and enforce existing consent checks before issuing an authorization code. The `client_id` at the authorization endpoint MUST be the agent's internal UUID (`agent.id`), NOT a broker-issued credential identifier. The broker resolves credentials transparently by agent UUID.
 - **FR-007d**: Authorization codes issued by the broker MUST expire after 60 seconds
 - **FR-007e**: PKCE (RFC 7636) MUST be required for all authorization code flows; the broker MUST reject authorization requests that do not include a `code_challenge` and `code_challenge_method`; only `S256` is accepted
 - **FR-008**: In `issue_token` mode, issued access tokens MUST include the agent's UUID (`agent.id`) as an explicit `agent_id` claim. For `client_credentials` grants the `sub` claim MUST also be the agent UUID. For `authorization_code` grants the `sub` claim MUST be the authenticated principal (user identity); `agent_id` carries the agent UUID in that case. The `client_id` at the token endpoint is always the agent UUID; the broker resolves credentials by agent UUID at the token endpoint.
@@ -196,7 +196,7 @@ erDiagram
     BrokerClientCredential {
         uuid id PK
         uuid agent_id FK
-        string broker_client_id
+        string client_id
         string secret_hash
         timestamp created_at
         timestamp rotated_at
@@ -234,7 +234,7 @@ sequenceDiagram
     participant JWKS
 
     Operator->>AdminAPI: POST /agents/{id}/client-credentials
-    AdminAPI-->>Operator: 201 Created {broker_client_id, client_secret (once)}
+    AdminAPI-->>Operator: 201 Created {client_id, client_secret (once)}
 
     Agent->>TokenEndpoint: POST /oauth2/token (client_credentials grant, client_id=agent.id)
     TokenEndpoint->>TokenEndpoint: Resolve credential by agent UUID, verify secret hash
@@ -250,7 +250,7 @@ sequenceDiagram
 - **SigningKey**: An asymmetric key pair used to sign locally-issued tokens. Exactly one key is marked `is_current` at any time; others remain active for validation until removed. Private material is stored encrypted. Lifecycle: auto-generated on first startup or added via Admin API; removed explicitly by operator.
 
 **Value Objects** (things without identity):
-- **BrokerClientID**: An opaque string identifier uniquely identifying a broker-issued OAuth2 client. Immutable after generation.
+- **ClientID** (credential): An opaque string identifier uniquely identifying a broker-issued OAuth2 client. Immutable after generation.
 - **HashedSecret**: A one-way hash of the client secret. The plaintext is never stored.
 - **KeyID (`kid`)**: An opaque string uniquely identifying a signing key within the JWKS. Immutable after key creation.
 
@@ -285,8 +285,8 @@ oauth2_authorization_server:
 
 - **API-001**: All administrative APIs MUST be documented in `/api/admin/openapi.yaml` (OpenAPI 3.0+ format)
 - **API-002**: New Admin API endpoints follow Zalando RESTful API Guidelines
-- **API-003**: `POST /agents/{agent_id}/client-credentials` — generates or rotates broker-issued client credentials for an agent; returns `201 Created` with `{broker_client_id, client_secret}` (secret shown once only)
-- **API-004**: `GET /agents/{agent_id}/client-credentials` — retrieves credential metadata `{broker_client_id, created_at, rotated_at}`; returns `404` if no credentials exist; never returns secret
+- **API-003**: `POST /agents/{agent_id}/client-credentials` — generates or rotates broker-issued client credentials for an agent; returns `201 Created` with `{client_id, client_secret}` (secret shown once only)
+- **API-004**: `GET /agents/{agent_id}/client-credentials` — retrieves credential metadata `{client_id, created_at, rotated_at}`; returns `404` if no credentials exist; never returns secret
 - **API-005**: `DELETE /agents/{agent_id}/client-credentials` — revokes broker-issued credentials for an agent; returns `204 No Content`
 - **API-008**: `POST /oauth2-server/signing-keys` — adds a new signing key (private key material in request body); returns `201 Created` with the generated `kid`; this key becomes the current (signing) key
 - **API-009**: `GET /oauth2-server/signing-keys` — lists all active signing keys with their `kid`, algorithm, `created_at`, and `is_current` flag; never returns private key material
@@ -298,7 +298,7 @@ oauth2_authorization_server:
 ### Database Requirements
 
 - **DB-001**: All database schema changes MUST be in `/migrations/` directory using go-migrate naming conventions
-- **DB-002**: A new migration adds a `broker_client_credentials` table: `id` (UUID PK), `agent_id` (UUID FK → agents.id CASCADE DELETE), `broker_client_id` (string, unique), `secret_hash` (string), `created_at` (timestamp), `rotated_at` (timestamp nullable)
+- **DB-002**: A new migration adds a `broker_client_credentials` table: `id` (UUID PK), `agent_id` (UUID FK → agents.id CASCADE DELETE), `client_id` (VARCHAR, unique), `secret_hash` (string), `created_at` (timestamp), `rotated_at` (timestamp nullable)
 - **DB-002b**: A new migration adds a `signing_keys` table: `id` (UUID PK), `kid` (string, unique), `algorithm` (string), `private_key_encrypted` (bytes — encrypted at rest), `is_current` (boolean), `created_at` (timestamp), `removed_at` (timestamp nullable)
 - **DB-003**: Each migration MUST be atomic (fully apply or fully rollback on failure)
 - **DB-004**: All migrations MUST be tested in PostgreSQL integration tests (apply, rollback, repeat without data loss)

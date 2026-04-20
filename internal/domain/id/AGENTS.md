@@ -45,8 +45,7 @@ func (id *XxxID) UnmarshalText(b []byte) error             // for encoding.TextU
 
 | Type | Purpose | Constraint |
 |---|---|---|
-| `BrokerClientID` | Broker-issued OAuth2 client ID | `broker_` prefix + 22 chars |
-| `ClientID` | OAuth2 client identifier | `VARCHAR(255)`, not a UUID |
+| `ClientID` | Broker-issued OAuth2 client identifier | `broker_` prefix + 22 chars; `VARCHAR(255)`, not a UUID |
 | `ExternalID` | Optional external governance ID | `VARCHAR(255)`, not a UUID |
 | `KeyID` | JWT Key ID (`kid` claim) | UUID format |
 | `Principal` | Authenticated user identity (email, subject) | From `X-Remote-User` header |

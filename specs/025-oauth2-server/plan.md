@@ -32,11 +32,11 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](.spe
 **Design Preconditions (BLOCKING)**:
 
 - [x] **Domain Model**: Have entities, aggregates, value objects been identified and documented?
-  → Yes. `BrokerClientCredential`, `SigningKey`, `AuthorizationCode` entities + `BrokerClientID`, `KeyID` value objects documented in [data-model.md](data-model.md).
+  → Yes. `BrokerClientCredential`, `SigningKey`, `AuthorizationCode` entities + `ClientID` (credential), `KeyID` value objects documented in [data-model.md](data-model.md).
 - [x] **Domain Concepts**: Will new domain terms be added to ARCHITECTURE.md Glossary?
-  → Yes. `BrokerClientCredential`, `SigningKey`, `AuthorizationCode`, `BrokerClientID`, `KeyID`, `OAuth2ServerProvider` to be added.
+  → Yes. `BrokerClientCredential`, `SigningKey`, `AuthorizationCode`, `ClientID` (credential), `KeyID`, `OAuth2ServerProvider` to be added.
 - [x] **Entity IDs**: For each new domain entity with a UUID primary key, will a typed ID (`type XxxID uuid.UUID`) be added to `internal/domain/id/` via `gen_ids.go` and documented in `internal/domain/id/AGENTS.md`? (ADR 013)
-  → Yes. `CredentialID`, `SigningKeyID`, `AuthorizationCodeID` (UUID) + `BrokerClientID`, `KeyID` (string) documented in data-model.md.
+  → Yes. `CredentialID`, `SigningKeyID`, `AuthorizationCodeID` (UUID) + `ClientID`, `KeyID` (string) documented in data-model.md.
 - [x] **Configuration Design**: Have all config requirements been identified with YAML examples?
   → Yes. `mode`, `issuer_uri`, `token_ttl` fields documented with YAML examples in [quickstart.md](quickstart.md). `token_claims_expression` (CEL) documented in spec FR-013.
 - [x] **Config Examples**: Will example YAML snippets be added to examples/config/?
@@ -106,7 +106,7 @@ internal/
 ├── domain/
 │   ├── id/
 │   │   ├── gen_ids.go                    # Add CredentialID, SigningKeyID, AuthorizationCodeID
-│   │   └── string_ids.go                 # Add BrokerClientID, KeyID
+│   │   └── string_ids.go                 # Add ClientID, KeyID
 │   ├── storage/
 │   │   ├── broker_client_credential.go   # BrokerClientCredential entity
 │   │   ├── signing_key.go                # SigningKey entity

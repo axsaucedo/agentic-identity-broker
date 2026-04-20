@@ -51,7 +51,7 @@
 
 **Constitution Reference**: Principles II, V
 
-- [x] T009 Add new domain terms to ARCHITECTURE.md Glossary: `BrokerClientCredential`, `SigningKey`, `AuthorizationCode`, `BrokerClientID`, `KeyID`, `OAuth2ServerProvider`, `TokenClaimsExpression`
+- [x] T009 Add new domain terms to ARCHITECTURE.md Glossary: `BrokerClientCredential`, `SigningKey`, `AuthorizationCode`, `ClientID` (credential), `KeyID`, `OAuth2ServerProvider`, `TokenClaimsExpression`
 - [x] T010 [P] Document domain model invariants: one credential per agent (UNIQUE agent_id), exactly one is_current signing key, authorization codes single-use with 60s TTL — in ARCHITECTURE.md or spec reference
 
 **Checkpoint**: Domain model documented in ARCHITECTURE.md
@@ -121,13 +121,13 @@
 ### Boilerplate: Typed IDs
 
 - [x] T032 Add `CredentialID`, `SigningKeyID`, `AuthorizationCodeID` UUID types to `internal/domain/id/gen_ids.go` and regenerate `internal/domain/id/uuid_ids_gen.go`
-- [x] T033 [P] Add `BrokerClientID`, `KeyID` string types to `internal/domain/id/string_ids.go`
+- [x] T033 [P] Add `ClientID`, `KeyID` string types to `internal/domain/id/string_ids.go`
 - [x] T034 [P] Update `internal/domain/id/AGENTS.md` with new typed ID documentation
 
 ### Boilerplate: BrokerClientCredential
 
 - [x] T035 Define `BrokerClientCredential` domain struct in `internal/domain/storage/broker_client_credential.go`
-- [x] T036 Define `BrokerClientCredentialRepository` interface in `internal/ports/storage.go` (Create, GetByAgentID, GetByBrokerClientID, Delete)
+- [x] T036 Define `BrokerClientCredentialRepository` interface in `internal/ports/storage.go` (Create, GetByAgentID, GetByClientID, Delete)
 - [x] T037 [P] Implement empty in-memory `BrokerClientCredentialStore` in `internal/adapters/storage/memory/broker_client_credential_store.go` (methods compile, return zero values / not-found)
 - [x] T038 [P] Implement empty postgres `BrokerClientCredentialRepo` in `internal/adapters/storage/postgres/broker_client_credential_repo.go` (methods compile, return not-implemented)
 - [x] T039 Add `BrokerClientCredentials()` accessor to both memory and postgres adapter structs
@@ -225,16 +225,16 @@
 
 ### Tests for User Story 1 ⚠️
 
-- [x] T078 [P] [US1] Write unit tests for credential generation logic in `internal/domain/oauth2server/client_auth_test.go`: generate broker_client_id format (`broker_` + 22 chars), secret entropy (32 bytes base64url), hash stored not plaintext
+- [x] T078 [P] [US1] Write unit tests for credential generation logic in `internal/domain/oauth2server/client_auth_test.go`: generate client_id format (`broker_` + 22 chars), secret entropy (32 bytes base64url), hash stored not plaintext
 - [x] T079 [P] [US1] Write unit tests for credential rotation in `internal/domain/oauth2server/client_auth_test.go`: rotation replaces secret_hash + updates rotated_at, old hash no longer validates
-- [x] T080 [P] [US1] Write integration tests for `BrokerClientCredentialRepo` postgres adapter in `internal/adapters/storage/postgres/broker_client_credential_repo_test.go`: CRUD operations, unique constraint on agent_id, cascade delete with agent, unique constraint on broker_client_id
+- [x] T080 [P] [US1] Write integration tests for `BrokerClientCredentialRepo` postgres adapter in `internal/adapters/storage/postgres/broker_client_credential_repo_test.go`: CRUD operations, unique constraint on agent_id, cascade delete with agent, unique constraint on client_id
 
 ### Implementation for User Story 1
 
 - [x] T081 [P] [US1] Implement in-memory `BrokerClientCredentialStore` CRUD in `internal/adapters/storage/memory/broker_client_credential_store.go` (replace 501 stubs with working logic)
 - [x] T082 [P] [US1] Implement postgres `BrokerClientCredentialRepo` CRUD in `internal/adapters/storage/postgres/broker_client_credential_repo.go` (replace stubs with sqlx queries)
-- [x] T083 [US1] Implement `ClientCredentialsHandler.Generate` in `internal/adapters/http/handlers/admin/client_credentials_handler.go`: validate agent exists, generate broker_client_id + secret, hash with Argon2id, store credential, return 201 (first) or 200 (rotation) with plaintext secret
-- [x] T084 [P] [US1] Implement `ClientCredentialsHandler.Get` in `internal/adapters/http/handlers/admin/client_credentials_handler.go`: return metadata (broker_client_id, created_at, rotated_at) without secret, 404 if not found
+- [x] T083 [US1] Implement `ClientCredentialsHandler.Generate` in `internal/adapters/http/handlers/admin/client_credentials_handler.go`: validate agent exists, generate client_id + secret, hash with Argon2id, store credential, return 201 (first) or 200 (rotation) with plaintext secret
+- [x] T084 [P] [US1] Implement `ClientCredentialsHandler.Get` in `internal/adapters/http/handlers/admin/client_credentials_handler.go`: return metadata (client_id, created_at, rotated_at) without secret, 404 if not found
 - [x] T085 [P] [US1] Implement `ClientCredentialsHandler.Revoke` in `internal/adapters/http/handlers/admin/client_credentials_handler.go`: delete credentials, return 204, 404 if not found
 - [x] T086 [US1] Add structured audit logging for credential generation, rotation, and revocation events
 

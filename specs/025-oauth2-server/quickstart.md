@@ -84,7 +84,7 @@ import (
 type BrokerClientCredential struct {
     ID             id.CredentialID   `json:"id" db:"id"`
     AgentID        id.AgentID        `json:"agent_id" db:"agent_id"`
-    BrokerClientID id.BrokerClientID `json:"broker_client_id" db:"broker_client_id"`
+    ClientID       id.ClientID       `json:"client_id" db:"client_id"`
     SecretHash     string            `json:"-" db:"secret_hash"` // Never serialize
     CreatedAt      time.Time         `json:"created_at" db:"created_at"`
     RotatedAt      *time.Time        `json:"rotated_at,omitempty" db:"rotated_at"`
@@ -97,7 +97,7 @@ type BrokerClientCredential struct {
 type BrokerClientCredentialRepository interface {
     Create(ctx context.Context, credential *storage.BrokerClientCredential) error
     GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.BrokerClientCredential, error)
-    GetByBrokerClientID(ctx context.Context, clientID id.BrokerClientID) (*storage.BrokerClientCredential, error)
+    GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error)
     Delete(ctx context.Context, agentID id.AgentID) error
 }
 ```
@@ -109,7 +109,7 @@ type BrokerClientCredentialStore struct {
     mu          sync.RWMutex
     byID        map[id.CredentialID]*storage.BrokerClientCredential
     byAgentID   map[id.AgentID]*storage.BrokerClientCredential
-    byClientID  map[id.BrokerClientID]*storage.BrokerClientCredential
+    byClientID  map[id.ClientID]*storage.BrokerClientCredential
 }
 ```
 
@@ -374,8 +374,8 @@ Client authentication happens **outside** fosite (we bypass `NewAccessRequest` w
 We authenticate the client ourselves, then construct the fosite request with the verified client.
 
 ```go
-func (s *ClientAuthService) Authenticate(ctx context.Context, clientID id.BrokerClientID, secret string) (*BrokerClient, error) {
-    cred, err := s.credentialRepo.GetByBrokerClientID(ctx, clientID)
+func (s *ClientAuthService) Authenticate(ctx context.Context, clientID id.ClientID, secret string) (*BrokerClient, error) {
+    cred, err := s.credentialRepo.GetByClientID(ctx, clientID)
     if err != nil {
         return nil, ErrInvalidClient
     }
@@ -498,7 +498,7 @@ Follow patterns in `tests/e2e/`. Use `ServerFactory` + `StorageFactory` for fres
 ## Migration Checklist
 
 1. [ ] Add `CredentialID`, `SigningKeyID`, `AuthorizationCodeID` to `gen_ids.go` → regenerate
-2. [ ] Add `BrokerClientID`, `KeyID` to `string_ids.go`
+2. [ ] Add `ClientID`, `KeyID` to `string_ids.go`
 3. [ ] Create entity files in `internal/domain/storage/`
 4. [ ] Add repository interfaces to `internal/ports/storage.go`
 5. [ ] Create migration files `009–012` in `/migrations/`

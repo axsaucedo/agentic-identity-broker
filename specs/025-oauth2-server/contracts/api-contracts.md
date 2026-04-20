@@ -22,7 +22,7 @@ All admin endpoints require admin-level access (no principal authentication — 
 **Response `201 Created`** (generation):
 ```json
 {
-  "broker_client_id": "broker_7k4Hx9pQ2mLv3nWs5tYz1a",
+  "client_id": "broker_7k4Hx9pQ2mLv3nWs5tYz1a",
   "client_secret": "dGhpc19pc19hX3NlY3JldF90aGF0X2lzXzMyX2J5dGVz",
   "created_at": "2026-03-28T12:00:00Z"
 }
@@ -31,7 +31,7 @@ All admin endpoints require admin-level access (no principal authentication — 
 **Response `200 OK`** (rotation — previous credentials invalidated):
 ```json
 {
-  "broker_client_id": "broker_9m2Kx7rS4nPw1qYt6vBz3e",
+  "client_id": "broker_9m2Kx7rS4nPw1qYt6vBz3e",
   "client_secret": "bmV3X3NlY3JldF9hZnRlcl9yb3RhdGlvbl8zMl9ieXRlcw",
   "created_at": "2026-03-28T13:00:00Z",
   "previous_invalidated_at": "2026-03-28T13:00:00Z"
@@ -63,7 +63,7 @@ All admin endpoints require admin-level access (no principal authentication — 
 **Response `200 OK`**:
 ```json
 {
-  "broker_client_id": "broker_7k4Hx9pQ2mLv3nWs5tYz1a",
+  "client_id": "broker_7k4Hx9pQ2mLv3nWs5tYz1a",
   "created_at": "2026-03-28T12:00:00Z",
   "rotated_at": "2026-03-28T13:00:00Z"
 }
@@ -472,8 +472,8 @@ sequenceDiagram
 
     Note over Operator,DB: Phase 1 - Credential Provisioning
     Operator->>AdminAPI: POST /api/agents/{id}/client-credentials
-    AdminAPI->>DB: Generate broker_client_id + argon2id(secret)
-    AdminAPI-->>Operator: 201 {broker_client_id, client_secret}
+    AdminAPI->>DB: Generate client_id + argon2id(secret)
+    AdminAPI-->>Operator: 201 {client_id, client_secret}
 
     Note over Agent,JWKS: Phase 2 - Token Acquisition
     Agent->>TokenEP: POST /oauth2/token (client_credentials, client_id=agent.id)
