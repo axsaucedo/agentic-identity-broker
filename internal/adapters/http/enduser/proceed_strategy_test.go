@@ -1,6 +1,7 @@
 package enduser
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -93,8 +94,10 @@ func TestIssueTokenProceedStrategy_Errors(t *testing.T) {
 		{"unknown client", fosite.ErrInvalidClient, http.StatusUnauthorized, "invalid_client", false},
 		// ErrInvalidRedirectURI wraps fosite.ErrInvalidRequest: HTTP 400 — never redirect
 		{"invalid redirect uri", oauth2server.ErrInvalidRedirectURI, http.StatusBadRequest, "invalid_request", false},
-		// fosite.ErrServerError: HTTP 500 — redirect is safe (redirect_uri was validated)
-		{"server error", fosite.ErrServerError, http.StatusFound, "server_error", true},
+		// fosite.ErrServerError: HTTP 500 — never redirect when validation state is uncertain
+		{"server error", fosite.ErrServerError, http.StatusInternalServerError, "server_error", false},
+		// Unexpected non-OAuth error: HTTP 500 — never redirect
+		{"unexpected error", errors.New("boom"), http.StatusInternalServerError, "server_error", false},
 		// fosite.ErrInvalidRequest: HTTP 400 — redirect is safe
 		{"invalid request", fosite.ErrInvalidRequest, http.StatusFound, "invalid_request", true},
 		// fosite.ErrUnsupportedResponseType: HTTP 400 — redirect is safe

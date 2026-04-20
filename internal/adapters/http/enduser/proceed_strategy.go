@@ -48,18 +48,9 @@ func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http
 	code, err := s.issuer.IssueAuthorizationCode(r.Context(), req, principal)
 	if err != nil {
 		// Per RFC 6749 §4.1.2.1: never redirect when the client or redirect_uri is invalid/unverified.
-		// ErrInvalidClient covers unknown client; ErrInvalidRedirectURI covers redirect URI failures.
-		if errors.Is(err, fosite.ErrInvalidClient) || errors.Is(err, oauth2server.ErrInvalidRedirectURI) {
-			var fositeErr *fosite.RFC6749Error
-			if errors.As(err, &fositeErr) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(fositeErr.CodeField)
-				_, _ = fmt.Fprintf(w, `{"error":%q,"error_description":%q}`, fositeErr.ErrorField, fositeErr.DescriptionField)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"error":"invalid_request","error_description":"request validation failed"}`)
+		// Treat server-side failures the same way because redirect_uri validation may not have happened yet.
+		if shouldWriteDirectOAuth2Error(err) {
+			writeDirectOAuth2Error(w, err)
 			return
 		}
 
@@ -73,7 +64,7 @@ func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http
 		if s.logger != nil {
 			s.logger.Error("unexpected error issuing authorization code", "error", err)
 		}
-		redirectWithError(w, r, req.RedirectURI, req.State, "server_error", "authorization failed")
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "authorization failed")
 		return
 	}
 
@@ -91,4 +82,33 @@ func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http
 	redirectURL.RawQuery = q.Encode()
 
 	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+}
+
+func shouldWriteDirectOAuth2Error(err error) bool {
+	return errors.Is(err, fosite.ErrInvalidClient) ||
+		errors.Is(err, oauth2server.ErrInvalidRedirectURI) ||
+		errors.Is(err, fosite.ErrServerError)
+}
+
+func writeDirectOAuth2Error(w http.ResponseWriter, err error) {
+	var fositeErr *fosite.RFC6749Error
+	if errors.As(err, &fositeErr) {
+		writeOAuth2ErrorJSON(w, fositeErr.CodeField, fositeErr.ErrorField, fositeErr.DescriptionField)
+		return
+	}
+
+	switch {
+	case errors.Is(err, fosite.ErrServerError):
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "authorization failed")
+	case errors.Is(err, fosite.ErrInvalidClient):
+		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client authentication failed")
+	default:
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "request validation failed")
+	}
+}
+
+func writeOAuth2ErrorJSON(w http.ResponseWriter, status int, errorCode, errorDescription string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = fmt.Fprintf(w, `{"error":%q,"error_description":%q}`, errorCode, errorDescription)
 }
