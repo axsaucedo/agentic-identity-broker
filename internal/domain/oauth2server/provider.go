@@ -73,6 +73,19 @@ func NewProvider(
 		AccessTokenLifespan:            tokenTTL,
 		EnforcePKCE:                    true,
 		EnablePKCEPlainChallengeMethod: false,
+		// Empty AllowedScopes means unrestricted in our domain model.
+		// fosite's default WildcardScopeStrategy treats empty as no scopes allowed.
+		ScopeStrategy: func(allowedScopes []string, requestedScope string) bool {
+			if len(allowedScopes) == 0 {
+				return true
+			}
+			for _, s := range allowedScopes {
+				if s == requestedScope {
+					return true
+				}
+			}
+			return false
+		},
 	}
 
 	helper := &fositeOAuth2.HandleHelper{
@@ -83,10 +96,11 @@ func NewProvider(
 
 	return &Provider{
 		authCodeHandler: &fositeOAuth2.AuthorizeExplicitGrantHandler{
-			AccessTokenStrategy:   accessStrategy,
-			AuthorizeCodeStrategy: codeStrategy,
-			CoreStorage:           storage,
-			Config:                config,
+			AccessTokenStrategy:    accessStrategy,
+			AuthorizeCodeStrategy:  codeStrategy,
+			CoreStorage:            storage,
+			TokenRevocationStorage: storage,
+			Config:                 config,
 		},
 		ccHandler: &fositeOAuth2.ClientCredentialsGrantHandler{
 			HandleHelper: helper,
@@ -226,7 +240,8 @@ func (p *Provider) HandleAuthorize(
 		}
 	}
 
-	// Build fosite authorize request — use client_id as the client_id in the code record
+	// Build fosite authorize request — credential ClientID stored in form so
+	// CreateAuthorizeCodeSession can persist it for post-rotation binding checks at exchange time.
 	session := &fosite.DefaultSession{
 		Subject: principal.String(),
 		ExpiresAt: map[fosite.TokenType]time.Time{
@@ -234,35 +249,35 @@ func (p *Provider) HandleAuthorize(
 		},
 	}
 
+	parsedRedirectURI, _ := url.Parse(redirectURI) // already validated above; won't fail
+
 	authReq := fosite.NewAuthorizeRequest()
 	authReq.Client = fositeClient
+	authReq.RedirectURI = parsedRedirectURI
 	authReq.ResponseTypes = fosite.Arguments{responseType}
 	authReq.RequestedScope = scopes
 	authReq.GrantedScope = scopes
 	authReq.State = state
 	authReq.Session = session
-	authReq.Form = map[string][]string{
+	authReq.Form = url.Values{
 		"redirect_uri":          {redirectURI},
 		"code_challenge":        {codeChallenge},
-		"code_challenge_method": {"S256"},
+		"code_challenge_method": {codeChallengeMethod},
 		"response_type":         {responseType},
 		"client_id":             {bc.credential.ClientID.String()},
 		"scope":                 {scope},
 		"state":                 {state},
 	}
 
-	// Generate authorization code
-	authCode, _, err := (&RandomCodeStrategy{}).GenerateAuthorizeCode(ctx, authReq)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate authorization code: %w", err)
+	resp := fosite.NewAuthorizeResponse()
+	if err := p.authCodeHandler.HandleAuthorizeEndpointRequest(ctx, authReq, resp); err != nil {
+		return "", fmt.Errorf("%w: failed to handle authorize request", ErrServerError)
+	}
+	if err := p.pkceHandler.HandleAuthorizeEndpointRequest(ctx, authReq, resp); err != nil {
+		return "", fmt.Errorf("%w: failed to store PKCE session", ErrServerError)
 	}
 
-	// Store the code session
-	if err := p.fositeStorage.CreateAuthorizeCodeSession(ctx, authCode, authReq); err != nil {
-		return "", fmt.Errorf("failed to store authorization code: %w", err)
-	}
-
-	return authCode, nil
+	return resp.GetCode(), nil
 }
 
 func (p *Provider) HandleAuthorizationCodeExchange(
@@ -279,84 +294,60 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		return nil, err
 	}
 
-	// Get the code session
-	codeHash := sha256Hex(code)
-	authCode, err := p.fositeStorage.codeRepo.FindByCodeHash(ctx, codeHash)
+	// Domain-level credential pre-check: fosite verifies agent-level client identity but does
+	// not know about credential rotation. Peek at the stored code to enforce that codes issued
+	// to a previous credential cannot be exchanged by a newly rotated one.
+	authCode, err := p.fositeStorage.codeRepo.FindByCodeHash(ctx, sha256Hex(code))
 	if err != nil {
-		return nil, fmt.Errorf("%w: authorization code not found", ErrInvalidGrant)
-	}
-
-	// Verify the authenticated client is the one the code was issued to (both agent and credential).
-	// The client_id check catches post-rotation redemption: a new credential should not
-	// be able to exchange codes issued to a previous credential for the same agent.
-	if authedClient.Agent.ID != authCode.AgentID {
-		return nil, fmt.Errorf("%w: code was not issued to this client", ErrInvalidGrant)
+		var storageErr *storage.StorageError
+		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
+			return nil, fmt.Errorf("%w: authorization code not found", ErrInvalidGrant)
+		}
+		return nil, fmt.Errorf("failed to look up authorization code: %w", err)
 	}
 	if authedClient.Credential.ClientID != authCode.ClientID {
 		return nil, fmt.Errorf("%w: code was issued to a different credential", ErrInvalidGrant)
 	}
 
-	// Check code is not used
-	if authCode.UsedAt != nil {
-		return nil, fmt.Errorf("%w: authorization code already used", ErrInvalidGrant)
-	}
-
-	// Check code is not expired
-	if time.Now().After(authCode.ExpiresAt) {
-		return nil, fmt.Errorf("%w: authorization code expired", ErrInvalidGrant)
-	}
-
-	// Validate redirect_uri matches
-	if authCode.RedirectURI != redirectURI {
-		return nil, fmt.Errorf("%w: redirect_uri mismatch", ErrInvalidGrant)
-	}
-
-	// Validate PKCE
-	if err := verifyPKCE(authCode.CodeChallenge, codeVerifier); err != nil {
-		return nil, fmt.Errorf("%w: PKCE verification failed: %v", ErrInvalidGrant, err)
-	}
-
-	// Mark code as used — the UPDATE is conditional on used_at IS NULL, so zero rows
-	// affected means a concurrent request won the race and already consumed the code.
-	if err := p.fositeStorage.codeRepo.MarkUsed(ctx, authCode.ID); err != nil {
-		var storageErr *storage.StorageError
-		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
-			return nil, fmt.Errorf("%w: authorization code already used", ErrInvalidGrant)
-		}
-		return nil, fmt.Errorf("failed to mark code as used: %w", err)
-	}
-
-	// Build a fosite request for token generation
-	client, err := p.fositeStorage.buildClient(ctx, authCode.AgentID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to look up client: %w", err)
-	}
-
+	// Build fosite access request
 	session := &fosite.DefaultSession{
 		Subject: authCode.Principal.String(),
 		ExpiresAt: map[fosite.TokenType]time.Time{
 			fosite.AccessToken: time.Now().Add(p.config.AccessTokenLifespan),
 		},
 	}
-
-	scopes := splitScope(authCode.Scope)
+	client := &brokerClient{agent: authedClient.Agent, credential: authedClient.Credential}
 	req := fosite.NewAccessRequest(session)
 	req.Client = client
 	req.GrantTypes = fosite.Arguments{"authorization_code"}
-	req.RequestedScope = scopes
-	req.GrantedScope = scopes
+	req.Form = url.Values{
+		"code":          {code},
+		"redirect_uri":  {redirectURI},
+		"code_verifier": {codeVerifier},
+		"grant_type":    {"authorization_code"},
+	}
 
-	// Generate token
-	token, _, err := p.accessStrategy.GenerateAccessToken(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	// Validate code: expiry, client identity match, redirect_uri
+	if err := p.authCodeHandler.HandleTokenEndpointRequest(ctx, req); err != nil {
+		return nil, mapFositeGrantError(err)
+	}
+
+	// Validate PKCE verifier and consume the PKCE session
+	if err := p.pkceHandler.HandleTokenEndpointRequest(ctx, req); err != nil {
+		return nil, mapFositeGrantError(err)
+	}
+
+	// Generate access token and mark code as used
+	resp := fosite.NewAccessResponse()
+	if err := p.authCodeHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
+		return nil, mapFositeGrantError(err)
 	}
 
 	return &ports.TokenResponse{
-		AccessToken: token,
+		AccessToken: resp.GetAccessToken(),
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
-		Scope:       authCode.Scope,
+		Scope:       strings.Join(req.GetGrantedScopes(), " "),
 	}, nil
 }
 
@@ -392,4 +383,15 @@ func isHTTPSOrLoopback(uriStr string) bool {
 		return host == "localhost" || host == "127.0.0.1" || host == "::1"
 	}
 	return false
+}
+
+// mapFositeGrantError translates fosite token endpoint errors to domain errors.
+// invalid_grant (expired, used, wrong client, PKCE failure) and not_found all become ErrInvalidGrant.
+func mapFositeGrantError(err error) error {
+	if errors.Is(err, fosite.ErrInvalidGrant) ||
+		errors.Is(err, fosite.ErrInvalidatedAuthorizeCode) ||
+		errors.Is(err, fosite.ErrNotFound) {
+		return fmt.Errorf("%w: %v", ErrInvalidGrant, err)
+	}
+	return fmt.Errorf("%w: %v", ErrServerError, err)
 }

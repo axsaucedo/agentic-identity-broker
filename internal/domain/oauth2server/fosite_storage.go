@@ -71,7 +71,7 @@ func (s *FositeStorage) CreateAuthorizeCodeSession(ctx context.Context, code str
 	session := req.GetSession()
 	authCode := &storage.AuthorizationCode{
 		ID:            id.NewAuthorizationCodeID(),
-		CodeHash:      sha256Hex(code),
+		CodeHash:      code, // code is already the fosite signature (sha256Hex of raw code)
 		AgentID:       agentID,
 		ClientID:      id.NewClientID(req.GetRequestForm().Get("client_id")),
 		Principal:     id.NewPrincipal(session.GetSubject()),
@@ -86,21 +86,12 @@ func (s *FositeStorage) CreateAuthorizeCodeSession(ctx context.Context, code str
 
 // GetAuthorizeCodeSession retrieves an authorization code session by code signature.
 func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string, _ fosite.Session) (fosite.Requester, error) {
-	codeHash := sha256Hex(code)
-	authCode, err := s.codeRepo.FindByCodeHash(ctx, codeHash)
+	authCode, err := s.codeRepo.FindByCodeHash(ctx, code)
 	if err != nil {
 		return nil, s.mapStorageError(ctx, err)
 	}
 
-	if authCode.UsedAt != nil {
-		return nil, fosite.ErrInvalidatedAuthorizeCode
-	}
-
-	if time.Now().After(authCode.ExpiresAt) {
-		return nil, fosite.ErrInvalidatedAuthorizeCode
-	}
-
-	// Look up the client (agent)
+	// Look up the client (agent) — needed even for invalidated codes so fosite can revoke tokens.
 	client, err := s.buildClient(ctx, authCode.AgentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up client: %w", err)
@@ -128,17 +119,33 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 		RequestedAt: authCode.CreatedAt,
 	}
 
+	// fosite requires a non-nil requester alongside ErrInvalidatedAuthorizeCode so it can
+	// revoke associated tokens (RFC 6749 §4.1.2 — code replay must revoke previous grants).
+	if authCode.UsedAt != nil {
+		return req, fosite.ErrInvalidatedAuthorizeCode
+	}
+
+	if time.Now().After(authCode.ExpiresAt) {
+		return req, fosite.ErrInvalidatedAuthorizeCode
+	}
+
 	return req, nil
 }
 
 // InvalidateAuthorizeCodeSession marks an authorization code as used.
 func (s *FositeStorage) InvalidateAuthorizeCodeSession(ctx context.Context, code string) error {
-	codeHash := sha256Hex(code)
-	authCode, err := s.codeRepo.FindByCodeHash(ctx, codeHash)
+	authCode, err := s.codeRepo.FindByCodeHash(ctx, code)
 	if err != nil {
 		return s.mapStorageError(ctx, err)
 	}
-	return s.codeRepo.MarkUsed(ctx, authCode.ID)
+	if err := s.codeRepo.MarkUsed(ctx, authCode.ID); err != nil {
+		var storageErr *storage.StorageError
+		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
+			return fosite.ErrInvalidatedAuthorizeCode
+		}
+		return err
+	}
+	return nil
 }
 
 // CreateAccessTokenSession is a no-op for stateless JWT tokens.
@@ -178,6 +185,11 @@ func (s *FositeStorage) RotateRefreshToken(_ context.Context, _ string, _ string
 
 // RevokeAccessToken is a no-op for stateless JWT tokens.
 func (s *FositeStorage) RevokeAccessToken(_ context.Context, _ string) error {
+	return nil
+}
+
+// RevokeRefreshToken is a no-op (refresh tokens not supported).
+func (s *FositeStorage) RevokeRefreshToken(_ context.Context, _ string) error {
 	return nil
 }
 
