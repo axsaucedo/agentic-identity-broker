@@ -99,13 +99,6 @@ func respondWithDecisionError(w http.ResponseWriter, r *http.Request, decision *
 	}
 }
 
-// NewOAuth2AuthorizeHandler creates a new authorization handler
-func NewOAuth2AuthorizeHandler(service ports.OAuth2Service) *OAuth2AuthorizeHandler {
-	return &OAuth2AuthorizeHandler{
-		Service: service,
-	}
-}
-
 // errorDecisionStatus maps an OAuth2 error code to an HTTP status for direct (non-redirect)
 // error responses. Infrastructure errors map to 500; all others map to 400.
 func errorDecisionStatus(errorCode string) int {
