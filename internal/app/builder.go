@@ -498,17 +498,10 @@ func (b *Builder) Build() (*App, error) {
 
 	// Phase 3: Create handler instances
 
-	// Create signing key service for issue_token mode
-	signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
-
-	clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), b.storage.Agents(), b.logger)
-
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
-		Agents:            admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger, b.config.OAuth2AuthServer.MultiAgentClient.Enabled),
-		Services:          admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
-		ClientCredentials: admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger),
-		SigningKeys:       admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger),
+		Agents:   admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger, b.config.OAuth2AuthServer.MultiAgentClient.Enabled),
+		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
 	// Create agent detail handler with repository dependencies for service requirements (Phase 6)
@@ -566,6 +559,11 @@ func (b *Builder) Build() (*App, error) {
 	var jwksHandler *enduserHandlers.JWKSHandler
 
 	if b.config.OAuth2AuthServer.Mode == "issue_token" {
+		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
+		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), b.storage.Agents(), b.logger)
+		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
+		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
+
 		provider, err := oauth2server.NewProvider(
 			b.storage.AuthorizationCodes(),
 			b.storage.PKCESessions(),
