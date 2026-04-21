@@ -21,7 +21,7 @@ type FositeStorage struct {
 	codeRepo  ports.AuthorizationCodeRepository
 	pkceRepo  ports.PKCESessionRepository
 	agentRepo ports.AgentRepository
-	credRepo  ports.BrokerClientCredentialRepository
+	credRepo  ports.ClientCredentialRepository
 	logger    *slog.Logger
 }
 
@@ -30,7 +30,7 @@ func NewFositeStorage(
 	codeRepo ports.AuthorizationCodeRepository,
 	pkceRepo ports.PKCESessionRepository,
 	agentRepo ports.AgentRepository,
-	credRepo ports.BrokerClientCredentialRepository,
+	credRepo ports.ClientCredentialRepository,
 	logger *slog.Logger,
 ) *FositeStorage {
 	return &FositeStorage{

@@ -6,11 +6,11 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
-// brokerClient wraps an Agent + BrokerClientCredential as a fosite.Client.
+// brokerClient wraps an Agent + ClientCredential as a fosite.Client.
 // Fosite types are contained within this package and never leak.
 type brokerClient struct {
 	agent      *storage.Agent
-	credential *storage.BrokerClientCredential
+	credential *storage.ClientCredential
 }
 
 var _ fosite.Client = (*brokerClient)(nil)

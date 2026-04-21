@@ -22,27 +22,27 @@ func bufLogger() (*slog.Logger, *bytes.Buffer) {
 }
 
 type mockCredentialRepo struct {
-	getByAgentIDFunc  func(context.Context, id.AgentID) (*storage.BrokerClientCredential, error)
-	getByClientIDFunc func(context.Context, id.ClientID) (*storage.BrokerClientCredential, error)
+	getByAgentIDFunc  func(context.Context, id.AgentID) (*storage.ClientCredential, error)
+	getByClientIDFunc func(context.Context, id.ClientID) (*storage.ClientCredential, error)
 }
 
-func (m *mockCredentialRepo) Create(_ context.Context, _ *storage.BrokerClientCredential) error {
+func (m *mockCredentialRepo) Create(_ context.Context, _ *storage.ClientCredential) error {
 	return nil
 }
-func (m *mockCredentialRepo) GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.BrokerClientCredential, error) {
+func (m *mockCredentialRepo) GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.ClientCredential, error) {
 	if m.getByAgentIDFunc != nil {
 		return m.getByAgentIDFunc(ctx, agentID)
 	}
 	return nil, storage.NewStorageError("mockCredentialRepo.GetByAgentID", storage.ErrorKindNotFound, nil, "not found")
 }
-func (m *mockCredentialRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error) {
+func (m *mockCredentialRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.ClientCredential, error) {
 	if m.getByClientIDFunc != nil {
 		return m.getByClientIDFunc(ctx, clientID)
 	}
 	return nil, nil
 }
 func (m *mockCredentialRepo) Delete(_ context.Context, _ id.AgentID) error { return nil }
-func (m *mockCredentialRepo) Rotate(_ context.Context, _ id.AgentID, _ *storage.BrokerClientCredential) error {
+func (m *mockCredentialRepo) Rotate(_ context.Context, _ id.AgentID, _ *storage.ClientCredential) error {
 	return nil
 }
 
@@ -148,7 +148,7 @@ func TestClientAuthService_GenerateCredentials(t *testing.T) {
 
 func TestClientAuthService_Authenticate(t *testing.T) {
 	t.Run("valid credentials succeed", func(t *testing.T) {
-		credRepo := memory.NewBrokerClientCredentialStore()
+		credRepo := memory.NewClientCredentialStore()
 		agentRepo := memory.NewAgentRepository()
 
 		// Create test agent
@@ -171,7 +171,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 	})
 
 	t.Run("unknown agent_id fails", func(t *testing.T) {
-		credRepo := memory.NewBrokerClientCredentialStore()
+		credRepo := memory.NewClientCredentialStore()
 		agentRepo := memory.NewAgentRepository()
 		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
 
@@ -180,7 +180,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 	})
 
 	t.Run("wrong secret fails", func(t *testing.T) {
-		credRepo := memory.NewBrokerClientCredentialStore()
+		credRepo := memory.NewClientCredentialStore()
 		agentRepo := memory.NewAgentRepository()
 
 		// Create test agent + credential
@@ -202,7 +202,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 	t.Run("credential repo connection error logs at error level", func(t *testing.T) {
 		agentID := id.NewAgentID()
 		credRepo := &mockCredentialRepo{
-			getByAgentIDFunc: func(_ context.Context, _ id.AgentID) (*storage.BrokerClientCredential, error) {
+			getByAgentIDFunc: func(_ context.Context, _ id.AgentID) (*storage.ClientCredential, error) {
 				return nil, storage.NewStorageError("GetByAgentID", storage.ErrorKindConnection, nil, "connection refused")
 			},
 		}
@@ -217,7 +217,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 	t.Run("credential repo not-found does not log an error", func(t *testing.T) {
 		agentID := id.NewAgentID()
 		credRepo := &mockCredentialRepo{
-			getByAgentIDFunc: func(_ context.Context, _ id.AgentID) (*storage.BrokerClientCredential, error) {
+			getByAgentIDFunc: func(_ context.Context, _ id.AgentID) (*storage.ClientCredential, error) {
 				return nil, storage.NewStorageError("GetByAgentID", storage.ErrorKindNotFound, nil, "not found")
 			},
 		}
@@ -230,9 +230,9 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 	})
 
 	t.Run("agent repo timeout error logs at error level", func(t *testing.T) {
-		credRepo := memory.NewBrokerClientCredentialStore()
+		credRepo := memory.NewClientCredentialStore()
 		agentID := id.NewAgentID()
-		cred := &storage.BrokerClientCredential{
+		cred := &storage.ClientCredential{
 			ID:         id.NewCredentialID(),
 			AgentID:    agentID,
 			SecretHash: "irrelevant",
@@ -253,9 +253,9 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 	})
 
 	t.Run("agent repo not-found does not log an error", func(t *testing.T) {
-		credRepo := memory.NewBrokerClientCredentialStore()
+		credRepo := memory.NewClientCredentialStore()
 		agentID := id.NewAgentID()
-		cred := &storage.BrokerClientCredential{
+		cred := &storage.ClientCredential{
 			ID:         id.NewCredentialID(),
 			AgentID:    agentID,
 			SecretHash: "irrelevant",

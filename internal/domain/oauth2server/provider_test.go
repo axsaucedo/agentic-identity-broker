@@ -22,7 +22,7 @@ import (
 func newTestProvider(t *testing.T) *Provider {
 	t.Helper()
 	codeRepo := memory.NewAuthorizationCodeStore()
-	credRepo := memory.NewBrokerClientCredentialStore()
+	credRepo := memory.NewClientCredentialStore()
 	agentRepo := memory.NewAgentRepository()
 	signingKeyRepo := memory.NewSigningKeyStore()
 	enc := &testEncryptor{}
@@ -51,7 +51,7 @@ func newTestProvider(t *testing.T) *Provider {
 }
 
 // setupTestCredentials creates an agent with broker credentials and returns the agent, credential, and plaintext secret.
-func setupTestCredentials(t *testing.T, provider *Provider) (*dstorage.Agent, *dstorage.BrokerClientCredential, string) {
+func setupTestCredentials(t *testing.T, provider *Provider) (*dstorage.Agent, *dstorage.ClientCredential, string) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -665,7 +665,7 @@ func TestProvider_CEL_RequestGrantType(t *testing.T) {
 	newProviderWithCEL := func(t *testing.T, expr string) *Provider {
 		t.Helper()
 		codeRepo := memory.NewAuthorizationCodeStore()
-		credRepo := memory.NewBrokerClientCredentialStore()
+		credRepo := memory.NewClientCredentialStore()
 		agentRepo := memory.NewAgentRepository()
 		signingKeyRepo := memory.NewSigningKeyStore()
 		enc := &testEncryptor{}

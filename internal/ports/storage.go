@@ -245,17 +245,17 @@ type UserSessionRepository interface {
 	CountByService(ctx context.Context, serviceID id.ServiceID) (int, error)
 }
 
-// BrokerClientCredentialRepository manages broker-issued OAuth2 client credentials.
+// ClientCredentialRepository manages broker-issued OAuth2 client credentials.
 // One credential set per agent (enforced by UNIQUE on agent_id).
-type BrokerClientCredentialRepository interface {
+type ClientCredentialRepository interface {
 	// Create stores a new broker client credential.
-	Create(ctx context.Context, credential *storage.BrokerClientCredential) error
+	Create(ctx context.Context, credential *storage.ClientCredential) error
 
 	// GetByAgentID retrieves the credential for a given agent.
-	GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.BrokerClientCredential, error)
+	GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.ClientCredential, error)
 
 	// GetByClientID retrieves the credential by its client ID.
-	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error)
+	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.ClientCredential, error)
 
 	// Delete removes the credential for a given agent.
 	Delete(ctx context.Context, agentID id.AgentID) error
@@ -263,7 +263,7 @@ type BrokerClientCredentialRepository interface {
 	// Rotate atomically replaces the existing credential for an agent with a new one.
 	// The old credential is only removed after the new one is successfully stored.
 	// Returns an error if no existing credential is found for the agent.
-	Rotate(ctx context.Context, agentID id.AgentID, newCredential *storage.BrokerClientCredential) error
+	Rotate(ctx context.Context, agentID id.AgentID, newCredential *storage.ClientCredential) error
 }
 
 // SigningKeyRepository manages asymmetric signing keys for JWT access tokens.

@@ -23,8 +23,8 @@ type SigningKeyManager interface {
 	DeleteKey(ctx context.Context, kid id.KeyID) error
 }
 
-// BrokerCredentialGenerator is the port for generating broker client credentials.
+// CredentialGenerator is the port for generating broker client credentials.
 // Implemented by domain/oauth2server.ClientAuthService.
-type BrokerCredentialGenerator interface {
-	GenerateCredentials(agentID id.AgentID) (credential *storage.BrokerClientCredential, plaintextSecret string, err error)
+type CredentialGenerator interface {
+	GenerateCredentials(agentID id.AgentID) (credential *storage.ClientCredential, plaintextSecret string, err error)
 }

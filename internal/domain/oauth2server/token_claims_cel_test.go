@@ -72,7 +72,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 					ID:       agentID,
 					ClientID: id.ClientID("upstream-client-id"),
 				},
-				credential: &storage.BrokerClientCredential{},
+				credential: &storage.ClientCredential{},
 			},
 			Session: &fosite.DefaultSession{
 				Subject: "user@example.com",
@@ -105,7 +105,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		req := &fosite.Request{
 			Client: &brokerClient{
 				agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c", DisplayName: "My Agent"},
-				credential: &storage.BrokerClientCredential{},
+				credential: &storage.ClientCredential{},
 			},
 			Session: &fosite.DefaultSession{
 				Subject:   "user@example.com",
@@ -129,7 +129,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		ar := fosite.NewAccessRequest(session)
 		ar.Client = &brokerClient{
 			agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c"},
-			credential: &storage.BrokerClientCredential{},
+			credential: &storage.ClientCredential{},
 		}
 		ar.GrantTypes = fosite.Arguments{"client_credentials"}
 		ar.GrantedScope = fosite.Arguments{"read"}
@@ -154,7 +154,7 @@ func buildTestRequest(clientID, subject string, scopes []string) fosite.Requeste
 		ClientID: id.ClientID(clientID),
 	}
 	return &fosite.Request{
-		Client:       &brokerClient{agent: agent, credential: &storage.BrokerClientCredential{}},
+		Client:       &brokerClient{agent: agent, credential: &storage.ClientCredential{}},
 		Session:      session,
 		GrantedScope: scopes,
 	}

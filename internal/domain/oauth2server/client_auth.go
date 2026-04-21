@@ -19,7 +19,7 @@ const clientSecretBytes = 32
 
 // ClientAuthService handles client authentication and credential management.
 type ClientAuthService struct {
-	credentialRepo ports.BrokerClientCredentialRepository
+	credentialRepo ports.ClientCredentialRepository
 	agentRepo      ports.AgentRepository
 	hasher         *Argon2Hasher
 	logger         *slog.Logger
@@ -27,7 +27,7 @@ type ClientAuthService struct {
 
 // NewClientAuthService creates a new ClientAuthService.
 func NewClientAuthService(
-	credentialRepo ports.BrokerClientCredentialRepository,
+	credentialRepo ports.ClientCredentialRepository,
 	agentRepo ports.AgentRepository,
 	logger *slog.Logger,
 ) *ClientAuthService {
@@ -42,7 +42,7 @@ func NewClientAuthService(
 // AuthenticatedClient represents a successfully authenticated client.
 type AuthenticatedClient struct {
 	Agent      *storage.Agent
-	Credential *storage.BrokerClientCredential
+	Credential *storage.ClientCredential
 }
 
 // Authenticate verifies client credentials and returns the associated agent.
@@ -84,7 +84,7 @@ func (s *ClientAuthService) logStorageFailure(ctx context.Context, err error) {
 // GenerateCredentials generates a new broker client secret for the given agent.
 // The client_id is always the agent's UUID string. Returns the plaintext secret
 // (shown once to the user) and the credential for storage.
-func (s *ClientAuthService) GenerateCredentials(agentID id.AgentID) (credential *storage.BrokerClientCredential, plaintextSecret string, err error) {
+func (s *ClientAuthService) GenerateCredentials(agentID id.AgentID) (credential *storage.ClientCredential, plaintextSecret string, err error) {
 	secretBytes := make([]byte, clientSecretBytes)
 	if _, err := rand.Read(secretBytes); err != nil {
 		return nil, "", fmt.Errorf("failed to generate secret: %w", err)
@@ -96,7 +96,7 @@ func (s *ClientAuthService) GenerateCredentials(agentID id.AgentID) (credential 
 		return nil, "", fmt.Errorf("failed to hash secret: %w", err)
 	}
 
-	credential = &storage.BrokerClientCredential{
+	credential = &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agentID,
 		SecretHash: secretHash,

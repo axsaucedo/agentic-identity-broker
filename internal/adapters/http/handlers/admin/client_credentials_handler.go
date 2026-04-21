@@ -15,17 +15,17 @@ import (
 
 // ClientCredentialsHandler handles admin API requests for broker client credentials.
 type ClientCredentialsHandler struct {
-	credentialRepo ports.BrokerClientCredentialRepository
+	credentialRepo ports.ClientCredentialRepository
 	agentRepo      ports.AgentRepository
-	clientAuth     ports.BrokerCredentialGenerator
+	clientAuth     ports.CredentialGenerator
 	logger         *slog.Logger
 }
 
 // NewClientCredentialsHandler creates a new ClientCredentialsHandler.
 func NewClientCredentialsHandler(
-	credentialRepo ports.BrokerClientCredentialRepository,
+	credentialRepo ports.ClientCredentialRepository,
 	agentRepo ports.AgentRepository,
-	clientAuth ports.BrokerCredentialGenerator,
+	clientAuth ports.CredentialGenerator,
 	logger *slog.Logger,
 ) *ClientCredentialsHandler {
 	return &ClientCredentialsHandler{
@@ -37,7 +37,7 @@ func NewClientCredentialsHandler(
 }
 
 // credentialGenerateResponse is the JSON response for POST (generate/rotate).
-// Matches BrokerClientCredentialResponse schema in OpenAPI.
+// Matches ClientCredentialResponse schema in OpenAPI.
 type credentialGenerateResponse struct {
 	ClientID              string  `json:"client_id"`
 	ClientSecret          string  `json:"client_secret"`
@@ -46,7 +46,7 @@ type credentialGenerateResponse struct {
 }
 
 // credentialMetadataResponse is the JSON response for GET (read-only metadata).
-// Matches BrokerClientCredentialMetadata schema in OpenAPI.
+// Matches ClientCredentialMetadata schema in OpenAPI.
 type credentialMetadataResponse struct {
 	ClientID  string  `json:"client_id"`
 	CreatedAt string  `json:"created_at"`

@@ -30,7 +30,7 @@ type Adapter struct {
 	providers          ports.ThirdpartyOAuth2ProviderRepository
 	userGrants         ports.UserGrantRepository
 	userSessions       ports.UserSessionRepository
-	brokerCredentials  ports.BrokerClientCredentialRepository
+	brokerCredentials  ports.ClientCredentialRepository
 	signingKeys        ports.SigningKeyRepository
 	authorizationCodes ports.AuthorizationCodeRepository
 	pkceSessions       ports.PKCESessionRepository
@@ -71,7 +71,7 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		providers:          memory.NewInMemoryThirdpartyOAuth2ProviderRepository(),
 		userGrants:         memory.NewUserGrantRepository(),
 		userSessions:       memory.NewInMemoryUserSessionRepository(),
-		brokerCredentials:  memory.NewBrokerClientCredentialStore(),
+		brokerCredentials:  memory.NewClientCredentialStore(),
 		signingKeys:        memory.NewSigningKeyStore(),
 		authorizationCodes: memory.NewAuthorizationCodeStore(),
 		pkceSessions:       memory.NewPKCESessionStore(),
@@ -95,7 +95,7 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		providers:          postgres.NewPostgresThirdpartyOAuth2ProviderRepository(pgAdapter),
 		userGrants:         postgres.NewUserGrantRepository(pgAdapter),
 		userSessions:       postgres.NewUserSessionRepository(pgAdapter),
-		brokerCredentials:  postgres.NewBrokerClientCredentialRepo(pgAdapter),
+		brokerCredentials:  postgres.NewClientCredentialRepo(pgAdapter),
 		signingKeys:        postgres.NewSigningKeyRepo(pgAdapter),
 		authorizationCodes: postgres.NewAuthorizationCodeRepo(pgAdapter),
 		pkceSessions:       postgres.NewPKCESessionRepo(pgAdapter),
@@ -172,8 +172,8 @@ func (a *Adapter) UserSessions() ports.UserSessionRepository {
 	return a.userSessions
 }
 
-// BrokerCredentials returns the BrokerClientCredentialRepository interface implementation.
-func (a *Adapter) BrokerCredentials() ports.BrokerClientCredentialRepository {
+// BrokerCredentials returns the ClientCredentialRepository interface implementation.
+func (a *Adapter) BrokerCredentials() ports.ClientCredentialRepository {
 	return a.brokerCredentials
 }
 

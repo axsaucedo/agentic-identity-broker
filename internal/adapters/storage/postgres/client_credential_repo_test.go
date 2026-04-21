@@ -48,14 +48,14 @@ func createTestAgent(t *testing.T, adapter *Adapter) *storage.Agent {
 	return agent
 }
 
-func TestBrokerClientCredentialRepo_Create(t *testing.T) {
+func TestClientCredentialRepo_Create(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
 	agent := createTestAgent(t, adapter)
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 
-	cred := &storage.BrokerClientCredential{
+	cred := &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
@@ -66,15 +66,15 @@ func TestBrokerClientCredentialRepo_Create(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestBrokerClientCredentialRepo_GetByAgentID(t *testing.T) {
+func TestClientCredentialRepo_GetByAgentID(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
 	agent := createTestAgent(t, adapter)
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	ctx := context.Background()
 
-	cred := &storage.BrokerClientCredential{
+	cred := &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
@@ -89,16 +89,16 @@ func TestBrokerClientCredentialRepo_GetByAgentID(t *testing.T) {
 	assert.Equal(t, cred.SecretHash, got.SecretHash)
 }
 
-func TestBrokerClientCredentialRepo_GetByClientID(t *testing.T) {
+func TestClientCredentialRepo_GetByClientID(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
 	agent := createTestAgent(t, adapter)
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	ctx := context.Background()
 
 	clientID := id.NewClientID(agent.ID.String())
-	cred := &storage.BrokerClientCredential{
+	cred := &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
@@ -113,11 +113,11 @@ func TestBrokerClientCredentialRepo_GetByClientID(t *testing.T) {
 	assert.Equal(t, cred.SecretHash, got.SecretHash)
 }
 
-func TestBrokerClientCredentialRepo_GetByAgentID_Timeout(t *testing.T) {
+func TestClientCredentialRepo_GetByAgentID_Timeout(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 
@@ -129,11 +129,11 @@ func TestBrokerClientCredentialRepo_GetByAgentID_Timeout(t *testing.T) {
 	assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
 }
 
-func TestBrokerClientCredentialRepo_GetByClientID_Timeout(t *testing.T) {
+func TestClientCredentialRepo_GetByClientID_Timeout(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 
@@ -145,11 +145,11 @@ func TestBrokerClientCredentialRepo_GetByClientID_Timeout(t *testing.T) {
 	assert.Equal(t, storage.ErrorKindTimeout, se.Kind)
 }
 
-func TestBrokerClientCredentialRepo_GetByAgentID_NotFound(t *testing.T) {
+func TestClientCredentialRepo_GetByAgentID_NotFound(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	_, err := repo.GetByAgentID(context.Background(), id.NewAgentID())
 	require.Error(t, err)
 
@@ -158,11 +158,11 @@ func TestBrokerClientCredentialRepo_GetByAgentID_NotFound(t *testing.T) {
 	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
 }
 
-func TestBrokerClientCredentialRepo_GetByClientID_NotFound(t *testing.T) {
+func TestClientCredentialRepo_GetByClientID_NotFound(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	_, err := repo.GetByClientID(context.Background(), id.NewClientID(id.NewAgentID().String()))
 	require.Error(t, err)
 
@@ -171,15 +171,15 @@ func TestBrokerClientCredentialRepo_GetByClientID_NotFound(t *testing.T) {
 	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
 }
 
-func TestBrokerClientCredentialRepo_Delete(t *testing.T) {
+func TestClientCredentialRepo_Delete(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
 	agent := createTestAgent(t, adapter)
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	ctx := context.Background()
 
-	cred := &storage.BrokerClientCredential{
+	cred := &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
@@ -198,15 +198,15 @@ func TestBrokerClientCredentialRepo_Delete(t *testing.T) {
 	assert.Equal(t, storage.ErrorKindNotFound, se.Kind)
 }
 
-func TestBrokerClientCredentialRepo_UniquePerAgent(t *testing.T) {
+func TestClientCredentialRepo_UniquePerAgent(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
 	agent := createTestAgent(t, adapter)
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	ctx := context.Background()
 
-	cred1 := &storage.BrokerClientCredential{
+	cred1 := &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash1",
@@ -216,7 +216,7 @@ func TestBrokerClientCredentialRepo_UniquePerAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Second credential for the same agent must fail (UNIQUE on agent_id).
-	cred2 := &storage.BrokerClientCredential{
+	cred2 := &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash2",
@@ -226,16 +226,16 @@ func TestBrokerClientCredentialRepo_UniquePerAgent(t *testing.T) {
 	assert.Error(t, err, "second credential for same agent should fail unique constraint")
 }
 
-func TestBrokerClientCredentialRepo_UniqueClientID(t *testing.T) {
+func TestClientCredentialRepo_UniqueClientID(t *testing.T) {
 	adapter, cleanup := setupCredentialTestDB(t)
 	defer cleanup()
 
 	agent1 := createTestAgent(t, adapter)
 	agent2 := createTestAgent(t, adapter)
-	repo := NewBrokerClientCredentialRepo(adapter)
+	repo := NewClientCredentialRepo(adapter)
 	ctx := context.Background()
 
-	cred1 := &storage.BrokerClientCredential{
+	cred1 := &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agent1.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash1",
@@ -245,7 +245,7 @@ func TestBrokerClientCredentialRepo_UniqueClientID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Using agent1's agent_id for a second credential must fail the UNIQUE constraint.
-	cred2 := &storage.BrokerClientCredential{
+	cred2 := &storage.ClientCredential{
 		ID:         id.NewCredentialID(),
 		AgentID:    agent1.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash2",

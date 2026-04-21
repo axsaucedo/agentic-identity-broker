@@ -12,8 +12,8 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
-func TestBrokerClientCredentialRepo_GetByAgentID_NilDB(t *testing.T) {
-	repo := NewBrokerClientCredentialRepo(&Adapter{db: nil})
+func TestClientCredentialRepo_GetByAgentID_NilDB(t *testing.T) {
+	repo := NewClientCredentialRepo(&Adapter{db: nil})
 	_, err := repo.GetByAgentID(context.Background(), id.NewAgentID())
 	require.Error(t, err)
 
@@ -22,8 +22,8 @@ func TestBrokerClientCredentialRepo_GetByAgentID_NilDB(t *testing.T) {
 	assert.Equal(t, storage.ErrorKindConnection, se.Kind)
 }
 
-func TestBrokerClientCredentialRepo_GetByClientID_NilDB(t *testing.T) {
-	repo := NewBrokerClientCredentialRepo(&Adapter{db: nil})
+func TestClientCredentialRepo_GetByClientID_NilDB(t *testing.T) {
+	repo := NewClientCredentialRepo(&Adapter{db: nil})
 	_, err := repo.GetByClientID(context.Background(), id.NewClientID(id.NewAgentID().String()))
 	require.Error(t, err)
 

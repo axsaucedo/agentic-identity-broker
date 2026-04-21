@@ -39,7 +39,7 @@ type Provider struct {
 func NewProvider(
 	codeRepo ports.AuthorizationCodeRepository,
 	pkceRepo ports.PKCESessionRepository,
-	credRepo ports.BrokerClientCredentialRepository,
+	credRepo ports.ClientCredentialRepository,
 	agentRepo ports.AgentRepository,
 	signingKeyRepo ports.SigningKeyRepository,
 	encryption ports.EncryptionPort,
