@@ -100,8 +100,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	tests := []struct {
@@ -163,8 +162,7 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -201,8 +199,7 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String() + "&redirect_uri=https://client.example.com/callback")
@@ -235,8 +232,7 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=expired&client_id=" + agentID.String())
@@ -352,9 +348,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 			defer mockUpstream.Close()
 
 			handler := &OAuth2TokenHandler{
-				UpstreamTokenURL:   mockUpstream.URL,
-				MultiAgentVerifier: tt.verifier,
-				AgentRepository:    agentRepo,
+				GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, tt.verifier, nil),
 			}
 
 			body := "grant_type=authorization_code&code=abc123&client_id=" + tt.clientID
@@ -386,8 +380,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -456,8 +449,7 @@ func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
 			for _, v := range verifiers {
 				t.Run(v.name, func(t *testing.T) {
 					handler := &OAuth2TokenHandler{
-						UpstreamTokenURL:   mockUpstream.URL,
-						MultiAgentVerifier: v.verifier,
+						GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, v.verifier, nil),
 					}
 
 					req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(tt.body))
@@ -496,8 +488,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_ClientIDReplacement(t *testing.T) {
 
 	agentRepo := newStubAgentRepo(agentID, upstreamClientID)
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
@@ -532,8 +523,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 		err:   errors.New("agent not found"),
 	}
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
@@ -551,10 +541,10 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 
 func TestWriteTokenResponse(t *testing.T) {
 	t.Run("success returns 200 with complete JSON body", func(t *testing.T) {
-		h := &OAuth2TokenHandler{}
+		s := &issueTokenGrantStrategy{}
 		w := httptest.NewRecorder()
 
-		h.writeTokenResponse(w, &ports.TokenResponse{
+		s.writeTokenResponse(w, &ports.TokenResponse{
 			AccessToken: "tok123",
 			TokenType:   "Bearer",
 			ExpiresIn:   3600,
@@ -573,10 +563,10 @@ func TestWriteTokenResponse(t *testing.T) {
 	})
 
 	t.Run("scope included when non-empty", func(t *testing.T) {
-		h := &OAuth2TokenHandler{}
+		s := &issueTokenGrantStrategy{}
 		w := httptest.NewRecorder()
 
-		h.writeTokenResponse(w, &ports.TokenResponse{
+		s.writeTokenResponse(w, &ports.TokenResponse{
 			AccessToken: "tok456",
 			TokenType:   "Bearer",
 			ExpiresIn:   900,
@@ -591,7 +581,7 @@ func TestWriteTokenResponse(t *testing.T) {
 }
 
 // TestHandleLocalMinting_ClientCredentials covers the client_credentials path through
-// handleLocalMinting: success, input validation failures, and strategy error mapping.
+// HandleTokenGrant: success, input validation failures, and strategy error mapping.
 func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 	successResp := &ports.TokenResponse{AccessToken: "tok123", TokenType: "Bearer", ExpiresIn: 3600, Scope: "read"}
 
@@ -644,7 +634,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{TokenMinting: minting}
+			handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(minting, nil)}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -667,7 +657,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 }
 
 // TestHandleLocalMinting_AuthorizationCode covers the authorization_code path through
-// handleLocalMinting: success, input validation failures, and strategy error mapping.
+// HandleTokenGrant: success, input validation failures, and strategy error mapping.
 func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 	successResp := &ports.TokenResponse{AccessToken: "tok456", TokenType: "Bearer", ExpiresIn: 900}
 
@@ -726,7 +716,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{TokenMinting: minting}
+			handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(minting, nil)}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -751,7 +741,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 // 400 unsupported_grant_type for any grant type other than client_credentials or
 // authorization_code (e.g. password, implicit, device_code).
 func TestHandleLocalMinting_UnsupportedGrantType(t *testing.T) {
-	handler := &OAuth2TokenHandler{TokenMinting: fixedMinting(nil, nil)}
+	handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(fixedMinting(nil, nil), nil)}
 	req := httptest.NewRequest("POST", "/oauth2/token",
 		strings.NewReader("grant_type=password&username=user&password=secret"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -783,10 +773,10 @@ func TestHandleMintingError_RFC6749StatusCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := &OAuth2TokenHandler{}
+			s := &issueTokenGrantStrategy{}
 			w := httptest.NewRecorder()
 
-			h.handleMintingError(w, tt.err, "client_credentials", "broker_test")
+			s.handleMintingError(w, tt.err, "client_credentials", "broker_test")
 
 			assert.Equal(t, tt.wantStatus, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -801,10 +791,10 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 	internalDetail := "scope \"read:admin\" not allowed for this agent"
 
 	t.Run("invalid_scope does not leak internal detail", func(t *testing.T) {
-		h := &OAuth2TokenHandler{}
+		s := &issueTokenGrantStrategy{}
 		w := httptest.NewRecorder()
 
-		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_scope", "scope not allowed", http.StatusBadRequest, oauth2server.ErrInvalidScope)), "client_credentials", "broker_test")
+		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_scope", "scope not allowed", http.StatusBadRequest, oauth2server.ErrInvalidScope)), "client_credentials", "broker_test")
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		body, _ := io.ReadAll(w.Body)
@@ -814,10 +804,10 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 	})
 
 	t.Run("invalid_grant does not leak internal detail", func(t *testing.T) {
-		h := &OAuth2TokenHandler{}
+		s := &issueTokenGrantStrategy{}
 		w := httptest.NewRecorder()
 
-		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant)), "authorization_code", "broker_test")
+		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant)), "authorization_code", "broker_test")
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		body, _ := io.ReadAll(w.Body)
@@ -833,11 +823,11 @@ func TestHandleMintingError_LogDoesNotLeakErrorChain(t *testing.T) {
 	var buf strings.Builder
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
-	h := &OAuth2TokenHandler{Logger: logger}
+	s := &issueTokenGrantStrategy{logger: logger}
 	w := httptest.NewRecorder()
 
 	wrapped := fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient))
-	h.handleMintingError(w, wrapped, "client_credentials", "broker_test")
+	s.handleMintingError(w, wrapped, "client_credentials", "broker_test")
 
 	logLine := buf.String()
 	assert.NotContains(t, logLine, internalDetail)

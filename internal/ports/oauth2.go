@@ -108,9 +108,9 @@ type MetadataResponse struct {
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
 }
 
-// TokenMintingStrategy abstracts how the token endpoint handles grant types.
-// In proxy mode, grants are forwarded to an upstream OAuth2 server.
-// In issue_token mode, grants are processed locally by the oauth2server.Provider.
+// TokenMintingStrategy abstracts local token grant processing in issue_token mode.
+// Grants are processed locally by the oauth2server.Provider.
+// In proxy mode, grants are handled at the HTTP layer by proxyTokenGrantStrategy.
 type TokenMintingStrategy interface {
 	// HandleClientCredentials processes a client_credentials grant type request.
 	// Returns the token response or an error.

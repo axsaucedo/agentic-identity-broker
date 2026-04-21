@@ -520,13 +520,7 @@ func (b *Builder) Build() (*App, error) {
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
 	// Config validation makes this error unreachable in practice, but structural fail-closed
 	// guarantees (SR-001) are not conditional on upstream validation alone.
-	oauth2TokenHandler := &enduser.OAuth2TokenHandler{
-		UpstreamTokenURL: b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
-		Client:           upstreamClient,
-		TokenExchange:    app.TokenExchangeService,
-		Logger:           b.logger,
-		AgentRepository:  b.storage.Agents(),
-	}
+	var multiAgentVerifier ports.MultiAgentVerifier
 	if b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
 		// Discover JWKS URI for multi-agent token signature verification (defense-in-depth, SR-001).
 		// The broker is the relying party and must verify that the upstream token has not been tampered with.
@@ -565,7 +559,18 @@ func (b *Builder) Build() (*App, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create multi-agent token verifier: %w", err)
 		}
-		oauth2TokenHandler.MultiAgentVerifier = verifier
+		multiAgentVerifier = verifier
+	}
+	oauth2TokenHandler := &enduser.OAuth2TokenHandler{
+		TokenExchange: app.TokenExchangeService,
+		Logger:        b.logger,
+		GrantHandler: enduser.NewProxyTokenGrantStrategy(
+			b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+			upstreamClient,
+			b.storage.Agents(),
+			multiAgentVerifier,
+			b.logger,
+		),
 	}
 
 	// Enduser handlers
@@ -612,7 +617,7 @@ func (b *Builder) Build() (*App, error) {
 
 		// Wire local minting strategy into the existing token handler
 		mintingStrategy := newIssueTokenMintingStrategy(provider)
-		oauth2TokenHandler.TokenMinting = mintingStrategy
+		oauth2TokenHandler.GrantHandler = enduser.NewIssueTokenGrantStrategy(mintingStrategy, b.logger)
 
 		// Wire issue_token proceed strategy into the authorize handler
 		codeIssuer := newIssueTokenCodeIssuer(provider)
