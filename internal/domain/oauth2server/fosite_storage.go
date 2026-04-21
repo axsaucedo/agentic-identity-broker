@@ -109,8 +109,8 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 		ID:             authCode.ID.String(),
 		Client:         client,
 		Session:        session,
-		RequestedScope: strings.Split(authCode.Scope, " "),
-		GrantedScope:   strings.Split(authCode.Scope, " "),
+		RequestedScope: splitScope(authCode.Scope),
+		GrantedScope:   splitScope(authCode.Scope),
 		Form: map[string][]string{
 			"redirect_uri":          {authCode.RedirectURI},
 			"code_challenge":        {authCode.CodeChallenge},

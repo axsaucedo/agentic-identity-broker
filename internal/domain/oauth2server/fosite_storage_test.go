@@ -138,6 +138,49 @@ func TestFositeStorage_AuthorizeCodeSessions(t *testing.T) {
 		_, err := store.GetAuthorizeCodeSession(context.Background(), "non-existent", &fosite.DefaultSession{})
 		assert.Error(t, err)
 	})
+
+	t.Run("empty scope round-trips as empty not [\"\"]", func(t *testing.T) {
+		store, _, agentRepo, credRepo := newTestFositeStorage()
+		ctx := context.Background()
+
+		agent := testAgent()
+		require.NoError(t, agentRepo.Create(ctx, agent))
+
+		cred := &dstorage.BrokerClientCredential{
+			ID:         id.NewCredentialID(),
+			AgentID:    agent.ID,
+			ClientID:   id.NewClientID("broker_empty_scope"),
+			SecretHash: "hash",
+		}
+		require.NoError(t, credRepo.Create(ctx, cred))
+
+		client := &brokerClient{agent: agent, credential: cred}
+		session := &fosite.DefaultSession{
+			Subject: "user@example.com",
+			ExpiresAt: map[fosite.TokenType]time.Time{
+				fosite.AuthorizeCode: time.Now().Add(60 * time.Second),
+			},
+		}
+		req := &fosite.Request{
+			ID:             "req-empty-scope",
+			Client:         client,
+			Session:        session,
+			RequestedScope: fosite.Arguments{},
+			GrantedScope:   fosite.Arguments{},
+			Form: map[string][]string{
+				"redirect_uri":   {"http://localhost:8080/callback"},
+				"code_challenge": {"challenge"},
+			},
+			RequestedAt: time.Now(),
+		}
+
+		require.NoError(t, store.CreateAuthorizeCodeSession(ctx, "empty-scope-code", req))
+
+		retrieved, err := store.GetAuthorizeCodeSession(ctx, "empty-scope-code", session)
+		require.NoError(t, err)
+		assert.Empty(t, retrieved.GetRequestedScopes())
+		assert.Empty(t, retrieved.GetGrantedScopes())
+	})
 }
 
 func TestFositeStorage_AccessTokenSessions(t *testing.T) {

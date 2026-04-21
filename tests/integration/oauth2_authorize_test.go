@@ -212,7 +212,8 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 	)
 
 	handler := &enduser.OAuth2AuthorizeHandler{
-		Service: svc,
+		Service:        svc,
+		ProceedHandler: enduser.NewProxyProceedStrategy(),
 	}
 
 	req := httptest.NewRequest(
@@ -336,7 +337,8 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 	)
 
 	handler := &enduser.OAuth2AuthorizeHandler{
-		Service: svc,
+		Service:        svc,
+		ProceedHandler: enduser.NewProxyProceedStrategy(),
 	}
 
 	// Wrap with audit middleware
@@ -397,7 +399,8 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 	)
 
 	handler := &enduser.OAuth2AuthorizeHandler{
-		Service: svc,
+		Service:        svc,
+		ProceedHandler: enduser.NewProxyProceedStrategy(),
 	}
 
 	req := httptest.NewRequest(
