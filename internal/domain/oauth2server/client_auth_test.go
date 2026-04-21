@@ -124,7 +124,7 @@ func TestClientAuthService_GenerateCredentials(t *testing.T) {
 		require.NotNil(t, cred)
 		require.NotEmpty(t, secret)
 
-		assert.Equal(t, agentID.String(), cred.ClientID.String())
+		assert.Equal(t, agentID, cred.AgentID)
 
 		// Verify secret hash is not the plaintext
 		assert.NotEqual(t, secret, cred.SecretHash)
@@ -140,7 +140,7 @@ func TestClientAuthService_GenerateCredentials(t *testing.T) {
 		require.NoError(t, err)
 
 		// Client ID is deterministic (= agentID)
-		assert.Equal(t, cred1.ClientID, cred2.ClientID)
+		assert.Equal(t, cred1.AgentID, cred2.AgentID)
 		// Secret is random each time (rotation scenario)
 		assert.NotEqual(t, secret1, secret2)
 	})
@@ -234,7 +234,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		agentID := id.NewAgentID()
 		cred := &storage.BrokerClientCredential{
 			ID:         id.NewCredentialID(),
-			ClientID:   id.NewClientID(agentID.String()),
+			AgentID:    agentID,
 			SecretHash: "irrelevant",
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))
@@ -257,7 +257,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		agentID := id.NewAgentID()
 		cred := &storage.BrokerClientCredential{
 			ID:         id.NewCredentialID(),
-			ClientID:   id.NewClientID(agentID.String()),
+			AgentID:    agentID,
 			SecretHash: "irrelevant",
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))

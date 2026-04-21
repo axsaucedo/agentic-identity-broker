@@ -32,9 +32,9 @@ func (r *BrokerClientCredentialRepo) Create(ctx context.Context, credential *sto
 	defer cancel()
 
 	_, err := r.adapter.db.ExecContext(execCtx,
-		`INSERT INTO client_credentials (id, client_id, secret_hash, created_at, rotated_at)
+		`INSERT INTO client_credentials (id, agent_id, secret_hash, created_at, rotated_at)
 		 VALUES ($1, $2, $3, $4, $5)`,
-		credential.ID, credential.ClientID,
+		credential.ID, credential.AgentID,
 		credential.SecretHash, credential.CreatedAt, credential.RotatedAt,
 	)
 	if err != nil {
@@ -43,15 +43,9 @@ func (r *BrokerClientCredentialRepo) Create(ctx context.Context, credential *sto
 	return nil
 }
 
-// GetByAgentID retrieves the credential for the given agent.
-// Since client_id == agentID.String(), this delegates to GetByClientID.
 func (r *BrokerClientCredentialRepo) GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.BrokerClientCredential, error) {
-	return r.GetByClientID(ctx, id.ClientID(agentID.String()))
-}
-
-func (r *BrokerClientCredentialRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error) {
 	if r.adapter.db == nil {
-		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindConnection, nil, "database not initialized")
+		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindConnection, nil, "database not initialized")
 	}
 
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
@@ -59,18 +53,26 @@ func (r *BrokerClientCredentialRepo) GetByClientID(ctx context.Context, clientID
 
 	var cred storage.BrokerClientCredential
 	err := r.adapter.db.GetContext(queryCtx, &cred,
-		`SELECT id, client_id, secret_hash, created_at, rotated_at
-		 FROM client_credentials WHERE client_id = $1`, clientID)
+		`SELECT id, agent_id, secret_hash, created_at, rotated_at
+		 FROM client_credentials WHERE agent_id = $1`, agentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindNotFound, err, "credential not found")
+			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindNotFound, err, "credential not found")
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+			return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindConnection, err, "failed to query credential")
+		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByAgentID", storage.ErrorKindConnection, err, "failed to query credential")
 	}
 	return &cred, nil
+}
+
+func (r *BrokerClientCredentialRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.BrokerClientCredential, error) {
+	agentID, err := id.ParseAgentID(clientID.String())
+	if err != nil {
+		return nil, storage.NewStorageError("BrokerClientCredentialRepo.GetByClientID", storage.ErrorKindNotFound, nil, "invalid client_id")
+	}
+	return r.GetByAgentID(ctx, agentID)
 }
 
 func (r *BrokerClientCredentialRepo) Delete(ctx context.Context, agentID id.AgentID) error {
@@ -82,7 +84,7 @@ func (r *BrokerClientCredentialRepo) Delete(ctx context.Context, agentID id.Agen
 	defer cancel()
 
 	result, err := r.adapter.db.ExecContext(execCtx,
-		`DELETE FROM client_credentials WHERE client_id = $1`, agentID.String())
+		`DELETE FROM client_credentials WHERE agent_id = $1`, agentID)
 	if err != nil {
 		return storage.NewStorageError("BrokerClientCredentialRepo.Delete", storage.ErrorKindUnknown, err, "failed to delete credential")
 	}
@@ -107,10 +109,10 @@ func (r *BrokerClientCredentialRepo) Rotate(ctx context.Context, agentID id.Agen
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// DELETE before INSERT: client_id is UNIQUE, so we must remove the old row first.
+	// DELETE before INSERT: agent_id is UNIQUE, so we must remove the old row first.
 	// The transaction guarantees atomicity: if the INSERT fails the DELETE rolls back.
 	result, err := tx.ExecContext(execCtx,
-		`DELETE FROM client_credentials WHERE client_id = $1`, agentID.String())
+		`DELETE FROM client_credentials WHERE agent_id = $1`, agentID)
 	if err != nil {
 		return storage.NewStorageError("BrokerClientCredentialRepo.Rotate", storage.ErrorKindUnknown, err, "failed to delete old credential")
 	}
@@ -121,9 +123,9 @@ func (r *BrokerClientCredentialRepo) Rotate(ctx context.Context, agentID id.Agen
 	}
 
 	_, err = tx.ExecContext(execCtx,
-		`INSERT INTO client_credentials (id, client_id, secret_hash, created_at, rotated_at)
+		`INSERT INTO client_credentials (id, agent_id, secret_hash, created_at, rotated_at)
 		 VALUES ($1, $2, $3, $4, $5)`,
-		newCredential.ID, newCredential.ClientID,
+		newCredential.ID, newCredential.AgentID,
 		newCredential.SecretHash, newCredential.CreatedAt, newCredential.RotatedAt,
 	)
 	if err != nil {

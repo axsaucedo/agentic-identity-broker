@@ -104,7 +104,7 @@ func (h *ClientCredentialsHandler) Generate(w http.ResponseWriter, r *http.Reque
 	}
 
 	resp := credentialGenerateResponse{
-		ClientID:     credential.ClientID.String(),
+		ClientID:     credential.AgentID.String(),
 		ClientSecret: plaintextSecret,
 		CreatedAt:    credential.CreatedAt.Format(time.RFC3339),
 	}
@@ -117,13 +117,13 @@ func (h *ClientCredentialsHandler) Generate(w http.ResponseWriter, r *http.Reque
 		h.logger.Info("CredentialRotated",
 			"event", "CredentialRotated",
 			"agent_id", agentID,
-			"client_id", credential.ClientID,
+			"client_id", credential.AgentID,
 		)
 	} else {
 		h.logger.Info("CredentialGenerated",
 			"event", "CredentialGenerated",
 			"agent_id", agentID,
-			"client_id", credential.ClientID,
+			"client_id", credential.AgentID,
 		)
 	}
 
@@ -166,7 +166,7 @@ func (h *ClientCredentialsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	)
 
 	resp := credentialMetadataResponse{
-		ClientID:  cred.ClientID.String(),
+		ClientID:  cred.AgentID.String(),
 		CreatedAt: cred.CreatedAt.Format(time.RFC3339),
 	}
 	if cred.RotatedAt != nil {

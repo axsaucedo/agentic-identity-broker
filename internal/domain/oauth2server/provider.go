@@ -259,7 +259,7 @@ func (p *Provider) HandleAuthorize(
 		"code_challenge":        {codeChallenge},
 		"code_challenge_method": {codeChallengeMethod},
 		"response_type":         {responseType},
-		"client_id":             {bc.credential.ClientID.String()},
+		"client_id":             {bc.credential.AgentID.String()},
 		"scope":                 {scope},
 		"state":                 {state},
 	}
@@ -300,7 +300,7 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		}
 		return nil, fosite.ErrServerError.WithDebugf("failed to look up authorization code: %v", err)
 	}
-	if authedClient.Credential.ClientID != authCode.ClientID {
+	if authedClient.Credential.AgentID != authCode.AgentID {
 		return nil, fosite.ErrInvalidGrant.WithHintf("authorization code was issued to a different client credential")
 	}
 

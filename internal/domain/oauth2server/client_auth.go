@@ -98,7 +98,7 @@ func (s *ClientAuthService) GenerateCredentials(agentID id.AgentID) (credential 
 
 	credential = &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   id.NewClientID(agentID.String()),
+		AgentID:    agentID,
 		SecretHash: secretHash,
 	}
 

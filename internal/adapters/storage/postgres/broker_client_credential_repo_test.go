@@ -57,7 +57,7 @@ func TestBrokerClientCredentialRepo_Create(t *testing.T) {
 
 	cred := &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   id.NewClientID(agent.ID.String()),
+		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -76,7 +76,7 @@ func TestBrokerClientCredentialRepo_GetByAgentID(t *testing.T) {
 
 	cred := &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   id.NewClientID(agent.ID.String()),
+		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -85,7 +85,7 @@ func TestBrokerClientCredentialRepo_GetByAgentID(t *testing.T) {
 
 	got, err := repo.GetByAgentID(ctx, agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, cred.ClientID, got.ClientID)
+	assert.Equal(t, cred.AgentID, got.AgentID)
 	assert.Equal(t, cred.SecretHash, got.SecretHash)
 }
 
@@ -100,7 +100,7 @@ func TestBrokerClientCredentialRepo_GetByClientID(t *testing.T) {
 	clientID := id.NewClientID(agent.ID.String())
 	cred := &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   clientID,
+		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -109,7 +109,7 @@ func TestBrokerClientCredentialRepo_GetByClientID(t *testing.T) {
 
 	got, err := repo.GetByClientID(ctx, clientID)
 	require.NoError(t, err)
-	assert.Equal(t, clientID, got.ClientID)
+	assert.Equal(t, agent.ID, got.AgentID)
 	assert.Equal(t, cred.SecretHash, got.SecretHash)
 }
 
@@ -181,7 +181,7 @@ func TestBrokerClientCredentialRepo_Delete(t *testing.T) {
 
 	cred := &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   id.NewClientID(agent.ID.String()),
+		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash",
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -208,17 +208,17 @@ func TestBrokerClientCredentialRepo_UniquePerAgent(t *testing.T) {
 
 	cred1 := &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   id.NewClientID(agent.ID.String()),
+		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash1",
 		CreatedAt:  time.Now().UTC(),
 	}
 	err := repo.Create(ctx, cred1)
 	require.NoError(t, err)
 
-	// Second credential for the same agent must fail (UNIQUE on client_id = agentID).
+	// Second credential for the same agent must fail (UNIQUE on agent_id).
 	cred2 := &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   id.NewClientID(agent.ID.String()),
+		AgentID:    agent.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash2",
 		CreatedAt:  time.Now().UTC(),
 	}
@@ -237,21 +237,21 @@ func TestBrokerClientCredentialRepo_UniqueClientID(t *testing.T) {
 
 	cred1 := &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   id.NewClientID(agent1.ID.String()),
+		AgentID:    agent1.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash1",
 		CreatedAt:  time.Now().UTC(),
 	}
 	err := repo.Create(ctx, cred1)
 	require.NoError(t, err)
 
-	// Using agent1's client_id for agent2 must fail the UNIQUE constraint.
+	// Using agent1's agent_id for a second credential must fail the UNIQUE constraint.
 	cred2 := &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		ClientID:   id.NewClientID(agent1.ID.String()),
+		AgentID:    agent1.ID,
 		SecretHash: "$argon2id$v=19$m=65536,t=3,p=4$salt$hash2",
 		CreatedAt:  time.Now().UTC(),
 	}
 	err = repo.Create(ctx, cred2)
-	assert.Error(t, err, "duplicate client_id should fail unique constraint")
+	assert.Error(t, err, "duplicate agent_id should fail unique constraint")
 	_ = agent2 // agent2 exists to represent a distinct principal in this constraint test
 }
