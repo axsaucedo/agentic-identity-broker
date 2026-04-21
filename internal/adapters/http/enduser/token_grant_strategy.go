@@ -303,12 +303,9 @@ func (s *issueTokenGrantStrategy) handleMintingError(w http.ResponseWriter, err 
 
 	var rfc6749Err *oauth2server.RFC6749Error
 	if errors.As(err, &rfc6749Err) {
-		errorCode = rfc6749Err.ErrorCode
-		errorDesc = rfc6749Err.Description
-		statusCode = rfc6749Err.HTTPStatus
-		if statusCode == 0 {
-			statusCode = http.StatusInternalServerError
-		}
+		errorCode = rfc6749Err.Code()
+		errorDesc = rfc6749Err.Description()
+		statusCode = rfc6749Err.HTTPStatus()
 	} else {
 		errorCode = "server_error"
 		errorDesc = "internal server error"

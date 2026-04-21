@@ -21,22 +21,31 @@ var (
 // RFC6749Error carries a structured OAuth2 error across the domain/adapter
 // boundary without exposing fosite types to callers outside oauth2server.
 type RFC6749Error struct {
-	ErrorCode   string
-	Description string
-	HTTPStatus  int
+	errorCode   string
+	description string
+	httpStatus  int
 	sentinel    error
 }
 
-func (e *RFC6749Error) Error() string { return e.ErrorCode + ": " + e.Description }
-func (e *RFC6749Error) Unwrap() error { return e.sentinel }
+func (e *RFC6749Error) Error() string       { return e.errorCode + ": " + e.description }
+func (e *RFC6749Error) Unwrap() error       { return e.sentinel }
+func (e *RFC6749Error) Code() string        { return e.errorCode }
+func (e *RFC6749Error) Description() string { return e.description }
+func (e *RFC6749Error) HTTPStatus() int     { return e.httpStatus }
 
-// NewRFC6749Error constructs an RFC6749Error. Use this in tests and adapters
-// that produce errors outside the Provider translation path.
+// NewRFC6749Error constructs an RFC6749Error. Panics if errorCode is empty or
+// httpStatus is not a valid HTTP status code (≤ 0).
 func NewRFC6749Error(errorCode, description string, httpStatus int, sentinel error) *RFC6749Error {
+	if errorCode == "" {
+		panic("oauth2server: NewRFC6749Error: errorCode must not be empty")
+	}
+	if httpStatus <= 0 {
+		panic("oauth2server: NewRFC6749Error: httpStatus must be a valid HTTP status code")
+	}
 	return &RFC6749Error{
-		ErrorCode:   errorCode,
-		Description: description,
-		HTTPStatus:  httpStatus,
+		errorCode:   errorCode,
+		description: description,
+		httpStatus:  httpStatus,
 		sentinel:    sentinel,
 	}
 }
@@ -57,9 +66,9 @@ func translateFositeError(err error) error {
 		return err
 	}
 	return &RFC6749Error{
-		ErrorCode:   fe.ErrorField,
-		Description: fe.DescriptionField,
-		HTTPStatus:  fe.CodeField,
+		errorCode:   fe.ErrorField,
+		description: fe.DescriptionField,
+		httpStatus:  fe.CodeField,
 		sentinel:    domainSentinel(err),
 	}
 }

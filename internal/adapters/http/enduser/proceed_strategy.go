@@ -55,7 +55,7 @@ func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http
 		// All other OAuth2 errors: redirect with error params (redirect_uri has been validated).
 		var rfc6749Err *oauth2server.RFC6749Error
 		if errors.As(err, &rfc6749Err) {
-			redirectWithError(w, r, req.RedirectURI, req.State, rfc6749Err.ErrorCode, rfc6749Err.Description)
+			redirectWithError(w, r, req.RedirectURI, req.State, rfc6749Err.Code(), rfc6749Err.Description())
 			return
 		}
 
@@ -91,7 +91,7 @@ func shouldWriteDirectOAuth2Error(err error) bool {
 func writeDirectOAuth2Error(w http.ResponseWriter, err error) {
 	var rfc6749Err *oauth2server.RFC6749Error
 	if errors.As(err, &rfc6749Err) {
-		writeOAuth2ErrorJSON(w, rfc6749Err.HTTPStatus, rfc6749Err.ErrorCode, rfc6749Err.Description)
+		writeOAuth2ErrorJSON(w, rfc6749Err.HTTPStatus(), rfc6749Err.Code(), rfc6749Err.Description())
 		return
 	}
 
