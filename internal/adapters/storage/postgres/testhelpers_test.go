@@ -127,7 +127,7 @@ func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo 
 		{"007_add_oauth2_flavor.up.sql", 7},
 		{"008_drop_agent_client_id_unique.up.sql", 8},
 		{"009_add_agent_redirect_uris.up.sql", 9},
-		{"010_create_broker_client_credentials.up.sql", 10},
+		{"010_create_client_credentials.up.sql", 10},
 		{"011_create_signing_keys.up.sql", 11},
 		{"012_create_authorization_codes.up.sql", 12},
 		{"013_add_client_id_to_auth_codes.up.sql", 13},

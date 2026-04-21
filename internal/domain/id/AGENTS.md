@@ -16,7 +16,7 @@ This package defines per-entity ID types that the compiler enforces. Without typ
 |---|---|---|
 | `AgentID` | AI agent | `agents.id` |
 | `AuthorizationCodeID` | OAuth2 authorization code | `authorization_codes.id` |
-| `CredentialID` | Broker client credential | `broker_client_credentials.id` |
+| `CredentialID` | Broker client credential | `client_credentials.id` |
 | `GrantID` | User grant | `user_grants.id` |
 | `ServiceID` | Third-party OAuth2 service | `thirdparty_oauth2_services.id`, `service_requirements.service_id`, `delegated_tokens.service_id`, `user_sessions.service_id` |
 | `SessionID` | OAuth2 user session | `user_sessions.id` |

@@ -60,7 +60,7 @@ func setupAgentTestDBWithMigrations(t *testing.T, upToMigration int) (*Adapter, 
 		version int64
 	}{
 		{"009_add_agent_redirect_uris.up.sql", 9},
-		{"010_create_broker_client_credentials.up.sql", 10},
+		{"010_create_client_credentials.up.sql", 10},
 		{"011_create_signing_keys.up.sql", 11},
 		{"012_create_authorization_codes.up.sql", 12},
 	}
