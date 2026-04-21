@@ -161,20 +161,9 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 
 // TestOAuth2AuthServerConfig_IssueTokenMode tests issue_token mode validation (T003).
 func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
-	t.Run("issue_token mode requires issuer_uri", func(t *testing.T) {
+	t.Run("issue_token mode succeeds without upstream fields", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
 			Mode: "issue_token",
-			// IssuerURI is missing
-		}
-		err := cfg.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "issuer_uri")
-	})
-
-	t.Run("issue_token mode with issuer_uri succeeds", func(t *testing.T) {
-		cfg := &ports.OAuth2AuthServerConfig{
-			Mode:      "issue_token",
-			IssuerURI: "https://broker.example.com",
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
@@ -182,8 +171,7 @@ func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
 
 	t.Run("issue_token mode defaults token_ttl to 1h", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode:      "issue_token",
-			IssuerURI: "https://broker.example.com",
+			Mode: "issue_token",
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
@@ -192,9 +180,8 @@ func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
 
 	t.Run("issue_token mode preserves custom token_ttl", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode:      "issue_token",
-			IssuerURI: "https://broker.example.com",
-			TokenTTL:  30 * time.Minute,
+			Mode:     "issue_token",
+			TokenTTL: 30 * time.Minute,
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
@@ -203,9 +190,7 @@ func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
 
 	t.Run("issue_token mode does not require upstream fields", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode:      "issue_token",
-			IssuerURI: "https://broker.example.com",
-			// No upstream_issuer_uri, upstream_authorize_endpoint, upstream_token_endpoint
+			Mode: "issue_token",
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
@@ -213,8 +198,7 @@ func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
 
 	t.Run("issue_token mode sets default response types and grant types", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode:      "issue_token",
-			IssuerURI: "https://broker.example.com",
+			Mode: "issue_token",
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)

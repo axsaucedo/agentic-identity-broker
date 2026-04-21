@@ -311,7 +311,6 @@ type OAuth2AuthServerConfig struct {
 	Mode                      string   `mapstructure:"mode"`
 
 	// issue_token mode fields (ignored when mode=proxy)
-	IssuerURI             string        `mapstructure:"issuer_uri"`              // Required when mode=issue_token
 	TokenTTL              time.Duration `mapstructure:"token_ttl"`               // Default: 1h
 	TokenClaimsExpression string        `mapstructure:"token_claims_expression"` // Optional CEL expression for custom claims
 
@@ -329,7 +328,6 @@ func (c *OAuth2AuthServerConfig) isZero() bool {
 		c.SupportedResponseTypes == nil &&
 		c.SupportedGrantTypes == nil &&
 		c.UpstreamTimeoutSeconds == 0 &&
-		c.IssuerURI == "" &&
 		c.TokenTTL == 0 &&
 		c.TokenClaimsExpression == "" &&
 		!c.MultiAgentClient.Enabled &&
@@ -405,10 +403,6 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 
 // validateIssueTokenMode validates configuration for issue_token mode (local token minting).
 func (c *OAuth2AuthServerConfig) validateIssueTokenMode() error {
-	if c.IssuerURI == "" {
-		return c.newValidationError("oauth2_authorization_server.issuer_uri is required in issue_token mode")
-	}
-
 	if c.TokenTTL == 0 {
 		c.TokenTTL = time.Hour
 	}

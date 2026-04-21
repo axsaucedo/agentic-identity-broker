@@ -273,7 +273,6 @@ func (b *Builder) Build() (*App, error) {
 			SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
 			MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,
 			Mode:                      b.config.OAuth2AuthServer.Mode,
-			IssuerURI:                 b.config.OAuth2AuthServer.IssuerURI,
 		}
 		// In issue_token mode, set correct defaults for supported types
 		if b.config.OAuth2AuthServer.Mode == "issue_token" {
@@ -571,7 +570,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.Agents(),
 			b.storage.SigningKeys(),
 			encryptor,
-			b.config.OAuth2AuthServer.IssuerURI,
+			b.config.Server.EndUser.PublicURL,
 			b.config.OAuth2AuthServer.TokenTTL,
 			b.config.OAuth2AuthServer.TokenClaimsExpression,
 			b.logger,
@@ -586,7 +585,7 @@ func (b *Builder) Build() (*App, error) {
 			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
 		}
 		b.logger.Info("OAuth2 server mode: issue_token — local token minting enabled",
-			"issuer_uri", b.config.OAuth2AuthServer.IssuerURI,
+			"issuer_uri", b.config.Server.EndUser.PublicURL,
 			"token_ttl", b.config.OAuth2AuthServer.TokenTTL,
 		)
 	} else {

@@ -51,10 +51,6 @@ type OAuth2Config struct {
 	// Mode indicates whether the broker operates in "proxy" or "issue_token" mode.
 	// In issue_token mode, JWKS and code_challenge_methods are included in metadata.
 	Mode string
-
-	// IssuerURI is the issuer identifier for issue_token mode.
-	// When non-empty, overrides PublicURL as the issuer in metadata.
-	IssuerURI string
 }
 
 // Service implements the OAuth2Service port
@@ -332,9 +328,6 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 // In issue_token mode, includes JWKS URI and code_challenge_methods.
 func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
 	issuer := s.config.PublicURL
-	if s.config.IssuerURI != "" {
-		issuer = s.config.IssuerURI
-	}
 
 	metadata := &ports.MetadataResponse{
 		Issuer:                            issuer,

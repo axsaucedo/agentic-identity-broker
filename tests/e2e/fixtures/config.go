@@ -432,7 +432,6 @@ func SignedJWTConfigWithIssuer(jwksURL, issuer string) *ports.Config {
 func IssueTokenConfig() *ports.Config {
 	config := DefaultOAuth2Config()
 	config.OAuth2AuthServer.Mode = "issue_token"
-	config.OAuth2AuthServer.IssuerURI = "http://localhost:8000"
 	config.OAuth2AuthServer.TokenTTL = time.Hour
 	config.OAuth2AuthServer.TokenClaimsExpression = ""
 	// Clear upstream fields (not needed in issue_token mode)
