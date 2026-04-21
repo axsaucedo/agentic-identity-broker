@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/ory/fosite"
-
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -55,9 +53,9 @@ func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http
 		}
 
 		// All other OAuth2 errors: redirect with error params (redirect_uri has been validated).
-		var fositeErr *fosite.RFC6749Error
-		if errors.As(err, &fositeErr) {
-			redirectWithError(w, r, req.RedirectURI, req.State, fositeErr.ErrorField, fositeErr.DescriptionField)
+		var rfc6749Err *oauth2server.RFC6749Error
+		if errors.As(err, &rfc6749Err) {
+			redirectWithError(w, r, req.RedirectURI, req.State, rfc6749Err.ErrorCode, rfc6749Err.Description)
 			return
 		}
 
@@ -85,22 +83,22 @@ func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http
 }
 
 func shouldWriteDirectOAuth2Error(err error) bool {
-	return errors.Is(err, fosite.ErrInvalidClient) ||
+	return errors.Is(err, oauth2server.ErrInvalidClient) ||
 		errors.Is(err, oauth2server.ErrInvalidRedirectURI) ||
-		errors.Is(err, fosite.ErrServerError)
+		errors.Is(err, oauth2server.ErrServerError)
 }
 
 func writeDirectOAuth2Error(w http.ResponseWriter, err error) {
-	var fositeErr *fosite.RFC6749Error
-	if errors.As(err, &fositeErr) {
-		writeOAuth2ErrorJSON(w, fositeErr.CodeField, fositeErr.ErrorField, fositeErr.DescriptionField)
+	var rfc6749Err *oauth2server.RFC6749Error
+	if errors.As(err, &rfc6749Err) {
+		writeOAuth2ErrorJSON(w, rfc6749Err.HTTPStatus, rfc6749Err.ErrorCode, rfc6749Err.Description)
 		return
 	}
 
 	switch {
-	case errors.Is(err, fosite.ErrServerError):
+	case errors.Is(err, oauth2server.ErrServerError):
 		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "authorization failed")
-	case errors.Is(err, fosite.ErrInvalidClient):
+	case errors.Is(err, oauth2server.ErrInvalidClient):
 		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client authentication failed")
 	default:
 		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "request validation failed")

@@ -11,9 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ory/fosite"
-
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -628,7 +627,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 		{
 			name:          "strategy ErrInvalidClient returns 401 invalid_client",
 			body:          "grant_type=client_credentials&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=wrong",
-			mintingErr:    fosite.ErrInvalidClient,
+			mintingErr:    oauth2server.NewRFC6749Error("invalid_client", "client authentication failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient),
 			wantStatus:    http.StatusUnauthorized,
 			wantErrorCode: "invalid_client",
 		},
@@ -710,7 +709,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 		{
 			name:          "strategy ErrInvalidGrant returns 400 invalid_grant",
 			body:          "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret&code=expired",
-			mintingErr:    fosite.ErrInvalidGrant,
+			mintingErr:    oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant),
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "invalid_grant",
 		},
@@ -774,9 +773,9 @@ func TestHandleMintingError_RFC6749StatusCodes(t *testing.T) {
 		wantStatus    int
 		wantErrorCode string
 	}{
-		{"ErrInvalidClient → 401 invalid_client", fosite.ErrInvalidClient, http.StatusUnauthorized, "invalid_client"},
-		{"ErrInvalidScope → 400 invalid_scope", fosite.ErrInvalidScope, http.StatusBadRequest, "invalid_scope"},
-		{"ErrInvalidGrant → 400 invalid_grant", fosite.ErrInvalidGrant, http.StatusBadRequest, "invalid_grant"},
+		{"ErrInvalidClient → 401 invalid_client", oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient), http.StatusUnauthorized, "invalid_client"},
+		{"ErrInvalidScope → 400 invalid_scope", oauth2server.NewRFC6749Error("invalid_scope", "invalid scope", http.StatusBadRequest, oauth2server.ErrInvalidScope), http.StatusBadRequest, "invalid_scope"},
+		{"ErrInvalidGrant → 400 invalid_grant", oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant), http.StatusBadRequest, "invalid_grant"},
 		{"unknown error → 500 server_error", errors.New("unexpected db failure"), http.StatusInternalServerError, "server_error"},
 	}
 
@@ -803,7 +802,7 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 		h := &OAuth2TokenHandler{}
 		w := httptest.NewRecorder()
 
-		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, fosite.ErrInvalidScope), "client_credentials", "broker_test")
+		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_scope", "scope not allowed", http.StatusBadRequest, oauth2server.ErrInvalidScope)), "client_credentials", "broker_test")
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		body, _ := io.ReadAll(w.Body)
@@ -816,7 +815,7 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 		h := &OAuth2TokenHandler{}
 		w := httptest.NewRecorder()
 
-		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, fosite.ErrInvalidGrant), "authorization_code", "broker_test")
+		h.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant)), "authorization_code", "broker_test")
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		body, _ := io.ReadAll(w.Body)

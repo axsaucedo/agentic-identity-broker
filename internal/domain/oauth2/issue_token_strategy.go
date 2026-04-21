@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ory/fosite"
-
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -49,7 +47,7 @@ func NewIssueTokenCodeIssuer(provider *oauth2server.Provider) *IssueTokenCodeIss
 func (s *IssueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (string, error) {
 	agentID, err := id.ParseAgentID(string(req.ClientID))
 	if err != nil {
-		return "", fmt.Errorf("%w: invalid client_id: %v", fosite.ErrInvalidClient, err)
+		return "", fmt.Errorf("%w: invalid client_id: %v", oauth2server.ErrInvalidClient, err)
 	}
 	return s.provider.HandleAuthorize(
 		ctx,

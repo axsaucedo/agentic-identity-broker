@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/ory/fosite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -90,20 +89,20 @@ func TestIssueTokenProceedStrategy_Errors(t *testing.T) {
 		wantErrCode string
 		isRedirect  bool
 	}{
-		// fosite.ErrInvalidClient: HTTP 401 per fosite — never redirect (RFC 6749 §4.1.2.1)
-		{"unknown client", fosite.ErrInvalidClient, http.StatusUnauthorized, "invalid_client", false},
-		// ErrInvalidRedirectURI wraps fosite.ErrInvalidRequest: HTTP 400 — never redirect
+		// ErrInvalidClient: HTTP 401 — never redirect (RFC 6749 §4.1.2.1)
+		{"unknown client", oauth2server.ErrInvalidClient, http.StatusUnauthorized, "invalid_client", false},
+		// ErrInvalidRedirectURI: HTTP 400 — never redirect (redirect_uri unverified)
 		{"invalid redirect uri", oauth2server.ErrInvalidRedirectURI, http.StatusBadRequest, "invalid_request", false},
-		// fosite.ErrServerError: HTTP 500 — never redirect when validation state is uncertain
-		{"server error", fosite.ErrServerError, http.StatusInternalServerError, "server_error", false},
+		// ErrServerError: HTTP 500 — never redirect when validation state is uncertain
+		{"server error", oauth2server.ErrServerError, http.StatusInternalServerError, "server_error", false},
 		// Unexpected non-OAuth error: HTTP 500 — never redirect
 		{"unexpected error", errors.New("boom"), http.StatusInternalServerError, "server_error", false},
-		// fosite.ErrInvalidRequest: HTTP 400 — redirect is safe
-		{"invalid request", fosite.ErrInvalidRequest, http.StatusFound, "invalid_request", true},
-		// fosite.ErrUnsupportedResponseType: HTTP 400 — redirect is safe
-		{"unsupported response type", fosite.ErrUnsupportedResponseType, http.StatusFound, "unsupported_response_type", true},
-		// fosite.ErrInvalidScope: HTTP 400 — redirect is safe
-		{"invalid scope", fosite.ErrInvalidScope, http.StatusFound, "invalid_scope", true},
+		// ErrInvalidRequest: redirect is safe
+		{"invalid request", oauth2server.NewRFC6749Error("invalid_request", "bad request", http.StatusBadRequest, oauth2server.ErrInvalidRequest), http.StatusFound, "invalid_request", true},
+		// ErrUnsupportedResponseType: redirect is safe
+		{"unsupported response type", oauth2server.NewRFC6749Error("unsupported_response_type", "unsupported", http.StatusBadRequest, oauth2server.ErrUnsupportedResponseType), http.StatusFound, "unsupported_response_type", true},
+		// ErrInvalidScope: redirect is safe
+		{"invalid scope", oauth2server.NewRFC6749Error("invalid_scope", "invalid scope", http.StatusBadRequest, oauth2server.ErrInvalidScope), http.StatusFound, "invalid_scope", true},
 	}
 
 	for _, tc := range cases {

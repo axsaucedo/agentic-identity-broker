@@ -132,7 +132,9 @@ func (p *Provider) SigningKeyService() *SigningKeyService {
 
 // HandleClientCredentials processes a client_credentials grant type request.
 // Scope validation and token generation are fully delegated to fosite's ccHandler.
-func (p *Provider) HandleClientCredentials(ctx context.Context, agentID id.AgentID, secret string, requestedScope string) (*ports.TokenResponse, error) {
+func (p *Provider) HandleClientCredentials(ctx context.Context, agentID id.AgentID, secret string, requestedScope string) (resp *ports.TokenResponse, err error) {
+	defer func() { err = translateFositeError(err) }()
+
 	authClient, err := p.clientAuth.Authenticate(ctx, agentID, secret)
 	if err != nil {
 		return nil, err
@@ -162,13 +164,13 @@ func (p *Provider) HandleClientCredentials(ctx context.Context, agentID id.Agent
 		req.GrantScope(scope)
 	}
 
-	resp := fosite.NewAccessResponse()
-	if err := p.ccHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
+	fositeResp := fosite.NewAccessResponse()
+	if err := p.ccHandler.PopulateTokenEndpointResponse(ctx, req, fositeResp); err != nil {
 		return nil, err
 	}
 
 	return &ports.TokenResponse{
-		AccessToken: resp.GetAccessToken(),
+		AccessToken: fositeResp.GetAccessToken(),
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
 		Scope:       strings.Join(req.GetGrantedScopes(), " "),
@@ -193,6 +195,8 @@ func (p *Provider) HandleAuthorize(
 	codeChallengeMethod string,
 	principal id.Principal,
 ) (code string, err error) {
+	defer func() { err = translateFositeError(err) }()
+
 	fositeClient, err := p.fositeStorage.GetClient(ctx, agentID.String())
 	if err != nil {
 		if errors.Is(err, fosite.ErrNotFound) {
@@ -278,7 +282,9 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 	code string,
 	redirectURI string,
 	codeVerifier string,
-) (*ports.TokenResponse, error) {
+) (tokenResp *ports.TokenResponse, err error) {
+	defer func() { err = translateFositeError(err) }()
+
 	authedClient, err := p.clientAuth.Authenticate(ctx, agentID, secret)
 	if err != nil {
 		return nil, err
@@ -322,16 +328,16 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		return nil, err
 	}
 
-	resp := fosite.NewAccessResponse()
-	if err := p.authCodeHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
+	fositeResp := fosite.NewAccessResponse()
+	if err := p.authCodeHandler.PopulateTokenEndpointResponse(ctx, req, fositeResp); err != nil {
 		return nil, err
 	}
-	if err := p.pkceHandler.PopulateTokenEndpointResponse(ctx, req, resp); err != nil {
+	if err := p.pkceHandler.PopulateTokenEndpointResponse(ctx, req, fositeResp); err != nil {
 		return nil, err
 	}
 
 	return &ports.TokenResponse{
-		AccessToken: resp.GetAccessToken(),
+		AccessToken: fositeResp.GetAccessToken(),
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(p.config.AccessTokenLifespan.Seconds()),
 		Scope:       strings.Join(req.GetGrantedScopes(), " "),

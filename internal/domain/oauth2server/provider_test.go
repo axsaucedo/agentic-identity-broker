@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ory/fosite"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -106,7 +105,7 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 			"wrong-secret",
 			"read",
 		)
-		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
+		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 
 	t.Run("unknown agent_id returns error", func(t *testing.T) {
@@ -118,7 +117,7 @@ func TestProvider_HandleClientCredentials(t *testing.T) {
 			"secret",
 			"read",
 		)
-		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
+		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 
 	t.Run("empty scope works", func(t *testing.T) {
@@ -218,7 +217,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 			id.NewPrincipal("user@example.com"),
 		)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, fosite.ErrInvalidRequest)
+		assert.ErrorIs(t, err, ErrInvalidRequest)
 	})
 
 	t.Run("empty code_challenge_method rejected", func(t *testing.T) {
@@ -239,7 +238,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 			id.NewPrincipal("user@example.com"),
 		)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, fosite.ErrInvalidRequest)
+		assert.ErrorIs(t, err, ErrInvalidRequest)
 	})
 
 	t.Run("plain code_challenge_method rejected", func(t *testing.T) {
@@ -260,7 +259,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 			id.NewPrincipal("user@example.com"),
 		)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, fosite.ErrInvalidRequest)
+		assert.ErrorIs(t, err, ErrInvalidRequest)
 	})
 
 	t.Run("unregistered redirect_uri rejected", func(t *testing.T) {
@@ -299,7 +298,7 @@ func TestProvider_HandleAuthorize(t *testing.T) {
 			id.NewPrincipal("user@example.com"),
 		)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
+		assert.ErrorIs(t, err, ErrInvalidClient)
 	})
 }
 
@@ -386,7 +385,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 			verifier,
 		)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, fosite.ErrInvalidGrant)
+		assert.ErrorIs(t, err, ErrInvalidGrant)
 	})
 
 	t.Run("expired code rejects", func(t *testing.T) {
@@ -425,7 +424,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 			verifier,
 		)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, fosite.ErrInvalidGrant)
+		assert.ErrorIs(t, err, ErrInvalidGrant)
 	})
 
 	t.Run("redirect_uri substitution rejected", func(t *testing.T) {
@@ -461,7 +460,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 			verifier,
 		)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, fosite.ErrInvalidGrant)
+		assert.ErrorIs(t, err, ErrInvalidGrant)
 	})
 
 	t.Run("PKCE mismatch rejected", func(t *testing.T) {
@@ -496,7 +495,7 @@ func TestProvider_HandleAuthorizationCodeExchange(t *testing.T) {
 			"wrong-verifier",
 		)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, fosite.ErrInvalidGrant)
+		assert.ErrorIs(t, err, ErrInvalidGrant)
 	})
 }
 
@@ -542,7 +541,7 @@ func TestProvider_HandleAuthorizationCodeExchange_ConcurrentReplay(t *testing.T)
 		verifier,
 	)
 	assert.Error(t, err)
-	assert.ErrorIs(t, err, fosite.ErrInvalidGrant)
+	assert.ErrorIs(t, err, ErrInvalidGrant)
 }
 
 // raceCodeRepo wraps an AuthorizationCodeRepository to inject a fixed error on MarkUsed,

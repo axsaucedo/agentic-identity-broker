@@ -10,13 +10,13 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/ory/fosite"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -590,11 +590,11 @@ func (h *OAuth2TokenHandler) handleMintingError(w http.ResponseWriter, err error
 	var errorCode, errorDesc string
 	var statusCode int
 
-	var fositeErr *fosite.RFC6749Error
-	if errors.As(err, &fositeErr) {
-		errorCode = fositeErr.ErrorField
-		errorDesc = fositeErr.DescriptionField
-		statusCode = fositeErr.CodeField
+	var rfc6749Err *oauth2server.RFC6749Error
+	if errors.As(err, &rfc6749Err) {
+		errorCode = rfc6749Err.ErrorCode
+		errorDesc = rfc6749Err.Description
+		statusCode = rfc6749Err.HTTPStatus
 	} else {
 		errorCode = "server_error"
 		errorDesc = "internal server error"
