@@ -1060,3 +1060,128 @@ func TestService_HandleAuthorization_GrantLookupError(t *testing.T) {
 	assert.Contains(t, decision.RedirectURL, "https://client.example.com/callback")
 	assert.Contains(t, decision.RedirectURL, "error=server_error")
 }
+
+// TestService_HandleAuthorization_MandatoryRequirements tests that step 5 of HandleAuthorization
+// enforces mandatory service requirements on agents with active grants.
+func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+
+	cfg := &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+		PublicURL:                 "https://broker.example.com",
+	}
+
+	authReq := &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()),
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize",
+	}
+
+	// activeGrant sets up an agent with a mandatory service requirement and an active grant.
+	// DelegatedOAuth2Tokens is empty so step 4 (session expiry) does not interfere.
+	setupAgent := func(agentRepo *MockAgentRepository) {
+		_ = agentRepo.Create(context.Background(), &storage.Agent{
+			ID:           agentID,
+			ClientID:     id.ClientID("client-1"),
+			DisplayName:  "Test Agent",
+			RedirectURIs: []string{"https://client.example.com/callback"},
+			ServiceRequirements: []storage.ServiceRequirement{
+				{
+					ServiceID:       serviceID,
+					RequirementType: storage.RequirementTypeMandatory,
+					RequiredScopes:  []string{"repo", "user:email"},
+				},
+			},
+		})
+	}
+
+	setupGrant := func(grantRepo *MockGrantRepository) {
+		_ = grantRepo.Create(context.Background(), &storage.UserGrant{
+			ID:                    id.NewGrantID(),
+			Principal:             id.Principal("user@example.com"),
+			AgentID:               agentID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{},
+		})
+	}
+
+	tests := []struct {
+		name       string
+		setupSess  func(*MockSessionRepository)
+		wantAction string
+	}{
+		{
+			name: "active session with required scopes proceeds",
+			setupSess: func(r *MockSessionRepository) {
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return &storage.UserSession{
+						ID:        id.NewSessionID(),
+						Principal: id.Principal("user@example.com"),
+						ServiceID: serviceID,
+						Scope:     []string{"repo", "user:email", "read:user"},
+					}, nil
+				}
+			},
+			wantAction: "proceed",
+		},
+		{
+			name: "missing session redirects to consent",
+			setupSess: func(r *MockSessionRepository) {
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return nil, nil
+				}
+			},
+			wantAction: "redirect_to_consent",
+		},
+		{
+			name: "session with insufficient scopes redirects to consent",
+			setupSess: func(r *MockSessionRepository) {
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return &storage.UserSession{
+						ID:        id.NewSessionID(),
+						Principal: id.Principal("user@example.com"),
+						ServiceID: serviceID,
+						Scope:     []string{"repo"}, // missing user:email
+					}, nil
+				}
+			},
+			wantAction: "redirect_to_consent",
+		},
+		{
+			name: "expired session redirects to consent",
+			setupSess: func(r *MockSessionRepository) {
+				expiredAt := time.Now().Add(-1 * time.Hour)
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return &storage.UserSession{
+						ID:                    id.NewSessionID(),
+						Principal:             id.Principal("user@example.com"),
+						ServiceID:             serviceID,
+						Scope:                 []string{"repo", "user:email"},
+						RefreshTokenExpiresAt: &expiredAt,
+					}, nil
+				}
+			},
+			wantAction: "redirect_to_consent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agentRepo := NewMockAgentRepository()
+			grantRepo := NewMockGrantRepository()
+			sessionRepo := NewMockSessionRepository()
+
+			setupAgent(agentRepo)
+			setupGrant(grantRepo)
+			tt.setupSess(sessionRepo)
+
+			svc := NewServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg, nil)
+			decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
+
+			require.NoError(t, err)
+			require.NotNil(t, decision)
+			assert.Equal(t, tt.wantAction, decision.Action)
+		})
+	}
+}
