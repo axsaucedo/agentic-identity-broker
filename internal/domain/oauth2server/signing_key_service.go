@@ -183,7 +183,7 @@ func (s *SigningKeyService) DeleteKey(ctx context.Context, kid id.KeyID) error {
 		return fmt.Errorf("failed to count active keys: %w", err)
 	}
 	if count <= 1 {
-		return fmt.Errorf("cannot remove the last active signing key")
+		return ports.ErrLastActiveKey
 	}
 
 	key, err := s.repo.GetByKID(ctx, kid)
@@ -191,7 +191,7 @@ func (s *SigningKeyService) DeleteKey(ctx context.Context, kid id.KeyID) error {
 		return err
 	}
 	if key.IsCurrent {
-		return fmt.Errorf("cannot remove the current signing key; promote another key first")
+		return ports.ErrCurrentKey
 	}
 
 	return s.repo.Delete(ctx, kid)

@@ -157,42 +157,16 @@ func (h *SigningKeysHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if this is the last active key
-	count, err := h.signingKeyRepo.CountActive(r.Context())
-	if err != nil {
-		h.logger.Error("failed to count active keys", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
-	}
-
-	// Check if the key is current
-	key, err := h.signingKeyRepo.GetByKID(r.Context(), id.NewKeyID(kid))
-	if err != nil {
-		if isNotFoundErr(err) {
+	if err := h.signingKeyService.DeleteKey(r.Context(), id.NewKeyID(kid)); err != nil {
+		switch {
+		case isNotFoundErr(err):
 			h.writeError(w, http.StatusNotFound, "signing key not found", "")
-			return
+		case errors.Is(err, ports.ErrLastActiveKey), errors.Is(err, ports.ErrCurrentKey):
+			h.writeError(w, http.StatusConflict, err.Error(), "")
+		default:
+			h.logger.Error("failed to remove signing key", "kid", kid, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		}
-		h.logger.Error("failed to get signing key", "kid", kid, "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
-	}
-
-	if count <= 1 {
-		h.writeError(w, http.StatusConflict, "cannot remove the last signing key", "")
-		return
-	}
-	if key.IsCurrent {
-		h.writeError(w, http.StatusConflict, "cannot remove the current signing key; promote another key first", "")
-		return
-	}
-
-	if err := h.signingKeyRepo.Delete(r.Context(), id.NewKeyID(kid)); err != nil {
-		if isNotFoundErr(err) {
-			h.writeError(w, http.StatusNotFound, "signing key not found", "")
-			return
-		}
-		h.logger.Error("failed to remove signing key", "kid", kid, "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
 	}
 
