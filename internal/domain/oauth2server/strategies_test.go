@@ -2,9 +2,12 @@ package oauth2server
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
@@ -225,6 +228,73 @@ func TestJWXAccessTokenStrategy_SubClaimNotOverridable(t *testing.T) {
 	var extra string
 	require.NoError(t, tok.Get("extra", &extra), "non-reserved CEL claim should be present")
 	assert.Equal(t, "ok", extra)
+}
+
+func TestJWXAccessTokenStrategy_ValidateAccessToken(t *testing.T) {
+	const issuer = "https://broker.example.com"
+	svc, repo := newTestSigningKeyService()
+	ctx := context.Background()
+	_, err := svc.generateAndStore(ctx, "ES256", true, time.Now())
+	require.NoError(t, err)
+
+	strategy, err := NewJWXAccessTokenStrategy(svc, repo, issuer, time.Hour, nil, testSlogger())
+	require.NoError(t, err)
+
+	t.Run("valid token passes", func(t *testing.T) {
+		tokenStr, _, err := strategy.GenerateAccessToken(ctx, buildTestRequest("agent", "user@example.com", []string{"read"}))
+		require.NoError(t, err)
+		assert.NoError(t, strategy.ValidateAccessToken(ctx, nil, tokenStr))
+	})
+
+	t.Run("garbage string rejected", func(t *testing.T) {
+		assert.Error(t, strategy.ValidateAccessToken(ctx, nil, "not-a-jwt"))
+	})
+
+	t.Run("tampered signature rejected", func(t *testing.T) {
+		tokenStr, _, err := strategy.GenerateAccessToken(ctx, buildTestRequest("agent", "user@example.com", []string{"read"}))
+		require.NoError(t, err)
+
+		parts := strings.SplitN(tokenStr, ".", 3)
+		require.Len(t, parts, 3)
+		tampered := parts[0] + "." + parts[1] + ".invalidsignature"
+
+		assert.Error(t, strategy.ValidateAccessToken(ctx, nil, tampered))
+	})
+
+	t.Run("expired token rejected", func(t *testing.T) {
+		key, err := repo.GetCurrent(ctx)
+		require.NoError(t, err)
+		privPEM, err := svc.DecryptPrivateKey(ctx, key)
+		require.NoError(t, err)
+		privKey, err := jwk.ParseKey(privPEM, jwk.WithPEM(true))
+		require.NoError(t, err)
+		_ = privKey.Set(jwk.KeyIDKey, key.KID.String())
+
+		now := time.Now()
+		expiredTok, err := jwt.NewBuilder().
+			Issuer(issuer).
+			Subject("user@example.com").
+			IssuedAt(now.Add(-2 * time.Hour)).
+			Expiration(now.Add(-time.Hour)).
+			JwtID("expired-jti").
+			Build()
+		require.NoError(t, err)
+
+		signed, err := jwt.Sign(expiredTok, jwt.WithKey(jwa.ES256(), privKey))
+		require.NoError(t, err)
+
+		assert.Error(t, strategy.ValidateAccessToken(ctx, nil, string(signed)))
+	})
+
+	t.Run("token from different issuer rejected", func(t *testing.T) {
+		evilStrategy, err := NewJWXAccessTokenStrategy(svc, repo, "https://evil.example.com", time.Hour, nil, testSlogger())
+		require.NoError(t, err)
+
+		tokenStr, _, err := evilStrategy.GenerateAccessToken(ctx, buildTestRequest("agent", "user@example.com", []string{"read"}))
+		require.NoError(t, err)
+
+		assert.Error(t, strategy.ValidateAccessToken(ctx, nil, tokenStr))
+	})
 }
 
 func TestSHA256Hex(t *testing.T) {

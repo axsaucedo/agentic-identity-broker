@@ -150,9 +150,21 @@ func (s *JWXAccessTokenStrategy) AccessTokenSignature(_ context.Context, token s
 	return sha256Hex(token)
 }
 
-// ValidateAccessToken validates an access token.
-func (s *JWXAccessTokenStrategy) ValidateAccessToken(_ context.Context, _ fosite.Requester, _ string) error {
-	// Validation happens externally via JWKS endpoint
+// ValidateAccessToken validates an access token by verifying its JWT signature,
+// expiry, and issuer against all active signing keys.
+func (s *JWXAccessTokenStrategy) ValidateAccessToken(ctx context.Context, _ fosite.Requester, token string) error {
+	jwks, err := s.signingKeyService.BuildJWKS(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to build JWKS for token validation: %w", err)
+	}
+	if _, err := jwt.ParseString(token,
+		jwt.WithVerify(true),
+		jwt.WithKeySet(jwks),
+		jwt.WithValidate(true),
+		jwt.WithIssuer(s.issuerURI),
+	); err != nil {
+		return fosite.ErrTokenSignatureMismatch.WithWrap(err)
+	}
 	return nil
 }
 
