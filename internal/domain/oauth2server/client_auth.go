@@ -15,14 +15,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-const (
-	// brokerClientIDPrefix is prepended to generated client IDs.
-	brokerClientIDPrefix = "broker_"
-	// brokerClientIDRandomBytes is the number of random bytes for client ID generation.
-	brokerClientIDRandomBytes = 22
-	// clientSecretBytes is the number of random bytes for client secret generation.
-	clientSecretBytes = 32
-)
+const clientSecretBytes = 32
 
 // ClientAuthService handles client authentication and credential management.
 type ClientAuthService struct {
@@ -88,23 +81,16 @@ func (s *ClientAuthService) logStorageFailure(ctx context.Context, err error) {
 	}
 }
 
-// GenerateCredentials generates a new broker client ID and secret.
-// Returns the plaintext secret (shown once to the user) and the credential for storage.
+// GenerateCredentials generates a new broker client secret for the given agent.
+// The client_id is always the agent's UUID string. Returns the plaintext secret
+// (shown once to the user) and the credential for storage.
 func (s *ClientAuthService) GenerateCredentials(agentID id.AgentID) (credential *storage.BrokerClientCredential, plaintextSecret string, err error) {
-	randomBytes := make([]byte, brokerClientIDRandomBytes)
-	if _, err := rand.Read(randomBytes); err != nil {
-		return nil, "", fmt.Errorf("failed to generate client ID: %w", err)
-	}
-	brokerClientID := brokerClientIDPrefix + base64.RawURLEncoding.EncodeToString(randomBytes)
-
-	// Generate secret: 32 bytes base64url
 	secretBytes := make([]byte, clientSecretBytes)
 	if _, err := rand.Read(secretBytes); err != nil {
 		return nil, "", fmt.Errorf("failed to generate secret: %w", err)
 	}
 	plaintextSecret = base64.RawURLEncoding.EncodeToString(secretBytes)
 
-	// Hash the secret
 	secretHash, err := s.hasher.Hash(plaintextSecret)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to hash secret: %w", err)
@@ -112,8 +98,7 @@ func (s *ClientAuthService) GenerateCredentials(agentID id.AgentID) (credential 
 
 	credential = &storage.BrokerClientCredential{
 		ID:         id.NewCredentialID(),
-		AgentID:    agentID,
-		ClientID:   id.NewClientID(brokerClientID),
+		ClientID:   id.NewClientID(agentID.String()),
 		SecretHash: secretHash,
 	}
 

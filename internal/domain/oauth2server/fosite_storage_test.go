@@ -68,8 +68,7 @@ func TestFositeStorage_AuthorizeCodeSessions(t *testing.T) {
 
 		cred := &dstorage.BrokerClientCredential{
 			ID:         id.NewCredentialID(),
-			AgentID:    agent.ID,
-			ClientID:   id.NewClientID("broker_test_client"),
+			ClientID:   id.NewClientID(agent.ID.String()),
 			SecretHash: "hash",
 		}
 		err = credRepo.Create(ctx, cred)
@@ -118,8 +117,7 @@ func TestFositeStorage_AuthorizeCodeSessions(t *testing.T) {
 
 		cred := &dstorage.BrokerClientCredential{
 			ID:         id.NewCredentialID(),
-			AgentID:    agent.ID,
-			ClientID:   id.NewClientID("broker_test_client2"),
+			ClientID:   id.NewClientID(agent.ID.String()),
 			SecretHash: "hash",
 		}
 		err = credRepo.Create(ctx, cred)
@@ -170,8 +168,7 @@ func TestFositeStorage_AuthorizeCodeSessions(t *testing.T) {
 
 		cred := &dstorage.BrokerClientCredential{
 			ID:         id.NewCredentialID(),
-			AgentID:    agent.ID,
-			ClientID:   id.NewClientID("broker_empty_scope"),
+			ClientID:   id.NewClientID(agent.ID.String()),
 			SecretHash: "hash",
 		}
 		require.NoError(t, credRepo.Create(ctx, cred))
@@ -520,8 +517,7 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 		require.NoError(t, agentRepo.Create(context.Background(), agent))
 		cred := &dstorage.BrokerClientCredential{
 			ID:         id.NewCredentialID(),
-			AgentID:    agentID,
-			ClientID:   id.NewClientID("broker_rt_test"),
+			ClientID:   id.NewClientID(agentID.String()),
 			SecretHash: "hash",
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))

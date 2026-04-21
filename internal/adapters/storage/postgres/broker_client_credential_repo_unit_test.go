@@ -24,7 +24,7 @@ func TestBrokerClientCredentialRepo_GetByAgentID_NilDB(t *testing.T) {
 
 func TestBrokerClientCredentialRepo_GetByClientID_NilDB(t *testing.T) {
 	repo := NewBrokerClientCredentialRepo(&Adapter{db: nil})
-	_, err := repo.GetByClientID(context.Background(), id.NewClientID("broker_test"))
+	_, err := repo.GetByClientID(context.Background(), id.NewClientID(id.NewAgentID().String()))
 	require.Error(t, err)
 
 	var se *storage.StorageError

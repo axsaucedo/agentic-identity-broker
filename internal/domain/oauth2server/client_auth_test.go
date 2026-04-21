@@ -116,31 +116,32 @@ func TestArgon2Hasher_HashAndCompare(t *testing.T) {
 }
 
 func TestClientAuthService_GenerateCredentials(t *testing.T) {
-	t.Run("generates client_id with correct format", func(t *testing.T) {
+	t.Run("client_id equals the agent UUID", func(t *testing.T) {
 		svc := &ClientAuthService{hasher: &Argon2Hasher{}}
-		cred, secret, err := svc.GenerateCredentials(testAgentID())
+		agentID := testAgentID()
+		cred, secret, err := svc.GenerateCredentials(agentID)
 		require.NoError(t, err)
 		require.NotNil(t, cred)
 		require.NotEmpty(t, secret)
 
-		// Verify client_id format
-		clientID := cred.ClientID.String()
-		assert.True(t, strings.HasPrefix(clientID, "broker_"), "client ID should start with broker_ prefix")
-		assert.Greater(t, len(clientID), len("broker_"), "client ID should have random suffix")
+		assert.Equal(t, agentID.String(), cred.ClientID.String())
 
 		// Verify secret hash is not the plaintext
 		assert.NotEqual(t, secret, cred.SecretHash)
 		assert.True(t, strings.HasPrefix(cred.SecretHash, "$argon2id$"))
 	})
 
-	t.Run("generates unique credentials each time", func(t *testing.T) {
+	t.Run("generates unique secrets each call, same client_id for same agent", func(t *testing.T) {
 		svc := &ClientAuthService{hasher: &Argon2Hasher{}}
-		cred1, secret1, err := svc.GenerateCredentials(testAgentID())
+		agentID := testAgentID()
+		cred1, secret1, err := svc.GenerateCredentials(agentID)
 		require.NoError(t, err)
-		cred2, secret2, err := svc.GenerateCredentials(testAgentID())
+		cred2, secret2, err := svc.GenerateCredentials(agentID)
 		require.NoError(t, err)
 
-		assert.NotEqual(t, cred1.ClientID, cred2.ClientID)
+		// Client ID is deterministic (= agentID)
+		assert.Equal(t, cred1.ClientID, cred2.ClientID)
+		// Secret is random each time (rotation scenario)
 		assert.NotEqual(t, secret1, secret2)
 	})
 }
@@ -233,8 +234,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		agentID := id.NewAgentID()
 		cred := &storage.BrokerClientCredential{
 			ID:         id.NewCredentialID(),
-			AgentID:    agentID,
-			ClientID:   id.NewClientID("broker_timeout_test"),
+			ClientID:   id.NewClientID(agentID.String()),
 			SecretHash: "irrelevant",
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))
@@ -257,8 +257,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		agentID := id.NewAgentID()
 		cred := &storage.BrokerClientCredential{
 			ID:         id.NewCredentialID(),
-			AgentID:    agentID,
-			ClientID:   id.NewClientID("broker_nf_agent_test"),
+			ClientID:   id.NewClientID(agentID.String()),
 			SecretHash: "irrelevant",
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))
