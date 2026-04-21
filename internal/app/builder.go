@@ -561,44 +561,11 @@ func (b *Builder) Build() (*App, error) {
 		}
 		multiAgentVerifier = verifier
 	}
-	oauth2TokenHandler := &enduser.OAuth2TokenHandler{
-		TokenExchange: app.TokenExchangeService,
-		Logger:        b.logger,
-		GrantHandler: enduser.NewProxyTokenGrantStrategy(
-			b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
-			upstreamClient,
-			b.storage.Agents(),
-			multiAgentVerifier,
-			b.logger,
-		),
-	}
+	var grantHandler enduser.TokenGrantStrategy
+	var proceedHandler enduser.AuthorizationProceedStrategy
+	var jwksHandler *enduserHandlers.JWKSHandler
 
-	// Enduser handlers
-	app.EnduserHandlers = &EnduserHandlers{
-		UserInfo:       consent.NewUserInfoHandler(b.logger),
-		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
-		AgentDetail:    agentDetailHandler,
-		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger),
-		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
-		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
-		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
-			Service:        app.OAuth2Service,
-			ProceedHandler: enduser.NewProxyProceedStrategy(),
-		},
-		OAuth2Token: oauth2TokenHandler,
-		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
-			Service: app.OAuth2Service,
-		},
-		SPA: handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
-	}
-
-	// Conditionally wire issue_token mode via strategy interfaces on existing handlers
 	if b.config.OAuth2AuthServer.Mode == "issue_token" {
-		// JWKS endpoint (issue_token mode only)
-		app.EnduserHandlers.JWKS = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
-
-		// Construct the OAuth2 server provider for local token minting
 		provider, err := oauth2server.NewProvider(
 			b.storage.AuthorizationCodes(),
 			b.storage.PKCESessions(),
@@ -614,24 +581,49 @@ func (b *Builder) Build() (*App, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
 		}
-
-		// Wire local minting strategy into the existing token handler
-		mintingStrategy := newIssueTokenMintingStrategy(provider)
-		oauth2TokenHandler.GrantHandler = enduser.NewIssueTokenGrantStrategy(mintingStrategy, b.logger)
-
-		// Wire issue_token proceed strategy into the authorize handler
-		codeIssuer := newIssueTokenCodeIssuer(provider)
-		app.EnduserHandlers.OAuth2Authorize.ProceedHandler = enduser.NewIssueTokenProceedStrategy(codeIssuer, b.logger)
-
-		// Auto-generate signing key if none exists
+		grantHandler = enduser.NewIssueTokenGrantStrategy(newIssueTokenMintingStrategy(provider), b.logger)
+		proceedHandler = enduser.NewIssueTokenProceedStrategy(newIssueTokenCodeIssuer(provider), b.logger)
+		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
 		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
 			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
 		}
-
 		b.logger.Info("OAuth2 server mode: issue_token — local token minting enabled",
 			"issuer_uri", b.config.OAuth2AuthServer.IssuerURI,
 			"token_ttl", b.config.OAuth2AuthServer.TokenTTL,
 		)
+	} else {
+		grantHandler = enduser.NewProxyTokenGrantStrategy(
+			b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+			upstreamClient,
+			b.storage.Agents(),
+			multiAgentVerifier,
+			b.logger,
+		)
+		proceedHandler = enduser.NewProxyProceedStrategy()
+	}
+
+	app.EnduserHandlers = &EnduserHandlers{
+		UserInfo:       consent.NewUserInfoHandler(b.logger),
+		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
+		AgentDetail:    agentDetailHandler,
+		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
+		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger),
+		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
+		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
+		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
+			Service:        app.OAuth2Service,
+			ProceedHandler: proceedHandler,
+		},
+		OAuth2Token: &enduser.OAuth2TokenHandler{
+			TokenExchange: app.TokenExchangeService,
+			Logger:        b.logger,
+			GrantHandler:  grantHandler,
+		},
+		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
+			Service: app.OAuth2Service,
+		},
+		JWKS: jwksHandler,
+		SPA:  handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
 	}
 
 	return app, nil
