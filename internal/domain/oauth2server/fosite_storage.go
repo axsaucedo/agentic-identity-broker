@@ -223,7 +223,10 @@ func (s *FositeStorage) GetPKCERequestSession(ctx context.Context, signature str
 
 // DeletePKCERequestSession removes the PKCE session after successful token exchange (one-shot).
 func (s *FositeStorage) DeletePKCERequestSession(ctx context.Context, signature string) error {
-	return s.pkceRepo.Delete(ctx, signature)
+	if err := s.pkceRepo.Delete(ctx, signature); err != nil {
+		return s.mapStorageError(ctx, err)
+	}
+	return nil
 }
 
 // GetClient satisfies the fosite.Storage interface.

@@ -32,6 +32,22 @@ func (m *mockCodeRepo) MarkUsed(ctx context.Context, codeID id.AuthorizationCode
 }
 func (m *mockCodeRepo) DeleteExpired(_ context.Context) (int, error) { return 0, nil }
 
+type mockPKCERepo struct {
+	deleteFunc func(context.Context, string) error
+}
+
+func (m *mockPKCERepo) Create(_ context.Context, _ *dstorage.PKCESession) error { return nil }
+func (m *mockPKCERepo) FindBySignature(_ context.Context, _ string) (*dstorage.PKCESession, error) {
+	return nil, dstorage.NewStorageError("FindBySignature", dstorage.ErrorKindNotFound, nil, "not found")
+}
+func (m *mockPKCERepo) Delete(ctx context.Context, sig string) error {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(ctx, sig)
+	}
+	return nil
+}
+func (m *mockPKCERepo) DeleteExpired(_ context.Context) (int, error) { return 0, nil }
+
 func newTestFositeStorage() (*FositeStorage, *memory.AuthorizationCodeStore, *memory.AgentRepository, *memory.BrokerClientCredentialStore) {
 	codeRepo := memory.NewAuthorizationCodeStore()
 	pkceRepo := memory.NewPKCESessionStore()
@@ -472,6 +488,29 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 
 		err := store.InvalidateAuthorizeCodeSession(context.Background(), "anycode")
 		assert.ErrorIs(t, err, fosite.ErrInvalidatedAuthorizeCode)
+	})
+
+	t.Run("DeletePKCERequestSession infrastructure error is logged and returned", func(t *testing.T) {
+		connErr := dstorage.NewStorageError("Delete", dstorage.ErrorKindConnection, nil, "connection refused")
+		pkceRepo := &mockPKCERepo{
+			deleteFunc: func(_ context.Context, _ string) error { return connErr },
+		}
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), pkceRepo, memory.NewAgentRepository(), memory.NewBrokerClientCredentialStore(), testSlogger())
+
+		err := store.DeletePKCERequestSession(context.Background(), "anysig")
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, fosite.ErrNotFound)
+	})
+
+	t.Run("DeletePKCERequestSession not-found returns ErrNotFound", func(t *testing.T) {
+		notFoundErr := dstorage.NewStorageError("Delete", dstorage.ErrorKindNotFound, nil, "not found")
+		pkceRepo := &mockPKCERepo{
+			deleteFunc: func(_ context.Context, _ string) error { return notFoundErr },
+		}
+		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), pkceRepo, memory.NewAgentRepository(), memory.NewBrokerClientCredentialStore(), testSlogger())
+
+		err := store.DeletePKCERequestSession(context.Background(), "anysig")
+		assert.ErrorIs(t, err, fosite.ErrNotFound)
 	})
 
 	t.Run("GetClient round-trips client.GetID() to agent UUID", func(t *testing.T) {
