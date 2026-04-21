@@ -64,7 +64,7 @@ func (a *Agent) Validate() error {
 
 	// Redirect URI validation (stricter than isValidURL: requires non-empty host, no fragment)
 	for i, uri := range a.RedirectURIs {
-		if !isValidRedirectURI(uri) {
+		if !IsValidRedirectURI(uri) {
 			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
 		}
 	}
@@ -86,14 +86,14 @@ func isValidURL(urlStr string) bool {
 	return u.Scheme == "http" || u.Scheme == "https"
 }
 
-// isValidRedirectURI validates a redirect URI per RFC 6749 §3.1.2:
+// IsValidRedirectURI validates a redirect URI per RFC 6749 §3.1.2:
 // - Must be absolute (https for non-local, http only for loopback)
 // - Must have a non-empty host
 // - Must not contain a fragment
 //
 // HTTP is only allowed for localhost and loopback addresses (127.0.0.1, [::1])
 // to support development. All other callbacks require HTTPS.
-func isValidRedirectURI(uriStr string) bool {
+func IsValidRedirectURI(uriStr string) bool {
 	// Reject raw fragment or whitespace before parsing — url.ParseRequestURI
 	// percent-encodes these instead of erroring.
 	if strings.ContainsAny(uriStr, "# \t\n\r") {
@@ -205,7 +205,7 @@ func (a *Agent) ValidateForCreate() error {
 
 	// Redirect URI validation (stricter than isValidURL: requires non-empty host, no fragment)
 	for i, uri := range a.RedirectURIs {
-		if !isValidRedirectURI(uri) {
+		if !IsValidRedirectURI(uri) {
 			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
 		}
 	}

@@ -154,7 +154,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	// Step 1b-runtime: Enforce HTTPS for non-loopback hosts even on legacy data.
 	// Write-time validation (Agent.Validate/ValidateForCreate) prevents new non-HTTPS
 	// registrations, but this guard closes the gap for pre-existing stored URIs.
-	if !isHTTPSOrLoopbackURI(req.RedirectURI) {
+	if !storage.IsValidRedirectURI(req.RedirectURI) {
 		return &ports.AuthorizationDecision{
 			Action:    "error",
 			ErrorCode: "invalid_redirect_uri",
@@ -353,27 +353,6 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	}
 
 	return metadata, nil
-}
-
-// isHTTPSOrLoopbackURI reports whether uri uses HTTPS, or HTTP for localhost/loopback.
-// Used to enforce the HTTPS requirement at runtime for legacy redirect URIs that
-// predate the write-time validation introduced in Agent.ValidateForCreate.
-func isHTTPSOrLoopbackURI(uriStr string) bool {
-	if strings.ContainsAny(uriStr, "# \t\n\r") {
-		return false
-	}
-	u, err := url.ParseRequestURI(uriStr)
-	if err != nil || u.Host == "" {
-		return false
-	}
-	if u.Scheme == "https" {
-		return true
-	}
-	if u.Scheme == "http" {
-		host := u.Hostname()
-		return host == "localhost" || host == "127.0.0.1" || host == "::1"
-	}
-	return false
 }
 
 // anyDelegatedSessionExpired returns true if any existing session for a delegated service is
