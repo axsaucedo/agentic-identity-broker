@@ -17,14 +17,20 @@ import (
 
 type mockCodeRepo struct {
 	findByCodeHashFunc func(context.Context, string) (*dstorage.AuthorizationCode, error)
+	markUsedFunc       func(context.Context, id.AuthorizationCodeID) error
 }
 
 func (m *mockCodeRepo) Create(_ context.Context, _ *dstorage.AuthorizationCode) error { return nil }
 func (m *mockCodeRepo) FindByCodeHash(ctx context.Context, hash string) (*dstorage.AuthorizationCode, error) {
 	return m.findByCodeHashFunc(ctx, hash)
 }
-func (m *mockCodeRepo) MarkUsed(_ context.Context, _ id.AuthorizationCodeID) error { return nil }
-func (m *mockCodeRepo) DeleteExpired(_ context.Context) (int, error)               { return 0, nil }
+func (m *mockCodeRepo) MarkUsed(ctx context.Context, codeID id.AuthorizationCodeID) error {
+	if m.markUsedFunc != nil {
+		return m.markUsedFunc(ctx, codeID)
+	}
+	return nil
+}
+func (m *mockCodeRepo) DeleteExpired(_ context.Context) (int, error) { return 0, nil }
 
 func newTestFositeStorage() (*FositeStorage, *memory.AuthorizationCodeStore, *memory.AgentRepository, *memory.BrokerClientCredentialStore) {
 	codeRepo := memory.NewAuthorizationCodeStore()
@@ -424,6 +430,48 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 
 		_, err := store.GetClient(context.Background(), agentID.String())
 		assert.ErrorIs(t, err, fosite.ErrNotFound)
+	})
+
+	t.Run("InvalidateAuthorizeCodeSession MarkUsed infrastructure error is logged and returned", func(t *testing.T) {
+		authCode := &dstorage.AuthorizationCode{
+			ID:      id.NewAuthorizationCodeID(),
+			AgentID: id.NewAgentID(),
+		}
+		timeoutErr := dstorage.NewStorageError("MarkUsed", dstorage.ErrorKindTimeout, nil, "query timeout")
+		codeRepo := &mockCodeRepo{
+			findByCodeHashFunc: func(_ context.Context, _ string) (*dstorage.AuthorizationCode, error) {
+				return authCode, nil
+			},
+			markUsedFunc: func(_ context.Context, _ id.AuthorizationCodeID) error {
+				return timeoutErr
+			},
+		}
+		store := NewFositeStorage(codeRepo, memory.NewPKCESessionStore(), memory.NewAgentRepository(), memory.NewBrokerClientCredentialStore(), testSlogger())
+
+		err := store.InvalidateAuthorizeCodeSession(context.Background(), "anycode")
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, fosite.ErrInvalidatedAuthorizeCode)
+		assert.NotErrorIs(t, err, fosite.ErrNotFound)
+	})
+
+	t.Run("InvalidateAuthorizeCodeSession MarkUsed not-found returns ErrInvalidatedAuthorizeCode", func(t *testing.T) {
+		authCode := &dstorage.AuthorizationCode{
+			ID:      id.NewAuthorizationCodeID(),
+			AgentID: id.NewAgentID(),
+		}
+		notFoundErr := dstorage.NewStorageError("MarkUsed", dstorage.ErrorKindNotFound, nil, "not found")
+		codeRepo := &mockCodeRepo{
+			findByCodeHashFunc: func(_ context.Context, _ string) (*dstorage.AuthorizationCode, error) {
+				return authCode, nil
+			},
+			markUsedFunc: func(_ context.Context, _ id.AuthorizationCodeID) error {
+				return notFoundErr
+			},
+		}
+		store := NewFositeStorage(codeRepo, memory.NewPKCESessionStore(), memory.NewAgentRepository(), memory.NewBrokerClientCredentialStore(), testSlogger())
+
+		err := store.InvalidateAuthorizeCodeSession(context.Background(), "anycode")
+		assert.ErrorIs(t, err, fosite.ErrInvalidatedAuthorizeCode)
 	})
 
 	t.Run("GetClient round-trips client.GetID() to agent UUID", func(t *testing.T) {

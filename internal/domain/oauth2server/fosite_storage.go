@@ -138,11 +138,11 @@ func (s *FositeStorage) InvalidateAuthorizeCodeSession(ctx context.Context, code
 		return s.mapStorageError(ctx, err)
 	}
 	if err := s.codeRepo.MarkUsed(ctx, authCode.ID); err != nil {
-		var storageErr *storage.StorageError
-		if errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound {
+		mapped := s.mapStorageError(ctx, err)
+		if errors.Is(mapped, fosite.ErrNotFound) {
 			return fosite.ErrInvalidatedAuthorizeCode
 		}
-		return err
+		return mapped
 	}
 	return nil
 }
