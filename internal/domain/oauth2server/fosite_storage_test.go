@@ -300,6 +300,20 @@ func TestCreateAuthorizeCodeSession_WrongClientType(t *testing.T) {
 	assert.Contains(t, err.Error(), "CreateAuthorizeCodeSession")
 }
 
+func TestFositeStorage_ClientAssertionJWT(t *testing.T) {
+	t.Run("ClientAssertionJWTValid rejects all JTIs (fail-closed)", func(t *testing.T) {
+		store, _, _, _ := newTestFositeStorage()
+		err := store.ClientAssertionJWTValid(context.Background(), "any-jti")
+		assert.ErrorIs(t, err, fosite.ErrJTIKnown)
+	})
+
+	t.Run("SetClientAssertionJWT is a no-op", func(t *testing.T) {
+		store, _, _, _ := newTestFositeStorage()
+		err := store.SetClientAssertionJWT(context.Background(), "any-jti", time.Now().Add(time.Minute))
+		assert.NoError(t, err)
+	})
+}
+
 func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 	connectionErr := dstorage.NewStorageError("FindByCodeHash", dstorage.ErrorKindConnection, nil, "connection refused")
 

@@ -251,12 +251,15 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 	return &brokerClient{agent: agent, credential: cred}, nil
 }
 
-// ClientAssertionJWTValid checks for JWT assertion replay — not supported.
+// ClientAssertionJWTValid rejects all JWT assertions. This broker uses client_secret_basic only;
+// private_key_jwt and client_secret_jwt are not supported. Returning ErrJTIKnown fails closed:
+// any accidental invocation rejects the assertion rather than silently accepting a replay.
 func (s *FositeStorage) ClientAssertionJWTValid(_ context.Context, _ string) error {
-	return nil
+	return fosite.ErrJTIKnown
 }
 
-// SetClientAssertionJWT records a JWT assertion — not supported.
+// SetClientAssertionJWT is a no-op. JWT client assertions are not supported;
+// ClientAssertionJWTValid always rejects, so JTIs never need to be recorded.
 func (s *FositeStorage) SetClientAssertionJWT(_ context.Context, _ string, _ time.Time) error {
 	return nil
 }
