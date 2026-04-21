@@ -595,6 +595,9 @@ func (h *OAuth2TokenHandler) handleMintingError(w http.ResponseWriter, err error
 		errorCode = rfc6749Err.ErrorCode
 		errorDesc = rfc6749Err.Description
 		statusCode = rfc6749Err.HTTPStatus
+		if statusCode == 0 {
+			statusCode = http.StatusInternalServerError
+		}
 	} else {
 		errorCode = "server_error"
 		errorDesc = "internal server error"

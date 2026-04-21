@@ -776,6 +776,7 @@ func TestHandleMintingError_RFC6749StatusCodes(t *testing.T) {
 		{"ErrInvalidClient → 401 invalid_client", oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient), http.StatusUnauthorized, "invalid_client"},
 		{"ErrInvalidScope → 400 invalid_scope", oauth2server.NewRFC6749Error("invalid_scope", "invalid scope", http.StatusBadRequest, oauth2server.ErrInvalidScope), http.StatusBadRequest, "invalid_scope"},
 		{"ErrInvalidGrant → 400 invalid_grant", oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant), http.StatusBadRequest, "invalid_grant"},
+		{"RFC6749Error with zero HTTPStatus → 500", oauth2server.NewRFC6749Error("server_error", "something failed", 0, oauth2server.ErrServerError), http.StatusInternalServerError, "server_error"},
 		{"unknown error → 500 server_error", errors.New("unexpected db failure"), http.StatusInternalServerError, "server_error"},
 	}
 
