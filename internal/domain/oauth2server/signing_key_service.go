@@ -127,29 +127,34 @@ func (s *SigningKeyService) BuildJWKS(ctx context.Context) (jwk.Set, error) {
 	for _, key := range keys {
 		privPEM, err := s.encryption.Decrypt(ctx, key.PrivateKeyEncrypted, signingKeyEncCtx(key.KID))
 		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt key %s: %w", key.KID, err)
+			s.logger.Error("failed to decrypt signing key, skipping", "kid", key.KID, "error", err)
+			continue
 		}
 
 		pubKey, err := publicKeyFromPEM(privPEM, key.Algorithm)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse key %s: %w", key.KID, err)
+			s.logger.Error("failed to parse signing key, skipping", "kid", key.KID, "error", err)
+			continue
 		}
 
 		jwkKey, err := jwk.Import(pubKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to import key %s to JWK: %w", key.KID, err)
+			s.logger.Error("failed to import signing key to JWK, skipping", "kid", key.KID, "error", err)
+			continue
 		}
 
 		jwaAlg, err := algorithmToJWA(key.Algorithm)
 		if err != nil {
-			return nil, fmt.Errorf("key %s has unrecognized algorithm %q: %w", key.KID, key.Algorithm, err)
+			s.logger.Error("signing key has unrecognized algorithm, skipping", "kid", key.KID, "algorithm", key.Algorithm, "error", err)
+			continue
 		}
 		_ = jwkKey.Set(jwk.KeyIDKey, key.KID.String())
 		_ = jwkKey.Set(jwk.AlgorithmKey, jwaAlg)
 		_ = jwkKey.Set(jwk.KeyUsageKey, "sig")
 
 		if err := set.AddKey(jwkKey); err != nil {
-			return nil, fmt.Errorf("failed to add key %s to JWKS: %w", key.KID, err)
+			s.logger.Error("failed to add signing key to JWKS, skipping", "kid", key.KID, "error", err)
+			continue
 		}
 	}
 

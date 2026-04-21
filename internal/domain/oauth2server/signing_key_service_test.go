@@ -152,7 +152,7 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		assert.Equal(t, 0, jwks.Len())
 	})
 
-	t.Run("unrecognized algorithm returns error", func(t *testing.T) {
+	t.Run("unrecognized algorithm skips key and returns empty JWKS", func(t *testing.T) {
 		_, repo := newTestSigningKeyService()
 		ctx := context.Background()
 
@@ -173,8 +173,9 @@ func TestSigningKeyService_BuildJWKS(t *testing.T) {
 		require.NoError(t, err)
 
 		svc := NewSigningKeyService(repo, &testEncryptor{}, testSlogger())
-		_, err = svc.BuildJWKS(ctx)
-		assert.Error(t, err)
+		jwks, err := svc.BuildJWKS(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 0, jwks.Len(), "bad key should be skipped")
 	})
 }
 
