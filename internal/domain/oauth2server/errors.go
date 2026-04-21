@@ -2,6 +2,7 @@ package oauth2server
 
 import (
 	"errors"
+	"net/http"
 
 	"github.com/ory/fosite"
 )
@@ -65,10 +66,18 @@ func translateFositeError(err error) error {
 	if !errors.As(err, &fe) {
 		return err
 	}
+	code := fe.ErrorField
+	if code == "" {
+		code = "server_error"
+	}
+	status := fe.CodeField
+	if status <= 0 {
+		status = http.StatusInternalServerError
+	}
 	return &RFC6749Error{
-		errorCode:   fe.ErrorField,
+		errorCode:   code,
 		description: fe.DescriptionField,
-		httpStatus:  fe.CodeField,
+		httpStatus:  status,
 		sentinel:    domainSentinel(err),
 	}
 }
