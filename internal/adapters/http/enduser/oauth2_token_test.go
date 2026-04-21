@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -824,4 +825,22 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 		assert.NotContains(t, string(body), internalDetail)
 		assert.NotContains(t, string(body), "read:admin")
 	})
+}
+
+func TestHandleMintingError_LogDoesNotLeakErrorChain(t *testing.T) {
+	internalDetail := "postgres: connection refused to db-host-internal"
+
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	h := &OAuth2TokenHandler{Logger: logger}
+	w := httptest.NewRecorder()
+
+	wrapped := fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient))
+	h.handleMintingError(w, wrapped, "client_credentials", "broker_test")
+
+	logLine := buf.String()
+	assert.NotContains(t, logLine, internalDetail)
+	assert.Contains(t, logLine, "invalid_client")
+	assert.Contains(t, logLine, "client auth failed")
 }

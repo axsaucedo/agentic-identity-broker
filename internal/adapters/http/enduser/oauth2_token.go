@@ -611,8 +611,8 @@ func (h *OAuth2TokenHandler) handleMintingError(w http.ResponseWriter, err error
 			"event", "TokenRequestFailed",
 			"grant_type", grantType,
 			"error_code", errorCode,
+			"error_description", errorDesc,
 			"client_id", clientID,
-			"detail", err.Error(),
 		)
 	}
 }
