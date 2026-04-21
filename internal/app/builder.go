@@ -611,11 +611,11 @@ func (b *Builder) Build() (*App, error) {
 		}
 
 		// Wire local minting strategy into the existing token handler
-		mintingStrategy := oauth2service.NewIssueTokenMintingStrategy(provider)
+		mintingStrategy := newIssueTokenMintingStrategy(provider)
 		oauth2TokenHandler.TokenMinting = mintingStrategy
 
 		// Wire issue_token proceed strategy into the authorize handler
-		codeIssuer := oauth2service.NewIssueTokenCodeIssuer(provider)
+		codeIssuer := newIssueTokenCodeIssuer(provider)
 		app.EnduserHandlers.OAuth2Authorize.ProceedHandler = enduser.NewIssueTokenProceedStrategy(codeIssuer, b.logger)
 
 		// Auto-generate signing key if none exists
