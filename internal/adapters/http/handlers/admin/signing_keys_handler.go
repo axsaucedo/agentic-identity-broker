@@ -11,21 +11,20 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // SigningKeysHandler handles admin API requests for signing key management.
 type SigningKeysHandler struct {
 	signingKeyRepo    ports.SigningKeyRepository
-	signingKeyService *oauth2server.SigningKeyService
+	signingKeyService ports.SigningKeyManager
 	logger            *slog.Logger
 }
 
 // NewSigningKeysHandler creates a new SigningKeysHandler.
 func NewSigningKeysHandler(
 	signingKeyRepo ports.SigningKeyRepository,
-	signingKeyService *oauth2server.SigningKeyService,
+	signingKeyService ports.SigningKeyManager,
 	logger *slog.Logger,
 ) *SigningKeysHandler {
 	return &SigningKeysHandler{

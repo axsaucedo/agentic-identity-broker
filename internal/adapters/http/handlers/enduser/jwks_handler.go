@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // jwksCacheMaxAgeSeconds is the Cache-Control max-age value for the JWKS endpoint.
@@ -15,13 +15,13 @@ const jwksCacheMaxAgeSeconds = 300
 
 // JWKSHandler serves the JWKS endpoint for public key discovery.
 type JWKSHandler struct {
-	signingKeyService *oauth2server.SigningKeyService
+	signingKeyService ports.SigningKeyManager
 	logger            *slog.Logger
 }
 
 // NewJWKSHandler creates a new JWKSHandler.
 func NewJWKSHandler(
-	signingKeyService *oauth2server.SigningKeyService,
+	signingKeyService ports.SigningKeyManager,
 	logger *slog.Logger,
 ) *JWKSHandler {
 	return &JWKSHandler{

@@ -9,7 +9,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -18,7 +17,7 @@ import (
 type ClientCredentialsHandler struct {
 	credentialRepo ports.BrokerClientCredentialRepository
 	agentRepo      ports.AgentRepository
-	clientAuth     *oauth2server.ClientAuthService
+	clientAuth     ports.BrokerCredentialGenerator
 	logger         *slog.Logger
 }
 
@@ -26,7 +25,7 @@ type ClientCredentialsHandler struct {
 func NewClientCredentialsHandler(
 	credentialRepo ports.BrokerClientCredentialRepository,
 	agentRepo ports.AgentRepository,
-	clientAuth *oauth2server.ClientAuthService,
+	clientAuth ports.BrokerCredentialGenerator,
 	logger *slog.Logger,
 ) *ClientCredentialsHandler {
 	return &ClientCredentialsHandler{
