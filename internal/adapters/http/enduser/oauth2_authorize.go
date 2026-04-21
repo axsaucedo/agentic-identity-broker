@@ -95,7 +95,7 @@ func respondWithDecisionError(w http.ResponseWriter, r *http.Request, decision *
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(errorDecisionStatus(decision.ErrorCode))
-		_, _ = fmt.Fprintf(w, `{"error":"%s","error_description":"%s"}`, decision.ErrorCode, decision.ErrorDesc)
+		_, _ = fmt.Fprintf(w, `{"error":%q,"error_description":%q}`, decision.ErrorCode, decision.ErrorDesc)
 	}
 }
 
