@@ -70,6 +70,12 @@ func BuildErrorRedirectURL(redirectURI, state, errorCode, errorDescription strin
 		return "", fmt.Errorf("invalid redirect_uri: %w", err)
 	}
 
+	// Only allow absolute HTTP(S) callback URLs.
+	// This prevents open redirect abuse when untrusted redirect_uri values are provided.
+	if u.Opaque != "" || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		return "", fmt.Errorf("invalid redirect_uri")
+	}
+
 	// Build query parameters
 	q := u.Query()
 	q.Set("error", errorCode)
