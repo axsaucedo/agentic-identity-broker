@@ -160,16 +160,16 @@ func TestBuildErrorRedirectURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			redirectURL, err := buildErrorRedirectURL(tt.redirectURI, tt.state, tt.errorCode, tt.errorDescription)
+			redirectURL, err := BuildErrorRedirectURL(tt.redirectURI, tt.state, tt.errorCode, tt.errorDescription)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("buildErrorRedirectURL() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("BuildErrorRedirectURL() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if tt.wantErr && err != nil {
 				if tt.wantErrMsg != "" && err.Error() != tt.wantErrMsg {
-					t.Errorf("buildErrorRedirectURL() error message = %q, want %q", err.Error(), tt.wantErrMsg)
+					t.Errorf("BuildErrorRedirectURL() error message = %q, want %q", err.Error(), tt.wantErrMsg)
 				}
 				return
 			}

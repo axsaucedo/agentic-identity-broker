@@ -171,11 +171,12 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}
 		for _, s := range strings.Fields(req.Scope) {
 			if !allowedSet[s] {
+				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted")
 				return &ports.AuthorizationDecision{
 					Action:      "error",
 					ErrorCode:   "invalid_scope",
 					ErrorDesc:   "requested scope is not permitted",
-					RedirectURL: buildErrorRedirect(req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted"),
+					RedirectURL: errRedirect,
 				}, nil
 			}
 		}
@@ -185,11 +186,12 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agent.ID)
 	if err != nil && !errors.Is(err, ports.ErrNotFound) {
 		// redirect_uri is validated above so a redirect-with-error is safe here.
+		errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
 		return &ports.AuthorizationDecision{
 			Action:      "error",
 			ErrorCode:   "server_error",
 			ErrorDesc:   "Failed to check grant",
-			RedirectURL: buildErrorRedirect(req.RedirectURI, req.State, "server_error", "server error"),
+			RedirectURL: errRedirect,
 		}, nil
 	}
 
@@ -215,11 +217,12 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if s.sessionRepo != nil {
 		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.DelegatedOAuth2Tokens)
 		if err != nil {
+			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
 			return &ports.AuthorizationDecision{
 				Action:      "error",
 				ErrorCode:   "server_error",
 				ErrorDesc:   "Failed to check session status",
-				RedirectURL: buildErrorRedirect(req.RedirectURI, req.State, "server_error", "server error"),
+				RedirectURL: errRedirect,
 			}, nil
 		}
 		if expired {
@@ -371,24 +374,6 @@ func isHTTPSOrLoopbackURI(uriStr string) bool {
 		return host == "localhost" || host == "127.0.0.1" || host == "::1"
 	}
 	return false
-}
-
-// buildErrorRedirect constructs an RFC 6749 error redirect URL by appending error
-// and error_description (and state, if present) to the given redirect_uri.
-// Returns empty string if redirectURI cannot be parsed.
-func buildErrorRedirect(redirectURI, state, errorCode, errorDesc string) string {
-	u, err := url.Parse(redirectURI)
-	if err != nil {
-		return ""
-	}
-	q := u.Query()
-	q.Set("error", errorCode)
-	q.Set("error_description", errorDesc)
-	if state != "" {
-		q.Set("state", state)
-	}
-	u.RawQuery = q.Encode()
-	return u.String()
 }
 
 // anyDelegatedSessionExpired returns true if any existing session for a delegated service is

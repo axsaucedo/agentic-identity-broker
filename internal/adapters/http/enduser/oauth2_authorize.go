@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -120,21 +120,12 @@ func errorDecisionStatus(errorCode string) int {
 
 // redirectWithError performs an OAuth2 error redirect per RFC 6749 Section 4.1.2.1.
 func redirectWithError(w http.ResponseWriter, r *http.Request, redirectURI, state, errorCode, errorDescription string) {
-	redirectURL, err := url.Parse(redirectURI)
+	target, err := oauth2.BuildErrorRedirectURL(redirectURI, state, errorCode, errorDescription)
 	if err != nil {
 		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
 		return
 	}
-
-	q := redirectURL.Query()
-	q.Set("error", errorCode)
-	q.Set("error_description", errorDescription)
-	if state != "" {
-		q.Set("state", state)
-	}
-	redirectURL.RawQuery = q.Encode()
-
-	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 // ============================================================================

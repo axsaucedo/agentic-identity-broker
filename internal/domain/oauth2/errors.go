@@ -59,7 +59,7 @@ func TemporarilyUnavailableError(description string) *OAuth2Error {
 //
 // Returns the redirect URL with error parameters in query string.
 // Example: https://client.example.com/callback?error=invalid_client&error_description=...&state=xyz
-func buildErrorRedirectURL(redirectURI, state, errorCode, errorDescription string) (string, error) {
+func BuildErrorRedirectURL(redirectURI, state, errorCode, errorDescription string) (string, error) {
 	if redirectURI == "" {
 		return "", fmt.Errorf("redirect_uri is required")
 	}
