@@ -3,6 +3,7 @@ package config
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -156,4 +157,148 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestOAuth2AuthServerConfig_IssueTokenMode tests issue_token mode validation (T003).
+func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
+	t.Run("issue_token mode succeeds without upstream fields", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "issue_token",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("issue_token mode defaults token_ttl to 1h", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "issue_token",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Equal(t, time.Hour, cfg.TokenTTL, "TokenTTL should default to 1 hour")
+	})
+
+	t.Run("issue_token mode preserves custom token_ttl", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:     "issue_token",
+			TokenTTL: 30 * time.Minute,
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Equal(t, 30*time.Minute, cfg.TokenTTL, "custom TokenTTL should be preserved")
+	})
+
+	t.Run("issue_token mode does not require upstream fields", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "issue_token",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("issue_token mode sets default response types and grant types", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "issue_token",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Contains(t, cfg.SupportedResponseTypes, "code")
+		assert.Contains(t, cfg.SupportedGrantTypes, "authorization_code")
+		assert.Contains(t, cfg.SupportedGrantTypes, "client_credentials")
+	})
+
+	t.Run("proxy mode unchanged - still requires upstream fields", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			// Missing upstream fields
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "upstream_issuer_uri")
+	})
+
+	t.Run("default mode is proxy", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			UpstreamIssuerURI:         "https://auth.example.com",
+			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+			UpstreamTokenEndpoint:     "https://auth.example.com/token",
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Equal(t, "proxy", cfg.Mode)
+	})
+
+	t.Run("invalid mode rejected", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode: "invalid_mode",
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "mode")
+	})
+}
+
+// TestOAuth2AuthServerConfig_PartialConfigFails is a regression test ensuring that a
+// partially populated OAuth2AuthServerConfig (non-zero but incomplete) is rejected rather
+// than silently skipped by the unconfigured-block guard.
+func TestOAuth2AuthServerConfig_PartialConfigFails(t *testing.T) {
+	t.Run("only token_ttl set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			TokenTTL: 30 * time.Minute,
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only token_ttl must fail, not be silently skipped")
+	})
+
+	t.Run("only token_claims_expression set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			TokenClaimsExpression: `{"sub": subject_token.sub}`,
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only token_claims_expression must fail")
+	})
+
+	t.Run("only upstream_timeout_seconds set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			UpstreamTimeoutSeconds: 60,
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only upstream_timeout_seconds must fail")
+	})
+
+	t.Run("only multi_agent_client.agent_id_param_name set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			MultiAgentClient: ports.MultiAgentClientConfig{
+				AgentIDParamName: "x_agent_id",
+			},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only multi_agent_client.agent_id_param_name must fail")
+	})
+
+	t.Run("only supported_response_types set fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			SupportedResponseTypes: []string{"code"},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "partial config with only supported_response_types must fail")
+	})
+
+	// Regression: len()==0 collapsed nil and []string{} so an explicitly empty list
+	// was indistinguishable from "field not set" and the block was silently skipped.
+	t.Run("explicit empty supported_response_types fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			SupportedResponseTypes: []string{},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "explicitly empty supported_response_types must not be skipped as unconfigured")
+	})
+
+	t.Run("explicit empty supported_grant_types fails validation", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			SupportedGrantTypes: []string{},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err, "explicitly empty supported_grant_types must not be skipped as unconfigured")
+	})
 }

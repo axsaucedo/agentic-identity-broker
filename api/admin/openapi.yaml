@@ -78,6 +78,10 @@ tags:
     description: Administrative operations for AI agent registry management
   - name: Services
     description: Administrative operations for third-party OAuth2 service configurations
+  - name: Client Credentials
+    description: Broker-issued client credential management for agents
+  - name: Signing Keys
+    description: OAuth2 server signing key management
 
 paths:
   /health:
@@ -747,6 +751,326 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/agents/{agent-id}/client-credentials:
+    post:
+      summary: Generate or rotate broker-issued client credentials for an agent
+      description: |
+        Generate new broker-issued client credentials for an agent, or rotate existing
+        credentials. This allows the broker to act as an OAuth2 authorization server
+        and authenticate agents directly.
+
+        **Runtime usage**: Agents always use their `agent.id` (UUID) as `client_id` at
+        the `/oauth2/authorize` and `/oauth2/token` endpoints. The `client_id`
+        returned here is internal metadata used for rotation safety — it is never sent
+        by agents in OAuth2 flows.
+
+        **First Generation** (no existing credentials):
+        - Returns `201 Created` with new `client_id` (metadata) and `client_secret`
+        - The `client_secret` is only returned in this response — store it securely
+
+        **Rotation** (existing credentials):
+        - Returns `200 OK` with new credentials and `previous_invalidated_at` timestamp
+        - Previous credentials are immediately invalidated
+        - Active tokens issued with previous credentials remain valid until expiry
+      operationId: generateAgentClientCredentials
+      tags:
+        - Client Credentials
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '201':
+          description: Client credentials generated for the first time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerClientCredentialResponse'
+              example:
+                client_id: brk_550e8400e29b41d4a716446655440000
+                client_secret: brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+                created_at: '2025-12-19T10:30:00Z'
+        '200':
+          description: Client credentials rotated (previous credentials invalidated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerClientCredentialResponse'
+              example:
+                client_id: brk_550e8400e29b41d4a716446655440000
+                client_secret: brk_sec_q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
+                created_at: '2025-12-19T15:45:00Z'
+                previous_invalidated_at: '2025-12-19T15:45:00Z'
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid request
+                message: agent ID must be a valid UUID
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get credential metadata (never returns secret)
+      description: |
+        Retrieve metadata about an agent's broker-issued client credentials.
+
+        **Security**: The `client_secret` is never returned by this endpoint.
+        Only the `client_id` and timestamps are returned.
+
+        Returns `404 Not Found` if no credentials have been generated for the agent.
+      operationId: getAgentClientCredentials
+      tags:
+        - Client Credentials
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Credential metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerClientCredentialMetadata'
+              example:
+                client_id: brk_550e8400e29b41d4a716446655440000
+                created_at: '2025-12-19T10:30:00Z'
+                rotated_at: '2025-12-19T15:45:00Z'
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid request
+                message: agent ID must be a valid UUID
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Revoke broker-issued credentials
+      description: |
+        Revoke an agent's broker-issued client credentials.
+
+        After revocation, the agent can no longer authenticate using these credentials.
+        Active tokens issued with these credentials remain valid until expiry.
+
+        **Irreversible**: New credentials must be generated via POST after revocation.
+      operationId: revokeAgentClientCredentials
+      tags:
+        - Client Credentials
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '204':
+          description: Client credentials revoked successfully (no content)
+        '400':
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid request
+                message: agent ID must be a valid UUID
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/oauth2-server/signing-keys:
+    post:
+      summary: Add a new signing key
+      description: |
+        Generate a new signing key for the broker's OAuth2 server.
+        The new key is marked as `is_current: true` but does not start signing tokens
+        until `activates_at` has passed (grace period = 2 × JWKS `Cache-Control: max-age`
+        value, currently 600 s). During this window the key is already present in the JWKS
+        response, so every client cache will have learned about it before the first token
+        signed with it appears.
+
+        **Algorithm Support**:
+        - `ES256`: ECDSA using P-256 curve and SHA-256 (default, only supported algorithm)
+
+        **Key Lifecycle**:
+        - New key is immediately published to `GET /oauth2/jwks.json`
+        - New key starts signing tokens only after `activates_at` (now + 600 s)
+        - Previous current key continues signing during the grace period
+        - Private key material is never exposed via the API
+      operationId: createSigningKey
+      tags:
+        - Signing Keys
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SigningKeyCreateRequest'
+            examples:
+              default_algorithm:
+                summary: Use default algorithm (ES256)
+                value: {}
+              explicit_es256:
+                summary: Explicit ES256
+                value:
+                  algorithm: ES256
+      responses:
+        '201':
+          description: Signing key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyResponse'
+              example:
+                kid: key-2025-12-19-001
+                algorithm: ES256
+                is_current: true
+                activates_at: '2025-12-19T10:40:00Z'
+                created_at: '2025-12-19T10:30:00Z'
+        '400':
+          description: Invalid algorithm specified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: validation failed
+                message: "algorithm must be ES256"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List active signing keys (no private material)
+      description: |
+        Retrieve all active signing keys for the broker's OAuth2 server.
+
+        **Security**: Private key material is never included in the response.
+        Only public metadata (kid, algorithm, status, timestamps) is returned.
+
+        Keys are returned in creation order (newest first).
+      operationId: listSigningKeys
+      tags:
+        - Signing Keys
+      responses:
+        '200':
+          description: Signing keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyListResponse'
+              examples:
+                multiple_keys:
+                  summary: Multiple signing keys
+                  value:
+                    items:
+                      - kid: key-2025-12-19-001
+                        algorithm: ES256
+                        is_current: true
+                        activates_at: '2025-12-19T10:40:00Z'
+                        created_at: '2025-12-19T10:30:00Z'
+                      - kid: key-2025-12-01-001
+                        algorithm: ES256
+                        is_current: false
+                        activates_at: '2025-12-01T09:00:00Z'
+                        created_at: '2025-12-01T09:00:00Z'
+                single_key:
+                  summary: Single signing key
+                  value:
+                    items:
+                      - kid: key-2025-12-19-001
+                        algorithm: ES256
+                        is_current: true
+                        activates_at: '2025-12-19T10:00:00Z'
+                        created_at: '2025-12-19T10:00:00Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/oauth2-server/signing-keys/{kid}/current:
+    put:
+      summary: Promote signing key to current
+      description: |
+        Promote an existing signing key to be the current signing key.
+        The current key is used for signing new tokens.
+
+        **Behavior**:
+        - The specified key becomes `is_current: true`
+        - The previous current key is set to `is_current: false`
+        - Previous key remains active for token verification
+      operationId: promoteSigningKey
+      tags:
+        - Signing Keys
+      parameters:
+        - $ref: '#/components/parameters/SigningKeyId'
+      responses:
+        '200':
+          description: Signing key promoted to current
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SigningKeyResponse'
+              example:
+                kid: key-2025-12-01-001
+                algorithm: ES256
+                is_current: true
+                created_at: '2025-12-01T09:00:00Z'
+        '404':
+          description: Signing key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: not found
+                message: "Signing key with kid 'key-unknown' does not exist"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/oauth2-server/signing-keys/{kid}:
+    delete:
+      summary: Remove signing key (soft delete)
+      description: |
+        Remove a signing key from the active key set.
+
+        **Soft Delete**: The key is deactivated but retained for audit purposes.
+        Tokens previously signed with this key can no longer be verified.
+
+        **Constraints**:
+        - Cannot delete the last remaining signing key (returns `409 Conflict`)
+        - Cannot delete the current signing key without first promoting another key
+      operationId: deleteSigningKey
+      tags:
+        - Signing Keys
+      parameters:
+        - $ref: '#/components/parameters/SigningKeyId'
+      responses:
+        '204':
+          description: Signing key removed successfully (no content)
+        '404':
+          description: Signing key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: not found
+                message: "Signing key with kid 'key-unknown' does not exist"
+        '409':
+          description: Cannot delete last signing key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: conflict
+                message: Cannot delete the last remaining signing key
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   parameters:
     AgentId:
@@ -768,6 +1092,15 @@ components:
         type: string
         format: uuid
         example: 770e8400-e29b-41d4-a716-446655440002
+
+    SigningKeyId:
+      name: kid
+      in: path
+      required: true
+      description: Key identifier of the signing key
+      schema:
+        type: string
+        example: key-2025-12-19-001
 
   schemas:
     HealthResponse:
@@ -883,6 +1216,31 @@ components:
               requirement_type: optional
               required_scopes:
                 - https://www.googleapis.com/auth/drive.readonly
+        redirect_uris:
+          type: array
+          nullable: true
+          description: |
+            List of allowed redirect URIs for OAuth2 authorization code flow.
+            When the broker acts as an OAuth2 server, only these URIs are accepted
+            as valid redirect targets for this agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/callback
+            - http://localhost:9002/callback
+        allowed_scopes:
+          type: array
+          nullable: true
+          description: |
+            List of OAuth2 scopes that this agent is permitted to request
+            when the broker acts as an OAuth2 authorization server.
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+            - email
         created_at:
           type: string
           format: date-time
@@ -958,6 +1316,31 @@ components:
               required_scopes:
                 - repo
                 - user:email
+        redirect_uris:
+          type: array
+          nullable: true
+          description: |
+            List of allowed redirect URIs for OAuth2 authorization code flow.
+            When the broker acts as an OAuth2 server, only these URIs are accepted
+            as valid redirect targets for this agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/callback
+            - http://localhost:9002/callback
+        allowed_scopes:
+          type: array
+          nullable: true
+          description: |
+            List of OAuth2 scopes that this agent is permitted to request
+            when the broker acts as an OAuth2 authorization server.
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+            - email
 
     AgentUpdateRequest:
       type: object
@@ -1021,6 +1404,31 @@ components:
               required_scopes:
                 - repo
                 - user:email
+        redirect_uris:
+          type: array
+          nullable: true
+          description: |
+            List of allowed redirect URIs for OAuth2 authorization code flow.
+            When the broker acts as an OAuth2 server, only these URIs are accepted
+            as valid redirect targets for this agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/callback
+            - http://localhost:9002/callback
+        allowed_scopes:
+          type: array
+          nullable: true
+          description: |
+            List of OAuth2 scopes that this agent is permitted to request
+            when the broker acts as an OAuth2 authorization server.
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+            - email
 
     ServiceRequirement:
       type: object
@@ -1488,6 +1896,123 @@ components:
           description: Human-readable description of what this scope allows
           example: Full control of private repositories
           minLength: 1
+
+    BrokerClientCredentialResponse:
+      type: object
+      required:
+        - client_id
+        - client_secret
+        - created_at
+      properties:
+        client_id:
+          type: string
+          description: Broker-issued client identifier for the agent
+          example: brk_550e8400e29b41d4a716446655440000
+        client_secret:
+          type: string
+          description: |
+            Broker-issued client secret. Only returned on generation or rotation.
+            Store securely — this value cannot be retrieved again.
+          example: brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+          writeOnly: true
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the credentials were created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+        previous_invalidated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Timestamp when the previous credentials were invalidated (RFC3339 format).
+            Only present on rotation responses (HTTP 200).
+          example: '2025-12-19T15:45:00Z'
+
+    BrokerClientCredentialMetadata:
+      type: object
+      required:
+        - client_id
+        - created_at
+      properties:
+        client_id:
+          type: string
+          description: Broker-issued client identifier for the agent
+          example: brk_550e8400e29b41d4a716446655440000
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the credentials were created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+        rotated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Timestamp when the credentials were last rotated (RFC3339 format).
+            Null if credentials have never been rotated.
+          example: '2025-12-19T15:45:00Z'
+
+    SigningKeyCreateRequest:
+      type: object
+      properties:
+        algorithm:
+          type: string
+          enum:
+            - ES256
+          default: ES256
+          description: |
+            Signing algorithm for the new key.
+            - `ES256`: ECDSA using P-256 curve and SHA-256 (default, only supported algorithm)
+          example: ES256
+
+    SigningKeyResponse:
+      type: object
+      required:
+        - kid
+        - algorithm
+        - is_current
+        - activates_at
+        - created_at
+      properties:
+        kid:
+          type: string
+          description: Key identifier (unique within the signing key set)
+          example: key-2025-12-19-001
+        algorithm:
+          type: string
+          description: Signing algorithm used by this key
+          example: ES256
+        is_current:
+          type: boolean
+          description: Whether this key is the designated current signing key
+          example: true
+        activates_at:
+          type: string
+          format: date-time
+          description: |
+            Timestamp when the key starts signing tokens (RFC3339 format).
+            For keys created via POST, this is `created_at + 600 s` (2 × JWKS Cache-Control
+            max-age value). The key is present in the JWKS response immediately so clients
+            can cache it before it becomes active. For keys promoted via PUT /…/current,
+            this equals the promotion time.
+          example: '2025-12-19T10:40:00Z'
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the key was created (RFC3339 format)
+          example: '2025-12-19T10:30:00Z'
+
+    SigningKeyListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          description: List of active signing keys (newest first)
+          items:
+            $ref: '#/components/schemas/SigningKeyResponse'
 
     ErrorResponse:
       type: object

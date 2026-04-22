@@ -79,8 +79,7 @@ func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &enduser.OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  newIntegrationStubAgentRepo(agentID),
+		GrantHandler: enduser.NewProxyTokenGrantStrategy(mockUpstream.URL, nil, newIntegrationStubAgentRepo(agentID), nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=auth_code_123&client_id=" + agentID.String() + "&client_secret=secret&redirect_uri=https://client.example.com/callback")
@@ -121,8 +120,7 @@ func TestOAuth2TokenEndpoint_RefreshTokenGrant(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &enduser.OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  newIntegrationStubAgentRepo(agentID),
+		GrantHandler: enduser.NewProxyTokenGrantStrategy(mockUpstream.URL, nil, newIntegrationStubAgentRepo(agentID), nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=refresh_token&refresh_token=refresh_token_abc&client_id=" + agentID.String() + "&client_secret=secret")
@@ -152,8 +150,7 @@ func TestOAuth2TokenEndpoint_InvalidGrantError(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &enduser.OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  newIntegrationStubAgentRepo(agentID),
+		GrantHandler: enduser.NewProxyTokenGrantStrategy(mockUpstream.URL, nil, newIntegrationStubAgentRepo(agentID), nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=expired_code&client_id=" + agentID.String())
@@ -190,8 +187,7 @@ func TestOAuth2TokenEndpoint_HeadersFiltered(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &enduser.OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  newIntegrationStubAgentRepo(agentID),
+		GrantHandler: enduser.NewProxyTokenGrantStrategy(mockUpstream.URL, nil, newIntegrationStubAgentRepo(agentID), nil, nil),
 	}
 
 	body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -221,8 +217,7 @@ func TestOAuth2TokenEndpoint_StandardHeadersPreserved(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &enduser.OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  newIntegrationStubAgentRepo(agentID),
+		GrantHandler: enduser.NewProxyTokenGrantStrategy(mockUpstream.URL, nil, newIntegrationStubAgentRepo(agentID), nil, nil),
 	}
 
 	body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -279,8 +274,7 @@ func TestOAuth2TokenEndpoint_StatusCodePreserved(t *testing.T) {
 			defer mockUpstream.Close()
 
 			handler := &enduser.OAuth2TokenHandler{
-				UpstreamTokenURL: mockUpstream.URL,
-				AgentRepository:  newIntegrationStubAgentRepo(agentID),
+				GrantHandler: enduser.NewProxyTokenGrantStrategy(mockUpstream.URL, nil, newIntegrationStubAgentRepo(agentID), nil, nil),
 			}
 
 			body := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())

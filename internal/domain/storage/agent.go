@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -21,6 +22,8 @@ type Agent struct {
 	UserDocumentationURL *string              `json:"user_documentation_url,omitempty" db:"user_documentation_url"`
 	AgentInterfaceURL    *string              `json:"agent_interface_url,omitempty" db:"agent_interface_url"`
 	ServiceRequirements  []ServiceRequirement `json:"service_requirements,omitempty" db:"service_requirements"`
+	RedirectURIs         []string             `json:"redirect_uris" db:"redirect_uris"`
+	AllowedScopes        []string             `json:"allowed_scopes" db:"allowed_scopes"`
 	CreatedAt            time.Time            `json:"created_at" db:"created_at"`
 	UpdatedAt            time.Time            `json:"updated_at" db:"updated_at"`
 }
@@ -59,6 +62,13 @@ func (a *Agent) Validate() error {
 		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
 	}
 
+	// Redirect URI validation (stricter than isValidURL: requires non-empty host, no fragment)
+	for i, uri := range a.RedirectURIs {
+		if !IsValidRedirectURI(uri) {
+			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
+		}
+	}
+
 	// Service requirements validation
 	if err := a.ValidateServiceRequirements(); err != nil {
 		return fmt.Errorf("service_requirements validation failed: %w", err)
@@ -74,6 +84,38 @@ func isValidURL(urlStr string) bool {
 		return false
 	}
 	return u.Scheme == "http" || u.Scheme == "https"
+}
+
+// IsValidRedirectURI validates a redirect URI per RFC 6749 §3.1.2:
+// - Must be absolute (https for non-local, http only for loopback)
+// - Must have a non-empty host
+// - Must not contain a fragment
+//
+// HTTP is only allowed for localhost and loopback addresses (127.0.0.1, [::1])
+// to support development. All other callbacks require HTTPS.
+func IsValidRedirectURI(uriStr string) bool {
+	// Reject raw fragment or whitespace before parsing — url.ParseRequestURI
+	// percent-encodes these instead of erroring.
+	if strings.ContainsAny(uriStr, "# \t\n\r") {
+		return false
+	}
+	u, err := url.ParseRequestURI(uriStr)
+	if err != nil {
+		return false
+	}
+	if u.Host == "" {
+		return false
+	}
+	switch u.Scheme {
+	case "https":
+		return true
+	case "http":
+		// Allow HTTP only for loopback (development-mode callbacks)
+		host := u.Hostname()
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	default:
+		return false
+	}
 }
 
 // Copy creates a deep copy of the Agent to prevent external mutation.
@@ -120,6 +162,14 @@ func (a *Agent) Copy() *Agent {
 		}
 	}
 
+	// Deep copy redirect URIs and allowed scopes
+	if a.RedirectURIs != nil {
+		copy.RedirectURIs = append([]string(nil), a.RedirectURIs...)
+	}
+	if a.AllowedScopes != nil {
+		copy.AllowedScopes = append([]string(nil), a.AllowedScopes...)
+	}
+
 	return copy
 }
 
@@ -151,6 +201,13 @@ func (a *Agent) ValidateForCreate() error {
 	}
 	if a.AgentInterfaceURL != nil && !isValidURL(*a.AgentInterfaceURL) {
 		return errors.New("agent_interface_url is not a valid HTTP/HTTPS URL")
+	}
+
+	// Redirect URI validation (stricter than isValidURL: requires non-empty host, no fragment)
+	for i, uri := range a.RedirectURIs {
+		if !IsValidRedirectURI(uri) {
+			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
+		}
 	}
 
 	// Service requirements validation

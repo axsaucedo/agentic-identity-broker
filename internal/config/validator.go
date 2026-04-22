@@ -355,7 +355,7 @@ func validateThirdPartyOAuth2Config(cfg *ports.ThirdPartyOAuth2Config) error {
 }
 
 // validateOAuth2AuthServerConfig validates the OAuth2 Authorization Server configuration.
-// OAuth2AuthServer is optional, so we only validate if configuration is provided.
+// OAuth2AuthServer is optional; Validate() handles the unconfigured case internally.
 func validateOAuth2AuthServerConfig(cfg *ports.OAuth2AuthServerConfig) error {
 	if err := cfg.Validate(); err != nil {
 		return formatValidationError(

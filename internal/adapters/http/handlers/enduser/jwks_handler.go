@@ -1,0 +1,49 @@
+package enduser
+
+import (
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+)
+
+// jwksCacheMaxAgeSeconds is the Cache-Control max-age value for the JWKS endpoint.
+// The signing key grace period in signing_key_service.go must be a multiple of this value.
+const jwksCacheMaxAgeSeconds = 300
+
+// JWKSHandler serves the JWKS endpoint for public key discovery.
+type JWKSHandler struct {
+	signingKeyService ports.SigningKeyManager
+	logger            *slog.Logger
+}
+
+// NewJWKSHandler creates a new JWKSHandler.
+func NewJWKSHandler(
+	signingKeyService ports.SigningKeyManager,
+	logger *slog.Logger,
+) *JWKSHandler {
+	return &JWKSHandler{
+		signingKeyService: signingKeyService,
+		logger:            logger,
+	}
+}
+
+// ServeJWKS returns the JSON Web Key Set with active public keys.
+// GET /oauth2/jwks.json
+func (h *JWKSHandler) ServeJWKS(w http.ResponseWriter, r *http.Request) {
+	jwks, err := h.signingKeyService.BuildJWKS(r.Context())
+	if err != nil {
+		h.logger.Error("failed to build JWKS", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", jwksCacheMaxAgeSeconds))
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(jwks); err != nil {
+		h.logger.Error("failed to encode JWKS response", "error", err)
+	}
+}

@@ -137,3 +137,96 @@ func (id UserID) Value() (driver.Value, error)  { return uuid.UUID(id).String(),
 func (id *UserID) Scan(src interface{}) error   { return (*uuid.UUID)(id).Scan(src) }
 func (id UserID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
 func (id *UserID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
+
+// CredentialID uniquely identifies a broker client credential entity.
+type CredentialID uuid.UUID
+
+func NewCredentialID() CredentialID { return CredentialID(uuid.New()) }
+func ParseCredentialID(s string) (CredentialID, error) {
+	id, err := uuid.Parse(s)
+	return CredentialID(id), err
+}
+func MustParseCredentialID(s string) CredentialID    { return CredentialID(uuid.MustParse(s)) }
+func (id CredentialID) String() string               { return uuid.UUID(id).String() }
+func (id CredentialID) IsZero() bool                 { return uuid.UUID(id) == uuid.Nil }
+func (id CredentialID) MarshalJSON() ([]byte, error) { return json.Marshal(uuid.UUID(id).String()) }
+func (id *CredentialID) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return err
+	}
+	*id = CredentialID(parsed)
+	return nil
+}
+func (id CredentialID) Value() (driver.Value, error)  { return uuid.UUID(id).String(), nil }
+func (id *CredentialID) Scan(src interface{}) error   { return (*uuid.UUID)(id).Scan(src) }
+func (id CredentialID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
+func (id *CredentialID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
+
+// SigningKeyID uniquely identifies a signing key entity.
+type SigningKeyID uuid.UUID
+
+func NewSigningKeyID() SigningKeyID { return SigningKeyID(uuid.New()) }
+func ParseSigningKeyID(s string) (SigningKeyID, error) {
+	id, err := uuid.Parse(s)
+	return SigningKeyID(id), err
+}
+func MustParseSigningKeyID(s string) SigningKeyID    { return SigningKeyID(uuid.MustParse(s)) }
+func (id SigningKeyID) String() string               { return uuid.UUID(id).String() }
+func (id SigningKeyID) IsZero() bool                 { return uuid.UUID(id) == uuid.Nil }
+func (id SigningKeyID) MarshalJSON() ([]byte, error) { return json.Marshal(uuid.UUID(id).String()) }
+func (id *SigningKeyID) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return err
+	}
+	*id = SigningKeyID(parsed)
+	return nil
+}
+func (id SigningKeyID) Value() (driver.Value, error)  { return uuid.UUID(id).String(), nil }
+func (id *SigningKeyID) Scan(src interface{}) error   { return (*uuid.UUID)(id).Scan(src) }
+func (id SigningKeyID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
+func (id *SigningKeyID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
+
+// AuthorizationCodeID uniquely identifies a authorization code entity.
+type AuthorizationCodeID uuid.UUID
+
+func NewAuthorizationCodeID() AuthorizationCodeID { return AuthorizationCodeID(uuid.New()) }
+func ParseAuthorizationCodeID(s string) (AuthorizationCodeID, error) {
+	id, err := uuid.Parse(s)
+	return AuthorizationCodeID(id), err
+}
+func MustParseAuthorizationCodeID(s string) AuthorizationCodeID {
+	return AuthorizationCodeID(uuid.MustParse(s))
+}
+func (id AuthorizationCodeID) String() string { return uuid.UUID(id).String() }
+func (id AuthorizationCodeID) IsZero() bool   { return uuid.UUID(id) == uuid.Nil }
+func (id AuthorizationCodeID) MarshalJSON() ([]byte, error) {
+	return json.Marshal(uuid.UUID(id).String())
+}
+func (id *AuthorizationCodeID) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return err
+	}
+	*id = AuthorizationCodeID(parsed)
+	return nil
+}
+func (id AuthorizationCodeID) Value() (driver.Value, error) { return uuid.UUID(id).String(), nil }
+func (id *AuthorizationCodeID) Scan(src interface{}) error  { return (*uuid.UUID)(id).Scan(src) }
+func (id AuthorizationCodeID) MarshalText() ([]byte, error) { return uuid.UUID(id).MarshalText() }
+func (id *AuthorizationCodeID) UnmarshalText(b []byte) error {
+	return (*uuid.UUID)(id).UnmarshalText(b)
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/lib/pq"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -16,6 +17,15 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// emptyIfNil converts a nil string slice to an empty slice.
+// pq.Array returns SQL NULL for a nil slice, which violates NOT NULL constraints.
+func emptyIfNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
 
 // AgentRepository implements ports.AgentRepository using PostgreSQL.
 type AgentRepository struct {
@@ -89,8 +99,8 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		INSERT INTO agents (
 			id, client_id, external_id, display_name, description,
 			governance_url, user_documentation_url, agent_interface_url,
-			service_requirements, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
 	_, err = r.adapter.db.ExecContext(
@@ -105,6 +115,8 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
 		serviceReqsJSON, // NULL if empty
+		pq.Array(emptyIfNil(agent.RedirectURIs)),
+		pq.Array(emptyIfNil(agent.AllowedScopes)),
 		agent.CreatedAt,
 		agent.UpdatedAt,
 	)
@@ -189,7 +201,7 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       service_requirements, created_at, updated_at
+		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
 		FROM agents
 		WHERE id = $1
 	`
@@ -205,6 +217,8 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 		&agent.UserDocumentationURL,
 		&agent.AgentInterfaceURL,
 		&serviceReqsJSON,
+		pq.Array(&agent.RedirectURIs),
+		pq.Array(&agent.AllowedScopes),
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
@@ -309,7 +323,9 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		    user_documentation_url = $7,
 		    agent_interface_url = $8,
 		    service_requirements = $9,
-		    updated_at = $10
+		    redirect_uris = $10,
+		    allowed_scopes = $11,
+		    updated_at = $12
 		WHERE id = $1
 	`
 
@@ -325,6 +341,8 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
 		serviceReqsJSON, // NULL if empty
+		pq.Array(emptyIfNil(agent.RedirectURIs)),
+		pq.Array(emptyIfNil(agent.AllowedScopes)),
 		agent.UpdatedAt,
 	)
 
@@ -447,36 +465,48 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       created_at, updated_at
+		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
 		FROM agents
 		ORDER BY created_at DESC
 	`
 
-	var agents []*storage.Agent
-	err := r.adapter.db.SelectContext(queryCtx, &agents, query)
+	rows, err := r.adapter.db.QueryContext(queryCtx, query)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
-			return nil, storage.NewStorageError(
-				"ListAgents",
-				storage.ErrorKindTimeout,
-				err,
-				"operation exceeded timeout",
-			)
+			return nil, storage.NewStorageError("ListAgents", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-		return nil, storage.NewStorageError(
-			"ListAgents",
-			storage.ErrorKindConnection,
-			err,
-			"failed to list agents",
-		)
+		return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "failed to list agents")
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []*storage.Agent
+	for rows.Next() {
+		agent := &storage.Agent{}
+		var serviceReqsJSON []byte
+		if err := rows.Scan(
+			&agent.ID, &agent.ClientID, &agent.ExternalID,
+			&agent.DisplayName, &agent.Description,
+			&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
+			&serviceReqsJSON,
+			pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
+			&agent.CreatedAt, &agent.UpdatedAt,
+		); err != nil {
+			return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "failed to scan agent row")
+		}
+		if len(serviceReqsJSON) > 0 {
+			if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
+				return nil, storage.NewStorageError("ListAgents", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
+			}
+		}
+		result = append(result, agent.Copy())
+	}
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "error iterating agent rows")
 	}
 
-	// Return deep copies to prevent external mutation
-	result := make([]*storage.Agent, len(agents))
-	for i, agent := range agents {
-		result[i] = agent.Copy()
+	if result == nil {
+		result = []*storage.Agent{}
 	}
-
 	return result, nil
 }
 
@@ -504,16 +534,24 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
+	var serviceReqsJSON []byte
 	agent := &storage.Agent{}
 	query := `
 		SELECT id, client_id, external_id, display_name, description,
 		       governance_url, user_documentation_url, agent_interface_url,
-		       created_at, updated_at
+		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
 		FROM agents
 		WHERE client_id = $1
 	`
 
-	err := r.adapter.db.GetContext(queryCtx, agent, query, clientID)
+	err := r.adapter.db.QueryRowContext(queryCtx, query, clientID).Scan(
+		&agent.ID, &agent.ClientID, &agent.ExternalID,
+		&agent.DisplayName, &agent.Description,
+		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
+		&serviceReqsJSON,
+		pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
+		&agent.CreatedAt, &agent.UpdatedAt,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, storage.NewStorageError(
@@ -537,6 +575,17 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 			err,
 			"failed to get agent by client_id",
 		)
+	}
+
+	if len(serviceReqsJSON) > 0 {
+		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
+			return nil, storage.NewStorageError(
+				"GetAgentByClientID",
+				storage.ErrorKindValidation,
+				err,
+				"failed to unmarshal service_requirements from JSON",
+			)
+		}
 	}
 
 	// Return deep copy to prevent external mutation

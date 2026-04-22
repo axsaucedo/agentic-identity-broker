@@ -333,7 +333,6 @@ func (m *MockUpstreamOAuth2Server) handleToken(w http.ResponseWriter, r *http.Re
 // Simulates OpenID Connect metadata discovery.
 func (m *MockUpstreamOAuth2Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	m.requestMutex.Lock()
-	m.LastRequest = r
 	m.metadataCalled = true
 	m.requestMutex.Unlock()
 
@@ -361,7 +360,6 @@ func (m *MockUpstreamOAuth2Server) handleMetadata(w http.ResponseWriter, r *http
 // This endpoint is called by the JWT validator to fetch keys for JWT signature verification.
 func (m *MockUpstreamOAuth2Server) handleJWKS(w http.ResponseWriter, r *http.Request) {
 	m.requestMutex.Lock()
-	m.LastRequest = r
 	m.jwksCalled = true
 	m.requestMutex.Unlock()
 

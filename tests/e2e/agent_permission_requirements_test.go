@@ -496,7 +496,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// When: Authorization endpoint processes the request
 			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
-					agent.ClientID),
+					agent.ID.String()),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -552,7 +552,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// When: Authorization request arrives
 			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=abc123",
-					agent.ClientID),
+					agent.ID.String()),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -639,7 +639,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// When: Authorization endpoint processes the request
 			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
-					agent.ClientID),
+					agent.ID.String()),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -676,7 +676,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 			// When: Authorization endpoint processes the request
 			resp, err := enduserServer.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
-					agent.ClientID),
+					agent.ID.String()),
 				userPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -717,7 +717,7 @@ var _ = Describe("Agent Permission Requirements", func() {
 				// When: Authorization endpoint processes the request
 				resp, err := enduserServer.AuthenticatedGET(
 					fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=xyz",
-						agent.ClientID),
+						agent.ID.String()),
 					userPrincipal,
 				)
 				Expect(err).ToNot(HaveOccurred())

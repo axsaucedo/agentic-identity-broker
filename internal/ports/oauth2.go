@@ -21,7 +21,7 @@ type MultiAgentVerifier interface {
 type OAuth2Service interface {
 	// HandleAuthorization processes an OAuth2 authorization request, checking
 	// client validity and user consent status, returning a decision (redirect URL or error).
-	HandleAuthorization(ctx context.Context, req *AuthorizationRequest, principal string) (*AuthorizationDecision, error)
+	HandleAuthorization(ctx context.Context, req *AuthorizationRequest, principal id.Principal) (*AuthorizationDecision, error)
 
 	// GenerateMetadata returns RFC 8414 OAuth2 metadata for auto-discovery.
 	GenerateMetadata(ctx context.Context) (*MetadataResponse, error)
@@ -30,7 +30,7 @@ type OAuth2Service interface {
 // AuthorizationRequest represents an OAuth2 authorization request (RFC 6749 Section 4.1.1).
 // Fields are parsed from HTTP query parameters.
 type AuthorizationRequest struct {
-	// REQUIRED: OAuth2 client identifier (maps to registered Agent.ClientID)
+	// REQUIRED: OAuth2 client_id identifying the agent making the request
 	ClientID id.ClientID
 
 	// REQUIRED: Client's callback URL for authorization code
@@ -58,7 +58,10 @@ type AuthorizationRequest struct {
 // AuthorizationDecision represents the broker's decision for an authorization request.
 // Either redirects to upstream or to consent UI, or returns an error.
 type AuthorizationDecision struct {
-	// Action determines the response: "redirect_to_upstream", "redirect_to_consent", or "error"
+	// Action determines the response: "proceed", "redirect_to_consent", or "error".
+	// "proceed" means the user has an active grant and the request can continue.
+	// In proxy mode the handler redirects to the upstream OAuth2 server;
+	// in issue_token mode the handler issues a local authorization code.
 	Action string
 
 	// RedirectURL is the target URL for HTTP 302 redirect
@@ -97,4 +100,41 @@ type MetadataResponse struct {
 
 	// OPTIONAL: Claim types supported
 	ClaimTypesSupported []string `json:"claim_types_supported,omitempty"`
+
+	// OPTIONAL: JWKS URI for public key discovery (present in issue_token mode)
+	JWKSURI string `json:"jwks_uri,omitempty"`
+
+	// OPTIONAL: Supported PKCE code challenge methods (present in issue_token mode)
+	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
+}
+
+// TokenMintingStrategy abstracts local token grant processing in issue_token mode.
+// Grants are processed locally by the oauth2server.Provider.
+// In proxy mode, grants are handled at the HTTP layer by proxyTokenGrantStrategy.
+type TokenMintingStrategy interface {
+	// HandleClientCredentials processes a client_credentials grant type request.
+	// Returns the token response or an error.
+	HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*TokenResponse, error)
+
+	// HandleAuthorizationCodeExchange processes an authorization_code grant type request.
+	// Returns the token response or an error.
+	HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
+}
+
+// TokenResponse represents a successful OAuth2 token response from a minting strategy.
+type TokenResponse struct {
+	AccessToken string
+	TokenType   string
+	ExpiresIn   int64
+	Scope       string
+}
+
+// AuthorizationCodeIssuer abstracts how the authorize endpoint issues authorization codes.
+// In proxy mode, this is nil and the handler redirects to an upstream OAuth2 server.
+// In issue_token mode, the endpoint issues authorization codes locally.
+type AuthorizationCodeIssuer interface {
+	// IssueAuthorizationCode processes a validated authorization request and returns
+	// an authorization code. The handler is responsible for redirect_uri validation
+	// and PKCE enforcement before calling this method.
+	IssueAuthorizationCode(ctx context.Context, req *AuthorizationRequest, principal id.Principal) (code string, err error)
 }

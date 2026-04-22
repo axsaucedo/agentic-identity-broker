@@ -10,32 +10,36 @@ import (
 // ValidAgent returns a valid test agent with all required fields.
 // ClientID: test-client-valid
 // DisplayName: Test Agent Valid
+// RedirectURIs: ["https://client.example.com/cb"]
 // ID and timestamps are generated fresh for each call.
 func ValidAgent() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
-		ID:          id.NewAgentID(),
-		ClientID:    id.ClientID("test-client-valid"),
-		DisplayName: "Test Agent Valid",
-		Description: "A valid test agent for E2E testing with all required fields",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:           id.NewAgentID(),
+		ClientID:     id.ClientID("test-client-valid"),
+		DisplayName:  "Test Agent Valid",
+		Description:  "A valid test agent for E2E testing with all required fields",
+		RedirectURIs: []string{"https://client.example.com/cb"},
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 }
 
 // AnotherAgent returns an alternative valid test agent.
 // ClientID: test-client-another
 // DisplayName: Test Agent Another
+// RedirectURIs: ["https://client.example.com/cb"]
 // ID and timestamps are generated fresh for each call.
 func AnotherAgent() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
-		ID:          id.NewAgentID(),
-		ClientID:    id.ClientID("test-client-another"),
-		DisplayName: "Test Agent Another",
-		Description: "Another valid test agent for E2E testing with different client ID",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:           id.NewAgentID(),
+		ClientID:     id.ClientID("test-client-another"),
+		DisplayName:  "Test Agent Another",
+		Description:  "Another valid test agent for E2E testing with different client ID",
+		RedirectURIs: []string{"https://client.example.com/cb"},
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 }
 
