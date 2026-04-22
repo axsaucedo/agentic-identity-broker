@@ -20,3 +20,10 @@ type Principal string
 func NewPrincipal(s string) Principal { return Principal(s) }
 func (id Principal) String() string   { return string(id) }
 func (id Principal) IsZero() bool     { return id == "" }
+
+// KeyID is a JWT Key ID (kid claim) identifying a signing key within JWKS.
+type KeyID string
+
+func NewKeyID(s string) KeyID   { return KeyID(s) }
+func (id KeyID) String() string { return string(id) }
+func (id KeyID) IsZero() bool   { return id == "" }

@@ -136,6 +136,10 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `broker.encryption.awsKms.dynamodbTableName` | DynamoDB table for branch keys | `IdentityBrokerEncryptionBranchKeys` |
 | `broker.encryption.awsKms.branchKeyTtl` | Branch key TTL | `1h` |
 | `broker.telemetry.enabled` | Enable OpenTelemetry tracing and metrics | `false` |
+| `broker.oauth2AuthorizationServer.mode` | Operation mode (`proxy` or `issue_token`) | `proxy` |
+| `broker.oauth2AuthorizationServer.issuerUri` | Issuer identifier for issued tokens (required in `issue_token` mode) | `""` |
+| `broker.oauth2AuthorizationServer.tokenTtl` | Access token validity period | `1h` |
+| `broker.oauth2AuthorizationServer.tokenClaimsExpression` | CEL expression for custom JWT claims | `""` |
 | `broker.telemetry.serviceName` | Service name reported in every telemetry signal | `agentic-identity-broker` |
 | `broker.telemetry.resourceAttributes` | Additional OTel resource attributes (map) | `{}` |
 | `broker.telemetry.traces.enabled` | Enable trace export via OTLP | `true` |

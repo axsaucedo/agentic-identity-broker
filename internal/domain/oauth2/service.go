@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -46,6 +47,10 @@ type OAuth2Config struct {
 	// MultiAgentClient holds optional multi-agent client sharing configuration.
 	// When Enabled, multiple agents may share a single upstream OAuth2 client ID.
 	MultiAgentClient ports.MultiAgentClientConfig
+
+	// Mode indicates whether the broker operates in "proxy" or "issue_token" mode.
+	// In issue_token mode, JWKS and code_challenge_methods are included in metadata.
+	Mode string
 }
 
 // Service implements the OAuth2Service port
@@ -86,36 +91,27 @@ func NewServiceWithSessions(
 
 // HandleAuthorization processes an OAuth2 authorization request
 // Returns an AuthorizationDecision with either:
-// - redirect_to_upstream: Valid client with active grant
+// - proceed: Valid client with active grant — handler decides next step
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
-//
-// Feature 021: client_id MUST be the agent's internal UUID (agent.id), NOT agent.client_id.
-func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal string) (*ports.AuthorizationDecision, error) {
-	// Step 1: Validate client_id as a UUID (agent.id) and resolve the agent.
-	// Feature 021: client_id is now the broker's internal agent UUID, not the upstream client_id.
-	agentID, err := id.ParseAgentID(string(req.ClientID))
-	if err != nil {
-		// client_id is not a valid UUID → invalid_client
-		redirectURL, _ := buildErrorRedirectURL(req.RedirectURI, req.State, "invalid_client", "client_id must be a valid agent UUID")
+func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
+	agentUUID, parseErr := id.ParseAgentID(string(req.ClientID))
+	if parseErr != nil {
+		// client_id is not a valid agent UUID — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)
 		return &ports.AuthorizationDecision{
-			Action:      "error",
-			ErrorCode:   "invalid_client",
-			ErrorDesc:   "client_id must be a valid agent UUID",
-			RedirectURL: redirectURL,
+			Action:    "error",
+			ErrorCode: "invalid_client",
+			ErrorDesc: "Client not registered",
 		}, nil
 	}
-
-	agent, err := s.agentRepo.Get(ctx, agentID)
+	agent, err := s.agentRepo.Get(ctx, agentUUID)
 	if err != nil {
 		if isNotFoundErr(err) {
-			// Agent UUID not registered
-			redirectURL, _ := buildErrorRedirectURL(req.RedirectURI, req.State, "invalid_client", "Client not registered")
+			// Agent UUID not registered — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)
 			return &ports.AuthorizationDecision{
-				Action:      "error",
-				ErrorCode:   "invalid_client",
-				ErrorDesc:   "Client not registered",
-				RedirectURL: redirectURL,
+				Action:    "error",
+				ErrorCode: "invalid_client",
+				ErrorDesc: "Client not registered",
 			}, nil
 		}
 		// Other error (connection, timeout)
@@ -126,14 +122,72 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}, nil
 	}
 
-	// Step 2: Check if user has active grant for this agent
-	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, id.Principal(principal), agent.ID)
-	if err != nil && !errors.Is(err, ports.ErrNotFound) {
-		// Only treat as error if it's not a "not found" condition (which is valid)
+	// Step 1b: Validate redirect_uri against agent's registered URIs.
+	// Per RFC 6749 §4.1.2.1, MUST NOT redirect if redirect_uri is unverified.
+	// Agents with no registered URIs are rejected — fail closed.
+	if len(agent.RedirectURIs) == 0 {
 		return &ports.AuthorizationDecision{
 			Action:    "error",
-			ErrorCode: "server_error",
-			ErrorDesc: "Failed to check grant",
+			ErrorCode: "invalid_redirect_uri",
+			ErrorDesc: "redirect_uri not registered for this client",
+		}, nil
+	}
+	uriAllowed := false
+	for _, allowed := range agent.RedirectURIs {
+		if req.RedirectURI == allowed {
+			uriAllowed = true
+			break
+		}
+	}
+	if !uriAllowed {
+		return &ports.AuthorizationDecision{
+			Action:    "error",
+			ErrorCode: "invalid_redirect_uri",
+			ErrorDesc: "redirect_uri not registered for this client",
+		}, nil
+	}
+
+	// Step 1b-runtime: Enforce HTTPS for non-loopback hosts even on legacy data.
+	// Write-time validation (Agent.Validate/ValidateForCreate) prevents new non-HTTPS
+	// registrations, but this guard closes the gap for pre-existing stored URIs.
+	if !storage.IsValidRedirectURI(req.RedirectURI) {
+		return &ports.AuthorizationDecision{
+			Action:    "error",
+			ErrorCode: "invalid_redirect_uri",
+			ErrorDesc: "redirect_uri must use HTTPS for non-local hosts",
+		}, nil
+	}
+
+	// Step 1c: Validate requested scopes against agent's allowed scopes.
+	// redirect_uri is validated above, so a redirect-with-error is now safe.
+	if len(agent.AllowedScopes) > 0 && req.Scope != "" {
+		allowedSet := make(map[string]bool, len(agent.AllowedScopes))
+		for _, s := range agent.AllowedScopes {
+			allowedSet[s] = true
+		}
+		for _, s := range strings.Fields(req.Scope) {
+			if !allowedSet[s] {
+				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted")
+				return &ports.AuthorizationDecision{
+					Action:      "error",
+					ErrorCode:   "invalid_scope",
+					ErrorDesc:   "requested scope is not permitted",
+					RedirectURL: errRedirect,
+				}, nil
+			}
+		}
+	}
+
+	// Step 2: Check if user has active grant for this agent
+	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agent.ID)
+	if err != nil && !errors.Is(err, ports.ErrNotFound) {
+		// redirect_uri is validated above so a redirect-with-error is safe here.
+		errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+		return &ports.AuthorizationDecision{
+			Action:      "error",
+			ErrorCode:   "server_error",
+			ErrorDesc:   "Failed to check grant",
+			RedirectURL: errRedirect,
 		}, nil
 	}
 
@@ -157,12 +211,14 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	// the user can re-authenticate with the affected service instead of getting
 	// a cryptic error later.
 	if s.sessionRepo != nil {
-		expired, err := s.anyDelegatedSessionExpired(ctx, id.Principal(principal), grant.DelegatedOAuth2Tokens)
+		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.DelegatedOAuth2Tokens)
 		if err != nil {
+			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
 			return &ports.AuthorizationDecision{
-				Action:    "error",
-				ErrorCode: "server_error",
-				ErrorDesc: "Failed to check session status",
+				Action:      "error",
+				ErrorCode:   "server_error",
+				ErrorDesc:   "Failed to check session status",
+				RedirectURL: errRedirect,
 			}, nil
 		}
 		if expired {
@@ -187,7 +243,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 
 	// Step 5: Validate mandatory service requirements (if session repo available)
 	if s.sessionRepo != nil && len(agent.ServiceRequirements) > 0 {
-		err := s.validateMandatoryRequirements(ctx, principal, agent)
+		err := s.validateMandatoryRequirements(ctx, principal.String(), agent)
 		if err != nil {
 			// Mandatory requirement not met - redirect to consent screen
 			if s.logger != nil {
@@ -209,10 +265,15 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}
 	}
 
-	// Active grant exists and all mandatory requirements satisfied - redirect to upstream OAuth2 server
-	upstreamURL := s.buildUpstreamAuthorizeURL(req, agent)
+	// Active grant exists and all mandatory requirements satisfied — proceed.
+	// In proxy mode, the handler redirects to the upstream OAuth2 server.
+	// In issue_token mode, UpstreamAuthorizeEndpoint is empty — skip URL construction.
+	var upstreamURL string
+	if s.config.UpstreamAuthorizeEndpoint != "" {
+		upstreamURL = s.buildUpstreamAuthorizeURL(req, agent)
+	}
 	return &ports.AuthorizationDecision{
-		Action:      "redirect_to_upstream",
+		Action:      "proceed",
 		RedirectURL: upstreamURL,
 	}, nil
 }
@@ -263,15 +324,25 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 	return u.String()
 }
 
-// GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker
+// GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.
+// In issue_token mode, includes JWKS URI and code_challenge_methods.
 func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
+	issuer := s.config.PublicURL
+
 	metadata := &ports.MetadataResponse{
-		Issuer:                            s.config.PublicURL,
-		AuthorizationEndpoint:             fmt.Sprintf("%s/oauth2/authorize", s.config.PublicURL),
-		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", s.config.PublicURL),
+		Issuer:                            issuer,
+		AuthorizationEndpoint:             fmt.Sprintf("%s/oauth2/authorize", issuer),
+		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", issuer),
 		ResponseTypesSupported:            s.config.SupportedResponseTypes,
 		GrantTypesSupported:               s.config.SupportedGrantTypes,
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
+	}
+
+	// In issue_token mode, include JWKS URI and code challenge methods
+	if s.config.Mode == "issue_token" {
+		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
+		metadata.CodeChallengeMethodsSupported = []string{"S256"}
+		metadata.TokenEndpointAuthMethodsSupported = []string{"client_secret_post"}
 	}
 
 	return metadata, nil

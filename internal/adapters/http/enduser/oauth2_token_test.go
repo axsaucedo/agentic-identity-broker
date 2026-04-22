@@ -2,18 +2,48 @@ package enduser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 )
+
+// mockTokenMintingStrategy is a configurable test double for ports.TokenMintingStrategy.
+type mockTokenMintingStrategy struct {
+	clientCredentialsFn         func(context.Context, id.AgentID, string, string) (*ports.TokenResponse, error)
+	authorizationCodeExchangeFn func(context.Context, id.AgentID, string, string, string, string) (*ports.TokenResponse, error)
+}
+
+func (m *mockTokenMintingStrategy) HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*ports.TokenResponse, error) {
+	return m.clientCredentialsFn(ctx, agentID, clientSecret, scope)
+}
+
+func (m *mockTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
+	return m.authorizationCodeExchangeFn(ctx, agentID, clientSecret, code, redirectURI, codeVerifier)
+}
+
+// fixedMinting returns a mock strategy that always returns the given response/error for both grant types.
+func fixedMinting(resp *ports.TokenResponse, err error) *mockTokenMintingStrategy {
+	return &mockTokenMintingStrategy{
+		clientCredentialsFn: func(_ context.Context, _ id.AgentID, _, _ string) (*ports.TokenResponse, error) {
+			return resp, err
+		},
+		authorizationCodeExchangeFn: func(_ context.Context, _ id.AgentID, _, _, _, _ string) (*ports.TokenResponse, error) {
+			return resp, err
+		},
+	}
+}
 
 // mockMultiAgentVerifier is a test double for MultiAgentVerifier
 type mockMultiAgentVerifier struct {
@@ -70,8 +100,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	tests := []struct {
@@ -133,8 +162,7 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -171,8 +199,7 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String() + "&redirect_uri=https://client.example.com/callback")
@@ -205,8 +232,7 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=expired&client_id=" + agentID.String())
@@ -322,9 +348,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 			defer mockUpstream.Close()
 
 			handler := &OAuth2TokenHandler{
-				UpstreamTokenURL:   mockUpstream.URL,
-				MultiAgentVerifier: tt.verifier,
-				AgentRepository:    agentRepo,
+				GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, tt.verifier, nil),
 			}
 
 			body := "grant_type=authorization_code&code=abc123&client_id=" + tt.clientID
@@ -356,8 +380,7 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -426,8 +449,7 @@ func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
 			for _, v := range verifiers {
 				t.Run(v.name, func(t *testing.T) {
 					handler := &OAuth2TokenHandler{
-						UpstreamTokenURL:   mockUpstream.URL,
-						MultiAgentVerifier: v.verifier,
+						GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, v.verifier, nil),
 					}
 
 					req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(tt.body))
@@ -466,8 +488,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_ClientIDReplacement(t *testing.T) {
 
 	agentRepo := newStubAgentRepo(agentID, upstreamClientID)
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
@@ -502,8 +523,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 		err:   errors.New("agent not found"),
 	}
 	handler := &OAuth2TokenHandler{
-		UpstreamTokenURL: mockUpstream.URL,
-		AgentRepository:  agentRepo,
+		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
 	}
 
 	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
@@ -517,4 +537,299 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 	respBody, _ := io.ReadAll(w.Body)
 	assert.Contains(t, string(respBody), "invalid_client")
 	assert.False(t, upstreamCalled, "upstream must not be called when agent is not found")
+}
+
+func TestWriteTokenResponse(t *testing.T) {
+	t.Run("success returns 200 with complete JSON body", func(t *testing.T) {
+		s := &issueTokenGrantStrategy{}
+		w := httptest.NewRecorder()
+
+		s.writeTokenResponse(w, &ports.TokenResponse{
+			AccessToken: "tok123",
+			TokenType:   "Bearer",
+			ExpiresIn:   3600,
+		})
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+
+		var body map[string]interface{}
+		assert.NoError(t, json.NewDecoder(w.Body).Decode(&body))
+		assert.Equal(t, "tok123", body["access_token"])
+		assert.Equal(t, "Bearer", body["token_type"])
+		assert.EqualValues(t, 3600, body["expires_in"])
+		assert.NotContains(t, body, "scope")
+	})
+
+	t.Run("scope included when non-empty", func(t *testing.T) {
+		s := &issueTokenGrantStrategy{}
+		w := httptest.NewRecorder()
+
+		s.writeTokenResponse(w, &ports.TokenResponse{
+			AccessToken: "tok456",
+			TokenType:   "Bearer",
+			ExpiresIn:   900,
+			Scope:       "read write",
+		})
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body map[string]interface{}
+		assert.NoError(t, json.NewDecoder(w.Body).Decode(&body))
+		assert.Equal(t, "read write", body["scope"])
+	})
+}
+
+// TestHandleLocalMinting_ClientCredentials covers the client_credentials path through
+// HandleTokenGrant: success, input validation failures, and strategy error mapping.
+func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
+	successResp := &ports.TokenResponse{AccessToken: "tok123", TokenType: "Bearer", ExpiresIn: 3600, Scope: "read"}
+
+	tests := []struct {
+		name          string
+		body          string
+		mintingErr    error // nil = return successResp
+		wantStatus    int
+		wantErrorCode string // empty = expect success
+	}{
+		{
+			name:       "success returns 200 with all token fields",
+			body:       "grant_type=client_credentials&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret&scope=read",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:          "missing client_id returns 400 invalid_request",
+			body:          "grant_type=client_credentials&client_secret=secret",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "non-UUID client_id returns 401 invalid_client",
+			body:          "grant_type=client_credentials&client_id=broker_abc&client_secret=secret",
+			wantStatus:    http.StatusUnauthorized,
+			wantErrorCode: "invalid_client",
+		},
+		{
+			name:          "missing client_secret returns 400 invalid_request",
+			body:          "grant_type=client_credentials&client_id=550e8400-e29b-41d4-a716-446655440000",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "strategy ErrInvalidClient returns 401 invalid_client",
+			body:          "grant_type=client_credentials&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=wrong",
+			mintingErr:    oauth2server.NewRFC6749Error("invalid_client", "client authentication failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient),
+			wantStatus:    http.StatusUnauthorized,
+			wantErrorCode: "invalid_client",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			minting := &mockTokenMintingStrategy{
+				clientCredentialsFn: func(_ context.Context, _ id.AgentID, _, _ string) (*ports.TokenResponse, error) {
+					if tt.mintingErr != nil {
+						return nil, tt.mintingErr
+					}
+					return successResp, nil
+				},
+			}
+			handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(minting, nil)}
+			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			var body map[string]interface{}
+			_ = json.NewDecoder(w.Body).Decode(&body)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, body["error"])
+			} else {
+				assert.Equal(t, "tok123", body["access_token"])
+				assert.Equal(t, "Bearer", body["token_type"])
+				assert.EqualValues(t, 3600, body["expires_in"])
+				assert.Equal(t, "read", body["scope"])
+			}
+		})
+	}
+}
+
+// TestHandleLocalMinting_AuthorizationCode covers the authorization_code path through
+// HandleTokenGrant: success, input validation failures, and strategy error mapping.
+func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
+	successResp := &ports.TokenResponse{AccessToken: "tok456", TokenType: "Bearer", ExpiresIn: 900}
+
+	tests := []struct {
+		name          string
+		body          string
+		mintingErr    error
+		wantStatus    int
+		wantErrorCode string
+	}{
+		{
+			name:       "success returns 200 with all token fields",
+			body:       "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret&code=authcode123&redirect_uri=https://example.com/cb&code_verifier=verifier",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:          "missing client_id returns 400 invalid_request",
+			body:          "grant_type=authorization_code&client_secret=secret&code=abc",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "non-UUID client_id returns 401 invalid_client",
+			body:          "grant_type=authorization_code&client_id=broker_abc&client_secret=secret&code=abc",
+			wantStatus:    http.StatusUnauthorized,
+			wantErrorCode: "invalid_client",
+		},
+		{
+			name:          "missing client_secret returns 400 invalid_request",
+			body:          "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&code=abc",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "missing code returns 400 invalid_request",
+			body:          "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret",
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_request",
+		},
+		{
+			name:          "strategy ErrInvalidGrant returns 400 invalid_grant",
+			body:          "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&client_secret=secret&code=expired",
+			mintingErr:    oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant),
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "invalid_grant",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			minting := &mockTokenMintingStrategy{
+				authorizationCodeExchangeFn: func(_ context.Context, _ id.AgentID, _, _, _, _ string) (*ports.TokenResponse, error) {
+					if tt.mintingErr != nil {
+						return nil, tt.mintingErr
+					}
+					return successResp, nil
+				},
+			}
+			handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(minting, nil)}
+			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			var body map[string]interface{}
+			_ = json.NewDecoder(w.Body).Decode(&body)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, body["error"])
+			} else {
+				assert.Equal(t, "tok456", body["access_token"])
+				assert.Equal(t, "Bearer", body["token_type"])
+				assert.EqualValues(t, 900, body["expires_in"])
+			}
+		})
+	}
+}
+
+// TestHandleLocalMinting_UnsupportedGrantType verifies the default branch returns
+// 400 unsupported_grant_type for any grant type other than client_credentials or
+// authorization_code (e.g. password, implicit, device_code).
+func TestHandleLocalMinting_UnsupportedGrantType(t *testing.T) {
+	handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(fixedMinting(nil, nil), nil)}
+	req := httptest.NewRequest("POST", "/oauth2/token",
+		strings.NewReader("grant_type=password&username=user&password=secret"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "unsupported_grant_type", body["error"])
+}
+
+// TestHandleMintingError_RFC6749StatusCodes verifies the complete RFC 6749 error code →
+// HTTP status mapping in handleMintingError.
+func TestHandleMintingError_RFC6749StatusCodes(t *testing.T) {
+	tests := []struct {
+		name          string
+		err           error
+		wantStatus    int
+		wantErrorCode string
+	}{
+		{"ErrInvalidClient → 401 invalid_client", oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient), http.StatusUnauthorized, "invalid_client"},
+		{"ErrInvalidScope → 400 invalid_scope", oauth2server.NewRFC6749Error("invalid_scope", "invalid scope", http.StatusBadRequest, oauth2server.ErrInvalidScope), http.StatusBadRequest, "invalid_scope"},
+		{"ErrInvalidGrant → 400 invalid_grant", oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant), http.StatusBadRequest, "invalid_grant"},
+		{"unknown error → 500 server_error", errors.New("unexpected db failure"), http.StatusInternalServerError, "server_error"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &issueTokenGrantStrategy{}
+			w := httptest.NewRecorder()
+
+			s.handleMintingError(w, tt.err, "client_credentials", "broker_test")
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+			var body map[string]interface{}
+			_ = json.NewDecoder(w.Body).Decode(&body)
+			assert.Equal(t, tt.wantErrorCode, body["error"])
+		})
+	}
+}
+
+func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
+	internalDetail := "scope \"read:admin\" not allowed for this agent"
+
+	t.Run("invalid_scope does not leak internal detail", func(t *testing.T) {
+		s := &issueTokenGrantStrategy{}
+		w := httptest.NewRecorder()
+
+		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_scope", "scope not allowed", http.StatusBadRequest, oauth2server.ErrInvalidScope)), "client_credentials", "broker_test")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		body, _ := io.ReadAll(w.Body)
+		assert.Contains(t, string(body), "invalid_scope")
+		assert.NotContains(t, string(body), internalDetail)
+		assert.NotContains(t, string(body), "read:admin")
+	})
+
+	t.Run("invalid_grant does not leak internal detail", func(t *testing.T) {
+		s := &issueTokenGrantStrategy{}
+		w := httptest.NewRecorder()
+
+		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant)), "authorization_code", "broker_test")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		body, _ := io.ReadAll(w.Body)
+		assert.Contains(t, string(body), "invalid_grant")
+		assert.NotContains(t, string(body), internalDetail)
+		assert.NotContains(t, string(body), "read:admin")
+	})
+}
+
+func TestHandleMintingError_LogDoesNotLeakErrorChain(t *testing.T) {
+	internalDetail := "postgres: connection refused to db-host-internal"
+
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+
+	s := &issueTokenGrantStrategy{logger: logger}
+	w := httptest.NewRecorder()
+
+	wrapped := fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient))
+	s.handleMintingError(w, wrapped, "client_credentials", "broker_test")
+
+	logLine := buf.String()
+	assert.NotContains(t, logLine, internalDetail)
+	assert.Contains(t, logLine, "invalid_client")
+	assert.Contains(t, logLine, "client auth failed")
 }

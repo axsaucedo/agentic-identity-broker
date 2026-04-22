@@ -77,7 +77,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			// When: Request without X-Remote-User header
 			resp, err := server.PublicGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
-					agent.ClientID),
+					agent.ID.String()),
 			)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
@@ -97,7 +97,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			oversizedPrincipal := fixtures.OversizedPrincipal().String()
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code",
-					agent.ClientID),
+					agent.ID.String()),
 				oversizedPrincipal,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -113,7 +113,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 	Describe("client validation", func() {
 		It("should reject invalid client_id", func() {
 			// Given: No agent with the requested client_id exists
-			// When: Request with invalid client_id
+			// When: Request with invalid (non-UUID) client_id
 			resp, err := server.AuthenticatedGET(
 				"/oauth2/authorize?client_id=nonexistent-client&redirect_uri=https://client.example.com/cb&response_type=code&state=state-123",
 				fixtures.DefaultPrincipal().String(),
@@ -121,19 +121,14 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Returns error redirect with invalid_client error
+			// Then: Returns direct 400 error — per RFC 6749 §4.1.2.1 MUST NOT redirect
+			// when redirect_uri is unverified. client_id must be a UUID-format agent ID.
 			// Specification T043: Client validation must return OAuth2 error response
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 
-			location := resp.Header.Get("Location")
-			Expect(location).NotTo(BeEmpty())
-
-			redirectURL, err := url.Parse(location)
+			body, err := io.ReadAll(resp.Body)
 			Expect(err).ToNot(HaveOccurred())
-
-			query := redirectURL.Query()
-			Expect(query.Get("error")).To(Equal("invalid_client"))
-			Expect(query.Get("state")).To(Equal("state-123"))
+			Expect(string(body)).To(ContainSubstring("invalid_client"))
 		})
 
 		It("should redirect to consent page for valid client", func() {
@@ -142,8 +137,8 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			err := testStorage.Agents().Create(ctx, agent)
 			Expect(err).ToNot(HaveOccurred())
 
-			// When: Request with valid client_id
-			redirectURI := "https://client.example.com/callback"
+			// When: Request with valid client_id and the agent's registered redirect_uri
+			redirectURI := "https://client.example.com/cb"
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=abc123",
 					agent.ID.String(), url.QueryEscape(redirectURI)),
@@ -526,7 +521,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			xssPayload := fixtures.XSSPayload()
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s",
-					agent.ClientID, "https://client.example.com/cb", url.QueryEscape(xssPayload)),
+					agent.ID.String(), "https://client.example.com/cb", url.QueryEscape(xssPayload)),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -551,7 +546,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 			sqlPayload := fixtures.SQLInjectionPayload()
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf("/oauth2/authorize?client_id=%s&redirect_uri=https://client.example.com/cb&response_type=code&state=%s",
-					agent.ClientID, url.QueryEscape(sqlPayload)),
+					agent.ID.String(), url.QueryEscape(sqlPayload)),
 				fixtures.DefaultPrincipal().String(),
 			)
 			Expect(err).ToNot(HaveOccurred())

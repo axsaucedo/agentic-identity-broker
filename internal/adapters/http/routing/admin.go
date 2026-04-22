@@ -71,5 +71,24 @@ func SetupAdminRoutes(r chi.Router, h *app.AdminHandlers, cfg AdminRouteConfig) 
 			r.Put("/{service-id}", h.Services.UpdateService)    // PUT /api/services/:service-id
 			r.Delete("/{service-id}", h.Services.DeleteService) // DELETE /api/services/:service-id
 		})
+
+		// Client credential management routes (per-agent)
+		if h.ClientCredentials != nil {
+			r.Route("/agents/{agent-id}/client-credentials", func(r chi.Router) {
+				r.Post("/", h.ClientCredentials.Generate) // POST /api/agents/:agent-id/client-credentials
+				r.Get("/", h.ClientCredentials.Get)       // GET /api/agents/:agent-id/client-credentials
+				r.Delete("/", h.ClientCredentials.Revoke) // DELETE /api/agents/:agent-id/client-credentials
+			})
+		}
+
+		// Signing key management routes
+		if h.SigningKeys != nil {
+			r.Route("/oauth2-server/signing-keys", func(r chi.Router) {
+				r.Post("/", h.SigningKeys.Add)                    // POST /api/oauth2-server/signing-keys
+				r.Get("/", h.SigningKeys.List)                    // GET /api/oauth2-server/signing-keys
+				r.Put("/{kid}/current", h.SigningKeys.SetCurrent) // PUT /api/oauth2-server/signing-keys/:kid/current
+				r.Delete("/{kid}", h.SigningKeys.Remove)          // DELETE /api/oauth2-server/signing-keys/:kid
+			})
+		}
 	})
 }

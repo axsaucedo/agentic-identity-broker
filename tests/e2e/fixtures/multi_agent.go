@@ -18,12 +18,13 @@ const SharedUpstreamClientID = "shared-upstream"
 func MultiAgentAlpha() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
-		ID:          id.NewAgentID(),
-		ClientID:    id.ClientID(SharedUpstreamClientID),
-		DisplayName: "Multi-Agent Alpha",
-		Description: "First agent sharing an upstream OAuth2 client_id (feature 021 testing)",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:           id.NewAgentID(),
+		ClientID:     id.ClientID(SharedUpstreamClientID),
+		DisplayName:  "Multi-Agent Alpha",
+		Description:  "First agent sharing an upstream OAuth2 client_id (feature 021 testing)",
+		RedirectURIs: []string{"https://client.example.com/cb"},
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 }
 
@@ -33,12 +34,13 @@ func MultiAgentAlpha() *storage.Agent {
 func MultiAgentBeta() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
-		ID:          id.NewAgentID(),
-		ClientID:    id.ClientID(SharedUpstreamClientID),
-		DisplayName: "Multi-Agent Beta",
-		Description: "Second agent sharing an upstream OAuth2 client_id (feature 021 testing)",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:           id.NewAgentID(),
+		ClientID:     id.ClientID(SharedUpstreamClientID),
+		DisplayName:  "Multi-Agent Beta",
+		Description:  "Second agent sharing an upstream OAuth2 client_id (feature 021 testing)",
+		RedirectURIs: []string{"https://client.example.com/cb"},
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 }
 

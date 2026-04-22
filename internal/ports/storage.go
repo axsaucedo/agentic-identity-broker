@@ -244,3 +244,84 @@ type UserSessionRepository interface {
 	// Used to enforce deletion protection (cannot delete service with active sessions).
 	CountByService(ctx context.Context, serviceID id.ServiceID) (int, error)
 }
+
+// ClientCredentialRepository manages broker-issued OAuth2 client credentials.
+// One credential set per agent (enforced by UNIQUE on agent_id).
+type ClientCredentialRepository interface {
+	// Create stores a new broker client credential.
+	Create(ctx context.Context, credential *storage.ClientCredential) error
+
+	// GetByAgentID retrieves the credential for a given agent.
+	GetByAgentID(ctx context.Context, agentID id.AgentID) (*storage.ClientCredential, error)
+
+	// GetByClientID retrieves the credential by its client ID.
+	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.ClientCredential, error)
+
+	// Delete removes the credential for a given agent.
+	Delete(ctx context.Context, agentID id.AgentID) error
+
+	// Rotate atomically replaces the existing credential for an agent with a new one.
+	// The old credential is only removed after the new one is successfully stored.
+	// Returns an error if no existing credential is found for the agent.
+	Rotate(ctx context.Context, agentID id.AgentID, newCredential *storage.ClientCredential) error
+}
+
+// SigningKeyRepository manages asymmetric signing keys for JWT access tokens.
+type SigningKeyRepository interface {
+	// Create stores a new signing key.
+	Create(ctx context.Context, key *storage.SigningKey) error
+
+	// CreateAndSetCurrent stores a new signing key and atomically promotes it to
+	// current while demoting all other keys, in a single transaction.
+	CreateAndSetCurrent(ctx context.Context, key *storage.SigningKey) error
+
+	// GetByKID retrieves a signing key by its key ID (kid).
+	GetByKID(ctx context.Context, kid id.KeyID) (*storage.SigningKey, error)
+
+	// GetCurrent retrieves the current active signing key.
+	GetCurrent(ctx context.Context) (*storage.SigningKey, error)
+
+	// ListActive returns all signing keys that have not been removed.
+	ListActive(ctx context.Context) ([]*storage.SigningKey, error)
+
+	// SetCurrent promotes a key to be the current signing key.
+	SetCurrent(ctx context.Context, kid id.KeyID) error
+
+	// Delete soft-deletes a signing key by setting removed_at.
+	Delete(ctx context.Context, kid id.KeyID) error
+
+	// CountActive returns the number of non-removed signing keys.
+	CountActive(ctx context.Context) (int, error)
+}
+
+// AuthorizationCodeRepository manages ephemeral authorization codes.
+type AuthorizationCodeRepository interface {
+	// Create stores a new authorization code.
+	Create(ctx context.Context, code *storage.AuthorizationCode) error
+
+	// FindByCodeHash retrieves an authorization code by its SHA-256 hash.
+	FindByCodeHash(ctx context.Context, codeHash string) (*storage.AuthorizationCode, error)
+
+	// MarkUsed marks an authorization code as used (single-use enforcement).
+	MarkUsed(ctx context.Context, id id.AuthorizationCodeID) error
+
+	// DeleteExpired removes expired authorization codes. Returns the count of deleted codes.
+	DeleteExpired(ctx context.Context) (int, error)
+}
+
+// PKCESessionRepository stores the PKCE challenge for pending authorization codes.
+// The signature (fosite code signature) is the primary key; sessions are one-shot
+// and deleted immediately after the token endpoint consumes them.
+type PKCESessionRepository interface {
+	// Create stores a PKCE session keyed by fosite code signature.
+	Create(ctx context.Context, session *storage.PKCESession) error
+
+	// FindBySignature retrieves a PKCE session by its code signature.
+	FindBySignature(ctx context.Context, signature string) (*storage.PKCESession, error)
+
+	// Delete removes a PKCE session by its code signature.
+	Delete(ctx context.Context, signature string) error
+
+	// DeleteExpired removes PKCE sessions whose authorization codes have expired.
+	DeleteExpired(ctx context.Context) (int, error)
+}
