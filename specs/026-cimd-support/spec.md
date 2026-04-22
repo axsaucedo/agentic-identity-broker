@@ -17,7 +17,7 @@ An AI agent identifies itself to the authorization server by using its own HTTPS
 
 **Acceptance Scenarios**:
 
-1. **Given** a valid CIMD document is served at `https://agent.example.com/client`, **When** an authorization request arrives with `client_id=https://agent.example.com/client`, **Then** the broker fetches the document, validates the `client_id` field matches, and presents `client_name` and `redirect_uris` from the document on the consent screen.
+1. **Given** a valid CIMD document is served at `https://agent.example.com/client`, **When** an authorization request arrives with `client_id=https://agent.example.com/client`, **Then** the broker fetches the document, validates the `client_id` field matches, and presents `client_name` from the document on the consent screen.
 2. **Given** the CIMD document's `client_id` field does not exactly match the request URL, **When** the broker fetches the document, **Then** the authorization request is rejected with an error indicating client metadata mismatch.
 3. **Given** the CIMD document is absent or returns a non-200 HTTP status, **When** the broker attempts to fetch it, **Then** the authorization request is rejected and no redirect is issued.
 4. **Given** the authorization request uses a `redirect_uri` not listed in the CIMD document, **When** the redirect URI is validated after authorization, **Then** the request is rejected.
