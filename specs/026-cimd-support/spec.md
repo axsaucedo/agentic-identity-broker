@@ -20,23 +20,23 @@ An AI agent identifies itself to the authorization server by using its own HTTPS
 1. **Given** a valid CIMD document is served at `https://agent.example.com/client`, **When** an authorization request arrives with `client_id=https://agent.example.com/client`, **Then** the broker fetches the document, validates the `client_id` field matches, and presents `client_name` and `redirect_uris` from the document on the consent screen.
 2. **Given** the CIMD document's `client_id` field does not exactly match the request URL, **When** the broker fetches the document, **Then** the authorization request is rejected with an error indicating client metadata mismatch.
 3. **Given** the CIMD document is absent or returns a non-200 HTTP status, **When** the broker attempts to fetch it, **Then** the authorization request is rejected and no redirect is issued.
-4. **Given** the CIMD document uses a `redirect_uri` not listed in the document, **When** the redirect URI is validated after authorization, **Then** the request is rejected.
+4. **Given** the authorization request uses a `redirect_uri` not listed in the CIMD document, **When** the redirect URI is validated after authorization, **Then** the request is rejected.
 
 ---
 
 ### User Story 2 - SSRF-Hardened Fetcher Blocks Malicious URLs (Priority: P1)
 
-An operator needs confidence that accepting untrusted HTTPS URLs as `client_id` values cannot be weaponized to make the broker perform Server-Side Request Forgery (SSRF) against internal infrastructure. The CIMD fetcher must proactively reject URLs targeting private networks, loopback addresses, link-local ranges, and cloud metadata endpoints before any network connection is established.
+An operator needs confidence that accepting untrusted HTTPS URLs as `client_id` values cannot be weaponized to make the broker perform Server-Side Request Forgery (SSRF) against internal infrastructure. The CIMD fetcher must proactively reject URLs targeting private networks, loopback addresses, and link-local IP ranges (including cloud metadata endpoints such as 169.254.169.254) before any network connection is established.
 
 **Why this priority**: Without SSRF protection, any external party can craft a `client_id` URL that causes the broker to probe internal services. This is a critical pre-condition for enabling CIMD at all.
 
-**Independent Test**: Can be fully tested by sending authorization requests whose `client_id` points to blocked address ranges (loopback, RFC 1918, link-local) and verifying each is rejected before a DNS lookup or TCP connection is made.
+**Independent Test**: Can be fully tested by sending authorization requests whose `client_id` points to blocked IP ranges (loopback, RFC 1918 private, link-local) and verifying each is rejected before a DNS lookup or TCP connection is made.
 
 **Acceptance Scenarios**:
 
 1. **Given** a `client_id` URL whose hostname resolves to a private IP range (10.x, 172.16–31.x, 192.168.x), **When** the broker validates the URL, **Then** the request is rejected without issuing any outbound connection.
 2. **Given** a `client_id` URL whose hostname resolves to a loopback address (127.x or ::1), **When** the broker validates the URL, **Then** the request is rejected.
-3. **Given** a `client_id` URL targeting a cloud metadata endpoint (e.g. 169.254.169.254), **When** the broker validates the URL, **Then** the request is rejected.
+3. **Given** a `client_id` URL whose hostname resolves to a link-local address (169.254.x.x or fe80::/10, including cloud metadata endpoints such as 169.254.169.254), **When** the broker validates the URL, **Then** the request is rejected.
 4. **Given** a `client_id` URL using an HTTP (non-HTTPS) scheme, **When** the broker receives the request, **Then** the request is rejected immediately without a network call.
 5. **Given** a `client_id` URL with a path containing single or double dot segments (`../`), **When** the URL is parsed, **Then** the request is rejected due to invalid client ID format.
 6. **Given** a CIMD endpoint that streams a response larger than the configured size limit, **When** the broker fetches the document, **Then** the download is aborted and the request is rejected.
@@ -86,7 +86,7 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 
 **Acceptance Scenarios**:
 
-1. **Given** a CIMD-based authorization request with a non-localhost `redirect_uri`, **When** the consent screen is rendered, **Then** it displays: (a) summary "The application [client_name] wants to access [Access Target]. Please ensure you recognize the callback address below.", (b) "Credentials will be sent to: [redirect_uri]", (c) "Verified domain: [hostname]", and (d) a collapsed "Advanced Details" section.
+1. **Given** a CIMD-based authorization request with a non-localhost `redirect_uri`, **When** the consent screen is rendered, **Then** it displays: (a) summary "The application [client_name] wants to access [Access Target].", (b) "Verified domain: [hostname]", and (c) a collapsed "Advanced Details" section.
 2. **Given** a CIMD-based authorization request whose `redirect_uri` resolves to `localhost` or `127.0.0.1`, **When** the consent screen is rendered, **Then** a prominent warning is displayed: "This app is requesting a redirect to your local machine. Ensure you started this request from [Agent.DisplayName]."
 3. **Given** the "Advanced Details" section is collapsed, **When** the user expands it, **Then** it reveals: Client Name, Client ID, Redirect URI, and Requested Scopes.
 4. **Given** a brand mismatch has been detected (CIMD `client_name` differs from `Agent.DisplayName`), **When** the consent screen is rendered, **Then** the displayed `client_name` is the CIMD value and the mismatch audit event has already been logged before the screen is shown.
@@ -150,11 +150,10 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 
 ### Consent Screen Requirements
 
-- **CS-001**: The consent screen for CIMD-based clients MUST display a summary statement: *"The application [client_name] wants to access [Access Target]. Please ensure you recognize the callback address below."* where `[Access Target]` is the name of the requested third-party service and/or the human-readable scope list.
-- **CS-002**: The consent screen MUST display a redirect destination statement: *"Credentials will be sent to: [redirect_uri]"* prominently, so the user can verify the callback address before approving.
-- **CS-003**: The consent screen MUST display a domain verification badge: *"Verified domain: [hostname]"* derived from the Client ID Metadata Document URL's hostname, confirming the domain is pre-registered.
-- **CS-004**: When the `redirect_uri` host is `localhost` or `127.0.0.1`, the consent screen MUST display a prominent warning: *"This app is requesting a redirect to your local machine. Ensure you started this request from [Agent.DisplayName]."* where `[Agent.DisplayName]` is the pre-registered Agent name.
-- **CS-005**: The consent screen MUST include an unfoldable "Advanced Details" section, collapsed by default, that reveals the following fields: Client Name (`client_name` from CIMD document), Client ID (the `client_id` URL), Redirect URI (the requested `redirect_uri`), Requested Scopes.
+- **CS-001**: The consent screen for CIMD-based clients MUST display a summary statement: *"The application [client_name] wants to access [Access Target]."* where `[Access Target]` is the name of the requested third-party service and/or the human-readable scope list.
+- **CS-002**: The consent screen MUST display a domain verification badge: *"Verified domain: [hostname]"* derived from the Client ID Metadata Document URL's hostname, confirming the domain is pre-registered.
+- **CS-003**: When the `redirect_uri` host is `localhost` or `127.0.0.1`, the consent screen MUST display a prominent warning: *"This app is requesting a redirect to your local machine. Ensure you started this request from [Agent.DisplayName]."* where `[Agent.DisplayName]` is the pre-registered Agent name.
+- **CS-004**: The consent screen MUST include an unfoldable "Advanced Details" section, collapsed by default, that reveals the following fields: Client Name (`client_name` from CIMD document), Client ID (the `client_id` URL), Redirect URI (the requested `redirect_uri`), Requested Scopes.
 
 ### Domain Model
 
@@ -246,28 +245,30 @@ erDiagram
 
 ### Configuration Requirements
 
-**Configuration Parameters**:
-- **`cimd.enabled`**: bool, enables CIMD support globally, default `false`
-- **`cimd.fetch_timeout`**: duration, total HTTP round-trip timeout, default `1s`
-- **`cimd.max_response_bytes`**: int, maximum CIMD document size in bytes, default `5120`
-- **`cimd.cache.max_ttl`**: duration, upper bound on document cache TTL, default `1h`
-- **`cimd.cache.min_ttl`**: duration, lower bound on document cache TTL (prevents hammering), default `60s`
-- **`cimd.ssrf.extra_blocked_cidrs`**: []string, operator-added CIDR ranges to block in addition to defaults
+**Configuration Parameters** (nested under `oauth2_authorization_server`):
+- **`oauth2_authorization_server.cimd.enabled`**: bool, enables CIMD support globally, default `false`
+- **`oauth2_authorization_server.cimd.fetch_timeout`**: duration, total HTTP round-trip timeout, default `1s`
+- **`oauth2_authorization_server.cimd.max_response_bytes`**: int, maximum CIMD document size in bytes, default `5120`
+- **`oauth2_authorization_server.cimd.cache.max_ttl`**: duration, upper bound on document cache TTL, default `1h`
+- **`oauth2_authorization_server.cimd.cache.min_ttl`**: duration, lower bound on document cache TTL (prevents hammering), default `60s`
+- **`oauth2_authorization_server.cimd.ssrf.extra_blocked_cidrs`**: []string, operator-added CIDR ranges to block in addition to defaults
 
 **Example YAML Configuration**:
 ```yaml
-cimd:
-  enabled: true
-  fetch_timeout: 1s
-  max_response_bytes: 5120
-  cache:
-    max_ttl: 1h
-    min_ttl: 60s
-  ssrf:
-    extra_blocked_cidrs: []
+oauth2_authorization_server:
+  # ... existing fields ...
+  cimd:
+    enabled: true
+    fetch_timeout: 1s
+    max_response_bytes: 5120
+    cache:
+      max_ttl: 1h
+      min_ttl: 60s
+    ssrf:
+      extra_blocked_cidrs: []
 ```
 
-**Configuration Location**: Added to `internal/ports/config.go` as `CIMDConfig` struct and documented in `examples/config/`.
+**Configuration Location**: Added to `internal/ports/config.go` as `CIMDConfig` struct embedded in `OAuth2AuthServerConfig`, and documented in `examples/config/`.
 
 ### API Requirements
 
