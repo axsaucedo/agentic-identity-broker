@@ -1,6 +1,6 @@
 # Feature Specification: Client ID Metadata Document (CIMD) Support
 
-**Feature Branch**: `026-cimd-support`
+**Feature Branch**: `028-cimd-support`
 **Created**: 2026-04-21
 **Status**: Draft
 **Spec**: [draft-ietf-oauth-client-id-metadata-document-01](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-01)
@@ -135,7 +135,7 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 - **FR-016**: System MUST reject `client_id` URLs containing fragment identifiers (`#`).
 - **FR-017**: System MUST reject `client_id` URLs containing embedded credentials (userinfo in the authority component).
 - **FR-018**: System MUST reject `client_id` URLs using ports other than 443.
-- **FR-019**: System MUST cache successfully fetched CIMD documents according to HTTP cache semantics (ETag, Cache-Control, Expires), subject to operator-configured minimum and maximum TTL bounds.
+- **FR-019**: System MUST cache successfully fetched CIMD documents according to HTTP cache semantics (ETag, Cache-Control, Expires), subject to operator-configured minimum and maximum TTL bounds. `Cache-Control: no-store` and `no-cache` directives MUST be ignored; the operator-configured `min_ttl` always applies and takes precedence over remote cache hints.
 - **FR-020**: System MUST NOT cache CIMD fetch errors or malformed documents.
 - **FR-021**: System MUST include `"client_id_metadata_document_supported": true` in authorization server metadata when CIMD is enabled.
 - **FR-022**: System MUST reject CIMD documents that specify a `token_endpoint_auth_method` of `client_secret_post`, `client_secret_basic`, or `client_secret_jwt`.
@@ -252,6 +252,7 @@ erDiagram
 - **`oauth2_authorization_server.cimd.cache.max_ttl`**: duration, upper bound on document cache TTL, default `1h`
 - **`oauth2_authorization_server.cimd.cache.min_ttl`**: duration, lower bound on document cache TTL (prevents hammering), default `60s`
 - **`oauth2_authorization_server.cimd.ssrf.extra_blocked_cidrs`**: []string, operator-added CIDR ranges to block in addition to defaults
+- **`oauth2_authorization_server.cimd.client_name_blocklist`**: []string, operator-added keywords merged with the built-in default blocklist at startup; exact case-insensitive string match
 
 **Example YAML Configuration**:
 ```yaml
@@ -266,6 +267,7 @@ oauth2_authorization_server:
       min_ttl: 60s
     ssrf:
       extra_blocked_cidrs: []
+    client_name_blocklist: []
 ```
 
 **Configuration Location**: Added to `internal/ports/config.go` as `CIMDConfig` struct embedded in `OAuth2AuthServerConfig`, and documented in `examples/config/`.
@@ -275,6 +277,7 @@ oauth2_authorization_server:
 - **API-001**: The authorization server metadata endpoint (`GET /.well-known/oauth-authorization-server`) MUST include `"client_id_metadata_document_supported": true` when `cimd.enabled` is `true`.
 - **API-002**: The existing `GET /authorize` and `POST /token` end-user endpoints accept URL-based `client_id` values without schema change; CIMD lookup is transparent.
 - **API-003**: A structured error response using OAuth2 `error` / `error_description` fields MUST be returned for all CIMD validation failures (invalid URL format, SSRF block, fetch failure, document mismatch, blocked auth method). No redirect is issued on these errors.
+- **API-004**: The existing `PATCH /admin/agents/{id}` endpoint MUST accept a `client_uris` field (array of strings) to allow operators to manage the list of pre-registered Client ID Metadata Document URLs on an Agent. Each URL in the array MUST be validated as a well-formed `https://` URL at write time.
 
 ### Security Requirements
 
@@ -313,19 +316,27 @@ oauth2_authorization_server:
 - Q: How does a Client ID Metadata Document URL identify which Agent record it belongs to? → A: The operator pre-registers Client ID Metadata Document URLs on the Agent entity during Agent provisioning; the broker maps an incoming `client_id` URL to an Agent by exact lookup against that Agent's pre-registered Client ID Metadata Document URLs.
 - Q: What constitutes a match between a `client_id` URL and a pre-registered Client ID Metadata Document URL? → A: Exact match only — the `client_id` URL must equal the pre-registered URL character-for-character.
 - Terminology: Per the CIMD draft RFC, domain language is used throughout this spec. The act of adding URLs to an Agent is called "pre-registering Client ID Metadata Document URLs". The field on Agent is "pre-registered Client ID Metadata Document URLs". "Unregistered" describes a `client_id` URL that has not been pre-registered.
-- Consent screen UX: Five explicit requirements added (CS-001 through CS-005): summary statement with access target, redirect URI destination statement, verified domain badge, localhost redirect warning (referencing Agent.DisplayName), and a collapsed Advanced Details section showing Client Name, Client ID, Redirect URI, and Requested Scopes.
+- Consent screen UX: Four explicit requirements defined (CS-001 through CS-004): summary statement with access target, verified domain badge, localhost redirect warning (referencing Agent.DisplayName), and a collapsed Advanced Details section showing Client Name, Client ID, Redirect URI, and Requested Scopes. No CS-005 exists.
 - Q: Which authority governs the acceptable `redirect_uri` values for a client identified by a Client ID Metadata Document URL? → A: Same-origin as the `client_id` URL (scheme + host + port); `localhost` and `127.0.0.1` are always permitted regardless of origin to support locally-running tooling and coding agents.
 - Q: Which metadata drives the consent screen when a CIMD document resolves to an Agent? → A: CIMD document metadata (`client_name`, `logo_uri`) is displayed to show current app branding. Brand Pinning is enforced: the CIMD `client_name` is compared against `Agent.DisplayName` (set by the operator at provisioning); a mismatch is logged as an audit event but does not block the flow. The `client_name` is also validated against a blacklist of reserved/system-level keywords to prevent spoofing.
 - Q: Where is the Brand Pin baseline stored, and what is it anchored to? → A: The pin IS `Agent.DisplayName` — already persisted on the Agent record. No new baseline storage is required. Only `client_name` is subject to brand pinning (not `logo_uri`).
 - RFC security gap review applied: (1) Added FR-014a requiring path component in `client_id` URL. (2) Added SR-010 requiring SSRF validation for all URLs embedded within the CIMD document. (3) Documented `logo_uri` prefetching as a known deferred security tradeoff. (4) Q: Scope of metadata change monitoring beyond `client_name` → A: Log-only for all three security-critical fields (`redirect_uris`, `token_endpoint_auth_method`, `jwks_uri`); no blocking on any field change. Authorization flow continues regardless.
 - Q: Where is the previously-observed CIMD snapshot stored for SR-011/SR-012 change detection? → A: The Agent entity's own `redirectURIs`, `authMethod`, and `jwksURI` fields serve as the snapshot — updated on every successful CIMD fetch. No separate snapshot columns are required; the stored Agent state IS the baseline. Persisted in the database; survives restarts and is consistent across replicas.
 
+### Session 2026-04-23
+
+- Q: The spec referenced CS-005 and "five CIMD-specific UX elements" but only CS-001 through CS-004 were defined — is a fifth consent screen requirement needed? → A: No. Four requirements (CS-001 through CS-004) are sufficient. All references to CS-005 and "five UX elements" have been removed.
+- Q: How does an operator register Client ID Metadata Document URLs on an Agent record? → A: Via the existing `PATCH /admin/agents/{id}` endpoint — `client_uris` is added as a patchable array field. Added as API-004.
+- Q: How is the operator-configurable `client_name` keyword blacklist (FR-023b/c) configured? → A: YAML config file under `oauth2_authorization_server.cimd.client_name_blocklist` (string array, case-insensitive exact match, merged with built-in defaults at startup). Added to Configuration Requirements.
+- Q: What does the broker do when a CIMD document is served with `Cache-Control: no-store` or `no-cache`? → A: Ignore the directive — operator-configured `min_ttl` always applies. Remote cache hints never override the floor TTL. Clarified in FR-019.
+- Q: Should concurrent cache-miss requests for the same `client_id` URL be deduplicated (singleflight) or each fetch independently? → A: Each request fetches independently — no singleflight coordination required.
+
 ## Assumptions
 
 - CIMD support will be implemented as an opt-in capability (`cimd.enabled: false` by default), consistent with the constitution's security-first principle.
 - The cache layer is in-process memory only (no Redis or DB persistence required); cache is lost on broker restart.
 - Existing Agents with opaque (non-URL) `client_id` values are unaffected; the broker distinguishes a Client ID Metadata Document URL from an opaque `client_id` by the `https://` prefix.
-- The consent screen renders `client_name` and `logo_uri` from the CIMD document; `logo_uri` is displayed as a URL reference (no server-side pre-fetching or proxying in this implementation). **Known security tradeoff**: the RFC recommends server-side prefetching and caching of `logo_uri` to (a) prevent dynamic logo substitution attacks that could confuse users, and (b) prevent cross-domain tracking via logo requests from users' browsers. This is deferred to a follow-on spec. The consent screen also includes all five CIMD-specific UX elements defined in CS-001 through CS-005.
+- The consent screen renders `client_name` and `logo_uri` from the CIMD document; `logo_uri` is displayed as a URL reference (no server-side pre-fetching or proxying in this implementation). **Known security tradeoff**: the RFC recommends server-side prefetching and caching of `logo_uri` to (a) prevent dynamic logo substitution attacks that could confuse users, and (b) prevent cross-domain tracking via logo requests from users' browsers. This is deferred to a follow-on spec. The consent screen includes all four CIMD-specific UX elements defined in CS-001 through CS-004.
 - Port 443 is the only default allowed port; this is not expected to need operator customization in practice.
 - `Agent.DisplayName` serves as the Brand Pin baseline; no new storage or first-fetch recording logic is required.
 - The operator-configurable keyword blacklist augments a non-empty built-in default set; the exact default terms are defined during implementation.
