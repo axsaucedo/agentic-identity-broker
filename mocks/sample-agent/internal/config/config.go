@@ -58,6 +58,12 @@ func Load(configDir string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	// BROKER_AGENT_ID overrides oauth2.client_id so the sample agent uses the broker's
+	// internal agent UUID as client_id (required since Feature 021).
+	if agentID := os.Getenv("BROKER_AGENT_ID"); agentID != "" {
+		cfg.OAuth2.ClientID = agentID
+	}
+
 	// Set defaults if not specified
 	if cfg.Server.Bind == "" {
 		cfg.Server.Bind = "127.0.0.1"

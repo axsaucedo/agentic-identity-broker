@@ -217,6 +217,7 @@ AGENT_RESPONSE=$(curl -s -X POST "${ADMIN_API}/agents" \
     \"governance_url\": \"https://example.com/oauth2-test/governance\",
     \"user_documentation_url\": \"https://example.com/oauth2-test/docs\",
     \"agent_interface_url\": \"http://localhost:3000\",
+    \"redirect_uris\": [\"http://localhost:9002/oauth2/callback\"],
     \"service_requirements\": [
       {
         \"service_id\": \"${MOCK_SERVICE_ID}\",
@@ -243,6 +244,14 @@ if [ "$HTTP_CODE" = "201" ]; then
     echo "    - Weather API (optional, scopes: weather.read)"
 elif [ "$HTTP_CODE" = "409" ]; then
     echo -e "${YELLOW}✓ OAuth2 Test Client already exists${NC}"
+    AGENT_IDS=$(curl -s "${ADMIN_API}/agents" -H "X-Remote-User: admin@example.com" | grep -o '"id":"[^"]*","client_id":"upstream-oauth2-client"' | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+    AGENT_ID=$(printf '%s\n' "$AGENT_IDS" | sed -n '1p')
+    SECOND_ID=$(printf '%s\n' "$AGENT_IDS" | sed -n '2p')
+    if [ -n "$SECOND_ID" ]; then
+        echo -e "${RED}✗ Multiple agents found for client_id=upstream-oauth2-client; cannot resolve unambiguously${NC}"
+        exit 1
+    fi
+    echo "  Agent ID: $AGENT_ID"
 else
     echo -e "${RED}✗ Failed to create OAuth2 Test Client${NC}"
     echo "  HTTP Status: $HTTP_CODE"

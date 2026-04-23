@@ -1,0 +1,41 @@
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  cmd = "cd mocks/sample-agent && go build -o /app/tmp/sample-agent ./cmd/sample-agent"
+  bin = "scripts/start-sample-agent.sh"
+  args_bin = []
+  include_ext = ["go", "yaml", "yml", "toml", "env", "sh", "mod", "sum"]
+  include_dir = ["mocks/sample-agent", "scripts"]
+  exclude_dir = ["assets", "tmp", "vendor", "testdata", "bin", "coverage", "node_modules", ".git"]
+  exclude_file = []
+  exclude_regex = ["_test.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  log = "build-errors.log"
+  poll = true
+  poll_interval = 300
+  delay = 300
+  stop_on_error = true
+  send_interrupt = true
+  kill_delay = 500
+  rerun = false
+  rerun_delay = 500
+
+[log]
+  time = true
+  main_only = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = true
+  keep_scroll = true

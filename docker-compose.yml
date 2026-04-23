@@ -10,6 +10,7 @@ networks:
 volumes:
   broker-tmp:
   aib-frontend-node-modules:  # Preserves containerized npm dependencies to avoid host/container conflicts
+  sample-agent-tmp:
 
 services:
   # Primary application: Identity broker with hot-reload
@@ -102,14 +103,16 @@ services:
   sample-agent:
     build:
       context: .
-      dockerfile: Dockerfile.mock
-      args:
-        SERVICE_PATH: mocks/sample-agent/cmd/sample-agent
+      dockerfile: Dockerfile.dev
     container_name: aib-sample-agent
+    command: ["air", "-c", ".air.sample-agent.toml"]
     ports:
       - "9002:9002"
     volumes:
-      - ./mocks/sample-agent/config.yaml:/app/config.yaml:ro
+      - ./mocks/sample-agent:/app/mocks/sample-agent
+      - ./scripts:/app/scripts:ro
+      - ./.air.sample-agent.toml:/app/.air.sample-agent.toml:ro
+      - sample-agent-tmp:/app/tmp
     networks:
       - aib-network
     healthcheck:
@@ -117,6 +120,9 @@ services:
       interval: 5s
       timeout: 2s
       retries: 3
+    depends_on:
+      identity-broker:
+        condition: service_healthy
 
   # ExtProc Token Exchange Service (gRPC, container-internal only)
   extproc-token-exchange:

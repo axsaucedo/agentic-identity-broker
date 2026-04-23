@@ -616,6 +616,10 @@ compose-health:
 
 # Clean up: stop containers, remove volumes, clean tmp directories
 compose-clean: compose-down-volumes
+    @echo "Tearing down worktree compose projects..."
+    @find .worktrees -maxdepth 2 -name docker-compose.yml | while read -r f; do \
+        {{COMPOSE_CMD}} -f "$$f" down -v 2>/dev/null || true; \
+    done
     @echo "Cleaning up build and temporary directories..."
     @rm -rf tmp/ coverage/ bin/ web/dist web/node_modules
     @echo "✓ Cleanup complete"
