@@ -106,6 +106,9 @@ type MetadataResponse struct {
 
 	// OPTIONAL: Supported PKCE code challenge methods (present in issue_token mode)
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
+
+	// OPTIONAL: Whether CIMD-based client_id resolution is supported (RFC draft)
+	ClientIDMetadataDocumentSupported *bool `json:"client_id_metadata_document_supported,omitempty"`
 }
 
 // TokenMintingStrategy abstracts local token grant processing in issue_token mode.
