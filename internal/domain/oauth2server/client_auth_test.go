@@ -61,6 +61,10 @@ func (m *mockAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storag
 	return nil, nil
 }
 
+func (m *mockAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
+}
+
 func TestArgon2Hasher_HashAndCompare(t *testing.T) {
 	hasher := &Argon2Hasher{}
 

@@ -293,6 +293,31 @@ multi_agent_client:
 
 > **Breaking change (Feature 021)**: The `agent_id_expression: "subject_token.azp"` expression is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)` (feature disabled) or `subject_token.<claim_name>` (feature enabled). See [docs/changelog.md](../../docs/changelog.md).
 
+### `cimd.yaml` — Client ID Metadata Document (CIMD) Configuration
+
+Annotated configuration example for the CIMD feature (Feature 028). Demonstrates the `cimd` block nested inside `oauth2_authorization_server`:
+- `enabled` — enable URL-based `client_id` support (default: `false`)
+- `fetch_timeout` / `max_response_bytes` — fetch safety limits
+- `cache.max_ttl` / `cache.min_ttl` — operator TTL bounds for cached documents
+- `ssrf.extra_blocked_cidrs` — additional CIDR ranges blocked beyond RFC 6890 defaults
+- `client_name_blocklist` — case-insensitive keyword blocklist for CIMD `client_name` values
+
+**Usage:**
+```yaml
+# Merge into your existing oauth2_authorization_server configuration:
+oauth2_authorization_server:
+  # ... existing upstream_issuer_uri, mode, etc. ...
+  cimd:
+    enabled: true
+    fetch_timeout: 1s
+    max_response_bytes: 5120
+    cache:
+      max_ttl: 1h
+      min_ttl: 60s
+```
+
+See [cimd.yaml](cimd.yaml) for the full annotated example with all available options.
+
 ### OAuth2 Server Mode (`oauth2-server-mode.yaml`)
 
 Configures the broker as a standalone OAuth2 authorization server using `issue_token` mode. The broker mints its own JWT access tokens signed with managed ES256 keys, supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.

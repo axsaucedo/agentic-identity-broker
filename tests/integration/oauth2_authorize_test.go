@@ -484,6 +484,15 @@ func (r *inMemoryAgentRepo) GetByClientID(ctx context.Context, clientID id.Clien
 	)
 }
 
+func (r *inMemoryAgentRepo) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError(
+		"GetAgentByClientURI",
+		storage.ErrorKindNotFound,
+		ports.ErrNotFound,
+		"agent not found",
+	)
+}
+
 type inMemoryGrantRepo struct {
 	grants map[id.GrantID]*storage.UserGrant
 }

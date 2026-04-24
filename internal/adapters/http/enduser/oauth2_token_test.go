@@ -86,6 +86,10 @@ func (r *stubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storag
 	return nil, nil
 }
 
+func (r *stubAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
+}
+
 // TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation tests Content-Type validation
 func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	agentID := id.NewAgentID()

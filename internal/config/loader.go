@@ -203,6 +203,14 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("telemetry.exporter.insecure", "IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE")
 	_ = l.v.BindEnv("telemetry.exporter.compression", "IDENTITY_BROKER_TELEMETRY_EXPORTER_COMPRESSION")
 
+	// Set CIMD configuration defaults
+	cimdDefaults := ports.DefaultCIMDConfig()
+	l.v.SetDefault("oauth2_authorization_server.cimd.enabled", cimdDefaults.Enabled)
+	l.v.SetDefault("oauth2_authorization_server.cimd.fetch_timeout", cimdDefaults.FetchTimeout)
+	l.v.SetDefault("oauth2_authorization_server.cimd.max_response_bytes", cimdDefaults.MaxResponseBytes)
+	l.v.SetDefault("oauth2_authorization_server.cimd.cache.max_ttl", cimdDefaults.Cache.MaxTTL)
+	l.v.SetDefault("oauth2_authorization_server.cimd.cache.min_ttl", cimdDefaults.Cache.MinTTL)
+
 	// Set token exchange configuration defaults
 	// expected_audience defaults to the well-known "token-exchange-broker" value.
 	// Operators can override it to match whatever audience their JWTs carry.

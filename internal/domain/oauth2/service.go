@@ -51,15 +51,20 @@ type OAuth2Config struct {
 	// Mode indicates whether the broker operates in "proxy" or "issue_token" mode.
 	// In issue_token mode, JWKS and code_challenge_methods are included in metadata.
 	Mode string
+
+	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
+	// When true, client_id_metadata_document_supported is advertised in metadata.
+	CIMDEnabled bool
 }
 
 // Service implements the OAuth2Service port
 type Service struct {
-	agentRepo   ports.AgentRepository
-	grantRepo   ports.UserGrantRepository
-	sessionRepo ports.UserSessionRepository
-	config      *OAuth2Config
-	logger      *slog.Logger
+	agentRepo      ports.AgentRepository
+	grantRepo      ports.UserGrantRepository
+	sessionRepo    ports.UserSessionRepository
+	clientResolver ports.ClientResolver // nil = default UUID-based resolution
+	config         *OAuth2Config
+	logger         *slog.Logger
 }
 
 // NewService creates a new OAuth2Service implementation
@@ -89,43 +94,93 @@ func NewServiceWithSessions(
 	}
 }
 
+// NewServiceWithClientResolver creates a new OAuth2Service with a custom ClientResolver strategy.
+// Used when CIMD support is enabled (cimd.enabled: true).
+func NewServiceWithClientResolver(
+	agentRepo ports.AgentRepository,
+	grantRepo ports.UserGrantRepository,
+	sessionRepo ports.UserSessionRepository,
+	clientResolver ports.ClientResolver,
+	config *OAuth2Config,
+	logger *slog.Logger,
+) ports.OAuth2Service {
+	return &Service{
+		agentRepo:      agentRepo,
+		grantRepo:      grantRepo,
+		sessionRepo:    sessionRepo,
+		clientResolver: clientResolver,
+		config:         config,
+		logger:         logger,
+	}
+}
+
 // HandleAuthorization processes an OAuth2 authorization request
 // Returns an AuthorizationDecision with either:
 // - proceed: Valid client with active grant — handler decides next step
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
 func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
-	agentUUID, parseErr := id.ParseAgentID(string(req.ClientID))
-	if parseErr != nil {
-		// client_id is not a valid agent UUID — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: "invalid_client",
-			ErrorDesc: "Client not registered",
-		}, nil
-	}
-	agent, err := s.agentRepo.Get(ctx, agentUUID)
-	if err != nil {
-		if isNotFoundErr(err) {
-			// Agent UUID not registered — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)
+	// Resolve the client — delegate to the injected strategy if available.
+	var agent *storage.Agent
+	var cimdMeta *ports.CIMDMetadataDTO
+
+	if s.clientResolver != nil {
+		resolution, resolveErr := s.clientResolver.ResolveClient(ctx, req.ClientID)
+		if resolveErr != nil {
+			code := "invalid_client"
+			desc := "Client not registered"
+			var clientErr *ports.ClientIDError
+			if errors.As(resolveErr, &clientErr) {
+				code = clientErr.Code
+				desc = clientErr.Desc
+			}
+			return &ports.AuthorizationDecision{
+				Action:    "error",
+				ErrorCode: code,
+				ErrorDesc: desc,
+			}, nil
+		}
+		agent = resolution.Agent
+		cimdMeta = resolution.CIMDMetadata
+	} else {
+		agentUUID, parseErr := id.ParseAgentID(string(req.ClientID))
+		if parseErr != nil {
 			return &ports.AuthorizationDecision{
 				Action:    "error",
 				ErrorCode: "invalid_client",
 				ErrorDesc: "Client not registered",
 			}, nil
 		}
-		// Other error (connection, timeout)
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: "server_error",
-			ErrorDesc: "Failed to validate client",
-		}, nil
+		var err error
+		agent, err = s.agentRepo.Get(ctx, agentUUID)
+		if err != nil {
+			if isNotFoundErr(err) {
+				return &ports.AuthorizationDecision{
+					Action:    "error",
+					ErrorCode: "invalid_client",
+					ErrorDesc: "Client not registered",
+				}, nil
+			}
+			return &ports.AuthorizationDecision{
+				Action:    "error",
+				ErrorCode: "server_error",
+				ErrorDesc: "Failed to validate client",
+			}, nil
+		}
 	}
 
-	// Step 1b: Validate redirect_uri against agent's registered URIs.
+	// Step 1b: Validate redirect_uri.
+	// For CIMD clients, validate against the document's redirect_uris.
+	// For opaque clients, validate against the agent's registered redirect_uris.
 	// Per RFC 6749 §4.1.2.1, MUST NOT redirect if redirect_uri is unverified.
-	// Agents with no registered URIs are rejected — fail closed.
-	if len(agent.RedirectURIs) == 0 {
+	var allowedRedirectURIs []string
+	if cimdMeta != nil {
+		allowedRedirectURIs = cimdMeta.RedirectURIs
+	} else {
+		allowedRedirectURIs = agent.RedirectURIs
+	}
+
+	if len(allowedRedirectURIs) == 0 {
 		return &ports.AuthorizationDecision{
 			Action:    "error",
 			ErrorCode: "invalid_redirect_uri",
@@ -133,7 +188,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		}, nil
 	}
 	uriAllowed := false
-	for _, allowed := range agent.RedirectURIs {
+	for _, allowed := range allowedRedirectURIs {
 		if req.RedirectURI == allowed {
 			uriAllowed = true
 			break
@@ -343,6 +398,11 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		metadata.TokenEndpointAuthMethodsSupported = []string{"client_secret_post"}
+	}
+
+	if s.config.CIMDEnabled {
+		t := true
+		metadata.ClientIDMetadataDocumentSupported = &t
 	}
 
 	return metadata, nil

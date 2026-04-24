@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
+	adaptercmd "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/cimd"
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
@@ -30,6 +31,7 @@ import (
 	jwtauthadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
+	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
@@ -91,6 +93,7 @@ type Builder struct {
 	logger                 *slog.Logger
 	staticWebResourcesPath string
 	tracerProvider         *sdktrace.TracerProvider // Optional: custom TracerProvider for testing
+	cimdFetcher            ports.CIMDFetcher        // Optional: overrides auto-created CIMD fetcher for testing
 }
 
 // NewBuilder creates a new application builder.
@@ -128,6 +131,15 @@ func (b *Builder) WithStaticWebResourcesPath(path string) *Builder {
 // the one created by NewProvider(). Mirrors the WithEncryption precedent.
 func (b *Builder) WithTracerProvider(tp *sdktrace.TracerProvider) *Builder {
 	b.tracerProvider = tp
+	return b
+}
+
+// WithCIMDFetcher injects a custom CIMDFetcher, bypassing the production fetcher
+// created from CIMDConfig. Intended for testing — allows injecting an HTTP client
+// that trusts test TLS certificates (e.g., from httptest.NewTLSServer).
+// Only effective when cimd.enabled is true.
+func (b *Builder) WithCIMDFetcher(f ports.CIMDFetcher) *Builder {
+	b.cimdFetcher = f
 	return b
 }
 
@@ -273,6 +285,7 @@ func (b *Builder) Build() (*App, error) {
 			SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
 			MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,
 			Mode:                      b.config.OAuth2AuthServer.Mode,
+			CIMDEnabled:               b.config.OAuth2AuthServer.CIMD.Enabled,
 		}
 		// In issue_token mode, set correct defaults for supported types
 		if b.config.OAuth2AuthServer.Mode == "issue_token" {
@@ -284,10 +297,38 @@ func (b *Builder) Build() (*App, error) {
 			}
 		}
 
-		app.OAuth2Service = oauth2service.NewServiceWithSessions(
+		var clientResolver ports.ClientResolver
+		cimdCfg := b.config.OAuth2AuthServer.CIMD
+		if cimdCfg.Enabled {
+			activeFetcher := b.cimdFetcher
+			if activeFetcher == nil {
+				var fetchErr error
+				activeFetcher, fetchErr = adaptercmd.NewFetcher(
+					cimdCfg.FetchTimeout,
+					int64(cimdCfg.MaxResponseBytes),
+					cimdCfg.SSRF.ExtraBlockedCIDRs,
+					cimdCfg.ClientNameBlocklist,
+				)
+				if fetchErr != nil {
+					return nil, fmt.Errorf("failed to create CIMD fetcher: %w", fetchErr)
+				}
+			}
+			cimdCache := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL)
+			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, b.storage.Agents(), cimdCfg.ClientNameBlocklist, b.logger)
+			clientResolver = domaincimd.NewCIMDClientResolver(b.storage.Agents(), cimdSvc)
+			b.logger.Info("CIMD client resolution enabled",
+				"fetch_timeout", cimdCfg.FetchTimeout,
+				"max_response_bytes", cimdCfg.MaxResponseBytes,
+			)
+		} else {
+			clientResolver = oauth2service.NewOpaqueClientResolver(b.storage.Agents())
+		}
+
+		app.OAuth2Service = oauth2service.NewServiceWithClientResolver(
 			b.storage.Agents(),
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
+			clientResolver,
 			oauth2Config,
 			b.logger,
 		)

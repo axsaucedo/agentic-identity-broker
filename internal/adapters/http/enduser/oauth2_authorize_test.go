@@ -545,6 +545,10 @@ func (m *mockAgentRepository) GetByClientID(ctx context.Context, clientID id.Cli
 	)
 }
 
+func (m *mockAgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "not found")
+}
+
 type mockGrantRepository struct {
 	grants map[id.GrantID]*storage.UserGrant
 }
