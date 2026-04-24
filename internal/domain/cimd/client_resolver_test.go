@@ -153,3 +153,28 @@ func TestCIMDClientResolver_URLFormat_Success(t *testing.T) {
 	assert.Equal(t, clientURL, resolution.CIMDMetadata.ClientID)
 	assert.Equal(t, []string{"https://agent.example.com/cb"}, resolution.CIMDMetadata.RedirectURIs)
 }
+
+// TestCIMDClientResolver_ResolvesViaCIMDURINotClientID proves the resolver uses
+// GetByClientURI (pre-registered URI lookup) rather than GetByClientID. When the
+// agent's ClientID is a UUID and the CIMD URL is only in ClientURIs, the resolver
+// must still find the agent.
+func TestCIMDClientResolver_ResolvesViaCIMDURINotClientID(t *testing.T) {
+	const cimdURI = "https://agent.example.com/cimd-endpoint"
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000099")
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    id.ClientID(agentID.String()), // UUID-form ClientID, not the CIMD URL
+		DisplayName: "URI-Only Agent",
+	}
+	repo := newMockAgentRepoForCR(agent)
+	repo.registerURI(cimdURI, agent) // registered as ClientURI, not ClientID
+
+	body := fmt.Sprintf(`{"client_id":%q,"client_name":"URI-Only Agent","redirect_uris":["https://agent.example.com/cb"]}`, cimdURI)
+	fetchResult := &ports.CIMDFetchResult{Body: []byte(body), CacheControl: "max-age=300"}
+	svc := cimdServiceForTest(fetchResult, nil, repo)
+	resolver := NewCIMDClientResolver(repo, svc)
+
+	resolution, err := resolver.ResolveClient(context.Background(), cimdURI)
+	require.NoError(t, err, "should resolve via ClientURI even when ClientID is a different value")
+	assert.Equal(t, agentID, resolution.Agent.ID)
+}

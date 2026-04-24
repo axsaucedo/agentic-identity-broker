@@ -2039,6 +2039,55 @@ components:
                 Null or empty if agent has no service requirements.
 
                 '
+            cimd_metadata:
+              $ref: '#/components/schemas/CIMDMetadata'
+              nullable: true
+              description: 'CIMD trust metadata present when the authorization request used a URL-format
+                client_id. Null for agents with opaque (UUID) client identifiers.
+
+                '
+    CIMDMetadata:
+      type: object
+      required:
+      - client_name
+      - client_id_url
+      - redirect_uri
+      - verified_domain
+      - is_localhost_redirect
+      - requested_scopes
+      properties:
+        client_name:
+          type: string
+          description: Display name from the CIMD document (falls back to agent DisplayName)
+          example: My AI Assistant
+        client_id_url:
+          type: string
+          format: uri
+          description: The HTTPS URL used as the OAuth2 client_id
+          example: https://agent.example.com/client
+        redirect_uri:
+          type: string
+          description: Redirect URI from the authorization request, validated against the CIMD document
+          example: https://agent.example.com/callback
+        verified_domain:
+          type: string
+          description: Hostname extracted from the client_id URL
+          example: agent.example.com
+        is_localhost_redirect:
+          type: boolean
+          description: True when the redirect URI targets localhost or 127.0.0.1
+        requested_scopes:
+          type: array
+          items:
+            type: string
+          description: OAuth2 scopes requested in the authorization request
+          example:
+          - openid
+          - profile
+        logo_uri:
+          type: string
+          format: uri
+          description: Logo URI from the CIMD document, if present
     DelegatedToken:
       type: object
       required:

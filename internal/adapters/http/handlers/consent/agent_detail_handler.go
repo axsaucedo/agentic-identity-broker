@@ -357,6 +357,12 @@ func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataRespo
 	}
 
 	redirectURI := r.URL.Query().Get("redirect_uri")
+	// Validate against the stored CIMD snapshot to prevent UI spoofing via crafted URLs.
+	if redirectURI != "" && len(agent.CIMDRedirectURIs) > 0 {
+		if !slices.Contains(agent.CIMDRedirectURIs, redirectURI) {
+			redirectURI = ""
+		}
+	}
 	scope := r.URL.Query().Get("scope")
 
 	u, err := url.Parse(clientID)
