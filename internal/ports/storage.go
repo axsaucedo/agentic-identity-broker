@@ -118,6 +118,11 @@ type AgentRepository interface {
 	// Returns StorageError with Kind=NotFound if agent not found.
 	// Returns StorageError for connection/timeout issues.
 	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error)
+
+	// GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
+	// Returns StorageError with Kind=NotFound if no agent has this URI registered.
+	// Returns StorageError for connection/timeout issues.
+	GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error)
 }
 
 // UserGrantRepository defines storage operations for user grant entities.

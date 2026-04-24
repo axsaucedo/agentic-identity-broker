@@ -14,17 +14,20 @@ import (
 //
 // The byClientID index is a 1:many map to correctly support multi-agent sharing
 // (multiple agents sharing the same upstream OAuth2 client_id).
+// The byClientURI index enforces global uniqueness of Client ID Metadata Document URLs.
 type AgentRepository struct {
-	mu         sync.RWMutex
-	agents     map[id.AgentID]*storage.Agent // ID -> Agent
-	byClientID map[id.ClientID][]id.AgentID  // ClientID -> []ID (1:many for multi-agent support)
+	mu          sync.RWMutex
+	agents      map[id.AgentID]*storage.Agent // ID -> Agent
+	byClientID  map[id.ClientID][]id.AgentID  // ClientID -> []ID (1:many for multi-agent support)
+	byClientURI map[string]id.AgentID         // clientURI -> AgentID (global uniqueness)
 }
 
 // NewAgentRepository creates a new in-memory agent repository.
 func NewAgentRepository() *AgentRepository {
 	return &AgentRepository{
-		agents:     make(map[id.AgentID]*storage.Agent),
-		byClientID: make(map[id.ClientID][]id.AgentID),
+		agents:      make(map[id.AgentID]*storage.Agent),
+		byClientID:  make(map[id.ClientID][]id.AgentID),
+		byClientURI: make(map[string]id.AgentID),
 	}
 }
 
@@ -61,9 +64,24 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
+	// Enforce global uniqueness of client URIs
+	for _, uri := range agent.ClientURIs {
+		if existingID, exists := r.byClientURI[uri]; exists && existingID != agent.ID {
+			return storage.NewStorageError(
+				"CreateAgent",
+				storage.ErrorKindConflict,
+				nil,
+				"client_uri already registered to another agent",
+			)
+		}
+	}
+
 	// Store deep copy to prevent external mutation
 	r.agents[agent.ID] = agent.Copy()
 	r.byClientID[agent.ClientID] = append(r.byClientID[agent.ClientID], agent.ID)
+	for _, uri := range agent.ClientURIs {
+		r.byClientURI[uri] = agent.ID
+	}
 
 	return nil
 }
@@ -113,6 +131,18 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		r.byClientID[agent.ClientID] = append(r.byClientID[agent.ClientID], agent.ID)
 	}
 
+	// Enforce global uniqueness of client URIs (excluding this agent's own existing URIs)
+	for _, uri := range agent.ClientURIs {
+		if existingID, exists := r.byClientURI[uri]; exists && existingID != agent.ID {
+			return storage.NewStorageError(
+				"UpdateAgent",
+				storage.ErrorKindConflict,
+				nil,
+				"client_uri already registered to another agent",
+			)
+		}
+	}
+
 	// Validate before updating
 	if err := agent.Validate(); err != nil {
 		return storage.NewStorageError(
@@ -121,6 +151,14 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 			err,
 			"agent validation failed",
 		)
+	}
+
+	// Rebuild client URI index: remove old URIs, add new ones
+	for _, uri := range existing.ClientURIs {
+		delete(r.byClientURI, uri)
+	}
+	for _, uri := range agent.ClientURIs {
+		r.byClientURI[uri] = agent.ID
 	}
 
 	// Store deep copy
@@ -138,6 +176,9 @@ func (r *AgentRepository) Delete(ctx context.Context, agentID id.AgentID) error 
 	// Get agent to clean up indexes
 	if agent, exists := r.agents[agentID]; exists {
 		r.removeFromClientIDIndex(agent.ClientID, agentID)
+		for _, uri := range agent.ClientURIs {
+			delete(r.byClientURI, uri)
+		}
 		delete(r.agents, agentID)
 	}
 
@@ -177,6 +218,35 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 
 	agent := r.agents[ids[0]]
 	// Return deep copy to prevent external mutation
+	return agent.Copy(), nil
+}
+
+// GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
+// Returns StorageError with Kind=NotFound if no agent has this URI registered.
+func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	agentID, exists := r.byClientURI[uri]
+	if !exists {
+		return nil, storage.NewStorageError(
+			"GetAgentByClientURI",
+			storage.ErrorKindNotFound,
+			ports.ErrNotFound,
+			"agent not found",
+		)
+	}
+
+	agent, exists := r.agents[agentID]
+	if !exists {
+		return nil, storage.NewStorageError(
+			"GetAgentByClientURI",
+			storage.ErrorKindNotFound,
+			ports.ErrNotFound,
+			"agent not found",
+		)
+	}
+
 	return agent.Copy(), nil
 }
 

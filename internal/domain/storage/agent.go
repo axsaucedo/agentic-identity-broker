@@ -24,8 +24,19 @@ type Agent struct {
 	ServiceRequirements  []ServiceRequirement `json:"service_requirements,omitempty" db:"service_requirements"`
 	RedirectURIs         []string             `json:"redirect_uris" db:"redirect_uris"`
 	AllowedScopes        []string             `json:"allowed_scopes" db:"allowed_scopes"`
-	CreatedAt            time.Time            `json:"created_at" db:"created_at"`
-	UpdatedAt            time.Time            `json:"updated_at" db:"updated_at"`
+	// ClientURIs holds pre-registered Client ID Metadata Document URLs.
+	// Each entry must be a valid HTTPS URL, globally unique across all agents.
+	ClientURIs []string `json:"client_uris,omitempty" db:"-"`
+	// AuthMethod is the last observed token_endpoint_auth_method from CIMD (nullable snapshot).
+	AuthMethod *string `json:"auth_method,omitempty" db:"auth_method"`
+	// JwksURI is the last observed jwks_uri from CIMD (nullable snapshot).
+	JwksURI *string `json:"jwks_uri,omitempty" db:"jwks_uri"`
+	// CIMDClientName is the last observed client_name from the CIMD document.
+	CIMDClientName *string `json:"cimd_client_name,omitempty" db:"cimd_client_name"`
+	// CIMDLogoURI is the last observed logo_uri from the CIMD document.
+	CIMDLogoURI *string   `json:"cimd_logo_uri,omitempty" db:"cimd_logo_uri"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Validate performs validation on the Agent entity.
@@ -69,12 +80,30 @@ func (a *Agent) Validate() error {
 		}
 	}
 
+	// ClientURIs validation: each entry must be a well-formed HTTPS URL
+	for i, uri := range a.ClientURIs {
+		if !isValidClientURI(uri) {
+			return fmt.Errorf("client_uris[%d] is not a valid HTTPS URL", i)
+		}
+	}
+
 	// Service requirements validation
 	if err := a.ValidateServiceRequirements(); err != nil {
 		return fmt.Errorf("service_requirements validation failed: %w", err)
 	}
 
 	return nil
+}
+
+// isValidClientURI validates that a string is a well-formed HTTPS URL suitable for use as a
+// Client ID Metadata Document URL. Only the scheme is checked here; full structural validation
+// (path, port, fragments, dot-segments) is performed by ClientIDMetadataDocumentURL in domain/cimd/.
+func isValidClientURI(uriStr string) bool {
+	u, err := url.Parse(uriStr)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return u.Scheme == "https"
 }
 
 // isValidURL validates that a string is a valid HTTP or HTTPS URL.
@@ -170,6 +199,27 @@ func (a *Agent) Copy() *Agent {
 		copy.AllowedScopes = append([]string(nil), a.AllowedScopes...)
 	}
 
+	// Deep copy CIMD fields
+	if a.ClientURIs != nil {
+		copy.ClientURIs = append([]string(nil), a.ClientURIs...)
+	}
+	if a.AuthMethod != nil {
+		authMethod := *a.AuthMethod
+		copy.AuthMethod = &authMethod
+	}
+	if a.JwksURI != nil {
+		jwksURI := *a.JwksURI
+		copy.JwksURI = &jwksURI
+	}
+	if a.CIMDClientName != nil {
+		n := *a.CIMDClientName
+		copy.CIMDClientName = &n
+	}
+	if a.CIMDLogoURI != nil {
+		n := *a.CIMDLogoURI
+		copy.CIMDLogoURI = &n
+	}
+
 	return copy
 }
 
@@ -207,6 +257,13 @@ func (a *Agent) ValidateForCreate() error {
 	for i, uri := range a.RedirectURIs {
 		if !IsValidRedirectURI(uri) {
 			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
+		}
+	}
+
+	// ClientURIs validation: each entry must be a well-formed HTTPS URL
+	for i, uri := range a.ClientURIs {
+		if !isValidClientURI(uri) {
+			return fmt.Errorf("client_uris[%d] is not a valid HTTPS URL", i)
 		}
 	}
 
