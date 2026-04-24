@@ -444,6 +444,61 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
+
+	t.Run("preserves CIMD snapshot fields on update", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		agentID := id.NewAgentID()
+		now := time.Now().UTC()
+		authMethod := "private_key_jwt"
+		jwksURI := "https://agent.example.com/.well-known/jwks.json"
+		cimdName := "Test Agent"
+		cimdLogo := "https://agent.example.com/logo.png"
+		existingAgent := &storage.Agent{
+			ID:               agentID,
+			ClientID:         "https://agent.example.com/client",
+			DisplayName:      "Test Agent",
+			Description:      "Test description",
+			AuthMethod:       &authMethod,
+			JwksURI:          &jwksURI,
+			CIMDClientName:   &cimdName,
+			CIMDLogoURI:      &cimdLogo,
+			CIMDRedirectURIs: []string{"https://agent.example.com/callback"},
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+
+		reqBody := AgentRequest{
+			ClientID:    "https://agent.example.com/client",
+			DisplayName: "Updated Name",
+			Description: "Updated description",
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("Get", mock.Anything, agentID).Return(existingAgent, nil)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
+			return a.ID == agentID &&
+				a.AuthMethod != nil && *a.AuthMethod == authMethod &&
+				a.JwksURI != nil && *a.JwksURI == jwksURI &&
+				a.CIMDClientName != nil && *a.CIMDClientName == cimdName &&
+				a.CIMDLogoURI != nil && *a.CIMDLogoURI == cimdLogo &&
+				len(a.CIMDRedirectURIs) == 1 && a.CIMDRedirectURIs[0] == "https://agent.example.com/callback"
+		})).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		w := httptest.NewRecorder()
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		mockRepo.AssertExpectations(t)
+	})
 }
 
 func TestAgentsHandler_DeleteAgent(t *testing.T) {

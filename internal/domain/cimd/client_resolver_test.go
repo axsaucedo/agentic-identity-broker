@@ -15,29 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockAgentRepoForCR extends mockAgentRepo to support GetByClientURI.
-type mockAgentRepoForCR struct {
-	*mockAgentRepo
-	byURI map[string]*storage.Agent
-}
-
-func newMockAgentRepoForCR(agents ...*storage.Agent) *mockAgentRepoForCR {
-	return &mockAgentRepoForCR{
-		mockAgentRepo: newMockAgentRepo(agents...),
-		byURI:         make(map[string]*storage.Agent),
-	}
-}
-
-func (m *mockAgentRepoForCR) GetByClientURI(_ context.Context, uri string) (*storage.Agent, error) {
-	a, ok := m.byURI[uri]
-	if !ok {
-		return nil, storage.NewStorageError("GetByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "not found")
-	}
-	return a, nil
-}
-
-func (m *mockAgentRepoForCR) registerURI(uri string, agent *storage.Agent) {
-	m.byURI[uri] = agent
+func newMockAgentRepoForCR(agents ...*storage.Agent) *mockAgentRepo {
+	return newMockAgentRepo(agents...)
 }
 
 // cimdServiceForTest creates a CIMDService backed by the given fetch result.
@@ -115,8 +94,6 @@ func TestCIMDClientResolver_CIMDFetchFails(t *testing.T) {
 		DisplayName: "Test Agent",
 	}
 	repo := newMockAgentRepoForCR(agent)
-	repo.registerURI("https://agent.example.com/client", agent)
-
 	svc := cimdServiceForTest(nil, fmt.Errorf("connection refused"), repo)
 	resolver := NewCIMDClientResolver(repo, svc)
 
@@ -137,8 +114,6 @@ func TestCIMDClientResolver_URLFormat_Success(t *testing.T) {
 		DisplayName: "Test Agent",
 	}
 	repo := newMockAgentRepoForCR(agent)
-	repo.registerURI(clientURL, agent)
-
 	body := fmt.Sprintf(
 		`{"client_id":%q,"client_name":"Test Agent","redirect_uris":["https://agent.example.com/cb"]}`,
 		clientURL,

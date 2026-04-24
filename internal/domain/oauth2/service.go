@@ -180,10 +180,17 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		allowedRedirectURIs = agent.RedirectURIs
 	}
 
+	// CIMD clients: redirect_uri failures are invalid_request (the CIMD contract specifies this).
+	// Opaque clients: use the standard invalid_redirect_uri error code.
+	redirectURIErrCode := "invalid_redirect_uri"
+	if cimdMeta != nil {
+		redirectURIErrCode = "invalid_request"
+	}
+
 	if len(allowedRedirectURIs) == 0 {
 		return &ports.AuthorizationDecision{
 			Action:    "error",
-			ErrorCode: "invalid_redirect_uri",
+			ErrorCode: redirectURIErrCode,
 			ErrorDesc: "redirect_uri not registered for this client",
 		}, nil
 	}
@@ -197,7 +204,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if !uriAllowed {
 		return &ports.AuthorizationDecision{
 			Action:    "error",
-			ErrorCode: "invalid_redirect_uri",
+			ErrorCode: redirectURIErrCode,
 			ErrorDesc: "redirect_uri not registered for this client",
 		}, nil
 	}

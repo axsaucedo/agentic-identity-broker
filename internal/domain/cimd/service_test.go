@@ -71,7 +71,12 @@ func (m *mockAgentRepo) List(_ context.Context) ([]*storage.Agent, error) {
 	}
 	return out, nil
 }
-func (m *mockAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
+func (m *mockAgentRepo) GetByClientID(_ context.Context, clientID id.ClientID) (*storage.Agent, error) {
+	for _, a := range m.agents {
+		if a.ClientID == clientID {
+			return a, nil
+		}
+	}
 	return nil, ports.ErrNotFound
 }
 func (m *mockAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
@@ -342,4 +347,28 @@ func TestService_Resolve_InvalidURL(t *testing.T) {
 
 	_, err := svc.Resolve(context.Background(), "http://agent.example.com/client", agent)
 	require.Error(t, err, "http:// should be rejected")
+}
+
+func TestService_Resolve_BuiltinReservedNamesRejectedWithEmptyConfig(t *testing.T) {
+	for _, reserved := range []string{"admin", "administrator", "system", "operator", "root", "superuser"} {
+		t.Run(reserved, func(t *testing.T) {
+			agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
+			agent := testAgent(agentID)
+
+			body := fmt.Sprintf(
+				`{"client_id":"https://agent.example.com/client","client_name":%q,"redirect_uris":["https://agent.example.com/cb"]}`,
+				reserved,
+			)
+			svc := NewService(
+				&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(body)}},
+				NewCIMDCache(60*time.Second, time.Hour),
+				newMockAgentRepo(agent),
+				nil, // empty operator list — built-ins must still apply
+				slog.Default(),
+			)
+
+			_, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
+			require.Error(t, err, "built-in reserved name %q must be rejected even with empty operator blocklist", reserved)
+		})
+	}
 }

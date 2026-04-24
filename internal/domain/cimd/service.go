@@ -21,16 +21,24 @@ type Service struct {
 	logger        *slog.Logger
 }
 
+// defaultReservedClientNames is always enforced regardless of operator configuration (FR-023c).
+var defaultReservedClientNames = []string{
+	"admin", "administrator", "system", "operator", "root", "superuser",
+}
+
 // NewService creates a new CIMD service.
+// nameBlocklist is merged with defaultReservedClientNames so built-in terms are
+// always enforced regardless of operator configuration (FR-023c).
 func NewService(fetcher ports.CIMDFetcher, cache *CIMDCache, agentRepo ports.AgentRepository, nameBlocklist []string, logger *slog.Logger) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	merged := append(append([]string(nil), defaultReservedClientNames...), nameBlocklist...)
 	return &Service{
 		fetcher:       fetcher,
 		cache:         cache,
 		agentRepo:     agentRepo,
-		nameBlocklist: nameBlocklist,
+		nameBlocklist: merged,
 		logger:        logger,
 	}
 }

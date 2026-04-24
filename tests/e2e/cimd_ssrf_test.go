@@ -176,8 +176,8 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			// http:// prefix — not detected as CIMD URL (only https:// triggers CIMD path),
-			// so treated as opaque UUID → UUID parse fails → invalid_client
+			// http:// is detected as a URL-format client_id (contains "://"), so it
+			// routes through ParseClientIDMetadataDocumentURL which rejects non-HTTPS → invalid_request
 			resp, err := server.AuthenticatedGET(
 				"/oauth2/authorize?client_id=http://example.com/client&redirect_uri=http://example.com/cb&response_type=code&state=xyz",
 				fixtures.DefaultPrincipal().String(),
@@ -188,7 +188,7 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 			var body map[string]any
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body["error"]).To(Equal("invalid_client"))
+			Expect(body["error"]).To(Equal("invalid_request"))
 		})
 	})
 

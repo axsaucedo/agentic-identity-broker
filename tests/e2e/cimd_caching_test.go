@@ -79,7 +79,6 @@ var _ = Describe("CIMD Response Caching", func() {
 				ClientID:    id.ClientID(clientURL),
 				DisplayName: "Caching Test Agent",
 				Description: "E2E test agent for CIMD caching scenario",
-				ClientURIs:  []string{clientURL},
 				CreatedAt:   now,
 				UpdatedAt:   now,
 			}
