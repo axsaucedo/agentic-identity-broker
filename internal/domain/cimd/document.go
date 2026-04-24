@@ -1,0 +1,100 @@
+package cimd
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strings"
+)
+
+// ClientIDMetadataDocument is a parsed and validated CIMD JSON document.
+// Immutable after construction via Parse.
+type ClientIDMetadataDocument struct {
+	ClientID      string   `json:"client_id"`
+	ClientName    string   `json:"client_name,omitempty"`
+	LogoURI       string   `json:"logo_uri,omitempty"`
+	RedirectURIs  []string `json:"redirect_uris"`
+	AuthMethod    string   `json:"token_endpoint_auth_method,omitempty"`
+	GrantTypes    []string `json:"grant_types,omitempty"`
+	ResponseTypes []string `json:"response_types,omitempty"`
+	JwksURI       string   `json:"jwks_uri,omitempty"`
+	PolicyURI     string   `json:"policy_uri,omitempty"`
+	TosURI        string   `json:"tos_uri,omitempty"`
+}
+
+// blockedAuthMethods are token endpoint auth methods that imply a client secret,
+// which CIMD agents cannot hold (they are public clients).
+var blockedAuthMethods = map[string]bool{
+	"client_secret_post":  true,
+	"client_secret_basic": true,
+	"client_secret_jwt":   true,
+}
+
+// ParseDocument parses and validates a CIMD JSON document fetched from fetchURL.
+// Returns an error if the document is malformed, the client_id field does not
+// match fetchURL, redirect_uris is empty, auth_method is a secret-bearing method,
+// or any redirect_uri violates same-origin with fetchURL.
+// nameBlocklist is a case-insensitive list of forbidden client_name substrings.
+func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*ClientIDMetadataDocument, error) {
+	var doc ClientIDMetadataDocument
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("malformed CIMD document: %w", err)
+	}
+
+	// SR-008: client_id must exactly match the fetch URL
+	if doc.ClientID != fetchURL {
+		return nil, fmt.Errorf("client_id mismatch: document has %q, expected %q", doc.ClientID, fetchURL)
+	}
+
+	// FR-004: redirect_uris must not be empty
+	if len(doc.RedirectURIs) == 0 {
+		return nil, fmt.Errorf("redirect_uris is required and must not be empty")
+	}
+
+	// FR-022: block secret-bearing auth methods
+	if doc.AuthMethod != "" && blockedAuthMethods[doc.AuthMethod] {
+		return nil, fmt.Errorf("token_endpoint_auth_method %q is not allowed for CIMD clients", doc.AuthMethod)
+	}
+
+	// FR-023b: client_name keyword blocklist (case-insensitive substring match)
+	if doc.ClientName != "" {
+		lowerName := strings.ToLower(doc.ClientName)
+		for _, blocked := range nameBlocklist {
+			if strings.Contains(lowerName, strings.ToLower(blocked)) {
+				return nil, fmt.Errorf("client_name contains blocked keyword %q", blocked)
+			}
+		}
+	}
+
+	// FR-004a: each redirect_uri must be same-origin with client_id URL (localhost excepted)
+	clientURL, err := url.Parse(fetchURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid fetch URL: %w", err)
+	}
+	for i, ruri := range doc.RedirectURIs {
+		if err := validateRedirectOrigin(clientURL, ruri); err != nil {
+			return nil, fmt.Errorf("redirect_uris[%d]: %w", i, err)
+		}
+	}
+
+	return &doc, nil
+}
+
+// validateRedirectOrigin enforces same-origin between a redirect URI and the
+// client_id URL, with an exception for localhost/127.0.0.1 redirect URIs.
+func validateRedirectOrigin(clientURL *url.URL, redirectURI string) error {
+	r, err := url.Parse(redirectURI)
+	if err != nil {
+		return fmt.Errorf("invalid redirect_uri %q: %w", redirectURI, err)
+	}
+	host := r.Hostname()
+	// Localhost exception
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return nil
+	}
+	// Same-origin: scheme + host must match
+	if r.Scheme != clientURL.Scheme || r.Host != clientURL.Host {
+		return fmt.Errorf("redirect_uri %q is not same-origin with client_id %q", redirectURI, clientURL.String())
+	}
+	return nil
+}
