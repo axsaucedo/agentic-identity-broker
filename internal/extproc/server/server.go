@@ -162,9 +162,6 @@ func (s *Server) processRequestHeaders(headers *extprocv3.HttpHeaders) *extprocv
 			// Re-authentication required: return URLElicitationRequiredError immediately from
 			// the headers phase. id is null because the request body has not been read yet;
 			// this is correct per JSON-RPC 2.0 §5 ("if the id cannot be determined, use null").
-			// Note: agentgateway 0.12.0 commits the request to the backend as soon as a
-			// RequestHeaders response is received, so ImmediateResponse must be returned here
-			// (not from a body phase) to prevent the request from being forwarded.
 			s.logger.Info("token exchange requires re-authentication — returning URLElicitationRequiredError",
 				"resource", resourceURI,
 				"code", brokerErr.Code,
