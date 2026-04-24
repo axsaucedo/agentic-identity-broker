@@ -21,6 +21,7 @@ An AI agent identifies itself to the authorization server by using its own HTTPS
 2. **Given** the CIMD document's `client_id` field does not exactly match the request URL, **When** the broker fetches the document, **Then** the authorization request is rejected with an error indicating client metadata mismatch.
 3. **Given** the CIMD document is absent or returns a non-200 HTTP status, **When** the broker attempts to fetch it, **Then** the authorization request is rejected and no redirect is issued.
 4. **Given** the authorization request uses a `redirect_uri` not listed in the CIMD document, **When** the redirect URI is validated after authorization, **Then** the request is rejected.
+5. **Given** CIMD support is disabled (`cimd.enabled: false`), **When** an authorization request arrives with a URL-format `client_id` (e.g. `client_id=https://agent.example.com/client`), **Then** the request is rejected with `invalid_client` error and no CIMD fetch is attempted.
 
 ---
 
@@ -116,6 +117,7 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 ### Functional Requirements
 
 - **FR-001**: System MUST accept HTTPS URLs as `client_id` values in authorization requests when CIMD support is enabled.
+- **FR-001a**: System MUST reject HTTPS URL-format `client_id` values with an `invalid_client` error when CIMD support is disabled. No CIMD infrastructure (fetcher, cache, resolver) may be instantiated when CIMD is disabled; the rejection MUST be structural (strategy selection), not a runtime conditional.
 - **FR-002**: System MUST fetch the CIMD document at the `client_id` URL using a hardened HTTP client (SSRF-safe, timeout-bounded, size-limited).
 - **FR-003**: System MUST reject any CIMD document where the `client_id` field does not exactly match the request URL (byte-for-byte string comparison).
 - **FR-004**: System MUST reject authorization requests where the `redirect_uri` is not listed in the CIMD document's `redirect_uris` array.
@@ -277,7 +279,7 @@ oauth2_authorization_server:
 - **API-001**: The authorization server metadata endpoint (`GET /.well-known/oauth-authorization-server`) MUST include `"client_id_metadata_document_supported": true` when `cimd.enabled` is `true`.
 - **API-002**: The existing `GET /authorize` and `POST /token` end-user endpoints accept URL-based `client_id` values without schema change; CIMD lookup is transparent.
 - **API-003**: A structured error response using OAuth2 `error` / `error_description` fields MUST be returned for all CIMD validation failures (invalid URL format, SSRF block, fetch failure, document mismatch, blocked auth method). No redirect is issued on these errors.
-- **API-004**: The existing `PATCH /admin/agents/{id}` endpoint MUST accept a `client_uris` field (array of strings) to allow operators to manage the list of pre-registered Client ID Metadata Document URLs on an Agent. Each URL in the array MUST be validated as a well-formed `https://` URL at write time.
+- **API-004**: The existing agent write API (`POST /api/agents` and `PUT /api/agents/{agent-id}`) MUST accept a `client_uris` field (array of strings) to allow operators to create and manage the list of pre-registered Client ID Metadata Document URLs on an Agent. Each URL in the array MUST be validated as a well-formed `https://` URL at write time.
 
 ### Security Requirements
 
@@ -304,7 +306,7 @@ oauth2_authorization_server:
 ### Measurable Outcomes
 
 - **SC-001**: An AI agent using a URL-based `client_id` completes an authorization flow (fetch → consent → token) in under 2 seconds total when the CIMD host responds within 500ms, as measured end-to-end in E2E tests.
-- **SC-002**: All 14 SSRF attack categories (loopback, RFC 1918, link-local, cloud metadata IP, non-HTTPS scheme, no path component, dot-segment path, fragment, credentials in URL, non-standard port, oversized response, slow-response timeout, redirect following, non-200 status) are each individually rejected before any TCP connection is established, verified by E2E tests.
+- **SC-002**: All 14 SSRF attack categories (loopback, RFC 1918, link-local, cloud metadata IP, non-HTTPS scheme, no path component, dot-segment path, fragment, credentials in URL, non-standard port, oversized response, slow-response timeout, redirect following, non-200 status) are each individually rejected. For malformed URL categories, rejection is verified in E2E tests by error response with no consent redirect. For blocked-address categories, rejection is verified in E2E tests by error response with no consent redirect and in CIMD fetcher adapter tests by asserting no TCP dial attempt occurs.
 - **SC-003**: A repeated authorization request for the same URL-based `client_id` within the cache TTL window completes without issuing a second outbound HTTP fetch, as verified by mock server request counts in E2E tests.
 - **SC-004**: Zero regression in existing authorization flows using opaque (pre-registered) `client_id` values, verified by the full existing E2E test suite passing without modification.
 - **SC-005**: The authorization server metadata endpoint correctly reflects `client_id_metadata_document_supported` status in all configuration states, verified by E2E tests.
@@ -326,10 +328,14 @@ oauth2_authorization_server:
 ### Session 2026-04-23
 
 - Q: The spec referenced CS-005 and "five CIMD-specific UX elements" but only CS-001 through CS-004 were defined — is a fifth consent screen requirement needed? → A: No. Four requirements (CS-001 through CS-004) are sufficient. All references to CS-005 and "five UX elements" have been removed.
-- Q: How does an operator register Client ID Metadata Document URLs on an Agent record? → A: Via the existing `PATCH /admin/agents/{id}` endpoint — `client_uris` is added as a patchable array field. Added as API-004.
+- Q: How does an operator register Client ID Metadata Document URLs on an Agent record? → A: Via the existing agent write API — `POST /api/agents` accepts `client_uris` on create and `PUT /api/agents/{agent-id}` accepts `client_uris` on update. No additional PATCH endpoint is required. Updated API-004.
 - Q: How is the operator-configurable `client_name` keyword blacklist (FR-023b/c) configured? → A: YAML config file under `oauth2_authorization_server.cimd.client_name_blocklist` (string array, case-insensitive exact match, merged with built-in defaults at startup). Added to Configuration Requirements.
 - Q: What does the broker do when a CIMD document is served with `Cache-Control: no-store` or `no-cache`? → A: Ignore the directive — operator-configured `min_ttl` always applies. Remote cache hints never override the floor TTL. Clarified in FR-019.
 - Q: Should concurrent cache-miss requests for the same `client_id` URL be deduplicated (singleflight) or each fetch independently? → A: Each request fetches independently — no singleflight coordination required.
+
+### Session 2026-04-24
+
+- Q: How should the broker enforce that URL-format client_id values are only accepted when CIMD is enabled? → A: Via a ClientResolver strategy interface selected at build time. When `cimd.enabled: false`, `OpaqueClientResolver` is wired — it rejects URL-format client IDs with `invalid_client` immediately. When `true`, `CIMDClientResolver` is wired — it handles URL-format client IDs via CIMD resolution and falls back to UUID for non-URL IDs. The gate is structural (strategy selection in builder), not a runtime conditional. No CIMD infrastructure (fetcher, cache, service) is instantiated when disabled. Added FR-001a and US1 Scenario 5.
 
 ## Assumptions
 

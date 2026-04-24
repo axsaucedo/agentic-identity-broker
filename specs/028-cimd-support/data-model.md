@@ -1,0 +1,236 @@
+# Data Model: CIMD Support
+
+**Feature**: 028-cimd-support | **Date**: 2026-04-23
+
+## Entity Extensions
+
+### Agent (existing entity — extended)
+
+| Field | Type | New? | Description |
+|-------|------|------|-------------|
+| `ID` | `id.AgentID` (UUID) | No | Primary key |
+| `ClientID` | `id.ClientID` (string) | No | Opaque client identifier |
+| `DisplayName` | `string` | No | Operator-set display name; brand pin baseline |
+| `ClientURIs` | `[]string` | **Yes** | Pre-registered Client ID Metadata Document URLs |
+| `AuthMethod` | `*string` | **Yes** | Last observed `token_endpoint_auth_method` from CIMD (snapshot for SR-011) |
+| `JwksURI` | `*string` | **Yes** | Last observed `jwks_uri` from CIMD (snapshot for SR-012) |
+| *(all existing fields preserved)* | | | |
+
+**Validation rules**:
+- `ClientURIs`: each entry must be a valid HTTPS URL (validated via `ClientIDMetadataDocumentURL.Parse()`)
+- `ClientURIs`: must be globally unique across all agents (no two agents share a Client URI)
+- `AuthMethod`: nullable — populated on first successful CIMD fetch
+- `JwksURI`: nullable — populated on first successful CIMD fetch
+
+**Database migration** (015):
+```sql
+-- UP
+ALTER TABLE agents ADD COLUMN client_uris TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE agents ADD COLUMN auth_method TEXT;
+ALTER TABLE agents ADD COLUMN jwks_uri TEXT;
+
+-- DOWN
+ALTER TABLE agents DROP COLUMN client_uris;
+ALTER TABLE agents DROP COLUMN auth_method;
+ALTER TABLE agents DROP COLUMN jwks_uri;
+```
+
+## New Domain Types
+
+### ClientIDMetadataDocument (value object)
+
+Represents a parsed and validated CIMD JSON document. Immutable after construction.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ClientID` | `string` | Yes | Must exactly match the fetch URL (FR-003, SR-008) |
+| `ClientName` | `string` | No | Display name for consent screen (FR-023) |
+| `LogoURI` | `string` | No | Logo URL (displayed as-is, not prefetched) |
+| `RedirectURIs` | `[]string` | Yes | Allowed redirect URIs (FR-004); empty = rejection |
+| `AuthMethod` | `string` | No | `token_endpoint_auth_method`; defaults to `"none"` |
+| `GrantTypes` | `[]string` | No | Supported grant types |
+| `ResponseTypes` | `[]string` | No | Supported response types |
+| `JwksURI` | `string` | No | JWKS endpoint for client authentication |
+| `PolicyURI` | `string` | No | Privacy policy URL |
+| `TosURI` | `string` | No | Terms of service URL |
+
+**Validation rules** (applied at parse time):
+- `ClientID` must exactly match the URL the document was fetched from (byte-for-byte, SR-008)
+- `RedirectURIs` must not be empty (edge case: "omits redirect_uris" → rejection)
+- `AuthMethod` must not be `client_secret_post`, `client_secret_basic`, or `client_secret_jwt` (FR-022)
+- `ClientName` must not match any entry in the keyword blocklist (FR-023b, case-insensitive)
+- Each `RedirectURI` must be same-origin with `ClientID` URL, except `localhost`/`127.0.0.1` (FR-004a)
+
+**Package**: `internal/domain/cimd/document.go`
+
+### ClientIDMetadataDocumentURL (value object)
+
+Validated HTTPS URL used as a `client_id`. Validated at parse time — invalid URLs cannot be constructed.
+
+| Validation | Rule | Requirement |
+|------------|------|-------------|
+| Scheme | Must be `https` | FR-014 |
+| Path | Must have a non-empty path component | FR-014a |
+| Path | No `.` or `..` segments | FR-015 |
+| Fragment | Must not contain `#` | FR-016 |
+| Userinfo | Must not contain credentials | FR-017 |
+| Port | Must be 443 or absent | FR-018 |
+
+**Package**: `internal/domain/cimd/url.go`
+
+### SSRFBlocklist (value object)
+
+Immutable set of CIDR ranges blocked for CIMD fetches. Built at startup from defaults + operator config.
+
+| Range | Category | Requirement |
+|-------|----------|-------------|
+| `127.0.0.0/8` | Loopback (IPv4) | FR-010 |
+| `::1/128` | Loopback (IPv6) | FR-010 |
+| `10.0.0.0/8` | Private (RFC 1918) | FR-011 |
+| `172.16.0.0/12` | Private (RFC 1918) | FR-011 |
+| `192.168.0.0/16` | Private (RFC 1918) | FR-011 |
+| `169.254.0.0/16` | Link-local (IPv4) | FR-012 |
+| `fe80::/10` | Link-local (IPv6) | FR-012 |
+| `0.0.0.0/8` | "This" network | FR-013 |
+| `100.64.0.0/10` | Shared address (CGN) | FR-013 |
+| `192.0.0.0/24` | IETF protocol assignments | FR-013 |
+| `192.0.2.0/24` | Documentation (TEST-NET-1) | FR-013 |
+| `198.18.0.0/15` | Benchmarking | FR-013 |
+| `198.51.100.0/24` | Documentation (TEST-NET-2) | FR-013 |
+| `203.0.113.0/24` | Documentation (TEST-NET-3) | FR-013 |
+| `240.0.0.0/4` | Reserved | FR-013 |
+| `255.255.255.255/32` | Limited broadcast | FR-013 |
+| `fc00::/7` | Unique local (IPv6) | FR-013 |
+| `2001:db8::/32` | Documentation (IPv6) | FR-013 |
+| Operator `extra_blocked_cidrs` | Custom | FR-024 |
+
+**Package**: `internal/domain/cimd/blocklist.go`
+
+### CIMDCacheEntry (in-process, not persisted)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `URL` | `string` | Cache key (the Client ID Metadata Document URL) |
+| `Document` | `*ClientIDMetadataDocument` | Parsed and validated document |
+| `FetchedAt` | `time.Time` | When the document was last fetched |
+| `ExpiresAt` | `time.Time` | Computed from HTTP cache headers + operator TTL bounds |
+| `ETag` | `string` | HTTP ETag for conditional requests (future optimization) |
+
+**Package**: `internal/domain/cimd/cache.go`
+
+## New Port Interfaces
+
+### ClientResolver (strategy interface)
+
+```go
+// ClientResolver resolves a client_id from an authorization request to an Agent
+// and optional CIMD metadata. The builder selects the implementation based on
+// cimd.enabled configuration.
+//
+// When CIMD is disabled: OpaqueClientResolver is wired — rejects URL-format
+// client_id values with invalid_client immediately.
+//
+// When CIMD is enabled: CIMDClientResolver is wired — handles URL-format
+// client_id via CIMD fetch/validate/cache, delegates non-URL client_id to
+// opaque UUID resolution.
+type ClientResolver interface {
+    ResolveClient(ctx context.Context, clientID id.ClientID) (*ClientResolution, error)
+}
+
+type ClientResolution struct {
+    Agent        *storage.Agent
+    CIMDMetadata *cimd.ClientIDMetadataDocument // nil for opaque client_id
+}
+```
+
+**Implementations**:
+- `OpaqueClientResolver` in `internal/domain/oauth2/client_resolver.go` — existing UUID-based agent lookup. Rejects any `client_id` starting with `https://` with `invalid_client` error
+- `CIMDClientResolver` in `internal/domain/cimd/client_resolver.go` — URL detection → CIMD fetch/validate/cache → agent lookup by client URI. Falls back to opaque UUID lookup for non-URL client IDs
+
+**Package**: `internal/ports/cimd.go`
+
+### CIMDFetcher (port)
+
+```go
+// CIMDFetcher fetches Client ID Metadata Documents from remote HTTPS endpoints
+// with SSRF protection, timeout, and size limits.
+type CIMDFetcher interface {
+    Fetch(ctx context.Context, url string) (*CIMDFetchResult, error)
+}
+
+type CIMDFetchResult struct {
+    Document    *cimd.ClientIDMetadataDocument
+    CacheControl string   // raw Cache-Control header
+    ETag         string   // ETag header value
+    Expires      string   // Expires header value
+}
+```
+
+**Package**: `internal/ports/cimd.go`
+
+## Configuration Types
+
+### CIMDConfig
+
+```go
+type CIMDConfig struct {
+    Enabled          bool          `mapstructure:"enabled"`
+    FetchTimeout     time.Duration `mapstructure:"fetch_timeout"`
+    MaxResponseBytes int           `mapstructure:"max_response_bytes"`
+    Cache            CIMDCacheConfig `mapstructure:"cache"`
+    SSRF             CIMDSSRFConfig  `mapstructure:"ssrf"`
+    ClientNameBlocklist []string    `mapstructure:"client_name_blocklist"`
+}
+
+type CIMDCacheConfig struct {
+    MaxTTL time.Duration `mapstructure:"max_ttl"`
+    MinTTL time.Duration `mapstructure:"min_ttl"`
+}
+
+type CIMDSSRFConfig struct {
+    ExtraBlockedCIDRs []string `mapstructure:"extra_blocked_cidrs"`
+}
+```
+
+**Defaults**: `enabled: false`, `fetch_timeout: 1s`, `max_response_bytes: 5120`, `cache.max_ttl: 1h`, `cache.min_ttl: 60s`, `ssrf.extra_blocked_cidrs: []`, `client_name_blocklist: []`
+
+**Location**: Added to `OAuth2AuthServerConfig` in `internal/ports/config.go`
+
+## Domain Events (structured audit logs)
+
+| Event | Fields | Trigger |
+|-------|--------|---------|
+| `CIMDDocumentFetched` | URL, cache TTL, client_name | Successful fetch + validation |
+| `CIMDFetchBlocked` | URL, reason (blocked IP, invalid scheme, etc.) | SSRF guard rejection |
+| `CIMDFetchFailed` | URL, reason (non-200, timeout, oversized) | Fetch error |
+| `BrandPinMismatchDetected` | AgentID, Agent.DisplayName, CIMD client_name | client_name differs from DisplayName |
+| `CIMDSecurityFieldChanged` | AgentID, field name, previous value, new value | redirect_uris/auth_method/jwks_uri changed |
+
+Events are emitted via structured logging (existing `slog` logger), not a separate event bus.
+
+## Relationships
+
+```
+Agent 1──* ClientIDMetadataDocumentURL (pre-registered, stored as client_uris)
+Agent 1──0..1 AuthMethod snapshot (nullable)
+Agent 1──0..1 JwksURI snapshot (nullable)
+CIMDCacheEntry *──1 ClientIDMetadataDocument (in-process only)
+```
+
+## State Transitions
+
+**CIMD Authorization Flow State Machine**:
+
+```
+[URL received] → validate URL format → [valid URL]
+    → check pre-registration (GetByClientURI) → [agent found]
+    → check cache → [cache hit: use cached doc] OR [cache miss: fetch]
+    → SSRF validate resolved IPs → [IPs safe]
+    → HTTP GET (timeout + size limit) → [200 OK, valid JSON]
+    → validate document (client_id match, auth method, redirect URIs, blocklist)
+    → compare snapshots (brand pin, security fields) → emit audit events
+    → update Agent snapshot fields
+    → proceed to consent/authorization
+```
+
+Any failure at any step → reject authorization request (fail closed).

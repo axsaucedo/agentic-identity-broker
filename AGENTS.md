@@ -186,3 +186,10 @@ go-migrate wraps migrations in transactions by default. To use `CONCURRENTLY`, t
 **Migration 008 note**: Migration 008 (`008_drop_agent_client_id_unique`) used non-concurrent index recreation (`CREATE INDEX IF NOT EXISTS`) without `CONCURRENTLY` because the `agents` table is small at migration time and the transactional safety outweighed the lock duration concern.
 
 **Future guidance**: Migrations that create or recreate indexes on tables expected to be large in production should use no-transaction migrations with `CREATE INDEX CONCURRENTLY` to avoid downtime.
+
+## Active Technologies
+- Go 1.25.6 (backend), React 19 + TypeScript + Vite 7 (frontend) + chi v5 (router), sqlx (database), Ginkgo/Gomega (E2E), Viper/Cobra (config), Tailwind CSS v4 + CVA (UI) — no new dependencies required (028-cimd-support)
+- PostgreSQL (production) + in-memory (dev/test) — Agent entity extension requires migration 015 (028-cimd-support)
+
+## Recent Changes
+- 028-cimd-support: Added Go 1.25.6 (backend), React 19 + TypeScript + Vite 7 (frontend) + chi v5 (router), sqlx (database), Ginkgo/Gomega (E2E), Viper/Cobra (config), Tailwind CSS v4 + CVA (UI) — no new dependencies required
