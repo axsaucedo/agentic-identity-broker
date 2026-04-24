@@ -123,15 +123,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
-	// If client_id changed, update the secondary index.
-	// No conflict check here: uniqueness enforcement is the app handler's responsibility.
-	// Multiple agents may share a client_id in multi-agent mode.
-	if existing.ClientID != agent.ClientID {
-		r.removeFromClientIDIndex(existing.ClientID, agent.ID)
-		r.byClientID[agent.ClientID] = append(r.byClientID[agent.ClientID], agent.ID)
-	}
-
-	// Enforce global uniqueness of client URIs (excluding this agent's own existing URIs)
+	// Enforce global uniqueness of client URIs before touching any indexes
 	for _, uri := range agent.ClientURIs {
 		if existingID, exists := r.byClientURI[uri]; exists && existingID != agent.ID {
 			return storage.NewStorageError(
@@ -151,6 +143,12 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 			err,
 			"agent validation failed",
 		)
+	}
+
+	// All checks passed — update indexes and stored entity atomically
+	if existing.ClientID != agent.ClientID {
+		r.removeFromClientIDIndex(existing.ClientID, agent.ID)
+		r.byClientID[agent.ClientID] = append(r.byClientID[agent.ClientID], agent.ID)
 	}
 
 	// Rebuild client URI index: remove old URIs, add new ones

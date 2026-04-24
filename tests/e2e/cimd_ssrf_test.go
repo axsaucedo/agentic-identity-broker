@@ -240,7 +240,6 @@ var _ = Describe("CIMD SSRF Protection", func() {
 				ClientID:    id.ClientID(clientURL),
 				DisplayName: "Oversized CIMD Agent",
 				Description: "E2E test agent for oversized CIMD response scenario",
-				ClientURIs:  []string{clientURL},
 				CreatedAt:   now,
 				UpdatedAt:   now,
 			}
@@ -308,7 +307,6 @@ var _ = Describe("CIMD SSRF Protection", func() {
 				ClientID:    id.ClientID(clientURL),
 				DisplayName: "Timeout CIMD Agent",
 				Description: "E2E test agent for CIMD timeout scenario",
-				ClientURIs:  []string{clientURL},
 				CreatedAt:   now,
 				UpdatedAt:   now,
 			}

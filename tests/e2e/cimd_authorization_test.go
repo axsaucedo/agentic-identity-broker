@@ -117,7 +117,6 @@ var _ = Describe("CIMD Authorization", func() {
 				ClientID:    id.ClientID(clientURL),
 				DisplayName: "CIMD Test Agent",
 				Description: "E2E test agent for CIMD authorization",
-				ClientURIs:  []string{clientURL},
 				CreatedAt:   now,
 				UpdatedAt:   now,
 			}
@@ -190,7 +189,6 @@ var _ = Describe("CIMD Authorization", func() {
 				ClientID:    id.ClientID(clientURL),
 				DisplayName: "Mismatch Agent",
 				Description: "E2E test agent for CIMD mismatch scenario",
-				ClientURIs:  []string{clientURL},
 				CreatedAt:   now,
 				UpdatedAt:   now,
 			}
@@ -258,7 +256,6 @@ var _ = Describe("CIMD Authorization", func() {
 				ClientID:    id.ClientID(clientURL),
 				DisplayName: "Missing CIMD Agent",
 				Description: "E2E test agent for CIMD 404 scenario",
-				ClientURIs:  []string{clientURL},
 				CreatedAt:   now,
 				UpdatedAt:   now,
 			}
@@ -330,7 +327,6 @@ var _ = Describe("CIMD Authorization", func() {
 				ClientID:    id.ClientID(clientURL),
 				DisplayName: "Redirect Check Agent",
 				Description: "E2E test agent for CIMD redirect URI validation",
-				ClientURIs:  []string{clientURL},
 				CreatedAt:   now,
 				UpdatedAt:   now,
 			}

@@ -177,7 +177,7 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		agent.JwksURI,
 		agent.CIMDClientName,
 		agent.CIMDLogoURI,
-		pq.Array(emptyIfNil(agent.CIMDRedirectURIs)),
+		pq.Array(agent.CIMDRedirectURIs),
 		agent.CreatedAt,
 		agent.UpdatedAt,
 	)
@@ -383,7 +383,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		agent.JwksURI,
 		agent.CIMDClientName,
 		agent.CIMDLogoURI,
-		pq.Array(emptyIfNil(agent.CIMDRedirectURIs)),
+		pq.Array(agent.CIMDRedirectURIs),
 		agent.UpdatedAt,
 	)
 	if err != nil {

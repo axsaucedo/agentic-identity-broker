@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -129,10 +130,14 @@ func validateClientURI(uriStr string) error {
 		return errors.New("must not contain credentials")
 	}
 	port := u.Port()
-	host := u.Hostname()
-	isLoopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
-	if port != "" && port != "443" && !isLoopback {
-		return fmt.Errorf("port must be 443 or absent, got %q", port)
+	if port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("port is not a valid port number: %q", port)
+		}
+		if n != 443 {
+			return fmt.Errorf("port must be 443 or absent, got %q", port)
+		}
 	}
 	if u.Path == "" || u.Path == "/" {
 		return errors.New("must have a non-empty path")
@@ -257,6 +262,9 @@ func (a *Agent) Copy() *Agent {
 	if a.CIMDLogoURI != nil {
 		n := *a.CIMDLogoURI
 		copy.CIMDLogoURI = &n
+	}
+	if a.CIMDRedirectURIs != nil {
+		copy.CIMDRedirectURIs = append([]string(nil), a.CIMDRedirectURIs...)
 	}
 
 	return copy

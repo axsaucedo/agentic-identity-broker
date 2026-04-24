@@ -3,6 +3,7 @@ package cimd
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -34,7 +35,7 @@ func ParseClientIDMetadataDocumentURL(raw string) (ClientIDMetadataDocumentURL, 
 		return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL must use https scheme, got %q", u.Scheme)
 	}
 
-	if u.Host == "" {
+	if u.Host == "" || u.Hostname() == "" {
 		return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL must have a host")
 	}
 
@@ -44,9 +45,15 @@ func ParseClientIDMetadataDocumentURL(raw string) (ClientIDMetadataDocumentURL, 
 
 	port := u.Port()
 	host := u.Hostname()
-	isLoopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
-	if port != "" && port != "443" && !isLoopback {
-		return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port must be 443 or absent, got %q", port)
+	if port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port is not a valid port number: %q", port)
+		}
+		isLoopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
+		if n != 443 && !isLoopback {
+			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port must be 443 or absent, got %q", port)
+		}
 	}
 
 	if u.Path == "" || u.Path == "/" {

@@ -96,7 +96,7 @@ func setupTestContainer(t *testing.T) (testcontainers.Container, string, func())
 // any issues with passing multi-statement SQL as a command-line argument.
 func applyMigrations(t *testing.T, container testcontainers.Container) {
 	t.Helper()
-	applyMigrationsUpTo(t, container, 13)
+	applyMigrationsUpTo(t, container, 16)
 }
 
 // applyMigrationsUpTo applies migrations sequentially from 001 up to and including
@@ -133,6 +133,7 @@ func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo 
 		{"013_add_client_id_to_auth_codes.up.sql", 13},
 		{"014_create_pkce_sessions.up.sql", 14},
 		{"015_add_agent_cimd_fields.up.sql", 15},
+		{"016_add_cimd_redirect_uris.up.sql", 16},
 	}
 
 	for _, migration := range migrations {
@@ -210,14 +211,14 @@ func findProjectRoot() (string, error) {
 }
 
 // setupAgentTestDBWithCIMD creates a test database with migrations applied up to and including
-// migration 015 (agent_client_uris and CIMD fields). Use for tests that exercise ClientURIs.
+// migration 016 (agent_client_uris, CIMD fields, and cimd_redirect_uris). Use for tests that exercise ClientURIs.
 func setupAgentTestDBWithCIMD(t *testing.T) (*Adapter, func()) {
 	t.Helper()
 
 	container, connString, cleanup := setupTestContainer(t)
 	t.Cleanup(cleanup)
 
-	applyMigrationsUpTo(t, container, 15)
+	applyMigrationsUpTo(t, container, 16)
 
 	config := &ports.StorageConfig{
 		Backend: "postgres",

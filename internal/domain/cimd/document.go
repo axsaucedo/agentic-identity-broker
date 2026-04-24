@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
 // ClientIDMetadataDocument is a parsed and validated CIMD JSON document.
@@ -83,15 +85,13 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 // validateRedirectOrigin enforces same-origin between a redirect URI and the
 // client_id URL, with an exception for localhost/127.0.0.1 redirect URIs.
 func validateRedirectOrigin(clientURL *url.URL, redirectURI string) error {
-	r, err := url.Parse(redirectURI)
-	if err != nil {
-		return fmt.Errorf("invalid redirect_uri %q: %w", redirectURI, err)
+	// Structural validity check first (catches ftp://, fragments, missing host, etc.)
+	if !storage.IsValidRedirectURI(redirectURI) {
+		return fmt.Errorf("redirect_uri %q is not a valid redirect URI", redirectURI)
 	}
-	if r.Scheme == "" || r.Hostname() == "" {
-		return fmt.Errorf("redirect_uri %q must be absolute", redirectURI)
-	}
+	r, _ := url.Parse(redirectURI) // safe: IsValidRedirectURI already validated
 	host := r.Hostname()
-	// Localhost exception: any localhost redirect is allowed regardless of origin
+	// Localhost exception applies only to the same-origin comparison, not structural validity
 	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
 		return nil
 	}
