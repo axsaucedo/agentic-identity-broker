@@ -42,8 +42,8 @@ func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*p
 		return nil, &ports.ClientIDError{Code: "invalid_request", Desc: "invalid client_id URL: " + err.Error()}
 	}
 
-	// Look up agent by client_id — for CIMD, the client_id IS the registered URL
-	agent, err := r.agentRepo.GetByClientID(ctx, id.ClientID(rawURL))
+	// Look up agent by pre-registered client URI (FR-026)
+	agent, err := r.agentRepo.GetByClientURI(ctx, rawURL)
 	if err != nil {
 		if isNotFoundErr(err) {
 			return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}

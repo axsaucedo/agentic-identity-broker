@@ -222,10 +222,13 @@ var _ = Describe("CIMD SSRF Protection", func() {
 	Describe("when the CIMD endpoint streams a response larger than the size limit", func() {
 		var (
 			cimdServer *httptest.Server
+			clientURL  string
 			server     *bootstrap.TestServer
 		)
 
 		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-oversized.test.invalid"
+
 			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
@@ -233,11 +236,12 @@ var _ = Describe("CIMD SSRF Protection", func() {
 				_, _ = w.Write(make([]byte, 6000))
 			}))
 
-			clientURL := cimdServer.URL + "/client"
+			clientURL = "https://" + fakeHost + "/client"
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
 				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
 				DisplayName: "Oversized CIMD Agent",
 				Description: "E2E test agent for oversized CIMD response scenario",
 				CreatedAt:   now,
@@ -250,7 +254,7 @@ var _ = Describe("CIMD SSRF Protection", func() {
 
 			bl, err := domaincimd.NewSSRFBlocklist(nil)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdServer.Client(), bl, 5120, nil)
+			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120, nil)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
@@ -269,11 +273,10 @@ var _ = Describe("CIMD SSRF Protection", func() {
 		})
 
 		It("aborts the download and rejects the authorization request with invalid_client", func() {
-			clientURL := cimdServer.URL + "/client"
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf(
 					"/oauth2/authorize?client_id=%s&redirect_uri=%s/cb&response_type=code&state=xyz",
-					clientURL, cimdServer.URL,
+					clientURL, clientURL,
 				),
 				fixtures.DefaultPrincipal().String(),
 			)
@@ -291,20 +294,24 @@ var _ = Describe("CIMD SSRF Protection", func() {
 	Describe("when the CIMD endpoint does not respond within the configured timeout", func() {
 		var (
 			cimdServer *httptest.Server
+			clientURL  string
 			server     *bootstrap.TestServer
 		)
 
 		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-timeout.test.invalid"
+
 			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Hang until the request context is canceled
 				<-r.Context().Done()
 			}))
 
-			clientURL := cimdServer.URL + "/client"
+			clientURL = "https://" + fakeHost + "/client"
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
 				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
 				DisplayName: "Timeout CIMD Agent",
 				Description: "E2E test agent for CIMD timeout scenario",
 				CreatedAt:   now,
@@ -322,7 +329,7 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			// Set a short timeout on the injected client so the CIMD fetch times out
 			// quickly (in ~50ms), allowing the handler to return 400 well within the
 			// test client's timeout window.
-			tlsClient := cimdServer.Client()
+			tlsClient := cimdTestHTTPClient(cimdServer, fakeHost)
 			tlsClient.Timeout = 100 * time.Millisecond
 			cimdFetcher := adaptercmd.NewFetcherWithClient(tlsClient, bl, 5120, nil)
 
@@ -343,11 +350,10 @@ var _ = Describe("CIMD SSRF Protection", func() {
 		})
 
 		It("terminates the connection and rejects the authorization request with invalid_client", func() {
-			clientURL := cimdServer.URL + "/client"
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf(
 					"/oauth2/authorize?client_id=%s&redirect_uri=%s/cb&response_type=code&state=xyz",
-					clientURL, cimdServer.URL,
+					clientURL, clientURL,
 				),
 				fixtures.DefaultPrincipal().String(),
 			)

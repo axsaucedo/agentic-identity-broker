@@ -56,6 +56,7 @@ var _ = Describe("CIMD Response Caching", func() {
 	// Then the CIMD server receives only one HTTP request (cache hit).
 	Describe("when two authorization requests arrive for the same client_id within TTL", func() {
 		It("fetches the CIMD document only once (cache hit on second request)", func() {
+			const fakeHost = "cimd-e2e-cache.test.invalid"
 			var fetchCount int64
 
 			var clientURL string
@@ -70,13 +71,14 @@ var _ = Describe("CIMD Response Caching", func() {
 			}))
 			defer cimdServer.Close()
 
-			clientURL = cimdServer.URL + "/client"
-			redirectURI = cimdServer.URL + "/callback"
+			clientURL = "https://" + fakeHost + "/client"
+			redirectURI = "https://" + fakeHost + "/callback"
 
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
 				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
 				DisplayName: "Caching Test Agent",
 				Description: "E2E test agent for CIMD caching scenario",
 				CreatedAt:   now,
@@ -89,7 +91,7 @@ var _ = Describe("CIMD Response Caching", func() {
 
 			bl, err := domaincimd.NewSSRFBlocklist(nil)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdServer.Client(), bl, 5120, nil)
+			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120, nil)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
@@ -121,6 +123,7 @@ var _ = Describe("CIMD Response Caching", func() {
 	// Then the CIMD server is called again (failed fetch is not cached).
 	Describe("when the CIMD server returns a non-200 error response", func() {
 		It("does not cache failed fetches and retries on the next request", func() {
+			const fakeHost = "cimd-e2e-cache-error.test.invalid"
 			var fetchCount int64
 
 			var clientURL string
@@ -131,7 +134,7 @@ var _ = Describe("CIMD Response Caching", func() {
 			}))
 			defer cimdServer.Close()
 
-			clientURL = cimdServer.URL + "/client"
+			clientURL = "https://" + fakeHost + "/client"
 
 			now := time.Now()
 			agent := &storage.Agent{
@@ -150,7 +153,7 @@ var _ = Describe("CIMD Response Caching", func() {
 
 			bl, err := domaincimd.NewSSRFBlocklist(nil)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdServer.Client(), bl, 5120, nil)
+			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120, nil)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
@@ -161,7 +164,7 @@ var _ = Describe("CIMD Response Caching", func() {
 
 			authorizeURL := fmt.Sprintf(
 				"/oauth2/authorize?client_id=%s&redirect_uri=%s/callback&response_type=code&state=xyz",
-				clientURL, cimdServer.URL,
+				clientURL, clientURL,
 			)
 
 			resp1, err := server.AuthenticatedGET(authorizeURL, fixtures.DefaultPrincipal().String())
@@ -184,6 +187,7 @@ var _ = Describe("CIMD Response Caching", func() {
 	// Then it is served from cache (TTL is clamped to operator maxTTL, not rejected).
 	Describe("when the CIMD document's Cache-Control max-age exceeds operator maxTTL", func() {
 		It("clamps the TTL to operator maxTTL and still serves from cache", func() {
+			const fakeHost = "cimd-e2e-cache-clamp.test.invalid"
 			var fetchCount int64
 
 			var clientURL string
@@ -198,8 +202,8 @@ var _ = Describe("CIMD Response Caching", func() {
 			}))
 			defer cimdServer.Close()
 
-			clientURL = cimdServer.URL + "/client"
-			redirectURI = cimdServer.URL + "/callback"
+			clientURL = "https://" + fakeHost + "/client"
+			redirectURI = "https://" + fakeHost + "/callback"
 
 			now := time.Now()
 			agent := &storage.Agent{
@@ -218,7 +222,7 @@ var _ = Describe("CIMD Response Caching", func() {
 
 			bl, err := domaincimd.NewSSRFBlocklist(nil)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdServer.Client(), bl, 5120, nil)
+			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120, nil)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
@@ -252,6 +256,7 @@ var _ = Describe("CIMD Response Caching", func() {
 	// Then the CIMD server is called again (cache miss after expiry).
 	Describe("when the cached CIMD entry has expired", func() {
 		It("re-fetches the document after TTL expiry", func() {
+			const fakeHost = "cimd-e2e-cache-expiry.test.invalid"
 			var fetchCount int64
 
 			var clientURL string
@@ -266,8 +271,8 @@ var _ = Describe("CIMD Response Caching", func() {
 			}))
 			defer cimdServer.Close()
 
-			clientURL = cimdServer.URL + "/client"
-			redirectURI = cimdServer.URL + "/callback"
+			clientURL = "https://" + fakeHost + "/client"
+			redirectURI = "https://" + fakeHost + "/callback"
 
 			now := time.Now()
 			agent := &storage.Agent{
@@ -289,7 +294,7 @@ var _ = Describe("CIMD Response Caching", func() {
 
 			bl, err := domaincimd.NewSSRFBlocklist(nil)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdServer.Client(), bl, 5120, nil)
+			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120, nil)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
