@@ -172,7 +172,7 @@ var _ = Describe("CIMD Authorization", func() {
 			}
 		})
 
-		It("resolves the agent and proceeds past invalid_client", func() {
+		It("resolves the agent and redirects to the consent page", func() {
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf(
 					"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz",
@@ -183,8 +183,9 @@ var _ = Describe("CIMD Authorization", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// The CIMD client resolved successfully — not a 400 invalid_client
-			Expect(resp.StatusCode).ToNot(Equal(http.StatusBadRequest))
+			// Successful CIMD resolution with no existing grant → redirect to consent page
+			Expect(resp.StatusCode).To(Equal(http.StatusFound))
+			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent/agent/"))
 		})
 	})
 

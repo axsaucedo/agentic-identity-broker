@@ -533,7 +533,12 @@ export function AgentGrantDetailPage() {
             <div className="space-y-3">
               <CIMDConsentSummary
                 clientName={cimdMeta.client_name}
-                accessTarget={cimdMeta.requested_scopes.join(', ') || 'requested services'}
+                accessTarget={
+                  services
+                    .filter(s => s.scopes?.some(scope => cimdMeta.requested_scopes.includes(scope.value)))
+                    .map(s => s.displayName || s.serviceName || s.serviceId)
+                    .join(', ') || cimdMeta.requested_scopes.join(', ') || 'requested services'
+                }
                 logoUri={cimdMeta.logo_uri}
               />
               <CIMDDomainBadge domain={cimdMeta.verified_domain} />

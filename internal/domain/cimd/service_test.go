@@ -269,9 +269,12 @@ func TestService_Resolve_UpdateFailureFails(t *testing.T) {
 
 	// Snapshot update failure must propagate as an error to prevent stale baselines
 	// from causing repeated false-positive cimd_security_field_changed events.
+	// The error must be wrapped in SnapshotPersistenceError so callers can return server_error.
 	_, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "database unavailable")
+	var snapErr *SnapshotPersistenceError
+	require.ErrorAs(t, err, &snapErr)
 }
 
 func TestService_Resolve_NameBlocklist_Rejected(t *testing.T) {

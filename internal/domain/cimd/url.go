@@ -43,15 +43,12 @@ func ParseClientIDMetadataDocumentURL(raw string) (ClientIDMetadataDocumentURL, 
 		return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL must not contain credentials")
 	}
 
-	port := u.Port()
-	host := u.Hostname()
-	if port != "" {
+	if port := u.Port(); port != "" {
 		n, err := strconv.Atoi(port)
 		if err != nil || n < 1 || n > 65535 {
 			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port is not a valid port number: %q", port)
 		}
-		isLoopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
-		if n != 443 && !isLoopback {
+		if n != 443 {
 			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port must be 443 or absent, got %q", port)
 		}
 	}

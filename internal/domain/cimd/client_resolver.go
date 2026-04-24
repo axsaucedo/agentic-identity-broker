@@ -54,6 +54,10 @@ func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*p
 	// Fetch and validate CIMD document
 	doc, err := r.cimdService.Resolve(ctx, rawURL, agent)
 	if err != nil {
+		var snapErr *SnapshotPersistenceError
+		if errors.As(err, &snapErr) {
+			return nil, &ports.ClientIDError{Code: "server_error", Desc: "Internal error validating client"}
+		}
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "CIMD document validation failed: " + err.Error()}
 	}
 

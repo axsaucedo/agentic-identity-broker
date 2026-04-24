@@ -60,6 +60,12 @@ func TestParseClientIDMetadataDocumentURL(t *testing.T) {
 		assert.Contains(t, err.Error(), "port")
 	})
 
+	t.Run("rejects non-443 loopback port", func(t *testing.T) {
+		_, err := ParseClientIDMetadataDocumentURL("https://localhost:8080/client")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "port")
+	})
+
 	t.Run("rejects single dot segment", func(t *testing.T) {
 		_, err := ParseClientIDMetadataDocumentURL("https://agent.example.com/./client")
 		require.Error(t, err)

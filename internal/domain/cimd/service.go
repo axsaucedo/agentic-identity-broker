@@ -2,7 +2,6 @@ package cimd
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -12,6 +11,13 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
+
+// SnapshotPersistenceError wraps a repository failure during CIMD snapshot update.
+// Callers can check for this type to distinguish storage failures from document validation errors.
+type SnapshotPersistenceError struct{ Err error }
+
+func (e *SnapshotPersistenceError) Error() string { return e.Err.Error() }
+func (e *SnapshotPersistenceError) Unwrap() error { return e.Err }
 
 // Service orchestrates CIMD document fetch, validation, caching, and snapshot management.
 type Service struct {
@@ -180,7 +186,7 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 		agent.UpdatedAt = time.Now().UTC()
 		if err := s.agentRepo.Update(ctx, agent); err != nil {
 			s.logger.Error("cimd_snapshot_update_failed", "agent_id", agent.ID, "error", err)
-			return nil, fmt.Errorf("failed to persist CIMD snapshot: %w", err)
+			return nil, &SnapshotPersistenceError{Err: err}
 		}
 	}
 
