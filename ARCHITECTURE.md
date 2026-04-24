@@ -1086,6 +1086,26 @@ Define any project-specific terms or acronyms.)
 
 **Domain Model Invariants**: (1) One credential per agent — enforced by UNIQUE constraint on `client_credentials.client_id`. (2) Exactly one `is_current` signing key among active keys — enforced by application logic in `SigningKeyService` and transactional `SetCurrent` in PostgreSQL adapter. (3) Authorization codes are single-use with 60-second TTL — enforced by atomic `MarkUsed` (UPDATE WHERE used_at IS NULL) and expiry check before token exchange.
 
+### Client ID Metadata Document (CIMD) Domain
+
+**ClientIDMetadataDocument**: Immutable value object representing a parsed and validated CIMD JSON document fetched from a client's registered HTTPS URL. Validated at construction time: `client_id` field must exactly match the fetch URL, `redirect_uris` must not be empty, `token_endpoint_auth_method` must not be a client-secret variant, and `client_name` must not match the keyword blocklist. Located in `internal/domain/cimd/document.go`.
+
+**CIMDCacheEntry**: In-process (non-persisted) cache record keyed by the Client ID Metadata Document URL. Fields: URL (cache key), parsed Document, FetchedAt timestamp, ExpiresAt (computed from HTTP cache headers clamped to operator TTL bounds), and ETag for future conditional requests. Stored in a `sync.RWMutex`-protected map; expired entries are lazily evicted on next access. Located in `internal/domain/cimd/cache.go`.
+
+**ClientIDMetadataDocumentURL**: Value object representing a validated HTTPS URL used as a `client_id`. Validated at parse time — invalid URLs cannot be constructed. Enforces: HTTPS scheme only, non-empty path component, no `.`/`..` path segments, no fragment (`#`), no userinfo (credentials), and port must be 443 or absent. Located in `internal/domain/cimd/url.go`.
+
+**SSRFBlocklist**: Immutable value object holding the set of CIDR ranges blocked for CIMD HTTP fetches. Initialized at startup from RFC 6890 Special-Purpose Address Registry defaults plus operator `extra_blocked_cidrs`. Consulted by the SSRF-hardened fetcher adapter's custom `net.Dialer.Control` callback to reject resolved IP addresses before TCP connect. Located in `internal/domain/cimd/blocklist.go`.
+
+**BrandPinMismatchDetected**: Domain audit event emitted as a structured log entry when a CIMD document's `client_name` differs from the registered Agent's `DisplayName`. Non-blocking — authorization proceeds, but the mismatch is recorded. Fields: AgentID, Agent.DisplayName, CIMD client_name.
+
+**CIMDSecurityFieldChanged**: Domain audit event emitted when a CIMD document's `redirect_uris`, `token_endpoint_auth_method`, or `jwks_uri` differ from the snapshot previously stored on the Agent entity. The Agent's snapshot fields are updated atomically after the event is emitted. Fields: AgentID, field name, previous value, new value.
+
+**ClientResolver**: Strategy interface injected into `OAuth2AuthorizationService` that resolves a `client_id` from an authorization request to an Agent and optional CIMD metadata. Two implementations selected by the builder based on `cimd.enabled`: `OpaqueClientResolver` (rejects URL-format client IDs with `invalid_client`) and `CIMDClientResolver` (routes URL-format client IDs through CIMD fetch/validate/cache, delegates non-URL IDs to UUID lookup). The builder wires the correct strategy — the domain service is mode-agnostic. Located in `internal/ports/cimd.go` (interface) and `internal/domain/oauth2/client_resolver.go` + `internal/domain/cimd/client_resolver.go` (implementations).
+
+**CIMDFetcher**: Hexagonal port interface (outbound, infrastructure-side) for fetching Client ID Metadata Documents from remote HTTPS endpoints with SSRF protection, configurable timeout, and response size limits. Analogous to `JWKSPort`. Implemented by the SSRF-hardened HTTP fetcher adapter in `internal/adapters/cimd/fetcher.go` which uses a custom `net.Dialer.Control` callback for TOCTOU-safe IP address validation before TCP connect.
+
+**ClientResolution**: DTO returned by `ClientResolver.ResolveClient()`. Contains the resolved `*storage.Agent` and an optional `*cimd.ClientIDMetadataDocument` (nil for opaque UUID client IDs). Used by `OAuth2AuthorizationService` to carry CIMD metadata into the consent session.
+
 ### General Acronyms
 
 **ADR**: Architecture Decision Record - Documents important architectural decisions and their rationale

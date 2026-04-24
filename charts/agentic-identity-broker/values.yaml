@@ -440,6 +440,26 @@ broker:
     upstreamTimeoutSeconds: 10
     # -- Operation mode (proxy or authorization_server)
     mode: proxy
+    # Client ID Metadata Document (CIMD) support
+    # Enables AI agents to identify using HTTPS URLs as client_id.
+    cimd:
+      # -- Enable URL-based client_id support. Default: false.
+      enabled: false
+      # -- HTTP timeout for CIMD document fetches. Default: 1s.
+      fetchTimeout: 1s
+      # -- Maximum response body size in bytes. Default: 5120.
+      maxResponseBytes: 5120
+      cache:
+        # -- Maximum TTL for cached documents (HTTP max-age clamped to this). Default: 1h.
+        maxTtl: 1h
+        # -- Minimum TTL for cached documents. Default: 60s.
+        minTtl: 60s
+      ssrf:
+        # -- Extra CIDR ranges blocked for CIMD fetches beyond RFC 6890 defaults. Default: [].
+        extraBlockedCidrs: []
+      # -- Keyword blocklist for CIMD client_name values (case-insensitive). Default: [].
+      clientNameBlocklist: []
+
     # Multi-agent client sharing (Feature 021)
     # When enabled, multiple agents may share the same upstream OAuth2 client_id.
     # Requires both agentIdParamName and agentIdClaimName when enabled.

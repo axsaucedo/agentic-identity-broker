@@ -2414,6 +2414,15 @@ components:
           description: Scopes supported by this server
           example: [openid, profile, email]
 
+        client_id_metadata_document_supported:
+          type: boolean
+          description: |
+            Indicates whether this authorization server supports URL-based client_id values
+            via the Client ID Metadata Document specification
+            (draft-ietf-oauth-client-id-metadata-document-01).
+            Present and true when CIMD is enabled; absent when disabled.
+          example: true
+
     JWKSetResponse:
       type: object
       required:

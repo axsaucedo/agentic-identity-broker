@@ -1241,6 +1241,36 @@ components:
             - openid
             - profile
             - email
+        client_uris:
+          type: array
+          nullable: true
+          description: |
+            Pre-registered Client ID Metadata Document URLs for this agent.
+            Each entry must be a valid HTTPS URL and globally unique across all agents.
+            When CIMD is enabled, authorization requests with a matching URL as client_id
+            are resolved to this agent via CIMD fetch/validate/cache.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/client
+        auth_method:
+          type: string
+          nullable: true
+          description: |
+            Last observed token_endpoint_auth_method from a successful CIMD fetch.
+            Populated automatically on first CIMD fetch; null until then.
+          readOnly: true
+          example: none
+        jwks_uri:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Last observed jwks_uri from a successful CIMD fetch.
+            Populated automatically on first CIMD fetch; null until then.
+          readOnly: true
+          example: https://agent.example.com/.well-known/jwks.json
         created_at:
           type: string
           format: date-time
@@ -1341,6 +1371,19 @@ components:
             - openid
             - profile
             - email
+        client_uris:
+          type: array
+          nullable: true
+          description: |
+            Pre-registered Client ID Metadata Document URLs for this agent.
+            Each entry must be a valid HTTPS URL and globally unique across all agents.
+            Returns 400 for malformed URLs; returns 409 Conflict when a URI is already
+            registered to a different agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/client
 
     AgentUpdateRequest:
       type: object
@@ -1429,6 +1472,20 @@ components:
             - openid
             - profile
             - email
+        client_uris:
+          type: array
+          nullable: true
+          description: |
+            Pre-registered Client ID Metadata Document URLs for this agent.
+            Replaces the previous list on PUT (full replacement semantics).
+            Each entry must be a valid HTTPS URL and globally unique across all agents.
+            Returns 400 for malformed URLs; returns 409 Conflict when a URI is already
+            registered to a different agent.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://agent.example.com/client
 
     ServiceRequirement:
       type: object

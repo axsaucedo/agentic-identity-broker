@@ -74,10 +74,10 @@
 
 - [ ] T016 Create CIMD test fixtures in `tests/e2e/fixtures/cimd.go`: `CIMDAgent()`, `ValidCIMDDocument()`, `CIMDConfig()`, mock CIMD HTTPS server helper
 - [ ] T017 Write E2E tests in `tests/e2e/cimd_authorization_test.go` for US1 scenarios (5 It blocks: resolve agent from CIMD, client_id mismatch, absent document, redirect_uri mismatch, disabled gate)
-- [ ] T018 [P] Write E2E tests in `tests/e2e/cimd_ssrf_test.go` for US2 scenarios (7 It blocks: private IP, loopback, link-local, HTTP scheme, dot segments, oversized, timeout)
-- [ ] T019 [P] Write E2E tests in `tests/e2e/cimd_caching_test.go` for US3 scenarios (4 It blocks: cache hit, expired refetch, no error cache, operator TTL override)
-- [ ] T020 [P] Write E2E tests in `tests/e2e/cimd_metadata_test.go` for US4 scenarios (2 It blocks: field present when enabled, absent when disabled)
-- [ ] T021 [P] Write E2E tests in `tests/e2e/cimd_consent_test.go` for US5 scenarios (4 It blocks: summary+badge+details, localhost warning, expand details, brand mismatch)
+- [X] T018 [P] Write E2E tests in `tests/e2e/cimd_ssrf_test.go` for US2 scenarios (7 It blocks: private IP, loopback, link-local, HTTP scheme, dot segments, oversized, timeout)
+- [X] T019 [P] Write E2E tests in `tests/e2e/cimd_caching_test.go` for US3 scenarios (4 It blocks: cache hit, expired refetch, no error cache, operator TTL override)
+- [X] T020 [P] Write E2E tests in `tests/e2e/cimd_metadata_test.go` for US4 scenarios (2 It blocks: field present when enabled, absent when disabled)
+- [X] T021 [P] Write E2E tests in `tests/e2e/cimd_consent_test.go` for US5 scenarios (4 It blocks: summary+badge+details, localhost warning, expand details, brand mismatch)
 - [ ] T022 [P] Write Playwright E2E tests in `tests/e2e/frontend/cimd_consent_test.go` for CS-001–CS-004 with screenshot captures
 - [ ] T023 Verify all E2E tests FAIL semantically (red phase): detailed expectations present and failing, no placeholders, no XIt/PIt/Skip markers
 
@@ -89,13 +89,13 @@
 
 **Purpose**: Extend the existing Agent entity with CIMD fields and add new storage method, isolated from business logic
 
-- [ ] T024 Add `ClientURIs []string`, `AuthMethod *string`, `JwksURI *string` fields to Agent struct in `internal/domain/storage/agent.go`; update `Validate()`, `ValidateForCreate()`, and `Copy()` — validate each `client_uris` entry as a well-formed HTTPS URL on both create and update paths
-- [ ] T025 Add `GetByClientURI(ctx context.Context, uri string) (*Agent, error)` to `AgentRepository` interface in `internal/ports/storage.go`
-- [ ] T026 [P] Implement `GetByClientURI` on in-memory adapter in `internal/adapters/storage/memory/` with secondary index `map[string]id.AgentID`; enforce global uniqueness on create/update (reject duplicate URIs across agents)
-- [ ] T027 [P] Implement `GetByClientURI` on postgres adapter in `internal/adapters/storage/postgres/` using `SELECT agent_id FROM agent_client_uris WHERE client_uri = $1`; all Create and Update operations must manage the parent agents row and child agent_client_uris rows atomically within a single transaction — a UNIQUE(client_uri) violation must roll back the entire operation leaving no partial state; hydrate `Agent.ClientURIs` from agent_client_uris on every read path (Get, List, GetByClientID, GetByClientURI); map constraint violation to 409-mappable error
-- [ ] T027a [P] Write postgres storage tests that: (1) round-trip ClientURIs through create/get/list/update and assert ClientURIs are fully populated on each read; (2) assert GetByClientID returns Agent.ClientURIs fully populated; (3) assert GetByClientURI returns Agent.ClientURIs fully populated; (4) prove a duplicate-URI conflict rolls back the entire create (no agent row remains) and the entire update (agent row retains its pre-update state); also write admin API tests for invalid and duplicate `client_uris` on both `POST /api/agents` (create) and `PUT /api/agents/{agent-id}` (update) — verify 400 for malformed URLs and 409 for duplicates across agents
-- [ ] T028 Extend `AgentRequest`/`AgentResponse` DTOs with `ClientURIs`, `AuthMethod`, `JwksURI` in `internal/adapters/http/handlers/admin/agents_handler.go`
-- [ ] T029 Verify project compiles with all agent entity extensions (`just build`)
+- [X] T024 Add `ClientURIs []string`, `AuthMethod *string`, `JwksURI *string` fields to Agent struct in `internal/domain/storage/agent.go`; update `Validate()`, `ValidateForCreate()`, and `Copy()` — validate each `client_uris` entry as a well-formed HTTPS URL on both create and update paths
+- [X] T025 Add `GetByClientURI(ctx context.Context, uri string) (*Agent, error)` to `AgentRepository` interface in `internal/ports/storage.go`
+- [X] T026 [P] Implement `GetByClientURI` on in-memory adapter in `internal/adapters/storage/memory/` with secondary index `map[string]id.AgentID`; enforce global uniqueness on create/update (reject duplicate URIs across agents)
+- [X] T027 [P] Implement `GetByClientURI` on postgres adapter in `internal/adapters/storage/postgres/` using `SELECT agent_id FROM agent_client_uris WHERE client_uri = $1`; all Create and Update operations must manage the parent agents row and child agent_client_uris rows atomically within a single transaction — a UNIQUE(client_uri) violation must roll back the entire operation leaving no partial state; hydrate `Agent.ClientURIs` from agent_client_uris on every read path (Get, List, GetByClientID, GetByClientURI); map constraint violation to 409-mappable error
+- [X] T027a [P] Write postgres storage tests that: (1) round-trip ClientURIs through create/get/list/update and assert ClientURIs are fully populated on each read; (2) assert GetByClientID returns Agent.ClientURIs fully populated; (3) assert GetByClientURI returns Agent.ClientURIs fully populated; (4) prove a duplicate-URI conflict rolls back the entire create (no agent row remains) and the entire update (agent row retains its pre-update state); also write admin API tests for invalid and duplicate `client_uris` on both `POST /api/agents` (create) and `PUT /api/agents/{agent-id}` (update) — verify 400 for malformed URLs and 409 for duplicates across agents
+- [X] T028 Extend `AgentRequest`/`AgentResponse` DTOs with `ClientURIs`, `AuthMethod`, `JwksURI` in `internal/adapters/http/handlers/admin/agents_handler.go`
+- [X] T029 Verify project compiles with all agent entity extensions (`just build`)
 
 **Checkpoint**: Agent entity extended, project compiles, no business logic yet
 
@@ -105,17 +105,17 @@
 
 **Purpose**: CIMD domain types, port interface, and fetcher adapter that ALL user stories depend on
 
-- [ ] T030 Define `ClientResolver` strategy interface, `CIMDFetcher` port interface, `ClientResolution` DTO, and `CIMDFetchResult` DTO in `internal/ports/cimd.go`
-- [ ] T031 [P] Implement `ClientIDMetadataDocumentURL` value object with parse-time validation (scheme, path, fragment, credentials, port, dot-segments) in `internal/domain/cimd/url.go`
-- [ ] T032 [P] Implement `SSRFBlocklist` value object with RFC 6890 default ranges + operator extras in `internal/domain/cimd/blocklist.go`
-- [ ] T033 [P] Implement `ClientIDMetadataDocument` value object with JSON parsing and validation (client_id match, auth method, redirect URI same-origin, keyword blocklist) in `internal/domain/cimd/document.go`
-- [ ] T034 Implement `CIMDCache` (sync.RWMutex-protected map with TTL clamping from HTTP headers) in `internal/domain/cimd/cache.go`
-- [ ] T035 Implement SSRF-hardened HTTP fetcher adapter (custom Dialer.Control, no redirects, LimitReader, context timeout) in `internal/adapters/cimd/fetcher.go`
-- [ ] T036 [P] Write unit tests for `ClientIDMetadataDocumentURL` in `internal/domain/cimd/url_test.go`
-- [ ] T037 [P] Write unit tests for `SSRFBlocklist` in `internal/domain/cimd/blocklist_test.go`
-- [ ] T038 [P] Write unit tests for `ClientIDMetadataDocument` in `internal/domain/cimd/document_test.go`
-- [ ] T039 [P] Write unit tests for `CIMDCache` in `internal/domain/cimd/cache_test.go`
-- [ ] T040 Write integration tests for SSRF-hardened fetcher with injected resolver/dialer and dial-attempt spy in `internal/adapters/cimd/fetcher_test.go`
+- [X] T030 Define `ClientResolver` strategy interface, `CIMDFetcher` port interface, `ClientResolution` DTO, and `CIMDFetchResult` DTO in `internal/ports/cimd.go`
+- [X] T031 [P] Implement `ClientIDMetadataDocumentURL` value object with parse-time validation (scheme, path, fragment, credentials, port, dot-segments) in `internal/domain/cimd/url.go`
+- [X] T032 [P] Implement `SSRFBlocklist` value object with RFC 6890 default ranges + operator extras in `internal/domain/cimd/blocklist.go`
+- [X] T033 [P] Implement `ClientIDMetadataDocument` value object with JSON parsing and validation (client_id match, auth method, redirect URI same-origin, keyword blocklist) in `internal/domain/cimd/document.go`
+- [X] T034 Implement `CIMDCache` (sync.RWMutex-protected map with TTL clamping from HTTP headers) in `internal/domain/cimd/cache.go`
+- [X] T035 Implement SSRF-hardened HTTP fetcher adapter (custom Dialer.Control, no redirects, LimitReader, context timeout) in `internal/adapters/cimd/fetcher.go`
+- [X] T036 [P] Write unit tests for `ClientIDMetadataDocumentURL` in `internal/domain/cimd/url_test.go`
+- [X] T037 [P] Write unit tests for `SSRFBlocklist` in `internal/domain/cimd/blocklist_test.go`
+- [X] T038 [P] Write unit tests for `ClientIDMetadataDocument` in `internal/domain/cimd/document_test.go`
+- [X] T039 [P] Write unit tests for `CIMDCache` in `internal/domain/cimd/cache_test.go`
+- [X] T040 Write integration tests for SSRF-hardened fetcher with injected resolver/dialer and dial-attempt spy in `internal/adapters/cimd/fetcher_test.go`
 
 **Checkpoint**: Foundation ready — all CIMD domain types, port, and adapter in place; user story implementation can begin
 
@@ -129,18 +129,18 @@
 
 ### Tests for User Story 1
 
-- [ ] T041 [P] [US1] Write unit tests for `CIMDService` orchestration (fetch → validate → cache → audit → return) in `internal/domain/cimd/service_test.go`, including: first-fetch baseline population (no audit event), subsequent fetch with changed snapshot field (audit event emitted + Agent updated via repository), unchanged field (no audit event)
-- [ ] T042 [P] [US1] Write unit tests for `OpaqueClientResolver` (rejects https:// prefix, resolves UUID) in `internal/domain/oauth2/client_resolver_test.go`
-- [ ] T043 [P] [US1] Write unit tests for `CIMDClientResolver` (URL detection → CIMD resolution → fallback to UUID) in `internal/domain/cimd/client_resolver_test.go`
+- [X] T041 [P] [US1] Write unit tests for `CIMDService` orchestration (fetch → validate → cache → audit → return) in `internal/domain/cimd/service_test.go`, including: first-fetch baseline population (no audit event), subsequent fetch with changed snapshot field (audit event emitted + Agent updated via repository), unchanged field (no audit event)
+- [X] T042 [P] [US1] Write unit tests for `OpaqueClientResolver` (rejects https:// prefix, resolves UUID) in `internal/domain/oauth2/client_resolver_test.go`
+- [X] T043 [P] [US1] Write unit tests for `CIMDClientResolver` (URL detection → CIMD resolution → fallback to UUID) in `internal/domain/cimd/client_resolver_test.go`
 
 ### Implementation for User Story 1
 
-- [ ] T044 [US1] Implement `CIMDService` in `internal/domain/cimd/service.go`: URL validation → cache check → fetch via port → document validation → brand pin check → security field change detection → persist updated snapshot fields (redirect_uris, auth_method, jwks_uri) back to Agent via `AgentRepository.Update` → cache store (first fetch populates baseline without audit event; subsequent fetches compare then update)
-- [ ] T045 [US1] Implement `OpaqueClientResolver` in `internal/domain/oauth2/client_resolver.go`: reject `https://`-prefixed client_id with `invalid_client`, parse UUID for opaque IDs
-- [ ] T046 [US1] Implement `CIMDClientResolver` in `internal/domain/cimd/client_resolver.go`: detect URL → validate → lookup agent by client URI → fetch/validate CIMD → return resolution with metadata; fall back to UUID for non-URL
-- [ ] T047 [US1] Modify `OAuth2AuthorizationService` in `internal/domain/oauth2/service.go` to delegate client resolution to injected `ClientResolver` strategy instead of direct `id.ParseAgentID`
-- [ ] T048 [US1] Wire `ClientResolver` strategy in `internal/app/builder.go` based on `cimd.enabled`: `CIMDClientResolver` when true, `OpaqueClientResolver` when false; instantiate CIMDService/fetcher/cache only when enabled
-- [ ] T049 [US1] Verify US1 E2E tests in `tests/e2e/cimd_authorization_test.go` turn green
+- [X] T044 [US1] Implement `CIMDService` in `internal/domain/cimd/service.go`: URL validation → cache check → fetch via port → document validation → brand pin check → security field change detection → persist updated snapshot fields (redirect_uris, auth_method, jwks_uri) back to Agent via `AgentRepository.Update` → cache store (first fetch populates baseline without audit event; subsequent fetches compare then update)
+- [X] T045 [US1] Implement `OpaqueClientResolver` in `internal/domain/oauth2/client_resolver.go`: reject `https://`-prefixed client_id with `invalid_client`, parse UUID for opaque IDs
+- [X] T046 [US1] Implement `CIMDClientResolver` in `internal/domain/cimd/client_resolver.go`: detect URL → validate → lookup agent by client URI → fetch/validate CIMD → return resolution with metadata; fall back to UUID for non-URL
+- [X] T047 [US1] Modify `OAuth2AuthorizationService` in `internal/domain/oauth2/service.go` to delegate client resolution to injected `ClientResolver` strategy instead of direct `id.ParseAgentID`
+- [X] T048 [US1] Wire `ClientResolver` strategy in `internal/app/builder.go` based on `cimd.enabled`: `CIMDClientResolver` when true, `OpaqueClientResolver` when false; instantiate CIMDService/fetcher/cache only when enabled
+- [X] T049 [US1] Verify US1 E2E tests in `tests/e2e/cimd_authorization_test.go` turn green
 
 **Checkpoint**: User Story 1 fully functional — URL-based client_id resolves agent and presents CIMD metadata
 
@@ -154,13 +154,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T050 [P] [US2] Write additional fetcher adapter tests for each SSRF category (private, loopback, link-local, HTTP scheme, dot-segments, oversized, timeout) with dial-attempt spy in `internal/adapters/cimd/fetcher_test.go`
+- [X] T050 [P] [US2] Write additional fetcher adapter tests for each SSRF category (private, loopback, link-local, HTTP scheme, dot-segments, oversized, timeout) with dial-attempt spy in `internal/adapters/cimd/fetcher_test.go`
 
 ### Implementation for User Story 2
 
-- [ ] T051 [US2] Verify SSRF enforcement is complete in fetcher adapter (all 14 categories from SC-002); add any missing checks in `internal/adapters/cimd/fetcher.go` and `internal/domain/cimd/url.go`
-- [ ] T052 [US2] Add structured audit logging for SSRF blocks (CIMDFetchBlocked events) in `internal/domain/cimd/service.go`
-- [ ] T053 [US2] Verify US2 E2E tests in `tests/e2e/cimd_ssrf_test.go` turn green
+- [X] T051 [US2] Verify SSRF enforcement is complete in fetcher adapter (all 14 categories from SC-002); add any missing checks in `internal/adapters/cimd/fetcher.go` and `internal/domain/cimd/url.go`
+- [X] T052 [US2] Add structured audit logging for SSRF blocks (CIMDFetchBlocked events) in `internal/domain/cimd/service.go`
+- [X] T053 [US2] Verify US2 E2E tests in `tests/e2e/cimd_ssrf_test.go` turn green
 
 **Checkpoint**: All SSRF attack categories individually rejected, adapter tests prove no TCP dial for blocked addresses
 
@@ -188,7 +188,7 @@
 - [ ] T062 [P] [US5] Implement `CIMDLocalhostWarning` component (CS-003) in `web/src/components/consent/CIMDLocalhostWarning.tsx`
 - [ ] T063 [P] [US5] Implement `CIMDAdvancedDetails` component (CS-004) in `web/src/components/consent/CIMDAdvancedDetails.tsx`
 - [ ] T064 [US5] Integrate CIMD consent components into `web/src/pages/ConsentOverviewPage.tsx` (conditional rendering when `cimd_metadata` present)
-- [ ] T065 [US5] Verify US5 E2E tests in `tests/e2e/cimd_consent_test.go` turn green
+- [X] T065 [US5] Verify US5 E2E tests in `tests/e2e/cimd_consent_test.go` turn green
 - [ ] T066 [US5] Verify Playwright tests in `tests/e2e/frontend/cimd_consent_test.go` pass with screenshots captured
 
 **Checkpoint**: Consent screen renders all four CIMD UX elements (CS-001–CS-004)
@@ -203,13 +203,13 @@
 
 ### Tests for User Story 3
 
-- [ ] T067 [P] [US3] Write unit tests for cache TTL computation (HTTP header parsing, min/max clamping, no-store/no-cache ignored) in `internal/domain/cimd/cache_test.go`
+- [X] T067 [P] [US3] Write unit tests for cache TTL computation (HTTP header parsing, min/max clamping, no-store/no-cache ignored) in `internal/domain/cimd/cache_test.go`
 
 ### Implementation for User Story 3
 
-- [ ] T068 [US3] Implement HTTP cache header parsing (Cache-Control max-age, Expires, ETag) and TTL computation with operator min/max clamping in `internal/domain/cimd/cache.go`
-- [ ] T069 [US3] Integrate cache TTL computation into `CIMDService` fetch flow in `internal/domain/cimd/service.go`
-- [ ] T070 [US3] Verify US3 E2E tests in `tests/e2e/cimd_caching_test.go` turn green
+- [X] T068 [US3] Implement HTTP cache header parsing (Cache-Control max-age, Expires, ETag) and TTL computation with operator min/max clamping in `internal/domain/cimd/cache.go`
+- [X] T069 [US3] Integrate cache TTL computation into `CIMDService` fetch flow in `internal/domain/cimd/service.go`
+- [X] T070 [US3] Verify US3 E2E tests in `tests/e2e/cimd_caching_test.go` turn green
 
 **Checkpoint**: Caching functional — second request within TTL serves from cache
 
@@ -223,8 +223,8 @@
 
 ### Implementation for User Story 4
 
-- [ ] T071 [US4] Modify OAuth2 metadata handler in `internal/adapters/http/handlers/enduser/oauth2_metadata_handler.go` to include `client_id_metadata_document_supported` field based on `cimd.enabled` config
-- [ ] T072 [US4] Verify US4 E2E tests in `tests/e2e/cimd_metadata_test.go` turn green
+- [X] T071 [US4] Modify OAuth2 metadata handler in `internal/adapters/http/handlers/enduser/oauth2_metadata_handler.go` to include `client_id_metadata_document_supported` field based on `cimd.enabled` config
+- [X] T072 [US4] Verify US4 E2E tests in `tests/e2e/cimd_metadata_test.go` turn green
 
 **Checkpoint**: Metadata advertisement functional
 
