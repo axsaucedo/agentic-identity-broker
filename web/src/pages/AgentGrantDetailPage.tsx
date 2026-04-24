@@ -14,7 +14,7 @@
  * - Smooth scroll to errors on validation failure
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@components/layout/AppLayout';
 import { PageTransition } from '@components/ui/PageTransition';
@@ -52,15 +52,17 @@ export function AgentGrantDetailPage() {
   const searchParams = new URLSearchParams(location.search);
   const redirectUri = searchParams.get('redirect_uri') || undefined;
 
-  // Parse the original OAuth2 authorize URL to extract CIMD params
-  let cimdParams: { clientId: string; redirectUri: string; scope: string } | undefined;
-  if (redirectUri) {
+  // Parse the original OAuth2 authorize URL to extract CIMD params.
+  // Memoized so the object reference is stable across renders — prevents infinite
+  // refetch loop in useAgentGrants (which includes cimdParams in useCallback deps).
+  const cimdParams = useMemo(() => {
+    if (!redirectUri) return undefined;
     try {
       const authorizeUrl = new URL(redirectUri, window.location.origin);
       const authorizeParams = authorizeUrl.searchParams;
       const maybeClientId = authorizeParams.get('client_id') || undefined;
       if (maybeClientId?.startsWith('https://')) {
-        cimdParams = {
+        return {
           clientId: maybeClientId,
           redirectUri: authorizeParams.get('redirect_uri') || '',
           scope: authorizeParams.get('scope') || '',
@@ -69,7 +71,8 @@ export function AgentGrantDetailPage() {
     } catch {
       // ignore parse errors
     }
-  }
+    return undefined;
+  }, [redirectUri]);
 
   const resolvedAgentId = agentId ?? '';
 

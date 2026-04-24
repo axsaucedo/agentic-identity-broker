@@ -120,6 +120,18 @@ data:
         agent_id_claim_name: {{ .agentIdClaimName | quote }}
         {{- end }}
       {{- end }}
+      {{- with .Values.broker.oauth2AuthorizationServer.cimd }}
+      cimd:
+        enabled: {{ .enabled }}
+        fetch_timeout: {{ .fetchTimeout | quote }}
+        max_response_bytes: {{ .maxResponseBytes }}
+        cache:
+          max_ttl: {{ .cache.maxTtl | quote }}
+          min_ttl: {{ .cache.minTtl | quote }}
+        ssrf:
+          extra_blocked_cidrs: {{ toJson .ssrf.extraBlockedCidrs }}
+        client_name_blocklist: {{ toJson .clientNameBlocklist }}
+      {{- end }}
     {{- end }}
 
     {{- with .Values.broker.tokenExchange }}

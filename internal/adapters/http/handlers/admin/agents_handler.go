@@ -254,7 +254,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Update agent entity
+	// Update agent entity — preserve read-only CIMD snapshot fields from existing record.
 	agent := &storage.Agent{
 		ID:                   parsedAgentID,
 		ClientID:             id.ClientID(req.ClientID),
@@ -268,6 +268,10 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs:         req.RedirectURIs,
 		AllowedScopes:        req.AllowedScopes,
 		ClientURIs:           req.ClientURIs,
+		AuthMethod:           existing.AuthMethod,
+		JwksURI:              existing.JwksURI,
+		CIMDClientName:       existing.CIMDClientName,
+		CIMDLogoURI:          existing.CIMDLogoURI,
 		CreatedAt:            existing.CreatedAt,
 		UpdatedAt:            time.Now().UTC(),
 	}

@@ -80,11 +80,8 @@ func (a *Agent) Validate() error {
 		}
 	}
 
-	// ClientURIs validation: each entry must be a well-formed HTTPS URL
-	for i, uri := range a.ClientURIs {
-		if !isValidClientURI(uri) {
-			return fmt.Errorf("client_uris[%d] is not a valid HTTPS URL", i)
-		}
+	if err := validateClientURIs(a.ClientURIs); err != nil {
+		return err
 	}
 
 	// Service requirements validation
@@ -95,15 +92,55 @@ func (a *Agent) Validate() error {
 	return nil
 }
 
-// isValidClientURI validates that a string is a well-formed HTTPS URL suitable for use as a
-// Client ID Metadata Document URL. Only the scheme is checked here; full structural validation
-// (path, port, fragments, dot-segments) is performed by ClientIDMetadataDocumentURL in domain/cimd/.
-func isValidClientURI(uriStr string) bool {
-	u, err := url.Parse(uriStr)
-	if err != nil || u.Host == "" {
-		return false
+// validateClientURIs applies full CIMD URL validation to each entry in the list and
+// rejects duplicates within the list. Mirrors cimd.ParseClientIDMetadataDocumentURL
+// (a direct import would create a circular dependency since cimd imports storage).
+func validateClientURIs(uris []string) error {
+	seen := make(map[string]struct{}, len(uris))
+	for i, uriStr := range uris {
+		if _, dup := seen[uriStr]; dup {
+			return fmt.Errorf("client_uris[%d] is a duplicate: %q", i, uriStr)
+		}
+		seen[uriStr] = struct{}{}
+		if err := validateClientURI(uriStr); err != nil {
+			return fmt.Errorf("client_uris[%d]: %w", i, err)
+		}
 	}
-	return u.Scheme == "https"
+	return nil
+}
+
+func validateClientURI(uriStr string) error {
+	if strings.Contains(uriStr, "#") {
+		return errors.New("must not contain a fragment")
+	}
+	u, err := url.Parse(uriStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("must use https scheme, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return errors.New("must have a host")
+	}
+	if u.User != nil {
+		return errors.New("must not contain credentials")
+	}
+	port := u.Port()
+	host := u.Hostname()
+	isLoopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
+	if port != "" && port != "443" && !isLoopback {
+		return fmt.Errorf("port must be 443 or absent, got %q", port)
+	}
+	if u.Path == "" || u.Path == "/" {
+		return errors.New("must have a non-empty path")
+	}
+	for _, seg := range strings.Split(u.Path, "/") {
+		if seg == "." || seg == ".." {
+			return errors.New("path must not contain dot segments")
+		}
+	}
+	return nil
 }
 
 // isValidURL validates that a string is a valid HTTP or HTTPS URL.
@@ -260,11 +297,8 @@ func (a *Agent) ValidateForCreate() error {
 		}
 	}
 
-	// ClientURIs validation: each entry must be a well-formed HTTPS URL
-	for i, uri := range a.ClientURIs {
-		if !isValidClientURI(uri) {
-			return fmt.Errorf("client_uris[%d] is not a valid HTTPS URL", i)
-		}
+	if err := validateClientURIs(a.ClientURIs); err != nil {
+		return err
 	}
 
 	// Service requirements validation

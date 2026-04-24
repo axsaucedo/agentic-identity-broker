@@ -370,7 +370,8 @@ func (c *OAuth2AuthServerConfig) isZero() bool {
 		c.TokenClaimsExpression == "" &&
 		!c.MultiAgentClient.Enabled &&
 		c.MultiAgentClient.AgentIDParamName == "" &&
-		c.MultiAgentClient.AgentIDClaimName == ""
+		c.MultiAgentClient.AgentIDClaimName == "" &&
+		!c.CIMD.Enabled
 }
 
 // Validate validates the OAuth2AuthServerConfig structure.
