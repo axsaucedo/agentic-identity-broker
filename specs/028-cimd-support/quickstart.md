@@ -63,8 +63,8 @@ Add fields: `ClientURIs []string`, `AuthMethod *string`, `JwksURI *string`. Upda
 
 **New repository method**: `GetByClientURI(ctx, uri string) (*Agent, error)` — exact match lookup against the `agent_client_uris` child table.
 
-- **Memory**: secondary index `map[string]id.AgentID` built on create/update; uniqueness enforced at write time
-- **Postgres**: `SELECT agent_id FROM agent_client_uris WHERE client_uri = $1`; create/update manages child rows with uniqueness guaranteed by `UNIQUE(client_uri)` database constraint
+- **Memory**: secondary index `map[string]id.AgentID` built on create/update; uniqueness enforced at write time; ClientURIs hydrated from the index on every read
+- **Postgres**: `SELECT agent_id FROM agent_client_uris WHERE client_uri = $1`; Create and Update run inside a single transaction — parent agents row and child agent_client_uris rows are written atomically so a UNIQUE violation rolls back the whole operation with no partial state; Get, List, GetByClientID, and GetByClientURI all JOIN or sub-SELECT against agent_client_uris to hydrate ClientURIs
 
 ### 7. Admin Handler (`internal/adapters/http/handlers/admin/agents_handler.go`)
 
