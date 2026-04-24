@@ -25,15 +25,22 @@
 **Database migration** (015):
 ```sql
 -- UP
-ALTER TABLE agents ADD COLUMN client_uris TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE agents ADD COLUMN auth_method TEXT;
 ALTER TABLE agents ADD COLUMN jwks_uri TEXT;
 
+CREATE TABLE agent_client_uris (
+    agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    client_uri TEXT NOT NULL,
+    UNIQUE(client_uri)
+);
+
 -- DOWN
-ALTER TABLE agents DROP COLUMN client_uris;
+DROP TABLE agent_client_uris;
 ALTER TABLE agents DROP COLUMN auth_method;
 ALTER TABLE agents DROP COLUMN jwks_uri;
 ```
+
+**Uniqueness**: `UNIQUE(client_uri)` on the child table is the sole enforcement mechanism. No two agents may share a Client ID Metadata Document URL; the constraint violation maps to a 409 Conflict response on admin writes.
 
 ## New Domain Types
 
@@ -211,7 +218,7 @@ Events are emitted via structured logging (existing `slog` logger), not a separa
 ## Relationships
 
 ```
-Agent 1──* ClientIDMetadataDocumentURL (pre-registered, stored as client_uris)
+Agent 1──* ClientIDMetadataDocumentURL (pre-registered, stored in agent_client_uris child table)
 Agent 1──0..1 AuthMethod snapshot (nullable)
 Agent 1──0..1 JwksURI snapshot (nullable)
 CIMDCacheEntry *──1 ClientIDMetadataDocument (in-process only)

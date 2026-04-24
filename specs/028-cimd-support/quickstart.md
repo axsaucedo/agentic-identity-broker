@@ -57,14 +57,14 @@ resolution, err := s.clientResolver.ResolveClient(ctx, req.ClientID)
 
 ### 5. Agent Entity Extension (`internal/domain/storage/agent.go`)
 
-Add fields: `ClientURIs []string`, `AuthMethod *string`, `JwksURI *string`. Update `Validate()`, `Copy()`.
+Add fields: `ClientURIs []string`, `AuthMethod *string`, `JwksURI *string`. Update `Validate()`, `ValidateForCreate()`, `Copy()`.
 
 ### 6. Storage Adapters
 
-**New repository method**: `GetByClientURI(ctx, uri string) (*Agent, error)` — exact match lookup against `client_uris` array.
+**New repository method**: `GetByClientURI(ctx, uri string) (*Agent, error)` — exact match lookup against the `agent_client_uris` child table.
 
-- **Memory**: secondary index `map[string]id.AgentID` built on create/update
-- **Postgres**: `SELECT ... FROM agents WHERE $1 = ANY(client_uris)`
+- **Memory**: secondary index `map[string]id.AgentID` built on create/update; uniqueness enforced at write time
+- **Postgres**: `SELECT agent_id FROM agent_client_uris WHERE client_uri = $1`; create/update manages child rows with uniqueness guaranteed by `UNIQUE(client_uri)` database constraint
 
 ### 7. Admin Handler (`internal/adapters/http/handlers/admin/agents_handler.go`)
 

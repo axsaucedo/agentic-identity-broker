@@ -58,8 +58,8 @@
 
 ### Phase 2d: Database Design
 
-- [ ] T012 Create migration `migrations/015_add_agent_cimd_fields.up.sql`: add `client_uris TEXT[] NOT NULL DEFAULT '{}'`, `auth_method TEXT`, `jwks_uri TEXT` to agents table; design uniqueness enforcement for `client_uris` entries (e.g. normalized child table with UNIQUE constraint, or GIN index + transactional check) to support deterministic lookup and 409 Conflict on admin writes
-- [ ] T013 [P] Create migration `migrations/015_add_agent_cimd_fields.down.sql`: drop the three columns
+- [ ] T012 Create migration `migrations/015_add_agent_cimd_fields.up.sql`: add `auth_method TEXT`, `jwks_uri TEXT` columns to agents table; create normalized `agent_client_uris` child table (`agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE`, `client_uri TEXT NOT NULL`, `UNIQUE(client_uri)`) as single source of truth for client URI storage and uniqueness enforcement
+- [ ] T013 [P] Create migration `migrations/015_add_agent_cimd_fields.down.sql`: drop `agent_client_uris` table, drop `auth_method` and `jwks_uri` columns from agents
 
 **Checkpoint**: Database migrations created
 
@@ -92,7 +92,7 @@
 - [ ] T024 Add `ClientURIs []string`, `AuthMethod *string`, `JwksURI *string` fields to Agent struct in `internal/domain/storage/agent.go`; update `Validate()`, `ValidateForCreate()`, and `Copy()` — validate each `client_uris` entry as a well-formed HTTPS URL on both create and update paths
 - [ ] T025 Add `GetByClientURI(ctx context.Context, uri string) (*Agent, error)` to `AgentRepository` interface in `internal/ports/storage.go`
 - [ ] T026 [P] Implement `GetByClientURI` on in-memory adapter in `internal/adapters/storage/memory/` with secondary index `map[string]id.AgentID`; enforce global uniqueness on create/update (reject duplicate URIs across agents)
-- [ ] T027 [P] Implement `GetByClientURI` on postgres adapter in `internal/adapters/storage/postgres/` using `SELECT ... FROM agents WHERE $1 = ANY(client_uris)`; enforce global uniqueness on create/update via transactional check or DB constraint (return 409-mappable error on duplicate)
+- [ ] T027 [P] Implement `GetByClientURI` on postgres adapter in `internal/adapters/storage/postgres/` using `SELECT agent_id FROM agent_client_uris WHERE client_uri = $1`; create/update manages child rows in `agent_client_uris` (UNIQUE constraint enforces uniqueness; map constraint violation to 409-mappable error)
 - [ ] T027a [P] Write admin API tests for invalid and duplicate `client_uris` on both `POST /api/agents` (create) and `PUT /api/agents/{agent-id}` (update) — verify 400 for malformed URLs and 409 for duplicates across agents
 - [ ] T028 Extend `AgentRequest`/`AgentResponse` DTOs with `ClientURIs`, `AuthMethod`, `JwksURI` in `internal/adapters/http/handlers/admin/agents_handler.go`
 - [ ] T029 Verify project compiles with all agent entity extensions (`just build`)
@@ -129,14 +129,13 @@
 
 ### Tests for User Story 1
 
-- [ ] T041 [P] [US1] Write unit tests for `CIMDService` orchestration (fetch → validate → cache → audit → return) in `internal/domain/cimd/service_test.go`
+- [ ] T041 [P] [US1] Write unit tests for `CIMDService` orchestration (fetch → validate → cache → audit → return) in `internal/domain/cimd/service_test.go`, including: first-fetch baseline population (no audit event), subsequent fetch with changed snapshot field (audit event emitted + Agent updated via repository), unchanged field (no audit event)
 - [ ] T042 [P] [US1] Write unit tests for `OpaqueClientResolver` (rejects https:// prefix, resolves UUID) in `internal/domain/oauth2/client_resolver_test.go`
 - [ ] T043 [P] [US1] Write unit tests for `CIMDClientResolver` (URL detection → CIMD resolution → fallback to UUID) in `internal/domain/cimd/client_resolver_test.go`
 
 ### Implementation for User Story 1
 
 - [ ] T044 [US1] Implement `CIMDService` in `internal/domain/cimd/service.go`: URL validation → cache check → fetch via port → document validation → brand pin check → security field change detection → persist updated snapshot fields (redirect_uris, auth_method, jwks_uri) back to Agent via `AgentRepository.Update` → cache store (first fetch populates baseline without audit event; subsequent fetches compare then update)
-- [ ] T044a [P] [US1] Write tests for Agent snapshot persistence: first-fetch baseline population (no audit event), subsequent fetch with changed field (audit event emitted + Agent updated), unchanged field (no audit event)
 - [ ] T045 [US1] Implement `OpaqueClientResolver` in `internal/domain/oauth2/client_resolver.go`: reject `https://`-prefixed client_id with `invalid_client`, parse UUID for opaque IDs
 - [ ] T046 [US1] Implement `CIMDClientResolver` in `internal/domain/cimd/client_resolver.go`: detect URL → validate → lookup agent by client URI → fetch/validate CIMD → return resolution with metadata; fall back to UUID for non-URL
 - [ ] T047 [US1] Modify `OAuth2AuthorizationService` in `internal/domain/oauth2/service.go` to delegate client resolution to injected `ClientResolver` strategy instead of direct `id.ParseAgentID`

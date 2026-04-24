@@ -37,13 +37,13 @@ This makes the enabled/disabled gate structural rather than conditional: the bui
 
 ## R-004: Agent Entity Extension Strategy
 
-**Decision**: Add three columns to `agents` table: `client_uris` (text array), `auth_method` (text, nullable), `jwks_uri` (text, nullable). These serve dual purpose: pre-registered CIMD URLs for lookup (FR-026) and snapshot baseline for security field change detection (SR-011, SR-012).
+**Decision**: Add two nullable columns to `agents` table (`auth_method`, `jwks_uri`) and a normalized `agent_client_uris` child table (`agent_id UUID REFERENCES agents(id) ON DELETE CASCADE`, `client_uri TEXT NOT NULL`, `UNIQUE(client_uri)`).
 
-**Rationale**: The spec explicitly states that Agent's own fields serve as the change-detection baseline — no separate snapshot columns needed. `client_uris` is the pre-registration list; `auth_method` and `jwks_uri` store last-observed CIMD values. `redirect_uris` already exists on Agent and serves the same snapshot role for redirect URI change detection.
+**Rationale**: The `UNIQUE(client_uri)` constraint on the child table is the only mechanism that can guarantee global uniqueness of Client ID Metadata Document URLs under concurrent writes. An application-level transactional check (e.g. SELECT-then-INSERT) is subject to TOCTOU races; a GIN index on a TEXT[] array column is not a uniqueness constraint. A normalized table with a database-level unique constraint eliminates the race without requiring serializable isolation and makes `GetByClientURI` a simple primary-key-style lookup (`SELECT agent_id FROM agent_client_uris WHERE client_uri = $1`). The `auth_method` and `jwks_uri` snapshot fields remain on the agents table because they are scalar, per-agent values with no uniqueness requirement.
 
 **Alternatives considered**:
+- TEXT[] column + GIN index + application-level transactional check — rejected because the GIN index is not a uniqueness constraint; concurrent writes can still produce duplicates, breaking deterministic resolution and the documented 409 Conflict behavior
 - Separate `cimd_snapshots` table — rejected because the spec says "the stored Agent state IS the baseline" (Clarifications session 2026-04-22)
-- Store full CIMD document JSON on Agent — rejected; only security-critical fields need snapshotting
 
 ## R-005: Admin API for Client URI Management
 
