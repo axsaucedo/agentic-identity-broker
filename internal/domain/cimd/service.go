@@ -2,6 +2,7 @@ package cimd
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -178,8 +179,8 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 	if needsUpdate {
 		agent.UpdatedAt = time.Now().UTC()
 		if err := s.agentRepo.Update(ctx, agent); err != nil {
-			s.logger.Warn("cimd_snapshot_update_failed", "agent_id", agent.ID, "error", err)
-			// Non-fatal: cache the document even if the snapshot update fails
+			s.logger.Error("cimd_snapshot_update_failed", "agent_id", agent.ID, "error", err)
+			return nil, fmt.Errorf("failed to persist CIMD snapshot: %w", err)
 		}
 	}
 

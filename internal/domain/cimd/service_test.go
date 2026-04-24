@@ -251,7 +251,7 @@ func TestService_Resolve_InvalidDocument(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestService_Resolve_UpdateFailureIsNonFatal(t *testing.T) {
+func TestService_Resolve_UpdateFailureFails(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
 	agent := testAgent(agentID)
 
@@ -267,10 +267,11 @@ func TestService_Resolve_UpdateFailureIsNonFatal(t *testing.T) {
 		slog.Default(),
 	)
 
-	// Should succeed even though the snapshot update fails
-	doc, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
-	require.NoError(t, err)
-	assert.NotNil(t, doc)
+	// Snapshot update failure must propagate as an error to prevent stale baselines
+	// from causing repeated false-positive cimd_security_field_changed events.
+	_, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "database unavailable")
 }
 
 func TestService_Resolve_NameBlocklist_Rejected(t *testing.T) {
