@@ -6,6 +6,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"slices"
+	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -76,6 +79,18 @@ func (h *AgentDetailHandler) WithProviderService(svc *thirdparty.ThirdpartyOAuth
 	return h
 }
 
+// CIMDMetadataResponse is included in the agent detail response when the authorization
+// request originated from a CIMD-based client_id.
+type CIMDMetadataResponse struct {
+	ClientName          string   `json:"client_name"`
+	ClientIDURL         string   `json:"client_id_url"`
+	RedirectURI         string   `json:"redirect_uri"`
+	VerifiedDomain      string   `json:"verified_domain"`
+	IsLocalhostRedirect bool     `json:"is_localhost_redirect"`
+	RequestedScopes     []string `json:"requested_scopes"`
+	LogoURI             string   `json:"logo_uri,omitempty"`
+}
+
 // GetAgentDetailResponse represents the response for GET /api/consent/agent/:agentId.
 type GetAgentDetailResponse struct {
 	Data AgentDetailData `json:"data"`
@@ -83,8 +98,9 @@ type GetAgentDetailResponse struct {
 
 // AgentDetailData contains the agent detail and associated services.
 type AgentDetailData struct {
-	Agent    consent.AgentDetail         `json:"agent"`
-	Services []ServiceRequirementForUser `json:"services"`
+	Agent        consent.AgentDetail         `json:"agent"`
+	Services     []ServiceRequirementForUser `json:"services"`
+	CIMDMetadata *CIMDMetadataResponse       `json:"cimd_metadata,omitempty"`
 }
 
 // GetAgentDetail handles GET /api/consent/agent/:agentId
@@ -162,11 +178,13 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	// Sort services: mandatory first, then optional
 	sortServiceRequirements(serviceRequirements)
 
-	// Build response
+	cimdMeta := buildCIMDMetadata(r, agent)
+
 	response := GetAgentDetailResponse{
 		Data: AgentDetailData{
-			Agent:    *agentDetail,
-			Services: serviceRequirements,
+			Agent:        *agentDetail,
+			Services:     serviceRequirements,
+			CIMDMetadata: cimdMeta,
 		},
 	}
 
@@ -179,7 +197,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 }
 
 // writeJSON writes a JSON response.
-func (h *AgentDetailHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func (h *AgentDetailHandler) writeJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
@@ -317,11 +335,71 @@ func getPrincipalFromContext(ctx context.Context) (string, bool) {
 // sortServiceRequirements sorts service requirements with mandatory services first, then optional.
 func sortServiceRequirements(services []ServiceRequirementForUser) {
 	// Sort so mandatory services appear first
-	for i := 0; i < len(services); i++ {
+	for i := range len(services) {
 		for j := i + 1; j < len(services); j++ {
 			if services[i].RequirementType == "optional" && services[j].RequirementType == "mandatory" {
 				services[i], services[j] = services[j], services[i]
 			}
 		}
 	}
+}
+
+// buildCIMDMetadata constructs CIMDMetadataResponse from query params and the agent's CIMD snapshot.
+// Returns nil if the request does not originate from a CIMD-based authorization.
+func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataResponse {
+	clientID := r.URL.Query().Get("client_id")
+	if clientID == "" || !strings.HasPrefix(clientID, "https://") {
+		return nil
+	}
+
+	if !slices.Contains(agent.ClientURIs, clientID) {
+		return nil
+	}
+
+	redirectURI := r.URL.Query().Get("redirect_uri")
+	scope := r.URL.Query().Get("scope")
+
+	u, err := url.Parse(clientID)
+	if err != nil {
+		return nil
+	}
+	verifiedDomain := u.Hostname()
+
+	var requestedScopes []string
+	if scope != "" {
+		requestedScopes = strings.Fields(scope)
+	}
+	if requestedScopes == nil {
+		requestedScopes = []string{}
+	}
+
+	clientName := agent.DisplayName
+	if agent.CIMDClientName != nil && *agent.CIMDClientName != "" {
+		clientName = *agent.CIMDClientName
+	}
+
+	logoURI := ""
+	if agent.CIMDLogoURI != nil {
+		logoURI = *agent.CIMDLogoURI
+	}
+
+	return &CIMDMetadataResponse{
+		ClientName:          clientName,
+		ClientIDURL:         clientID,
+		RedirectURI:         redirectURI,
+		VerifiedDomain:      verifiedDomain,
+		IsLocalhostRedirect: isLocalhostURI(redirectURI),
+		RequestedScopes:     requestedScopes,
+		LogoURI:             logoURI,
+	}
+}
+
+// isLocalhostURI returns true if the URI's host is localhost or 127.0.0.1.
+func isLocalhostURI(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	h := u.Hostname()
+	return h == "localhost" || h == "127.0.0.1" || h == "::1"
 }

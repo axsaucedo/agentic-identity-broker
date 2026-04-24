@@ -76,6 +76,10 @@ func (m *MockAgentRepository) List(ctx context.Context) ([]*storagedomain.Agent,
 	return nil, nil
 }
 
+func (m *MockAgentRepository) GetByClientURI(ctx context.Context, uri string) (*storagedomain.Agent, error) {
+	return nil, storagedomain.NewStorageError("GetAgentByClientURI", storagedomain.ErrorKindNotFound, ports.ErrNotFound, "not found")
+}
+
 // MockOAuth2SessionService mocks the OAuth2SessionService for testing
 type MockOAuth2SessionService struct {
 	RefreshAccessTokenFn       func(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity, refreshToken string) (*oauth2.Token, error)
@@ -755,6 +759,10 @@ func (r *trackingAgentRepository) Delete(_ context.Context, _ id.AgentID) error 
 
 func (r *trackingAgentRepository) List(_ context.Context) ([]*storagedomain.Agent, error) {
 	return nil, nil
+}
+
+func (r *trackingAgentRepository) GetByClientURI(_ context.Context, _ string) (*storagedomain.Agent, error) {
+	return nil, storagedomain.NewStorageError("GetAgentByClientURI", storagedomain.ErrorKindNotFound, ports.ErrNotFound, "not found")
 }
 
 // generateTestRSAKeySet generates an RSA key pair and returns the private key plus a JWKS set

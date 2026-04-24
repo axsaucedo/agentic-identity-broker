@@ -175,12 +175,35 @@ export interface GetAgentDelegationsResponse {
 }
 
 /**
+ * CIMD metadata included in the agent detail response when the authorization
+ * request originates from a Client ID Metadata Document URL (client_id).
+ * Null/absent for opaque UUID-based client_id values.
+ */
+export interface CIMDMetadata {
+  /** client_name from the CIMD document (or Agent.DisplayName as fallback) */
+  client_name: string;
+  /** The CIMD URL used as client_id */
+  client_id_url: string;
+  /** The requested redirect_uri */
+  redirect_uri: string;
+  /** Hostname from client_id_url, pre-registered and verified */
+  verified_domain: string;
+  /** True when redirect_uri host is localhost or 127.0.0.1 */
+  is_localhost_redirect: boolean;
+  /** OAuth2 scopes requested by this authorization */
+  requested_scopes: string[];
+  /** logo_uri from CIMD document (optional) */
+  logo_uri?: string;
+}
+
+/**
  * Response from GET /api/consent/agent/:agent-id
  */
 export interface GetAgentDetailResponse {
   data: {
     agent: AgentDetail;
     services: ThirdpartyService[];
+    cimd_metadata?: CIMDMetadata | null;
   };
 }
 

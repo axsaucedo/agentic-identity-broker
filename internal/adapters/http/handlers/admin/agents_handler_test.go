@@ -64,6 +64,14 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID id.Cli
 	return args.Get(0).(*storage.Agent), args.Error(1)
 }
 
+func (m *MockAgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	args := m.Called(ctx, uri)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*storage.Agent), args.Error(1)
+}
+
 // newAgentsHandlerForTest creates an AgentsHandler backed by a real domain service
 // wrapping a mock repository. This ensures the architecture invariant holds in tests:
 // the handler always goes through the domain service, never raw storage.
@@ -720,6 +728,153 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		handler.UpdateAgent(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
+		mockRepo.AssertExpectations(t)
+	})
+}
+
+// T027a: Unit tests for admin handler client_uris validation mapping.
+func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
+	logger := slog.Default()
+
+	t.Run("Create: malformed client_uri returns 400", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		mockRepo.On("Create", mock.Anything, mock.Anything).Return(
+			storage.NewStorageError("CreateAgent", storage.ErrorKindValidation, nil, "client_uris[0] is not a valid HTTPS URL"),
+		)
+
+		reqBody := AgentRequest{
+			ClientID:    "cimd-client",
+			DisplayName: "CIMD Agent",
+			Description: "Test description",
+			ClientURIs:  []string{"not-a-valid-url"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Equal(t, "validation failed", resp.Error)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("Create: duplicate client_uri returns 409", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		mockRepo.On("Create", mock.Anything, mock.Anything).Return(
+			storage.NewStorageError("CreateAgent", storage.ErrorKindConflict, nil, "client_uri already registered by another agent"),
+		)
+
+		reqBody := AgentRequest{
+			ClientID:    "cimd-conflict-client",
+			DisplayName: "CIMD Agent",
+			Description: "Test description",
+			ClientURIs:  []string{"https://example.com/taken"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusConflict, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Equal(t, "conflict", resp.Error)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("Update: malformed client_uri returns 400", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		agentID := id.NewAgentID()
+		existing := &storage.Agent{
+			ID:          agentID,
+			ClientID:    "cimd-update-client",
+			DisplayName: "CIMD Agent",
+			Description: "Test description",
+		}
+		mockRepo.On("Get", mock.Anything, agentID).Return(existing, nil)
+		mockRepo.On("Update", mock.Anything, mock.Anything).Return(
+			storage.NewStorageError("UpdateAgent", storage.ErrorKindValidation, nil, "client_uris[0] is not a valid HTTPS URL"),
+		)
+
+		reqBody := AgentRequest{
+			ClientID:    "cimd-update-client",
+			DisplayName: "CIMD Agent",
+			Description: "Updated description",
+			ClientURIs:  []string{"http://bad-scheme.example.com"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		w := httptest.NewRecorder()
+
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Equal(t, "validation failed", resp.Error)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("Update: duplicate client_uri returns 409", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		agentID := id.NewAgentID()
+		existing := &storage.Agent{
+			ID:          agentID,
+			ClientID:    "cimd-update-conflict-client",
+			DisplayName: "CIMD Agent",
+			Description: "Test description",
+		}
+		mockRepo.On("Get", mock.Anything, agentID).Return(existing, nil)
+		mockRepo.On("Update", mock.Anything, mock.Anything).Return(
+			storage.NewStorageError("UpdateAgent", storage.ErrorKindConflict, nil, "client_uri already registered by another agent"),
+		)
+
+		reqBody := AgentRequest{
+			ClientID:    "cimd-update-conflict-client",
+			DisplayName: "CIMD Agent",
+			Description: "Updated description",
+			ClientURIs:  []string{"https://example.com/already-taken"},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		w := httptest.NewRecorder()
+
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusConflict, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Equal(t, "conflict", resp.Error)
 		mockRepo.AssertExpectations(t)
 	})
 }

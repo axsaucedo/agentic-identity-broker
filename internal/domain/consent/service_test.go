@@ -117,6 +117,10 @@ func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID)
 	return nil, ports.ErrNotFound
 }
 
+func (m *mockAgentRepo) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "not found")
+}
+
 type mockServiceRepo struct {
 	services map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity
 	err      error

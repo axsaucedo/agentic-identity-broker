@@ -26,6 +26,10 @@ import { Breadcrumb } from '@design-system/components/navigation/Breadcrumb';
 import { Card } from '@design-system/components/data-display/Card';
 import { ServiceCard } from '@components/consent/ServiceCard';
 import { RevokeGrantButton } from '@components/consent/RevokeGrantButton';
+import { CIMDConsentSummary } from '@components/consent/CIMDConsentSummary';
+import { CIMDDomainBadge } from '@components/consent/CIMDDomainBadge';
+import { CIMDLocalhostWarning } from '@components/consent/CIMDLocalhostWarning';
+import { CIMDAdvancedDetails } from '@components/consent/CIMDAdvancedDetails';
 import { GrantValidityControl } from '@components/consent/GrantValidityControl';
 import { useAgentGrants } from '../hooks/useAgentGrants';
 import { useToggleGrant } from '../hooks/useToggleGrant';
@@ -48,11 +52,30 @@ export function AgentGrantDetailPage() {
   const searchParams = new URLSearchParams(location.search);
   const redirectUri = searchParams.get('redirect_uri') || undefined;
 
+  // Parse the original OAuth2 authorize URL to extract CIMD params
+  let cimdParams: { clientId: string; redirectUri: string; scope: string } | undefined;
+  if (redirectUri) {
+    try {
+      const authorizeUrl = new URL(redirectUri, window.location.origin);
+      const authorizeParams = authorizeUrl.searchParams;
+      const maybeClientId = authorizeParams.get('client_id') || undefined;
+      if (maybeClientId?.startsWith('https://')) {
+        cimdParams = {
+          clientId: maybeClientId,
+          redirectUri: authorizeParams.get('redirect_uri') || '',
+          scope: authorizeParams.get('scope') || '',
+        };
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
   const resolvedAgentId = agentId ?? '';
 
   // Fetch agent data and grants
-  const { agent, services, grants, loading, error, refetch } =
-    useAgentGrants(resolvedAgentId);
+  const { agent, services, cimdMeta, grants, loading, error, refetch } =
+    useAgentGrants(resolvedAgentId, cimdParams);
 
   // Grant toggle hook
   const {
@@ -501,6 +524,27 @@ export function AgentGrantDetailPage() {
               </div>
             </div>
           </Card>
+
+          {/* CIMD metadata section — shown only for URL-based (CIMD) agents */}
+          {cimdMeta && (
+            <div className="space-y-3">
+              <CIMDConsentSummary
+                clientName={cimdMeta.client_name}
+                accessTarget={services.map((s) => s.displayName || s.serviceName || s.serviceId).join(', ') || 'requested services'}
+                logoUri={cimdMeta.logo_uri}
+              />
+              <CIMDDomainBadge domain={cimdMeta.verified_domain} />
+              {cimdMeta.is_localhost_redirect && (
+                <CIMDLocalhostWarning agentDisplayName={agent.displayName} />
+              )}
+              <CIMDAdvancedDetails
+                clientName={cimdMeta.client_name}
+                clientIdUrl={cimdMeta.client_id_url}
+                redirectUri={cimdMeta.redirect_uri}
+                requestedScopes={cimdMeta.requested_scopes}
+              />
+            </div>
+          )}
 
           {/* Validation errors */}
           {validationErrors.length > 0 && (

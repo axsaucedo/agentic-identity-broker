@@ -13,6 +13,7 @@ import type {
   AgentDelegation,
   AgentDetail,
   ThirdpartyService,
+  CIMDMetadata,
   UserGrant,
   GetUserInfoResponse,
   GetAgentDelegationsResponse,
@@ -81,34 +82,46 @@ export class ConsentApiService {
 
   /**
    * Get detailed information about a specific agent and available services.
-   * Results are cached for 5 minutes.
+   * Results are cached for 5 minutes. Pass cimdParams to include CIMD metadata
+   * in the response when the authorization request uses a URL-based client_id.
    *
    * @param agentId - Unique agent identifier
-   * @returns Agent details and available services
+   * @param cimdParams - Optional CIMD query params (client_id, redirect_uri, scope)
+   * @returns Agent details, available services, and optional CIMD metadata
    * @throws {ApiError} if request fails or agent not found
    */
-  async getAgentDetail(agentId: string): Promise<{
+  async getAgentDetail(
+    agentId: string,
+    cimdParams?: { clientId: string; redirectUri: string; scope: string },
+  ): Promise<{
     agent: AgentDetail;
     services: ThirdpartyService[];
+    cimd_metadata?: CIMDMetadata | null;
   }> {
-    const cacheKey = `/consent/agent/${agentId}`;
+    let url = `/consent/agent/${agentId}`;
+    if (cimdParams) {
+      const qs = new URLSearchParams({
+        client_id: cimdParams.clientId,
+        redirect_uri: cimdParams.redirectUri,
+        scope: cimdParams.scope,
+      });
+      url += `?${qs.toString()}`;
+    }
 
-    // Check cache first
+    const cacheKey = url;
+
     const cached = apiCache.get<{
       agent: AgentDetail;
       services: ThirdpartyService[];
+      cimd_metadata?: CIMDMetadata | null;
     }>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // Fetch from API
-    const response = await apiClient.get<GetAgentDetailResponse>(
-      `/consent/agent/${agentId}`,
-    );
+    const response = await apiClient.get<GetAgentDetailResponse>(url);
     const data = response.data.data;
 
-    // Cache the result (5 minutes TTL)
     apiCache.set(cacheKey, data, 5 * 60 * 1000);
 
     return data;
