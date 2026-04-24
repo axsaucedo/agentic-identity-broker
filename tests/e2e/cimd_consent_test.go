@@ -176,6 +176,75 @@ var _ = Describe("CIMD Consent Screen", func() {
 		})
 	})
 
+	// Regression test for fail-closed redirect_uri behavior in buildCIMDMetadata:
+	// redirect_uri must be empty when the CIMD snapshot has no registered URIs
+	// or when the requested redirect_uri is not in the snapshot.
+	Describe("redirect_uri fail-closed behavior", func() {
+		It("clears redirect_uri when agent has no CIMD snapshot (CIMDRedirectURIs is empty)", func() {
+			now := time.Now()
+			agent := &storage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID("https://agent.example.com/client"),
+				DisplayName: "No-Snapshot Agent",
+				Description: "E2E test for redirect_uri fail-closed: no snapshot",
+				ClientURIs:  []string{"https://agent.example.com/client"},
+				// CIMDRedirectURIs intentionally omitted — snapshot not yet populated
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			path := fmt.Sprintf(
+				"/api/consent/agent/%s?client_id=https://agent.example.com/client&redirect_uri=https://agent.example.com/callback&scope=repo",
+				agent.ID,
+			)
+			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var body map[string]any
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+
+			data := body["data"].(map[string]any)
+			cimdMeta := data["cimd_metadata"].(map[string]any)
+			Expect(cimdMeta["redirect_uri"]).To(BeEmpty(), "redirect_uri must be empty when snapshot is not populated")
+		})
+
+		It("clears redirect_uri when requested URI is not in the CIMD snapshot", func() {
+			now := time.Now()
+			agent := &storage.Agent{
+				ID:               id.NewAgentID(),
+				ClientID:         id.ClientID("https://agent.example.com/client"),
+				DisplayName:      "Mismatch Agent",
+				Description:      "E2E test for redirect_uri fail-closed: URI mismatch",
+				ClientURIs:       []string{"https://agent.example.com/client"},
+				CIMDRedirectURIs: []string{"https://agent.example.com/registered-callback"},
+				CreatedAt:        now,
+				UpdatedAt:        now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			path := fmt.Sprintf(
+				"/api/consent/agent/%s?client_id=https://agent.example.com/client&redirect_uri=https://attacker.example.com/steal&scope=repo",
+				agent.ID,
+			)
+			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var body map[string]any
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+
+			data := body["data"].(map[string]any)
+			cimdMeta := data["cimd_metadata"].(map[string]any)
+			Expect(cimdMeta["redirect_uri"]).To(BeEmpty(), "redirect_uri must be empty when not in snapshot")
+		})
+	})
+
 	// Scenario 5.4 from specs/028-cimd-support/spec.md
 	Describe("when the authorization request uses an opaque (UUID) client_id", func() {
 		It("does not include cimd_metadata in the response", func() {

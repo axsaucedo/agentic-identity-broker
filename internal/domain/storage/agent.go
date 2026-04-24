@@ -95,11 +95,16 @@ func (a *Agent) Validate() error {
 	return nil
 }
 
-// validateClientURIs applies full CIMD URL validation to each entry in the list and
-// rejects duplicates within the list. Mirrors cimd.ParseClientIDMetadataDocumentURL
-// (a direct import would create a circular dependency since cimd imports storage).
+// validateClientURIs applies full CIMD URL validation to each entry in the list,
+// rejects duplicates, and enforces at most one URL-format (CIMD) entry.
+// Multiple CIMD URIs per agent are rejected because snapshot fields
+// (auth_method, jwks_uri, redirect_uris, etc.) are stored once per agent — a second
+// CIMD URI would overwrite the first's snapshot on every alternating request.
+// Mirrors cimd.ParseClientIDMetadataDocumentURL (a direct import would create a
+// circular dependency since cimd imports storage).
 func validateClientURIs(uris []string) error {
 	seen := make(map[string]struct{}, len(uris))
+	cimdCount := 0
 	for i, uriStr := range uris {
 		if _, dup := seen[uriStr]; dup {
 			return fmt.Errorf("client_uris[%d] is a duplicate: %q", i, uriStr)
@@ -107,6 +112,10 @@ func validateClientURIs(uris []string) error {
 		seen[uriStr] = struct{}{}
 		if err := validateClientURI(uriStr); err != nil {
 			return fmt.Errorf("client_uris[%d]: %w", i, err)
+		}
+		cimdCount++
+		if cimdCount > 1 {
+			return fmt.Errorf("client_uris: at most one CIMD (URL-format) client_uri is allowed per agent; use a single canonical URL")
 		}
 	}
 	return nil

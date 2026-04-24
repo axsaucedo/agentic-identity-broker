@@ -535,7 +535,10 @@ export function AgentGrantDetailPage() {
                 clientName={cimdMeta.client_name}
                 accessTarget={
                   services
-                    .filter(s => s.scopes?.some(scope => cimdMeta.requested_scopes.includes(scope.value)))
+                    .filter(s =>
+                      s.requiredScopes?.some(sc => cimdMeta.requested_scopes.includes(sc.name)) ||
+                      s.scopes?.some(sc => cimdMeta.requested_scopes.includes(sc.value))
+                    )
                     .map(s => s.displayName || s.serviceName || s.serviceId)
                     .join(', ') || cimdMeta.requested_scopes.join(', ') || 'requested services'
                 }
