@@ -213,7 +213,8 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 			var body map[string]any
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body["error"]).To(Equal("invalid_client"))
+			// URL format validation failures return invalid_request per OAuth2 spec
+			Expect(body["error"]).To(Equal("invalid_request"))
 		})
 	})
 

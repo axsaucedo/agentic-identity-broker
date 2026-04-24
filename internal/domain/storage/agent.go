@@ -34,9 +34,11 @@ type Agent struct {
 	// CIMDClientName is the last observed client_name from the CIMD document.
 	CIMDClientName *string `json:"cimd_client_name,omitempty" db:"cimd_client_name"`
 	// CIMDLogoURI is the last observed logo_uri from the CIMD document.
-	CIMDLogoURI *string   `json:"cimd_logo_uri,omitempty" db:"cimd_logo_uri"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	CIMDLogoURI *string `json:"cimd_logo_uri,omitempty" db:"cimd_logo_uri"`
+	// CIMDRedirectURIs is the last observed redirect_uris from the CIMD document (snapshot baseline for change detection).
+	CIMDRedirectURIs []string  `json:"cimd_redirect_uris,omitempty" db:"cimd_redirect_uris"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Validate performs validation on the Agent entity.
@@ -120,7 +122,7 @@ func validateClientURI(uriStr string) error {
 	if u.Scheme != "https" {
 		return fmt.Errorf("must use https scheme, got %q", u.Scheme)
 	}
-	if u.Host == "" {
+	if u.Host == "" || u.Hostname() == "" {
 		return errors.New("must have a host")
 	}
 	if u.User != nil {

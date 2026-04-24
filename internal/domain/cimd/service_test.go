@@ -187,12 +187,13 @@ func TestService_Resolve_SubsequentFetch_UnchangedFields_NoUpdate(t *testing.T) 
 	jwks := "https://agent.example.com/.well-known/jwks.json"
 	clientName := "Test Agent"
 	agent := &storage.Agent{
-		ID:             agentID,
-		ClientID:       "https://agent.example.com/client",
-		DisplayName:    "Test Agent",
-		AuthMethod:     &method,
-		JwksURI:        &jwks,
-		CIMDClientName: &clientName,
+		ID:               agentID,
+		ClientID:         "https://agent.example.com/client",
+		DisplayName:      "Test Agent",
+		AuthMethod:       &method,
+		JwksURI:          &jwks,
+		CIMDClientName:   &clientName,
+		CIMDRedirectURIs: []string{"https://agent.example.com/cb"},
 	}
 
 	fetchResult := cimdFetchResult(t, "https://agent.example.com/client", "private_key_jwt", "https://agent.example.com/.well-known/jwks.json")

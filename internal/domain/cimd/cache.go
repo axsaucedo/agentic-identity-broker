@@ -69,13 +69,17 @@ func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers http.
 }
 
 // deriveTTL extracts TTL from Cache-Control max-age or Expires headers,
-// clamped to [minTTL, maxTTL].
+// clamped to [minTTL, maxTTL]. max-age takes precedence over Expires.
 func (c *CIMDCache) deriveTTL(headers http.Header) time.Duration {
 	ttl := c.minTTL
 
 	if cc := headers.Get("Cache-Control"); cc != "" {
 		if maxAge := extractMaxAge(cc); maxAge > 0 {
 			ttl = time.Duration(maxAge) * time.Second
+		}
+	} else if expires := headers.Get("Expires"); expires != "" {
+		if t, err := http.ParseTime(expires); err == nil && t.After(time.Now()) {
+			ttl = time.Until(t)
 		}
 	}
 

@@ -87,14 +87,40 @@ func validateRedirectOrigin(clientURL *url.URL, redirectURI string) error {
 	if err != nil {
 		return fmt.Errorf("invalid redirect_uri %q: %w", redirectURI, err)
 	}
+	if r.Scheme == "" || r.Hostname() == "" {
+		return fmt.Errorf("redirect_uri %q must be absolute", redirectURI)
+	}
 	host := r.Hostname()
-	// Localhost exception
+	// Localhost exception: any localhost redirect is allowed regardless of origin
 	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
 		return nil
 	}
-	// Same-origin: scheme + host must match
-	if r.Scheme != clientURL.Scheme || r.Host != clientURL.Host {
+	// Same-origin: scheme + normalized host must match.
+	// Normalize by comparing scheme and hostname + effective port separately
+	// so that https://example.com:443/cb matches https://example.com/client.
+	if r.Scheme != clientURL.Scheme {
+		return fmt.Errorf("redirect_uri %q is not same-origin with client_id %q", redirectURI, clientURL.String())
+	}
+	if r.Hostname() != clientURL.Hostname() {
+		return fmt.Errorf("redirect_uri %q is not same-origin with client_id %q", redirectURI, clientURL.String())
+	}
+	if effectivePort(r) != effectivePort(clientURL) {
 		return fmt.Errorf("redirect_uri %q is not same-origin with client_id %q", redirectURI, clientURL.String())
 	}
 	return nil
+}
+
+// effectivePort returns the explicit port or the default for the scheme.
+func effectivePort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	switch u.Scheme {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	default:
+		return ""
+	}
 }

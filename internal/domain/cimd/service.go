@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -144,6 +145,28 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 		needsUpdate = true
 	}
 
+	if agent.CIMDRedirectURIs == nil {
+		// First fetch — populate baseline silently
+		if len(doc.RedirectURIs) > 0 {
+			agent.CIMDRedirectURIs = slices.Clone(doc.RedirectURIs)
+			needsUpdate = true
+		}
+	} else {
+		docSorted := slices.Sorted(slices.Values(doc.RedirectURIs))
+		agentSorted := slices.Sorted(slices.Values(agent.CIMDRedirectURIs))
+		if !slices.Equal(docSorted, agentSorted) {
+			s.logger.Warn("cimd_security_field_changed",
+				"agent_id", agent.ID,
+				"field", "redirect_uris",
+				"previous", agent.CIMDRedirectURIs,
+				"current", doc.RedirectURIs,
+				"timestamp", time.Now().UTC(),
+			)
+			agent.CIMDRedirectURIs = slices.Clone(doc.RedirectURIs)
+			needsUpdate = true
+		}
+	}
+
 	if needsUpdate {
 		agent.UpdatedAt = time.Now().UTC()
 		if err := s.agentRepo.Update(ctx, agent); err != nil {
@@ -159,6 +182,9 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 	}
 	if result.ETag != "" {
 		headers.Set("ETag", result.ETag)
+	}
+	if result.Expires != "" {
+		headers.Set("Expires", result.Expires)
 	}
 	s.cache.Set(rawURL, doc, headers, time.Now())
 

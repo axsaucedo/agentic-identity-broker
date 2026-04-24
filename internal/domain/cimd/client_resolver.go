@@ -39,7 +39,7 @@ func (r *CIMDClientResolver) ResolveClient(ctx context.Context, clientID id.Clie
 func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*ports.ClientResolution, error) {
 	// Validate URL format first (fast rejection before any I/O)
 	if _, err := ParseClientIDMetadataDocumentURL(rawURL); err != nil {
-		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "invalid client_id URL: " + err.Error()}
+		return nil, &ports.ClientIDError{Code: "invalid_request", Desc: "invalid client_id URL: " + err.Error()}
 	}
 
 	// Look up agent by pre-registered client URI

@@ -98,7 +98,7 @@ data:
       {{- end }}
     {{- end }}
 
-    {{- if .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
+    {{- if or .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri (eq .Values.broker.oauth2AuthorizationServer.mode "issue_token") }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
       upstream_issuer_uri: {{ .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
