@@ -285,6 +285,49 @@ func TestService_Resolve_NameBlocklist_Rejected(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestService_Resolve_NameBlocklist_PartialMatchNotRejected(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
+	agent := testAgent(agentID)
+
+	// "Blocked Agent" contains "blocked" as a substring but is not exactly "blocked"
+	doc := `{"client_id":"https://agent.example.com/client","client_name":"Blocked Agent","redirect_uris":["https://agent.example.com/cb"]}`
+	svc := NewService(
+		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(doc)}},
+		NewCIMDCache(60*time.Second, time.Hour),
+		newMockAgentRepo(agent),
+		[]string{"blocked"},
+		slog.Default(),
+	)
+
+	_, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
+	require.NoError(t, err, "partial substring match must not be rejected")
+}
+
+func TestService_Resolve_OmittedAuthMethodDefaultsToNone(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
+	agent := testAgent(agentID)
+	require.Nil(t, agent.AuthMethod)
+
+	// Document omits token_endpoint_auth_method entirely
+	noMethod := `{"client_id":"https://agent.example.com/client","client_name":"Test Agent","redirect_uris":["https://agent.example.com/cb"]}`
+	repo := newMockAgentRepo(agent)
+	svc := NewService(
+		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(noMethod)}},
+		NewCIMDCache(60*time.Second, time.Hour),
+		repo,
+		nil,
+		slog.Default(),
+	)
+
+	doc, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
+	require.NoError(t, err)
+	assert.Equal(t, "none", doc.AuthMethod, "omitted auth method should default to none")
+
+	require.Len(t, repo.updated, 1)
+	require.NotNil(t, repo.updated[0].AuthMethod)
+	assert.Equal(t, "none", *repo.updated[0].AuthMethod, "snapshot should record default none")
+}
+
 func TestService_Resolve_InvalidURL(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
 	agent := testAgent(agentID)

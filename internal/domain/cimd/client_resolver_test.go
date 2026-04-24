@@ -90,7 +90,7 @@ func TestCIMDClientResolver_InvalidURL_Rejected(t *testing.T) {
 
 	var clientErr *ports.ClientIDError
 	require.True(t, errors.As(err, &clientErr))
-	assert.Equal(t, "invalid_client", clientErr.Code)
+	assert.Equal(t, "invalid_request", clientErr.Code)
 }
 
 func TestCIMDClientResolver_URLNotRegistered(t *testing.T) {

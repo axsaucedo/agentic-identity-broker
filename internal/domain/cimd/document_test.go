@@ -95,16 +95,22 @@ func TestParseDocument(t *testing.T) {
 	})
 
 	t.Run("rejects blocked client_name keyword", func(t *testing.T) {
-		data := validDoc(map[string]any{"client_name": "Evil Admin"})
-		_, err := ParseDocument(data, fetchURL, []string{"admin"})
+		data := validDoc(map[string]any{"client_name": "Admin"})
+		_, err := ParseDocument(data, fetchURL, []string{"Admin"})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "blocked keyword")
+		assert.Contains(t, err.Error(), "blocked term")
 	})
 
 	t.Run("keyword check is case-insensitive", func(t *testing.T) {
-		data := validDoc(map[string]any{"client_name": "ADMIN panel"})
+		data := validDoc(map[string]any{"client_name": "ADMIN"})
 		_, err := ParseDocument(data, fetchURL, []string{"admin"})
 		require.Error(t, err)
+	})
+
+	t.Run("partial name not blocked by exact match", func(t *testing.T) {
+		data := validDoc(map[string]any{"client_name": "Admin Panel"})
+		_, err := ParseDocument(data, fetchURL, []string{"admin"})
+		require.NoError(t, err, "partial substring must not trigger exact match blocklist")
 	})
 
 	t.Run("allows client_name not in blocklist", func(t *testing.T) {

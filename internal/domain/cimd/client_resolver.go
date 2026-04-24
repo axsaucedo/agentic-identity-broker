@@ -30,7 +30,7 @@ func NewCIMDClientResolver(agentRepo ports.AgentRepository, cimdService *Service
 // For URL-format client_id: validates URL, looks up agent by client URI, fetches/validates CIMD.
 // For opaque client_id: parses UUID and looks up agent by ID.
 func (r *CIMDClientResolver) ResolveClient(ctx context.Context, clientID id.ClientID) (*ports.ClientResolution, error) {
-	if strings.HasPrefix(string(clientID), "https://") {
+	if strings.Contains(string(clientID), "://") {
 		return r.resolveCIMD(ctx, string(clientID))
 	}
 	return r.resolveOpaque(ctx, clientID)

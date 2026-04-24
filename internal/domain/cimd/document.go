@@ -43,6 +43,11 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 		return nil, fmt.Errorf("malformed CIMD document: %w", err)
 	}
 
+	// RFC 7591 §2: omitted token_endpoint_auth_method defaults to "none"
+	if doc.AuthMethod == "" {
+		doc.AuthMethod = "none"
+	}
+
 	// SR-008: client_id must exactly match the fetch URL
 	if doc.ClientID != fetchURL {
 		return nil, fmt.Errorf("client_id mismatch: document has %q, expected %q", doc.ClientID, fetchURL)
@@ -58,12 +63,12 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 		return nil, fmt.Errorf("token_endpoint_auth_method %q is not allowed for CIMD clients", doc.AuthMethod)
 	}
 
-	// FR-023b: client_name keyword blocklist (case-insensitive substring match)
+	// FR-023b: client_name keyword blocklist (case-insensitive exact match)
 	if doc.ClientName != "" {
 		lowerName := strings.ToLower(doc.ClientName)
 		for _, blocked := range nameBlocklist {
-			if strings.Contains(lowerName, strings.ToLower(blocked)) {
-				return nil, fmt.Errorf("client_name contains blocked keyword %q", blocked)
+			if lowerName == strings.ToLower(blocked) {
+				return nil, fmt.Errorf("client_name matches blocked term %q", blocked)
 			}
 		}
 	}

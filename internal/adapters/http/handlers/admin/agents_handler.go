@@ -272,6 +272,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		JwksURI:              existing.JwksURI,
 		CIMDClientName:       existing.CIMDClientName,
 		CIMDLogoURI:          existing.CIMDLogoURI,
+		CIMDRedirectURIs:     existing.CIMDRedirectURIs,
 		CreatedAt:            existing.CreatedAt,
 		UpdatedAt:            time.Now().UTC(),
 	}
