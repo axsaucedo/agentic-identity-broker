@@ -48,15 +48,17 @@ export function AgentGrantDetailPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Extract redirect_uri from query parameters (FR-025)
+  // Extract query parameters for both session-based (CIMD) and redirect-based flows.
   const searchParams = new URLSearchParams(location.search);
+  const sessionId = searchParams.get('session_id') || undefined;
   const redirectUri = searchParams.get('redirect_uri') || undefined;
 
-  // Parse the original OAuth2 authorize URL to extract CIMD params.
-  // Memoized so the object reference is stable across renders — prevents infinite
-  // refetch loop in useAgentGrants (which includes cimdParams in useCallback deps).
+  // For opaque (non-session) flows: parse CIMD params from the authorize URL embedded
+  // in redirect_uri. Memoized so the object reference is stable across renders — prevents
+  // an infinite refetch loop in useAgentGrants (options is in the useCallback dep array).
   const cimdParams = useMemo(() => {
-    if (!redirectUri) return undefined;
+    // Session-based CIMD flows carry context server-side — no URL parsing needed.
+    if (sessionId || !redirectUri) return undefined;
     try {
       const authorizeUrl = new URL(redirectUri, window.location.origin);
       const authorizeParams = authorizeUrl.searchParams;
@@ -72,13 +74,16 @@ export function AgentGrantDetailPage() {
       // ignore parse errors
     }
     return undefined;
-  }, [redirectUri]);
+  }, [sessionId, redirectUri]);
 
   const resolvedAgentId = agentId ?? '';
 
   // Fetch agent data and grants
   const { agent, services, cimdMeta, grants, loading, error, refetch } =
-    useAgentGrants(resolvedAgentId, cimdParams);
+    useAgentGrants(
+      resolvedAgentId,
+      sessionId ? { sessionId } : cimdParams ? { cimdParams } : undefined,
+    );
 
   // Grant toggle hook
   const {
@@ -184,7 +189,10 @@ export function AgentGrantDetailPage() {
       '[AgentGrantDetailPage] submitting grant request with validUntil:',
       validUntil,
     );
-    const result = await submit(validUntil, redirectUri);
+    const result = await submit(
+      validUntil,
+      sessionId ? { sessionId } : { redirectUri },
+    );
     console.log('[AgentGrantDetailPage] submit result:', result);
 
     // Check for errors (result can be null for successful revocation or redirect)
@@ -194,9 +202,9 @@ export function AgentGrantDetailPage() {
       return;
     }
 
-    // If redirectUri was provided and result is null, we've been redirected
-    // (handled by window.location.href in the API service)
-    if (!result && redirectUri) {
+    // If a redirect was triggered (session-based or redirect_uri flow), result is null
+    // because the API service navigated away via window.location.href.
+    if (!result && (redirectUri || sessionId)) {
       return;
     }
 

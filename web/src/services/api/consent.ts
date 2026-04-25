@@ -92,18 +92,23 @@ export class ConsentApiService {
    */
   async getAgentDetail(
     agentId: string,
-    cimdParams?: { clientId: string; redirectUri: string; scope: string },
+    options?: {
+      cimdParams?: { clientId: string; redirectUri: string; scope: string };
+      sessionId?: string;
+    },
   ): Promise<{
     agent: AgentDetail;
     services: ThirdpartyService[];
     cimd_metadata?: CIMDMetadata | null;
   }> {
     let url = `/consent/agent/${agentId}`;
-    if (cimdParams) {
+    if (options?.sessionId) {
+      url += `?session_id=${encodeURIComponent(options.sessionId)}`;
+    } else if (options?.cimdParams) {
       const qs = new URLSearchParams({
-        client_id: cimdParams.clientId,
-        redirect_uri: cimdParams.redirectUri,
-        scope: cimdParams.scope,
+        client_id: options.cimdParams.clientId,
+        redirect_uri: options.cimdParams.redirectUri,
+        scope: options.cimdParams.scope,
       });
       url += `?${qs.toString()}`;
     }
@@ -169,12 +174,13 @@ export class ConsentApiService {
   async createOrUpdateGrant(
     agentId: string,
     request: CreateOrUpdateGrantRequest,
-    redirectUri?: string,
+    options?: { redirectUri?: string; sessionId?: string },
   ): Promise<UserGrant | null> {
-    // Build URL with optional redirect_uri query parameter (FR-025, T055)
     let url = `/consent/agent/${agentId}/grants`;
-    if (redirectUri) {
-      url += `?redirect_uri=${encodeURIComponent(redirectUri)}`;
+    if (options?.sessionId) {
+      url += `?session_id=${encodeURIComponent(options.sessionId)}`;
+    } else if (options?.redirectUri) {
+      url += `?redirect_uri=${encodeURIComponent(options.redirectUri)}`;
     }
 
     const response = await apiClient.post<CreateOrUpdateGrantResponse>(

@@ -42,12 +42,15 @@ interface UseAgentGrantsReturn extends UseAgentGrantsState {
  * Fetches data in parallel on mount and provides refetch capability.
  *
  * @param agentId - Unique agent identifier
- * @param cimdParams - Optional CIMD query params for URL-based client_id requests
+ * @param options - Optional: sessionId for session-based CIMD flows, or cimdParams for legacy URL flows
  * @returns Agent data, grants, CIMD metadata, loading state, error, and refetch function
  */
 export function useAgentGrants(
   agentId: string,
-  cimdParams?: { clientId: string; redirectUri: string; scope: string },
+  options?: {
+    cimdParams?: { clientId: string; redirectUri: string; scope: string };
+    sessionId?: string;
+  },
 ): UseAgentGrantsReturn {
   const [state, setState] = useState<UseAgentGrantsState>({
     agent: null,
@@ -79,7 +82,7 @@ export function useAgentGrants(
 
     try {
       const [agentDetailData, grantsData] = await Promise.all([
-        consentApi.getAgentDetail(agentId, cimdParams),
+        consentApi.getAgentDetail(agentId, options),
         consentApi.getAgentGrants(agentId),
       ]);
 
@@ -124,7 +127,7 @@ export function useAgentGrants(
         error: errorMessage,
       });
     }
-  }, [agentId, cimdParams]);
+  }, [agentId, options]);
 
   /**
    * Refetch function that can be called manually.
