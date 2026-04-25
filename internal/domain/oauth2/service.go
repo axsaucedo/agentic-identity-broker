@@ -59,12 +59,13 @@ type OAuth2Config struct {
 
 // Service implements the OAuth2Service port
 type Service struct {
-	agentRepo      ports.AgentRepository
-	grantRepo      ports.UserGrantRepository
-	sessionRepo    ports.UserSessionRepository
-	clientResolver ports.ClientResolver // nil = default UUID-based resolution
-	config         *OAuth2Config
-	logger         *slog.Logger
+	agentRepo       ports.AgentRepository
+	grantRepo       ports.UserGrantRepository
+	sessionRepo     ports.UserSessionRepository
+	clientResolver  ports.ClientResolver // nil = default UUID-based resolution
+	authSessionRepo ports.AuthorizationSessionRepository
+	config          *OAuth2Config
+	logger          *slog.Logger
 }
 
 // NewService creates a new OAuth2Service implementation
@@ -96,21 +97,24 @@ func NewServiceWithSessions(
 
 // NewServiceWithClientResolver creates a new OAuth2Service with a custom ClientResolver strategy.
 // Used when CIMD support is enabled (cimd.enabled: true).
+// Pass a non-nil authSessionRepo to enable server-side session binding for CIMD consent flows (FR-028).
 func NewServiceWithClientResolver(
 	agentRepo ports.AgentRepository,
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
 	clientResolver ports.ClientResolver,
+	authSessionRepo ports.AuthorizationSessionRepository,
 	config *OAuth2Config,
 	logger *slog.Logger,
 ) ports.OAuth2Service {
 	return &Service{
-		agentRepo:      agentRepo,
-		grantRepo:      grantRepo,
-		sessionRepo:    sessionRepo,
-		clientResolver: clientResolver,
-		config:         config,
-		logger:         logger,
+		agentRepo:       agentRepo,
+		grantRepo:       grantRepo,
+		sessionRepo:     sessionRepo,
+		clientResolver:  clientResolver,
+		authSessionRepo: authSessionRepo,
+		config:          config,
+		logger:          logger,
 	}
 }
 
@@ -255,12 +259,16 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 
 	// Step 3: Determine action based on grant status
 	if grant == nil || !grant.IsActive() {
-		// No active grant or expired - redirect to consent UI
-		consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
-			s.config.PublicURL,
-			agent.ID,
-			url.QueryEscape(req.OriginalURL),
-		)
+		consentURL, buildErr := s.buildConsentURL(ctx, req, agent, cimdMeta)
+		if buildErr != nil {
+			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			return &ports.AuthorizationDecision{
+				Action:      "error",
+				ErrorCode:   "server_error",
+				ErrorDesc:   "Failed to initiate consent session",
+				RedirectURL: errRedirect,
+			}, nil
+		}
 		return &ports.AuthorizationDecision{
 			Action:      "redirect_to_consent",
 			RedirectURL: consentURL,
@@ -291,11 +299,16 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 					"principal", principal,
 				)
 			}
-			consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
-				s.config.PublicURL,
-				agent.ID,
-				url.QueryEscape(req.OriginalURL),
-			)
+			consentURL, buildErr := s.buildConsentURL(ctx, req, agent, cimdMeta)
+			if buildErr != nil {
+				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				return &ports.AuthorizationDecision{
+					Action:      "error",
+					ErrorCode:   "server_error",
+					ErrorDesc:   "Failed to initiate consent session",
+					RedirectURL: errRedirect,
+				}, nil
+			}
 			return &ports.AuthorizationDecision{
 				Action:      "redirect_to_consent",
 				RedirectURL: consentURL,
@@ -315,11 +328,16 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 					"error", err.Error(),
 				)
 			}
-			consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
-				s.config.PublicURL,
-				agent.ID,
-				url.QueryEscape(req.OriginalURL),
-			)
+			consentURL, buildErr := s.buildConsentURL(ctx, req, agent, cimdMeta)
+			if buildErr != nil {
+				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				return &ports.AuthorizationDecision{
+					Action:      "error",
+					ErrorCode:   "server_error",
+					ErrorDesc:   "Failed to initiate consent session",
+					RedirectURL: errRedirect,
+				}, nil
+			}
 			return &ports.AuthorizationDecision{
 				Action:      "redirect_to_consent",
 				RedirectURL: consentURL,
@@ -384,6 +402,45 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+// buildConsentURL builds the consent redirect URL for a given agent and request.
+// For CIMD flows (cimdMeta != nil), creates a server-side AuthorizationSession and returns
+// a URL with ?session_id=<id> (FR-028). For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
+func (s *Service) buildConsentURL(ctx context.Context, req *ports.AuthorizationRequest, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
+	if cimdMeta != nil && s.authSessionRepo != nil {
+		meta := &storage.CIMDMetadataSnapshot{
+			ClientID:     cimdMeta.ClientID,
+			ClientName:   cimdMeta.ClientName,
+			LogoURI:      cimdMeta.LogoURI,
+			RedirectURIs: cimdMeta.RedirectURIs,
+			AuthMethod:   cimdMeta.AuthMethod,
+			JwksURI:      cimdMeta.JwksURI,
+		}
+		session, err := storage.NewAuthorizationSession(
+			agent.ID,
+			req.ClientID.String(),
+			req.OriginalURL,
+			req.RedirectURI,
+			req.Scope,
+			req.State,
+			req.CodeChallenge,
+			req.CodeChallengeMethod,
+			meta,
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to generate authorization session ID: %w", err)
+		}
+		if err := s.authSessionRepo.Create(ctx, session); err != nil {
+			return "", fmt.Errorf("failed to store authorization session: %w", err)
+		}
+		return fmt.Sprintf("%s/consent/agent/%s?session_id=%s", s.config.PublicURL, agent.ID, session.SessionID), nil
+	}
+	return fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
+		s.config.PublicURL,
+		agent.ID,
+		url.QueryEscape(req.OriginalURL),
+	), nil
 }
 
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.

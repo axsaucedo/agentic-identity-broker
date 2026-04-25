@@ -43,6 +43,7 @@ type AgentDetailHandler struct {
 	consentService    ConsentService
 	agentRepository   ports.AgentRepository
 	sessionRepository ports.UserSessionRepository
+	authSessionRepo   ports.AuthorizationSessionRepository
 	providerService   *thirdparty.ThirdpartyOAuth2ProviderService
 	logger            *slog.Logger
 }
@@ -76,6 +77,13 @@ func (h *AgentDetailHandler) WithSessionRepository(repo ports.UserSessionReposit
 // Used to lookup service metadata including display names and scope descriptions.
 func (h *AgentDetailHandler) WithProviderService(svc *thirdparty.ThirdpartyOAuth2ProviderService) *AgentDetailHandler {
 	h.providerService = svc
+	return h
+}
+
+// WithAuthorizationSessionRepository sets the authorization session repository.
+// Required for FR-028: session-based CIMD metadata retrieval.
+func (h *AgentDetailHandler) WithAuthorizationSessionRepository(repo ports.AuthorizationSessionRepository) *AgentDetailHandler {
+	h.authSessionRepo = repo
 	return h
 }
 
@@ -178,7 +186,12 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	// Sort services: mandatory first, then optional
 	sortServiceRequirements(serviceRequirements)
 
-	cimdMeta := buildCIMDMetadata(r, agent)
+	cimdMeta, err := h.resolveCIMDMetadata(r, agent, parsedAgentID)
+	if err != nil {
+		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
+		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
+		return
+	}
 
 	response := GetAgentDetailResponse{
 		Data: AgentDetailData{
@@ -401,6 +414,66 @@ func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataRespo
 		RequestedScopes:     requestedScopes,
 		LogoURI:             logoURI,
 	}
+}
+
+// resolveCIMDMetadata resolves CIMD metadata for the consent page.
+// When session_id is present (FR-028), loads from the server-side AuthorizationSession.
+// Falls back to URL-param resolution for non-CIMD (opaque) flows.
+func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agent *storage.Agent, agentID id.AgentID) (*CIMDMetadataResponse, error) {
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		return buildCIMDMetadata(r, agent), nil
+	}
+
+	if h.authSessionRepo == nil {
+		return nil, errors.New("session_id provided but authorization session repository not configured")
+	}
+
+	session, err := h.authSessionRepo.GetBySessionID(r.Context(), sessionID)
+	if err != nil {
+		return nil, errors.New("authorization session not found or expired")
+	}
+	if session.IsExpired() {
+		return nil, errors.New("authorization session has expired")
+	}
+	if session.IsConsumed() {
+		return nil, errors.New("authorization session has already been used")
+	}
+	if session.AgentID != agentID {
+		return nil, errors.New("authorization session does not match requested agent")
+	}
+
+	if session.CIMDMetadata == nil {
+		return nil, nil
+	}
+
+	u, err := url.Parse(session.CIMDMetadata.ClientID)
+	if err != nil {
+		return nil, errors.New("invalid client_id in authorization session")
+	}
+
+	var requestedScopes []string
+	if session.Scope != "" {
+		requestedScopes = strings.Fields(session.Scope)
+	}
+	if requestedScopes == nil {
+		requestedScopes = []string{}
+	}
+
+	clientName := agent.DisplayName
+	if session.CIMDMetadata.ClientName != "" {
+		clientName = session.CIMDMetadata.ClientName
+	}
+
+	return &CIMDMetadataResponse{
+		ClientName:          clientName,
+		ClientIDURL:         session.CIMDMetadata.ClientID,
+		RedirectURI:         session.RedirectURI,
+		VerifiedDomain:      u.Hostname(),
+		IsLocalhostRedirect: isLocalhostURI(session.RedirectURI),
+		RequestedScopes:     requestedScopes,
+		LogoURI:             session.CIMDMetadata.LogoURI,
+	}, nil
 }
 
 // isLocalhostURI returns true if the URI's host is localhost or 127.0.0.1.

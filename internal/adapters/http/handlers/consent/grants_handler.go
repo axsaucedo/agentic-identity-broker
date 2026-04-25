@@ -15,14 +15,16 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
 // GrantsHandler handles HTTP requests for user grants management.
 // Implements FR-011 through FR-014 (grant CRUD operations).
 type GrantsHandler struct {
-	consentService ConsentService
-	logger         *slog.Logger
+	consentService  ConsentService
+	authSessionRepo ports.AuthorizationSessionRepository
+	logger          *slog.Logger
 }
 
 // NewGrantsHandler creates a new grants handler.
@@ -34,6 +36,13 @@ func NewGrantsHandler(consentService ConsentService, logger *slog.Logger) *Grant
 		consentService: consentService,
 		logger:         logger,
 	}
+}
+
+// WithAuthorizationSessionRepository sets the authorization session repository.
+// Required for FR-029: session-based redirect on CIMD consent submission.
+func (h *GrantsHandler) WithAuthorizationSessionRepository(repo ports.AuthorizationSessionRepository) *GrantsHandler {
+	h.authSessionRepo = repo
+	return h
 }
 
 // DelegatedTokenRequest represents a delegated token in the request.
@@ -161,6 +170,46 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// FR-029: When session_id is present (CIMD flow), load redirect target from the server-side
+	// AuthorizationSession. The session is consumed on successful grant approval to prevent reuse.
+	sessionID := r.URL.Query().Get("session_id")
+	var sessionRedirectURI string
+	if sessionID != "" {
+		if h.authSessionRepo == nil {
+			h.logger.Warn("session_id provided but authorization session repository not configured",
+				"agent_id", agentID, "principal", principalValue)
+			h.writeError(w, http.StatusBadRequest, "bad request", "session-based consent not available")
+			return
+		}
+		authSession, sessionErr := h.authSessionRepo.GetBySessionID(r.Context(), sessionID)
+		if sessionErr != nil {
+			h.logger.Warn("authorization session not found", "session_id", sessionID,
+				"agent_id", agentID, "principal", principalValue)
+			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
+			return
+		}
+		if authSession.IsExpired() {
+			h.logger.Warn("authorization session expired", "session_id", sessionID,
+				"agent_id", agentID, "principal", principalValue)
+			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has expired")
+			return
+		}
+		if authSession.IsConsumed() {
+			h.logger.Warn("authorization session already consumed", "session_id", sessionID,
+				"agent_id", agentID, "principal", principalValue)
+			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has already been used")
+			return
+		}
+		if authSession.AgentID != parsedAgentID {
+			h.logger.Warn("authorization session agent mismatch", "session_id", sessionID,
+				"expected_agent", parsedAgentID, "session_agent", authSession.AgentID,
+				"principal", principalValue)
+			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
+			return
+		}
+		sessionRedirectURI = authSession.OriginalURL
+	}
+
 	// Check for redirect_uri parameter early - validate before processing grant (T051-T054)
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	if redirectURI != "" {
@@ -267,6 +316,22 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"principal", principalValue,
 		"agent_id", agentID,
 		"grant_id", grant.ID)
+
+	// FR-029: Consume the authorization session after successful grant creation.
+	// The session is single-use — consuming it prevents replay attacks.
+	if sessionID != "" {
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			h.logger.Error("failed to consume authorization session",
+				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+				"error", consumeErr)
+		}
+		response := h.toGrantResponse(grant)
+		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
+			"data":         response,
+			"redirect_url": sessionRedirectURI,
+		})
+		return
+	}
 
 	// If redirect_uri was provided and already validated, return redirect URL in response body
 	// instead of HTTP 303 redirect (T056, T057). This avoids CORS issues when the redirect chain

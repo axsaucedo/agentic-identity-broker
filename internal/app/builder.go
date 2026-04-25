@@ -329,6 +329,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
 			clientResolver,
+			b.storage.AuthorizationSessions(),
 			oauth2Config,
 			b.logger,
 		)
@@ -548,7 +549,8 @@ func (b *Builder) Build() (*App, error) {
 	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger).
 		WithAgentRepository(b.storage.Agents()).
 		WithSessionRepository(b.storage.UserSessions()).
-		WithProviderService(app.ProviderService)
+		WithProviderService(app.ProviderService).
+		WithAuthorizationSessionRepository(b.storage.AuthorizationSessions())
 
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
 	// Config validation makes this error unreachable in practice, but structural fail-closed
@@ -645,7 +647,7 @@ func (b *Builder) Build() (*App, error) {
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:    agentDetailHandler,
 		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger),
+		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger).WithAuthorizationSessionRepository(b.storage.AuthorizationSessions()),
 		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
