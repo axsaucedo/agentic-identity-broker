@@ -19,10 +19,10 @@
 
 **Purpose**: Project initialization and configuration scaffolding
 
-- [ ] T001 Add `CIMDConfig` struct to `OAuth2AuthServerConfig` in `internal/ports/config.go` with defaults (enabled: false, fetch_timeout: 1s, max_response_bytes: 5120, cache.max_ttl: 1h, cache.min_ttl: 60s)
-- [ ] T002 [P] Register Viper defaults for all `oauth2_authorization_server.cimd.*` keys in config initialization
-- [ ] T003 [P] Create example YAML config at `examples/config/cimd.yaml` with annotated CIMD configuration
-- [ ] T004 [P] Update Helm chart `charts/agentic-identity-broker/values.yaml` with `cimd` block under `oauth2AuthorizationServer`
+- [X] T001 Add `CIMDConfig` struct to `OAuth2AuthServerConfig` in `internal/ports/config.go` with defaults (enabled: false, fetch_timeout: 1s, max_response_bytes: 5120, cache.max_ttl: 1h, cache.min_ttl: 60s)
+- [X] T002 [P] Register Viper defaults for all `oauth2_authorization_server.cimd.*` keys in config initialization
+- [X] T003 [P] Create example YAML config at `examples/config/cimd.yaml` with annotated CIMD configuration
+- [X] T004 [P] Update Helm chart `charts/agentic-identity-broker/values.yaml` with `cimd` block under `oauth2AuthorizationServer`
 
 **Checkpoint**: Configuration scaffolding in place, project compiles
 
@@ -36,50 +36,50 @@
 
 ### Phase 2a: Domain Model & Glossary
 
-- [ ] T005 Add CIMD domain terms to ARCHITECTURE.md Glossary: ClientIDMetadataDocument, CIMDCacheEntry, ClientIDMetadataDocumentURL, SSRFBlocklist, BrandPinMismatchDetected, CIMDSecurityFieldChanged
-- [ ] T006 [P] Document ClientResolver strategy pattern and CIMDFetcher port in ARCHITECTURE.md
+- [X] T005 Add CIMD domain terms to ARCHITECTURE.md Glossary: ClientIDMetadataDocument, CIMDCacheEntry, ClientIDMetadataDocumentURL, SSRFBlocklist, BrandPinMismatchDetected, CIMDSecurityFieldChanged
+- [X] T006 [P] Document ClientResolver strategy pattern and CIMDFetcher port in ARCHITECTURE.md
 
 **Checkpoint**: Domain model documented
 
 ### Phase 2b: Configuration Design
 
-- [ ] T007 Verify `CIMDConfig` YAML examples committed to `examples/config/cimd.yaml` (from T003)
-- [ ] T008 [P] Update `examples/config/README.md` to reference CIMD configuration section
+- [X] T007 Verify `CIMDConfig` YAML examples committed to `examples/config/cimd.yaml` (from T003)
+- [X] T008 [P] Update `examples/config/README.md` to reference CIMD configuration section
 
 **Checkpoint**: Configuration designed with YAML examples
 
 ### Phase 2c: API Design
 
-- [ ] T009 Update `/api/admin/openapi.yaml`: extend AgentRequest/AgentResponse schemas with `client_uris`, `auth_method`, `jwks_uri`
-- [ ] T010 [P] Update `/api/enduser/openapi.yaml`: add `client_id_metadata_document_supported` to metadata response, add `cimd_metadata` to consent response, document new error responses for `/oauth2/authorize`
+- [X] T009 Update `/api/admin/openapi.yaml`: extend AgentRequest/AgentResponse schemas with `client_uris`, `auth_method`, `jwks_uri`
+- [X] T010 [P] Update `/api/enduser/openapi.yaml`: add `client_id_metadata_document_supported` to metadata response, add `cimd_metadata` to consent response, document new error responses for `/oauth2/authorize`
 - [ ] T011 Get user/stakeholder confirmation for API design changes (API-001 through API-004)
 
 **Checkpoint**: APIs designed and confirmed
 
 ### Phase 2d: Database Design
 
-- [ ] T012 Create migration `migrations/015_add_agent_cimd_fields.up.sql`: add `auth_method TEXT`, `jwks_uri TEXT` columns to agents table; create normalized `agent_client_uris` child table (`agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE`, `client_uri TEXT NOT NULL`, `UNIQUE(client_uri)`) as single source of truth for client URI storage and uniqueness enforcement
-- [ ] T013 [P] Create migration `migrations/015_add_agent_cimd_fields.down.sql`: drop `agent_client_uris` table, drop `auth_method` and `jwks_uri` columns from agents
+- [X] T012 Create migration `migrations/015_add_agent_cimd_fields.up.sql`: add `auth_method TEXT`, `jwks_uri TEXT` columns to agents table; create normalized `agent_client_uris` child table (`agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE`, `client_uri TEXT NOT NULL`, `UNIQUE(client_uri)`) as single source of truth for client URI storage and uniqueness enforcement
+- [X] T013 [P] Create migration `migrations/015_add_agent_cimd_fields.down.sql`: drop `agent_client_uris` table, drop `auth_method` and `jwks_uri` columns from agents
 
 **Checkpoint**: Database migrations created
 
 ### Phase 2e: Frontend/Design System Review
 
-- [ ] T014 Review `web/src/design-system/docs/INDEX.md` for component selection for CIMD consent components (CS-001–CS-004)
-- [ ] T015 [P] Identify semantic tokens for domain badge (trust-deep), localhost warning (warning/danger), advanced details section
+- [X] T014 Review `web/src/design-system/docs/INDEX.md` for component selection for CIMD consent components (CS-001–CS-004)
+- [X] T015 [P] Identify semantic tokens for domain badge (trust-deep), localhost warning (warning/danger), advanced details section
 
 **Checkpoint**: Design system usage planned
 
 ### Phase 2f: E2E Acceptance Test Design
 
-- [ ] T016 Create CIMD test fixtures in `tests/e2e/fixtures/cimd.go`: `CIMDAgent()`, `ValidCIMDDocument()`, `CIMDConfig()`, mock CIMD HTTPS server helper
-- [ ] T017 Write E2E tests in `tests/e2e/cimd_authorization_test.go` for US1 scenarios (5 It blocks: resolve agent from CIMD, client_id mismatch, absent document, redirect_uri mismatch, disabled gate)
+- [X] T016 Create CIMD test fixtures in `tests/e2e/fixtures/cimd.go`: `CIMDAgent()`, `ValidCIMDDocument()`, `CIMDConfig()`, mock CIMD HTTPS server helper
+- [X] T017 Write E2E tests in `tests/e2e/cimd_authorization_test.go` for US1 scenarios (5 It blocks: resolve agent from CIMD, client_id mismatch, absent document, redirect_uri mismatch, disabled gate)
 - [X] T018 [P] Write E2E tests in `tests/e2e/cimd_ssrf_test.go` for US2 scenarios (7 It blocks: private IP, loopback, link-local, HTTP scheme, dot segments, oversized, timeout)
 - [X] T019 [P] Write E2E tests in `tests/e2e/cimd_caching_test.go` for US3 scenarios (4 It blocks: cache hit, expired refetch, no error cache, operator TTL override)
 - [X] T020 [P] Write E2E tests in `tests/e2e/cimd_metadata_test.go` for US4 scenarios (2 It blocks: field present when enabled, absent when disabled)
 - [X] T021 [P] Write E2E tests in `tests/e2e/cimd_consent_test.go` for US5 scenarios (4 It blocks: summary+badge+details, localhost warning, expand details, brand mismatch)
 - [ ] T022 [P] Write Playwright E2E tests in `tests/e2e/frontend/cimd_consent_test.go` for CS-001–CS-004 with screenshot captures
-- [ ] T023 Verify all E2E tests FAIL semantically (red phase): detailed expectations present and failing, no placeholders, no XIt/PIt/Skip markers
+- [X] T023 Verify all E2E tests FAIL semantically (red phase): detailed expectations present and failing, no placeholders, no XIt/PIt/Skip markers
 
 **Checkpoint**: E2E tests written and verified to fail before implementation
 
@@ -146,6 +146,47 @@
 
 ---
 
+## Phase 3.5: Authorization Session — Server-Side Consent Context Binding (SR-013/SR-014)
+
+**Purpose**: Secure CIMD consent flows by persisting authorization request context server-side, eliminating URL parameter tampering. CIMD-only; opaque client_id flows unchanged.
+
+### Database & Storage
+
+- [X] T106 Create migration `migrations/017_create_authorization_sessions.up.sql`: `authorization_sessions` table with `session_id TEXT PRIMARY KEY` (cryptographically random, opaque), `agent_id UUID NOT NULL REFERENCES agents(id)`, `client_id TEXT NOT NULL`, `redirect_uri TEXT NOT NULL`, `scope TEXT NOT NULL`, `state TEXT`, `code_challenge TEXT`, `code_challenge_method TEXT`, `cimd_metadata JSONB NOT NULL`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`, `consumed_at TIMESTAMPTZ`, `expires_at TIMESTAMPTZ NOT NULL`; add index on `expires_at` for cleanup queries
+- [X] T107 [P] Create migration `migrations/017_create_authorization_sessions.down.sql`: drop `authorization_sessions` table
+
+### Domain & Ports
+
+- [X] T108 Define `AuthorizationSession` domain type in `internal/domain/storage/authorization_session.go`: struct with all fields, `IsExpired()`, `IsConsumed()`, `Consume()` methods; `NewAuthorizationSession()` constructor generating `crypto/rand` session ID with 10-minute default TTL
+- [X] T109 [P] Add `AuthorizationSessionRepository` interface to `internal/ports/storage.go`: `Create(ctx, *AuthorizationSession) error`, `GetBySessionID(ctx, sessionID string) (*AuthorizationSession, error)`, `Consume(ctx, sessionID string) error`, `DeleteExpired(ctx) (int64, error)`
+
+### Adapters
+
+- [X] T110 [P] Implement `AuthorizationSessionRepository` on in-memory adapter in `internal/adapters/storage/memory/`: `sync.RWMutex`-protected map, TTL enforcement on read, `Consume` sets consumed_at
+- [X] T111 [P] Implement `AuthorizationSessionRepository` on postgres adapter in `internal/adapters/storage/postgres/`: INSERT for Create, SELECT + expired/consumed checks for GetBySessionID, UPDATE consumed_at for Consume, DELETE for DeleteExpired
+
+### Tests
+
+- [X] T112 [P] Write unit tests for `AuthorizationSession` domain type in `internal/domain/storage/authorization_session_test.go`: session ID generation (length, randomness), IsExpired, IsConsumed, Consume idempotency
+- [X] T113 [P] Write postgres integration tests for `AuthorizationSessionRepository` in `tests/integration/storage/authorization_session_test.go`: create/get round-trip, expired session still returned (handler checks), consumed session (consume idempotent at domain level), second Consume returns error, DeleteExpired removes only expired rows
+- [X] T114 [P] Add `authorization_sessions` to migration lifecycle verification in `tests/integration/migrations/migrations_test.go`
+
+### Integration into Authorization Flow
+
+- [X] T115 Modify `OAuth2AuthorizationService.HandleAuthorization` in `internal/domain/oauth2/service.go`: when `ClientResolution` contains CIMD metadata, create `AuthorizationSession` with full authorization context, persist via `AuthorizationSessionRepository`, and redirect to consent with `session_id` query param only (replacing the `OriginalURL` embedding pattern for CIMD flows)
+- [X] T116 Modify consent detail handler (`internal/adapters/http/handlers/consent/agent_detail_handler.go`): when `session_id` query param is present, load `AuthorizationSession` from repository, reject if expired/consumed, build `cimd_metadata` response from session's trusted state instead of caller-supplied query params (FR-028)
+- [X] T117 Modify consent submission handler: when `session_id` is present, load and consume `AuthorizationSession`, use session's `redirect_uri`/`state`/`code_challenge` for the authorization code redirect instead of frontend-supplied values (FR-029)
+- [X] T118 Wire `AuthorizationSessionRepository` in `internal/app/builder.go`: inject into `OAuth2AuthorizationService` and consent handlers
+
+### E2E Tests
+
+- [X] T119 [P] Write E2E tests in `tests/e2e/cimd_consent_test.go` for session edge cases: expired session_id → 400, consumed session_id → 400, non-existent session_id → 400
+- [X] T120 Verify session-based CIMD authorization flow E2E: authorization request → session created → consent page loads from session → consent submitted → session consumed → authorization code redirect uses trusted redirect_uri
+
+**Checkpoint**: CIMD consent flows are tamper-proof — all trust metadata comes from server-side session, not URL params
+
+---
+
 ## Phase 4: User Story 2 — SSRF-Hardened Fetcher Blocks Malicious URLs (Priority: P1)
 
 **Goal**: The CIMD fetcher proactively rejects URLs targeting private networks, loopback, link-local, and enforces timeout/size limits
@@ -174,20 +215,23 @@
 
 ### Tests for User Story 5
 
-- [ ] T054 [P] [US5] Write unit/component tests for `CIMDConsentSummary` in `web/src/components/consent/CIMDConsentSummary.test.tsx`
-- [ ] T055 [P] [US5] Write unit/component tests for `CIMDDomainBadge` in `web/src/components/consent/CIMDDomainBadge.test.tsx`
-- [ ] T056 [P] [US5] Write unit/component tests for `CIMDLocalhostWarning` in `web/src/components/consent/CIMDLocalhostWarning.test.tsx`
-- [ ] T057 [P] [US5] Write unit/component tests for `CIMDAdvancedDetails` in `web/src/components/consent/CIMDAdvancedDetails.test.tsx`
+- [X] T054 [P] [US5] Write unit/component tests for `CIMDConsentSummary` in `web/src/components/consent/CIMDConsentSummary.test.tsx`
+- [X] T055 [P] [US5] Write unit/component tests for `CIMDDomainBadge` in `web/src/components/consent/CIMDDomainBadge.test.tsx`
+- [X] T056 [P] [US5] Write unit/component tests for `CIMDLocalhostWarning` in `web/src/components/consent/CIMDLocalhostWarning.test.tsx`
+- [X] T057 [P] [US5] Write unit/component tests for `CIMDAdvancedDetails` in `web/src/components/consent/CIMDAdvancedDetails.test.tsx`
 
 ### Implementation for User Story 5
 
-- [ ] T058 [US5] Extend consent API response with `cimd_metadata` object: pass CIMD metadata through consent session in backend
-- [ ] T059 [P] [US5] Add CIMD-related TypeScript types to `web/src/types/consent.ts`
-- [ ] T060 [P] [US5] Implement `CIMDConsentSummary` component (CS-001) in `web/src/components/consent/CIMDConsentSummary.tsx`
-- [ ] T061 [P] [US5] Implement `CIMDDomainBadge` component (CS-002) in `web/src/components/consent/CIMDDomainBadge.tsx`
-- [ ] T062 [P] [US5] Implement `CIMDLocalhostWarning` component (CS-003) in `web/src/components/consent/CIMDLocalhostWarning.tsx`
-- [ ] T063 [P] [US5] Implement `CIMDAdvancedDetails` component (CS-004) in `web/src/components/consent/CIMDAdvancedDetails.tsx`
-- [ ] T064 [US5] Integrate CIMD consent components into `web/src/pages/ConsentOverviewPage.tsx` (conditional rendering when `cimd_metadata` present)
+- [X] T058 [US5] Modify consent detail handler to build `cimd_metadata` response object from `AuthorizationSession` trusted state when `session_id` is present (depends on Phase 3.5 T116); for non-session flows, existing behavior unchanged
+- [X] T059 [P] [US5] Add CIMD-related TypeScript types to `web/src/types/consent.ts`
+- [X] T060 [P] [US5] Implement `CIMDConsentSummary` component (CS-001) in `web/src/components/consent/CIMDConsentSummary.tsx`
+- [X] T061 [P] [US5] Implement `CIMDDomainBadge` component (CS-002) in `web/src/components/consent/CIMDDomainBadge.tsx`
+- [X] T062 [P] [US5] Implement `CIMDLocalhostWarning` component (CS-003) in `web/src/components/consent/CIMDLocalhostWarning.tsx`
+- [X] T063 [P] [US5] Implement `CIMDAdvancedDetails` component (CS-004) in `web/src/components/consent/CIMDAdvancedDetails.tsx`
+- [X] T064 [US5] Integrate CIMD consent components into `web/src/pages/AgentGrantDetailPage.tsx` (conditional rendering when `cimd_metadata` present)
+- [X] T064a [US5] Update `web/src/pages/AgentGrantDetailPage.tsx`: when URL contains `session_id` param, pass it to API instead of reconstructing CIMD params from `redirect_uri` query string
+- [X] T064b [P] [US5] Update `web/src/hooks/useAgentGrants.ts` and `web/src/services/api/consent.ts`: add `session_id` parameter; when present, sends `?session_id=` instead of CIMD params
+- [X] T064c [US5] Update consent submission in frontend: when `session_id` present, send `?session_id=` to grants endpoint instead of `?redirect_uri=`
 - [X] T065 [US5] Verify US5 E2E tests in `tests/e2e/cimd_consent_test.go` turn green
 - [ ] T066 [US5] Verify Playwright tests in `tests/e2e/frontend/cimd_consent_test.go` pass with screenshots captured
 
@@ -238,62 +282,65 @@
 
 #### Design Phase Verification
 
-- [ ] T073 Verify domain model design documented in ARCHITECTURE.md Glossary (Principle V)
-- [ ] T074 Verify configuration design YAML examples exist in `examples/config/cimd.yaml` (Principle VII)
-- [ ] T075 [P] Verify `examples/config/README.md` references CIMD configuration (Principle VII)
-- [ ] T076 Verify API designs documented in `/api/admin/openapi.yaml` and `/api/enduser/openapi.yaml` (Principles IV, X)
+- [X] T073 Verify domain model design documented in ARCHITECTURE.md Glossary (Principle V)
+- [X] T074 Verify configuration design YAML examples exist in `examples/config/cimd.yaml` (Principle VII)
+- [X] T075 [P] Verify `examples/config/README.md` references CIMD configuration (Principle VII)
+- [X] T076 Verify API designs documented in `/api/admin/openapi.yaml` and `/api/enduser/openapi.yaml` (Principles IV, X)
 - [ ] T077 Verify user/stakeholder confirmed API designs (Principle X)
-- [ ] T078 Verify database migration 015 documented and tested (Principle IX)
-- [ ] T079 Verify design system review completed for CIMD consent components (Principle XI)
-- [ ] T080 Verify E2E acceptance tests in `tests/e2e/` cover all 22 spec scenarios (Principle XIII)
-- [ ] T081 Verify E2E tests were verified to FAIL before implementation (red phase) (Principle XIII)
+- [X] T078 Verify database migrations 015 and 016 documented and tested (Principle IX)
+- [X] T079 Verify design system review completed for CIMD consent components (Principle XI)
+- [X] T080 Verify E2E acceptance tests in `tests/e2e/` cover all 24 spec scenarios (22 original + 2 session edge cases) (Principle XIII)
+- [X] T081 Verify E2E tests were verified to FAIL before implementation (red phase) (Principle XIII)
 - [ ] T082 Verify Playwright E2E tests in `tests/e2e/frontend/` pass with screenshots (Principle XIII)
 
 #### Implementation Phase Verification
 
 **API & Documentation** (Principles IV, X):
-- [ ] T083 [P] Verify API implementation matches confirmed OpenAPI specification exactly
-- [ ] T084 [P] Update `docs/api/` with CIMD-specific API documentation
+- [X] T083 [P] Verify API implementation matches confirmed OpenAPI specification exactly
+- [X] T084 [P] Update `docs/api/` with CIMD-specific API documentation
 
 **Architecture & Documentation** (Principle II):
-- [ ] T085 Update ARCHITECTURE.md with CIMD architectural changes (new port, new domain package, flow description)
-- [ ] T086 [P] Create ADR 015 in `adrs/` for CIMD fetcher architecture (SSRF-hardened HTTP client, in-process caching, hexagonal port)
+- [X] T085 Update ARCHITECTURE.md with CIMD architectural changes (new port, new domain package, flow description)
+- [X] T086 [P] Create ADR 015 in `adrs/` for CIMD fetcher architecture (SSRF-hardened HTTP client, in-process caching, hexagonal port)
 
 **Configuration** (Principle VII):
-- [ ] T087 [P] Verify configuration uses unified config port (no custom loading)
-- [ ] T088 Verify Helm chart updated with CIMD config block
+- [X] T087 [P] Verify configuration uses unified config port (no custom loading)
+- [X] T088 Verify Helm chart updated with CIMD config block
 
 **Database & Persistence** (Principle IX):
-- [ ] T089 [P] Verify migration 015 follows sequential numbering
-- [ ] T090 [P] Write integration tests for migration 015 apply/rollback in `internal/adapters/storage/postgres/agent_integration_test.go`
-- [ ] T091 [P] Verify postgres adapter tested with new fields and `GetByClientURI`
+- [X] T089 [P] Verify migrations 015 and 016 follow sequential numbering
+- [X] T090 [P] Write integration tests for migration 015 apply/rollback in `tests/integration/migrations/migrations_test.go`
+- [X] T090a [P] Write integration tests for migration 016 apply/rollback in `tests/integration/migrations/migrations_test.go`
+- [X] T091 [P] Verify postgres adapter tested with new fields and `GetByClientURI`
+- [X] T091a [P] Verify postgres `AuthorizationSessionRepository` tested in integration tests (create, get, consume, expire, delete-expired)
 
 **Security** (Principles I, III):
-- [ ] T092 Verify SSRF protection enabled by default and cannot be fully disabled
-- [ ] T093 [P] Verify no custom cryptography used (Go stdlib only)
-- [ ] T094 [P] Verify structured audit logging for all security-critical operations (SSRF blocks, brand mismatch, security field changes)
+- [X] T092 Verify SSRF protection enabled by default and cannot be fully disabled
+- [X] T093 [P] Verify no custom cryptography used (Go stdlib only)
+- [X] T094 [P] Verify structured audit logging for all security-critical operations (SSRF blocks, brand mismatch, security field changes)
+- [X] T094a Verify CIMD consent flows use server-side AuthorizationSession for all trust metadata (SR-013/SR-014); no CIMD query parameter relay in consent URL
 
 **Architecture Patterns** (Principle VI):
-- [ ] T095 Verify domain logic depends on ports only (no adapter imports in `domain/cimd/`)
+- [X] T095 Verify domain logic depends on ports only (no adapter imports in `domain/cimd/`)
 
 **Testing** (Principle VIII):
-- [ ] T096 Verify unit tests written first and failed before implementation (red-green TDD)
-- [ ] T097 Verify automated tests included (unit, integration, E2E)
+- [X] T096 Verify unit tests written first and failed before implementation (red-green TDD)
+- [X] T097 Verify automated tests included (unit, integration, E2E)
 
 **E2E Acceptance Testing** (Principle XIII):
-- [ ] T098 Verify each It() block maps to exactly one acceptance scenario from spec.md
-- [ ] T099 Verify E2E tests turned GREEN as implementation satisfied acceptance criteria
-- [ ] T100 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
+- [X] T098 Verify each It() block maps to exactly one acceptance scenario from spec.md
+- [X] T099 Verify E2E tests turned GREEN as implementation satisfied acceptance criteria
+- [X] T100 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
 - [ ] T101 Run frontend E2E suite: `ginkgo -v ./tests/e2e/frontend/` (all tests must pass)
 
 **Frontend** (Principle XI):
-- [ ] T102 Verify CIMD consent components use design system primitives and semantic tokens
-- [ ] T103 [P] Verify WCAG 2.1 AA accessibility compliance for CIMD consent components
+- [X] T102 Verify CIMD consent components use design system primitives and semantic tokens
+- [X] T103 [P] Verify WCAG 2.1 AA accessibility compliance for CIMD consent components
 
 ### Additional Polish
 
-- [ ] T104 Run `just check` (fmt → vet → lint → test) — all must pass
-- [ ] T105 Verify zero regression in existing authorization flows (SC-004) — full existing E2E suite green
+- [X] T104 Run `just check` (fmt → vet → lint → test) — all must pass
+- [X] T105 Verify zero regression in existing authorization flows (SC-004) — full existing E2E suite green
 
 ---
 
@@ -308,8 +355,9 @@
 - **Foundational Infrastructure (Phase 2.5)**: Depends on Phase 2 + Phase 2.7; BLOCKS all user stories
 - **User Stories (Phase 3–7)**: All depend on Phase 2.5 completion
   - US1 (Phase 3): No dependencies on other stories
+  - **Authorization Session (Phase 3.5)**: Depends on US1 (Phase 3) — needs ClientResolution with CIMD metadata flowing through HandleAuthorization
   - US2 (Phase 4): No dependencies on other stories (SSRF infra built in Phase 2.5)
-  - US5 (Phase 5): Depends on US1 (needs CIMD metadata flowing to consent API)
+  - US5 (Phase 5): Depends on US1 AND Phase 3.5 (needs session-based CIMD metadata flowing to consent API)
   - US3 (Phase 6): No dependencies on other stories (cache infra built in Phase 2.5)
   - US4 (Phase 7): No dependencies on other stories
 - **Polish (Phase N)**: Depends on all user stories complete
@@ -318,7 +366,7 @@
 
 - **US1 (P1)**: Independent — can start after Phase 2.5
 - **US2 (P1)**: Independent — can start after Phase 2.5 (parallel with US1)
-- **US5 (P1)**: Depends on US1 (needs CIMD metadata in consent session)
+- **US5 (P1)**: Depends on US1 AND Phase 3.5 (needs session-based CIMD metadata in consent)
 - **US3 (P2)**: Independent — can start after Phase 2.5 (parallel with US1/US2)
 - **US4 (P3)**: Independent — can start after Phase 2.5 (parallel with all)
 
@@ -376,7 +424,8 @@ Task: "Implement CIMDAdvancedDetails in web/src/components/consent/CIMDAdvancedD
 
 1. Setup → Design → Entity Extension → Foundation ready
 2. Add US1 (core flow) → Test → Deploy/Demo (MVP!)
-3. Add US2 (SSRF hardening) + US5 (consent screen) → Test → Deploy/Demo
-4. Add US3 (caching) → Test → Deploy/Demo
-5. Add US4 (metadata advertisement) → Test → Deploy/Demo
-6. Each story adds value without breaking previous stories
+3. Add Phase 3.5 (authorization session) → US5 (consent screen) secured by session
+4. Add US2 (SSRF hardening) → Test → Deploy/Demo
+5. Add US3 (caching) → Test → Deploy/Demo
+6. Add US4 (metadata advertisement) → Test → Deploy/Demo
+7. Each story adds value without breaking previous stories

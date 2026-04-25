@@ -111,6 +111,8 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 - What happens when a Client ID Metadata Document URL is not pre-registered under any Agent? (Request is rejected per FR-027; clients presenting an unregistered Client ID Metadata Document URL are not permitted.)
 - What happens when a CIMD document declares a `redirect_uri` on a different origin than the `client_id` URL (e.g. a CDN or a partner domain)? (Rejected per FR-004a; cross-origin redirect URIs are not permitted, with the sole exception of localhost/127.0.0.1.)
 - What happens when a CIMD document declares a `redirect_uri` of `http://localhost:3000` but the `client_id` URL is `https://agent.example.com/client`? (Permitted; localhost is an unconditional exception regardless of the client_id origin.)
+- What happens when a consent page is loaded with an expired or invalid `session_id`? (The consent page displays an error indicating the authorization request has expired; the user must re-initiate the flow.)
+- What happens when consent is submitted with a `session_id` that has already been consumed? (Rejected; the consent submission returns an error. Replay attacks are prevented by single-use semantics.)
 
 ## Requirements *(mandatory)*
 
@@ -149,6 +151,8 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 - **FR-025**: The `Agent` entity MUST be extended with: (a) a list of pre-registered Client ID Metadata Document URLs; and (b) `authMethod` and `jwksURI` fields storing the last observed values from the CIMD document (the existing `redirectURIs` field serves the same role). These fields act as the change-detection baseline for SR-011 and SR-012: each successful fetch compares incoming values against the stored fields, emits an audit event on any difference, then updates the fields. Both additions require a database migration.
 - **FR-026**: When processing an authorization request whose `client_id` is a Client ID Metadata Document URL, the broker MUST attempt an exact-match lookup of that URL against each Agent's pre-registered Client ID Metadata Document URLs; if a match is found, that Agent record is the pre-registered client used for consent grouping.
 - **FR-027**: If a Client ID Metadata Document URL matches no Agent's pre-registered Client ID Metadata Document URLs, the authorization request MUST be rejected; clients presenting an unregistered Client ID Metadata Document URL are not permitted.
+- **FR-028**: The consent page API (`GET /api/consent/agent/{agentId}`) MUST accept a `session_id` parameter and retrieve all authorization request context (client_id, redirect_uri, scope, CIMD metadata) from the server-side session. It MUST NOT accept `client_id`, `redirect_uri`, or `scope` as query parameters for CIMD-based flows. For non-CIMD flows, existing behavior is unchanged.
+- **FR-029**: The consent submission endpoint MUST accept the `session_id` for CIMD-based flows. On approval, the backend MUST retrieve `redirect_uri`, `state`, `code_challenge`, and all authorization parameters from the server-side session and use those trusted values to issue the authorization code redirect. The session is consumed upon submission. The frontend MUST NOT supply `redirect_uri` or `state` for CIMD-based consent submissions.
 
 ### Consent Screen Requirements
 
@@ -208,9 +212,11 @@ sequenceDiagram
         CIMDHost-->>Fetcher: 200 OK + JSON (≤5KB)
         Fetcher-->>AuthServer: raw document
         AuthServer->>AuthServer: validate client_id field match
-        AuthServer->>Cache: store with TTL from Cache-Control
+       AuthServer->>Cache: store with TTL from Cache-Control
     end
-    AuthServer->>Agent: render consent screen with client_name / hostname
+    AuthServer->>AuthServer: persist authorization context in session (opaque session ID)
+    AuthServer->>Agent: redirect to consent page with session ID only
+    Note over Agent,AuthServer: Consent page loads context from server-side session, not URL params
 ```
 
 **Agent Entity Extension** (from `025-oauth2-server`, extended for CIMD):
@@ -233,6 +239,7 @@ erDiagram
 **Entities** (things with unique identity):
 - **ClientIDMetadataDocument**: The JSON document served at the agent's `client_id` URL. Identity is the `client_id` field value (the URL itself). Contains display metadata and OAuth2 parameters for a dynamically-registered-style client. Lifecycle: fetched on demand, cached, re-fetched on cache expiry. Key invariant: `client_id` field must match the URL it was fetched from.
 - **CIMDCacheEntry**: A stored fetch result binding a URL to its document and caching metadata (ETag, expiry). Evicted on TTL expiry or memory pressure.
+- **AuthorizationSession**: A server-side record of a pending CIMD-based authorization request, keyed by an opaque cryptographically random session ID. Contains the full authorization request context (client_id, redirect_uri, scope, state, code_challenge, resolved Agent ID, CIMD metadata). Has a 10-minute TTL and is single-use (consumed on consent submission). Stored in PostgreSQL.
 
 **Value Objects** (things without identity):
 - **ClientIDMetadataDocumentURL**: An `https://` URL used as a `client_id`. Validated at parse time: must be HTTPS, no fragment, no credentials, no dot-segments, and hostname must resolve to a non-blocked address.
@@ -295,6 +302,8 @@ oauth2_authorization_server:
 - **SR-010**: Any URL field within a fetched CIMD document (`logo_uri`, `jwks_uri`, `policy_uri`, `tos_uri`) that the broker resolves or fetches MUST be validated against the same SSRF blocklist as the `client_id` URL itself before any outbound connection is made. A document containing a blocked URL in any such field MUST be logged but need not be rejected outright; the offending field is silently ignored.
 - **SR-011**: On each successful CIMD document fetch, the broker MUST compare the current values of `redirect_uris` and `token_endpoint_auth_method` against the snapshot persisted on the Agent record from the previous fetch. If either field has changed, the broker MUST emit a structured audit event recording the previous and new values, Agent ID, and timestamp. The authorization flow continues regardless. The first successful fetch for a given Agent populates the snapshot without triggering an audit event.
 - **SR-012**: On each successful CIMD document fetch, the broker MUST compare the current `jwks_uri` value against the snapshot persisted on the Agent record. If it has changed, a structured audit event MUST be emitted (previous URI, new URI, timestamp, Agent ID); the authorization flow is NOT blocked for `jwks_uri` changes alone. The Agent record snapshot is updated on every fetch.
+- **SR-013**: When the authorization server redirects to the consent page for a CIMD-based (URL-format `client_id`) authorization request, the full authorization request context (`client_id`, `redirect_uri`, `scope`, `state`, `code_challenge`, resolved Agent ID, and CIMD metadata) MUST be persisted in a server-side session keyed by an opaque, cryptographically random session ID. Only this session ID is passed to the consent URL. The consent page and its backend API MUST retrieve all authorization context from the session — never from caller-supplied query parameters. This requirement applies only to CIMD-based flows; opaque (pre-registered UUID) `client_id` flows are unchanged.
+- **SR-014**: The server-side authorization session MUST have a short TTL (default: 10 minutes) after which the session is expired and any consent attempt using it is rejected. Sessions MUST be single-use: once consent is submitted (approved or denied), the session MUST be consumed and any subsequent use of the same session ID MUST be rejected. Sessions MUST be stored in PostgreSQL (consistent with the persistence consistency constitution principle) to survive restarts and maintain consistency across replicas. A database migration is required.
 
 ### Key Entities
 
@@ -335,6 +344,9 @@ oauth2_authorization_server:
 
 ### Session 2026-04-24
 
+- Q: How should the authorization request context be secured between the /authorize redirect and the consent page? → A: Server-side session. The authorization request is persisted in storage keyed by an opaque, cryptographically random session ID. Only the session ID is passed to the consent URL. The consent page retrieves all context from the session, never from caller-supplied query parameters. Sessions have a short TTL (10 min) and are single-use. Applies to CIMD-based flows only; opaque client_id flows unchanged. Added SR-013, SR-014, and FR-028.
+- Q: Where should server-side authorization sessions be stored? → A: PostgreSQL. Sessions survive restarts and are consistent across replicas. A database migration is required. Updated SR-014.
+- Q: How does the backend bind the consent decision back to the original authorization request for CIMD flows? → A: Session-bound submission. The consent submission endpoint receives the session_id, retrieves the original authorization request context (redirect_uri, state, code_challenge) from the session, and uses those trusted values to issue the authorization code redirect. The session is consumed on submission. Added FR-029.
 - Q: How should the broker enforce that URL-format client_id values are only accepted when CIMD is enabled? → A: Via a ClientResolver strategy interface selected at build time. When `cimd.enabled: false`, `OpaqueClientResolver` is wired — it rejects URL-format client IDs with `invalid_client` immediately. When `true`, `CIMDClientResolver` is wired — it handles URL-format client IDs via CIMD resolution and falls back to UUID for non-URL IDs. The gate is structural (strategy selection in builder), not a runtime conditional. No CIMD infrastructure (fetcher, cache, service) is instantiated when disabled. Added FR-001a and US1 Scenario 5.
 
 ## Assumptions

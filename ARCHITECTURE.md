@@ -615,6 +615,41 @@ Service Layer (OAuth2SessionService):
 - ADR 009: Envelope Encryption Design (cryptographic approach)
 - ADR 012: Encryption Layer Separation (architectural pattern)
 
+#### 3.1.x. Client ID Metadata Document (CIMD) Subsystem
+
+**Purpose**: Allow AI agents to identify themselves via a publicly resolvable HTTPS URL as `client_id`. The broker fetches a JSON document from that URL, validates it, and presents its metadata on the consent screen. Enabled via `oauth2_authorization_server.cimd.enabled`.
+
+**New Port**: `internal/ports/cimd.go` defines `CIMDFetcher` (outbound, infrastructure-side) and `ClientResolver` (strategy interface injected into `OAuth2AuthorizationService`).
+
+**New Domain Package**: `internal/domain/cimd/` contains `ClientIDMetadataDocumentURL`, `SSRFBlocklist`, `ClientIDMetadataDocument`, `CIMDCache`, `CIMDService`, `CIMDClientResolver`.
+
+**Authorization Flow with URL-based `client_id`**:
+
+```
+OAuth2 /authorize request
+  ↓ ClientResolver.ResolveClient(client_id)
+  ↓  ├─ URL detected → CIMDClientResolver
+  ↓  │    ↓ Validate URL (scheme, path, no credentials, no dot-segments)
+  ↓  │    ↓ AgentRepository.GetByClientURI → resolve Agent
+  ↓  │    ↓ CIMDService.FetchAndValidate(url, agent)
+  ↓  │         ↓ Cache hit? → return cached document
+  ↓  │         ↓ CIMDFetcher.Fetch (SSRF blocklist enforced at dial time)
+  ↓  │         ↓ Validate: client_id match, redirect_uris present, auth_method safe
+  ↓  │         ↓ SecurityFieldChanged audit event if snapshot differs
+  ↓  │         ↓ Agent.Update (persist new snapshot fields)
+  ↓  │         ↓ Cache store with HTTP-header-derived TTL (clamped to operator bounds)
+  ↓  │    ↓ Return ClientResolution{Agent, CIMDDocument}
+  ↓  └─ UUID detected → OpaqueClientResolver (unchanged path)
+  ↓ HandleAuthorization: CIMD metadata present → create AuthorizationSession
+  ↓ Redirect to consent with ?session_id= (no CIMD params in URL)
+  ↓ Consent handler loads AuthorizationSession (trusted server-side state)
+  ↓ User grants → grants endpoint consumes session → authorization code redirect
+```
+
+**Security Properties**: SSRF blocked at TCP-connect time (TOCTOU-safe); CIMD params never relay through browser URL (AuthorizationSession binds context server-side, SR-013/SR-014).
+
+**See Also**: ADR 015 — CIMD Fetcher Architecture (SSRF hardening, caching, strategy pattern)
+
 ### 3.2. Envoy External Processor (ExtProc) Token Exchange Service
 
 **Name**: extproc-token-exchange
@@ -903,6 +938,9 @@ This section lists all architectural decisions made for this project. ADRs docum
 
 ### Observability
 - [ADR 011: OpenTelemetry Provider Pattern](adrs/011-opentelemetry-provider-pattern.md) - App-layer OTel provider, otelchi middleware choice, context-based span propagation
+
+### Client ID Metadata Document (CIMD)
+- [ADR 015: CIMD Fetcher Architecture](adrs/015-cimd-fetcher-architecture.md) - SSRF-hardened HTTP client, in-process caching, hexagonal port, strategy pattern for opaque vs URL-based client IDs
 
 ## 11. Project Identification
 
