@@ -45,7 +45,8 @@ type AuthorizationSession struct {
 }
 
 // NewAuthorizationSession creates a new session for a CIMD-based authorization request.
-// The session ID is a 32-character lowercase hex string from 16 cryptographically random bytes.
+// The session ID is a 64-character lowercase hex string from 32 cryptographically random bytes
+// (256 bits), per OWASP/NIST SP 800-63B recommendations for capability tokens (ADR 016).
 func NewAuthorizationSession(
 	agentID id.AgentID,
 	clientID string,
@@ -57,7 +58,7 @@ func NewAuthorizationSession(
 	codeChallengeMethod string,
 	meta *CIMDMetadataSnapshot,
 ) (*AuthorizationSession, error) {
-	b := make([]byte, 16)
+	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
