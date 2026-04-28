@@ -71,6 +71,22 @@ After consent submission, the frontend needs the original authorize URL to re-en
 - Requires server-side storage (one row per in-flight authorization) — bounded by the 10-minute TTL and expected concurrency
 - Non-atomic grant creation + session consumption — if `Consume()` fails after a successful grant, the session remains unconsumed until TTL expiry. This is a narrow window (the `Consume` operation is a simple UPDATE) and is logged for observability
 - Deep-linking directly to a consent URL without going through `/authorize` is intentionally impossible for CIMD flows — this is a feature, not a limitation
-- Expired sessions accumulate until cleaned up; the `DeleteExpired()` repository method exists for this purpose and must be called periodically
+- Expired sessions accumulate until cleaned up (see below)
+
+### Expired Session Cleanup
+
+Cleanup is an operational concern handled by `pg_cron` in PostgreSQL environments:
+
+```sql
+SELECT cron.schedule(
+  'cleanup-expired-authorization-sessions',
+  '*/5 * * * *',
+  $$DELETE FROM authorization_sessions WHERE expires_at < now()$$
+);
+```
+
+The 5-minute interval is sufficient given the 10-minute TTL — expired sessions are never visible to the application (rejected at read time via `IsExpired()` check), so the cleanup is purely a storage hygiene concern. The `idx_authorization_sessions_expires_at` index ensures the DELETE is an efficient index scan.
+
+For environments without `pg_cron` (development, in-memory backend), the `DeleteExpired()` repository method is available for ad-hoc or test-driven cleanup.
 
 **New invariant**: For CIMD flows, all authorization context displayed on the consent screen MUST originate from the server-side `AuthorizationSession`. Any future consent UI path that bypasses session lookup for CIMD agents violates this ADR.
