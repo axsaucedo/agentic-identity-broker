@@ -280,19 +280,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		DelegatedOAuth2Tokens: tokens,
 	}
 
-	// FR-029: Consume the session after all deterministic validations pass, immediately before
-	// the grant is created. This ensures bad requests (invalid redirect_uri, expired valid_until,
-	// malformed service IDs) do not burn the single-use session.
-	if sessionID != "" {
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			h.logger.Error("failed to consume authorization session",
-				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-				"error", consumeErr)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
-	}
-
 	// Call consent service
 	grant, err := h.consentService.GrantConsent(r.Context(), grantReq)
 	if err != nil {
@@ -337,9 +324,33 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 		"grant_id", grant.ID)
 
-	// Session was already consumed before GrantConsent (see consume-first block above).
-	// Return the success response with the redirect URL from the consumed session.
+	// FR-029: Consume the session after GrantConsent succeeds so that validation failures
+	// (ErrInvalidScopes, ErrServiceNotFound, etc.) do not burn the single-use session.
+	// Conflict means a concurrent request already consumed and succeeded — return 400.
+	// NotFound means the session expired between validation and now — return 400.
 	if sessionID != "" {
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			var storErr *storage.StorageError
+			if errors.As(consumeErr, &storErr) {
+				switch storErr.Kind {
+				case storage.ErrorKindConflict:
+					h.logger.Warn("authorization session already consumed (concurrent submit)",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has already been used")
+					return
+				case storage.ErrorKindNotFound:
+					h.logger.Warn("authorization session not found at consume time",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
+					return
+				}
+			}
+			h.logger.Error("failed to consume authorization session",
+				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+				"error", consumeErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 		response := h.toGrantResponse(grant)
 		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
 			"data":         response,
