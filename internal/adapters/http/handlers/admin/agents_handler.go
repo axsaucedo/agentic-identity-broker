@@ -258,8 +258,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	// adapter on Update) skips cardinality to allow CIMD snapshot refreshes — so this
 	// explicit check is required for admin mutations.
 	if err := storage.ValidateClientURIsForWrite(req.ClientURIs); err != nil {
-		h.logger.Warn("invalid client_uris", "error", err)
-		h.writeError(w, http.StatusBadRequest, "invalid client_uris", err.Error())
+		h.logger.Warn("client_uris validation failed", "error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 

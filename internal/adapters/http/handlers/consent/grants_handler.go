@@ -215,6 +215,18 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessionRedirectURI = authSession.OriginalURL
+
+		// FR-029: Consume the session BEFORE creating the grant to make replay protection atomic.
+		// Consuming first means a Consume failure returns 500 with no grant created — no inconsistent
+		// state. The reverse order (grant then consume) could leave a committed grant and a reusable
+		// session together if Consume fails, enabling replay.
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			h.logger.Error("failed to consume authorization session",
+				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+				"error", consumeErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 	}
 
 	// Check for redirect_uri parameter early - validate before processing grant (T051-T054)
@@ -324,23 +336,9 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 		"grant_id", grant.ID)
 
-	// FR-029: Consume the authorization session after successful grant creation.
-	// The session is single-use — consuming it prevents replay attacks.
-	// If Consume fails, compensate by revoking the grant so neither a committed
-	// grant nor a reusable session persist together. RevokeConsent is idempotent
-	// and deletes by (principal, agent), matching the grant just created.
+	// Session was already consumed before GrantConsent (see consume-first block above).
+	// Return the success response with the redirect URL from the consumed session.
 	if sessionID != "" {
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			h.logger.Error("failed to consume authorization session",
-				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-				"error", consumeErr)
-			if revokeErr := h.consentService.RevokeConsent(r.Context(), id.Principal(principalValue), parsedAgentID); revokeErr != nil {
-				h.logger.Error("failed to revoke grant during session consume failure compensation",
-					"agent_id", agentID, "principal", principalValue, "error", revokeErr)
-			}
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
 		response := h.toGrantResponse(grant)
 		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
 			"data":         response,

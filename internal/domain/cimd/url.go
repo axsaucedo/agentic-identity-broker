@@ -41,11 +41,15 @@ func ParseClientIDMetadataDocumentURL(raw string) (ClientIDMetadataDocumentURL, 
 	}
 
 	// Validate the authority explicitly: require a non-empty hostname and, when a port
-	// is present, parse host and port via net.SplitHostPort to catch malformed authorities
-	// such as https://:443/client (empty hostname with port).
-	if u.Port() != "" {
+	// separator is present (including empty-port trailing colons like "example.com:"),
+	// parse via net.SplitHostPort to catch malformed authorities.
+	// url.Parse accepts empty ports (net.SplitHostPort allows them), so u.Port() == ""
+	// does not distinguish "no port" from "trailing colon with empty port" — check for
+	// a colon in the host to catch the latter.
+	rawPort := u.Port()
+	if rawPort != "" || (!strings.HasPrefix(u.Host, "[") && strings.ContainsRune(u.Host, ':')) {
 		h, p, splitErr := net.SplitHostPort(u.Host)
-		if splitErr != nil || h == "" {
+		if splitErr != nil || h == "" || p == "" {
 			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL has malformed authority: %q", u.Host)
 		}
 		n, atoiErr := strconv.Atoi(p)

@@ -431,7 +431,13 @@ func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataRespo
 func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agent *storage.Agent, agentID id.AgentID) (*CIMDMetadataResponse, error) {
 	sessionID := r.URL.Query().Get("session_id")
 	if sessionID == "" {
-		if len(agent.ClientURIs) > 0 {
+		// Require session_id only when the request is a CIMD authorization flow,
+		// identified by a URL-format client_id in the query params. Opaque flows
+		// (no client_id, or non-URL client_id) do not use sessions and may use
+		// the query-param path. Keying off agent.ClientURIs alone would break opaque
+		// flows for agents that also have CIMD client_uris configured.
+		clientID := r.URL.Query().Get("client_id")
+		if clientID != "" && strings.HasPrefix(clientID, "https://") {
 			return nil, errors.New("session_id is required for CIMD agent authorization")
 		}
 		return buildCIMDMetadata(r, agent), nil

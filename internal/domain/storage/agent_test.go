@@ -539,3 +539,30 @@ func TestIsValidRedirectURI(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateClientURIsForWrite(t *testing.T) {
+	t.Run("accepts single valid CIMD URI", func(t *testing.T) {
+		err := ValidateClientURIsForWrite([]string{"https://example.com/client"})
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects trailing colon with empty port", func(t *testing.T) {
+		err := ValidateClientURIsForWrite([]string{"https://example.com:/client"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "malformed authority")
+	})
+
+	t.Run("rejects empty hostname with port", func(t *testing.T) {
+		err := ValidateClientURIsForWrite([]string{"https://:443/client"})
+		require.Error(t, err)
+	})
+
+	t.Run("rejects multiple CIMD URIs", func(t *testing.T) {
+		err := ValidateClientURIsForWrite([]string{
+			"https://a.example.com/client",
+			"https://b.example.com/client",
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "at most one")
+	})
+}

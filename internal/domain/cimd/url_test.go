@@ -82,4 +82,15 @@ func TestParseClientIDMetadataDocumentURL(t *testing.T) {
 		_, err := ParseClientIDMetadataDocumentURL("https:///path")
 		require.Error(t, err)
 	})
+
+	t.Run("rejects trailing colon with empty port", func(t *testing.T) {
+		_, err := ParseClientIDMetadataDocumentURL("https://example.com:/client")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "malformed authority")
+	})
+
+	t.Run("rejects empty hostname with port", func(t *testing.T) {
+		_, err := ParseClientIDMetadataDocumentURL("https://:443/client")
+		require.Error(t, err)
+	})
 }

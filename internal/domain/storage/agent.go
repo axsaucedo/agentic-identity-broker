@@ -162,9 +162,12 @@ func validateClientURI(uriStr string) error {
 	}
 	// Validate the authority explicitly: mirrors cimd.ParseClientIDMetadataDocumentURL.
 	// A circular dependency prevents a shared import, so both validators must stay in sync.
-	if u.Port() != "" {
+	// Check for a port separator including empty-port trailing colons ("example.com:"),
+	// which url.Parse accepts but are structurally invalid per the validation rules.
+	rawPort := u.Port()
+	if rawPort != "" || (!strings.HasPrefix(u.Host, "[") && strings.ContainsRune(u.Host, ':')) {
 		h, p, splitErr := net.SplitHostPort(u.Host)
-		if splitErr != nil || h == "" {
+		if splitErr != nil || h == "" || p == "" {
 			return fmt.Errorf("has malformed authority: %q", u.Host)
 		}
 		n, atoiErr := strconv.Atoi(p)
