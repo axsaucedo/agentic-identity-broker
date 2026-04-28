@@ -1,0 +1,157 @@
+// Package e2e_test provides end-to-end tests for the frontend UI using Playwright.
+// This file contains tests for the CIMD (Client ID Metadata Document) consent UI components.
+package e2e_test
+
+import (
+	"context"
+	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/pages"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+)
+
+// CIMDConsentUI tests verify the CIMD consent screen components rendered when an
+// authorization session carries CIMD metadata (URL-based client_id flow).
+var _ = Describe("CIMD Consent UI", func() {
+	var (
+		ctx         context.Context
+		consentPage *pages.ConsentPage
+		cimdAgent   *storage.Agent
+		session     *storage.AuthorizationSession
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+
+		now := time.Now()
+		cimdAgent = &storage.Agent{
+			ID:           id.NewAgentID(),
+			ClientID:     id.ClientID("cimd-test-client"),
+			DisplayName:  "CIMD Test Agent",
+			Description:  "Test agent for CIMD consent UI scenarios",
+			ClientURIs:   []string{"https://cimd-example.com/client_metadata.json"},
+			RedirectURIs: []string{"https://cimd-example.com/callback"},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+		err := GetTestStorage().Agents().Create(ctx, cimdAgent)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create CIMD test agent")
+
+		session, err = storage.NewAuthorizationSession(
+			cimdAgent.ID,
+			"https://cimd-example.com/client_metadata.json",
+			"https://cimd-example.com/authorize?client_id=https://cimd-example.com/client_metadata.json",
+			"https://cimd-example.com/callback",
+			"read",
+			"state-cimd-test",
+			"challenge123",
+			"S256",
+			&storage.CIMDMetadataSnapshot{
+				ClientID:     "https://cimd-example.com/client_metadata.json",
+				ClientName:   "CIMD Test Client",
+				RedirectURIs: []string{"https://cimd-example.com/callback"},
+			},
+		)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create authorization session")
+
+		err = GetTestStorage().AuthorizationSessions().Create(ctx, session)
+		Expect(err).NotTo(HaveOccurred(), "Failed to store authorization session")
+
+		consentPage = pages.NewConsentPage(GetTestPage(), GetFrontendURL())
+	})
+
+	AfterEach(func() {
+		if consentPage != nil {
+			_ = consentPage.Close()
+		}
+	})
+
+	// CS-001: CIMDConsentSummary component — "The application … wants to access …"
+	It("should display CIMD consent summary with client name and access target", func() {
+		// CS-001 from specs/028-cimd-support/spec.md — CIMDConsentSummary component
+		err := consentPage.NavigateToAgentWithSessionID(ctx, cimdAgent.ID.String(), session.SessionID)
+		Expect(err).NotTo(HaveOccurred(), "Failed to navigate to CIMD consent page")
+
+		visible, err := consentPage.IsCIMDSummaryVisible(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to check CIMD summary visibility")
+		Expect(visible).To(BeTrue(), "CIMDConsentSummary 'wants to access' text should be visible")
+
+		err = consentPage.TakeScreenshot(ctx, "cimd_cs001_consent_summary")
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	// CS-002: CIMDDomainBadge component — "Verified domain: …"
+	It("should display the verified domain badge for the CIMD client_id URL", func() {
+		// CS-002 from specs/028-cimd-support/spec.md — CIMDDomainBadge component
+		err := consentPage.NavigateToAgentWithSessionID(ctx, cimdAgent.ID.String(), session.SessionID)
+		Expect(err).NotTo(HaveOccurred(), "Failed to navigate to CIMD consent page")
+
+		visible, err := consentPage.HasCIMDDomainBadge(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to check domain badge visibility")
+		Expect(visible).To(BeTrue(), "CIMDDomainBadge 'Verified domain:' text should be visible")
+
+		err = consentPage.TakeScreenshot(ctx, "cimd_cs002_domain_badge")
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	// CS-003: CIMDLocalhostWarning component — role="alert" for localhost redirect URIs
+	Context("when the authorization session redirect_uri points to localhost", func() {
+		var localhostSession *storage.AuthorizationSession
+
+		BeforeEach(func() {
+			var err error
+			localhostSession, err = storage.NewAuthorizationSession(
+				cimdAgent.ID,
+				"https://cimd-example.com/client_metadata.json",
+				"https://cimd-example.com/authorize?client_id=https://cimd-example.com/client_metadata.json",
+				"http://localhost:8080/callback",
+				"read",
+				"state-localhost-test",
+				"challenge456",
+				"S256",
+				&storage.CIMDMetadataSnapshot{
+					ClientID:     "https://cimd-example.com/client_metadata.json",
+					ClientName:   "CIMD Test Client",
+					RedirectURIs: []string{"http://localhost:8080/callback"},
+				},
+			)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create localhost authorization session")
+
+			err = GetTestStorage().AuthorizationSessions().Create(ctx, localhostSession)
+			Expect(err).NotTo(HaveOccurred(), "Failed to store localhost authorization session")
+		})
+
+		It("should show a localhost redirect warning alert", func() {
+			// CS-003 from specs/028-cimd-support/spec.md — CIMDLocalhostWarning component
+			err := consentPage.NavigateToAgentWithSessionID(ctx, cimdAgent.ID.String(), localhostSession.SessionID)
+			Expect(err).NotTo(HaveOccurred(), "Failed to navigate to CIMD consent page with localhost session")
+
+			has, err := consentPage.HasCIMDLocalhostWarning(ctx)
+			Expect(err).NotTo(HaveOccurred(), "Failed to check localhost warning visibility")
+			Expect(has).To(BeTrue(), "CIMDLocalhostWarning role=alert element should be visible for localhost redirect_uri")
+
+			err = consentPage.TakeScreenshot(ctx, "cimd_cs003_localhost_warning")
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	// CS-004: CIMDAdvancedDetails component — expandable details panel
+	It("should expand CIMD advanced details when the user clicks the disclosure button", func() {
+		// CS-004 from specs/028-cimd-support/spec.md — CIMDAdvancedDetails component
+		err := consentPage.NavigateToAgentWithSessionID(ctx, cimdAgent.ID.String(), session.SessionID)
+		Expect(err).NotTo(HaveOccurred(), "Failed to navigate to CIMD consent page")
+
+		err = consentPage.ClickCIMDAdvancedDetails(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to click Advanced Details button")
+
+		expanded, err := consentPage.IsCIMDAdvancedDetailsExpanded(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to check advanced details panel state")
+		Expect(expanded).To(BeTrue(), "Advanced details panel should show Client Name after clicking the button")
+
+		err = consentPage.TakeScreenshot(ctx, "cimd_cs004_advanced_details_expanded")
+		Expect(err).NotTo(HaveOccurred())
+	})
+})

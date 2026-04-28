@@ -78,12 +78,18 @@ export function AgentGrantDetailPage() {
 
   const resolvedAgentId = agentId ?? '';
 
+  // Memoize options to keep a stable object reference across renders.
+  // Without this, { sessionId } creates a new object every render, causing
+  // useCallback in useAgentGrants to recreate fetchData, which triggers
+  // useEffect on every render, causing an infinite loading loop.
+  const agentGrantOptions = useMemo(
+    () => (sessionId ? { sessionId } : cimdParams ? { cimdParams } : undefined),
+    [sessionId, cimdParams],
+  );
+
   // Fetch agent data and grants
   const { agent, services, cimdMeta, grants, loading, error, refetch } =
-    useAgentGrants(
-      resolvedAgentId,
-      sessionId ? { sessionId } : cimdParams ? { cimdParams } : undefined,
-    );
+    useAgentGrants(resolvedAgentId, agentGrantOptions);
 
   // Grant toggle hook
   const {

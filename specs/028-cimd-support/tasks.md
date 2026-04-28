@@ -78,7 +78,7 @@
 - [X] T019 [P] Write E2E tests in `tests/e2e/cimd_caching_test.go` for US3 scenarios (4 It blocks: cache hit, expired refetch, no error cache, operator TTL override)
 - [X] T020 [P] Write E2E tests in `tests/e2e/cimd_metadata_test.go` for US4 scenarios (2 It blocks: field present when enabled, absent when disabled)
 - [X] T021 [P] Write E2E tests in `tests/e2e/cimd_consent_test.go` for US5 scenarios (4 It blocks: summary+badge+details, localhost warning, expand details, brand mismatch)
-- [ ] T022 [P] Write Playwright E2E tests in `tests/e2e/frontend/cimd_consent_test.go` for CS-001–CS-004 with screenshot captures
+- [X] T022 [P] Write Playwright E2E tests in `tests/e2e/frontend/cimd_consent_test.go` for CS-001–CS-004 with screenshot captures
 - [X] T023 Verify all E2E tests FAIL semantically (red phase): detailed expectations present and failing, no placeholders, no XIt/PIt/Skip markers
 
 **Checkpoint**: E2E tests written and verified to fail before implementation

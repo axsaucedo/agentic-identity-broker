@@ -1314,3 +1314,93 @@ func (cp *ConsentPage) WaitForServiceToAppear(ctx context.Context, serviceDispla
 	}
 	return nil
 }
+
+// NavigateToAgentWithSessionID navigates to the consent page for a CIMD authorization
+// flow using a server-side session ID. This is the CIMD consent path where all trust
+// context is server-side and only the session_id is passed in the URL.
+func (cp *ConsentPage) NavigateToAgentWithSessionID(ctx context.Context, agentID, sessionID string) error {
+	if agentID == "" {
+		return fmt.Errorf("agentID cannot be empty")
+	}
+	if sessionID == "" {
+		return fmt.Errorf("sessionID cannot be empty")
+	}
+
+	path := fmt.Sprintf("%s?session_id=%s", fmt.Sprintf(agentDetailPath, agentID), url.QueryEscape(sessionID))
+	if err := cp.Navigate(ctx, path); err != nil {
+		return fmt.Errorf("failed to navigate to agent consent page with session_id: %w", err)
+	}
+
+	if err := cp.waitForAgentNameHeading(ctx); err != nil {
+		return fmt.Errorf("agent name heading not found after navigation with session_id: %w", err)
+	}
+
+	return nil
+}
+
+// IsCIMDSummaryVisible reports whether the CIMDConsentSummary component is visible
+// on the page (the "The application … wants to access …" paragraph).
+func (cp *ConsentPage) IsCIMDSummaryVisible(ctx context.Context) (bool, error) {
+	loc := cp.page().GetByText("wants to access", playwright.PageGetByTextOptions{
+		Exact: playwright.Bool(false),
+	})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check CIMD summary visibility: %w", err)
+	}
+	return visible, nil
+}
+
+// HasCIMDDomainBadge reports whether the CIMDDomainBadge component ("Verified domain: …")
+// is visible on the page.
+func (cp *ConsentPage) HasCIMDDomainBadge(ctx context.Context) (bool, error) {
+	loc := cp.page().GetByText("Verified domain:", playwright.PageGetByTextOptions{
+		Exact: playwright.Bool(false),
+	})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check CIMD domain badge visibility: %w", err)
+	}
+	return visible, nil
+}
+
+// HasCIMDLocalhostWarning reports whether the CIMDLocalhostWarning alert is visible.
+// The warning uses role="alert" and appears only when the redirect_uri points to localhost.
+func (cp *ConsentPage) HasCIMDLocalhostWarning(ctx context.Context) (bool, error) {
+	loc := cp.page().GetByRole("alert")
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check localhost warning visibility: %w", err)
+	}
+	return visible, nil
+}
+
+// ClickCIMDAdvancedDetails clicks the "Advanced Details" disclosure button in the
+// CIMDAdvancedDetails component, expanding the detail panel.
+func (cp *ConsentPage) ClickCIMDAdvancedDetails(ctx context.Context) error {
+	btn := cp.page().GetByRole("button", playwright.PageGetByRoleOptions{Name: "Advanced Details"})
+	count, err := btn.Count()
+	if err != nil {
+		return fmt.Errorf("failed to locate Advanced Details button: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("Advanced Details button not found")
+	}
+	if err := btn.Click(); err != nil {
+		return fmt.Errorf("failed to click Advanced Details button: %w", err)
+	}
+	return nil
+}
+
+// IsCIMDAdvancedDetailsExpanded reports whether the CIMDAdvancedDetails panel is
+// expanded, indicated by the presence of the "Client Name" detail label.
+func (cp *ConsentPage) IsCIMDAdvancedDetailsExpanded(ctx context.Context) (bool, error) {
+	loc := cp.page().GetByText("Client Name", playwright.PageGetByTextOptions{
+		Exact: playwright.Bool(true),
+	})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check advanced details panel state: %w", err)
+	}
+	return visible, nil
+}
