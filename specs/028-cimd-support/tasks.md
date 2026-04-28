@@ -233,7 +233,7 @@
 - [X] T064b [P] [US5] Update `web/src/hooks/useAgentGrants.ts` and `web/src/services/api/consent.ts`: add `session_id` parameter; when present, sends `?session_id=` instead of CIMD params
 - [X] T064c [US5] Update consent submission in frontend: when `session_id` present, send `?session_id=` to grants endpoint instead of `?redirect_uri=`
 - [X] T065 [US5] Verify US5 E2E tests in `tests/e2e/cimd_consent_test.go` turn green
-- [ ] T066 [US5] Verify Playwright tests in `tests/e2e/frontend/cimd_consent_test.go` pass with screenshots captured
+- [X] T066 [US5] Verify Playwright tests in `tests/e2e/frontend/cimd_consent_test.go` pass with screenshots captured
 
 **Checkpoint**: Consent screen renders all four CIMD UX elements (CS-001–CS-004)
 
@@ -291,7 +291,7 @@
 - [X] T079 Verify design system review completed for CIMD consent components (Principle XI)
 - [X] T080 Verify E2E acceptance tests in `tests/e2e/` cover all 24 spec scenarios (22 original + 2 session edge cases) (Principle XIII)
 - [X] T081 Verify E2E tests were verified to FAIL before implementation (red phase) (Principle XIII)
-- [ ] T082 Verify Playwright E2E tests in `tests/e2e/frontend/` pass with screenshots (Principle XIII)
+- [X] T082 Verify Playwright E2E tests in `tests/e2e/frontend/` pass with screenshots (Principle XIII)
 
 #### Implementation Phase Verification
 
@@ -331,7 +331,7 @@
 - [X] T098 Verify each It() block maps to exactly one acceptance scenario from spec.md
 - [X] T099 Verify E2E tests turned GREEN as implementation satisfied acceptance criteria
 - [X] T100 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
-- [ ] T101 Run frontend E2E suite: `ginkgo -v ./tests/e2e/frontend/` (all tests must pass)
+- [X] T101 Run frontend E2E suite: `ginkgo -v ./tests/e2e/frontend/` (all tests must pass)
 
 **Frontend** (Principle XI):
 - [X] T102 Verify CIMD consent components use design system primitives and semantic tokens
