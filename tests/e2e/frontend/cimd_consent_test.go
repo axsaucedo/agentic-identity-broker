@@ -79,6 +79,10 @@ var _ = Describe("CIMD Consent UI", func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to check CIMD summary visibility")
 		Expect(visible).To(BeTrue(), "CIMDConsentSummary 'wants to access' text should be visible")
 
+		hasName, err := consentPage.HasCIMDClientName(ctx, "CIMD Test Client")
+		Expect(err).NotTo(HaveOccurred(), "Failed to check client name")
+		Expect(hasName).To(BeTrue(), "Seeded client name 'CIMD Test Client' should appear in the consent summary")
+
 		err = consentPage.TakeScreenshot(ctx, "cimd_cs001_consent_summary")
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -92,6 +96,10 @@ var _ = Describe("CIMD Consent UI", func() {
 		visible, err := consentPage.HasCIMDDomainBadge(ctx)
 		Expect(err).NotTo(HaveOccurred(), "Failed to check domain badge visibility")
 		Expect(visible).To(BeTrue(), "CIMDDomainBadge 'Verified domain:' text should be visible")
+
+		hasDomain, err := consentPage.HasCIMDDomainText(ctx, "cimd-example.com")
+		Expect(err).NotTo(HaveOccurred(), "Failed to check domain text")
+		Expect(hasDomain).To(BeTrue(), "Seeded domain 'cimd-example.com' should appear in the verified domain badge")
 
 		err = consentPage.TakeScreenshot(ctx, "cimd_cs002_domain_badge")
 		Expect(err).NotTo(HaveOccurred())
@@ -133,6 +141,10 @@ var _ = Describe("CIMD Consent UI", func() {
 			Expect(err).NotTo(HaveOccurred(), "Failed to check localhost warning visibility")
 			Expect(has).To(BeTrue(), "CIMDLocalhostWarning role=alert element should be visible for localhost redirect_uri")
 
+			warningText, err := consentPage.GetCIMDLocalhostWarningText(ctx)
+			Expect(err).NotTo(HaveOccurred(), "Failed to get localhost warning text")
+			Expect(warningText).To(ContainSubstring("localhost"), "Warning alert should mention localhost")
+
 			err = consentPage.TakeScreenshot(ctx, "cimd_cs003_localhost_warning")
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -150,6 +162,10 @@ var _ = Describe("CIMD Consent UI", func() {
 		expanded, err := consentPage.IsCIMDAdvancedDetailsExpanded(ctx)
 		Expect(err).NotTo(HaveOccurred(), "Failed to check advanced details panel state")
 		Expect(expanded).To(BeTrue(), "Advanced details panel should show Client Name after clicking the button")
+
+		hasClientName, err := consentPage.GetCIMDClientNameFromDetails(ctx, "CIMD Test Client")
+		Expect(err).NotTo(HaveOccurred(), "Failed to check client name in advanced details")
+		Expect(hasClientName).To(BeTrue(), "Seeded client name 'CIMD Test Client' should appear in the expanded advanced details panel")
 
 		err = consentPage.TakeScreenshot(ctx, "cimd_cs004_advanced_details_expanded")
 		Expect(err).NotTo(HaveOccurred())

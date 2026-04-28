@@ -2,6 +2,7 @@ package cimd
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -35,22 +36,27 @@ func ParseClientIDMetadataDocumentURL(raw string) (ClientIDMetadataDocumentURL, 
 		return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL must use https scheme, got %q", u.Scheme)
 	}
 
-	if u.Host == "" || u.Hostname() == "" {
-		return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL must have a host")
-	}
-
 	if u.User != nil {
 		return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL must not contain credentials")
 	}
 
-	if port := u.Port(); port != "" {
-		n, err := strconv.Atoi(port)
-		if err != nil || n < 1 || n > 65535 {
-			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port is not a valid port number: %q", port)
+	// Validate the authority explicitly: require a non-empty hostname and, when a port
+	// is present, parse host and port via net.SplitHostPort to catch malformed authorities
+	// such as https://:443/client (empty hostname with port).
+	if u.Port() != "" {
+		h, p, splitErr := net.SplitHostPort(u.Host)
+		if splitErr != nil || h == "" {
+			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL has malformed authority: %q", u.Host)
+		}
+		n, atoiErr := strconv.Atoi(p)
+		if atoiErr != nil || n < 1 || n > 65535 {
+			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port is not a valid port number: %q", p)
 		}
 		if n != 443 {
-			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port must be 443 or absent, got %q", port)
+			return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL port must be 443 or absent, got %q", p)
 		}
+	} else if u.Hostname() == "" {
+		return ClientIDMetadataDocumentURL{}, fmt.Errorf("client_id URL must have a host")
 	}
 
 	if u.Path == "" || u.Path == "/" {

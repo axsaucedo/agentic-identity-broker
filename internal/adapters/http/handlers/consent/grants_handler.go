@@ -183,6 +183,13 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		}
 		authSession, sessionErr := h.authSessionRepo.GetBySessionID(r.Context(), sessionID)
 		if sessionErr != nil {
+			var storErr *storage.StorageError
+			if errors.As(sessionErr, &storErr) && storErr.Kind != storage.ErrorKindNotFound {
+				h.logger.Error("authorization session lookup failed", "session_id", sessionID,
+					"agent_id", agentID, "principal", principalValue, "error", sessionErr)
+				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+				return
+			}
 			h.logger.Warn("authorization session not found", "session_id", sessionID,
 				"agent_id", agentID, "principal", principalValue)
 			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
@@ -319,11 +326,15 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 
 	// FR-029: Consume the authorization session after successful grant creation.
 	// The session is single-use — consuming it prevents replay attacks.
+	// Consume must succeed before emitting the success response; a failed consume
+	// leaves the session reusable for replay attacks until TTL expiry.
 	if sessionID != "" {
 		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
 			h.logger.Error("failed to consume authorization session",
 				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
 				"error", consumeErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
 		}
 		response := h.toGrantResponse(grant)
 		h.writeJSON(w, http.StatusCreated, map[string]interface{}{

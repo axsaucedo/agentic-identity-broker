@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -132,21 +133,25 @@ func validateClientURI(uriStr string) error {
 	if u.Scheme != "https" {
 		return fmt.Errorf("must use https scheme, got %q", u.Scheme)
 	}
-	if u.Host == "" || u.Hostname() == "" {
-		return errors.New("must have a host")
-	}
 	if u.User != nil {
 		return errors.New("must not contain credentials")
 	}
-	port := u.Port()
-	if port != "" {
-		n, err := strconv.Atoi(port)
-		if err != nil || n < 1 || n > 65535 {
-			return fmt.Errorf("port is not a valid port number: %q", port)
+	// Validate the authority explicitly: mirrors cimd.ParseClientIDMetadataDocumentURL.
+	// A circular dependency prevents a shared import, so both validators must stay in sync.
+	if u.Port() != "" {
+		h, p, splitErr := net.SplitHostPort(u.Host)
+		if splitErr != nil || h == "" {
+			return fmt.Errorf("has malformed authority: %q", u.Host)
+		}
+		n, atoiErr := strconv.Atoi(p)
+		if atoiErr != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("port is not a valid port number: %q", p)
 		}
 		if n != 443 {
-			return fmt.Errorf("port must be 443 or absent, got %q", port)
+			return fmt.Errorf("port must be 443 or absent, got %q", p)
 		}
+	} else if u.Hostname() == "" {
+		return errors.New("must have a host")
 	}
 	if u.Path == "" || u.Path == "/" {
 		return errors.New("must have a non-empty path")

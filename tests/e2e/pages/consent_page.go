@@ -1384,7 +1384,7 @@ func (cp *ConsentPage) ClickCIMDAdvancedDetails(ctx context.Context) error {
 		return fmt.Errorf("failed to locate Advanced Details button: %w", err)
 	}
 	if count == 0 {
-		return fmt.Errorf("Advanced Details button not found")
+		return fmt.Errorf("advanced details button not found")
 	}
 	if err := btn.Click(); err != nil {
 		return fmt.Errorf("failed to click Advanced Details button: %w", err)
@@ -1401,6 +1401,54 @@ func (cp *ConsentPage) IsCIMDAdvancedDetailsExpanded(ctx context.Context) (bool,
 	visible, err := loc.IsVisible()
 	if err != nil {
 		return false, fmt.Errorf("failed to check advanced details panel state: %w", err)
+	}
+	return visible, nil
+}
+
+// HasCIMDClientName reports whether the given client name is visible on the CIMD consent page.
+// Checks that the seeded client name is actually rendered, not just the generic "wants to access" label.
+func (cp *ConsentPage) HasCIMDClientName(ctx context.Context, name string) (bool, error) {
+	loc := cp.page().GetByText(name, playwright.PageGetByTextOptions{
+		Exact: playwright.Bool(false),
+	})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check CIMD client name %q: %w", name, err)
+	}
+	return visible, nil
+}
+
+// HasCIMDDomainText reports whether the given domain string appears within the verified domain badge.
+func (cp *ConsentPage) HasCIMDDomainText(ctx context.Context, domain string) (bool, error) {
+	loc := cp.page().GetByText(domain, playwright.PageGetByTextOptions{
+		Exact: playwright.Bool(false),
+	})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check CIMD domain text %q: %w", domain, err)
+	}
+	return visible, nil
+}
+
+// GetCIMDLocalhostWarningText returns the text content of the localhost warning alert.
+func (cp *ConsentPage) GetCIMDLocalhostWarningText(ctx context.Context) (string, error) {
+	loc := cp.page().GetByRole("alert")
+	text, err := loc.TextContent()
+	if err != nil {
+		return "", fmt.Errorf("failed to get localhost warning text: %w", err)
+	}
+	return text, nil
+}
+
+// GetCIMDClientNameFromDetails returns the client name value visible in the expanded
+// CIMDAdvancedDetails panel, confirming the seeded name is rendered correctly.
+func (cp *ConsentPage) GetCIMDClientNameFromDetails(ctx context.Context, name string) (bool, error) {
+	loc := cp.page().GetByText(name, playwright.PageGetByTextOptions{
+		Exact: playwright.Bool(true),
+	})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check client name %q in advanced details: %w", name, err)
 	}
 	return visible, nil
 }

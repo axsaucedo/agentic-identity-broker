@@ -4,6 +4,7 @@ package consent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -188,6 +189,12 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 
 	cimdMeta, err := h.resolveCIMDMetadata(r, agent, parsedAgentID)
 	if err != nil {
+		var storErr *storage.StorageError
+		if errors.As(err, &storErr) {
+			h.logger.Error("authorization session repository error", "agent_id", agentID, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
 		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
 		return
@@ -431,6 +438,10 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agent *storage
 
 	session, err := h.authSessionRepo.GetBySessionID(r.Context(), sessionID)
 	if err != nil {
+		var storErr *storage.StorageError
+		if errors.As(err, &storErr) && storErr.Kind != storage.ErrorKindNotFound {
+			return nil, fmt.Errorf("authorization session lookup failed: %w", err)
+		}
 		return nil, errors.New("authorization session not found or expired")
 	}
 	if session.IsExpired() {
