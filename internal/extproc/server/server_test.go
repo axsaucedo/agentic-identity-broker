@@ -415,9 +415,8 @@ func TestServer_Process_StreamHandledCleanly(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // Spec: When broker returns error_uri, headers phase immediately returns HTTP 200
-// with JSON-RPC -32042 URLElicitationRequiredError. agentgateway 0.12.0 commits the
-// request to the backend as soon as it receives any RequestHeaders response, so
-// ImmediateResponse must come from the headers phase.
+// with JSON-RPC -32042 URLElicitationRequiredError. id is null because the request
+// body has not been read yet; this is correct per JSON-RPC 2.0 §5.
 func TestServer_Process_BrokerErrorWithURI_ReturnsElicitationFromHeadersPhase(t *testing.T) {
 	reAuthURL := "https://broker.example.com/api/third-party/svc-123/oauth2/authorize"
 	const description = "User session has expired. Please re-authenticate."

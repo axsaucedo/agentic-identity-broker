@@ -53,7 +53,7 @@ type agentgwContextKey string
 const agentgwAuthHeaderKey agentgwContextKey = "authorization"
 
 const (
-	agentgatewayImage = "cr.agentgateway.dev/agentgateway:0.12.0"
+	agentgatewayImage = "cr.agentgateway.dev/agentgateway:v1.1.0"
 
 	// Test tokens used in agentgateway integration tests.
 	agentgwOriginalBearerToken = "original-agent-bearer-token-e2e"
