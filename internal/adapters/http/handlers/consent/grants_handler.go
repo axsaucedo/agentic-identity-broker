@@ -215,18 +215,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessionRedirectURI = authSession.OriginalURL
-
-		// FR-029: Consume the session BEFORE creating the grant to make replay protection atomic.
-		// Consuming first means a Consume failure returns 500 with no grant created — no inconsistent
-		// state. The reverse order (grant then consume) could leave a committed grant and a reusable
-		// session together if Consume fails, enabling replay.
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			h.logger.Error("failed to consume authorization session",
-				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-				"error", consumeErr)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
 	}
 
 	// Check for redirect_uri parameter early - validate before processing grant (T051-T054)
@@ -290,6 +278,19 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		AgentID:               parsedAgentID,
 		ValidUntil:            req.ValidUntil,
 		DelegatedOAuth2Tokens: tokens,
+	}
+
+	// FR-029: Consume the session after all deterministic validations pass, immediately before
+	// the grant is created. This ensures bad requests (invalid redirect_uri, expired valid_until,
+	// malformed service IDs) do not burn the single-use session.
+	if sessionID != "" {
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			h.logger.Error("failed to consume authorization session",
+				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+				"error", consumeErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 	}
 
 	// Call consent service

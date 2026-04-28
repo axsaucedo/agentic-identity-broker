@@ -63,6 +63,10 @@ func (r *AuthorizationSessionRepository) Consume(ctx context.Context, sessionID 
 		return storage.NewStorageError("AuthorizationSessionRepository.Consume", storage.ErrorKindNotFound, nil,
 			fmt.Sprintf("authorization session %s not found", sessionID))
 	}
+	if session.IsConsumed() {
+		return storage.NewStorageError("AuthorizationSessionRepository.Consume", storage.ErrorKindConflict, nil,
+			fmt.Sprintf("authorization session %s has already been consumed", sessionID))
+	}
 
 	session.Consume()
 	return nil
