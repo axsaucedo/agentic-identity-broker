@@ -112,7 +112,29 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 	if err != nil {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindUnknown, err, "failed to consume authorization session")
 	}
-	return checkRowsAffected("AuthorizationSessionRepo.Consume", result, "authorization session not found or already consumed")
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindUnknown, err, "failed to determine rows affected")
+	}
+	if rows > 0 {
+		return nil
+	}
+
+	// 0 rows: either the session doesn't exist or was already consumed — distinguish via SELECT
+	// so callers can return the correct 400 message.
+	queryCtx, cancel2 := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel2()
+
+	var consumedAt *time.Time
+	err = r.adapter.db.QueryRowContext(queryCtx,
+		`SELECT consumed_at FROM authorization_sessions WHERE session_id = $1`, sessionID).Scan(&consumedAt)
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindNotFound, nil, "authorization session not found")
+	}
+	if err != nil {
+		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConnection, err, "failed to check authorization session state")
+	}
+	return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConflict, nil, "authorization session has already been consumed")
 }
 
 func (r *AuthorizationSessionRepo) DeleteExpired(ctx context.Context) (int64, error) {
