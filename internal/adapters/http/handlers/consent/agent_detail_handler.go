@@ -425,10 +425,15 @@ func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataRespo
 
 // resolveCIMDMetadata resolves CIMD metadata for the consent page.
 // When session_id is present (FR-028), loads from the server-side AuthorizationSession.
-// Falls back to URL-param resolution for non-CIMD (opaque) flows.
+// CIMD agents (agents with URL-format client_uris) require session_id — falling back
+// to query params for CIMD agents would reopen the metadata-spoofing surface that
+// server-side sessions were designed to close. Non-CIMD/opaque flows may use query params.
 func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agent *storage.Agent, agentID id.AgentID) (*CIMDMetadataResponse, error) {
 	sessionID := r.URL.Query().Get("session_id")
 	if sessionID == "" {
+		if len(agent.ClientURIs) > 0 {
+			return nil, errors.New("session_id is required for CIMD agent authorization")
+		}
 		return buildCIMDMetadata(r, agent), nil
 	}
 

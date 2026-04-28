@@ -254,6 +254,15 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Enforce client URI cardinality on admin writes. Validate() (called by the storage
+	// adapter on Update) skips cardinality to allow CIMD snapshot refreshes — so this
+	// explicit check is required for admin mutations.
+	if err := storage.ValidateClientURIsForWrite(req.ClientURIs); err != nil {
+		h.logger.Warn("invalid client_uris", "error", err)
+		h.writeError(w, http.StatusBadRequest, "invalid client_uris", err.Error())
+		return
+	}
+
 	// Update agent entity — preserve read-only CIMD snapshot fields from existing record.
 	agent := &storage.Agent{
 		ID:                   parsedAgentID,

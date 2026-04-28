@@ -84,7 +84,7 @@ func (a *Agent) Validate() error {
 		}
 	}
 
-	if err := validateClientURIs(a.ClientURIs); err != nil {
+	if err := validateClientURIFormats(a.ClientURIs); err != nil {
 		return err
 	}
 
@@ -96,16 +96,20 @@ func (a *Agent) Validate() error {
 	return nil
 }
 
-// validateClientURIs applies full CIMD URL validation to each entry in the list,
-// rejects duplicates, and enforces at most one URL-format (CIMD) entry.
-// Multiple CIMD URIs per agent are rejected because snapshot fields
-// (auth_method, jwks_uri, redirect_uris, etc.) are stored once per agent — a second
-// CIMD URI would overwrite the first's snapshot on every alternating request.
-// Mirrors cimd.ParseClientIDMetadataDocumentURL (a direct import would create a
-// circular dependency since cimd imports storage).
-func validateClientURIs(uris []string) error {
+// ValidateClientURIsForWrite runs the full client URI validation (format, duplicates,
+// and CIMD cardinality). Used by admin mutation paths (create and update) where an
+// operator is setting the canonical set of client_uris. Not called during CIMD
+// snapshot refreshes, which go through agentRepo.Update and only call Validate().
+func ValidateClientURIsForWrite(uris []string) error {
+	return validateClientURIs(uris)
+}
+
+// validateClientURIFormats validates the format and uniqueness of each entry in the
+// list but does NOT enforce cardinality. Called from Validate() so that CIMD snapshot
+// refreshes (agentRepo.Update during authorization) do not break agents that hold a
+// single legacy CIMD URI — the cardinality restriction is a write-time invariant only.
+func validateClientURIFormats(uris []string) error {
 	seen := make(map[string]struct{}, len(uris))
-	cimdCount := 0
 	for i, uriStr := range uris {
 		if _, dup := seen[uriStr]; dup {
 			return fmt.Errorf("client_uris[%d] is a duplicate: %q", i, uriStr)
@@ -114,9 +118,29 @@ func validateClientURIs(uris []string) error {
 		if err := validateClientURI(uriStr); err != nil {
 			return fmt.Errorf("client_uris[%d]: %w", i, err)
 		}
-		cimdCount++
-		if cimdCount > 1 {
-			return fmt.Errorf("client_uris: at most one CIMD (URL-format) client_uri is allowed per agent; use a single canonical URL")
+	}
+	return nil
+}
+
+// validateClientURIs applies full CIMD URL validation to each entry in the list,
+// rejects duplicates, and enforces at most one URL-format (CIMD) entry.
+// Multiple CIMD URIs per agent are rejected because snapshot fields
+// (auth_method, jwks_uri, redirect_uris, etc.) are stored once per agent — a second
+// CIMD URI would overwrite the first's snapshot on every alternating request.
+// Called from write-time paths: ValidateForCreate and admin UpdateAgent.
+// Mirrors cimd.ParseClientIDMetadataDocumentURL (a direct import would create a
+// circular dependency since cimd imports storage).
+func validateClientURIs(uris []string) error {
+	if err := validateClientURIFormats(uris); err != nil {
+		return err
+	}
+	cimdCount := 0
+	for _, uriStr := range uris {
+		if strings.HasPrefix(uriStr, "https://") {
+			cimdCount++
+			if cimdCount > 1 {
+				return fmt.Errorf("client_uris: at most one CIMD (URL-format) client_uri is allowed per agent; use a single canonical URL")
+			}
 		}
 	}
 	return nil

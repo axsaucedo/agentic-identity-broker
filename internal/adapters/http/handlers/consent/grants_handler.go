@@ -326,13 +326,18 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 
 	// FR-029: Consume the authorization session after successful grant creation.
 	// The session is single-use — consuming it prevents replay attacks.
-	// Consume must succeed before emitting the success response; a failed consume
-	// leaves the session reusable for replay attacks until TTL expiry.
+	// If Consume fails, compensate by revoking the grant so neither a committed
+	// grant nor a reusable session persist together. RevokeConsent is idempotent
+	// and deletes by (principal, agent), matching the grant just created.
 	if sessionID != "" {
 		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
 			h.logger.Error("failed to consume authorization session",
 				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
 				"error", consumeErr)
+			if revokeErr := h.consentService.RevokeConsent(r.Context(), id.Principal(principalValue), parsedAgentID); revokeErr != nil {
+				h.logger.Error("failed to revoke grant during session consume failure compensation",
+					"agent_id", agentID, "principal", principalValue, "error", revokeErr)
+			}
 			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			return
 		}
