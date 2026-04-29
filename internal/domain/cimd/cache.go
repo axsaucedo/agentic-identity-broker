@@ -1,6 +1,7 @@
 package cimd
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,16 +28,19 @@ type CIMDCache struct {
 }
 
 // NewCIMDCache creates a new CIMD cache with the given TTL bounds.
-func NewCIMDCache(minTTL, maxTTL time.Duration) *CIMDCache {
+// Returns an error if minTTL exceeds maxTTL.
+func NewCIMDCache(minTTL, maxTTL time.Duration) (*CIMDCache, error) {
+	if minTTL > maxTTL {
+		return nil, fmt.Errorf("cimd cache: minTTL (%v) must not exceed maxTTL (%v)", minTTL, maxTTL)
+	}
 	return &CIMDCache{
 		entries: make(map[string]*CIMDCacheEntry),
 		minTTL:  minTTL,
 		maxTTL:  maxTTL,
-	}
+	}, nil
 }
 
 // Get returns the cached entry for url if it exists and has not expired.
-// Expired entries are evicted on detection. Returns nil if absent or expired.
 func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 	c.mu.RLock()
 	entry, ok := c.entries[url]

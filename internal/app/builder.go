@@ -312,7 +312,10 @@ func (b *Builder) Build() (*App, error) {
 					return nil, fmt.Errorf("failed to create CIMD fetcher: %w", fetchErr)
 				}
 			}
-			cimdCache := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL)
+			cimdCache, cacheErr := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL)
+			if cacheErr != nil {
+				return nil, fmt.Errorf("failed to create CIMD cache: %w", cacheErr)
+			}
 			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, b.storage.Agents(), cimdCfg.ClientNameBlocklist, b.logger)
 			clientResolver = domaincimd.NewCIMDClientResolver(b.storage.Agents(), cimdSvc, b.logger)
 			b.logger.Info("CIMD client resolution enabled",

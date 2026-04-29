@@ -10,6 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func mustNewCIMDCache(t *testing.T, minTTL, maxTTL time.Duration) *CIMDCache {
+	t.Helper()
+	c, err := NewCIMDCache(minTTL, maxTTL)
+	require.NoError(t, err)
+	return c
+}
+
 func TestCIMDCache(t *testing.T) {
 	const testURL = "https://agent.example.com/client"
 	doc := &ClientIDMetadataDocument{
@@ -22,12 +29,12 @@ func TestCIMDCache(t *testing.T) {
 	maxTTL := 1 * time.Hour
 
 	t.Run("miss returns nil", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		assert.Nil(t, c.Get(testURL))
 	})
 
 	t.Run("hit returns entry within TTL", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=300")
 		c.Set(testURL, doc, h, time.Now())
@@ -39,7 +46,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("expired entry returns nil", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=300")
 		fetchedAt := time.Now().Add(-10 * time.Minute) // 10 min ago
@@ -49,7 +56,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("max-age from Cache-Control is used", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=7200") // 2 hours — clamped to maxTTL (1h)
 
@@ -63,7 +70,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("operator maxTTL clamps document max-age", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, 30*time.Minute)
+		c := mustNewCIMDCache(t, minTTL, 30*time.Minute)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=7200")
 
@@ -76,7 +83,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("minTTL floor applied when max-age is too short", func(t *testing.T) {
-		c := NewCIMDCache(60*time.Second, maxTTL)
+		c := mustNewCIMDCache(t, 60*time.Second, maxTTL)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=10") // 10s — below minTTL (60s)
 
@@ -89,7 +96,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("minTTL applied when no Cache-Control header", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		now := time.Now()
 		c.Set(testURL, doc, make(http.Header), now)
 
@@ -99,7 +106,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("expired entry is evicted from map on Get", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=300")
 		c.Set(testURL, doc, h, time.Now().Add(-10*time.Minute))
@@ -113,7 +120,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("Get does not evict entry refreshed by concurrent Set", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=300")
 
@@ -129,7 +136,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("Get concurrent with Set does not race", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=300")
 
@@ -154,7 +161,7 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("ETag stored from response header", func(t *testing.T) {
-		c := NewCIMDCache(minTTL, maxTTL)
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		h := make(http.Header)
 		h.Set("Cache-Control", "max-age=300")
 		h.Set("ETag", `"abc123"`)
@@ -163,5 +170,17 @@ func TestCIMDCache(t *testing.T) {
 		entry := c.Get(testURL)
 		require.NotNil(t, entry)
 		assert.Equal(t, `"abc123"`, entry.ETag)
+	})
+
+	t.Run("rejects minTTL greater than maxTTL", func(t *testing.T) {
+		_, err := NewCIMDCache(2*time.Hour, 30*time.Minute)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "minTTL")
+	})
+
+	t.Run("accepts equal minTTL and maxTTL", func(t *testing.T) {
+		c, err := NewCIMDCache(5*time.Minute, 5*time.Minute)
+		require.NoError(t, err)
+		assert.NotNil(t, c)
 	})
 }

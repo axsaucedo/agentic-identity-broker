@@ -111,7 +111,7 @@ func TestService_Resolve_CacheHit(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
 	agent := testAgent(agentID)
 
-	cache := NewCIMDCache(60*time.Second, time.Hour)
+	cache := mustNewCIMDCache(t, 60*time.Second, time.Hour)
 	cached := &ClientIDMetadataDocument{
 		ClientID:     "https://agent.example.com/client",
 		ClientName:   "Test Agent",
@@ -139,7 +139,7 @@ func TestService_Resolve_FirstFetch_PopulatesSnapshotSilently(t *testing.T) {
 	repo := newMockAgentRepo(agent)
 	svc := NewService(
 		&mockFetcher{result: fetchResult},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		repo,
 		nil,
 		slog.Default(),
@@ -172,7 +172,7 @@ func TestService_Resolve_SubsequentFetch_ChangedAuthMethod_EmitsAuditAndUpdates(
 	repo := newMockAgentRepo(agent)
 	svc := NewService(
 		&mockFetcher{result: fetchResult},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		repo,
 		nil,
 		slog.Default(),
@@ -205,7 +205,7 @@ func TestService_Resolve_SubsequentFetch_UnchangedFields_NoUpdate(t *testing.T) 
 	repo := newMockAgentRepo(agent)
 	svc := NewService(
 		&mockFetcher{result: fetchResult},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		repo,
 		nil,
 		slog.Default(),
@@ -222,7 +222,7 @@ func TestService_Resolve_FetchError(t *testing.T) {
 
 	svc := NewService(
 		&mockFetcher{err: fmt.Errorf("connection refused")},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		newMockAgentRepo(agent),
 		nil,
 		slog.Default(),
@@ -241,7 +241,7 @@ func TestService_Resolve_InvalidDocument(t *testing.T) {
 	badBody := `{"client_id":"https://other.example.com/client","client_name":"Bad Agent","redirect_uris":["https://other.example.com/cb"]}`
 	svc := NewService(
 		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(badBody)}},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		newMockAgentRepo(agent),
 		nil,
 		slog.Default(),
@@ -261,7 +261,7 @@ func TestService_Resolve_UpdateFailureFails(t *testing.T) {
 
 	svc := NewService(
 		&mockFetcher{result: fetchResult},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		repo,
 		nil,
 		slog.Default(),
@@ -284,7 +284,7 @@ func TestService_Resolve_NameBlocklist_Rejected(t *testing.T) {
 	badName := `{"client_id":"https://agent.example.com/client","client_name":"Blocked","redirect_uris":["https://agent.example.com/cb"]}`
 	svc := NewService(
 		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(badName)}},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		newMockAgentRepo(agent),
 		[]string{"blocked"}, // name blocklist
 		slog.Default(),
@@ -302,7 +302,7 @@ func TestService_Resolve_NameBlocklist_PartialMatchNotRejected(t *testing.T) {
 	doc := `{"client_id":"https://agent.example.com/client","client_name":"Blocked Agent","redirect_uris":["https://agent.example.com/cb"]}`
 	svc := NewService(
 		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(doc)}},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		newMockAgentRepo(agent),
 		[]string{"blocked"},
 		slog.Default(),
@@ -322,7 +322,7 @@ func TestService_Resolve_OmittedAuthMethodDefaultsToNone(t *testing.T) {
 	repo := newMockAgentRepo(agent)
 	svc := NewService(
 		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(noMethod)}},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		repo,
 		nil,
 		slog.Default(),
@@ -343,7 +343,7 @@ func TestService_Resolve_InvalidURL(t *testing.T) {
 
 	svc := NewService(
 		&mockFetcher{},
-		NewCIMDCache(60*time.Second, time.Hour),
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
 		newMockAgentRepo(agent),
 		nil,
 		slog.Default(),
@@ -365,7 +365,7 @@ func TestService_Resolve_BuiltinReservedNamesRejectedWithEmptyConfig(t *testing.
 			)
 			svc := NewService(
 				&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(body)}},
-				NewCIMDCache(60*time.Second, time.Hour),
+				mustNewCIMDCache(t, 60*time.Second, time.Hour),
 				newMockAgentRepo(agent),
 				nil, // empty operator list — built-ins must still apply
 				slog.Default(),
