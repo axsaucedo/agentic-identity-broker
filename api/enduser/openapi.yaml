@@ -530,6 +530,21 @@ paths:
         - Deletes the grant entirely
 
 
+        **CIMD Session-Based Consent (FR-029)**:
+
+        - Use `session_id` query parameter for CIMD authorization flows
+
+        - Session is a single-use server-side record created during the authorization request
+
+        - Session is consumed after successful grant creation (prevents replay attacks)
+
+        - Returns HTTP 201 with `redirect_url` field containing the original authorization URL
+
+        - Returns `400 Bad Request` if session is not found, expired, or already consumed
+
+        - Returns `403 Forbidden` if session belongs to a different principal
+
+
         **Redirect After Approval (Optional)**:
 
         - Use `redirect_uri` query parameter to continue OAuth2 flow after grant approval
@@ -578,9 +593,15 @@ paths:
       - Consent
       parameters:
       - $ref: '#/components/parameters/AgentIdParam'
+      - name: session_id
+        in: query
+        description: 'CIMD authorization session ID (FR-029). When present, the grant endpoint uses the server-side AuthorizationSession to resolve the redirect target and enforces single-use semantics. Takes precedence over redirect_uri for the response redirect. Returns 400 if the session is not found, expired, or already consumed; 403 if the session principal does not match the authenticated caller.'
+        required: false
+        schema:
+          type: string
       - name: redirect_uri
         in: query
-        description: 'Optional URL for OAuth2 flow continuation after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). When provided, response includes redirect_url field in body instead of HTTP redirect (avoids CORS issues with cross-origin redirect chains). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected.'
+        description: 'Optional URL for OAuth2 flow continuation after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). When provided, response includes redirect_url field in body instead of HTTP redirect (avoids CORS issues with cross-origin redirect chains). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected. Ignored when session_id is also present.'
         required: false
         schema:
           type: string
@@ -688,6 +709,18 @@ paths:
                     message: 'invalid scopes requested: delegation 0 (service=example-service) has invalid scopes: [invalid:scope]'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - Authorization session belongs to a different principal (session_id mismatch).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                principalMismatch:
+                  summary: Session belongs to a different user
+                  value:
+                    error: forbidden
+                    message: authorization session does not belong to this user
         '404':
           $ref: '#/components/responses/AgentNotFound'
         '500':

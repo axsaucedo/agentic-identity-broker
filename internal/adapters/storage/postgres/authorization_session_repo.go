@@ -112,7 +112,7 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 
 	now := time.Now()
 	result, err := r.adapter.db.ExecContext(execCtx,
-		`UPDATE authorization_sessions SET consumed_at = $1 WHERE session_id = $2 AND consumed_at IS NULL AND expires_at > $1`,
+		`UPDATE authorization_sessions SET consumed_at = $1 WHERE session_id = $2 AND consumed_at IS NULL AND expires_at >= $1`,
 		now, sessionID)
 	if err != nil {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindUnknown, err, "failed to consume authorization session")
@@ -139,7 +139,7 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 	if err != nil {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConnection, err, "failed to check authorization session state")
 	}
-	if expiresAt.Before(time.Now()) {
+	if expiresAt.Before(now) {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindNotFound, nil, "authorization session has expired")
 	}
 	return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConflict, nil, "authorization session has already been consumed")

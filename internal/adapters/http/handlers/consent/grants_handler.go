@@ -343,11 +343,19 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	// (e.g. agent deleted, invalid scopes) do not burn the single-use session.
 	if sessionID != "" {
 		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			// Grant already created — log and proceed. Conflict means a concurrent
-			// request also succeeded (idempotent upsert), which is acceptable.
-			h.logger.Warn("failed to consume authorization session after grant",
-				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-				"error", consumeErr)
+			var storErr *storage.StorageError
+			if errors.As(consumeErr, &storErr) && storErr.Kind == storage.ErrorKindConflict {
+				// A concurrent identical request consumed the session first.
+				// Both upserted the same grant (same principal/agent), so proceed normally.
+				h.logger.Warn("authorization session consumed by concurrent request",
+					"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+			} else {
+				h.logger.Error("failed to consume authorization session after grant",
+					"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+					"error", consumeErr)
+				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+				return
+			}
 		}
 	}
 
