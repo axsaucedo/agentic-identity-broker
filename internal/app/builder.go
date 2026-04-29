@@ -315,7 +315,7 @@ func (b *Builder) Build() (*App, error) {
 			}
 			cimdCache := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL)
 			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, b.storage.Agents(), cimdCfg.ClientNameBlocklist, b.logger)
-			clientResolver = domaincimd.NewCIMDClientResolver(b.storage.Agents(), cimdSvc)
+			clientResolver = domaincimd.NewCIMDClientResolver(b.storage.Agents(), cimdSvc, b.logger)
 			b.logger.Info("CIMD client resolution enabled",
 				"fetch_timeout", cimdCfg.FetchTimeout,
 				"max_response_bytes", cimdCfg.MaxResponseBytes,

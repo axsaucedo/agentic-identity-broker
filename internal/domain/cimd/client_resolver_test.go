@@ -58,7 +58,7 @@ func TestCIMDClientResolver_OpaqueUUID_Success(t *testing.T) {
 	}
 	repo := newMockAgentRepoForCR(agent)
 	svc := cimdServiceForTest(nil, nil, repo)
-	resolver := NewCIMDClientResolver(repo, svc)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
 
 	resolution, err := resolver.ResolveClient(context.Background(), id.ClientID(agentID.String()))
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestCIMDClientResolver_OpaqueUUID_Success(t *testing.T) {
 func TestCIMDClientResolver_OpaqueUUID_NotFound(t *testing.T) {
 	repo := newMockAgentRepoForCR()
 	svc := cimdServiceForTest(nil, nil, repo)
-	resolver := NewCIMDClientResolver(repo, svc)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
 
 	_, err := resolver.ResolveClient(context.Background(), id.ClientID("00000000-0000-0000-0000-000000000099"))
 	require.Error(t, err)
@@ -82,7 +82,7 @@ func TestCIMDClientResolver_OpaqueUUID_NotFound(t *testing.T) {
 func TestCIMDClientResolver_InvalidURL_Rejected(t *testing.T) {
 	repo := newMockAgentRepoForCR()
 	svc := cimdServiceForTest(nil, nil, repo)
-	resolver := NewCIMDClientResolver(repo, svc)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
 
 	// http:// is not a valid CIMD URL
 	_, err := resolver.ResolveClient(context.Background(), "http://agent.example.com/client")
@@ -96,7 +96,7 @@ func TestCIMDClientResolver_InvalidURL_Rejected(t *testing.T) {
 func TestCIMDClientResolver_URLNotRegistered(t *testing.T) {
 	repo := newMockAgentRepoForCR()
 	svc := cimdServiceForTest(nil, nil, repo)
-	resolver := NewCIMDClientResolver(repo, svc)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
 
 	_, err := resolver.ResolveClient(context.Background(), "https://agent.example.com/client")
 	require.Error(t, err)
@@ -117,7 +117,7 @@ func TestCIMDClientResolver_CIMDFetchFails(t *testing.T) {
 	repo := newMockAgentRepoForCR(agent)
 	repo.registerURI("https://agent.example.com/client", agent)
 	svc := cimdServiceForTest(nil, fmt.Errorf("connection refused"), repo)
-	resolver := NewCIMDClientResolver(repo, svc)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
 
 	_, err := resolver.ResolveClient(context.Background(), "https://agent.example.com/client")
 	require.Error(t, err)
@@ -143,7 +143,7 @@ func TestCIMDClientResolver_URLFormat_Success(t *testing.T) {
 	)
 	fetchResult := &ports.CIMDFetchResult{Body: []byte(body), CacheControl: "max-age=300"}
 	svc := cimdServiceForTest(fetchResult, nil, repo)
-	resolver := NewCIMDClientResolver(repo, svc)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
 
 	resolution, err := resolver.ResolveClient(context.Background(), clientURL)
 	require.NoError(t, err)
@@ -172,7 +172,7 @@ func TestCIMDClientResolver_ResolvesViaCIMDURINotClientID(t *testing.T) {
 	body := fmt.Sprintf(`{"client_id":%q,"client_name":"URI-Only Agent","redirect_uris":["https://agent.example.com/cb"]}`, cimdURI)
 	fetchResult := &ports.CIMDFetchResult{Body: []byte(body), CacheControl: "max-age=300"}
 	svc := cimdServiceForTest(fetchResult, nil, repo)
-	resolver := NewCIMDClientResolver(repo, svc)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
 
 	resolution, err := resolver.ResolveClient(context.Background(), cimdURI)
 	require.NoError(t, err, "should resolve via ClientURI even when ClientID is a different value")

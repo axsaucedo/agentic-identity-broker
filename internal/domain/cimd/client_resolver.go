@@ -3,6 +3,7 @@ package cimd
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -16,13 +17,15 @@ import (
 type CIMDClientResolver struct {
 	agentRepo   ports.AgentRepository
 	cimdService *Service
+	logger      *slog.Logger
 }
 
 // NewCIMDClientResolver creates a CIMD-enabled client resolver.
-func NewCIMDClientResolver(agentRepo ports.AgentRepository, cimdService *Service) *CIMDClientResolver {
+func NewCIMDClientResolver(agentRepo ports.AgentRepository, cimdService *Service, logger *slog.Logger) *CIMDClientResolver {
 	return &CIMDClientResolver{
 		agentRepo:   agentRepo,
 		cimdService: cimdService,
+		logger:      logger,
 	}
 }
 
@@ -48,6 +51,7 @@ func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*p
 		if isNotFoundErr(err) {
 			return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 		}
+		r.logger.ErrorContext(ctx, "failed to look up agent by client URI", "error", err, "client_uri", rawURL)
 		return nil, &ports.ClientIDError{Code: "server_error", Desc: "Failed to validate client"}
 	}
 
@@ -94,6 +98,7 @@ func (r *CIMDClientResolver) resolveOpaque(ctx context.Context, clientID id.Clie
 		if isNotFoundErr(err) {
 			return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 		}
+		r.logger.ErrorContext(ctx, "failed to look up agent by ID", "error", err, "agent_id", agentUUID)
 		return nil, &ports.ClientIDError{Code: "server_error", Desc: "Failed to validate client"}
 	}
 
