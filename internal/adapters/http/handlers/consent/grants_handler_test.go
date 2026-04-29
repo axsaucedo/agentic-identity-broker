@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
@@ -20,7 +21,7 @@ import (
 )
 
 // Helper to create request with principal context
-func newRequestWithPrincipal(method, path, principalValue string, body interface{}) *http.Request {
+func newRequestWithPrincipal(method, path, principalValue string, body any) *http.Request {
 	var reqBody *bytes.Buffer
 	if body != nil {
 		jsonBody, _ := json.Marshal(body)
@@ -752,7 +753,7 @@ func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
 	}
 
 	// Check response body contains redirect_url
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
@@ -820,7 +821,7 @@ func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
 	}
 
 	// Check response body contains redirect_url
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
@@ -992,7 +993,7 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 	}
 
 	// Check response body contains redirect_url
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
@@ -1004,5 +1005,80 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 	// Verify that query parameters are preserved in the redirect URL
 	if redirectUrl != "/callback?session=abc" {
 		t.Errorf("expected redirect_url '/callback?session=abc', got '%s'", redirectUrl)
+	}
+}
+
+// TestCreateGrant_SessionReplayRace verifies that a second concurrent request using
+// the same session_id gets 400 after the first request has already consumed the session.
+func TestCreateGrant_SessionReplayRace(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+	testGrantID := id.NewGrantID()
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+	principalVal := "user@example.com"
+
+	session, err := storage.NewAuthorizationSession(
+		testAgentID,
+		id.Principal(principalVal),
+		"https://agent.example.com/client",
+		"https://agent.example.com/authorize",
+		"/callback",
+		"read",
+		"state-xyz",
+		"challenge",
+		"S256",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+
+	authRepo := memory.NewAuthorizationSessionRepository()
+	if err := authRepo.Create(context.Background(), session); err != nil {
+		t.Fatalf("failed to store session: %v", err)
+	}
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
+			return &storage.UserGrant{
+				ID:                    testGrantID,
+				Principal:             id.Principal(principalVal),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				DelegatedOAuth2Tokens: []storage.DelegatedToken{},
+				CreatedAt:             now,
+				UpdatedAt:             now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil).WithAuthorizationSessionRepository(authRepo)
+
+	newReq := func() *http.Request {
+		req := newRequestWithPrincipal(
+			"POST",
+			"/api/consent/agent/"+testAgentID.String()+"/grants?session_id="+session.SessionID,
+			principalVal,
+			GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+		)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", testAgentID.String())
+		return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	}
+
+	// First request: session is valid → 201 Created
+	rr1 := httptest.NewRecorder()
+	handler.CreateGrant(rr1, newReq())
+	if rr1.Code != http.StatusCreated {
+		t.Errorf("first request: expected 201, got %d; body: %s", rr1.Code, rr1.Body.String())
+	}
+
+	// Second request with same session_id: session already consumed → 400
+	rr2 := httptest.NewRecorder()
+	handler.CreateGrant(rr2, newReq())
+	if rr2.Code != http.StatusBadRequest {
+		t.Errorf("replay request: expected 400, got %d; body: %s", rr2.Code, rr2.Body.String())
 	}
 }
