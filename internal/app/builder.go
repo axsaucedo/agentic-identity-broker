@@ -303,12 +303,11 @@ func (b *Builder) Build() (*App, error) {
 			activeFetcher := b.cimdFetcher
 			if activeFetcher == nil {
 				var fetchErr error
-				activeFetcher, fetchErr = adaptercmd.NewFetcher(
-					cimdCfg.FetchTimeout,
-					int64(cimdCfg.MaxResponseBytes),
-					cimdCfg.SSRF.ExtraBlockedCIDRs,
-					cimdCfg.ClientNameBlocklist,
-				)
+			activeFetcher, fetchErr = adaptercmd.NewFetcher(
+				cimdCfg.FetchTimeout,
+				int64(cimdCfg.MaxResponseBytes),
+				cimdCfg.SSRF.ExtraBlockedCIDRs,
+			)
 				if fetchErr != nil {
 					return nil, fmt.Errorf("failed to create CIMD fetcher: %w", fetchErr)
 				}

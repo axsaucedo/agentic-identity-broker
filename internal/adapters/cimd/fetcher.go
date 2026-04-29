@@ -24,19 +24,13 @@ type Fetcher struct {
 	client           *http.Client
 	blocklist        domaincimd.SSRFBlocklist
 	maxResponseBytes int64
-	nameBlocklist    []string
 }
-
-// DialerControl is a function seam for testing — allows injection of a custom
-// net.Dialer.Control callback. In production this is the SSRF-blocking control.
-type DialerControl func(network, address string, c syscall.RawConn) error
 
 // NewFetcher creates a new SSRF-hardened CIMD fetcher.
 // fetchTimeout is the maximum time to wait for a response.
 // maxResponseBytes is the maximum allowed response body size.
 // extraBlockedCIDRs are operator-configured additional blocked CIDR ranges.
-// nameBlocklist is a case-insensitive list of forbidden client_name values.
-func NewFetcher(fetchTimeout time.Duration, maxResponseBytes int64, extraBlockedCIDRs []string, nameBlocklist []string) (*Fetcher, error) {
+func NewFetcher(fetchTimeout time.Duration, maxResponseBytes int64, extraBlockedCIDRs []string) (*Fetcher, error) {
 	blocklist, err := domaincimd.NewSSRFBlocklist(extraBlockedCIDRs)
 	if err != nil {
 		return nil, fmt.Errorf("building SSRF blocklist: %w", err)
@@ -73,13 +67,12 @@ func NewFetcher(fetchTimeout time.Duration, maxResponseBytes int64, extraBlocked
 		client:           client,
 		blocklist:        blocklist,
 		maxResponseBytes: maxResponseBytes,
-		nameBlocklist:    nameBlocklist,
 	}, nil
 }
 
 // NewFetcherWithClient creates a Fetcher with an injected HTTP client, for testing.
 // The no-redirect policy is always enforced regardless of the client's CheckRedirect setting.
-func NewFetcherWithClient(client *http.Client, blocklist domaincimd.SSRFBlocklist, maxResponseBytes int64, nameBlocklist []string) *Fetcher {
+func NewFetcherWithClient(client *http.Client, blocklist domaincimd.SSRFBlocklist, maxResponseBytes int64) *Fetcher {
 	client.CheckRedirect = func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
@@ -87,7 +80,6 @@ func NewFetcherWithClient(client *http.Client, blocklist domaincimd.SSRFBlocklis
 		client:           client,
 		blocklist:        blocklist,
 		maxResponseBytes: maxResponseBytes,
-		nameBlocklist:    nameBlocklist,
 	}
 }
 
@@ -126,10 +118,6 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (*ports.CIMDFetchRes
 		Expires:      resp.Header.Get("Expires"),
 	}, nil
 }
-
-// nameBlocklist returns the fetcher's configured name blocklist.
-// Exposed for use by callers (e.g., CIMDService) that parse the raw body.
-func (f *Fetcher) NameBlocklist() []string { return f.nameBlocklist }
 
 // buildSSRFControl returns a net.Dialer.Control function that rejects connections
 // to any IP address in the blocklist. The control callback fires after DNS

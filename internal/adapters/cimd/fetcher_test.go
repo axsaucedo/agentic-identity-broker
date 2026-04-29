@@ -45,7 +45,7 @@ func TestFetcher_Success(t *testing.T) {
 	bl, err := domaincimd.NewSSRFBlocklist(nil)
 	require.NoError(t, err)
 
-	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120, nil)
+	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120)
 
 	targetURL := srv.URL + "/client"
 	result, err := fetcher.Fetch(context.Background(), targetURL)
@@ -65,7 +65,7 @@ func TestFetcher_Non200(t *testing.T) {
 	bl, err := domaincimd.NewSSRFBlocklist(nil)
 	require.NoError(t, err)
 
-	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120, nil)
+	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120)
 	_, err = fetcher.Fetch(context.Background(), srv.URL+"/client")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "status 404")
@@ -83,7 +83,7 @@ func TestFetcher_OversizedResponse(t *testing.T) {
 	bl, err := domaincimd.NewSSRFBlocklist(nil)
 	require.NoError(t, err)
 
-	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120, nil)
+	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120)
 	_, err = fetcher.Fetch(context.Background(), srv.URL+"/client")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "5120 byte limit")
@@ -100,7 +100,7 @@ func TestFetcher_Redirect_Blocked(t *testing.T) {
 	bl, err := domaincimd.NewSSRFBlocklist(nil)
 	require.NoError(t, err)
 
-	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120, nil)
+	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120)
 	_, err = fetcher.Fetch(context.Background(), srv.URL+"/client")
 	require.Error(t, err)
 	// Redirect returns 302 which is not 200
@@ -117,7 +117,7 @@ func TestFetcher_ContextCanceled(t *testing.T) {
 	bl, err := domaincimd.NewSSRFBlocklist(nil)
 	require.NoError(t, err)
 
-	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120, nil)
+	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately

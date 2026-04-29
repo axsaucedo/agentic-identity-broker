@@ -254,7 +254,7 @@ var _ = Describe("CIMD SSRF Protection", func() {
 
 			bl, err := domaincimd.NewSSRFBlocklist(nil)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120, nil)
+			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
@@ -331,7 +331,7 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			// test client's timeout window.
 			tlsClient := cimdTestHTTPClient(cimdServer, fakeHost)
 			tlsClient.Timeout = 100 * time.Millisecond
-			cimdFetcher := adaptercmd.NewFetcherWithClient(tlsClient, bl, 5120, nil)
+			cimdFetcher := adaptercmd.NewFetcherWithClient(tlsClient, bl, 5120)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
