@@ -115,6 +115,9 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 		`UPDATE authorization_sessions SET consumed_at = $1 WHERE session_id = $2 AND consumed_at IS NULL AND expires_at >= $1`,
 		now, sessionID)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindUnknown, err, "failed to consume authorization session")
 	}
 	rows, err := result.RowsAffected()
