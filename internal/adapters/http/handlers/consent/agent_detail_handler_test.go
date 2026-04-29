@@ -831,3 +831,117 @@ func TestBuildServiceRequirementsForUser_ExpiredSessionShowsNotConnected(t *test
 		t.Errorf("expected connection status 'not_connected' for expired session, got %s", results[0].ConnectionStatus)
 	}
 }
+
+func TestResolveCIMDMetadata_SessionAgentMismatch(t *testing.T) {
+	agentA := id.NewAgentID()
+	agentB := id.NewAgentID()
+	principalID := "user@example.com"
+
+	mockService := &mockAgentDetailService{
+		getAgentDetailFunc: func(_ context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
+			return &consent.AgentDetail{
+				AgentID:     agID,
+				DisplayName: "Agent B",
+			}, nil, nil
+		},
+	}
+
+	agentRepo := memory.NewAgentRepository()
+	agentObjA := &storage.Agent{ID: agentA, ClientID: id.NewClientID("a"), DisplayName: "Agent A", Description: "Agent A desc"}
+	agentObjB := &storage.Agent{ID: agentB, ClientID: id.NewClientID("b"), DisplayName: "Agent B", Description: "Agent B desc"}
+	ctx := context.Background()
+	if err := agentRepo.Create(ctx, agentObjA); err != nil {
+		t.Fatalf("create agent A: %v", err)
+	}
+	if err := agentRepo.Create(ctx, agentObjB); err != nil {
+		t.Fatalf("create agent B: %v", err)
+	}
+
+	authSessionRepo := memory.NewAuthorizationSessionRepository()
+	session, err := storage.NewAuthorizationSession(
+		agentA, id.Principal(principalID),
+		"client-a", "https://example.com/original", "https://example.com/cb",
+		"openid", "state123", "challenge", "S256", nil,
+	)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := authSessionRepo.Create(ctx, session); err != nil {
+		t.Fatalf("persist session: %v", err)
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil).
+		WithAgentRepository(agentRepo).
+		WithSessionRepository(memory.NewInMemoryUserSessionRepository()).
+		WithProviderService(newTestProviderService(memory.NewInMemoryThirdpartyOAuth2ProviderRepository())).
+		WithAuthorizationSessionRepository(authSessionRepo)
+
+	// Request agent B's detail with a session that belongs to agent A
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/consent/agent/"+agentB.String()+"?session_id="+session.SessionID, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentB.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), principalID))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for session-agent mismatch, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestResolveCIMDMetadata_SessionPrincipalMismatch(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	mockService := &mockAgentDetailService{
+		getAgentDetailFunc: func(_ context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
+			return &consent.AgentDetail{
+				AgentID:     agID,
+				DisplayName: "Agent",
+			}, nil, nil
+		},
+	}
+
+	agentRepo := memory.NewAgentRepository()
+	agent := &storage.Agent{ID: agentID, ClientID: id.NewClientID("a"), DisplayName: "Agent", Description: "Agent desc"}
+	ctx := context.Background()
+	if err := agentRepo.Create(ctx, agent); err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	authSessionRepo := memory.NewAuthorizationSessionRepository()
+	session, err := storage.NewAuthorizationSession(
+		agentID, id.Principal("userA@example.com"),
+		"client-a", "https://example.com/original", "https://example.com/cb",
+		"openid", "state123", "challenge", "S256", nil,
+	)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := authSessionRepo.Create(ctx, session); err != nil {
+		t.Fatalf("persist session: %v", err)
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil).
+		WithAgentRepository(agentRepo).
+		WithSessionRepository(memory.NewInMemoryUserSessionRepository()).
+		WithProviderService(newTestProviderService(memory.NewInMemoryThirdpartyOAuth2ProviderRepository())).
+		WithAuthorizationSessionRepository(authSessionRepo)
+
+	// User B tries to use user A's session
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/consent/agent/"+agentID.String()+"?session_id="+session.SessionID, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "userB@example.com"))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for session-principal mismatch, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
