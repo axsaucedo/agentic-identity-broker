@@ -464,6 +464,10 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agent *storage
 	if session.AgentID != agentID {
 		return nil, errors.New("authorization session does not match requested agent")
 	}
+	userID, _ := getPrincipalFromContext(r.Context())
+	if string(session.Principal) != userID {
+		return nil, errors.New("authorization session does not belong to this user")
+	}
 
 	if session.CIMDMetadata == nil {
 		return nil, nil

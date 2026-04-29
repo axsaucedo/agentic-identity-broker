@@ -214,6 +214,12 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
 			return
 		}
+		if authSession.Principal != id.Principal(principalValue) {
+			h.logger.Warn("authorization session principal mismatch", "session_id", sessionID,
+				"principal", principalValue)
+			h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
+			return
+		}
 		sessionRedirectURI = authSession.OriginalURL
 	}
 
