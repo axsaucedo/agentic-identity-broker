@@ -47,9 +47,13 @@ func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 	}
 	if time.Now().After(entry.ExpiresAt) {
 		c.mu.Lock()
-		// Re-check: a concurrent Set may have refreshed this URL between the RUnlock
-		// and this Lock. Only delete if the current entry is still expired.
-		if current, ok := c.entries[url]; ok && time.Now().After(current.ExpiresAt) {
+		current, ok := c.entries[url]
+		if ok && !time.Now().After(current.ExpiresAt) {
+			// A concurrent Set refreshed this entry between the RUnlock and this Lock.
+			c.mu.Unlock()
+			return current
+		}
+		if ok {
 			delete(c.entries, url)
 		}
 		c.mu.Unlock()

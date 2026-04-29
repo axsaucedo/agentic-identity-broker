@@ -78,4 +78,6 @@ type SSRFBlockedError struct {
 	IP string
 }
 
-func (e *SSRFBlockedError) Error() string { return "SSRF protection: resolved IP " + e.IP + " is in a blocked range" }
+func (e *SSRFBlockedError) Error() string {
+	return "SSRF protection: resolved IP " + e.IP + " is in a blocked range"
+}
