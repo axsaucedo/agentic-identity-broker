@@ -36,16 +36,19 @@ func NewCIMDCache(minTTL, maxTTL time.Duration) *CIMDCache {
 }
 
 // Get returns the cached entry for url if it exists and has not expired.
-// Returns nil if the entry is absent or expired.
+// Expired entries are evicted on detection. Returns nil if absent or expired.
 func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	entry, ok := c.entries[url]
+	c.mu.RUnlock()
+
 	if !ok {
 		return nil
 	}
 	if time.Now().After(entry.ExpiresAt) {
+		c.mu.Lock()
+		delete(c.entries, url)
+		c.mu.Unlock()
 		return nil
 	}
 	return entry
