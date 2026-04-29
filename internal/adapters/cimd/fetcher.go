@@ -145,7 +145,7 @@ func buildSSRFControl(blocklist domaincimd.SSRFBlocklist) func(string, string, s
 			return fmt.Errorf("resolved address %q is not a valid IP", host)
 		}
 		if blocklist.Contains(ip) {
-			return fmt.Errorf("SSRF protection: resolved IP %s is in a blocked range", ip)
+			return &ports.SSRFBlockedError{IP: ip.String()}
 		}
 		return nil
 	}

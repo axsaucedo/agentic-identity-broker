@@ -69,3 +69,13 @@ type ClientIDError struct {
 }
 
 func (e *ClientIDError) Error() string { return e.Code + ": " + e.Desc }
+
+// SSRFBlockedError is returned when a CIMD fetch is rejected because the resolved
+// IP falls in a blocked range (RFC 6890 or operator-configured). Defined at the
+// ports layer so both the adapter (which creates it) and the domain service (which
+// checks for it via errors.As) can reference it without import cycles.
+type SSRFBlockedError struct {
+	IP string
+}
+
+func (e *SSRFBlockedError) Error() string { return "SSRF protection: resolved IP " + e.IP + " is in a blocked range" }

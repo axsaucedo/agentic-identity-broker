@@ -2,10 +2,10 @@ package cimd
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -70,7 +70,8 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 	// Fetch from remote
 	result, err := s.fetcher.Fetch(ctx, rawURL)
 	if err != nil {
-		if strings.Contains(err.Error(), "SSRF protection") {
+		var ssrfErr *ports.SSRFBlockedError
+		if errors.As(err, &ssrfErr) {
 			s.logger.Warn("cimd_fetch_blocked", "url", rawURL, "error", err)
 		} else {
 			s.logger.Warn("cimd_fetch_failed", "url", rawURL, "error", err)
