@@ -380,9 +380,6 @@ func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataRespo
 			redirectURI = ""
 		}
 	}
-	// scope is echoed from the authorization request query param. A future
-	// hardening step would bind this to server-side consent session state
-	// created during HandleAuthorization, preventing caller-controlled scope display.
 	scope := r.URL.Query().Get("scope")
 
 	u, err := url.Parse(clientID)
