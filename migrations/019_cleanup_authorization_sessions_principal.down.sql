@@ -1,1 +1,2 @@
-ALTER TABLE authorization_sessions ALTER COLUMN principal SET DEFAULT '';
+-- No-op: the DELETE of empty-principal rows cannot be reversed.
+SELECT 1;
