@@ -341,6 +341,15 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if errors.Is(err, consent.ErrGrantValidation) {
+			h.logger.Warn("grant validation failed",
+				"agent_id", agentID,
+				"principal", principalValue,
+				"error", err)
+			h.writeError(w, http.StatusBadRequest, "invalid request", err.Error())
+			return
+		}
+
 		h.logger.Error("failed to grant consent",
 			"agent_id", agentID,
 			"principal", principalValue,

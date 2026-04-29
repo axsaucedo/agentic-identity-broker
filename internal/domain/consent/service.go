@@ -28,6 +28,9 @@ var (
 	// ErrGrantNotFound is returned by RevokeConsentForPrincipal when no active grant exists
 	// for the (principal, agent) pair. The handler maps this to HTTP 404.
 	ErrGrantNotFound = errors.New("grant not found")
+	// ErrGrantValidation is returned when a UserGrant fails domain validation (e.g. empty
+	// scope list, duplicate scopes). The handler maps this to HTTP 400.
+	ErrGrantValidation = errors.New("grant validation failed")
 )
 
 // Service provides consent management business logic.
@@ -138,7 +141,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 		existingGrant.UpdatedAt = time.Now()
 
 		if err := existingGrant.Validate(); err != nil {
-			return nil, fmt.Errorf("grant validation failed: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrGrantValidation, err)
 		}
 
 		if err := s.grantRepo.Update(ctx, existingGrant); err != nil {
@@ -158,7 +161,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 		}
 
 		if err := grant.ValidateForCreate(); err != nil {
-			return nil, fmt.Errorf("grant validation failed: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrGrantValidation, err)
 		}
 
 		if err := s.grantRepo.Create(ctx, grant); err != nil {
