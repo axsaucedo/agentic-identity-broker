@@ -27,7 +27,7 @@ The fetcher is defined as a port interface `CIMDFetcher` in `internal/ports/cimd
 
 ```go
 type CIMDFetcher interface {
-    Fetch(ctx context.Context, url string) (CIMDFetchResult, error)
+    Fetch(ctx context.Context, url string) (*CIMDFetchResult, error)
 }
 ```
 
@@ -44,7 +44,7 @@ Hostname → DNS resolve → [Control callback: IP blocklist check] → TCP conn
 The `SSRFBlocklist` domain value object (initialized from RFC 6890 Special-Purpose Address Registry defaults plus operator-configured `extra_blocked_cidrs`) is consulted in the control callback. If the resolved IP falls in any blocked range, the connection is rejected before any byte is sent.
 
 Additionally:
-- HTTP redirects are disabled (`CheckRedirect: noRedirects`) — the client_id URL must serve the document directly
+- HTTP redirects are disabled (via an anonymous `CheckRedirect` function that returns `http.ErrUseLastResponse`) — the client_id URL must serve the document directly
 - `LimitedReader` caps the response body at `max_response_bytes` (default 5120)
 - Request context carries the operator-configured `fetch_timeout` (default 1s)
 - Only HTTPS is accepted at the URL validation layer (pre-fetch); HTTP is rejected at `ClientIDMetadataDocumentURL` parse time
