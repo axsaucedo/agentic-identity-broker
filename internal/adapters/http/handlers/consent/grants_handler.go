@@ -223,9 +223,11 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		sessionRedirectURI = authSession.OriginalURL
 	}
 
-	// Check for redirect_uri parameter early - validate before processing grant (T051-T054)
+	// Check for redirect_uri parameter early - validate before processing grant (T051-T054).
+	// When session_id is present the redirect comes from the server-side AuthorizationSession;
+	// redirect_uri is ignored in that case so we skip validation to avoid spurious 400s.
 	redirectURI := r.URL.Query().Get("redirect_uri")
-	if redirectURI != "" {
+	if redirectURI != "" && sessionID == "" {
 		// Validate redirect_uri early to prevent unnecessary processing
 		valid, err := validateRedirectURI(redirectURI, r)
 		if err != nil {
@@ -344,11 +346,14 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	if sessionID != "" {
 		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
 			var storErr *storage.StorageError
-			if errors.As(consumeErr, &storErr) && storErr.Kind == storage.ErrorKindConflict {
-				// A concurrent identical request consumed the session first.
-				// Both upserted the same grant (same principal/agent), so proceed normally.
-				h.logger.Warn("authorization session consumed by concurrent request",
-					"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+			if errors.As(consumeErr, &storErr) &&
+				(storErr.Kind == storage.ErrorKindConflict || storErr.Kind == storage.ErrorKindNotFound) {
+				// Conflict: concurrent request consumed first (same grant, idempotent).
+				// NotFound: session expired between GetBySessionID check and Consume.
+				// In both cases the grant was already persisted — proceed normally.
+				h.logger.Warn("authorization session consume skipped after grant",
+					"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+					"kind", storErr.Kind)
 			} else {
 				h.logger.Error("failed to consume authorization session after grant",
 					"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
