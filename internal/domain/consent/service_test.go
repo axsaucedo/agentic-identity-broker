@@ -513,6 +513,56 @@ func TestService_GrantConsent(t *testing.T) {
 		assert.Nil(t, grant)
 		assert.ErrorIs(t, err, ErrAgentNotFound)
 	})
+
+	t.Run("empty scopes returns ErrGrantValidation", func(t *testing.T) {
+		t.Parallel()
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			slog.Default(),
+		)
+
+		req := &GrantRequest{
+			Principal: id.Principal("user@example.com"),
+			AgentID:   agentID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID1,
+					Scopes:                    []string{}, // empty — fails UserGrant.ValidateForCreate
+				},
+			},
+		}
+
+		_, err := svc.GrantConsent(ctx, req)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrGrantValidation)
+	})
+
+	t.Run("duplicate scopes returns ErrGrantValidation", func(t *testing.T) {
+		t.Parallel()
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			slog.Default(),
+		)
+
+		req := &GrantRequest{
+			Principal: id.Principal("user@example.com"),
+			AgentID:   agentID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID1,
+					Scopes:                    []string{"repo", "repo"}, // duplicate — fails UserGrant.ValidateForCreate
+				},
+			},
+		}
+
+		_, err := svc.GrantConsent(ctx, req)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrGrantValidation)
+	})
 }
 
 // TestService_RevokeConsentForPrincipal tests the user-facing revoke method (FR-014).

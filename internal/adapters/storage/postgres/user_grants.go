@@ -64,16 +64,6 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 		grant.ID = id.NewGrantID()
 	}
 
-	// Validate before storing
-	if err := grant.ValidateForCreate(); err != nil {
-		return storage.NewStorageError(
-			"CreateUserGrant",
-			storage.ErrorKindValidation,
-			err,
-			"grant validation failed",
-		)
-	}
-
 	// Marshal delegated tokens to JSONB
 	tokensJSON, err := json.Marshal(grant.DelegatedOAuth2Tokens)
 	if err != nil {
@@ -204,16 +194,6 @@ func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 			storage.ErrorKindValidation,
 			nil,
 			"grant cannot be nil",
-		)
-	}
-
-	// Validate before updating
-	if err := grant.Validate(); err != nil {
-		return storage.NewStorageError(
-			"UpdateUserGrant",
-			storage.ErrorKindValidation,
-			err,
-			"grant validation failed",
 		)
 	}
 

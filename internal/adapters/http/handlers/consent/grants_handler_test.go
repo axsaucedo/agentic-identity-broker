@@ -281,6 +281,12 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 			expectedError:  "service not found",
 		},
 		{
+			name:           "grant validation failed",
+			serviceError:   consent.ErrGrantValidation,
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "invalid request",
+		},
+		{
 			name:           "generic error",
 			serviceError:   errors.New("database error"),
 			expectedStatus: http.StatusInternalServerError,
