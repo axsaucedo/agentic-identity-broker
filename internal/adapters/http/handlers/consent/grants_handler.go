@@ -280,6 +280,37 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// FR-029: Consume the single-use session before writing the grant so that concurrent
+	// requests cannot both upsert consent after passing the validation checks above.
+	if sessionID != "" {
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			var storErr *storage.StorageError
+			if errors.As(consumeErr, &storErr) {
+				switch storErr.Kind {
+				case storage.ErrorKindConflict:
+					h.logger.Warn("authorization session already consumed by concurrent request",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+					h.writeError(w, http.StatusConflict, "session already used", "authorization session has already been used")
+				case storage.ErrorKindNotFound:
+					h.logger.Warn("authorization session expired or not found at consume",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has expired")
+				default:
+					h.logger.Error("failed to consume authorization session",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+						"error", consumeErr)
+					h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+				}
+			} else {
+				h.logger.Error("failed to consume authorization session",
+					"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+					"error", consumeErr)
+				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			}
+			return
+		}
+	}
+
 	// Create grant request
 	grantReq := &consent.GrantRequest{
 		Principal:             id.Principal(principalValue),
@@ -340,29 +371,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"principal", principalValue,
 		"agent_id", agentID,
 		"grant_id", grant.ID)
-
-	// FR-029: Consume after successful grant so that legitimate GrantConsent failures
-	// (e.g. agent deleted, invalid scopes) do not burn the single-use session.
-	if sessionID != "" {
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			var storErr *storage.StorageError
-			if errors.As(consumeErr, &storErr) &&
-				(storErr.Kind == storage.ErrorKindConflict || storErr.Kind == storage.ErrorKindNotFound) {
-				// Conflict: concurrent request consumed first (same grant, idempotent).
-				// NotFound: session expired between GetBySessionID check and Consume.
-				// In both cases the grant was already persisted — proceed normally.
-				h.logger.Warn("authorization session consume skipped after grant",
-					"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-					"kind", storErr.Kind)
-			} else {
-				h.logger.Error("failed to consume authorization session after grant",
-					"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-					"error", consumeErr)
-				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-				return
-			}
-		}
-	}
 
 	if sessionID != "" {
 		response := h.toGrantResponse(grant)
