@@ -92,6 +92,11 @@ func (s *AuthorizationSession) IsConsumed() bool {
 	return s.ConsumedAt != nil
 }
 
+// IsUsable reports whether the session can still be used: not expired and not consumed.
+func (s *AuthorizationSession) IsUsable() bool {
+	return !s.IsExpired() && !s.IsConsumed()
+}
+
 // Consume marks the session as consumed. Idempotent: calling again is a no-op.
 func (s *AuthorizationSession) Consume() {
 	if s.ConsumedAt == nil {
