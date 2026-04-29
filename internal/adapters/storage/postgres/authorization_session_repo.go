@@ -45,10 +45,10 @@ func (r *AuthorizationSessionRepo) Create(ctx context.Context, session *storage.
 
 	_, err := r.adapter.db.ExecContext(execCtx,
 		`INSERT INTO authorization_sessions
-		 (session_id, agent_id, client_id, original_url, redirect_uri, scope, state,
+		 (session_id, agent_id, principal, client_id, original_url, redirect_uri, scope, state,
 		  code_challenge, code_challenge_method, cimd_metadata, created_at, expires_at, consumed_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		session.SessionID, session.AgentID, session.ClientID, session.OriginalURL,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		session.SessionID, session.AgentID, session.Principal, session.ClientID, session.OriginalURL,
 		session.RedirectURI, session.Scope, session.State,
 		session.CodeChallenge, session.CodeChallengeMethod,
 		metaJSON, session.CreatedAt, session.ExpiresAt, session.ConsumedAt,
@@ -72,7 +72,7 @@ func (r *AuthorizationSessionRepo) GetBySessionID(ctx context.Context, sessionID
 		CIMDMetadataJSON []byte `db:"cimd_metadata"`
 	}
 	err := r.adapter.db.GetContext(queryCtx, &row,
-		`SELECT session_id, agent_id, client_id, original_url, redirect_uri, scope, state,
+		`SELECT session_id, agent_id, principal, client_id, original_url, redirect_uri, scope, state,
 		        code_challenge, code_challenge_method, cimd_metadata, created_at, expires_at, consumed_at
 		 FROM authorization_sessions WHERE session_id = $1`, sessionID)
 	if err != nil {
@@ -107,7 +107,7 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 
 	now := time.Now()
 	result, err := r.adapter.db.ExecContext(execCtx,
-		`UPDATE authorization_sessions SET consumed_at = $1 WHERE session_id = $2 AND consumed_at IS NULL`,
+		`UPDATE authorization_sessions SET consumed_at = $1 WHERE session_id = $2 AND consumed_at IS NULL AND expires_at > $1`,
 		now, sessionID)
 	if err != nil {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindUnknown, err, "failed to consume authorization session")
@@ -120,19 +120,22 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 		return nil
 	}
 
-	// 0 rows: either the session doesn't exist or was already consumed — distinguish via SELECT
-	// so callers can return the correct 400 message.
+	// 0 rows: session missing, expired, or already consumed — distinguish via SELECT.
 	queryCtx, cancel2 := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel2()
 
 	var consumedAt *time.Time
+	var expiresAt time.Time
 	err = r.adapter.db.QueryRowContext(queryCtx,
-		`SELECT consumed_at FROM authorization_sessions WHERE session_id = $1`, sessionID).Scan(&consumedAt)
+		`SELECT consumed_at, expires_at FROM authorization_sessions WHERE session_id = $1`, sessionID).Scan(&consumedAt, &expiresAt)
 	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindNotFound, nil, "authorization session not found")
 	}
 	if err != nil {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConnection, err, "failed to check authorization session state")
+	}
+	if expiresAt.Before(time.Now()) {
+		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindNotFound, nil, "authorization session has expired")
 	}
 	return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConflict, nil, "authorization session has already been consumed")
 }
