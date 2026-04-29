@@ -9,6 +9,7 @@ CREATE TABLE authorization_sessions (
     code_challenge        TEXT        NOT NULL,
     code_challenge_method TEXT        NOT NULL,
     cimd_metadata         JSONB,
+    principal             TEXT        NOT NULL,
     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at            TIMESTAMPTZ NOT NULL,
     consumed_at           TIMESTAMPTZ
