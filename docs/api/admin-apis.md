@@ -42,7 +42,7 @@ Creates a new agent registration.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8081/api/agents \
+curl -X POST http://localhost:14000/api/agents \
   -H "X-Principal: admin@example.com" \
   -H "Content-Type: application/json" \
   -d '{
@@ -78,7 +78,7 @@ Retrieves agent details by ID.
 
 **Example:**
 ```bash
-curl http://localhost:8081/api/agents/550e8400-e29b-41d4-a716-446655440000 \
+curl http://localhost:14000/api/agents/550e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -117,7 +117,7 @@ Updates an existing agent's metadata.
 
 **Example:**
 ```bash
-curl -X PUT http://localhost:8081/api/agents/550e8400-e29b-41d4-a716-446655440000 \
+curl -X PUT http://localhost:14000/api/agents/550e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com" \
   -H "Content-Type: application/json" \
   -d '{
@@ -139,7 +139,7 @@ Deletes an agent and all associated user grants (cascade delete).
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8081/api/agents/550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE http://localhost:14000/api/agents/550e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -168,7 +168,7 @@ Retrieves all registered agents.
 
 **Example:**
 ```bash
-curl http://localhost:8081/api/agents \
+curl http://localhost:14000/api/agents \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -228,7 +228,7 @@ Registers a new third-party OAuth2 service.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8081/api/third-party/oauth2/clients \
+curl -X POST http://localhost:14000/api/third-party/oauth2/clients \
   -H "X-Principal: admin@example.com" \
   -H "Content-Type: application/json" \
   -d '{
@@ -271,7 +271,7 @@ Retrieves service details by ID (client secret redacted).
 
 **Example:**
 ```bash
-curl http://localhost:8081/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
+curl http://localhost:14000/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -305,7 +305,7 @@ Updates service configuration.
 
 **Example:**
 ```bash
-curl -X PUT http://localhost:8081/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
+curl -X PUT http://localhost:14000/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com" \
   -H "Content-Type: application/json" \
   -d '{
@@ -331,7 +331,7 @@ Deletes an OAuth2 service. Returns 409 Conflict if active grants reference this 
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8081/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE http://localhost:14000/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com"
 ```
 
