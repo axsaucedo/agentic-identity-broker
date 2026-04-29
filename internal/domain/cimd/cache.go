@@ -49,9 +49,9 @@ func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 		c.mu.Lock()
 		current, ok := c.entries[url]
 		if ok && !time.Now().After(current.ExpiresAt) {
-			// A concurrent Set refreshed this entry between the RUnlock and this Lock.
+			cp := *current
 			c.mu.Unlock()
-			return current
+			return &cp
 		}
 		if ok {
 			delete(c.entries, url)
@@ -59,7 +59,8 @@ func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 		c.mu.Unlock()
 		return nil
 	}
-	return entry
+	cp := *entry
+	return &cp
 }
 
 // Set stores a document in the cache for the given URL, deriving TTL from headers
