@@ -2,6 +2,7 @@ package cimd
 
 import (
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,6 +96,61 @@ func TestCIMDCache(t *testing.T) {
 		entry := c.Get(testURL)
 		require.NotNil(t, entry)
 		assert.WithinDuration(t, now.Add(minTTL), entry.ExpiresAt, time.Second)
+	})
+
+	t.Run("expired entry is evicted from map on Get", func(t *testing.T) {
+		c := NewCIMDCache(minTTL, maxTTL)
+		h := make(http.Header)
+		h.Set("Cache-Control", "max-age=300")
+		c.Set(testURL, doc, h, time.Now().Add(-10*time.Minute))
+
+		assert.Nil(t, c.Get(testURL))
+
+		c.mu.RLock()
+		_, exists := c.entries[testURL]
+		c.mu.RUnlock()
+		assert.False(t, exists, "expired entry should be removed from map")
+	})
+
+	t.Run("Get does not evict entry refreshed by concurrent Set", func(t *testing.T) {
+		c := NewCIMDCache(minTTL, maxTTL)
+		h := make(http.Header)
+		h.Set("Cache-Control", "max-age=300")
+
+		freshDoc := &ClientIDMetadataDocument{ClientID: testURL, ClientName: "Fresh Agent"}
+
+		// Seed expired, then immediately refresh (simulates concurrent Set winning the window).
+		c.Set(testURL, doc, h, time.Now().Add(-10*time.Minute))
+		c.Set(testURL, freshDoc, h, time.Now())
+
+		entry := c.Get(testURL)
+		require.NotNil(t, entry, "fresh entry must survive after concurrent Set")
+		assert.Equal(t, "Fresh Agent", entry.Document.ClientName)
+	})
+
+	t.Run("Get concurrent with Set does not race", func(t *testing.T) {
+		c := NewCIMDCache(minTTL, maxTTL)
+		h := make(http.Header)
+		h.Set("Cache-Control", "max-age=300")
+
+		freshDoc := &ClientIDMetadataDocument{ClientID: testURL, ClientName: "Fresh"}
+		c.Set(testURL, doc, h, time.Now().Add(-10*time.Minute))
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for range 200 {
+				c.Set(testURL, freshDoc, h, time.Now())
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for range 200 {
+				_ = c.Get(testURL)
+			}
+		}()
+		wg.Wait()
 	})
 
 	t.Run("ETag stored from response header", func(t *testing.T) {
