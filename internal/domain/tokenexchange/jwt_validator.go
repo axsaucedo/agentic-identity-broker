@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -122,8 +123,7 @@ func (v *JWTValidator) ValidateSubjectToken(ctx context.Context, tokenString str
 		jwt.WithAcceptableSkew(clockSkew),
 	)
 	if err != nil {
-		// Map library errors to appropriate domain errors
-		return nil, v.mapParseError(err, "subject_token")
+		return nil, v.mapParseError(err, "subject_token", tokenString)
 	}
 
 	return token, nil
@@ -169,8 +169,7 @@ func (v *JWTValidator) ValidateClientAssertion(ctx context.Context, tokenString 
 		jwt.WithAcceptableSkew(clockSkew),
 	)
 	if err != nil {
-		// Map library errors to appropriate domain errors for client assertions
-		return nil, v.mapClientAssertionParseError(err)
+		return nil, v.mapClientAssertionParseError(err, tokenString)
 	}
 
 	return token, nil
@@ -183,7 +182,9 @@ func (v *JWTValidator) ValidateClientAssertion(ctx context.Context, tokenString 
 //
 // Per spec SR-005: Error messages do NOT expose token content (only metadata like issuer).
 // The underlying library error is attached as a cause for internal logging only.
-func (v *JWTValidator) mapParseError(err error, tokenType string) error {
+// Diagnostic details (expected vs actual claim values, sub claim) are included in the
+// details field for structured logging and OTel error events to aid troubleshooting.
+func (v *JWTValidator) mapParseError(err error, tokenType string, tokenString string) error {
 	if err == nil {
 		return nil
 	}
@@ -193,15 +194,15 @@ func (v *JWTValidator) mapParseError(err error, tokenType string) error {
 	case errors.Is(err, jwt.InvalidIssuerError()):
 		return NewInvalidGrantError(
 			fmt.Sprintf("%s issuer validation failed: expected iss=%q", tokenType, v.expectedIssuer),
-		).WithCause(err)
+		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	case errors.Is(err, jwt.InvalidAudienceError()):
 		return NewInvalidGrantError(
 			fmt.Sprintf("%s audience validation failed: expected aud=%q", tokenType, v.brokerAudience),
-		).WithCause(err)
+		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	case errors.Is(err, jwt.TokenExpiredError()):
-		return NewInvalidGrantError(tokenType + " has expired").WithCause(err)
+		return NewInvalidGrantError(tokenType + " has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	case errors.Is(err, jwt.TokenNotYetValidError()):
-		return NewInvalidGrantError(tokenType + " is not yet valid (nbf)").WithCause(err)
+		return NewInvalidGrantError(tokenType + " is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	default:
 		return NewInvalidGrantError(tokenType + " validation failed").WithCause(err)
 	}
@@ -211,7 +212,9 @@ func (v *JWTValidator) mapParseError(err error, tokenType string) error {
 //
 // Client assertion failures always result in InvalidClientError per RFC 7523.
 // The underlying library error is attached as a cause for internal logging only.
-func (v *JWTValidator) mapClientAssertionParseError(err error) error {
+// Diagnostic details (expected vs actual claim values) are included in the
+// details field for structured logging and OTel error events to aid troubleshooting.
+func (v *JWTValidator) mapClientAssertionParseError(err error, tokenString string) error {
 	if err == nil {
 		return nil
 	}
@@ -221,16 +224,56 @@ func (v *JWTValidator) mapClientAssertionParseError(err error) error {
 	case errors.Is(err, jwt.InvalidIssuerError()):
 		return NewInvalidClientError(
 			fmt.Sprintf("client_assertion issuer validation failed: expected iss=%q", v.expectedIssuer),
-		).WithCause(err)
+		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	case errors.Is(err, jwt.InvalidAudienceError()):
 		return NewInvalidClientError(
 			fmt.Sprintf("client_assertion audience validation failed: expected aud=%q", v.brokerAudience),
-		).WithCause(err)
+		).WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	case errors.Is(err, jwt.TokenExpiredError()):
-		return NewInvalidClientError("client_assertion has expired").WithCause(err)
+		return NewInvalidClientError("client_assertion has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	case errors.Is(err, jwt.TokenNotYetValidError()):
-		return NewInvalidClientError("client_assertion is not yet valid (nbf)").WithCause(err)
+		return NewInvalidClientError("client_assertion is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	default:
 		return NewInvalidClientError("client_assertion validation failed").WithCause(err)
 	}
+}
+
+// extractDiagnostics attempts to parse the token without verification to extract
+// actual claim values for troubleshooting. Returns a formatted string with expected
+// vs actual values for iss, aud, sub, exp, and nbf. If parsing fails, returns an
+// empty string. Per SR-005, this never includes the raw JWT string, signature, or
+// full payload, but it may include specific claim values extracted from the payload.
+func (v *JWTValidator) extractDiagnostics(tokenString string) string {
+	if tokenString == "" {
+		return ""
+	}
+	tok, parseErr := jwt.ParseInsecure([]byte(tokenString))
+	if parseErr != nil {
+		return ""
+	}
+
+	var parts []string
+
+	if sub, _ := tok.Subject(); sub != "" {
+		parts = append(parts, fmt.Sprintf("sub=%q", sub))
+	}
+
+	actualIss, _ := tok.Issuer()
+	parts = append(parts, fmt.Sprintf("expected_iss=%q actual_iss=%q", v.expectedIssuer, actualIss))
+
+	actualAud, _ := tok.Audience()
+	quotedAud := make([]string, len(actualAud))
+	for i, a := range actualAud {
+		quotedAud[i] = fmt.Sprintf("%q", a)
+	}
+	parts = append(parts, fmt.Sprintf("expected_aud=%q actual_aud=[%s]", v.brokerAudience, strings.Join(quotedAud, ",")))
+
+	if exp, _ := tok.Expiration(); !exp.IsZero() {
+		parts = append(parts, fmt.Sprintf("exp=%d", exp.Unix()))
+	}
+	if nbf, _ := tok.NotBefore(); !nbf.IsZero() {
+		parts = append(parts, fmt.Sprintf("nbf=%d", nbf.Unix()))
+	}
+
+	return fmt.Sprintf("[%s]", strings.Join(parts, " "))
 }

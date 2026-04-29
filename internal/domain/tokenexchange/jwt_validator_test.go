@@ -242,7 +242,7 @@ func TestMapParseError_WrapsUnderlyingCause(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			domErr := validator.mapParseError(tt.rawErr, "subject_token")
+			domErr := validator.mapParseError(tt.rawErr, "subject_token", "")
 			require.Error(t, domErr)
 
 			// The domain error should contain the expected user-facing description
@@ -281,7 +281,7 @@ func TestMapClientAssertionParseError_WrapsUnderlyingCause(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			domErr := validator.mapClientAssertionParseError(tt.rawErr)
+			domErr := validator.mapClientAssertionParseError(tt.rawErr, "")
 			require.Error(t, domErr)
 
 			assert.ErrorContains(t, domErr, tt.wantErrContains)
@@ -292,4 +292,61 @@ func TestMapClientAssertionParseError_WrapsUnderlyingCause(t *testing.T) {
 			assert.Equal(t, tt.rawErr, tokenErr.Unwrap())
 		})
 	}
+}
+
+// TestExtractDiagnostics verifies that extractDiagnostics returns expected vs actual
+// claim values when given a parseable JWT, and empty string for unparseable input.
+func TestExtractDiagnostics(t *testing.T) {
+	t.Parallel()
+	mockProvider := &MockJWKSProvider{keySet: jwk.NewSet()}
+	validator, err := NewJWTValidator(mockProvider, "https://auth.example.com", "broker-id", 60)
+	require.NoError(t, err)
+
+	t.Run("empty token returns empty string", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, "", validator.extractDiagnostics(""))
+	})
+
+	t.Run("unparseable token returns empty string", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, "", validator.extractDiagnostics("not-a-jwt"))
+	})
+
+	t.Run("parseable token returns expected vs actual claims", func(t *testing.T) {
+		t.Parallel()
+		tok, buildErr := jwt.NewBuilder().
+			Subject("user@example.com").
+			Issuer("https://wrong-issuer.com").
+			Audience([]string{"wrong-audience"}).
+			Build()
+		require.NoError(t, buildErr)
+		serialized, signErr := jwt.Sign(tok, jwt.WithInsecureNoSignature())
+		require.NoError(t, signErr)
+
+		diag := validator.extractDiagnostics(string(serialized))
+		assert.Contains(t, diag, `sub="user@example.com"`)
+		assert.Contains(t, diag, `expected_iss="https://auth.example.com"`)
+		assert.Contains(t, diag, `actual_iss="https://wrong-issuer.com"`)
+		assert.Contains(t, diag, `expected_aud="broker-id"`)
+		assert.Contains(t, diag, `actual_aud=["wrong-audience"]`)
+	})
+
+	t.Run("diagnostics included in mapParseError details", func(t *testing.T) {
+		t.Parallel()
+		tok, buildErr := jwt.NewBuilder().
+			Subject("debug-user").
+			Issuer("https://wrong-issuer.com").
+			Audience([]string{"wrong-aud"}).
+			Build()
+		require.NoError(t, buildErr)
+		serialized, signErr := jwt.Sign(tok, jwt.WithInsecureNoSignature())
+		require.NoError(t, signErr)
+
+		domErr := validator.mapParseError(jwt.InvalidAudienceError(), "subject_token", string(serialized))
+		tokenErr, ok := domErr.(*TokenExchangeError)
+		require.True(t, ok)
+		assert.Contains(t, tokenErr.Details(), `sub="debug-user"`)
+		assert.Contains(t, tokenErr.Details(), `expected_aud="broker-id"`)
+		assert.Contains(t, tokenErr.Details(), `actual_aud=["wrong-aud"]`)
+	})
 }

@@ -134,6 +134,15 @@ func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		if tokenErr, ok := err.(*tokenexchange.TokenExchangeError); ok {
+			if details := tokenErr.Details(); details != "" {
+				span.SetAttributes(attribute.String("token_exchange.validation_details", truncateSpanAttribute(details, 512)))
+			}
+			span.SetAttributes(
+				attribute.String("token_exchange.error_code", tokenErr.Code()),
+				attribute.String("token_exchange.error_description", tokenErr.Description()),
+			)
+		}
 		if h.Logger != nil {
 			logAttrs := []any{
 				"error", err.Error(),
@@ -205,4 +214,22 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 			h.Logger.Error("failed to encode generic error response", "error", err)
 		}
 	}
+}
+
+// truncateSpanAttribute trims s to at most maxRunes runes and replaces newlines
+// with spaces, producing a single-line string safe to emit as an OTel span attribute.
+func truncateSpanAttribute(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) > maxRunes {
+		runes = runes[:maxRunes]
+	}
+	result := make([]rune, len(runes))
+	for i, r := range runes {
+		if r == '\n' || r == '\r' {
+			result[i] = ' '
+		} else {
+			result[i] = r
+		}
+	}
+	return string(result)
 }

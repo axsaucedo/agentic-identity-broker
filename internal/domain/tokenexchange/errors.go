@@ -270,6 +270,18 @@ func (e *TokenExchangeError) WithCause(cause error) *TokenExchangeError {
 	}
 }
 
+// WithDetails returns a copy of the error with the given structured details for logging.
+func (e *TokenExchangeError) WithDetails(details string) *TokenExchangeError {
+	return &TokenExchangeError{
+		code:        e.code,
+		description: e.description,
+		httpStatus:  e.httpStatus,
+		cause:       e.cause,
+		details:     details,
+		errorURI:    e.errorURI,
+	}
+}
+
 // ErrorURI returns the RFC 6749 §5.2 error_uri, if set.
 func (e *TokenExchangeError) ErrorURI() string {
 	return e.errorURI
