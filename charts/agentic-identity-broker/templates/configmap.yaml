@@ -125,6 +125,9 @@ data:
     {{- with .Values.broker.tokenExchange }}
     # Token exchange configuration (RFC 8693)
     token_exchange:
+      {{- if .expectedAudience }}
+      expected_audience: {{ .expectedAudience | quote }}
+      {{- end }}
       claim_extraction:
         principal_expression: {{ .claimExtraction.principalExpression | quote }}
         agent_id_expression: {{ .claimExtraction.agentIdExpression | quote }}
