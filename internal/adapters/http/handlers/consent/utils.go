@@ -2,7 +2,7 @@ package consent
 
 import (
 	"encoding/json"
-	"io"
+	"net/http"
 )
 
 // ErrorResponse represents an error response.
@@ -12,9 +12,17 @@ type ErrorResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-// encodeJSON is a helper function to encode data as JSON to a writer.
-// This provides a consistent JSON encoding pattern across all consent handlers.
-func encodeJSON(w io.Writer, data interface{}) error {
-	encoder := json.NewEncoder(w)
-	return encoder.Encode(data)
+// writeBufferedJSON marshals data, then writes headers and body atomically.
+// If marshalling fails it sends a 500; the caller's WriteHeader is never flushed
+// with an empty body.
+func writeBufferedJSON(w http.ResponseWriter, statusCode int, data any) error {
+	body, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, `{"error":"internal_error","message":"response encoding failed"}`, http.StatusInternalServerError)
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_, err = w.Write(body)
+	return err
 }

@@ -152,10 +152,7 @@ func (h *AgentGrantsHandler) toUserGrantDTO(grant *storage.UserGrant) UserGrantD
 
 // writeJSON writes a JSON response.
 func (h *AgentGrantsHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	if err := encodeJSON(w, data); err != nil {
+	if err := writeBufferedJSON(w, statusCode, data); err != nil {
 		h.logger.Error("failed to encode response", "error", err)
 	}
 }

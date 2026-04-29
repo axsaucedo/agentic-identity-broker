@@ -75,11 +75,7 @@ func (h *AgentsHandler) GetAgentDelegations(w http.ResponseWriter, r *http.Reque
 
 // writeJSON writes a JSON response.
 func (h *AgentsHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	// Reuse the JSON encoding pattern from other handlers
-	if err := encodeJSON(w, data); err != nil {
+	if err := writeBufferedJSON(w, statusCode, data); err != nil {
 		h.logger.Error("failed to encode response", "error", err)
 	}
 }

@@ -2,7 +2,6 @@
 package consent
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -152,9 +151,7 @@ func (h *AgentInfoHandler) toResponse(info *consent.AgentConsentInfo) AgentConse
 
 // writeJSON writes a JSON response.
 func (h *AgentInfoHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
+	if err := writeBufferedJSON(w, statusCode, data); err != nil {
 		h.logger.Error("failed to encode response", "error", err)
 	}
 }
