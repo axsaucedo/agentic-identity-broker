@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pgx "github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -54,6 +55,10 @@ func (r *AuthorizationSessionRepo) Create(ctx context.Context, session *storage.
 		metaJSON, session.CreatedAt, session.ExpiresAt, session.ConsumedAt,
 	)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return storage.NewStorageError("AuthorizationSessionRepo.Create", storage.ErrorKindConflict, err, "authorization session already exists")
+		}
 		return storage.NewStorageError("AuthorizationSessionRepo.Create", storage.ErrorKindUnknown, err, "failed to create authorization session")
 	}
 	return nil
