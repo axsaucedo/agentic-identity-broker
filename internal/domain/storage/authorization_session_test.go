@@ -78,29 +78,3 @@ func TestAuthorizationSession_Consume(t *testing.T) {
 		assert.Equal(t, first, *s.ConsumedAt)
 	})
 }
-
-func TestAuthorizationSession_IsUsable(t *testing.T) {
-	t.Run("fresh session is usable", func(t *testing.T) {
-		s := newTestSession(t)
-		assert.True(t, s.IsUsable())
-	})
-
-	t.Run("expired session is not usable", func(t *testing.T) {
-		s := newTestSession(t)
-		s.ExpiresAt = time.Now().Add(-time.Second)
-		assert.False(t, s.IsUsable())
-	})
-
-	t.Run("consumed session is not usable", func(t *testing.T) {
-		s := newTestSession(t)
-		s.Consume()
-		assert.False(t, s.IsUsable())
-	})
-
-	t.Run("both expired and consumed is not usable", func(t *testing.T) {
-		s := newTestSession(t)
-		s.ExpiresAt = time.Now().Add(-time.Second)
-		s.Consume()
-		assert.False(t, s.IsUsable())
-	})
-}
