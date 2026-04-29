@@ -7,6 +7,8 @@
 
 Add support for the [draft-ietf-oauth-client-id-metadata-document-01](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-01) specification, enabling AI agents to identify themselves using HTTPS URLs as `client_id` values. The broker fetches, validates, and caches the metadata document at the URL, enforces SSRF protection, and presents CIMD-sourced metadata (client name, domain verification, redirect warnings) on the consent screen. This extends the existing Agent entity, OAuth2 authorization flow, consent UI, and admin API without introducing new dependencies.
 
+**Mode Constraint**: CIMD support requires `issue_token` mode (`oauth2_authorization_server.mode: issue_token`). It is incompatible with `proxy` mode because CIMD requires the broker to control authorization code issuance, server-side session binding, and consent flow orchestration — all of which are delegated to the upstream server in proxy mode. Startup validation rejects `cimd.enabled: true` when `mode: proxy`. A future hybrid token issuing mode is expected to support CIMD.
+
 ## Technical Context
 
 **Language/Version**: Go 1.25.6 (backend), React 19 + TypeScript + Vite 7 (frontend)
@@ -16,7 +18,7 @@ Add support for the [draft-ietf-oauth-client-id-metadata-document-01](https://da
 **Target Platform**: Linux server (Docker/Kubernetes)
 **Project Type**: Web application (Go backend + React SPA)
 **Performance Goals**: CIMD-based authorization flow < 2s total when CIMD host responds < 500ms (SC-001)
-**Constraints**: CIMD fetch timeout 1s, max response 5120 bytes, in-process cache only
+**Constraints**: CIMD fetch timeout 1s, max response 5120 bytes, in-process cache only, requires `issue_token` mode (incompatible with `proxy` mode)
 **Scale/Scope**: Extension to existing OAuth2 authorization flow; ~7 new domain types, 2 migrations, 1 new hexagonal port, 1 new storage repository (AuthorizationSession), 4 consent UI components
 
 ## Constitution Check
@@ -45,7 +47,7 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](.spe
 
 **Implementation Considerations**:
 
-- [x] **Security-First**: CIMD disabled by default (`cimd.enabled: false`); SSRF protection always on, cannot be disabled; TLS enforced; fail-closed on all validation
+- [x] **Security-First**: CIMD disabled by default (`cimd.enabled: false`); SSRF protection always on, cannot be disabled; TLS enforced; fail-closed on all validation; CIMD requires `issue_token` mode — startup rejects `cimd.enabled: true` in `proxy` mode
 - [x] **Architecture Docs**: ARCHITECTURE.md updated with CIMD domain concepts, new port, and flow description
 - [x] **ADRs**: ADR 015 for CIMD fetcher architecture (SSRF-hardened HTTP client, in-process caching, hexagonal port design)
 - [x] **Library-First Security**: Uses Go `net`, `net/http`, `crypto/tls` stdlib — no custom crypto. SSRF protection via DNS resolution + IP range validation using `net.IP` stdlib
@@ -197,6 +199,7 @@ tests/
 | US1 Scenario 3 | `cimd_authorization_test.go` | `It("rejects when CIMD document is absent or returns non-200")` |
 | US1 Scenario 4 | `cimd_authorization_test.go` | `It("rejects when redirect_uri is not in CIMD document")` |
 | Gate: disabled | `cimd_authorization_test.go` | `It("rejects URL-format client_id with invalid_client when CIMD is disabled")` |
+| Gate: proxy mode | `cimd_authorization_test.go` | `It("refuses to start when cimd.enabled is true and mode is proxy")` |
 | US2 Scenario 1 | `cimd_ssrf_test.go` | `It("blocks private IP ranges with invalid_client error")` |
 | US2 Scenario 2 | `cimd_ssrf_test.go` | `It("blocks loopback addresses with invalid_client error")` |
 | US2 Scenario 3 | `cimd_ssrf_test.go` | `It("blocks link-local and cloud metadata addresses with invalid_client error")` |

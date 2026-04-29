@@ -20,6 +20,7 @@
 **Purpose**: Project initialization and configuration scaffolding
 
 - [X] T001 Add `CIMDConfig` struct to `OAuth2AuthServerConfig` in `internal/ports/config.go` with defaults (enabled: false, fetch_timeout: 1s, max_response_bytes: 5120, cache.max_ttl: 1h, cache.min_ttl: 60s)
+- [ ] T001a Add startup validation in config or builder: reject `cimd.enabled: true` when `oauth2_authorization_server.mode` is `proxy` with a clear error message. CIMD requires `issue_token` mode. Write a unit test verifying the startup error.
 - [X] T002 [P] Register Viper defaults for all `oauth2_authorization_server.cimd.*` keys in config initialization
 - [X] T003 [P] Create example YAML config at `examples/config/cimd.yaml` with annotated CIMD configuration
 - [X] T004 [P] Update Helm chart `charts/agentic-identity-broker/values.yaml` with `cimd` block under `oauth2AuthorizationServer`

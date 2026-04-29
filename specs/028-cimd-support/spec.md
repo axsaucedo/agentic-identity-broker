@@ -96,6 +96,7 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 
 ### Edge Cases
 
+- What happens when `cimd.enabled: true` is configured but the broker is in `proxy` mode? (Startup validation error; the broker refuses to start. CIMD requires `issue_token` mode.)
 - What happens when the CIMD URL contains query parameters? (Per spec: discouraged but permitted; query parameters must not alter the document identity check.)
 - What happens when DNS resolution for the CIMD hostname succeeds but returns multiple A records — some safe, some blocked? (All resolved addresses must be checked; any blocked address causes rejection.)
 - What happens when a CIMD document omits `redirect_uris`? (Authorization request is rejected; `redirect_uris` is mandatory for the flow to proceed.)
@@ -118,6 +119,7 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 
 ### Functional Requirements
 
+- **FR-000**: CIMD support MUST only be available when the broker operates in `issue_token` mode (`oauth2_authorization_server.mode: issue_token`). Enabling `cimd.enabled: true` while the broker is in `proxy` mode MUST cause a startup validation error. In proxy mode the broker forwards authorization requests to an upstream OAuth2 server that has no knowledge of CIMD semantics; CIMD resolution, session binding, and local authorization code issuance are fundamentally incompatible with the proxy flow. A future hybrid token issuing mode (combining local issuance with selective upstream proxying) is expected to support CIMD; that mode will be defined in a separate spec.
 - **FR-001**: System MUST accept HTTPS URLs as `client_id` values in authorization requests when CIMD support is enabled.
 - **FR-001a**: System MUST reject HTTPS URL-format `client_id` values with an `invalid_client` error when CIMD support is disabled. No CIMD infrastructure (fetcher, cache, resolver) may be instantiated when CIMD is disabled; the rejection MUST be structural (strategy selection), not a runtime conditional.
 - **FR-002**: System MUST fetch the CIMD document at the `client_id` URL using a hardened HTTP client (SSRF-safe, timeout-bounded, size-limited).
@@ -255,7 +257,7 @@ erDiagram
 ### Configuration Requirements
 
 **Configuration Parameters** (nested under `oauth2_authorization_server`):
-- **`oauth2_authorization_server.cimd.enabled`**: bool, enables CIMD support globally, default `false`
+- **`oauth2_authorization_server.cimd.enabled`**: bool, enables CIMD support globally, default `false`. MUST only be set to `true` when `oauth2_authorization_server.mode` is `issue_token`; startup validation rejects `cimd.enabled: true` in `proxy` mode.
 - **`oauth2_authorization_server.cimd.fetch_timeout`**: duration, total HTTP round-trip timeout, default `1s`
 - **`oauth2_authorization_server.cimd.max_response_bytes`**: int, maximum CIMD document size in bytes, default `5120`
 - **`oauth2_authorization_server.cimd.cache.max_ttl`**: duration, upper bound on document cache TTL, default `1h`
@@ -351,7 +353,7 @@ oauth2_authorization_server:
 
 ## Assumptions
 
-- CIMD support will be implemented as an opt-in capability (`cimd.enabled: false` by default), consistent with the constitution's security-first principle.
+- CIMD support will be implemented as an opt-in capability (`cimd.enabled: false` by default), consistent with the constitution's security-first principle. CIMD is only supported in `issue_token` mode — it cannot operate in `proxy` mode because the broker must control the full authorization code issuance and session binding lifecycle. A future hybrid token issuing mode is anticipated to also support CIMD.
 - The cache layer is in-process memory only (no Redis or DB persistence required); cache is lost on broker restart.
 - Existing Agents with opaque (non-URL) `client_id` values are unaffected; the broker distinguishes a Client ID Metadata Document URL from an opaque `client_id` by the `https://` prefix.
 - The consent screen renders `client_name` and `logo_uri` from the CIMD document; `logo_uri` is displayed as a URL reference (no server-side pre-fetching or proxying in this implementation). **Known security tradeoff**: the RFC recommends server-side prefetching and caching of `logo_uri` to (a) prevent dynamic logo substitution attacks that could confuse users, and (b) prevent cross-domain tracking via logo requests from users' browsers. This is deferred to a follow-on spec. The consent screen includes all four CIMD-specific UX elements defined in CS-001 through CS-004.
