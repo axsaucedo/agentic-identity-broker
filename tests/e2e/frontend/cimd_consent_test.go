@@ -42,6 +42,7 @@ var _ = Describe("CIMD Consent UI", func() {
 
 		session, err = storage.NewAuthorizationSession(
 			cimdAgent.ID,
+			id.Principal("user@example.com"),
 			"https://cimd-example.com/client_metadata.json",
 			"https://cimd-example.com/authorize?client_id=https://cimd-example.com/client_metadata.json",
 			"https://cimd-example.com/callback",
@@ -113,6 +114,7 @@ var _ = Describe("CIMD Consent UI", func() {
 			var err error
 			localhostSession, err = storage.NewAuthorizationSession(
 				cimdAgent.ID,
+				id.Principal("user@example.com"),
 				"https://cimd-example.com/client_metadata.json",
 				"https://cimd-example.com/authorize?client_id=https://cimd-example.com/client_metadata.json",
 				"http://localhost:8080/callback",

@@ -29,15 +29,16 @@ type CIMDMetadataSnapshot struct {
 // Sessions are single-use with a 10-minute TTL. Every CIMD authorization flow creates
 // one session; it is consumed exactly once during consent submission (FR-028/FR-029).
 type AuthorizationSession struct {
-	SessionID           string     `db:"session_id"`
-	AgentID             id.AgentID `db:"agent_id"`
-	ClientID            string     `db:"client_id"`
-	OriginalURL         string     `db:"original_url"`
-	RedirectURI         string     `db:"redirect_uri"`
-	Scope               string     `db:"scope"`
-	State               string     `db:"state"`
-	CodeChallenge       string     `db:"code_challenge"`
-	CodeChallengeMethod string     `db:"code_challenge_method"`
+	SessionID           string       `db:"session_id"`
+	AgentID             id.AgentID   `db:"agent_id"`
+	Principal           id.Principal `db:"principal"`
+	ClientID            string       `db:"client_id"`
+	OriginalURL         string       `db:"original_url"`
+	RedirectURI         string       `db:"redirect_uri"`
+	Scope               string       `db:"scope"`
+	State               string       `db:"state"`
+	CodeChallenge       string       `db:"code_challenge"`
+	CodeChallengeMethod string       `db:"code_challenge_method"`
 	CIMDMetadata        *CIMDMetadataSnapshot
 	CreatedAt           time.Time  `db:"created_at"`
 	ExpiresAt           time.Time  `db:"expires_at"`
@@ -49,6 +50,7 @@ type AuthorizationSession struct {
 // (256 bits), per OWASP/NIST SP 800-63B recommendations for capability tokens (ADR 016).
 func NewAuthorizationSession(
 	agentID id.AgentID,
+	principal id.Principal,
 	clientID string,
 	originalURL string,
 	redirectURI string,
@@ -66,6 +68,7 @@ func NewAuthorizationSession(
 	return &AuthorizationSession{
 		SessionID:           hex.EncodeToString(b),
 		AgentID:             agentID,
+		Principal:           principal,
 		ClientID:            clientID,
 		OriginalURL:         originalURL,
 		RedirectURI:         redirectURI,

@@ -74,6 +74,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			session, err := domstorage.NewAuthorizationSession(
 				agent.ID,
+				id.Principal(fixtures.DefaultPrincipal().String()),
 				"https://agent.example.com/client",
 				"/oauth2/authorize?client_id=https://agent.example.com/client&redirect_uri=https://agent.example.com/callback&scope=repo&response_type=code&state=xyz",
 				"https://agent.example.com/callback",
@@ -128,6 +129,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			session, err := domstorage.NewAuthorizationSession(
 				agent.ID,
+				id.Principal(fixtures.DefaultPrincipal().String()),
 				"https://agent.example.com/client",
 				"/oauth2/authorize?client_id=https://agent.example.com/client&redirect_uri=http://localhost:3000/callback&scope=repo&response_type=code&state=xyz",
 				"http://localhost:3000/callback",
@@ -181,6 +183,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			session, err := domstorage.NewAuthorizationSession(
 				agent.ID,
+				id.Principal(fixtures.DefaultPrincipal().String()),
 				"https://agent.example.com/client",
 				"/oauth2/authorize?client_id=https://agent.example.com/client&redirect_uri=https://agent.example.com/callback&scope=repo+read:user&response_type=code&state=xyz",
 				"https://agent.example.com/callback",
@@ -273,6 +276,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			session, err := domstorage.NewAuthorizationSession(
 				agent.ID,
+				id.Principal(fixtures.DefaultPrincipal().String()),
 				"https://agent.example.com/client",
 				"/oauth2/authorize?...",
 				"https://agent.example.com/callback",
@@ -320,6 +324,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			session, err := domstorage.NewAuthorizationSession(
 				agent.ID,
+				id.Principal(fixtures.DefaultPrincipal().String()),
 				"https://agent.example.com/client",
 				"/oauth2/authorize?...",
 				"https://agent.example.com/callback",

@@ -259,7 +259,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 
 	// Step 3: Determine action based on grant status
 	if grant == nil || !grant.IsActive() {
-		consentURL, buildErr := s.buildConsentURL(ctx, req, agent, cimdMeta)
+		consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 		if buildErr != nil {
 			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
 			return &ports.AuthorizationDecision{
@@ -299,7 +299,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 					"principal", principal,
 				)
 			}
-			consentURL, buildErr := s.buildConsentURL(ctx, req, agent, cimdMeta)
+			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 			if buildErr != nil {
 				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
 				return &ports.AuthorizationDecision{
@@ -328,7 +328,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 					"error", err.Error(),
 				)
 			}
-			consentURL, buildErr := s.buildConsentURL(ctx, req, agent, cimdMeta)
+			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 			if buildErr != nil {
 				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
 				return &ports.AuthorizationDecision{
@@ -407,7 +407,7 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 // buildConsentURL builds the consent redirect URL for a given agent and request.
 // For CIMD flows (cimdMeta != nil), creates a server-side AuthorizationSession and returns
 // a URL with ?session_id=<id> (FR-028). For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
-func (s *Service) buildConsentURL(ctx context.Context, req *ports.AuthorizationRequest, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
+func (s *Service) buildConsentURL(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
 	if cimdMeta != nil && s.authSessionRepo != nil {
 		meta := &storage.CIMDMetadataSnapshot{
 			ClientID:     cimdMeta.ClientID,
@@ -419,6 +419,7 @@ func (s *Service) buildConsentURL(ctx context.Context, req *ports.AuthorizationR
 		}
 		session, err := storage.NewAuthorizationSession(
 			agent.ID,
+			principal,
 			req.ClientID.String(),
 			req.OriginalURL,
 			req.RedirectURI,

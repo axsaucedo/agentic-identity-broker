@@ -70,6 +70,7 @@ func newTestSession(t *testing.T, agentID id.AgentID) *storage.AuthorizationSess
 	}
 	sess, err := storage.NewAuthorizationSession(
 		agentID,
+		"test@example.com",
 		"https://agent.example.com/.well-known/client",
 		"https://broker.example.com/oauth2/authorize?client_id=...",
 		"https://agent.example.com/callback",

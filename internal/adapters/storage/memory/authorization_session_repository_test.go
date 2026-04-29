@@ -15,7 +15,7 @@ import (
 func newTestSession(t *testing.T) *storage.AuthorizationSession {
 	t.Helper()
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
-	session, err := storage.NewAuthorizationSession(agentID, "https://example.com/client", "https://example.com/authorize", "", "", "", "", "", nil)
+	session, err := storage.NewAuthorizationSession(agentID, "test@example.com", "https://example.com/client", "https://example.com/authorize", "", "", "", "", "", nil)
 	require.NoError(t, err)
 	return session
 }
