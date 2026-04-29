@@ -178,3 +178,31 @@ func TestCIMDClientResolver_ResolvesViaCIMDURINotClientID(t *testing.T) {
 	require.NoError(t, err, "should resolve via ClientURI even when ClientID is a different value")
 	assert.Equal(t, agentID, resolution.Agent.ID)
 }
+
+func TestCIMDClientResolver_SnapshotPersistenceError_MapsToServerError(t *testing.T) {
+	const clientURL = "https://agent.example.com/client"
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    clientURL,
+		DisplayName: "Test Agent",
+	}
+	repo := newMockAgentRepoForCR(agent)
+	repo.registerURI(clientURL, agent)
+	repo.updateErr = fmt.Errorf("database unavailable")
+
+	body := fmt.Sprintf(
+		`{"client_id":%q,"client_name":"Test Agent","redirect_uris":["https://agent.example.com/cb"]}`,
+		clientURL,
+	)
+	fetchResult := &ports.CIMDFetchResult{Body: []byte(body), CacheControl: "max-age=300"}
+	svc := cimdServiceForTest(fetchResult, nil, repo)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
+
+	_, err := resolver.ResolveClient(context.Background(), clientURL)
+	require.Error(t, err)
+
+	var clientErr *ports.ClientIDError
+	require.True(t, errors.As(err, &clientErr))
+	assert.Equal(t, "server_error", clientErr.Code, "SnapshotPersistenceError must map to server_error, not invalid_client")
+}
