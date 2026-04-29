@@ -1474,3 +1474,14 @@ func (cp *ConsentPage) HasCIMDScopeInDetails(ctx context.Context, scope string) 
 	}
 	return visible, nil
 }
+
+// HasCIMDClientIDInDetails reports whether the given client ID URL is visible in the
+// expanded CIMDAdvancedDetails panel under the "Client ID" label.
+func (cp *ConsentPage) HasCIMDClientIDInDetails(ctx context.Context, clientID string) (bool, error) {
+	loc := cp.page().GetByRole("definition").Filter(playwright.LocatorFilterOptions{HasText: clientID})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check client ID %q in advanced details: %w", clientID, err)
+	}
+	return visible, nil
+}

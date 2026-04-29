@@ -177,6 +177,10 @@ var _ = Describe("CIMD Consent UI", func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to check requested scope in advanced details")
 		Expect(hasScope).To(BeTrue(), "Requested scope 'read' should appear in the expanded advanced details panel")
 
+		hasClientID, err := consentPage.HasCIMDClientIDInDetails(ctx, "https://cimd-example.com/client_metadata.json")
+		Expect(err).NotTo(HaveOccurred(), "Failed to check client ID in advanced details")
+		Expect(hasClientID).To(BeTrue(), "Seeded client_id URL 'https://cimd-example.com/client_metadata.json' should appear in the expanded advanced details panel")
+
 		err = consentPage.TakeScreenshot(ctx, "cimd_cs004_advanced_details_expanded")
 		Expect(err).NotTo(HaveOccurred())
 	})
