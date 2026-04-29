@@ -864,9 +864,6 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 			Description: "Test description",
 		}
 		mockRepo.On("Get", mock.Anything, agentID).Return(existing, nil)
-		mockRepo.On("Update", mock.Anything, mock.Anything).Return(
-			storage.NewStorageError("UpdateAgent", storage.ErrorKindValidation, nil, "client_uris[0] is not a valid HTTPS URL"),
-		)
 
 		reqBody := AgentRequest{
 			ClientID:    "cimd-update-client",
