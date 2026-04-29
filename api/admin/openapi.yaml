@@ -1244,6 +1244,7 @@ components:
         client_uris:
           type: array
           nullable: true
+          maxItems: 1
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
             Each entry must be a valid HTTPS URL and globally unique across all agents.
@@ -1374,6 +1375,7 @@ components:
         client_uris:
           type: array
           nullable: true
+          maxItems: 1
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
             Each entry must be a valid HTTPS URL and globally unique across all agents.
@@ -1475,6 +1477,7 @@ components:
         client_uris:
           type: array
           nullable: true
+          maxItems: 1
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
             Replaces the previous list on PUT (full replacement semantics).
