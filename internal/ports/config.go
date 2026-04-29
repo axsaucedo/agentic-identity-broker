@@ -401,6 +401,10 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 
 // validateProxyMode validates configuration for proxy mode (upstream OAuth2 server).
 func (c *OAuth2AuthServerConfig) validateProxyMode() error {
+	if c.CIMD.Enabled {
+		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'issue_token'; CIMD is incompatible with proxy mode")
+	}
+
 	// Check required fields
 	if c.UpstreamIssuerURI == "" {
 		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")

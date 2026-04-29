@@ -217,6 +217,19 @@ func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
 		assert.Contains(t, err.Error(), "upstream_issuer_uri")
 	})
 
+	t.Run("cimd enabled in proxy mode rejected", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:                      "proxy",
+			UpstreamIssuerURI:         "https://auth.example.com",
+			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+			UpstreamTokenEndpoint:     "https://auth.example.com/token",
+			CIMD:                      ports.CIMDConfig{Enabled: true},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cimd.enabled requires mode 'issue_token'")
+	})
+
 	t.Run("default mode is proxy", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
 			UpstreamIssuerURI:         "https://auth.example.com",
