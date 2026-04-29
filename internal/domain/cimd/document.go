@@ -59,7 +59,7 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 	}
 
 	// FR-022: block secret-bearing auth methods
-	if doc.AuthMethod != "" && blockedAuthMethods[doc.AuthMethod] {
+	if blockedAuthMethods[doc.AuthMethod] {
 		return nil, fmt.Errorf("token_endpoint_auth_method %q is not allowed for CIMD clients", doc.AuthMethod)
 	}
 
