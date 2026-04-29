@@ -177,8 +177,11 @@ func (v *JWTValidator) ValidateClientAssertion(ctx context.Context, tokenString 
 
 // mapParseError maps jwt.ParseString errors to appropriate domain errors for subject tokens.
 //
-// The lestrrat-go/jwx library returns various error types for different validation failures.
-// This method maps them to the correct RFC 8693 error codes while preserving security.
+// The lestrrat-go/jwx library wraps all validation failures inside a ParseError when returned
+// from jwt.ParseString. Specific validation sentinels (InvalidAudienceError, InvalidIssuerError,
+// etc.) are reachable through the error chain via Unwrap(). Therefore, specific checks MUST
+// appear before the generic ParseError check to avoid misclassifying validation failures as
+// parse/signature errors.
 //
 // Per spec SR-005: Error messages do NOT expose token content (only metadata like issuer).
 // The underlying library error is attached as a cause for internal logging only.
@@ -189,8 +192,6 @@ func (v *JWTValidator) mapParseError(err error, tokenType string, tokenString st
 		return nil
 	}
 	switch {
-	case errors.Is(err, jwt.ParseError()):
-		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err)
 	case errors.Is(err, jwt.InvalidIssuerError()):
 		return NewInvalidGrantError(
 			fmt.Sprintf("%s issuer validation failed: expected iss=%q", tokenType, v.expectedIssuer),
@@ -203,6 +204,8 @@ func (v *JWTValidator) mapParseError(err error, tokenType string, tokenString st
 		return NewInvalidGrantError(tokenType + " has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	case errors.Is(err, jwt.TokenNotYetValidError()):
 		return NewInvalidGrantError(tokenType + " is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+	case errors.Is(err, jwt.ParseError()):
+		return NewInvalidRequestError(tokenType + " is malformed or signature verification failed").WithCause(err)
 	default:
 		return NewInvalidGrantError(tokenType + " validation failed").WithCause(err)
 	}
@@ -211,6 +214,7 @@ func (v *JWTValidator) mapParseError(err error, tokenType string, tokenString st
 // mapClientAssertionParseError maps jwt.ParseString errors to InvalidClientError for client assertions.
 //
 // Client assertion failures always result in InvalidClientError per RFC 7523.
+// Specific validation sentinels MUST be checked before ParseError (see mapParseError comment).
 // The underlying library error is attached as a cause for internal logging only.
 // Diagnostic details (expected vs actual claim values) are included in the
 // details field for structured logging and OTel error events to aid troubleshooting.
@@ -219,8 +223,6 @@ func (v *JWTValidator) mapClientAssertionParseError(err error, tokenString strin
 		return nil
 	}
 	switch {
-	case errors.Is(err, jwt.ParseError()):
-		return NewInvalidClientError("client_assertion is malformed or signature verification failed").WithCause(err)
 	case errors.Is(err, jwt.InvalidIssuerError()):
 		return NewInvalidClientError(
 			fmt.Sprintf("client_assertion issuer validation failed: expected iss=%q", v.expectedIssuer),
@@ -233,6 +235,8 @@ func (v *JWTValidator) mapClientAssertionParseError(err error, tokenString strin
 		return NewInvalidClientError("client_assertion has expired").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
 	case errors.Is(err, jwt.TokenNotYetValidError()):
 		return NewInvalidClientError("client_assertion is not yet valid (nbf)").WithCause(err).WithDetails(v.extractDiagnostics(tokenString))
+	case errors.Is(err, jwt.ParseError()):
+		return NewInvalidClientError("client_assertion is malformed or signature verification failed").WithCause(err)
 	default:
 		return NewInvalidClientError("client_assertion validation failed").WithCause(err)
 	}

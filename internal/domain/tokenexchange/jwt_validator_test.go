@@ -2,9 +2,14 @@ package tokenexchange
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
@@ -349,4 +354,248 @@ func TestExtractDiagnostics(t *testing.T) {
 		assert.Contains(t, tokenErr.Details(), `expected_aud="broker-id"`)
 		assert.Contains(t, tokenErr.Details(), `actual_aud=["wrong-aud"]`)
 	})
+}
+
+// newTestKeyPair creates an ECDSA P-256 key pair for testing.
+// Returns the JWK private key and a key set containing the public key.
+func newTestKeyPair(t *testing.T) (jwk.Key, jwk.Set) {
+	t.Helper()
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	jwkKey, err := jwk.Import(privKey)
+	require.NoError(t, err)
+	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, "test-kid"))
+	require.NoError(t, jwkKey.Set(jwk.AlgorithmKey, jwa.ES256()))
+
+	pubKey, err := jwkKey.PublicKey()
+	require.NoError(t, err)
+	keySet := jwk.NewSet()
+	require.NoError(t, keySet.AddKey(pubKey))
+	return jwkKey, keySet
+}
+
+// TestMapParseError_RealLibraryErrors verifies that validation errors produced by the actual
+// jwt.ParseString library function are correctly classified as specific error types (audience,
+// issuer, expired) rather than falling into the generic "malformed or signature verification
+// failed" bucket. The jwx library wraps all validation failures inside a ParseError, so
+// without correct ordering of error checks, specific failures would be misclassified.
+func TestMapParseError_RealLibraryErrors(t *testing.T) {
+	t.Parallel()
+	privKey, keySet := newTestKeyPair(t)
+
+	const expectedIssuer = "https://auth.example.com"
+	const expectedAudience = "broker-id"
+
+	tests := []struct {
+		name             string
+		tokenIssuer      string
+		tokenAudience    []string
+		tokenExpiration  time.Time
+		tokenNBF         time.Time
+		wantErrContains  string
+		wantCode         string
+		wantHasDetails   bool
+		wantDetailsField string
+	}{
+		{
+			name:             "audience mismatch produces specific audience error with diagnostics",
+			tokenIssuer:      expectedIssuer,
+			tokenAudience:    []string{"wrong-audience"},
+			tokenExpiration:  time.Now().Add(time.Hour),
+			wantErrContains:  "audience validation failed",
+			wantCode:         "invalid_grant",
+			wantHasDetails:   true,
+			wantDetailsField: `actual_aud=["wrong-audience"]`,
+		},
+		{
+			name:             "issuer mismatch produces specific issuer error with diagnostics",
+			tokenIssuer:      "https://wrong-issuer.com",
+			tokenAudience:    []string{expectedAudience},
+			tokenExpiration:  time.Now().Add(time.Hour),
+			wantErrContains:  "issuer validation failed",
+			wantCode:         "invalid_grant",
+			wantHasDetails:   true,
+			wantDetailsField: `actual_iss="https://wrong-issuer.com"`,
+		},
+		{
+			name:             "expired token produces specific expiry error with diagnostics",
+			tokenIssuer:      expectedIssuer,
+			tokenAudience:    []string{expectedAudience},
+			tokenExpiration:  time.Now().Add(-time.Hour),
+			wantErrContains:  "has expired",
+			wantCode:         "invalid_grant",
+			wantHasDetails:   true,
+			wantDetailsField: "exp=",
+		},
+		{
+			name:            "not-yet-valid token produces specific nbf error with diagnostics",
+			tokenIssuer:     expectedIssuer,
+			tokenAudience:   []string{expectedAudience},
+			tokenExpiration: time.Now().Add(time.Hour),
+			tokenNBF:        time.Now().Add(time.Hour),
+			wantErrContains: "not yet valid",
+			wantCode:        "invalid_grant",
+			wantHasDetails:  true,
+			wantDetailsField: "nbf=",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			builder := jwt.NewBuilder().
+				Issuer(tt.tokenIssuer).
+				Audience(tt.tokenAudience).
+				Subject("test-user@example.com").
+				Expiration(tt.tokenExpiration)
+			if !tt.tokenNBF.IsZero() {
+				builder = builder.NotBefore(tt.tokenNBF)
+			}
+			tok, err := builder.Build()
+			require.NoError(t, err)
+
+			signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), privKey))
+			require.NoError(t, err)
+
+			// Parse with the same options as the production validator so the test
+			// exercises the identical error-wrapping codepath.
+			_, parseErr := jwt.ParseString(string(signed),
+				jwt.WithVerify(true),
+				jwt.WithKeySet(keySet),
+				jwt.WithValidate(true),
+				jwt.WithIssuer(expectedIssuer),
+				jwt.WithAudience(expectedAudience),
+				jwt.WithAcceptableSkew(60*time.Second),
+			)
+			require.Error(t, parseErr, "expected library to reject the token")
+
+			// Now map the error through our domain mapper
+			mockProvider := &MockJWKSProvider{keySet: keySet}
+			validator, valErr := NewJWTValidator(mockProvider, expectedIssuer, expectedAudience, 60)
+			require.NoError(t, valErr)
+
+			domErr := validator.mapParseError(parseErr, "subject_token", string(signed))
+			require.Error(t, domErr)
+
+			// Verify the error is classified correctly (not as generic "malformed")
+			assert.Contains(t, domErr.Error(), tt.wantErrContains,
+				"error should be classified as specific validation failure, not generic parse error")
+			assert.NotContains(t, domErr.Error(), "malformed",
+				"specific validation failures must NOT be classified as malformed/signature errors")
+
+			tokenErr, ok := domErr.(*TokenExchangeError)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantCode, tokenErr.Code())
+
+			// Verify diagnostics are present
+			if tt.wantHasDetails {
+				assert.NotEmpty(t, tokenErr.Details(),
+					"specific validation errors must include diagnostics for troubleshooting")
+				assert.Contains(t, tokenErr.Details(), tt.wantDetailsField)
+			}
+
+			// Verify the underlying cause is preserved for logging
+			assert.NotNil(t, tokenErr.Unwrap(), "cause must be preserved for internal logging")
+		})
+	}
+}
+
+// TestMapClientAssertionParseError_RealLibraryErrors verifies the same fix for client assertions.
+func TestMapClientAssertionParseError_RealLibraryErrors(t *testing.T) {
+	t.Parallel()
+	privKey, keySet := newTestKeyPair(t)
+
+	const expectedIssuer = "https://auth.example.com"
+	const expectedAudience = "broker-id"
+
+	tests := []struct {
+		name             string
+		tokenIssuer      string
+		tokenAudience    []string
+		tokenExpiration  time.Time
+		wantErrContains  string
+		wantCode         string
+		wantHasDetails   bool
+		wantDetailsField string
+	}{
+		{
+			name:             "audience mismatch produces specific audience error with diagnostics",
+			tokenIssuer:      expectedIssuer,
+			tokenAudience:    []string{"wrong-audience"},
+			tokenExpiration:  time.Now().Add(time.Hour),
+			wantErrContains:  "audience validation failed",
+			wantCode:         "invalid_client",
+			wantHasDetails:   true,
+			wantDetailsField: `actual_aud=["wrong-audience"]`,
+		},
+		{
+			name:             "issuer mismatch produces specific issuer error with diagnostics",
+			tokenIssuer:      "https://wrong-issuer.com",
+			tokenAudience:    []string{expectedAudience},
+			tokenExpiration:  time.Now().Add(time.Hour),
+			wantErrContains:  "issuer validation failed",
+			wantCode:         "invalid_client",
+			wantHasDetails:   true,
+			wantDetailsField: `actual_iss="https://wrong-issuer.com"`,
+		},
+		{
+			name:             "expired token produces specific expiry error with diagnostics",
+			tokenIssuer:      expectedIssuer,
+			tokenAudience:    []string{expectedAudience},
+			tokenExpiration:  time.Now().Add(-time.Hour),
+			wantErrContains:  "has expired",
+			wantCode:         "invalid_client",
+			wantHasDetails:   true,
+			wantDetailsField: "exp=",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tok, err := jwt.NewBuilder().
+				Issuer(tt.tokenIssuer).
+				Audience(tt.tokenAudience).
+				Subject("test-client").
+				Expiration(tt.tokenExpiration).
+				Build()
+			require.NoError(t, err)
+
+			signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), privKey))
+			require.NoError(t, err)
+
+			_, parseErr := jwt.ParseString(string(signed),
+				jwt.WithVerify(true),
+				jwt.WithKeySet(keySet),
+				jwt.WithValidate(true),
+				jwt.WithIssuer(expectedIssuer),
+				jwt.WithAudience(expectedAudience),
+				jwt.WithAcceptableSkew(60*time.Second),
+			)
+			require.Error(t, parseErr)
+
+			mockProvider := &MockJWKSProvider{keySet: keySet}
+			validator, valErr := NewJWTValidator(mockProvider, expectedIssuer, expectedAudience, 60)
+			require.NoError(t, valErr)
+
+			domErr := validator.mapClientAssertionParseError(parseErr, string(signed))
+			require.Error(t, domErr)
+
+			assert.Contains(t, domErr.Error(), tt.wantErrContains)
+			assert.NotContains(t, domErr.Error(), "malformed")
+
+			tokenErr, ok := domErr.(*TokenExchangeError)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantCode, tokenErr.Code())
+
+			if tt.wantHasDetails {
+				assert.NotEmpty(t, tokenErr.Details())
+				assert.Contains(t, tokenErr.Details(), tt.wantDetailsField)
+			}
+
+			assert.NotNil(t, tokenErr.Unwrap())
+		})
+	}
 }
