@@ -453,6 +453,7 @@ func IssueTokenConfigWithCEL(celExpr string) *ports.Config {
 // All upstream OAuth2 settings match DefaultOAuth2Config().
 func OAuth2ConfigWithCIMD(upstreamURL string) *ports.Config {
 	config := OAuth2ConfigWithUpstream(upstreamURL)
+	config.OAuth2AuthServer.Mode = "issue_token"
 	config.OAuth2AuthServer.CIMD = ports.CIMDConfig{
 		Enabled:          true,
 		FetchTimeout:     5 * time.Second,
