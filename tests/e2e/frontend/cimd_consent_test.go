@@ -145,7 +145,7 @@ var _ = Describe("CIMD Consent UI", func() {
 
 			warningText, err := consentPage.GetCIMDLocalhostWarningText(ctx)
 			Expect(err).NotTo(HaveOccurred(), "Failed to get localhost warning text")
-			Expect(warningText).To(ContainSubstring("localhost"), "Warning alert should mention localhost")
+			Expect(warningText).To(ContainSubstring("local machine"), "Warning alert should mention local machine")
 
 			err = consentPage.TakeScreenshot(ctx, "cimd_cs003_localhost_warning")
 			Expect(err).NotTo(HaveOccurred())

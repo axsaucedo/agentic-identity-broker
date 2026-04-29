@@ -1440,12 +1440,11 @@ func (cp *ConsentPage) GetCIMDLocalhostWarningText(ctx context.Context) (string,
 	return text, nil
 }
 
-// GetCIMDClientNameFromDetails returns the client name value visible in the expanded
-// CIMDAdvancedDetails panel, confirming the seeded name is rendered correctly.
+// GetCIMDClientNameFromDetails returns whether the client name is visible in the expanded
+// CIMDAdvancedDetails panel. Scopes to <dd> (role="definition") to avoid strict-mode
+// violations when the same name also appears in the consent summary header.
 func (cp *ConsentPage) GetCIMDClientNameFromDetails(ctx context.Context, name string) (bool, error) {
-	loc := cp.page().GetByText(name, playwright.PageGetByTextOptions{
-		Exact: playwright.Bool(true),
-	})
+	loc := cp.page().GetByRole("definition").Filter(playwright.LocatorFilterOptions{HasText: name})
 	visible, err := loc.IsVisible()
 	if err != nil {
 		return false, fmt.Errorf("failed to check client name %q in advanced details: %w", name, err)
@@ -1456,9 +1455,7 @@ func (cp *ConsentPage) GetCIMDClientNameFromDetails(ctx context.Context, name st
 // HasCIMDRedirectURIInDetails reports whether the given redirect URI value is visible
 // in the expanded CIMDAdvancedDetails panel under the "Redirect URI" label.
 func (cp *ConsentPage) HasCIMDRedirectURIInDetails(ctx context.Context, uri string) (bool, error) {
-	loc := cp.page().GetByText(uri, playwright.PageGetByTextOptions{
-		Exact: playwright.Bool(true),
-	})
+	loc := cp.page().GetByRole("definition").Filter(playwright.LocatorFilterOptions{HasText: uri})
 	visible, err := loc.IsVisible()
 	if err != nil {
 		return false, fmt.Errorf("failed to check redirect URI %q in advanced details: %w", uri, err)
@@ -1467,11 +1464,10 @@ func (cp *ConsentPage) HasCIMDRedirectURIInDetails(ctx context.Context, uri stri
 }
 
 // HasCIMDScopeInDetails reports whether the given scope badge is visible in the
-// expanded CIMDAdvancedDetails panel under "Requested Scopes".
+// expanded CIMDAdvancedDetails panel under "Requested Scopes". Scopes to <dd>
+// (role="definition") since scope badges are children of the scopes <dd> element.
 func (cp *ConsentPage) HasCIMDScopeInDetails(ctx context.Context, scope string) (bool, error) {
-	loc := cp.page().GetByText(scope, playwright.PageGetByTextOptions{
-		Exact: playwright.Bool(true),
-	})
+	loc := cp.page().GetByRole("definition").Filter(playwright.LocatorFilterOptions{HasText: scope})
 	visible, err := loc.IsVisible()
 	if err != nil {
 		return false, fmt.Errorf("failed to check scope %q in advanced details: %w", scope, err)
