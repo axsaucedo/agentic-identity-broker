@@ -64,6 +64,7 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 
 	// Cache hit
 	if entry := s.cache.Get(rawURL); entry != nil {
+		s.logger.DebugContext(ctx, "cimd_document_cache_hit", "url", rawURL)
 		return entry.Document, nil
 	}
 
