@@ -1452,3 +1452,29 @@ func (cp *ConsentPage) GetCIMDClientNameFromDetails(ctx context.Context, name st
 	}
 	return visible, nil
 }
+
+// HasCIMDRedirectURIInDetails reports whether the given redirect URI value is visible
+// in the expanded CIMDAdvancedDetails panel under the "Redirect URI" label.
+func (cp *ConsentPage) HasCIMDRedirectURIInDetails(ctx context.Context, uri string) (bool, error) {
+	loc := cp.page().GetByText(uri, playwright.PageGetByTextOptions{
+		Exact: playwright.Bool(true),
+	})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check redirect URI %q in advanced details: %w", uri, err)
+	}
+	return visible, nil
+}
+
+// HasCIMDScopeInDetails reports whether the given scope badge is visible in the
+// expanded CIMDAdvancedDetails panel under "Requested Scopes".
+func (cp *ConsentPage) HasCIMDScopeInDetails(ctx context.Context, scope string) (bool, error) {
+	loc := cp.page().GetByText(scope, playwright.PageGetByTextOptions{
+		Exact: playwright.Bool(true),
+	})
+	visible, err := loc.IsVisible()
+	if err != nil {
+		return false, fmt.Errorf("failed to check scope %q in advanced details: %w", scope, err)
+	}
+	return visible, nil
+}

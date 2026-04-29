@@ -169,6 +169,14 @@ var _ = Describe("CIMD Consent UI", func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to check client name in advanced details")
 		Expect(hasClientName).To(BeTrue(), "Seeded client name 'CIMD Test Client' should appear in the expanded advanced details panel")
 
+		hasRedirectURI, err := consentPage.HasCIMDRedirectURIInDetails(ctx, "https://cimd-example.com/callback")
+		Expect(err).NotTo(HaveOccurred(), "Failed to check redirect URI in advanced details")
+		Expect(hasRedirectURI).To(BeTrue(), "Seeded redirect_uri 'https://cimd-example.com/callback' should appear in the expanded advanced details panel")
+
+		hasScope, err := consentPage.HasCIMDScopeInDetails(ctx, "read")
+		Expect(err).NotTo(HaveOccurred(), "Failed to check requested scope in advanced details")
+		Expect(hasScope).To(BeTrue(), "Requested scope 'read' should appear in the expanded advanced details panel")
+
 		err = consentPage.TakeScreenshot(ctx, "cimd_cs004_advanced_details_expanded")
 		Expect(err).NotTo(HaveOccurred())
 	})
