@@ -280,6 +280,40 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// FR-029: Consume the session before writing the grant. The Consume UPDATE is a
+	// DB-level compare-and-swap (WHERE consumed_at IS NULL), so only one concurrent
+	// request can succeed here — the loser is rejected before GrantConsent runs,
+	// preventing two different payloads from racing to overwrite the same upserted grant.
+	// Consuming here also closes the replay window: an expired or already-consumed session
+	// cannot reach GrantConsent. The tradeoff is that post-validate GrantConsent failures
+	// (e.g. agent deleted between session creation and consent) burn the session; the user
+	// must start a new authorization flow, which is the correct behavior for those races.
+	if sessionID != "" {
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			var storErr *storage.StorageError
+			if errors.As(consumeErr, &storErr) {
+				switch storErr.Kind {
+				case storage.ErrorKindConflict:
+					h.logger.Warn("authorization session already consumed by concurrent request",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "session already used", "authorization session has already been used")
+					return
+				case storage.ErrorKindNotFound:
+					// Session expired in the narrow window between the IsExpired check and Consume.
+					h.logger.Warn("authorization session expired before consume",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has expired")
+					return
+				}
+			}
+			h.logger.Error("failed to consume authorization session",
+				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+				"error", consumeErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
+	}
+
 	// Create grant request
 	grantReq := &consent.GrantRequest{
 		Principal:             id.Principal(principalValue),
@@ -340,28 +374,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"principal", principalValue,
 		"agent_id", agentID,
 		"grant_id", grant.ID)
-
-	// FR-029: Consume the session after a successful grant write. All validation and
-	// GrantConsent errors remain retryable. Conflict means a concurrent request already
-	// consumed the session (their grant upsert is identical); reject the duplicate.
-	// NotFound means the session expired in the narrow window between the IsExpired check
-	// and now — the grant is legitimate so we proceed. Other storage failures are logged
-	// but do not reverse the grant.
-	if sessionID != "" {
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			var storErr *storage.StorageError
-			if errors.As(consumeErr, &storErr) && storErr.Kind == storage.ErrorKindConflict {
-				h.logger.Warn("authorization session already consumed by concurrent request",
-					"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
-				h.writeError(w, http.StatusBadRequest, "session already used", "authorization session has already been used")
-				return
-			}
-			// NotFound = expired in the narrow window; any other error is non-fatal since the grant exists.
-			h.logger.Warn("authorization session consume failed after grant; proceeding",
-				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-				"error", consumeErr)
-		}
-	}
 
 	if sessionID != "" {
 		response := h.toGrantResponse(grant)
