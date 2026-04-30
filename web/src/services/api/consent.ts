@@ -82,18 +82,16 @@ export class ConsentApiService {
 
   /**
    * Get detailed information about a specific agent and available services.
-   * Results are cached for 5 minutes. Pass cimdParams to include CIMD metadata
-   * in the response when the authorization request uses a URL-based client_id.
+   * Results are cached for 5 minutes. Pass sessionId for CIMD authorization flows.
    *
    * @param agentId - Unique agent identifier
-   * @param cimdParams - Optional CIMD query params (client_id, redirect_uri, scope)
+   * @param options - Optional: sessionId for session-based CIMD flows
    * @returns Agent details, available services, and optional CIMD metadata
    * @throws {ApiError} if request fails or agent not found
    */
   async getAgentDetail(
     agentId: string,
     options?: {
-      cimdParams?: { clientId: string; redirectUri: string; scope: string };
       sessionId?: string;
     },
   ): Promise<{
@@ -104,13 +102,6 @@ export class ConsentApiService {
     let url = `/consent/agent/${agentId}`;
     if (options?.sessionId) {
       url += `?session_id=${encodeURIComponent(options.sessionId)}`;
-    } else if (options?.cimdParams) {
-      const qs = new URLSearchParams({
-        client_id: options.cimdParams.clientId,
-        redirect_uri: options.cimdParams.redirectUri,
-        scope: options.cimdParams.scope,
-      });
-      url += `?${qs.toString()}`;
     }
 
     const cacheKey = url;

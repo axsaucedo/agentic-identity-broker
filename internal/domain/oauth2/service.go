@@ -408,7 +408,10 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 // For CIMD flows (cimdMeta != nil), creates a server-side AuthorizationSession and returns
 // a URL with ?session_id=<id> (FR-028). For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
 func (s *Service) buildConsentURL(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
-	if cimdMeta != nil && s.authSessionRepo != nil {
+	if cimdMeta != nil {
+		if s.authSessionRepo == nil {
+			return "", fmt.Errorf("CIMD authorization requires authSessionRepo to be configured")
+		}
 		meta := &storage.CIMDMetadataSnapshot{
 			ClientID:     cimdMeta.ClientID,
 			ClientName:   cimdMeta.ClientName,

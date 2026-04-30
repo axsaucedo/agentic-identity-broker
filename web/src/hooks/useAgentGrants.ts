@@ -42,13 +42,12 @@ interface UseAgentGrantsReturn extends UseAgentGrantsState {
  * Fetches data in parallel on mount and provides refetch capability.
  *
  * @param agentId - Unique agent identifier
- * @param options - Optional: sessionId for session-based CIMD flows, or cimdParams for legacy URL flows
+ * @param options - Optional: sessionId for session-based CIMD flows
  * @returns Agent data, grants, CIMD metadata, loading state, error, and refetch function
  */
 export function useAgentGrants(
   agentId: string,
   options?: {
-    cimdParams?: { clientId: string; redirectUri: string; scope: string };
     sessionId?: string;
   },
 ): UseAgentGrantsReturn {

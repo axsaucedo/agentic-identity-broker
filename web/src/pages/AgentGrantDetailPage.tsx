@@ -53,29 +53,6 @@ export function AgentGrantDetailPage() {
   const sessionId = searchParams.get('session_id') || undefined;
   const redirectUri = searchParams.get('redirect_uri') || undefined;
 
-  // For opaque (non-session) flows: parse CIMD params from the authorize URL embedded
-  // in redirect_uri. Memoized so the object reference is stable across renders — prevents
-  // an infinite refetch loop in useAgentGrants (options is in the useCallback dep array).
-  const cimdParams = useMemo(() => {
-    // Session-based CIMD flows carry context server-side — no URL parsing needed.
-    if (sessionId || !redirectUri) return undefined;
-    try {
-      const authorizeUrl = new URL(redirectUri, window.location.origin);
-      const authorizeParams = authorizeUrl.searchParams;
-      const maybeClientId = authorizeParams.get('client_id') || undefined;
-      if (maybeClientId?.startsWith('https://')) {
-        return {
-          clientId: maybeClientId,
-          redirectUri: authorizeParams.get('redirect_uri') || '',
-          scope: authorizeParams.get('scope') || '',
-        };
-      }
-    } catch {
-      // ignore parse errors
-    }
-    return undefined;
-  }, [sessionId, redirectUri]);
-
   const resolvedAgentId = agentId ?? '';
 
   // Memoize options to keep a stable object reference across renders.
@@ -83,8 +60,8 @@ export function AgentGrantDetailPage() {
   // useCallback in useAgentGrants to recreate fetchData, which triggers
   // useEffect on every render, causing an infinite loading loop.
   const agentGrantOptions = useMemo(
-    () => (sessionId ? { sessionId } : cimdParams ? { cimdParams } : undefined),
-    [sessionId, cimdParams],
+    () => (sessionId ? { sessionId } : undefined),
+    [sessionId],
   );
 
   // Fetch agent data and grants
