@@ -84,7 +84,13 @@ func NewAuthorizationSession(
 
 // IsExpired reports whether the session TTL has elapsed.
 func (s *AuthorizationSession) IsExpired() bool {
-	return time.Now().After(s.ExpiresAt)
+	return s.isExpiredAt(time.Now())
+}
+
+// isExpiredAt reports expiry relative to a caller-supplied now, enabling
+// deterministic boundary testing without mocking the global clock.
+func (s *AuthorizationSession) isExpiredAt(now time.Time) bool {
+	return now.After(s.ExpiresAt)
 }
 
 // IsConsumed reports whether the session has already been used for consent submission.

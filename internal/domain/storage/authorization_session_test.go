@@ -44,6 +44,13 @@ func TestAuthorizationSession_IsExpired(t *testing.T) {
 		s.ExpiresAt = time.Now().Add(time.Hour)
 		assert.False(t, s.IsExpired())
 	})
+
+	t.Run("ExpiresAt equal to now is not expired", func(t *testing.T) {
+		s := newTestSession(t)
+		now := time.Now()
+		s.ExpiresAt = now
+		assert.False(t, s.isExpiredAt(now))
+	})
 }
 
 func TestAuthorizationSession_IsConsumed(t *testing.T) {
