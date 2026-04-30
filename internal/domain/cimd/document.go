@@ -35,7 +35,8 @@ var blockedAuthMethods = map[string]bool{
 // ParseDocument parses and validates a CIMD JSON document fetched from fetchURL.
 // Returns an error if the document is malformed, the client_id field does not
 // match fetchURL, redirect_uris is empty, auth_method is a secret-bearing method,
-// or any redirect_uri violates same-origin with fetchURL.
+// any redirect_uri violates same-origin with fetchURL, or logo_uri (when present)
+// is not an HTTPS URL on the same host as client_id.
 // nameBlocklist is a case-insensitive list of forbidden client_name substrings.
 func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*ClientIDMetadataDocument, error) {
 	var doc ClientIDMetadataDocument
@@ -84,7 +85,27 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 		}
 	}
 
+	// SR-009: logo_uri must be HTTPS and on the same host as client_id to prevent
+	// cross-origin image loads that leak user IP/UA from a security-sensitive screen.
+	if doc.LogoURI != "" {
+		if err := validateLogoURI(clientURL, doc.LogoURI); err != nil {
+			return nil, fmt.Errorf("logo_uri: %w", err)
+		}
+	}
+
 	return &doc, nil
+}
+
+// validateLogoURI enforces that logo_uri is HTTPS and same-host as the client_id URL.
+func validateLogoURI(clientURL *url.URL, logoURI string) error {
+	u, err := url.Parse(logoURI)
+	if err != nil || !u.IsAbs() || u.Scheme != "https" {
+		return fmt.Errorf("logo_uri %q must be an absolute HTTPS URL", logoURI)
+	}
+	if u.Hostname() != clientURL.Hostname() {
+		return fmt.Errorf("logo_uri %q must be on the same host as client_id", logoURI)
+	}
+	return nil
 }
 
 // validateRedirectOrigin enforces same-origin between a redirect URI and the
