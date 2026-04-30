@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AgentGrantDetailPage } from './AgentGrantDetailPage';
 import { ToastProvider } from '../components/ui/Toast';
 import * as useAgentGrantsModule from '../hooks/useAgentGrants';
@@ -19,6 +19,7 @@ import type {
   AgentDetail,
   ThirdpartyService,
   UserGrant,
+  CIMDMetadata,
 } from '../types/consent';
 
 // Mock the useAgentGrants hook
@@ -88,6 +89,23 @@ const RouterWrapper = ({ children }: { children: React.ReactNode }) => (
         <Route path="*" element={children} />
       </Routes>
     </BrowserRouter>
+  </ToastProvider>
+);
+
+// Wrapper that lets the test control the initial URL (for query-param testing).
+const MemoryRouterWrapper = ({
+  children,
+  initialEntry = '/',
+}: {
+  children: React.ReactNode;
+  initialEntry?: string;
+}) => (
+  <ToastProvider>
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route path="*" element={children} />
+      </Routes>
+    </MemoryRouter>
   </ToastProvider>
 );
 
@@ -701,5 +719,76 @@ describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
         name: /revoke all access for research assistant/i,
       }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('AgentGrantDetailPage - CIMD session_id flow', () => {
+  const mockUseConsentReturn = {
+    delegations: [],
+    userInfo: { principal: 'user@example.com', displayName: 'Test User', pictureUrl: '' },
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(useConsentModule, 'useConsent').mockReturnValue(mockUseConsentReturn);
+  });
+
+  it('forwards session_id from URL to useAgentGrants', () => {
+    const useAgentGrantsSpy = vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+      agent: mockAgent,
+      services: mockServices,
+      cimdMeta: null,
+      grants: mockGrant,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_id=test-session-abc">
+        <AgentGrantDetailPage />
+      </MemoryRouterWrapper>,
+    );
+
+    expect(useAgentGrantsSpy).toHaveBeenCalledWith(
+      'agent-123',
+      { sessionId: 'test-session-abc' },
+    );
+  });
+
+  it('renders CIMDConsentSummary and domain badge when cimdMeta is present', () => {
+    const mockCimdMeta: CIMDMetadata = {
+      client_name: 'Acme Corp Assistant',
+      client_id_url: 'https://acme.example.com/client',
+      redirect_uri: 'https://acme.example.com/callback',
+      verified_domain: 'acme.example.com',
+      is_localhost_redirect: false,
+      requested_scopes: ['read:user'],
+    };
+
+    vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+      agent: mockAgent,
+      services: mockServices,
+      cimdMeta: mockCimdMeta,
+      grants: mockGrant,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_id=test-session-abc">
+        <AgentGrantDetailPage />
+      </MemoryRouterWrapper>,
+    );
+
+    // CIMDConsentSummary renders the client name and access description
+    expect(screen.getByText('Acme Corp Assistant')).toBeInTheDocument();
+    expect(screen.getByText(/wants to access/)).toBeInTheDocument();
+    // CIMDDomainBadge renders the verified domain
+    expect(screen.getByText('acme.example.com')).toBeInTheDocument();
   });
 });
