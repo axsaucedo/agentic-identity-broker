@@ -127,7 +127,10 @@ export class ConsentApiService {
     const response = await apiClient.get<GetAgentDetailResponse>(url);
     const data = response.data.data;
 
-    apiCache.set(cacheKey, data, 5 * 60 * 1000);
+    // Session-scoped requests are single-use; skip caching so expiry is always server-checked.
+    if (!options?.sessionId) {
+      apiCache.set(cacheKey, data, 5 * 60 * 1000);
+    }
 
     return data;
   }
