@@ -1082,3 +1082,144 @@ func TestCreateGrant_SessionReplayRace(t *testing.T) {
 		t.Errorf("replay request: expected 400, got %d; body: %s", rr2.Code, rr2.Body.String())
 	}
 }
+
+// mockAuthSessionRepo is a minimal stub for ports.AuthorizationSessionRepository
+// that lets tests inject failure scenarios not reachable via the real in-memory adapter.
+type mockAuthSessionRepo struct {
+	getBySessionIDFunc func(ctx context.Context, sessionID string) (*storage.AuthorizationSession, error)
+	consumeFunc        func(ctx context.Context, sessionID string) error
+}
+
+func (m *mockAuthSessionRepo) Create(_ context.Context, _ *storage.AuthorizationSession) error {
+	return nil
+}
+
+func (m *mockAuthSessionRepo) GetBySessionID(ctx context.Context, sessionID string) (*storage.AuthorizationSession, error) {
+	if m.getBySessionIDFunc != nil {
+		return m.getBySessionIDFunc(ctx, sessionID)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockAuthSessionRepo) Consume(ctx context.Context, sessionID string) error {
+	if m.consumeFunc != nil {
+		return m.consumeFunc(ctx, sessionID)
+	}
+	return nil
+}
+
+func (m *mockAuthSessionRepo) DeleteExpired(_ context.Context) (int64, error) {
+	return 0, nil
+}
+
+// TestCreateGrant_SessionConsumed_GrantConsentFails verifies that when Consume succeeds
+// but GrantConsent subsequently fails, the handler returns the GrantConsent error.
+// The session is burned (consumed), which is the accepted tradeoff for atomicity.
+func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	agentID := id.NewAgentID()
+	principalVal := "user@example.com"
+
+	sess := &storage.AuthorizationSession{
+		SessionID:   "test-session-abc",
+		AgentID:     agentID,
+		Principal:   id.Principal(principalVal),
+		OriginalURL: "/callback",
+		CreatedAt:   now,
+		ExpiresAt:   now.Add(10 * time.Minute),
+	}
+
+	authRepo := &mockAuthSessionRepo{
+		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
+			return sess, nil
+		},
+		consumeFunc: func(_ context.Context, _ string) error {
+			return nil
+		},
+	}
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
+			return nil, consent.ErrServiceNotFound
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil).WithAuthorizationSessionRepository(authRepo)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+agentID.String()+"/grants?session_id="+sess.SessionID,
+		principalVal,
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 on GrantConsent failure, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// TestCreateGrant_ConsumeStorageError verifies that a non-Conflict, non-NotFound
+// storage error from Consume returns 500 and blocks GrantConsent from running.
+func TestCreateGrant_ConsumeStorageError(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	agentID := id.NewAgentID()
+	principalVal := "user@example.com"
+
+	sess := &storage.AuthorizationSession{
+		SessionID:   "test-session-def",
+		AgentID:     agentID,
+		Principal:   id.Principal(principalVal),
+		OriginalURL: "/callback",
+		CreatedAt:   now,
+		ExpiresAt:   now.Add(10 * time.Minute),
+	}
+
+	storageErr := storage.NewStorageError("Consume", storage.ErrorKindConnection, errors.New("db down"), "connection failed")
+	grantConsentCalled := false
+
+	authRepo := &mockAuthSessionRepo{
+		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
+			return sess, nil
+		},
+		consumeFunc: func(_ context.Context, _ string) error {
+			return storageErr
+		},
+	}
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
+			grantConsentCalled = true
+			return nil, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil).WithAuthorizationSessionRepository(authRepo)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+agentID.String()+"/grants?session_id="+sess.SessionID,
+		principalVal,
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on Consume storage error, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+	if grantConsentCalled {
+		t.Error("GrantConsent must not be called when Consume fails")
+	}
+}
