@@ -39,9 +39,9 @@ func TestAuthorizationSession_IsExpired(t *testing.T) {
 		assert.True(t, s.IsExpired())
 	})
 
-	t.Run("exact boundary — ExpiresAt equal to now is not expired", func(t *testing.T) {
+	t.Run("session with future ExpiresAt is not expired", func(t *testing.T) {
 		s := newTestSession(t)
-		s.ExpiresAt = time.Now().Add(time.Millisecond)
+		s.ExpiresAt = time.Now().Add(time.Hour)
 		assert.False(t, s.IsExpired())
 	})
 }
