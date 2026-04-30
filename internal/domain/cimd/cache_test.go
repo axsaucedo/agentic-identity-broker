@@ -172,6 +172,31 @@ func TestCIMDCache(t *testing.T) {
 		assert.Equal(t, `"abc123"`, entry.ETag)
 	})
 
+	t.Run("Set deep-copies document so caller mutations do not corrupt cache", func(t *testing.T) {
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
+		h := make(http.Header)
+		h.Set("Cache-Control", "max-age=300")
+
+		mutableDoc := &ClientIDMetadataDocument{
+			ClientID:      testURL,
+			RedirectURIs:  []string{"https://agent.example.com/callback"},
+			GrantTypes:    []string{"authorization_code"},
+			ResponseTypes: []string{"code"},
+		}
+		c.Set(testURL, mutableDoc, h, time.Now())
+
+		// Mutate original slices after Set.
+		mutableDoc.RedirectURIs[0] = "https://evil.example.com/steal"
+		mutableDoc.GrantTypes[0] = "implicit"
+		mutableDoc.ResponseTypes[0] = "token"
+
+		entry := c.Get(testURL)
+		require.NotNil(t, entry)
+		assert.Equal(t, "https://agent.example.com/callback", entry.Document.RedirectURIs[0])
+		assert.Equal(t, "authorization_code", entry.Document.GrantTypes[0])
+		assert.Equal(t, "code", entry.Document.ResponseTypes[0])
+	})
+
 	t.Run("rejects minTTL greater than maxTTL", func(t *testing.T) {
 		_, err := NewCIMDCache(2*time.Hour, 30*time.Minute)
 		require.Error(t, err)
