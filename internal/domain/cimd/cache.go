@@ -66,17 +66,23 @@ func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 	return deepCopyEntry(entry)
 }
 
+// deepCopyDocument returns a deep copy of doc with independent slice fields.
+func deepCopyDocument(doc *ClientIDMetadataDocument) *ClientIDMetadataDocument {
+	if doc == nil {
+		return nil
+	}
+	cp := *doc
+	cp.RedirectURIs = append([]string(nil), doc.RedirectURIs...)
+	cp.GrantTypes = append([]string(nil), doc.GrantTypes...)
+	cp.ResponseTypes = append([]string(nil), doc.ResponseTypes...)
+	return &cp
+}
+
 // deepCopyEntry returns a copy of entry with the Document field deep-copied so
 // callers cannot mutate cached slice fields (RedirectURIs, GrantTypes, ResponseTypes).
 func deepCopyEntry(entry *CIMDCacheEntry) *CIMDCacheEntry {
 	cp := *entry
-	if entry.Document != nil {
-		docCopy := *entry.Document
-		docCopy.RedirectURIs = append([]string(nil), entry.Document.RedirectURIs...)
-		docCopy.GrantTypes = append([]string(nil), entry.Document.GrantTypes...)
-		docCopy.ResponseTypes = append([]string(nil), entry.Document.ResponseTypes...)
-		cp.Document = &docCopy
-	}
+	cp.Document = deepCopyDocument(entry.Document)
 	return &cp
 }
 
@@ -86,7 +92,7 @@ func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers http.
 	ttl := c.deriveTTL(headers)
 	entry := &CIMDCacheEntry{
 		URL:       url,
-		Document:  doc,
+		Document:  deepCopyDocument(doc),
 		FetchedAt: fetchedAt,
 		ExpiresAt: fetchedAt.Add(ttl),
 		ETag:      headers.Get("ETag"),
