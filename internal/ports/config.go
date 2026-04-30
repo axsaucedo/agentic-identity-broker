@@ -459,6 +459,11 @@ func (c *OAuth2AuthServerConfig) validateIssueTokenMode() error {
 		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
 	}
 
+	// Validate CIMD cache TTL invariant early so wiring fails at config load, not startup.
+	if c.CIMD.Enabled && c.CIMD.Cache.MinTTL > c.CIMD.Cache.MaxTTL {
+		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
+	}
+
 	// Validate multi_agent_client fields when enabled
 	if c.MultiAgentClient.Enabled {
 		if c.MultiAgentClient.AgentIDParamName == "" {
