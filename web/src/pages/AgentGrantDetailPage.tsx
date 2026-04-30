@@ -174,12 +174,6 @@ export function AgentGrantDetailPage() {
 
   // Handle form submission
   const handleSubmit = async () => {
-    console.log(
-      '[AgentGrantDetailPage] handleSubmit - delegatedTokens:',
-      delegatedTokens,
-    );
-    console.log('[AgentGrantDetailPage] redirectUri:', redirectUri);
-
     // Clear previous errors
     clearError();
     setValidationErrors([]);
@@ -189,39 +183,23 @@ export function AgentGrantDetailPage() {
       return;
     }
 
-    // Submit grant
-    const validUntil = getValidUntil();
-    console.log(
-      '[AgentGrantDetailPage] submitting grant request with validUntil:',
-      validUntil,
-    );
-    const result = await submit(
-      validUntil,
-      sessionId ? { sessionId } : { redirectUri },
-    );
-    console.log('[AgentGrantDetailPage] submit result:', result);
+    try {
+      const result = await submit(
+        getValidUntil(),
+        sessionId ? { sessionId } : { redirectUri },
+      );
 
-    // Check for errors (result can be null for successful revocation or redirect)
-    if (submitError) {
-      // Show error toast
-      showToast(submitError, 'error');
-      return;
-    }
+      // Null result with a redirect target means the API navigated away (session or redirect_uri flow).
+      if (!result && (redirectUri || sessionId)) {
+        return;
+      }
 
-    // If a redirect was triggered (session-based or redirect_uri flow), result is null
-    // because the API service navigated away via window.location.href.
-    if (!result && (redirectUri || sessionId)) {
-      return;
-    }
-
-    // Success - refetch data and show toast notification
-    await refetch();
-
-    // Show appropriate success message
-    if (result) {
-      showToast('Grant updated successfully!', 'success');
-    } else {
-      showToast('Grant revoked successfully!', 'success');
+      // Success — refetch data and show toast
+      await refetch();
+      showToast(result ? 'Grant updated successfully!' : 'Grant revoked successfully!', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update grant';
+      showToast(message, 'error');
     }
   };
 

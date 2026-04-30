@@ -150,7 +150,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
           isSuccess: false,
         }));
 
-        return null;
+        throw new Error(errorMessage);
       }
     },
     [agentId, state.delegatedTokens],
