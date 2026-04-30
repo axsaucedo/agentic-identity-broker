@@ -1113,8 +1113,8 @@ func (m *mockAuthSessionRepo) DeleteExpired(_ context.Context) (int64, error) {
 }
 
 // TestCreateGrant_SessionConsumed_GrantConsentFails verifies that when Consume succeeds
-// but GrantConsent subsequently fails, the handler returns the GrantConsent error.
-// The session is burned (consumed), which is the accepted tradeoff for atomicity.
+// but GrantConsent subsequently fails, the handler returns the GrantConsent error and
+// Consume was called before GrantConsent (session is burned as the atomicity tradeoff).
 func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -1130,17 +1130,21 @@ func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
 		ExpiresAt:   now.Add(10 * time.Minute),
 	}
 
+	var callOrder []string
+
 	authRepo := &mockAuthSessionRepo{
 		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
 			return sess, nil
 		},
 		consumeFunc: func(_ context.Context, _ string) error {
+			callOrder = append(callOrder, "consume")
 			return nil
 		},
 	}
 
 	mockService := &mockConsentService{
 		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
+			callOrder = append(callOrder, "grant")
 			return nil, consent.ErrServiceNotFound
 		},
 	}
@@ -1162,6 +1166,9 @@ func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 on GrantConsent failure, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+	if len(callOrder) != 2 || callOrder[0] != "consume" || callOrder[1] != "grant" {
+		t.Errorf("expected Consume then GrantConsent; got call order: %v", callOrder)
 	}
 }
 
