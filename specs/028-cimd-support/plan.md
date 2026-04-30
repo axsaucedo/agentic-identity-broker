@@ -38,7 +38,7 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](.spe
 - [x] **API Design First**: Admin API: existing `POST /api/agents` and `PUT /api/agents/{agent-id}` extended with `client_uris` field; Enduser API: `/.well-known/oauth-authorization-server` extended with `client_id_metadata_document_supported`; `/oauth2/authorize` transparently accepts URL-based client_id
 - [x] **API Documentation**: Will update `/api/admin/openapi.yaml` (Agent schema with `client_uris`) and `/api/enduser/openapi.yaml` (metadata field)
 - [x] **API Changes**: API-001 through API-004 defined in spec — requires user confirmation before implementation
-- [x] **Database Design**: Migration 015: add `auth_method`, `jwks_uri` columns to `agents` table; create normalized `agent_client_uris` child table with `UNIQUE(client_uri)` constraint. Migration 016: create `authorization_sessions` table for server-side CIMD authorization session storage (SR-014) with session_id PK, authorization context, TTL, consumed_at
+- [x] **Database Design**: Migration 015: add `auth_method`, `jwks_uri` columns to `agents` table; create normalized `agent_client_uris` child table with `UNIQUE(client_uri)` constraint. Migration 017: create `authorization_sessions` table for server-side CIMD authorization session storage (SR-014) with session_id PK, authorization context, TTL, consumed_at
 - [x] **E2E Acceptance Tests**: 20+ acceptance scenarios across 5 user stories — all mapped to E2E tests
 - [x] **E2E Test Mapping**: 1:1 mapping from spec scenarios to It() blocks
 - [x] **E2E Red Phase**: Detailed expectations targeting HTTP status codes, response bodies, consent screen elements
@@ -127,7 +127,7 @@ web/src/
 
 migrations/
 ├── 015_add_agent_cimd_fields.{up,down}.sql  # NEW
-└── 016_create_authorization_sessions.{up,down}.sql  # NEW: server-side authorization session table (SR-014)
+└── 017_create_authorization_sessions.{up,down}.sql  # NEW: server-side authorization session table (SR-014)
 
 api/
 ├── admin/openapi.yaml           # MODIFIED: Agent schema extension (client_uris, auth_method, jwks_uri)
