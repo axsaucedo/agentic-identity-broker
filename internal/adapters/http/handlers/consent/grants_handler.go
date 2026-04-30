@@ -170,9 +170,9 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// FR-029: When session_id is present (CIMD flow), validate and consume the session before
-	// writing the grant. Consuming first closes the replay window: a just-expired or concurrent
-	// session cannot mutate consent state because Consume is the authoritative single-use gate.
+	// FR-029: When session_id is present (CIMD flow), load and validate the session now but
+	// defer Consume until after all deterministic validation passes. That preserves retryability
+	// on validation errors while still closing the replay window just before the grant write.
 	sessionID := r.URL.Query().Get("session_id")
 	var sessionRedirectURI string
 	if sessionID != "" {
@@ -222,23 +222,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessionRedirectURI = authSession.OriginalURL
-
-		// Consume the session before writing the grant so that no replay can mutate consent
-		// state. A Conflict error means a concurrent request already consumed the session.
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			var storErr *storage.StorageError
-			if errors.As(consumeErr, &storErr) && storErr.Kind == storage.ErrorKindConflict {
-				h.logger.Warn("authorization session already consumed by concurrent request",
-					"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
-				h.writeError(w, http.StatusBadRequest, "session already used", "authorization session has already been used")
-				return
-			}
-			h.logger.Error("failed to consume authorization session",
-				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-				"error", consumeErr)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
 	}
 
 	// Check for redirect_uri parameter early - validate before processing grant (T051-T054).
@@ -295,6 +278,35 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		tokens[i] = storage.DelegatedToken{
 			ThirdpartyOAuth2ServiceID: parsedServiceID,
 			Scopes:                    token.Scopes,
+		}
+	}
+
+	// FR-029: Consume the session here, after all deterministic validation, immediately before
+	// the grant write. Retryable validation errors above never burn the session. Conflict means
+	// a concurrent request won the race; NotFound means the session expired in the narrow window
+	// between the IsExpired check above and now.
+	if sessionID != "" {
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			var storErr *storage.StorageError
+			if errors.As(consumeErr, &storErr) {
+				switch storErr.Kind {
+				case storage.ErrorKindConflict:
+					h.logger.Warn("authorization session already consumed by concurrent request",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "session already used", "authorization session has already been used")
+					return
+				case storage.ErrorKindNotFound:
+					h.logger.Warn("authorization session expired before consume",
+						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has expired")
+					return
+				}
+			}
+			h.logger.Error("failed to consume authorization session",
+				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+				"error", consumeErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
 		}
 	}
 
