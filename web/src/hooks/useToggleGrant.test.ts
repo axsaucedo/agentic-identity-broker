@@ -108,13 +108,18 @@ describe('useToggleGrant', () => {
       ]);
     });
 
-    // Submit
-    let returnedGrant: UserGrant | null = null;
+    // Submit — expect a throw since submit() now re-throws on API errors.
+    let caughtError: Error | undefined;
     await act(async () => {
-      returnedGrant = await result.current.submit();
+      try {
+        await result.current.submit();
+      } catch (err) {
+        caughtError = err as Error;
+      }
     });
 
-    expect(returnedGrant).toBeNull();
+    expect(caughtError).toBeInstanceOf(Error);
+    expect(caughtError?.message).toBe('Invalid request');
     expect(result.current.isSuccess).toBe(false);
     expect(result.current.error).toBe('Invalid request');
     expect(result.current.isSubmitting).toBe(false);
@@ -148,9 +153,13 @@ describe('useToggleGrant', () => {
       ]);
     });
 
-    // Submit
+    // Submit — expect a throw since submit() now re-throws on API errors.
     await act(async () => {
-      await result.current.submit();
+      try {
+        await result.current.submit();
+      } catch {
+        // error is expected; assertions below check the resulting hook state
+      }
     });
 
     expect(result.current.error).toContain('Validation error');
