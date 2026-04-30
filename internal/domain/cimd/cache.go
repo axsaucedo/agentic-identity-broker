@@ -53,9 +53,9 @@ func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 		c.mu.Lock()
 		current, ok := c.entries[url]
 		if ok && !time.Now().After(current.ExpiresAt) {
-			cp := *current
+			cp := deepCopyEntry(current)
 			c.mu.Unlock()
-			return &cp
+			return cp
 		}
 		if ok {
 			delete(c.entries, url)
@@ -63,7 +63,20 @@ func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 		c.mu.Unlock()
 		return nil
 	}
+	return deepCopyEntry(entry)
+}
+
+// deepCopyEntry returns a copy of entry with the Document field deep-copied so
+// callers cannot mutate cached slice fields (RedirectURIs, GrantTypes, ResponseTypes).
+func deepCopyEntry(entry *CIMDCacheEntry) *CIMDCacheEntry {
 	cp := *entry
+	if entry.Document != nil {
+		docCopy := *entry.Document
+		docCopy.RedirectURIs = append([]string(nil), entry.Document.RedirectURIs...)
+		docCopy.GrantTypes = append([]string(nil), entry.Document.GrantTypes...)
+		docCopy.ResponseTypes = append([]string(nil), entry.Document.ResponseTypes...)
+		cp.Document = &docCopy
+	}
 	return &cp
 }
 
