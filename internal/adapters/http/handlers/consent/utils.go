@@ -18,7 +18,9 @@ type ErrorResponse struct {
 func writeBufferedJSON(w http.ResponseWriter, statusCode int, data any) error {
 	body, err := json.Marshal(data)
 	if err != nil {
-		http.Error(w, `{"error":"internal_error","message":"response encoding failed"}`, http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal_error","message":"response encoding failed"}`))
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")

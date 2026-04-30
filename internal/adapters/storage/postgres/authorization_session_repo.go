@@ -139,6 +139,9 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindNotFound, nil, "authorization session not found")
 	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindTimeout, err, "timed out checking authorization session state")
+	}
 	if err != nil {
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConnection, err, "failed to check authorization session state")
 	}

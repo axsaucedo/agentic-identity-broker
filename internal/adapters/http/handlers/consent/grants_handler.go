@@ -170,8 +170,9 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// FR-029: When session_id is present (CIMD flow), load redirect target from the server-side
-	// AuthorizationSession. The session is consumed on successful grant approval to prevent reuse.
+	// FR-029: When session_id is present (CIMD flow), validate and consume the session before
+	// writing the grant. Consuming first closes the replay window: a just-expired or concurrent
+	// session cannot mutate consent state because Consume is the authoritative single-use gate.
 	sessionID := r.URL.Query().Get("session_id")
 	var sessionRedirectURI string
 	if sessionID != "" {
@@ -221,6 +222,23 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessionRedirectURI = authSession.OriginalURL
+
+		// Consume the session before writing the grant so that no replay can mutate consent
+		// state. A Conflict error means a concurrent request already consumed the session.
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			var storErr *storage.StorageError
+			if errors.As(consumeErr, &storErr) && storErr.Kind == storage.ErrorKindConflict {
+				h.logger.Warn("authorization session already consumed by concurrent request",
+					"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
+				h.writeError(w, http.StatusBadRequest, "session already used", "authorization session has already been used")
+				return
+			}
+			h.logger.Error("failed to consume authorization session",
+				"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
+				"error", consumeErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 	}
 
 	// Check for redirect_uri parameter early - validate before processing grant (T051-T054).
@@ -340,42 +358,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"principal", principalValue,
 		"agent_id", agentID,
 		"grant_id", grant.ID)
-
-	// FR-029: Consume the session after the grant is persisted so that GrantConsent
-	// failures (agent deleted, invalid scopes, transient storage error) do not permanently
-	// burn the session and prevent the user from retrying with the same authorization flow.
-	// A Conflict error means a concurrent request already consumed the session; return 400
-	// so the duplicate caller does not complete with 201. NotFound means the session expired
-	// between validation above and this call; the grant is persisted so we proceed.
-	if sessionID != "" {
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			var storErr *storage.StorageError
-			if errors.As(consumeErr, &storErr) {
-				switch storErr.Kind {
-				case storage.ErrorKindConflict:
-					h.logger.Warn("authorization session already consumed by concurrent request",
-						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
-					h.writeError(w, http.StatusBadRequest, "session already used", "authorization session has already been used")
-					return
-				case storage.ErrorKindNotFound:
-					h.logger.Warn("authorization session expired after grant write",
-						"session_id", sessionID, "agent_id", agentID, "principal", principalValue)
-				default:
-					h.logger.Error("failed to consume authorization session after grant",
-						"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-						"error", consumeErr)
-					h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-					return
-				}
-			} else {
-				h.logger.Error("failed to consume authorization session after grant",
-					"session_id", sessionID, "agent_id", agentID, "principal", principalValue,
-					"error", consumeErr)
-				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-				return
-			}
-		}
-	}
 
 	if sessionID != "" {
 		response := h.toGrantResponse(grant)
