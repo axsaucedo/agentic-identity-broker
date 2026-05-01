@@ -44,6 +44,17 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 		return nil, fmt.Errorf("malformed CIMD document: %w", err)
 	}
 
+	// RFC §4.1: client_secret and client_secret_expires_at MUST NOT be used
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err == nil {
+		if _, ok := raw["client_secret"]; ok {
+			return nil, fmt.Errorf("CIMD document must not contain client_secret")
+		}
+		if _, ok := raw["client_secret_expires_at"]; ok {
+			return nil, fmt.Errorf("CIMD document must not contain client_secret_expires_at")
+		}
+	}
+
 	// RFC 7591 §2: omitted token_endpoint_auth_method defaults to "none"
 	if doc.AuthMethod == "" {
 		doc.AuthMethod = "none"

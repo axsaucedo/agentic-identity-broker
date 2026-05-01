@@ -94,6 +94,20 @@ func TestParseDocument(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("rejects document containing client_secret", func(t *testing.T) {
+		data := validDoc(map[string]any{"client_secret": "s3cret"})
+		_, err := ParseDocument(data, fetchURL, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "client_secret")
+	})
+
+	t.Run("rejects document containing client_secret_expires_at", func(t *testing.T) {
+		data := validDoc(map[string]any{"client_secret_expires_at": 1234567890})
+		_, err := ParseDocument(data, fetchURL, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "client_secret_expires_at")
+	})
+
 	t.Run("rejects blocked client_name keyword", func(t *testing.T) {
 		data := validDoc(map[string]any{"client_name": "Admin"})
 		_, err := ParseDocument(data, fetchURL, []string{"Admin"})
