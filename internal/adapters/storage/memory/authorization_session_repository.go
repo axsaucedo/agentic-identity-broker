@@ -36,6 +36,7 @@ func (r *AuthorizationSessionRepository) Create(ctx context.Context, session *st
 	}
 
 	cp := *session
+	cp.CIMDMetadata = deepCopyCIMDMetadata(session.CIMDMetadata)
 	r.sessions[session.SessionID] = &cp
 	return nil
 }
@@ -51,6 +52,7 @@ func (r *AuthorizationSessionRepository) GetBySessionID(ctx context.Context, ses
 	}
 
 	cp := *session
+	cp.CIMDMetadata = deepCopyCIMDMetadata(session.CIMDMetadata)
 	return &cp, nil
 }
 
@@ -89,4 +91,13 @@ func (r *AuthorizationSessionRepository) DeleteExpired(ctx context.Context) (int
 		}
 	}
 	return count, nil
+}
+
+func deepCopyCIMDMetadata(m *storage.CIMDMetadataSnapshot) *storage.CIMDMetadataSnapshot {
+	if m == nil {
+		return nil
+	}
+	cp := *m
+	cp.RedirectURIs = append([]string(nil), m.RedirectURIs...)
+	return &cp
 }
