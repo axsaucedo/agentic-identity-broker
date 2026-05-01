@@ -263,12 +263,7 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 		// Check user's session status with this service
 		session, err := h.sessionRepository.FindByPrincipalAndService(ctx, userID, req.ServiceID)
 		if err != nil {
-			h.logger.Warn("Error checking session status",
-				"user_id", userID,
-				"service_id", req.ServiceID,
-				"error", err)
-			// Treat error as no session
-			session = nil
+			return nil, fmt.Errorf("checking session status for service %s: %w", req.ServiceID, err)
 		}
 
 		// Determine connection status
