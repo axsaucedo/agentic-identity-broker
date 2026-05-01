@@ -96,7 +96,7 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 
 	// Brand pin check (informational — flow continues)
 	if doc.ClientName != "" && agent.DisplayName != "" && doc.ClientName != agent.DisplayName {
-		s.logger.Info("cimd_brand_pin_mismatch",
+		s.logger.Warn("cimd_brand_pin_mismatch",
 			"agent_id", agent.ID,
 			"agent_display_name", agent.DisplayName,
 			"cimd_client_name", doc.ClientName,
