@@ -103,100 +103,102 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 		)
 	}
 
-	// Security field change detection and snapshot update
+	// Security field change detection and snapshot update.
+	// Stage mutations on a copy so the caller's *Agent is only updated after a
+	// successful persist — avoiding in-memory/DB divergence on write failure.
+	staged := *agent
 	needsUpdate := false
 
-	if agent.AuthMethod == nil {
-		// First fetch — populate baseline silently
+	if staged.AuthMethod == nil {
 		if doc.AuthMethod != "" {
 			m := doc.AuthMethod
-			agent.AuthMethod = &m
+			staged.AuthMethod = &m
 			needsUpdate = true
 		}
-	} else if doc.AuthMethod != *agent.AuthMethod {
+	} else if doc.AuthMethod != *staged.AuthMethod {
 		s.logger.Warn("cimd_security_field_changed",
-			"agent_id", agent.ID,
+			"agent_id", staged.ID,
 			"field", "auth_method",
-			"previous", *agent.AuthMethod,
+			"previous", *staged.AuthMethod,
 			"current", doc.AuthMethod,
 			"timestamp", time.Now().UTC(),
 		)
 		m := doc.AuthMethod
-		agent.AuthMethod = &m
+		staged.AuthMethod = &m
 		needsUpdate = true
 	}
 
-	if agent.JwksURI == nil {
+	if staged.JwksURI == nil {
 		if doc.JwksURI != "" {
 			j := doc.JwksURI
-			agent.JwksURI = &j
+			staged.JwksURI = &j
 			needsUpdate = true
 		}
-	} else if doc.JwksURI != *agent.JwksURI {
+	} else if doc.JwksURI != *staged.JwksURI {
 		s.logger.Warn("cimd_security_field_changed",
-			"agent_id", agent.ID,
+			"agent_id", staged.ID,
 			"field", "jwks_uri",
-			"previous", *agent.JwksURI,
+			"previous", *staged.JwksURI,
 			"current", doc.JwksURI,
 			"timestamp", time.Now().UTC(),
 		)
 		j := doc.JwksURI
-		agent.JwksURI = &j
+		staged.JwksURI = &j
 		needsUpdate = true
 	}
 
-	if agent.CIMDClientName == nil {
+	if staged.CIMDClientName == nil {
 		if doc.ClientName != "" {
 			n := doc.ClientName
-			agent.CIMDClientName = &n
+			staged.CIMDClientName = &n
 			needsUpdate = true
 		}
-	} else if doc.ClientName != *agent.CIMDClientName {
+	} else if doc.ClientName != *staged.CIMDClientName {
 		n := doc.ClientName
-		agent.CIMDClientName = &n
+		staged.CIMDClientName = &n
 		needsUpdate = true
 	}
 
-	if agent.CIMDLogoURI == nil {
+	if staged.CIMDLogoURI == nil {
 		if doc.LogoURI != "" {
 			n := doc.LogoURI
-			agent.CIMDLogoURI = &n
+			staged.CIMDLogoURI = &n
 			needsUpdate = true
 		}
-	} else if doc.LogoURI != *agent.CIMDLogoURI {
+	} else if doc.LogoURI != *staged.CIMDLogoURI {
 		n := doc.LogoURI
-		agent.CIMDLogoURI = &n
+		staged.CIMDLogoURI = &n
 		needsUpdate = true
 	}
 
-	if agent.CIMDRedirectURIs == nil {
-		// First fetch — populate baseline silently
+	if staged.CIMDRedirectURIs == nil {
 		if len(doc.RedirectURIs) > 0 {
-			agent.CIMDRedirectURIs = slices.Clone(doc.RedirectURIs)
+			staged.CIMDRedirectURIs = slices.Clone(doc.RedirectURIs)
 			needsUpdate = true
 		}
 	} else {
 		docSorted := slices.Sorted(slices.Values(doc.RedirectURIs))
-		agentSorted := slices.Sorted(slices.Values(agent.CIMDRedirectURIs))
+		agentSorted := slices.Sorted(slices.Values(staged.CIMDRedirectURIs))
 		if !slices.Equal(docSorted, agentSorted) {
 			s.logger.Warn("cimd_security_field_changed",
-				"agent_id", agent.ID,
+				"agent_id", staged.ID,
 				"field", "redirect_uris",
-				"previous", agent.CIMDRedirectURIs,
+				"previous", staged.CIMDRedirectURIs,
 				"current", doc.RedirectURIs,
 				"timestamp", time.Now().UTC(),
 			)
-			agent.CIMDRedirectURIs = slices.Clone(doc.RedirectURIs)
+			staged.CIMDRedirectURIs = slices.Clone(doc.RedirectURIs)
 			needsUpdate = true
 		}
 	}
 
 	if needsUpdate {
-		agent.UpdatedAt = time.Now().UTC()
-		if err := s.agentRepo.Update(ctx, agent); err != nil {
-			s.logger.Error("cimd_snapshot_update_failed", "agent_id", agent.ID, "error", err)
+		staged.UpdatedAt = time.Now().UTC()
+		if err := s.agentRepo.Update(ctx, &staged); err != nil {
+			s.logger.Error("cimd_snapshot_update_failed", "agent_id", staged.ID, "error", err)
 			return nil, &SnapshotPersistenceError{Err: err}
 		}
+		*agent = staged
 	}
 
 	// Store in cache
