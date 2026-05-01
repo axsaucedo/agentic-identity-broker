@@ -44,26 +44,27 @@ func NewCIMDCache(minTTL, maxTTL time.Duration) (*CIMDCache, error) {
 func (c *CIMDCache) Get(url string) *CIMDCacheEntry {
 	c.mu.RLock()
 	entry, ok := c.entries[url]
+	if !ok {
+		c.mu.RUnlock()
+		return nil
+	}
+	if !time.Now().After(entry.ExpiresAt) {
+		cp := deepCopyEntry(entry)
+		c.mu.RUnlock()
+		return cp
+	}
 	c.mu.RUnlock()
 
-	if !ok {
-		return nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	current, ok := c.entries[url]
+	if ok && !time.Now().After(current.ExpiresAt) {
+		return deepCopyEntry(current)
 	}
-	if time.Now().After(entry.ExpiresAt) {
-		c.mu.Lock()
-		current, ok := c.entries[url]
-		if ok && !time.Now().After(current.ExpiresAt) {
-			cp := deepCopyEntry(current)
-			c.mu.Unlock()
-			return cp
-		}
-		if ok {
-			delete(c.entries, url)
-		}
-		c.mu.Unlock()
-		return nil
+	if ok {
+		delete(c.entries, url)
 	}
-	return deepCopyEntry(entry)
+	return nil
 }
 
 // deepCopyDocument returns a deep copy of doc with independent slice fields.
