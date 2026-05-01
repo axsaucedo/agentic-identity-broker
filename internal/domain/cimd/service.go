@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"time"
 
@@ -60,6 +61,12 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 	// Validate URL format
 	if _, err := ParseClientIDMetadataDocumentURL(rawURL); err != nil {
 		return nil, err
+	}
+
+	// RFC §3 SHOULD NOT: warn when client_id URL contains a query string
+	if parsed, parseErr := url.Parse(rawURL); parseErr == nil && parsed.RawQuery != "" {
+		s.logger.WarnContext(ctx, "client_id URL contains query string (discouraged by RFC)",
+			"url", rawURL)
 	}
 
 	// Cache hit
