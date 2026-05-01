@@ -165,6 +165,9 @@ func (r *AuthorizationSessionRepo) DeleteExpired(ctx context.Context) (int, erro
 	if err != nil {
 		return 0, storage.NewStorageError("AuthorizationSessionRepo.DeleteExpired", storage.ErrorKindUnknown, err, "failed to delete expired authorization sessions")
 	}
-	rows, _ := result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, storage.NewStorageError("AuthorizationSessionRepo.DeleteExpired", storage.ErrorKindUnknown, err, "failed to determine rows affected")
+	}
 	return int(rows), nil
 }
