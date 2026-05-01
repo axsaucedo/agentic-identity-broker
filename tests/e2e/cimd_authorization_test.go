@@ -406,4 +406,29 @@ var _ = Describe("CIMD Authorization", func() {
 			Expect(body["error"]).To(Equal("invalid_request"))
 		})
 	})
+
+	// FR-027 from specs/028-cimd-support/spec.md
+	Describe("when the client_id URL is not pre-registered on any Agent", func() {
+		It("rejects the authorization request with invalid_client", func() {
+			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+			serverFactory = bootstrap.NewServerFactory(config, logger)
+			appInstance, err := serverFactory.BuildApp(testStorage)
+			Expect(err).ToNot(HaveOccurred())
+			server, err := bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+			defer server.Close()
+
+			resp, err := server.AuthenticatedGET(
+				"/oauth2/authorize?client_id=https://unregistered.example.com/client&redirect_uri=https://unregistered.example.com/cb&response_type=code&state=xyz",
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			var body map[string]any
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body["error"]).To(Equal("invalid_client"))
+		})
+	})
 })
