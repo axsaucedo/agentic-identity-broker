@@ -365,7 +365,17 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	// In issue_token mode, UpstreamAuthorizeEndpoint is empty — skip URL construction.
 	var upstreamURL string
 	if s.config.UpstreamAuthorizeEndpoint != "" {
-		upstreamURL = s.buildUpstreamAuthorizeURL(req, agent)
+		var urlErr error
+		upstreamURL, urlErr = s.buildUpstreamAuthorizeURL(req, agent)
+		if urlErr != nil {
+			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			return &ports.AuthorizationDecision{
+				Action:      "error",
+				ErrorCode:   "server_error",
+				ErrorDesc:   "Failed to build upstream authorize URL",
+				RedirectURL: errRedirect,
+			}, nil
+		}
 	}
 	return &ports.AuthorizationDecision{
 		Action:      "proceed",
@@ -379,8 +389,11 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 // Feature 021: uses agent.ClientID (upstream OAuth2 client ID) instead of req.ClientID
 // (which is now the broker's internal agent UUID). When MultiAgentClient.Enabled,
 // appends the agent's internal UUID as the configured AgentIDParamName query parameter.
-func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, agent *storage.Agent) string {
-	u, _ := url.Parse(s.config.UpstreamAuthorizeEndpoint)
+func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, agent *storage.Agent) (string, error) {
+	u, err := url.Parse(s.config.UpstreamAuthorizeEndpoint)
+	if err != nil {
+		return "", fmt.Errorf("invalid upstream authorize endpoint URL: %w", err)
+	}
 	q := u.Query()
 
 	// Use agent.ClientID as upstream client_id (NOT the broker's internal agent UUID)
@@ -416,7 +429,7 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 	}
 
 	u.RawQuery = q.Encode()
-	return u.String()
+	return u.String(), nil
 }
 
 // buildConsentURL builds the consent redirect URL for a given agent and request.
