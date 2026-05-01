@@ -420,20 +420,20 @@ var _ = Describe("CIMD Consent Screen", func() {
 		})
 	})
 
-	// Regression tests for fail-closed redirect_uri behavior in buildCIMDMetadata
-	// (legacy URL-param path, still used for non-session-based opaque flows).
-	Describe("redirect_uri fail-closed behavior (legacy URL-param path)", func() {
-		It("clears redirect_uri when agent has no CIMD snapshot (CIMDRedirectURIs is empty)", func() {
+	// Regression tests: CIMD agents must use session_id — URL-param path is blocked.
+	// These verify the fail-closed behavior: sending client_id=https://... without
+	// session_id returns 400 (session_id required for CIMD agent authorization).
+	Describe("CIMD URL-param path blocked without session_id", func() {
+		It("rejects with 400 when CIMD agent has no snapshot and no session_id", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
 				ClientID:    id.ClientID("https://agent.example.com/client"),
 				DisplayName: "No-Snapshot Agent",
-				Description: "E2E test for redirect_uri fail-closed: no snapshot",
+				Description: "E2E test for session_id requirement: no snapshot",
 				ClientURIs:  []string{"https://agent.example.com/client"},
-				// CIMDRedirectURIs intentionally omitted — snapshot not yet populated
-				CreatedAt: now,
-				UpdatedAt: now,
+				CreatedAt:   now,
+				UpdatedAt:   now,
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
@@ -445,23 +445,16 @@ var _ = Describe("CIMD Consent Screen", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			var body map[string]any
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-
-			data := body["data"].(map[string]any)
-			cimdMeta := data["cimd_metadata"].(map[string]any)
-			Expect(cimdMeta["redirect_uri"]).To(BeEmpty(), "redirect_uri must be empty when snapshot is not populated")
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 		})
 
-		It("clears redirect_uri when requested URI is not in the CIMD snapshot", func() {
+		It("rejects with 400 when CIMD agent has snapshot but no session_id", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:               id.NewAgentID(),
 				ClientID:         id.ClientID("https://agent.example.com/client"),
 				DisplayName:      "Mismatch Agent",
-				Description:      "E2E test for redirect_uri fail-closed: URI mismatch",
+				Description:      "E2E test for session_id requirement: with snapshot",
 				ClientURIs:       []string{"https://agent.example.com/client"},
 				CIMDRedirectURIs: []string{"https://agent.example.com/registered-callback"},
 				CreatedAt:        now,
@@ -477,14 +470,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			var body map[string]any
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-
-			data := body["data"].(map[string]any)
-			cimdMeta := data["cimd_metadata"].(map[string]any)
-			Expect(cimdMeta["redirect_uri"]).To(BeEmpty(), "redirect_uri must be empty when not in snapshot")
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 		})
 	})
 })

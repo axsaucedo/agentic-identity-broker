@@ -1112,9 +1112,9 @@ func (m *mockAuthSessionRepo) DeleteExpired(_ context.Context) (int64, error) {
 	return 0, nil
 }
 
-// TestCreateGrant_SessionConsumed_GrantConsentFails verifies that when Consume succeeds
-// but GrantConsent subsequently fails, the handler returns the GrantConsent error and
-// Consume was called before GrantConsent (session is burned as the atomicity tradeoff).
+// TestCreateGrant_SessionConsumed_GrantConsentFails verifies that when GrantConsent
+// fails, the session is NOT consumed (Consume is only called after successful grant).
+// This ensures the session remains retryable on transient GrantConsent failures.
 func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -1130,21 +1130,20 @@ func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
 		ExpiresAt:   now.Add(10 * time.Minute),
 	}
 
-	var callOrder []string
+	consumeCalled := false
 
 	authRepo := &mockAuthSessionRepo{
 		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
 			return sess, nil
 		},
 		consumeFunc: func(_ context.Context, _ string) error {
-			callOrder = append(callOrder, "consume")
+			consumeCalled = true
 			return nil
 		},
 	}
 
 	mockService := &mockConsentService{
 		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
-			callOrder = append(callOrder, "grant")
 			return nil, consent.ErrServiceNotFound
 		},
 	}
@@ -1167,13 +1166,14 @@ func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 on GrantConsent failure, got %d; body: %s", rr.Code, rr.Body.String())
 	}
-	if len(callOrder) != 2 || callOrder[0] != "consume" || callOrder[1] != "grant" {
-		t.Errorf("expected Consume then GrantConsent; got call order: %v", callOrder)
+	if consumeCalled {
+		t.Error("Consume must not be called when GrantConsent fails (session remains retryable)")
 	}
 }
 
-// TestCreateGrant_ConsumeStorageError verifies that a non-Conflict, non-NotFound
-// storage error from Consume returns 500 and blocks GrantConsent from running.
+// TestCreateGrant_ConsumeStorageError verifies that a storage error from Consume
+// after a successful grant write is logged but does not prevent the 201 response.
+// The grant is already persisted; the session will expire naturally.
 func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -1185,12 +1185,12 @@ func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 		AgentID:     agentID,
 		Principal:   id.Principal(principalVal),
 		OriginalURL: "/callback",
+		RedirectURI: "https://agent.example.com/callback",
 		CreatedAt:   now,
 		ExpiresAt:   now.Add(10 * time.Minute),
 	}
 
 	storageErr := storage.NewStorageError("Consume", storage.ErrorKindConnection, errors.New("db down"), "connection failed")
-	grantConsentCalled := false
 
 	authRepo := &mockAuthSessionRepo{
 		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
@@ -1201,10 +1201,16 @@ func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 		},
 	}
 
+	grantID := id.NewGrantID()
 	mockService := &mockConsentService{
 		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
-			grantConsentCalled = true
-			return nil, nil
+			return &storage.UserGrant{
+				ID:        grantID,
+				Principal: id.Principal(principalVal),
+				AgentID:   agentID,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
 		},
 	}
 
@@ -1223,10 +1229,7 @@ func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.CreateGrant(rr, req)
 
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 on Consume storage error, got %d; body: %s", rr.Code, rr.Body.String())
-	}
-	if grantConsentCalled {
-		t.Error("GrantConsent must not be called when Consume fails")
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected 201 (grant persisted despite Consume failure), got %d; body: %s", rr.Code, rr.Body.String())
 	}
 }
