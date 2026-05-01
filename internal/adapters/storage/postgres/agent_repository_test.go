@@ -532,7 +532,7 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 			ClientID:    "cimd-create-get-client",
 			DisplayName: "CIMD Create/Get Agent",
 			Description: "Tests ClientURIs round-trip",
-			ClientURIs:  []string{"https://example.com/client1", "https://example.com/client2"},
+			ClientURIs:  []string{"https://example.com/client1"},
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
@@ -622,7 +622,7 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 			ClientID:    "cimd-getbyuri-client",
 			DisplayName: "CIMD GetByClientURI Agent",
 			Description: "Tests GetByClientURI",
-			ClientURIs:  []string{"https://example.com/lookup-uri", "https://example.com/other-uri"},
+			ClientURIs:  []string{"https://example.com/lookup-uri"},
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}

@@ -1,4 +1,7 @@
 oauth2_authorization_server:
+  # CIMD requires issue_token mode — proxy mode has no local token minting.
+  mode: "issue_token"
+
   # Client ID Metadata Document (CIMD) support
   # Enables AI agents to use HTTPS URLs as client_id values.
   # The broker fetches, validates, and caches the metadata document at the URL.

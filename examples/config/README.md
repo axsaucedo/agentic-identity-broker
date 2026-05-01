@@ -306,7 +306,8 @@ Annotated configuration example for the CIMD feature (Feature 028). Demonstrates
 ```yaml
 # Merge into your existing oauth2_authorization_server configuration:
 oauth2_authorization_server:
-  # ... existing upstream_issuer_uri, mode, etc. ...
+  mode: "issue_token"  # required: CIMD is only supported in issue_token mode
+  # ... issuer_uri, token_ttl, etc. ...
   cimd:
     enabled: true
     fetch_timeout: 1s
