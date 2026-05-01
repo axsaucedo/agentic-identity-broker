@@ -32,6 +32,7 @@ func TestSSRFBlocklist(t *testing.T) {
 		{"documentation TEST-NET-2", "198.51.100.1"},
 		{"documentation TEST-NET-3", "203.0.113.1"},
 		{"benchmarking", "198.18.0.1"},
+		{"6to4 relay anycast", "192.88.99.1"},
 		{"reserved", "240.0.0.1"},
 		{"broadcast", "255.255.255.255"},
 		{"unique local IPv6", "fc00::1"},

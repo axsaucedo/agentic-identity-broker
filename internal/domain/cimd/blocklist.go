@@ -27,6 +27,7 @@ var defaultBlockedCIDRs = []string{
 	"198.18.0.0/15",      // Benchmarking
 	"198.51.100.0/24",    // Documentation (TEST-NET-2)
 	"203.0.113.0/24",     // Documentation (TEST-NET-3)
+	"192.88.99.0/24",     // 6to4 relay anycast (deprecated RFC 7526)
 	"240.0.0.0/4",        // Reserved
 	"255.255.255.255/32", // Limited broadcast
 	"fc00::/7",           // Unique local (IPv6)
