@@ -320,10 +320,25 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if s.sessionRepo != nil && len(agent.ServiceRequirements) > 0 {
 		err := s.validateMandatoryRequirements(ctx, principal.String(), agent)
 		if err != nil {
-			// Mandatory requirement not met - redirect to consent screen
+			if strings.HasPrefix(err.Error(), "storage_error:") {
+				if s.logger != nil {
+					s.logger.Error(
+						"MandatoryRequirementStorageFailure",
+						"agent_id", agent.ID,
+						"error", err.Error(),
+					)
+				}
+				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				return &ports.AuthorizationDecision{
+					Action:      "error",
+					ErrorCode:   "server_error",
+					ErrorDesc:   "Failed to validate service requirements",
+					RedirectURL: errRedirect,
+				}, nil
+			}
 			if s.logger != nil {
 				s.logger.Warn(
-					"MandatoryRequirementValidationFailed",
+					"MandatoryRequirementNotMet",
 					"agent_id", agent.ID,
 					"error", err.Error(),
 				)
@@ -519,15 +534,7 @@ func (s *Service) validateMandatoryRequirements(
 		// not an error condition per the port contract; check nil separately.
 		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, id.Principal(principal), req.ServiceID)
 		if err != nil {
-			if s.logger != nil {
-				s.logger.Warn(
-					"MandatoryRequirementNotMet",
-					"agent_id", agent.ID,
-					"service_id", req.ServiceID,
-					"reason", "session_lookup_error",
-				)
-			}
-			return fmt.Errorf("session_required: user does not have required session for service %s", req.ServiceID)
+			return fmt.Errorf("storage_error: failed to check session for service %s: %w", req.ServiceID, err)
 		}
 		if session == nil {
 			if s.logger != nil {
