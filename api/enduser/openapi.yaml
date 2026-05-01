@@ -369,6 +369,19 @@ paths:
       - Consent
       parameters:
       - $ref: '#/components/parameters/AgentIdParam'
+      - name: session_id
+        in: query
+        required: false
+        description: >-
+          Opaque authorization session ID for CIMD-based flows. When present, the
+          response includes CIMD metadata (client_name, logo_uri, redirect_uri,
+          verified domain) retrieved from the server-side session. Required for
+          agents identified by a Client ID Metadata Document URL; omit for
+          pre-registered opaque client_id flows.
+        schema:
+          type: string
+          minLength: 1
+          example: a1b2c3d4e5f6...
       responses:
         '200':
           description: Agent detail retrieved successfully
@@ -410,8 +423,20 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Session belongs to a different principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           $ref: '#/components/responses/AgentNotFound'
+        '410':
+          description: Authorization session expired or already consumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /api/consent/agent/{agent-id}/grants:
