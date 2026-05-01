@@ -1,6 +1,7 @@
 package cimd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -275,6 +276,29 @@ func TestService_Resolve_UpdateFailureFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "database unavailable")
 	var snapErr *SnapshotPersistenceError
 	require.ErrorAs(t, err, &snapErr)
+	assert.Nil(t, agent.AuthMethod, "caller agent must remain unchanged when snapshot persistence fails")
+	assert.Nil(t, agent.JwksURI, "caller agent must remain unchanged when snapshot persistence fails")
+}
+
+func TestService_Resolve_BareQueryDelimiterLogsWarning(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
+	agent := testAgent(agentID)
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	fetcher := &mockFetcher{result: cimdFetchResult(t, "https://agent.example.com/client?", "private_key_jwt", "")}
+
+	svc := NewService(
+		fetcher,
+		mustNewCIMDCache(t, 60*time.Second, time.Hour),
+		newMockAgentRepo(agent),
+		nil,
+		logger,
+	)
+
+	_, err := svc.Resolve(context.Background(), "https://agent.example.com/client?", agent)
+	require.NoError(t, err)
+	assert.Contains(t, logBuf.String(), "client_id URL contains query string")
 }
 
 func TestService_Resolve_NameBlocklist_Rejected(t *testing.T) {

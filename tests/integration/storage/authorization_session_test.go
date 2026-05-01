@@ -41,7 +41,7 @@ func applyAllMigrations(t *testing.T, connStr string) {
 }
 
 // newAuthSessionRepo creates a configured postgres AuthorizationSessionRepo for tests.
-func newAuthSessionRepo(t *testing.T, connStr string) (ports.AuthorizationSessionRepository, func()) {
+func newAuthSessionRepo(t *testing.T, connStr string, agentIDs ...id.AgentID) (ports.AuthorizationSessionRepository, func()) {
 	t.Helper()
 
 	config := &ports.StorageConfig{
@@ -56,6 +56,19 @@ func newAuthSessionRepo(t *testing.T, connStr string) (ports.AuthorizationSessio
 
 	ctx := context.Background()
 	require.NoError(t, adapter.Initialize(ctx))
+
+	agentRepo := postgres.NewAgentRepository(adapter)
+	now := time.Now().UTC()
+	for _, agentID := range agentIDs {
+		require.NoError(t, agentRepo.Create(ctx, &storage.Agent{
+			ID:          agentID,
+			ClientID:    id.ClientID("auth-session-test-" + agentID.String()[:8]),
+			DisplayName: "Authorization Session Test Agent",
+			Description: "Agent for authorization session integration tests",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}))
+	}
 
 	return postgres.NewAuthorizationSessionRepo(adapter), func() { adapter.Close(ctx) }
 }
@@ -92,7 +105,7 @@ func TestAuthorizationSessionRepo_CreateAndGet(t *testing.T) {
 	applyAllMigrations(t, connStr)
 
 	agentID := id.AgentID(uuid.New())
-	repo, closeRepo := newAuthSessionRepo(t, connStr)
+	repo, closeRepo := newAuthSessionRepo(t, connStr, agentID)
 	defer closeRepo()
 
 	ctx := context.Background()
@@ -143,7 +156,7 @@ func TestAuthorizationSessionRepo_GetExpiredSession(t *testing.T) {
 	applyAllMigrations(t, connStr)
 
 	agentID := id.AgentID(uuid.New())
-	repo, closeRepo := newAuthSessionRepo(t, connStr)
+	repo, closeRepo := newAuthSessionRepo(t, connStr, agentID)
 	defer closeRepo()
 
 	ctx := context.Background()
@@ -167,7 +180,7 @@ func TestAuthorizationSessionRepo_Consume(t *testing.T) {
 	applyAllMigrations(t, connStr)
 
 	agentID := id.AgentID(uuid.New())
-	repo, closeRepo := newAuthSessionRepo(t, connStr)
+	repo, closeRepo := newAuthSessionRepo(t, connStr, agentID)
 	defer closeRepo()
 
 	ctx := context.Background()
@@ -190,7 +203,7 @@ func TestAuthorizationSessionRepo_ConsumeAlreadyConsumed(t *testing.T) {
 	applyAllMigrations(t, connStr)
 
 	agentID := id.AgentID(uuid.New())
-	repo, closeRepo := newAuthSessionRepo(t, connStr)
+	repo, closeRepo := newAuthSessionRepo(t, connStr, agentID)
 	defer closeRepo()
 
 	ctx := context.Background()
@@ -211,7 +224,7 @@ func TestAuthorizationSessionRepo_DeleteExpired(t *testing.T) {
 	applyAllMigrations(t, connStr)
 
 	agentID := id.AgentID(uuid.New())
-	repo, closeRepo := newAuthSessionRepo(t, connStr)
+	repo, closeRepo := newAuthSessionRepo(t, connStr, agentID)
 	defer closeRepo()
 
 	ctx := context.Background()
@@ -227,7 +240,7 @@ func TestAuthorizationSessionRepo_DeleteExpired(t *testing.T) {
 
 	deleted, err := repo.DeleteExpired(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), deleted, "only the expired session should be deleted")
+	assert.Equal(t, 1, deleted, "only the expired session should be deleted")
 
 	// Expired session is gone
 	_, err = repo.GetBySessionID(ctx, expired.SessionID)

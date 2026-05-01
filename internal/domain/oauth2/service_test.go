@@ -1111,9 +1111,10 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		setupSess  func(*MockSessionRepository)
-		wantAction string
+		name          string
+		setupSess     func(*MockSessionRepository)
+		wantAction    string
+		wantErrorCode string
 	}{
 		{
 			name: "active session with required scopes proceeds",
@@ -1128,6 +1129,21 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 				}
 			},
 			wantAction: "proceed",
+		},
+		{
+			name: "storage error returns server error",
+			setupSess: func(r *MockSessionRepository) {
+				r.findFunc = func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+					return nil, storage.NewStorageError(
+						"FindByPrincipalAndService",
+						storage.ErrorKindConnection,
+						nil,
+						"database unavailable",
+					)
+				}
+			},
+			wantAction:    "error",
+			wantErrorCode: "server_error",
 		},
 		{
 			name: "missing session redirects to consent",
@@ -1186,6 +1202,49 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, decision)
 			assert.Equal(t, tt.wantAction, decision.Action)
+			if tt.wantErrorCode != "" {
+				assert.Equal(t, tt.wantErrorCode, decision.ErrorCode)
+			}
 		})
 	}
+}
+
+func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+
+	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
+		ID:           agentID,
+		ClientID:     id.ClientID("client-1"),
+		DisplayName:  "Test Agent",
+		RedirectURIs: []string{"https://client.example.com/callback"},
+	}))
+
+	require.NoError(t, grantRepo.Create(context.Background(), &storage.UserGrant{
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		DelegatedOAuth2Tokens: []storage.DelegatedToken{},
+	}))
+
+	svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+		UpstreamAuthorizeEndpoint: "%",
+		PublicURL:                 "https://broker.example.com",
+	}).(*Service)
+
+	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()),
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		State:        "xyz",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize",
+	}, id.NewPrincipal("user@example.com"))
+
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	assert.Equal(t, "error", decision.Action)
+	assert.Equal(t, "server_error", decision.ErrorCode)
+	assert.Contains(t, decision.RedirectURL, "error=server_error")
 }

@@ -20,6 +20,8 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // newTestEncryption returns a real encryption adapter backed by the shared deterministic test key.
@@ -385,6 +387,73 @@ func TestGetAgentDetail_ServiceError(t *testing.T) {
 	if response.Error != "internal server error" {
 		t.Errorf("expected error 'internal server error', got %s", response.Error)
 	}
+}
+
+func TestGetAgentDetail_ServiceRequirementSessionLookupError(t *testing.T) {
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+
+	mockService := &mockAgentDetailService{
+		getAgentDetailFunc: func(ctx context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
+			return &consent.AgentDetail{
+				AgentID:     agID,
+				DisplayName: "Test Agent",
+			}, nil, nil
+		},
+	}
+
+	agentRepo := memory.NewAgentRepository()
+	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
+		ID:          agentID,
+		ClientID:    id.NewClientID("test-client-id"),
+		DisplayName: "Test Agent",
+		Description: "Test agent",
+		ServiceRequirements: []storage.ServiceRequirement{
+			{
+				ServiceID:       serviceID,
+				RequirementType: storage.RequirementTypeMandatory,
+				RequiredScopes:  []string{"repo"},
+			},
+		},
+	}))
+
+	sessionRepo := &mockSessionRepository{
+		findByPrincipalAndServiceFunc: func(ctx context.Context, p id.Principal, svcID id.ServiceID) (*storage.UserSession, error) {
+			return nil, storage.NewStorageError("FindByPrincipalAndService", storage.ErrorKindConnection, nil, "database unavailable")
+		},
+	}
+	serviceRepo := &mockServiceRepository{
+		getFunc: func(ctx context.Context, svcID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+			return &model.ThirdpartyOAuth2ProviderEntity{
+				ID:          serviceID,
+				DisplayName: "GitHub",
+				Scopes: []model.OAuthScope{
+					{ScopeValue: "repo", Description: "Repository access"},
+				},
+				Secret: model.NewEncryptedSecret(encryptSecretForTest(serviceID.String(), "test-client-secret")),
+			}, nil
+		},
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil).
+		WithAgentRepository(agentRepo).
+		WithSessionRepository(sessionRepo).
+		WithProviderService(newTestProviderService(serviceRepo))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String(), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+
+	var response ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&response))
+	assert.Equal(t, "internal server error", response.Error)
 }
 
 func TestGetAgentDetail_EmptyServicesList(t *testing.T) {

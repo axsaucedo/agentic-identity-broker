@@ -320,7 +320,8 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if s.sessionRepo != nil && len(agent.ServiceRequirements) > 0 {
 		err := s.validateMandatoryRequirements(ctx, principal.String(), agent)
 		if err != nil {
-			if strings.HasPrefix(err.Error(), "storage_error:") {
+			var storageErr *storage.StorageError
+			if errors.As(err, &storageErr) {
 				if s.logger != nil {
 					s.logger.Error(
 						"MandatoryRequirementStorageFailure",
@@ -547,7 +548,7 @@ func (s *Service) validateMandatoryRequirements(
 		// not an error condition per the port contract; check nil separately.
 		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, id.Principal(principal), req.ServiceID)
 		if err != nil {
-			return fmt.Errorf("storage_error: failed to check session for service %s: %w", req.ServiceID, err)
+			return fmt.Errorf("failed to check session for service %s: %w", req.ServiceID, err)
 		}
 		if session == nil {
 			if s.logger != nil {

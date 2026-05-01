@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -21,6 +22,7 @@ import (
 	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -55,6 +57,19 @@ func cimdTestHTTPClient(server *httptest.Server, fakeHostname string) *http.Clie
 			},
 		},
 	}
+}
+
+type countingCIMDFetcher struct {
+	calls atomic.Int32
+}
+
+func (f *countingCIMDFetcher) Fetch(_ context.Context, rawURL string) (*ports.CIMDFetchResult, error) {
+	f.calls.Add(1)
+	return nil, fmt.Errorf("unexpected CIMD fetch for %s", rawURL)
+}
+
+func (f *countingCIMDFetcher) CallCount() int {
+	return int(f.calls.Load())
 }
 
 var _ = Describe("CIMD Authorization", func() {
@@ -409,10 +424,11 @@ var _ = Describe("CIMD Authorization", func() {
 
 	// FR-027 from specs/028-cimd-support/spec.md
 	Describe("when the client_id URL is not pre-registered on any Agent", func() {
-		It("rejects the authorization request with invalid_client", func() {
+		It("rejects the authorization request with invalid_client before any CIMD fetch", func() {
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
 			serverFactory = bootstrap.NewServerFactory(config, logger)
-			appInstance, err := serverFactory.BuildApp(testStorage)
+			cimdFetcher := &countingCIMDFetcher{}
+			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
 			server, err := bootstrap.NewEndUserTestServer(appInstance, logger)
 			Expect(err).ToNot(HaveOccurred())
@@ -429,6 +445,7 @@ var _ = Describe("CIMD Authorization", func() {
 			var body map[string]any
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
 			Expect(body["error"]).To(Equal("invalid_client"))
+			Expect(cimdFetcher.CallCount()).To(Equal(0))
 		})
 	})
 })

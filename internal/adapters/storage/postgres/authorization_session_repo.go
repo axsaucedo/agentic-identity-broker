@@ -120,9 +120,9 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 		}
 		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindUnknown, err, "failed to consume authorization session")
 	}
-	rows, err := result.RowsAffected()
+	rows, err := rowsAffectedCount(result, "AuthorizationSessionRepo.Consume")
 	if err != nil {
-		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindUnknown, err, "failed to determine rows affected")
+		return err
 	}
 	if rows > 0 {
 		return nil
@@ -165,9 +165,17 @@ func (r *AuthorizationSessionRepo) DeleteExpired(ctx context.Context) (int, erro
 	if err != nil {
 		return 0, storage.NewStorageError("AuthorizationSessionRepo.DeleteExpired", storage.ErrorKindUnknown, err, "failed to delete expired authorization sessions")
 	}
-	rows, err := result.RowsAffected()
+	rows, err := rowsAffectedCount(result, "AuthorizationSessionRepo.DeleteExpired")
 	if err != nil {
-		return 0, storage.NewStorageError("AuthorizationSessionRepo.DeleteExpired", storage.ErrorKindUnknown, err, "failed to determine rows affected")
+		return 0, err
 	}
 	return int(rows), nil
+}
+
+func rowsAffectedCount(result sql.Result, operation string) (int64, error) {
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, storage.NewStorageError(operation, storage.ErrorKindUnknown, err, "failed to determine rows affected")
+	}
+	return rows, nil
 }

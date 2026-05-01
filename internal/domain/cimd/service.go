@@ -64,7 +64,7 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 	}
 
 	// RFC §3 SHOULD NOT: warn when client_id URL contains a query string
-	if parsed, parseErr := url.Parse(rawURL); parseErr == nil && parsed.RawQuery != "" {
+	if parsed, parseErr := url.Parse(rawURL); parseErr == nil && (parsed.RawQuery != "" || parsed.ForceQuery) {
 		s.logger.WarnContext(ctx, "client_id URL contains query string (discouraged by RFC)",
 			"url", rawURL)
 	}

@@ -448,12 +448,12 @@ var _ = Describe("CIMD Consent Screen", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 		})
 
-		It("rejects with 400 when CIMD agent has snapshot but no session_id", func() {
+		It("does not require session_id when the request omits a URL-format client_id even if the agent has a snapshot", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:               id.NewAgentID(),
 				ClientID:         id.ClientID("https://agent.example.com/client"),
-				DisplayName:      "Mismatch Agent",
+				DisplayName:      "Snapshot Agent",
 				Description:      "E2E test for session_id requirement: with snapshot",
 				ClientURIs:       []string{"https://agent.example.com/client"},
 				CIMDRedirectURIs: []string{"https://agent.example.com/registered-callback"},
@@ -462,15 +462,19 @@ var _ = Describe("CIMD Consent Screen", func() {
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
-			path := fmt.Sprintf(
-				"/api/consent/agent/%s?client_id=https://agent.example.com/client&redirect_uri=https://attacker.example.com/steal&scope=repo",
-				agent.ID,
-			)
+			path := fmt.Sprintf("/api/consent/agent/%s", agent.ID)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var body map[string]any
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+
+			data, ok := body["data"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			Expect(data).ToNot(HaveKey("cimd_metadata"))
 		})
 	})
 })

@@ -87,3 +87,41 @@ func TestAuthorizationSessionRepository_Consume(t *testing.T) {
 		assert.Equal(t, 1, successes, "exactly one concurrent consume should succeed")
 	})
 }
+
+func TestAuthorizationSessionRepository_CreateDeepCopiesCIMDMetadata(t *testing.T) {
+	repo := NewAuthorizationSessionRepository()
+	session := newTestSession(t)
+	session.CIMDMetadata = &storage.CIMDMetadataSnapshot{
+		ClientID:     "https://agent.example.com/client",
+		RedirectURIs: []string{"https://agent.example.com/callback"},
+	}
+
+	require.NoError(t, repo.Create(context.Background(), session))
+
+	session.CIMDMetadata.RedirectURIs[0] = "https://attacker.example.com/callback"
+
+	stored, err := repo.GetBySessionID(context.Background(), session.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.CIMDMetadata)
+	assert.Equal(t, "https://agent.example.com/callback", stored.CIMDMetadata.RedirectURIs[0])
+}
+
+func TestAuthorizationSessionRepository_GetBySessionIDReturnsDeepCopyOfCIMDMetadata(t *testing.T) {
+	repo := NewAuthorizationSessionRepository()
+	session := newTestSession(t)
+	session.CIMDMetadata = &storage.CIMDMetadataSnapshot{
+		ClientID:     "https://agent.example.com/client",
+		RedirectURIs: []string{"https://agent.example.com/callback"},
+	}
+
+	require.NoError(t, repo.Create(context.Background(), session))
+
+	first, err := repo.GetBySessionID(context.Background(), session.SessionID)
+	require.NoError(t, err)
+	first.CIMDMetadata.RedirectURIs[0] = "https://attacker.example.com/callback"
+
+	second, err := repo.GetBySessionID(context.Background(), session.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, second.CIMDMetadata)
+	assert.Equal(t, "https://agent.example.com/callback", second.CIMDMetadata.RedirectURIs[0])
+}

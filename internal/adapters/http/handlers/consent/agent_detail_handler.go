@@ -243,8 +243,8 @@ func (h *AgentDetailHandler) writeError(w http.ResponseWriter, statusCode int, e
 // - Return enriched ServiceRequirementForUser model
 // Error handling:
 // - If service not found: Log warning and skip (service may have been removed)
-// - If session lookup fails: Treat as "not_connected"
-// - Return partial results if some services unavailable (fail-open for fetch)
+// - If session lookup fails: Return an error so the handler fails closed
+// - Return partial results only for missing services that can be safely skipped
 func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context, userID id.Principal, agent *storage.Agent) ([]ServiceRequirementForUser, error) {
 	if len(agent.ServiceRequirements) == 0 {
 		return []ServiceRequirementForUser{}, nil
