@@ -377,6 +377,49 @@ var _ = Describe("CIMD Consent Screen", func() {
 		})
 	})
 
+	// SR-013 principal isolation from specs/028-cimd-support/spec.md
+	Describe("when session_id belongs to a different principal", func() {
+		It("rejects with 400 Bad Request", func() {
+			now := time.Now()
+			agent := &domstorage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID("https://agent.example.com/client"),
+				DisplayName: "Principal Isolation Agent",
+				Description: "E2E test for principal mismatch on GET consent",
+				ClientURIs:  []string{"https://agent.example.com/client"},
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			session, err := domstorage.NewAuthorizationSession(
+				agent.ID,
+				id.Principal("other-user@example.com"),
+				"https://agent.example.com/client",
+				"/oauth2/authorize?...",
+				"https://agent.example.com/callback",
+				"repo",
+				"xyz",
+				"challenge123",
+				"S256",
+				&domstorage.CIMDMetadataSnapshot{
+					ClientID:     "https://agent.example.com/client",
+					ClientName:   "Test CIMD Agent",
+					RedirectURIs: []string{"https://agent.example.com/callback"},
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(testStorage.AuthorizationSessions().Create(context.Background(), session)).To(Succeed())
+
+			path := fmt.Sprintf("/api/consent/agent/%s?session_id=%s", agent.ID, session.SessionID)
+			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+		})
+	})
+
 	// Regression tests for fail-closed redirect_uri behavior in buildCIMDMetadata
 	// (legacy URL-param path, still used for non-session-based opaque flows).
 	Describe("redirect_uri fail-closed behavior (legacy URL-param path)", func() {

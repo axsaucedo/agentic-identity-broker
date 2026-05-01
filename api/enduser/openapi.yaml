@@ -423,20 +423,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Session belongs to a different principal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         '404':
           $ref: '#/components/responses/AgentNotFound'
-        '410':
-          description: Authorization session expired or already consumed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /api/consent/agent/{agent-id}/grants:
