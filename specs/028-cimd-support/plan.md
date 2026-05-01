@@ -126,8 +126,7 @@ web/src/
     └── consent.ts                    # MODIFIED: add CIMD-related API types
 
 migrations/
-├── 015_add_agent_cimd_fields.{up,down}.sql  # NEW
-└── 017_create_authorization_sessions.{up,down}.sql  # NEW: server-side authorization session table (SR-014)
+└── 015_add_cimd_support.{up,down}.sql  # NEW: CIMD agent fields, agent_client_uris, cimd_redirect_uris, authorization_sessions
 
 api/
 ├── admin/openapi.yaml           # MODIFIED: Agent schema extension (client_uris, auth_method, jwks_uri)
