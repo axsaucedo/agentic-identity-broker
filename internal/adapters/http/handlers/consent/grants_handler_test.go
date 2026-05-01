@@ -1108,7 +1108,7 @@ func (m *mockAuthSessionRepo) Consume(ctx context.Context, sessionID string) err
 	return nil
 }
 
-func (m *mockAuthSessionRepo) DeleteExpired(_ context.Context) (int64, error) {
+func (m *mockAuthSessionRepo) DeleteExpired(_ context.Context) (int, error) {
 	return 0, nil
 }
 

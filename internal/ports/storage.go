@@ -334,7 +334,7 @@ type AuthorizationSessionRepository interface {
 	Consume(ctx context.Context, sessionID string) error
 
 	// DeleteExpired removes all expired sessions. Returns the count of deleted sessions.
-	DeleteExpired(ctx context.Context) (int64, error)
+	DeleteExpired(ctx context.Context) (int, error)
 }
 
 // PKCESessionRepository stores the PKCE challenge for pending authorization codes.

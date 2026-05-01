@@ -78,12 +78,12 @@ func (r *AuthorizationSessionRepository) Consume(ctx context.Context, sessionID 
 	return nil
 }
 
-func (r *AuthorizationSessionRepository) DeleteExpired(ctx context.Context) (int64, error) {
+func (r *AuthorizationSessionRepository) DeleteExpired(ctx context.Context) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	now := time.Now()
-	var count int64
+	var count int
 	for id, session := range r.sessions {
 		if session.ExpiresAt.Before(now) {
 			delete(r.sessions, id)

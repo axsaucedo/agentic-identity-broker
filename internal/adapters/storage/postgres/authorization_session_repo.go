@@ -151,7 +151,7 @@ func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string
 	return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConflict, nil, "authorization session has already been consumed")
 }
 
-func (r *AuthorizationSessionRepo) DeleteExpired(ctx context.Context) (int64, error) {
+func (r *AuthorizationSessionRepo) DeleteExpired(ctx context.Context) (int, error) {
 	if r.adapter.db == nil {
 		return 0, storage.NewStorageError("AuthorizationSessionRepo.DeleteExpired", storage.ErrorKindConnection, nil, "database not initialized")
 	}
@@ -166,5 +166,5 @@ func (r *AuthorizationSessionRepo) DeleteExpired(ctx context.Context) (int64, er
 		return 0, storage.NewStorageError("AuthorizationSessionRepo.DeleteExpired", storage.ErrorKindUnknown, err, "failed to delete expired authorization sessions")
 	}
 	rows, _ := result.RowsAffected()
-	return rows, nil
+	return int(rows), nil
 }
