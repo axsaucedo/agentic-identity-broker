@@ -104,6 +104,29 @@ type GrantRequest struct {
 	DelegatedOAuth2Tokens []storage.DelegatedToken
 }
 
+// ValidateGrantRequest verifies the non-persistence parts of a grant request so callers
+// can fail before consuming one-shot coordination state like authorization sessions.
+func (s *Service) ValidateGrantRequest(ctx context.Context, req *GrantRequest) error {
+	// Validate agent exists
+	agent, err := s.agentRepo.Get(ctx, req.AgentID)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
+		}
+		return fmt.Errorf("failed to get agent: %w", err)
+	}
+	if agent == nil {
+		return fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
+	}
+
+	// Validate all scopes exist in their respective services (FR-018)
+	if err := s.validateScopes(ctx, req.DelegatedOAuth2Tokens); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GrantConsent creates or updates a user grant (upsert semantics per FR-013, FR-015).
 // Validates that:
 // - Agent exists (FR-020)
@@ -111,20 +134,7 @@ type GrantRequest struct {
 // - ValidUntil is in the future if provided (FR-016)
 // Returns the created/updated grant or an error.
 func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage.UserGrant, error) {
-	// Validate agent exists
-	agent, err := s.agentRepo.Get(ctx, req.AgentID)
-	if err != nil {
-		if errors.Is(err, ports.ErrNotFound) {
-			return nil, fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
-		}
-		return nil, fmt.Errorf("failed to get agent: %w", err)
-	}
-	if agent == nil {
-		return nil, fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
-	}
-
-	// Validate all scopes exist in their respective services (FR-018)
-	if err := s.validateScopes(ctx, req.DelegatedOAuth2Tokens); err != nil {
+	if err := s.ValidateGrantRequest(ctx, req); err != nil {
 		return nil, err
 	}
 

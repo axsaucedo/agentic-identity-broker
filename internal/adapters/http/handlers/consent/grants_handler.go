@@ -2,6 +2,7 @@
 package consent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,10 @@ type GrantsHandler struct {
 	consentService  ConsentService
 	authSessionRepo ports.AuthorizationSessionRepository
 	logger          *slog.Logger
+}
+
+type grantRequestValidator interface {
+	ValidateGrantRequest(ctx context.Context, req *consent.GrantRequest) error
 }
 
 // NewGrantsHandler creates a new grants handler.
@@ -171,8 +176,8 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// FR-029: When session_id is present (CIMD flow), load and validate the session.
-	// Consume only after GrantConsent succeeds so validation and transient write failures
-	// do not burn the single-use session without persisting consent.
+	// The handler validates the request, then consumes the single-use session, then persists
+	// the grant so a losing replay cannot mutate stored consent after the session is spent.
 	sessionID := r.URL.Query().Get("session_id")
 	var sessionRedirectURI string
 	if sessionID != "" {
@@ -289,9 +294,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		DelegatedOAuth2Tokens: tokens,
 	}
 
-	// Call consent service
-	grant, err := h.consentService.GrantConsent(r.Context(), grantReq)
-	if err != nil {
+	handleGrantError := func(err error) {
 		// Check for specific error types
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found",
@@ -333,10 +336,17 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			"principal", principalValue,
 			"error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
 	}
 
 	if sessionID != "" {
+		validator, ok := h.consentService.(grantRequestValidator)
+		if ok {
+			if err := validator.ValidateGrantRequest(r.Context(), grantReq); err != nil {
+				handleGrantError(err)
+				return
+			}
+		}
+
 		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
 			var storErr *storage.StorageError
 			if errors.As(consumeErr, &storErr) {
@@ -366,6 +376,13 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			return
 		}
+	}
+
+	// Call consent service
+	grant, err := h.consentService.GrantConsent(r.Context(), grantReq)
+	if err != nil {
+		handleGrantError(err)
+		return
 	}
 
 	// Audit logging

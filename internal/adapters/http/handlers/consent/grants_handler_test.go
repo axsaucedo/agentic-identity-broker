@@ -1008,8 +1008,8 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 	}
 }
 
-// TestCreateGrant_SessionReplayRace verifies that a second concurrent request using
-// the same session_id gets 400 after the first request has already consumed the session.
+// TestCreateGrant_SessionReplayRace verifies that a second request using the same
+// session_id gets 400 before any persistence work runs.
 func TestCreateGrant_SessionReplayRace(t *testing.T) {
 	t.Parallel()
 
@@ -1112,9 +1112,9 @@ func (m *mockAuthSessionRepo) DeleteExpired(_ context.Context) (int, error) {
 	return 0, nil
 }
 
-// TestCreateGrant_GrantConsentFails_DoesNotConsumeSession verifies that failed
-// grant processing does not burn the single-use authorization session.
-func TestCreateGrant_GrantConsentFails_DoesNotConsumeSession(t *testing.T) {
+// TestCreateGrant_ValidateGrantRequestFails_DoesNotConsumeSession verifies that failed
+// grant validation does not burn the single-use authorization session.
+func TestCreateGrant_ValidateGrantRequestFails_DoesNotConsumeSession(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	agentID := id.NewAgentID()
@@ -1142,9 +1142,13 @@ func TestCreateGrant_GrantConsentFails_DoesNotConsumeSession(t *testing.T) {
 	}
 
 	mockService := &mockConsentService{
+		validateGrantRequestFunc: func(_ context.Context, _ *consent.GrantRequest) error {
+			callOrder = append(callOrder, "validate")
+			return consent.ErrServiceNotFound
+		},
 		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
 			callOrder = append(callOrder, "grant")
-			return nil, consent.ErrServiceNotFound
+			return nil, errors.New("GrantConsent should not be called after validation failure")
 		},
 	}
 
@@ -1164,15 +1168,15 @@ func TestCreateGrant_GrantConsentFails_DoesNotConsumeSession(t *testing.T) {
 	handler.CreateGrant(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 on GrantConsent failure, got %d; body: %s", rr.Code, rr.Body.String())
+		t.Errorf("expected 400 on validation failure, got %d; body: %s", rr.Code, rr.Body.String())
 	}
-	if len(callOrder) != 1 || callOrder[0] != "grant" {
-		t.Fatalf("expected GrantConsent failure before any consume, got call order %v", callOrder)
+	if len(callOrder) != 1 || callOrder[0] != "validate" {
+		t.Fatalf("expected validation failure before any consume, got call order %v", callOrder)
 	}
 }
 
 // TestCreateGrant_ConsumeStorageError verifies that a storage error from Consume
-// after a successful grant write surfaces as 500.
+// blocks grant persistence and surfaces as 500.
 func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -1236,10 +1240,10 @@ func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 when Consume fails, got %d; body: %s", rr.Code, rr.Body.String())
 	}
-	if !grantCalled {
-		t.Error("GrantConsent must be called before consuming the session")
+	if grantCalled {
+		t.Error("GrantConsent must not be called when session consumption fails")
 	}
-	if len(callOrder) != 2 || callOrder[0] != "grant" || callOrder[1] != "consume" {
-		t.Fatalf("expected grant to persist before consume, got call order %v", callOrder)
+	if len(callOrder) != 1 || callOrder[0] != "consume" {
+		t.Fatalf("expected consume to happen before grant persistence, got call order %v", callOrder)
 	}
 }

@@ -260,6 +260,119 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	})
 }
 
+func TestGrantsIntegration_SessionReplayDoesNotMutateStoredGrant(t *testing.T) {
+	agentRepo := memory.NewAgentRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
+
+	ctx := context.Background()
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+	principalValue := id.Principal("alice@example.com")
+	now := time.Now()
+
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    "client-test",
+		DisplayName: "Test Agent",
+		Description: "Integration test agent",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, agentRepo.Create(ctx, agent))
+
+	service := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "github-client",
+		Secret:      model.NewPlaintextSecret("github-secret"),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
+			TokenEndpoint:     "https://github.com/login/oauth/access_token",
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+		},
+		Scopes: []model.OAuthScope{
+			{ScopeValue: "repo", Description: "Full control of private repositories"},
+			{ScopeValue: "read:user", Description: "Read user profile data"},
+		},
+	}
+	require.NoError(t, providerService.Create(ctx, service))
+
+	session := &storage.AuthorizationSession{
+		SessionID:   "replay-race-session",
+		AgentID:     agentID,
+		Principal:   principalValue,
+		OriginalURL: "/callback",
+		CreatedAt:   now,
+		ExpiresAt:   now.Add(10 * time.Minute),
+	}
+	consumeCalls := 0
+	authSessionRepo := &mockAuthSessionRepo{
+		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
+			return session, nil
+		},
+		consumeFunc: func(_ context.Context, _ string) error {
+			consumeCalls++
+			if consumeCalls == 1 {
+				return nil
+			}
+			return storage.NewStorageError("Consume", storage.ErrorKindConflict, nil, "authorization session has already been consumed")
+		},
+	}
+
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
+	handler := NewGrantsHandler(consentService, nil).WithAuthorizationSessionRepository(authSessionRepo)
+
+	firstValidUntil := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+	secondValidUntil := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second)
+
+	newRequest := func(validUntil *time.Time, scopes []string) *http.Request {
+		reqBody := GrantRequest{
+			ValidUntil: validUntil,
+			DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID.String(),
+					Scopes:                    scopes,
+				},
+			},
+		}
+
+		jsonBody, marshalErr := json.Marshal(reqBody)
+		require.NoError(t, marshalErr)
+
+		req := httptest.NewRequest("POST", "/api/consent/agent/"+agentID.String()+"/grants?session_id="+session.SessionID, bytes.NewBuffer(jsonBody))
+		req = req.WithContext(principal.WithPrincipal(req.Context(), principalValue.String()))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	}
+
+	firstResponse := httptest.NewRecorder()
+	handler.CreateGrant(firstResponse, newRequest(&firstValidUntil, []string{"repo"}))
+	require.Equal(t, http.StatusCreated, firstResponse.Code, firstResponse.Body.String())
+
+	storedGrant, err := grantRepo.FindByPrincipalAndAgent(ctx, principalValue, agentID)
+	require.NoError(t, err)
+	require.NotNil(t, storedGrant)
+	assert.Equal(t, &firstValidUntil, storedGrant.ValidUntil)
+	require.Len(t, storedGrant.DelegatedOAuth2Tokens, 1)
+	assert.Equal(t, []string{"repo"}, storedGrant.DelegatedOAuth2Tokens[0].Scopes)
+
+	replayResponse := httptest.NewRecorder()
+	handler.CreateGrant(replayResponse, newRequest(&secondValidUntil, []string{"repo", "read:user"}))
+	assert.Equal(t, http.StatusBadRequest, replayResponse.Code, replayResponse.Body.String())
+
+	storedGrantAfterReplay, err := grantRepo.FindByPrincipalAndAgent(ctx, principalValue, agentID)
+	require.NoError(t, err)
+	require.NotNil(t, storedGrantAfterReplay)
+	assert.Equal(t, storedGrant.ID, storedGrantAfterReplay.ID)
+	assert.Equal(t, &firstValidUntil, storedGrantAfterReplay.ValidUntil)
+	require.Len(t, storedGrantAfterReplay.DelegatedOAuth2Tokens, 1)
+	assert.Equal(t, []string{"repo"}, storedGrantAfterReplay.DelegatedOAuth2Tokens[0].Scopes)
+}
+
 // TestGrantsIntegration_OptionalOnlyAgent verifies that agents with only optional service
 // requirements accept approval with no delegated tokens. Empty tokens create a grant with
 // no delegations (201 Created) rather than triggering a revoke.
