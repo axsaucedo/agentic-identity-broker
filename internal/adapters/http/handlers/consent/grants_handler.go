@@ -28,10 +28,6 @@ type GrantsHandler struct {
 	logger          *slog.Logger
 }
 
-type grantRequestValidator interface {
-	ValidateGrantRequest(ctx context.Context, req *consent.GrantRequest) error
-}
-
 // NewGrantsHandler creates a new grants handler.
 func NewGrantsHandler(consentService ConsentService, logger *slog.Logger) *GrantsHandler {
 	if logger == nil {
@@ -338,16 +334,24 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 	}
 
+	var grant *storage.UserGrant
+
 	if sessionID != "" {
-		validator, ok := h.consentService.(grantRequestValidator)
-		if ok {
-			if err := validator.ValidateGrantRequest(r.Context(), grantReq); err != nil {
-				handleGrantError(err)
-				return
-			}
+		if err := h.consentService.ValidateGrantRequest(r.Context(), grantReq); err != nil {
+			handleGrantError(err)
+			return
 		}
 
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+		var grantErr error
+		if consumeErr := h.authSessionRepo.ConsumeIf(r.Context(), sessionID, func(ctx context.Context) error {
+			grant, grantErr = h.consentService.GrantConsent(ctx, grantReq)
+			return grantErr
+		}); consumeErr != nil {
+			if grantErr != nil {
+				handleGrantError(grantErr)
+				return
+			}
+
 			var storErr *storage.StorageError
 			if errors.As(consumeErr, &storErr) {
 				switch storErr.Kind {
@@ -376,11 +380,17 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			return
 		}
+	} else {
+		var err error
+		grant, err = h.consentService.GrantConsent(r.Context(), grantReq)
+		if err != nil {
+			handleGrantError(err)
+			return
+		}
 	}
 
-	// Call consent service
-	grant, err := h.consentService.GrantConsent(r.Context(), grantReq)
-	if err != nil {
+	if grant == nil {
+		err := errors.New("grant consent returned nil grant without error")
 		handleGrantError(err)
 		return
 	}

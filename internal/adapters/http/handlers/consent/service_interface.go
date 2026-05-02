@@ -12,6 +12,7 @@ import (
 // This allows for easier testing with mock implementations.
 type ConsentService interface {
 	GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error)
+	ValidateGrantRequest(ctx context.Context, req *consent.GrantRequest) error
 	GrantConsent(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
 	RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error
 	// RevokeConsentForPrincipal is the user-facing revocation entry point for FR-014.

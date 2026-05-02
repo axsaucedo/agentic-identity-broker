@@ -320,6 +320,8 @@ type AuthorizationCodeRepository interface {
 //
 // Sessions are single-use with a 10-minute TTL. Every CIMD authorization flow creates
 // one session; it is consumed exactly once during consent submission.
+type AuthorizationSessionMutation func(context.Context) error
+
 type AuthorizationSessionRepository interface {
 	// Create stores a new authorization session.
 	// Returns StorageError with Kind=Conflict if session_id already exists.
@@ -332,6 +334,11 @@ type AuthorizationSessionRepository interface {
 	// Consume marks a session as consumed (single-use enforcement).
 	// Returns StorageError with Kind=NotFound if session not found.
 	Consume(ctx context.Context, sessionID string) error
+
+	// ConsumeIf runs fn while the session is reserved for single use and only marks the
+	// session consumed if fn returns nil. If fn returns an error, the session remains
+	// reusable and the callback error is returned to the caller unchanged.
+	ConsumeIf(ctx context.Context, sessionID string, fn AuthorizationSessionMutation) error
 
 	// DeleteExpired removes all expired sessions. Returns the count of deleted sessions.
 	DeleteExpired(ctx context.Context) (int, error)

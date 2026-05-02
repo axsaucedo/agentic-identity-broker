@@ -103,52 +103,82 @@ func (r *AuthorizationSessionRepo) GetBySessionID(ctx context.Context, sessionID
 }
 
 func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string) error {
+	return r.ConsumeIf(ctx, sessionID, nil)
+}
+
+func (r *AuthorizationSessionRepo) ConsumeIf(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error {
 	if r.adapter.db == nil {
-		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConnection, nil, "database not initialized")
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindConnection, nil, "database not initialized")
 	}
 
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
-	now := time.Now()
-	result, err := r.adapter.db.ExecContext(execCtx,
-		`UPDATE authorization_sessions SET consumed_at = $1 WHERE session_id = $2 AND consumed_at IS NULL AND expires_at >= $1`,
-		now, sessionID)
+	tx, err := r.adapter.db.BeginTxx(execCtx, nil)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+			return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindTimeout, err, "failed to begin authorization session transaction")
 		}
-		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindUnknown, err, "failed to consume authorization session")
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindConnection, err, "failed to begin authorization session transaction")
 	}
-	rows, err := rowsAffectedCount(result, "AuthorizationSessionRepo.Consume")
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now()
+	var consumedAt *time.Time
+	var expiresAt time.Time
+	err = tx.QueryRowContext(execCtx,
+		`SELECT consumed_at, expires_at FROM authorization_sessions WHERE session_id = $1 FOR UPDATE`,
+		sessionID,
+	).Scan(&consumedAt, &expiresAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+			return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindNotFound, nil, "authorization session not found")
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindConnection, err, "failed to lock authorization session")
+	}
+
+	if expiresAt.Before(now) {
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindNotFound, nil, "authorization session has expired")
+	}
+	if consumedAt != nil {
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindConflict, nil, "authorization session has already been consumed")
+	}
+
+	if fn != nil {
+		if err := fn(contextWithTx(execCtx, tx)); err != nil {
+			return err
+		}
+	}
+
+	result, err := tx.ExecContext(execCtx,
+		`UPDATE authorization_sessions SET consumed_at = $1 WHERE session_id = $2`,
+		now, sessionID)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+	}
+	if err != nil {
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindUnknown, err, "failed to consume authorization session")
+	}
+
+	rows, err := rowsAffectedCount(result, "AuthorizationSessionRepo.ConsumeIf")
 	if err != nil {
 		return err
 	}
-	if rows > 0 {
-		return nil
+	if rows != 1 {
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindUnknown, nil, "failed to consume authorization session")
 	}
 
-	// 0 rows: session missing, expired, or already consumed — distinguish via SELECT.
-	queryCtx, cancel2 := context.WithTimeout(ctx, r.adapter.timeouts.Read)
-	defer cancel2()
+	if err := tx.Commit(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindTimeout, err, "failed to commit authorization session transaction")
+		}
+		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindUnknown, err, "failed to commit authorization session transaction")
+	}
 
-	var consumedAt *time.Time
-	var expiresAt time.Time
-	err = r.adapter.db.QueryRowContext(queryCtx,
-		`SELECT consumed_at, expires_at FROM authorization_sessions WHERE session_id = $1`, sessionID).Scan(&consumedAt, &expiresAt)
-	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
-		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindNotFound, nil, "authorization session not found")
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindTimeout, err, "timed out checking authorization session state")
-	}
-	if err != nil {
-		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConnection, err, "failed to check authorization session state")
-	}
-	if expiresAt.Before(now) {
-		return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindNotFound, nil, "authorization session has expired")
-	}
-	return storage.NewStorageError("AuthorizationSessionRepo.Consume", storage.ErrorKindConflict, nil, "authorization session has already been consumed")
+	return nil
 }
 
 func (r *AuthorizationSessionRepo) DeleteExpired(ctx context.Context) (int, error) {

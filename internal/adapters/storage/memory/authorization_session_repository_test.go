@@ -88,6 +88,40 @@ func TestAuthorizationSessionRepository_Consume(t *testing.T) {
 	})
 }
 
+func TestAuthorizationSessionRepository_ConsumeIf(t *testing.T) {
+	t.Run("marks session consumed after successful callback", func(t *testing.T) {
+		repo := NewAuthorizationSessionRepository()
+		session := newTestSession(t)
+		require.NoError(t, repo.Create(context.Background(), session))
+
+		err := repo.ConsumeIf(context.Background(), session.SessionID, func(context.Context) error {
+			return nil
+		})
+		require.NoError(t, err)
+
+		stored, err := repo.GetBySessionID(context.Background(), session.SessionID)
+		require.NoError(t, err)
+		assert.True(t, stored.IsConsumed())
+	})
+
+	t.Run("leaves session reusable when callback fails", func(t *testing.T) {
+		repo := NewAuthorizationSessionRepository()
+		session := newTestSession(t)
+		require.NoError(t, repo.Create(context.Background(), session))
+
+		err := repo.ConsumeIf(context.Background(), session.SessionID, func(context.Context) error {
+			return assert.AnError
+		})
+		require.ErrorIs(t, err, assert.AnError)
+
+		stored, err := repo.GetBySessionID(context.Background(), session.SessionID)
+		require.NoError(t, err)
+		assert.False(t, stored.IsConsumed())
+
+		require.NoError(t, repo.Consume(context.Background(), session.SessionID))
+	})
+}
+
 func TestAuthorizationSessionRepository_CreateDeepCopiesCIMDMetadata(t *testing.T) {
 	repo := NewAuthorizationSessionRepository()
 	session := newTestSession(t)

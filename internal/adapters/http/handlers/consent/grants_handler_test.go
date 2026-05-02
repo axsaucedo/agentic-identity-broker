@@ -17,7 +17,10 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Helper to create request with principal context
@@ -1088,6 +1091,7 @@ func TestCreateGrant_SessionReplayRace(t *testing.T) {
 type mockAuthSessionRepo struct {
 	getBySessionIDFunc func(ctx context.Context, sessionID string) (*storage.AuthorizationSession, error)
 	consumeFunc        func(ctx context.Context, sessionID string) error
+	consumeIfFunc      func(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error
 }
 
 func (m *mockAuthSessionRepo) Create(_ context.Context, _ *storage.AuthorizationSession) error {
@@ -1105,6 +1109,22 @@ func (m *mockAuthSessionRepo) Consume(ctx context.Context, sessionID string) err
 	if m.consumeFunc != nil {
 		return m.consumeFunc(ctx, sessionID)
 	}
+	return nil
+}
+
+func (m *mockAuthSessionRepo) ConsumeIf(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error {
+	if m.consumeIfFunc != nil {
+		return m.consumeIfFunc(ctx, sessionID, fn)
+	}
+
+	if err := m.Consume(ctx, sessionID); err != nil {
+		return err
+	}
+
+	if fn != nil {
+		return fn(ctx)
+	}
+
 	return nil
 }
 
@@ -1173,6 +1193,80 @@ func TestCreateGrant_ValidateGrantRequestFails_DoesNotConsumeSession(t *testing.
 	if len(callOrder) != 1 || callOrder[0] != "validate" {
 		t.Fatalf("expected validation failure before any consume, got call order %v", callOrder)
 	}
+}
+
+// TestCreateGrant_GrantConsentFailure_DoesNotConsumeSession verifies that a grant write
+// failure inside the consume/write critical section leaves the session reusable.
+func TestCreateGrant_GrantConsentFailure_DoesNotConsumeSession(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	agentID := id.NewAgentID()
+	principalVal := "user@example.com"
+
+	sess := &storage.AuthorizationSession{
+		SessionID:   "test-session-write-failure",
+		AgentID:     agentID,
+		Principal:   id.Principal(principalVal),
+		OriginalURL: "/callback",
+		CreatedAt:   now,
+		ExpiresAt:   now.Add(10 * time.Minute),
+	}
+
+	authRepo := memory.NewAuthorizationSessionRepository()
+	require.NoError(t, authRepo.Create(context.Background(), sess))
+
+	grantID := id.NewGrantID()
+	grantAttempts := 0
+	mockService := &mockConsentService{
+		validateGrantRequestFunc: func(_ context.Context, _ *consent.GrantRequest) error {
+			return nil
+		},
+		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
+			grantAttempts++
+			if grantAttempts == 1 {
+				return nil, errors.New("grant persistence failed")
+			}
+
+			return &storage.UserGrant{
+				ID:        grantID,
+				Principal: id.Principal(principalVal),
+				AgentID:   agentID,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil).WithAuthorizationSessionRepository(authRepo)
+
+	newRequest := func() *http.Request {
+		req := newRequestWithPrincipal(
+			"POST",
+			"/api/consent/agent/"+agentID.String()+"/grants?session_id="+sess.SessionID,
+			principalVal,
+			GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+		)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	}
+
+	firstResponse := httptest.NewRecorder()
+	handler.CreateGrant(firstResponse, newRequest())
+	require.Equal(t, http.StatusInternalServerError, firstResponse.Code, firstResponse.Body.String())
+
+	storedAfterFailure, err := authRepo.GetBySessionID(context.Background(), sess.SessionID)
+	require.NoError(t, err)
+	assert.False(t, storedAfterFailure.IsConsumed())
+
+	secondResponse := httptest.NewRecorder()
+	handler.CreateGrant(secondResponse, newRequest())
+	require.Equal(t, http.StatusCreated, secondResponse.Code, secondResponse.Body.String())
+
+	storedAfterRetry, err := authRepo.GetBySessionID(context.Background(), sess.SessionID)
+	require.NoError(t, err)
+	assert.True(t, storedAfterRetry.IsConsumed())
+	assert.Equal(t, 2, grantAttempts)
 }
 
 // TestCreateGrant_ConsumeStorageError verifies that a storage error from Consume

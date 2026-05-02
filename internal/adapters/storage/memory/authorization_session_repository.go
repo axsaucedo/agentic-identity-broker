@@ -57,6 +57,10 @@ func (r *AuthorizationSessionRepository) GetBySessionID(ctx context.Context, ses
 }
 
 func (r *AuthorizationSessionRepository) Consume(ctx context.Context, sessionID string) error {
+	return r.ConsumeIf(ctx, sessionID, nil)
+}
+
+func (r *AuthorizationSessionRepository) ConsumeIf(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -72,6 +76,12 @@ func (r *AuthorizationSessionRepository) Consume(ctx context.Context, sessionID 
 	if session.IsConsumed() {
 		return storage.NewStorageError("AuthorizationSessionRepository.Consume", storage.ErrorKindConflict, nil,
 			fmt.Sprintf("authorization session %s has already been consumed", sessionID))
+	}
+
+	if fn != nil {
+		if err := fn(ctx); err != nil {
+			return err
+		}
 	}
 
 	session.Consume()
