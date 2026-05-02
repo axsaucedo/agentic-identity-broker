@@ -250,7 +250,10 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 		return []ServiceRequirementForUser{}, nil
 	}
 
-	serviceMap := h.batchLoadServices(ctx, agent)
+	serviceMap, err := h.batchLoadServices(ctx, agent)
+	if err != nil {
+		return nil, err
+	}
 
 	var results []ServiceRequirementForUser
 
@@ -306,7 +309,7 @@ func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context
 
 // batchLoadServices loads all unique services referenced by an agent's service requirements.
 // Returns a map of service_id -> service for efficient lookup, avoiding N KMS decryptions.
-func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *storage.Agent) map[string]*model.ThirdpartyOAuth2ProviderEntity {
+func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *storage.Agent) (map[string]*model.ThirdpartyOAuth2ProviderEntity, error) {
 	serviceIDs := make(map[id.ServiceID]bool)
 	for _, sr := range agent.ServiceRequirements {
 		serviceIDs[sr.ServiceID] = true
@@ -316,6 +319,9 @@ func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *stora
 	for serviceID := range serviceIDs {
 		svc, err := h.providerService.Get(ctx, serviceID)
 		if err != nil {
+			if !errors.Is(err, ports.ErrNotFound) {
+				return nil, fmt.Errorf("loading service %s: %w", serviceID, err)
+			}
 			h.logger.Warn("Service not found during requirement building",
 				"service_id", serviceID,
 				"error", err)
@@ -324,7 +330,7 @@ func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *stora
 		serviceMap[serviceID.String()] = svc
 	}
 
-	return serviceMap
+	return serviceMap, nil
 }
 
 // getAgent loads a full agent entity from storage.

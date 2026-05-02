@@ -456,6 +456,62 @@ func TestGetAgentDetail_ServiceRequirementSessionLookupError(t *testing.T) {
 	assert.Equal(t, "internal server error", response.Error)
 }
 
+func TestGetAgentDetail_ServiceRequirementProviderLookupError(t *testing.T) {
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+
+	mockService := &mockAgentDetailService{
+		getAgentDetailFunc: func(ctx context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
+			return &consent.AgentDetail{
+				AgentID:     agID,
+				DisplayName: "Test Agent",
+			}, nil, nil
+		},
+	}
+
+	agentRepo := memory.NewAgentRepository()
+	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
+		ID:          agentID,
+		ClientID:    id.NewClientID("test-client-id"),
+		DisplayName: "Test Agent",
+		Description: "Test agent",
+		ServiceRequirements: []storage.ServiceRequirement{
+			{
+				ServiceID:       serviceID,
+				RequirementType: storage.RequirementTypeMandatory,
+				RequiredScopes:  []string{"repo"},
+			},
+		},
+	}))
+
+	sessionRepo := memory.NewInMemoryUserSessionRepository()
+	serviceRepo := &mockServiceRepository{
+		getFunc: func(ctx context.Context, svcID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+			return nil, storage.NewStorageError("Get", storage.ErrorKindConnection, nil, "database unavailable")
+		},
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil).
+		WithAgentRepository(agentRepo).
+		WithSessionRepository(sessionRepo).
+		WithProviderService(newTestProviderService(serviceRepo))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID.String(), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+
+	var response ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&response))
+	assert.Equal(t, "internal server error", response.Error)
+}
+
 func TestGetAgentDetail_EmptyServicesList(t *testing.T) {
 	// Setup
 	agentID := id.NewAgentID()
@@ -815,7 +871,7 @@ func TestBuildServiceRequirementsForUser_ServiceNotFound(t *testing.T) {
 
 	mockServices := &mockServiceRepository{
 		getFunc: func(ctx context.Context, svcID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error) {
-			return nil, errors.New("service not found")
+			return nil, ports.ErrNotFound
 		},
 	}
 

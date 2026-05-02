@@ -222,5 +222,9 @@ func TestMigration015CIMDRedirectURIs(t *testing.T) {
 	assert.Equal(t, uint(0), version, "all migrations should be rolled back")
 	assert.False(t, dirty, "database must not be left dirty after rollback")
 
+	colExists, err = f.ColumnExists(t, "agents", "cimd_redirect_uris")
+	require.NoError(t, err)
+	assert.False(t, colExists, "cimd_redirect_uris column should be gone after rollback")
+
 	t.Log("Migration 015 cimd_redirect_uris lifecycle test complete")
 }

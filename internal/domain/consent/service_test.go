@@ -197,14 +197,17 @@ func (m *mockServiceRepo) FindByProtectedResource(ctx context.Context, resourceU
 }
 
 type mockGrantRepo struct {
-	grants map[id.GrantID]*storage.UserGrant
-	err    error
+	grants      map[id.GrantID]*storage.UserGrant
+	err         error
+	createCalls int
+	updateCalls int
 }
 
 func (m *mockGrantRepo) Create(ctx context.Context, grant *storage.UserGrant) error {
 	if m.err != nil {
 		return m.err
 	}
+	m.createCalls++
 	// Generate ID if not set
 	if grant.ID.IsZero() {
 		grant.ID = id.NewGrantID()
@@ -228,6 +231,7 @@ func (m *mockGrantRepo) Update(ctx context.Context, grant *storage.UserGrant) er
 	if m.err != nil {
 		return m.err
 	}
+	m.updateCalls++
 	if _, exists := m.grants[grant.ID]; !exists {
 		return ports.ErrNotFound
 	}
@@ -562,6 +566,57 @@ func TestService_GrantConsent(t *testing.T) {
 		_, err := svc.GrantConsent(ctx, req)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, ErrGrantValidation)
+	})
+
+	t.Run("matching existing grant is a no-op", func(t *testing.T) {
+		t.Parallel()
+		existingGrantID := id.NewGrantID()
+		createdAt := time.Now().Add(-2 * time.Hour).UTC().Round(time.Second)
+		updatedAt := createdAt.Add(30 * time.Minute)
+		validUntil := time.Now().Add(24 * time.Hour).UTC().Round(time.Second)
+
+		existingGrant := &storage.UserGrant{
+			ID:         existingGrantID,
+			Principal:  id.Principal("user@example.com"),
+			AgentID:    agentID,
+			ValidUntil: &validUntil,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID1,
+					Scopes:                    []string{"repo", "user:email"},
+				},
+			},
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
+		}
+
+		grantRepo := &mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{existingGrantID: existingGrant}}
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
+			grantRepo,
+			slog.Default(),
+		)
+
+		req := &GrantRequest{
+			Principal:  id.Principal("user@example.com"),
+			AgentID:    agentID,
+			ValidUntil: &validUntil,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID1,
+					Scopes:                    []string{"repo", "user:email"},
+				},
+			},
+		}
+
+		grant, err := svc.GrantConsent(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, grant)
+		assert.Equal(t, existingGrantID, grant.ID)
+		assert.Equal(t, updatedAt, grant.UpdatedAt)
+		assert.Equal(t, 0, grantRepo.updateCalls)
+		assert.Equal(t, 0, grantRepo.createCalls)
 	})
 }
 

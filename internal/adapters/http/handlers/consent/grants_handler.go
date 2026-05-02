@@ -171,8 +171,8 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// FR-029: When session_id is present (CIMD flow), load and validate the session.
-	// The session is consumed once the submission is validated, before GrantConsent
-	// persists any grant state, so replayed approvals cannot race past the single-use gate.
+	// Consume only after GrantConsent succeeds so validation and transient write failures
+	// do not burn the single-use session without persisting consent.
 	sessionID := r.URL.Query().Get("session_id")
 	var sessionRedirectURI string
 	if sessionID != "" {
@@ -289,38 +289,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		DelegatedOAuth2Tokens: tokens,
 	}
 
-	if sessionID != "" {
-		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
-			var storErr *storage.StorageError
-			if errors.As(consumeErr, &storErr) {
-				switch storErr.Kind {
-				case storage.ErrorKindConflict:
-					h.logger.Warn("authorization session already consumed",
-						"session_id", sessionID,
-						"agent_id", agentID,
-						"principal", principalValue)
-					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has already been used")
-					return
-				case storage.ErrorKindNotFound:
-					h.logger.Warn("authorization session not found during consume",
-						"session_id", sessionID,
-						"agent_id", agentID,
-						"principal", principalValue)
-					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
-					return
-				}
-			}
-
-			h.logger.Error("failed to consume authorization session",
-				"session_id", sessionID,
-				"agent_id", agentID,
-				"principal", principalValue,
-				"error", consumeErr)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
-	}
-
 	// Call consent service
 	grant, err := h.consentService.GrantConsent(r.Context(), grantReq)
 	if err != nil {
@@ -366,6 +334,38 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			"error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
+	}
+
+	if sessionID != "" {
+		if consumeErr := h.authSessionRepo.Consume(r.Context(), sessionID); consumeErr != nil {
+			var storErr *storage.StorageError
+			if errors.As(consumeErr, &storErr) {
+				switch storErr.Kind {
+				case storage.ErrorKindConflict:
+					h.logger.Warn("authorization session already consumed",
+						"session_id", sessionID,
+						"agent_id", agentID,
+						"principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has already been used")
+					return
+				case storage.ErrorKindNotFound:
+					h.logger.Warn("authorization session not found during consume",
+						"session_id", sessionID,
+						"agent_id", agentID,
+						"principal", principalValue)
+					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
+					return
+				}
+			}
+
+			h.logger.Error("failed to consume authorization session",
+				"session_id", sessionID,
+				"agent_id", agentID,
+				"principal", principalValue,
+				"error", consumeErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 	}
 
 	// Audit logging

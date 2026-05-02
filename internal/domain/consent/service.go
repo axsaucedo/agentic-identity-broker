@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -135,6 +136,10 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 
 	var grant *storage.UserGrant
 	if existingGrant != nil {
+		if grantMatchesRequest(existingGrant, req) {
+			return existingGrant.Copy(), nil
+		}
+
 		// Update existing grant (FR-013)
 		existingGrant.ValidUntil = req.ValidUntil
 		existingGrant.DelegatedOAuth2Tokens = req.DelegatedOAuth2Tokens
@@ -170,6 +175,33 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 	}
 
 	return grant.Copy(), nil
+}
+
+func grantMatchesRequest(grant *storage.UserGrant, req *GrantRequest) bool {
+	if grant == nil || req == nil {
+		return false
+	}
+
+	return validUntilMatches(grant.ValidUntil, req.ValidUntil) &&
+		delegatedTokensMatch(grant.DelegatedOAuth2Tokens, req.DelegatedOAuth2Tokens)
+}
+
+func validUntilMatches(left, right *time.Time) bool {
+	switch {
+	case left == nil && right == nil:
+		return true
+	case left == nil || right == nil:
+		return false
+	default:
+		return left.Equal(*right)
+	}
+}
+
+func delegatedTokensMatch(left, right []storage.DelegatedToken) bool {
+	return slices.EqualFunc(left, right, func(leftToken, rightToken storage.DelegatedToken) bool {
+		return leftToken.ThirdpartyOAuth2ServiceID == rightToken.ThirdpartyOAuth2ServiceID &&
+			slices.Equal(leftToken.Scopes, rightToken.Scopes)
+	})
 }
 
 // RevokeConsent deletes a user grant (FR-014).

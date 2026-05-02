@@ -1112,9 +1112,9 @@ func (m *mockAuthSessionRepo) DeleteExpired(_ context.Context) (int, error) {
 	return 0, nil
 }
 
-// TestCreateGrant_SessionConsumed_GrantConsentFails verifies that the handler
-// consumes the session before calling GrantConsent.
-func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
+// TestCreateGrant_GrantConsentFails_DoesNotConsumeSession verifies that failed
+// grant processing does not burn the single-use authorization session.
+func TestCreateGrant_GrantConsentFails_DoesNotConsumeSession(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	agentID := id.NewAgentID()
@@ -1166,13 +1166,13 @@ func TestCreateGrant_SessionConsumed_GrantConsentFails(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 on GrantConsent failure, got %d; body: %s", rr.Code, rr.Body.String())
 	}
-	if len(callOrder) != 2 || callOrder[0] != "consume" || callOrder[1] != "grant" {
-		t.Fatalf("expected consume before GrantConsent, got call order %v", callOrder)
+	if len(callOrder) != 1 || callOrder[0] != "grant" {
+		t.Fatalf("expected GrantConsent failure before any consume, got call order %v", callOrder)
 	}
 }
 
 // TestCreateGrant_ConsumeStorageError verifies that a storage error from Consume
-// aborts the request before GrantConsent persists any grant state.
+// after a successful grant write surfaces as 500.
 func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -1190,12 +1190,14 @@ func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 	}
 
 	storageErr := storage.NewStorageError("Consume", storage.ErrorKindConnection, errors.New("db down"), "connection failed")
+	var callOrder []string
 
 	authRepo := &mockAuthSessionRepo{
 		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
 			return sess, nil
 		},
 		consumeFunc: func(_ context.Context, _ string) error {
+			callOrder = append(callOrder, "consume")
 			return storageErr
 		},
 	}
@@ -1205,6 +1207,7 @@ func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 	mockService := &mockConsentService{
 		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
 			grantCalled = true
+			callOrder = append(callOrder, "grant")
 			return &storage.UserGrant{
 				ID:        grantID,
 				Principal: id.Principal(principalVal),
@@ -1233,7 +1236,10 @@ func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 when Consume fails, got %d; body: %s", rr.Code, rr.Body.String())
 	}
-	if grantCalled {
-		t.Error("GrantConsent must not be called when session consumption fails")
+	if !grantCalled {
+		t.Error("GrantConsent must be called before consuming the session")
+	}
+	if len(callOrder) != 2 || callOrder[0] != "grant" || callOrder[1] != "consume" {
+		t.Fatalf("expected grant to persist before consume, got call order %v", callOrder)
 	}
 }
