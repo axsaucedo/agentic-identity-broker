@@ -20,6 +20,30 @@ func newTestSession(t *testing.T) *storage.AuthorizationSession {
 	return session
 }
 
+func TestAuthorizationSessionRepository_CreateValidation(t *testing.T) {
+	t.Run("returns validation error for nil session", func(t *testing.T) {
+		repo := NewAuthorizationSessionRepository()
+
+		err := repo.Create(context.Background(), nil)
+		require.Error(t, err)
+		var storErr *storage.StorageError
+		require.ErrorAs(t, err, &storErr)
+		assert.Equal(t, storage.ErrorKindValidation, storErr.Kind)
+	})
+
+	t.Run("returns validation error for empty SessionID", func(t *testing.T) {
+		repo := NewAuthorizationSessionRepository()
+		session := newTestSession(t)
+		session.SessionID = ""
+
+		err := repo.Create(context.Background(), session)
+		require.Error(t, err)
+		var storErr *storage.StorageError
+		require.ErrorAs(t, err, &storErr)
+		assert.Equal(t, storage.ErrorKindValidation, storErr.Kind)
+	})
+}
+
 func TestAuthorizationSessionRepository_Consume(t *testing.T) {
 	t.Run("succeeds on first consume", func(t *testing.T) {
 		repo := NewAuthorizationSessionRepository()

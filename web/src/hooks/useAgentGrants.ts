@@ -60,6 +60,8 @@ export function useAgentGrants(
     error: null,
   });
 
+  const sessionId = options?.sessionId;
+
   const fetchData = useCallback(async () => {
     if (!agentId) {
       setState({
@@ -81,7 +83,7 @@ export function useAgentGrants(
 
     try {
       const [agentDetailData, grantsData] = await Promise.all([
-        consentApi.getAgentDetail(agentId, options),
+        consentApi.getAgentDetail(agentId, sessionId ? { sessionId } : undefined),
         consentApi.getAgentGrants(agentId),
       ]);
 
@@ -126,7 +128,7 @@ export function useAgentGrants(
         error: errorMessage,
       });
     }
-  }, [agentId, options]);
+  }, [agentId, sessionId]);
 
   /**
    * Refetch function that can be called manually.
