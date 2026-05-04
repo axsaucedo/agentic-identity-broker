@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
@@ -359,47 +358,6 @@ func sortServiceRequirements(services []ServiceRequirementForUser) {
 				services[i], services[j] = services[j], services[i]
 			}
 		}
-	}
-}
-
-// buildCIMDMetadata constructs CIMDMetadataResponse from query params and the agent's CIMD snapshot.
-// Returns nil if the request does not originate from a CIMD-based authorization.
-func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataResponse {
-	clientID := r.URL.Query().Get("client_id")
-	if clientID == "" || !strings.HasPrefix(clientID, "https://") {
-		return nil
-	}
-
-	if !slices.Contains(agent.ClientURIs, clientID) {
-		return nil
-	}
-
-	redirectURI := r.URL.Query().Get("redirect_uri")
-	scope := r.URL.Query().Get("scope")
-
-	u, err := url.Parse(clientID)
-	if err != nil {
-		return nil
-	}
-	verifiedDomain := u.Hostname()
-
-	var requestedScopes []string
-	if scope != "" {
-		requestedScopes = strings.Fields(scope)
-	}
-	if requestedScopes == nil {
-		requestedScopes = []string{}
-	}
-
-	clientName := agent.DisplayName
-
-	return &CIMDMetadataResponse{
-		ClientName:          clientName,
-		ClientIDURL:         clientID,
-		RedirectURI:         redirectURI,
-		VerifiedDomain:      verifiedDomain,
-		IsLocalhostRedirect: isLocalhostURI(redirectURI),
-		RequestedScopes:     requestedScopes,
 	}
 }
 
