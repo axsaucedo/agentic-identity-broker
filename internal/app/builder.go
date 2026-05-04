@@ -312,7 +312,7 @@ func (b *Builder) Build() (*App, error) {
 					return nil, fmt.Errorf("failed to create CIMD fetcher: %w", fetchErr)
 				}
 			}
-			cimdCache, cacheErr := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL)
+			cimdCache, cacheErr := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL, cimdCfg.Cache.MaxEntries)
 			if cacheErr != nil {
 				return nil, fmt.Errorf("failed to create CIMD cache: %w", cacheErr)
 			}

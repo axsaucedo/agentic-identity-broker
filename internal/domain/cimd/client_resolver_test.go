@@ -43,7 +43,7 @@ func (m *mockAgentRepoForCR) registerURI(uri string, agent *storage.Agent) {
 // cimdServiceForTest creates a CIMDService backed by the given fetch result.
 func cimdServiceForTest(fetchResult *ports.CIMDFetchResult, fetchErr error) *Service {
 	fetcher := &mockFetcher{result: fetchResult, err: fetchErr}
-	cache, _ := NewCIMDCache(60*time.Second, time.Hour)
+	cache, _ := NewCIMDCache(60*time.Second, time.Hour, 1000)
 	return NewService(fetcher, cache, nil, slog.Default())
 }
 

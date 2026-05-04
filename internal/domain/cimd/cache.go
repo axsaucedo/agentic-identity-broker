@@ -15,28 +15,32 @@ type CIMDCacheEntry struct {
 	Document  *ClientIDMetadataDocument
 	FetchedAt time.Time
 	ExpiresAt time.Time
-	ETag      string
 }
 
 // CIMDCache is a thread-safe in-process cache for CIMD documents.
 // TTL is derived from HTTP cache headers clamped to operator-configured bounds.
 type CIMDCache struct {
-	mu      sync.RWMutex
-	entries map[string]*CIMDCacheEntry
-	minTTL  time.Duration
-	maxTTL  time.Duration
+	mu         sync.RWMutex
+	entries    map[string]*CIMDCacheEntry
+	minTTL     time.Duration
+	maxTTL     time.Duration
+	maxEntries int
 }
 
-// NewCIMDCache creates a new CIMD cache with the given TTL bounds.
-// Returns an error if minTTL exceeds maxTTL.
-func NewCIMDCache(minTTL, maxTTL time.Duration) (*CIMDCache, error) {
+// NewCIMDCache creates a new CIMD cache with the given TTL bounds and entry cap.
+// Returns an error if minTTL exceeds maxTTL or maxEntries is not positive.
+func NewCIMDCache(minTTL, maxTTL time.Duration, maxEntries int) (*CIMDCache, error) {
 	if minTTL > maxTTL {
 		return nil, fmt.Errorf("cimd cache: minTTL (%v) must not exceed maxTTL (%v)", minTTL, maxTTL)
 	}
+	if maxEntries <= 0 {
+		return nil, fmt.Errorf("cimd cache: maxEntries must be positive, got %d", maxEntries)
+	}
 	return &CIMDCache{
-		entries: make(map[string]*CIMDCacheEntry),
-		minTTL:  minTTL,
-		maxTTL:  maxTTL,
+		entries:    make(map[string]*CIMDCacheEntry),
+		minTTL:     minTTL,
+		maxTTL:     maxTTL,
+		maxEntries: maxEntries,
 	}, nil
 }
 
@@ -88,7 +92,7 @@ func deepCopyEntry(entry *CIMDCacheEntry) *CIMDCacheEntry {
 }
 
 // Set stores a document in the cache for the given URL, deriving TTL from headers
-// clamped to [minTTL, maxTTL].
+// clamped to [minTTL, maxTTL]. Does nothing if the entry cap is reached.
 func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers http.Header, fetchedAt time.Time) {
 	ttl := c.deriveTTL(headers)
 	entry := &CIMDCacheEntry{
@@ -96,11 +100,13 @@ func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers http.
 		Document:  deepCopyDocument(doc),
 		FetchedAt: fetchedAt,
 		ExpiresAt: fetchedAt.Add(ttl),
-		ETag:      headers.Get("ETag"),
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if _, exists := c.entries[url]; !exists && len(c.entries) >= c.maxEntries {
+		return
+	}
 	c.entries[url] = entry
 }
 

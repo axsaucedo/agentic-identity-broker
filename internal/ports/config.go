@@ -311,10 +311,11 @@ type CIMDConfig struct {
 	ClientNameBlocklist []string        `mapstructure:"client_name_blocklist"`
 }
 
-// CIMDCacheConfig holds operator TTL bounds for CIMD response caching.
+// CIMDCacheConfig holds operator TTL bounds and entry cap for CIMD response caching.
 type CIMDCacheConfig struct {
-	MaxTTL time.Duration `mapstructure:"max_ttl"`
-	MinTTL time.Duration `mapstructure:"min_ttl"`
+	MaxTTL     time.Duration `mapstructure:"max_ttl"`
+	MinTTL     time.Duration `mapstructure:"min_ttl"`
+	MaxEntries int           `mapstructure:"max_entries"`
 }
 
 // CIMDSSRFConfig holds SSRF protection settings for CIMD fetches.
@@ -329,8 +330,9 @@ func DefaultCIMDConfig() CIMDConfig {
 		FetchTimeout:     1 * time.Second,
 		MaxResponseBytes: 5120,
 		Cache: CIMDCacheConfig{
-			MaxTTL: 1 * time.Hour,
-			MinTTL: 60 * time.Second,
+			MaxTTL:     1 * time.Hour,
+			MinTTL:     60 * time.Second,
+			MaxEntries: 1000,
 		},
 	}
 }

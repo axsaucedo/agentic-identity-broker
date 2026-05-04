@@ -12,7 +12,7 @@ import (
 
 func mustNewCIMDCache(t *testing.T, minTTL, maxTTL time.Duration) *CIMDCache {
 	t.Helper()
-	c, err := NewCIMDCache(minTTL, maxTTL)
+	c, err := NewCIMDCache(minTTL, maxTTL, 1000)
 	require.NoError(t, err)
 	return c
 }
@@ -160,18 +160,6 @@ func TestCIMDCache(t *testing.T) {
 		wg.Wait()
 	})
 
-	t.Run("ETag stored from response header", func(t *testing.T) {
-		c := mustNewCIMDCache(t, minTTL, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=300")
-		h.Set("ETag", `"abc123"`)
-		c.Set(testURL, doc, h, time.Now())
-
-		entry := c.Get(testURL)
-		require.NotNil(t, entry)
-		assert.Equal(t, `"abc123"`, entry.ETag)
-	})
-
 	t.Run("Set deep-copies document so caller mutations do not corrupt cache", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		h := make(http.Header)
@@ -201,14 +189,38 @@ func TestCIMDCache(t *testing.T) {
 	})
 
 	t.Run("rejects minTTL greater than maxTTL", func(t *testing.T) {
-		_, err := NewCIMDCache(2*time.Hour, 30*time.Minute)
+		_, err := NewCIMDCache(2*time.Hour, 30*time.Minute, 1000)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "minTTL")
 	})
 
+	t.Run("rejects non-positive maxEntries", func(t *testing.T) {
+		_, err := NewCIMDCache(60*time.Second, time.Hour, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "maxEntries")
+	})
+
 	t.Run("accepts equal minTTL and maxTTL", func(t *testing.T) {
-		c, err := NewCIMDCache(5*time.Minute, 5*time.Minute)
+		c, err := NewCIMDCache(5*time.Minute, 5*time.Minute, 1000)
 		require.NoError(t, err)
 		assert.NotNil(t, c)
+	})
+
+	t.Run("Set does not cache beyond maxEntries", func(t *testing.T) {
+		c := mustNewCIMDCache(t, minTTL, maxTTL)
+		c.maxEntries = 2
+
+		h := make(http.Header)
+		h.Set("Cache-Control", "max-age=300")
+
+		c.Set("https://a.example.com/client", doc, h, time.Now())
+		c.Set("https://b.example.com/client", doc, h, time.Now())
+		c.Set("https://c.example.com/client", doc, h, time.Now()) // must be dropped
+
+		c.mu.RLock()
+		count := len(c.entries)
+		c.mu.RUnlock()
+		assert.Equal(t, 2, count, "cache must not exceed maxEntries")
+		assert.Nil(t, c.Get("https://c.example.com/client"), "over-cap URL must not be cached")
 	})
 }
