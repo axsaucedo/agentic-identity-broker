@@ -470,7 +470,7 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var result []*storage.Agent
+	var agents []*storage.Agent
 	for rows.Next() {
 		agent := &storage.Agent{}
 		var serviceReqsJSON []byte
@@ -489,19 +489,64 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 				return nil, storage.NewStorageError("ListAgents", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
 			}
 		}
-		uris, err := r.fetchClientURIs(queryCtx, agent.ID)
-		if err != nil {
-			return nil, err
-		}
-		agent.ClientURIs = uris
-		result = append(result, agent.Copy())
+		agents = append(agents, agent)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "error iterating agent rows")
 	}
 
-	if result == nil {
-		result = []*storage.Agent{}
+	if len(agents) == 0 {
+		return []*storage.Agent{}, nil
+	}
+
+	agentIDs := make([]id.AgentID, len(agents))
+	for i, a := range agents {
+		agentIDs[i] = a.ID
+	}
+	uriMap, err := r.batchFetchClientURIs(queryCtx, agentIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*storage.Agent, len(agents))
+	for i, agent := range agents {
+		agent.ClientURIs = uriMap[agent.ID]
+		if agent.ClientURIs == nil {
+			agent.ClientURIs = []string{}
+		}
+		result[i] = agent.Copy()
+	}
+	return result, nil
+}
+
+// batchFetchClientURIs retrieves client URIs for all given agent IDs in a single query.
+func (r *AgentRepository) batchFetchClientURIs(ctx context.Context, agentIDs []id.AgentID) (map[id.AgentID][]string, error) {
+	uuids := make([]string, len(agentIDs))
+	for i, agentID := range agentIDs {
+		uuids[i] = agentID.String()
+	}
+
+	rows, err := r.adapter.db.QueryContext(
+		ctx,
+		`SELECT agent_id, client_uri FROM agent_client_uris WHERE agent_id = ANY($1::uuid[]) ORDER BY client_uri`,
+		pq.Array(uuids),
+	)
+	if err != nil {
+		return nil, storage.NewStorageError("batchFetchClientURIs", storage.ErrorKindConnection, err, "failed to batch query client URIs")
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make(map[id.AgentID][]string)
+	for rows.Next() {
+		var agentID id.AgentID
+		var uri string
+		if err := rows.Scan(&agentID, &uri); err != nil {
+			return nil, storage.NewStorageError("batchFetchClientURIs", storage.ErrorKindConnection, err, "failed to scan client URI row")
+		}
+		result[agentID] = append(result[agentID], uri)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError("batchFetchClientURIs", storage.ErrorKindConnection, err, "error iterating client URI rows")
 	}
 	return result, nil
 }
