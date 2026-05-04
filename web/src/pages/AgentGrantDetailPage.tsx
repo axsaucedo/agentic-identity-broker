@@ -397,6 +397,7 @@ export function AgentGrantDetailPage() {
                     src={agent.logoUrl}
                     alt={`${agent.displayName} logo`}
                     className="w-20 h-20 rounded-lg object-cover"
+                    referrerPolicy="no-referrer"
                   />
                 ) : (
                   <div className="w-20 h-20 bg-gradient-to-br from-success-primary to-success-primary rounded-lg flex items-center justify-center">
