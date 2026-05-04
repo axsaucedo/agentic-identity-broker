@@ -20,7 +20,6 @@ type ConsentService interface {
 	RevokeConsentForPrincipal(ctx context.Context, principal id.Principal, agentID id.AgentID) error
 	GetActiveGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 	GetAgentDelegations(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error)
-	GetAgentDetail(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error)
 	GetUserGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 }
 

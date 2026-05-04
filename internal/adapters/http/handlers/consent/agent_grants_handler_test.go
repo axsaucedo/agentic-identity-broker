@@ -28,10 +28,6 @@ func (m *mockAgentGrantsService) GetUserGrants(ctx context.Context, principal id
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockAgentGrantsService) GetAgentDetail(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-	return nil, nil, errors.New("not implemented")
-}
-
 func (m *mockAgentGrantsService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error) {
 	return nil, errors.New("not implemented")
 }

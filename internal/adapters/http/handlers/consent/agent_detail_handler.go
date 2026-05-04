@@ -15,10 +15,13 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
+
+type providerServiceGetter interface {
+	Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error)
+}
 
 // ServiceRequirementForUser represents a service requirement enriched with user session status.
 // This is used in the consent screen to display which services the agent requires and user's connection status.
@@ -44,7 +47,7 @@ type AgentDetailHandler struct {
 	agentRepository   ports.AgentRepository
 	sessionRepository ports.UserSessionRepository
 	authSessionRepo   ports.AuthorizationSessionRepository
-	providerService   *thirdparty.ThirdpartyOAuth2ProviderService
+	providerService   providerServiceGetter
 	logger            *slog.Logger
 }
 
@@ -75,7 +78,7 @@ func (h *AgentDetailHandler) WithSessionRepository(repo ports.UserSessionReposit
 
 // WithProviderService sets the provider service for this handler.
 // Used to lookup service metadata including display names and scope descriptions.
-func (h *AgentDetailHandler) WithProviderService(svc *thirdparty.ThirdpartyOAuth2ProviderService) *AgentDetailHandler {
+func (h *AgentDetailHandler) WithProviderService(svc providerServiceGetter) *AgentDetailHandler {
 	h.providerService = svc
 	return h
 }
@@ -147,29 +150,25 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	agentDetail, _, err := h.consentService.GetAgentDetail(ctx, parsedAgentID)
+	agent, err := h.agentRepository.Get(ctx, parsedAgentID)
 	if err != nil {
-		if errors.Is(err, consent.ErrAgentNotFound) {
+		if errors.Is(err, ports.ErrNotFound) {
 			h.logger.Warn("agent not found", "agent_id", agentID)
 			h.writeError(w, http.StatusNotFound, "not found", "agent not found")
 			return
 		}
-
-		h.logger.Error("failed to get agent detail",
-			"agent_id", agentID,
-			"error", err)
+		h.logger.Error("failed to get agent", "agent_id", agentID, "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
 	}
 
-	// Load full agent entity to access service requirements
-	agent, err := h.getAgent(ctx, parsedAgentID)
-	if err != nil {
-		h.logger.Error("failed to load agent",
-			"agent_id", agentID,
-			"error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
+	agentDetail := &consent.AgentDetail{
+		AgentID:              agent.ID,
+		DisplayName:          agent.DisplayName,
+		Description:          agent.Description,
+		GovernanceURL:        agent.GovernanceURL,
+		UserDocumentationURL: agent.UserDocumentationURL,
+		AgentInterfaceURL:    agent.AgentInterfaceURL,
 	}
 
 	// Build service requirements enriched with user session status
@@ -231,19 +230,6 @@ func (h *AgentDetailHandler) writeError(w http.ResponseWriter, statusCode int, e
 	h.writeJSON(w, statusCode, resp)
 }
 
-// buildServiceRequirementsForUser enriches agent service requirements with user-specific session status.
-// Returns a list of ServiceRequirementForUser with connection status for each service.
-// Requirements:
-// - Query agent's ServiceRequirements array
-// - For each requirement, lookup the ThirdPartyOAuth2Service by service_id
-// - Check user's session status with that service (from session repository)
-// - Include connection status: "connected" if session exists and is valid, "not_connected" otherwise
-// - Resolve scope descriptions from service configuration
-// - Return enriched ServiceRequirementForUser model
-// Error handling:
-// - If service not found: Log warning and skip (service may have been removed)
-// - If session lookup fails: Return an error so the handler fails closed
-// - Return partial results only for missing services that can be safely skipped
 func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context, userID id.Principal, agent *storage.Agent) ([]ServiceRequirementForUser, error) {
 	if len(agent.ServiceRequirements) == 0 {
 		return []ServiceRequirementForUser{}, nil
@@ -330,18 +316,6 @@ func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *stora
 	}
 
 	return serviceMap, nil
-}
-
-// getAgent loads a full agent entity from storage.
-// This is used to access service requirements which are not available in AgentDetail DTO.
-func (h *AgentDetailHandler) getAgent(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
-	// We need an agent repository. For now, we'll use a workaround by checking if we have access to it
-	// through the consentService. Since we don't have direct access, we need to add it to the handler.
-	// This will be injected via builder or a new method.
-	if h.agentRepository == nil {
-		return nil, errors.New("agent repository not configured")
-	}
-	return h.agentRepository.Get(ctx, agentID)
 }
 
 // getPrincipalFromContext extracts the principal from the request context.

@@ -47,16 +47,7 @@ func encryptSecretForTest(serviceID, secret string) []byte {
 }
 
 // mockAgentDetailService is a mock implementation of consent.Service for testing.
-type mockAgentDetailService struct {
-	getAgentDetailFunc func(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error)
-}
-
-func (m *mockAgentDetailService) GetAgentDetail(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-	if m.getAgentDetailFunc != nil {
-		return m.getAgentDetailFunc(ctx, agentID)
-	}
-	return nil, nil, errors.New("not implemented")
-}
+type mockAgentDetailService struct{}
 
 func (m *mockAgentDetailService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error) {
 	return nil, errors.New("not implemented")
@@ -100,52 +91,17 @@ func TestGetAgentDetail_Success(t *testing.T) {
 	githubServiceID := id.NewServiceID()
 	googleServiceID := id.NewServiceID()
 
-	mockService := &mockAgentDetailService{
-		getAgentDetailFunc: func(ctx context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-			if agID != agentID {
-				t.Errorf("expected agentID %s, got %s", agentID, agID)
-			}
-
-			agentDetail := &consent.AgentDetail{
-				AgentID:              agentID,
-				DisplayName:          "Test Agent",
-				Description:          "A test agent for testing purposes",
-				LogoURL:              nil,
-				GovernanceURL:        &governanceURL,
-				UserDocumentationURL: &userDocsURL,
-				AgentInterfaceURL:    &agentInterfaceURL,
-			}
-
-			services := []consent.ThirdpartyService{
-				{
-					ServiceID:   githubServiceID,
-					DisplayName: "GitHub",
-					LogoURL:     nil,
-					Scopes: []consent.ServiceScope{
-						{Value: "read:user", Description: "Read user profile"},
-						{Value: "repo", Description: "Full control of repositories"},
-					},
-				},
-				{
-					ServiceID:   googleServiceID,
-					DisplayName: "Google",
-					LogoURL:     nil,
-					Scopes: []consent.ServiceScope{
-						{Value: "email", Description: "View email address"},
-					},
-				},
-			}
-
-			return agentDetail, services, nil
-		},
-	}
+	mockService := &mockAgentDetailService{}
 
 	// Create agent with service requirements
 	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    id.NewClientID("test-client-id"),
-		DisplayName: "Test Agent",
-		Description: "A test agent for testing purposes",
+		ID:                   agentID,
+		ClientID:             id.NewClientID("test-client-id"),
+		DisplayName:          "Test Agent",
+		Description:          "A test agent for testing purposes",
+		GovernanceURL:        &governanceURL,
+		UserDocumentationURL: &userDocsURL,
+		AgentInterfaceURL:    &agentInterfaceURL,
 		ServiceRequirements: []storage.ServiceRequirement{
 			{
 				ServiceID:       githubServiceID,
@@ -265,11 +221,7 @@ func TestGetAgentDetail_Success(t *testing.T) {
 
 func TestGetAgentDetail_AgentNotFound(t *testing.T) {
 	// Setup
-	mockService := &mockAgentDetailService{
-		getAgentDetailFunc: func(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-			return nil, nil, consent.ErrAgentNotFound
-		},
-	}
+	mockService := &mockAgentDetailService{}
 
 	agentRepo := memory.NewAgentRepository()
 	// Don't create any agents - agent should not be found
@@ -346,14 +298,13 @@ func TestGetAgentDetail_MissingAgentID(t *testing.T) {
 }
 
 func TestGetAgentDetail_ServiceError(t *testing.T) {
-	// Setup
-	mockService := &mockAgentDetailService{
-		getAgentDetailFunc: func(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-			return nil, nil, errors.New("database connection failed")
+	mockService := &mockAgentDetailService{}
+
+	agentRepo := &mockAgentRepository{
+		getFunc: func(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+			return nil, storage.NewStorageError("GetAgent", storage.ErrorKindConnection, errors.New("database connection failed"), "db unavailable")
 		},
 	}
-
-	agentRepo := memory.NewAgentRepository()
 	sessionRepo := memory.NewInMemoryUserSessionRepository()
 	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
 
@@ -397,14 +348,7 @@ func TestGetAgentDetail_ServiceRequirementSessionLookupError(t *testing.T) {
 	agentID := id.NewAgentID()
 	serviceID := id.NewServiceID()
 
-	mockService := &mockAgentDetailService{
-		getAgentDetailFunc: func(ctx context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-			return &consent.AgentDetail{
-				AgentID:     agID,
-				DisplayName: "Test Agent",
-			}, nil, nil
-		},
-	}
+	mockService := &mockAgentDetailService{}
 
 	agentRepo := memory.NewAgentRepository()
 	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
@@ -464,14 +408,7 @@ func TestGetAgentDetail_ServiceRequirementProviderLookupError(t *testing.T) {
 	agentID := id.NewAgentID()
 	serviceID := id.NewServiceID()
 
-	mockService := &mockAgentDetailService{
-		getAgentDetailFunc: func(ctx context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-			return &consent.AgentDetail{
-				AgentID:     agID,
-				DisplayName: "Test Agent",
-			}, nil, nil
-		},
-	}
+	mockService := &mockAgentDetailService{}
 
 	agentRepo := memory.NewAgentRepository()
 	require.NoError(t, agentRepo.Create(context.Background(), &storage.Agent{
@@ -520,20 +457,7 @@ func TestGetAgentDetail_EmptyServicesList(t *testing.T) {
 	// Setup
 	agentID := id.NewAgentID()
 
-	mockService := &mockAgentDetailService{
-		getAgentDetailFunc: func(ctx context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-			agentDetail := &consent.AgentDetail{
-				AgentID:     agentID,
-				DisplayName: "Test Agent",
-				Description: "A test agent",
-			}
-
-			// Return empty services list
-			services := []consent.ThirdpartyService{}
-
-			return agentDetail, services, nil
-		},
-	}
+	mockService := &mockAgentDetailService{}
 
 	ctx := context.Background()
 	agentRepo := memory.NewAgentRepository()
@@ -588,10 +512,6 @@ func TestGetAgentDetail_EmptyServicesList(t *testing.T) {
 	}
 }
 
-// Ensure mockAgentDetailService implements the required interface methods
-var _ interface {
-	GetAgentDetail(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error)
-} = (*mockAgentDetailService)(nil)
 
 // mockSessionRepository is a mock implementation of UserSessionRepository for testing.
 type mockSessionRepository struct {
@@ -662,6 +582,41 @@ func (m *mockServiceRepository) CountGrantsReferencingService(ctx context.Contex
 }
 
 func (m *mockServiceRepository) FindByProtectedResource(ctx context.Context, resourceURI string) (*model.ThirdpartyOAuth2ProviderEntity, error) {
+	return nil, errors.New("not implemented")
+}
+
+type mockAgentRepository struct {
+	getFunc func(ctx context.Context, agentID id.AgentID) (*storage.Agent, error)
+}
+
+func (m *mockAgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
+	if m.getFunc != nil {
+		return m.getFunc(ctx, agentID)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockAgentRepository) Create(ctx context.Context, agent *storage.Agent) error {
+	return errors.New("not implemented")
+}
+
+func (m *mockAgentRepository) Update(ctx context.Context, agent *storage.Agent) error {
+	return errors.New("not implemented")
+}
+
+func (m *mockAgentRepository) Delete(ctx context.Context, agentID id.AgentID) error {
+	return errors.New("not implemented")
+}
+
+func (m *mockAgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockAgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockAgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -966,14 +921,7 @@ func TestResolveCIMDMetadata_SessionAgentMismatch(t *testing.T) {
 	agentB := id.NewAgentID()
 	principalID := "user@example.com"
 
-	mockService := &mockAgentDetailService{
-		getAgentDetailFunc: func(_ context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-			return &consent.AgentDetail{
-				AgentID:     agID,
-				DisplayName: "Agent B",
-			}, nil, nil
-		},
-	}
+	mockService := &mockAgentDetailService{}
 
 	agentRepo := memory.NewAgentRepository()
 	agentObjA := &storage.Agent{ID: agentA, ClientID: id.NewClientID("a"), DisplayName: "Agent A", Description: "Agent A desc"}
@@ -1024,14 +972,7 @@ func TestResolveCIMDMetadata_SessionAgentMismatch(t *testing.T) {
 func TestResolveCIMDMetadata_SessionPrincipalMismatch(t *testing.T) {
 	agentID := id.NewAgentID()
 
-	mockService := &mockAgentDetailService{
-		getAgentDetailFunc: func(_ context.Context, agID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-			return &consent.AgentDetail{
-				AgentID:     agID,
-				DisplayName: "Agent",
-			}, nil, nil
-		},
-	}
+	mockService := &mockAgentDetailService{}
 
 	agentRepo := memory.NewAgentRepository()
 	agent := &storage.Agent{ID: agentID, ClientID: id.NewClientID("a"), DisplayName: "Agent", Description: "Agent desc"}
