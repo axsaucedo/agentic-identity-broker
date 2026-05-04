@@ -58,17 +58,9 @@ func NewFetcher(fetchTimeout time.Duration, maxResponseBytes int64, extraBlocked
 	client := &http.Client{
 		Transport: transport,
 		Timeout:   fetchTimeout,
-		// No redirects — CIMD endpoints must not redirect
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
 	}
 
-	return &Fetcher{
-		client:           client,
-		blocklist:        blocklist,
-		maxResponseBytes: maxResponseBytes,
-	}, nil
+	return NewFetcherWithClient(client, blocklist, maxResponseBytes), nil
 }
 
 // NewFetcherWithClient creates a Fetcher with an injected HTTP client, for testing.
