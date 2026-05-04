@@ -198,7 +198,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 	Describe("when consent is submitted with a pre-consumed session_id", func() {
 		It("rejects with 400 Bad Request", func() {
 			agent, session := createAgentAndSession(principalStr)
-			Expect(testStorage.AuthorizationSessions().Consume(context.Background(), session.SessionID)).To(Succeed())
+			Expect(testStorage.AuthorizationSessions().ConsumeIf(context.Background(), session.SessionID, nil)).To(Succeed())
 
 			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_id=%s", agent.ID, session.SessionID)
 			resp, err := server.AuthenticatedPOST(path, principalStr, "application/json", emptyGrantBody())

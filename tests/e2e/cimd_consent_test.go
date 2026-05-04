@@ -340,7 +340,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			Expect(testStorage.AuthorizationSessions().Create(context.Background(), session)).To(Succeed())
 
 			// Mark the session as consumed before the test
-			Expect(testStorage.AuthorizationSessions().Consume(context.Background(), session.SessionID)).To(Succeed())
+			Expect(testStorage.AuthorizationSessions().ConsumeIf(context.Background(), session.SessionID, nil)).To(Succeed())
 
 			path := fmt.Sprintf("/api/consent/agent/%s?session_id=%s", agent.ID, session.SessionID)
 			resp, err := server.AuthenticatedGET(path, fixtures.DefaultPrincipal().String())

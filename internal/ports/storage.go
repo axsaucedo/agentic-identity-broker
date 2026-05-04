@@ -331,13 +331,11 @@ type AuthorizationSessionRepository interface {
 	// Returns StorageError with Kind=NotFound if session not found.
 	GetBySessionID(ctx context.Context, sessionID string) (*storage.AuthorizationSession, error)
 
-	// Consume marks a session as consumed (single-use enforcement).
-	// Returns StorageError with Kind=NotFound if session not found.
-	Consume(ctx context.Context, sessionID string) error
-
-	// ConsumeIf runs fn while the session is reserved for single use and only marks the
-	// session consumed if fn returns nil. If fn returns an error, the session remains
-	// reusable and the callback error is returned to the caller unchanged.
+	// ConsumeIf atomically reserves the session, runs fn (if non-nil), and marks the session
+	// consumed only if fn returns nil. If fn returns an error the session remains available
+	// and the callback error is returned unchanged. Pass nil for fn to consume unconditionally.
+	// Returns StorageError with Kind=NotFound if session not found or expired, Kind=Conflict if
+	// already consumed.
 	ConsumeIf(ctx context.Context, sessionID string, fn AuthorizationSessionMutation) error
 
 	// DeleteExpired removes all expired sessions. Returns the count of deleted sessions.

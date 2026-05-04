@@ -1090,7 +1090,6 @@ func TestCreateGrant_SessionReplayRace(t *testing.T) {
 // that lets tests inject failure scenarios not reachable via the real in-memory adapter.
 type mockAuthSessionRepo struct {
 	getBySessionIDFunc func(ctx context.Context, sessionID string) (*storage.AuthorizationSession, error)
-	consumeFunc        func(ctx context.Context, sessionID string) error
 	consumeIfFunc      func(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error
 }
 
@@ -1105,26 +1104,13 @@ func (m *mockAuthSessionRepo) GetBySessionID(ctx context.Context, sessionID stri
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockAuthSessionRepo) Consume(ctx context.Context, sessionID string) error {
-	if m.consumeFunc != nil {
-		return m.consumeFunc(ctx, sessionID)
-	}
-	return nil
-}
-
 func (m *mockAuthSessionRepo) ConsumeIf(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error {
 	if m.consumeIfFunc != nil {
 		return m.consumeIfFunc(ctx, sessionID, fn)
 	}
-
-	if err := m.Consume(ctx, sessionID); err != nil {
-		return err
-	}
-
 	if fn != nil {
 		return fn(ctx)
 	}
-
 	return nil
 }
 
@@ -1154,10 +1140,6 @@ func TestCreateGrant_ValidateGrantRequestFails_DoesNotConsumeSession(t *testing.
 	authRepo := &mockAuthSessionRepo{
 		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
 			return sess, nil
-		},
-		consumeFunc: func(_ context.Context, _ string) error {
-			callOrder = append(callOrder, "consume")
-			return nil
 		},
 	}
 
@@ -1287,14 +1269,14 @@ func TestCreateGrant_ConsumeStorageError(t *testing.T) {
 		ExpiresAt:   now.Add(10 * time.Minute),
 	}
 
-	storageErr := storage.NewStorageError("Consume", storage.ErrorKindConnection, errors.New("db down"), "connection failed")
+	storageErr := storage.NewStorageError("ConsumeIf", storage.ErrorKindConnection, errors.New("db down"), "connection failed")
 	var callOrder []string
 
 	authRepo := &mockAuthSessionRepo{
 		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
 			return sess, nil
 		},
-		consumeFunc: func(_ context.Context, _ string) error {
+		consumeIfFunc: func(_ context.Context, _ string, _ ports.AuthorizationSessionMutation) error {
 			callOrder = append(callOrder, "consume")
 			return storageErr
 		},

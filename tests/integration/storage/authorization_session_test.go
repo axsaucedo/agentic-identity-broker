@@ -187,7 +187,7 @@ func TestAuthorizationSessionRepo_Consume(t *testing.T) {
 	sess := newTestSession(t, agentID)
 	require.NoError(t, repo.Create(ctx, sess))
 
-	require.NoError(t, repo.Consume(ctx, sess.SessionID))
+	require.NoError(t, repo.ConsumeIf(ctx, sess.SessionID, nil))
 
 	got, err := repo.GetBySessionID(ctx, sess.SessionID)
 	require.NoError(t, err)
@@ -209,10 +209,10 @@ func TestAuthorizationSessionRepo_ConsumeAlreadyConsumed(t *testing.T) {
 	ctx := context.Background()
 	sess := newTestSession(t, agentID)
 	require.NoError(t, repo.Create(ctx, sess))
-	require.NoError(t, repo.Consume(ctx, sess.SessionID))
+	require.NoError(t, repo.ConsumeIf(ctx, sess.SessionID, nil))
 
 	// Second consume must fail — session is already consumed
-	err := repo.Consume(ctx, sess.SessionID)
+	err := repo.ConsumeIf(ctx, sess.SessionID, nil)
 	require.Error(t, err, "consuming an already-consumed session must return error")
 }
 

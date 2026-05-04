@@ -102,10 +102,6 @@ func (r *AuthorizationSessionRepo) GetBySessionID(ctx context.Context, sessionID
 	return &session, nil
 }
 
-func (r *AuthorizationSessionRepo) Consume(ctx context.Context, sessionID string) error {
-	return r.ConsumeIf(ctx, sessionID, nil)
-}
-
 func (r *AuthorizationSessionRepo) ConsumeIf(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError("AuthorizationSessionRepo.ConsumeIf", storage.ErrorKindConnection, nil, "database not initialized")

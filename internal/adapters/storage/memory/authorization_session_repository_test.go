@@ -50,7 +50,7 @@ func TestAuthorizationSessionRepository_Consume(t *testing.T) {
 		session := newTestSession(t)
 		require.NoError(t, repo.Create(context.Background(), session))
 
-		err := repo.Consume(context.Background(), session.SessionID)
+		err := repo.ConsumeIf(context.Background(), session.SessionID, nil)
 		require.NoError(t, err)
 	})
 
@@ -58,9 +58,9 @@ func TestAuthorizationSessionRepository_Consume(t *testing.T) {
 		repo := NewAuthorizationSessionRepository()
 		session := newTestSession(t)
 		require.NoError(t, repo.Create(context.Background(), session))
-		require.NoError(t, repo.Consume(context.Background(), session.SessionID))
+		require.NoError(t, repo.ConsumeIf(context.Background(), session.SessionID, nil))
 
-		err := repo.Consume(context.Background(), session.SessionID)
+		err := repo.ConsumeIf(context.Background(), session.SessionID, nil)
 		require.Error(t, err)
 		var storErr *storage.StorageError
 		require.ErrorAs(t, err, &storErr)
@@ -70,7 +70,7 @@ func TestAuthorizationSessionRepository_Consume(t *testing.T) {
 	t.Run("returns not found for unknown session", func(t *testing.T) {
 		repo := NewAuthorizationSessionRepository()
 
-		err := repo.Consume(context.Background(), "nonexistent")
+		err := repo.ConsumeIf(context.Background(), "nonexistent", nil)
 		require.Error(t, err)
 		var storErr *storage.StorageError
 		require.ErrorAs(t, err, &storErr)
@@ -93,7 +93,7 @@ func TestAuthorizationSessionRepository_Consume(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				<-start
-				results[i] = repo.Consume(context.Background(), session.SessionID)
+				results[i] = repo.ConsumeIf(context.Background(), session.SessionID, nil)
 			}()
 		}
 
@@ -142,7 +142,7 @@ func TestAuthorizationSessionRepository_ConsumeIf(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, stored.IsConsumed())
 
-		require.NoError(t, repo.Consume(context.Background(), session.SessionID))
+		require.NoError(t, repo.ConsumeIf(context.Background(), session.SessionID, nil))
 	})
 }
 

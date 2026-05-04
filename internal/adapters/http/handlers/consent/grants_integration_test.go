@@ -17,6 +17,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -313,12 +314,15 @@ func TestGrantsIntegration_SessionReplayDoesNotMutateStoredGrant(t *testing.T) {
 		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
 			return session, nil
 		},
-		consumeFunc: func(_ context.Context, _ string) error {
+		consumeIfFunc: func(ctx context.Context, _ string, fn ports.AuthorizationSessionMutation) error {
 			consumeCalls++
-			if consumeCalls == 1 {
-				return nil
+			if consumeCalls > 1 {
+				return storage.NewStorageError("ConsumeIf", storage.ErrorKindConflict, nil, "authorization session has already been consumed")
 			}
-			return storage.NewStorageError("Consume", storage.ErrorKindConflict, nil, "authorization session has already been consumed")
+			if fn != nil {
+				return fn(ctx)
+			}
+			return nil
 		},
 	}
 

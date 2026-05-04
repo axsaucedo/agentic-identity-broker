@@ -65,10 +65,6 @@ func (r *AuthorizationSessionRepository) GetBySessionID(ctx context.Context, ses
 	return &cp, nil
 }
 
-func (r *AuthorizationSessionRepository) Consume(ctx context.Context, sessionID string) error {
-	return r.ConsumeIf(ctx, sessionID, nil)
-}
-
 func (r *AuthorizationSessionRepository) ConsumeIf(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
