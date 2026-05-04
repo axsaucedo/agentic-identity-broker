@@ -31,6 +31,8 @@ CREATE TABLE agent_client_uris (
 DROP TABLE agent_client_uris;
 ```
 
+No `authorization_sessions` table is required; session state is carried in the stateless JWE `session_token` (see `AuthorizationSessionClaims` below).
+
 **Uniqueness**: `UNIQUE(client_uri)` on the child table is the sole enforcement mechanism. No two agents may share a Client ID Metadata Document URL; the constraint violation maps to a 409 Conflict response on admin writes.
 
 ## New Domain Types
@@ -115,6 +117,29 @@ Immutable set of CIDR ranges blocked for CIMD fetches. Built at startup from def
 | `ETag` | `string` | HTTP ETag for conditional requests (future optimization) |
 
 **Package**: `internal/domain/cimd/cache.go`
+
+### AuthorizationSessionClaims (value object — sealed in JWE)
+
+Claims sealed into the JWE `session_token` at authorization initiation. Stateless — no database storage. Decrypted by the broker on demand.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `AgentID` | `id.AgentID` | Resolved agent (validated at consent-submission time) |
+| `Principal` | `id.Principal` | Authenticated user; must match at submission |
+| `ClientID` | `string` | The `client_id` value from the authorization request |
+| `OriginalURL` | `string` | Full `/authorize` URL; redirect target after consent |
+| `RedirectURI` | `string` | Trusted redirect URI (from CIMD document) |
+| `Scope` | `string` | Requested OAuth2 scopes |
+| `State` | `string` | Agent-supplied opaque state value |
+| `CodeChallenge` | `string` | PKCE code challenge |
+| `CodeChallengeMethod` | `string` | PKCE method (`S256`) |
+| `CIMDMetadata` | `*storage.CIMDMetadataSnapshot` | Resolved CIMD display fields |
+| `IssuedAt` | `time.Time` | Token mint time |
+| `ExpiresAt` | `time.Time` | 10-minute TTL; `exp` claim |
+
+**Package**: `internal/domain/oauth2/authorization_session_token.go`
+
+**Encryption**: A256GCMKW key wrapping + A256GCM content encryption via `internal/domain/jwe/TokenService`. Key: `IDENTITY_BROKER_JWE_SIGNING_KEY` (same key used for `OAuth2StateToken`).
 
 ## New Port Interfaces
 
@@ -224,7 +249,11 @@ CIMDCacheEntry *──1 ClientIDMetadataDocument (in-process only)
     → HTTP GET (timeout + size limit) → [200 OK, valid JSON]
     → validate document (client_id match, auth method, redirect URIs, blocklist)
     → compare brand pin (client_name vs Agent.DisplayName) → emit audit event on mismatch
-    → proceed to consent/authorization
+    → mint JWE session_token (AuthorizationSessionClaims + 10-min exp)
+    → redirect to consent page with ?session_token=<jwe> only
+    → consent page calls GET /api/consent/session?token=<jwe> → broker decrypts + validates exp
+    → user submits consent with session_token → broker decrypts, validates exp + principal
+    → issue authorization code using trusted redirect_uri/state/code_challenge from token
 ```
 
 Any failure at any step → reject authorization request (fail closed).

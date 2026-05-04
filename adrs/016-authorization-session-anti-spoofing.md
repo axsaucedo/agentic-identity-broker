@@ -1,4 +1,4 @@
-# ADR 016: Server-Side Authorization Sessions — Consent Screen Anti-Spoofing via Capability Tokens
+# ADR 016: Stateless Authorization Sessions — Consent Screen Anti-Spoofing via JWE Token
 
 **Status**: Accepted
 **Date**: 2026-04-28
@@ -17,37 +17,49 @@ This is distinct from the SSRF risk addressed by ADR 015 (fetcher architecture).
 
 ## Decision
 
-### Server-Side Authorization Session
+### JWE Authorization Session Token
 
-For every CIMD-based authorization request, the `OAuth2AuthorizationService` creates a server-side `AuthorizationSession` record that captures the full authorization context at the moment the broker processes the `/authorize` request:
+For every CIMD-based authorization request, the `OAuth2AuthorizationService` mints a JWE token that captures the full authorization context at the moment the broker processes the `/authorize` request:
 
 - Agent identity (`agent_id`, `client_id`)
 - Authorization parameters (`redirect_uri`, `scope`, `state`, PKCE `code_challenge` + `code_challenge_method`)
 - The original authorize URL (`original_url`) — used as the redirect target after consent
 - A `CIMDMetadataSnapshot` containing the trusted CIMD document fields (`client_name`, `logo_uri`, `redirect_uris`, `auth_method`, `jwks_uri`) as resolved and validated by the CIMD service
+- The authenticated principal (`principal`) — validated at consent-submission time to prevent cross-user replay
+- `iat` and `exp` claims encoding issue time and a 10-minute TTL
 
-The session is persisted in the `authorization_sessions` table. The consent redirect URL contains only an opaque `session_id` parameter — no authorization context leaks into the URL.
+The token is encrypted with `A256GCMKW` key wrapping and `A256GCM` content encryption using the existing `IDENTITY_BROKER_JWE_SIGNING_KEY`. The consent redirect URL contains only this opaque `session_token` parameter — no authorization context leaks into the URL.
 
-### Capability Token Properties
+### Token Properties
 
-The `session_id` is an opaque capability token with the following mandatory properties:
+The `session_token` is a compact JWE with the following mandatory properties:
 
-| Property | Specification | Rationale |
+| Property | Mechanism | Rationale |
 |---|---|---|
-| **Entropy** | 256 bits from `crypto/rand`, encoded as 64-character lowercase hex | OWASP and NIST SP 800-63B recommend ≥128 bits for session tokens; 256 bits is the industry standard that future-proofs against advances in attack capability at zero additional cost |
-| **TTL** | 10 minutes from creation | Consent decisions are interactive and immediate; 10 minutes accommodates page load delays and user deliberation without creating a wide replay window |
-| **Single-use** | Consumed on grant creation (approve/deny), not on read | The user may reload the consent page, navigate away and return, or experience network retries — all must succeed as long as the session is live. Consumption is bound to the *action* (consent submission), not the *observation* (page load) |
-| **Agent-bound** | `agent_id` validated on every session access | Prevents a session created for agent A from being presented on agent B's consent page |
+| **Tamper-proof** | JWE authenticated encryption (A256GCM) — any mutation breaks decryption | Equivalent guarantee to a signed + encrypted DB-backed token, with no storage required |
+| **Confidentiality** | Encrypted — payload is opaque to the browser | Authorization context (redirect_uri, scope, state, PKCE) cannot be read or replayed by the browser |
+| **TTL** | `exp` claim validated server-side; 10-minute TTL | Consent decisions are interactive and immediate; 10 minutes accommodates page load delays and user deliberation |
+| **Principal binding** | `principal` claim must match the authenticated user at consent-submission time | Prevents a token issued for user A from being submitted by user B |
+| **Agent-bound** | `agent_id` sealed into the token at issuance | Prevents a token created for agent A from being presented on agent B's consent page |
 
-### Consumption Semantics
+### Decode Endpoint
 
-The session lifecycle has three terminal states:
+The consent page calls `GET /api/consent/session?token=<jwe>` to retrieve the structured authorization context. The endpoint decrypts the token, validates `exp`, and returns the display fields (client name, verified domain, redirect URI, scopes, CIMD metadata). The raw token value is never expanded into individual URL query parameters.
 
-1. **Consumed** — The user submitted a consent decision (approve or deny). The `consumed_at` timestamp is set. The session cannot be reused.
-2. **Expired** — The 10-minute TTL elapsed without a consent decision. The session is rejected on any subsequent access.
-3. **Abandoned** — The user closed the browser or navigated away. Functionally identical to expired; the TTL provides natural garbage collection.
+### Consent Submission
 
-Between creation and a terminal state, the session is valid for repeated reads. This allows the consent page to fetch authorization context multiple times (initial load, client-side navigation, retry after transient error) without invalidating the session.
+The consent submission body includes the `session_token`. The backend decrypts it, re-validates `exp` and the `principal` claim, then uses the token's trusted `redirect_uri`, `state`, and `code_challenge` values to issue the authorization code redirect. The frontend never supplies these values directly.
+
+### Replay Within TTL Window
+
+Without a `consumed_at` column, a JWE token can be resubmitted within its 10-minute validity window. This is accepted as benign:
+
+1. Grant creation uses upsert semantics — a duplicate consent submission produces the same grant.
+2. PKCE binds the resulting authorization code to the agent's `code_verifier`. A replayed consent submission issues a fresh code, but only the original agent (holding the verifier) can exchange it.
+
+### Shared JWE Package
+
+Both the existing `OAuth2StateToken` and the `AuthorizationSessionToken` follow the same pattern: JSON-marshal claims → JWE encrypt with A256GCMKW + A256GCM → compact serialization, and reverse. A shared `internal/domain/jwe/` package provides a single `TokenService` for both use cases.
 
 ### Non-CIMD Flows
 
@@ -55,7 +67,7 @@ For opaque `client_id` flows (UUID-format agent identifiers), the metadata displ
 
 ### Redirect Target Integrity
 
-After consent submission, the frontend needs the original authorize URL to re-enter the OAuth2 flow. This URL is stored in the session's `OriginalURL` field and returned in the grant creation response. The frontend never constructs or modifies this URL — it receives it as an opaque string from the server.
+After consent submission, the frontend needs the original authorize URL to re-enter the OAuth2 flow. This URL is sealed in the token's `OriginalURL` field and returned in the grant creation response. The frontend never constructs or modifies this URL — it receives it as an opaque string from the server.
 
 ---
 
@@ -63,30 +75,14 @@ After consent submission, the frontend needs the original authorize URL to re-en
 
 **Benefits**:
 - Eliminates consent screen spoofing for CIMD flows — the frontend renders only server-attested metadata
-- The `session_id` is the sole URL-visible artifact; no authorization parameters leak into browser history, referrer headers, or server logs of intermediate proxies
-- The pattern is well-understood (same mechanism as magic-link tokens, OAuth authorization codes, CSRF tokens) and requires no novel cryptography
-- 256-bit tokens provide computational infeasibility of brute-force even against future adversaries
+- No server-side storage required — the JWE token is self-contained and stateless
+- The `session_token` is the sole URL-visible artifact; no authorization parameters leak into browser history, referrer headers, or server logs of intermediate proxies
+- No database migration, no cleanup job, no replica synchronization concerns
+- Key reuse — the existing `IDENTITY_BROKER_JWE_SIGNING_KEY` already used for `OAuth2StateToken` is sufficient; no new key management surface
 
 **Trade-offs**:
-- Requires server-side storage (one row per in-flight authorization) — bounded by the 10-minute TTL and expected concurrency
-- Non-atomic grant creation + session consumption — if `Consume()` fails after a successful grant, the session remains unconsumed until TTL expiry. This is a narrow window (the `Consume` operation is a simple UPDATE) and is logged for observability
+- Replay within the TTL window is accepted (see above); replay does not produce a different grant due to upsert semantics, and PKCE limits code usability to the original agent
 - Deep-linking directly to a consent URL without going through `/authorize` is intentionally impossible for CIMD flows — this is a feature, not a limitation
-- Expired sessions accumulate until cleaned up (see below)
+- Token size is bounded by the `AuthorizationSessionClaims` struct; CIMD metadata snapshot adds ~200–400 bytes to the compact JWE
 
-### Expired Session Cleanup
-
-Cleanup is an operational concern handled by `pg_cron` in PostgreSQL environments:
-
-```sql
-SELECT cron.schedule(
-  'cleanup-expired-authorization-sessions',
-  '*/5 * * * *',
-  $$DELETE FROM authorization_sessions WHERE expires_at < now()$$
-);
-```
-
-The 5-minute interval is sufficient given the 10-minute TTL — expired sessions are never visible to the application (rejected at read time via `IsExpired()` check), so the cleanup is purely a storage hygiene concern. The `idx_authorization_sessions_expires_at` index ensures the DELETE is an efficient index scan.
-
-For environments without `pg_cron` (development, in-memory backend), the `DeleteExpired()` repository method is available for ad-hoc or test-driven cleanup.
-
-**New invariant**: For CIMD flows, all authorization context displayed on the consent screen MUST originate from the server-side `AuthorizationSession`. Any future consent UI path that bypasses session lookup for CIMD agents violates this ADR.
+**New invariant**: For CIMD flows, all authorization context displayed on the consent screen MUST originate from the decrypted `session_token`. Any future consent UI path that bypasses token decryption for CIMD agents violates this ADR.

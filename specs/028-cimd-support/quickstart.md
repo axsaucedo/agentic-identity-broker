@@ -73,7 +73,7 @@ Add fields: `ClientURIs []string`, `AuthMethod *string`, `JwksURI *string`. Upda
 
 ### 8. Consent API Extension
 
-Pass CIMD metadata through the consent session so the frontend can render CS-001–CS-004. Extend the consent agent detail response with `cimd_metadata` when the session originates from a CIMD authorization request.
+The authorization server redirects to the consent page with an opaque `?session_token=<jwe>` query parameter. The consent page calls `GET /api/consent/session?token=<jwe>` to retrieve structured CIMD display data (client name, verified domain, redirect URI, scopes, logo). The consent submission body includes the `session_token`; the backend decrypts it, validates `exp` and `principal`, and uses the sealed `redirect_uri`/`state`/`code_challenge` to issue the authorization code redirect. The frontend never constructs or supplies these values.
 
 ### 9. Frontend Components (`web/src/components/consent/`)
 
@@ -90,7 +90,10 @@ Add `CIMD CIMDConfig` to `OAuth2AuthServerConfig`. Register Viper defaults. Add 
 ### 11. Builder Wiring (`internal/app/builder.go`)
 
 ```go
-// In Build() — select ClientResolver strategy based on cimd.enabled:
+// In Build() — construct shared JWE token service (used by both OAuth2SessionService and OAuth2AuthorizationService):
+jweTokenService := jwe.New(jwsKey)
+
+// Select ClientResolver strategy based on cimd.enabled:
 var clientResolver ports.ClientResolver
 if config.OAuth2AuthServer.CIMD.Enabled {
     ssrfBlocklist := cimd.NewSSRFBlocklist(config.OAuth2AuthServer.CIMD.SSRF.ExtraBlockedCIDRs)
@@ -101,7 +104,7 @@ if config.OAuth2AuthServer.CIMD.Enabled {
 } else {
     clientResolver = oauth2.NewOpaqueClientResolver(agentRepo)
 }
-// Pass clientResolver to OAuth2Service — no CIMD infrastructure instantiated when disabled
+// Pass clientResolver and jweTokenService to OAuth2Service — no CIMD infrastructure instantiated when disabled
 ```
 
 ## Implementation Order

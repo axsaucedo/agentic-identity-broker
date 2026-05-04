@@ -86,9 +86,34 @@ Transparently accepts `client_id=https://agent.example.com/client` (URL format).
 - `invalid_request` / `"Invalid client_id URL format"` — malformed URL (scheme, path, fragment, etc.)
 - `invalid_request` / `"redirect_uri not in CIMD document"` — redirect URI validation failure
 
+### GET /api/consent/session (NEW — FR-028)
+
+Decode endpoint for CIMD consent sessions. Called by the consent page with the opaque `session_token` received via the consent redirect URL.
+
+**Request**: `GET /api/consent/session?token=<jwe>`
+
+**Response** (200 OK):
+```json
+{
+  "agent_id": "uuid",
+  "client_name": "My Cool Agent",
+  "client_id_url": "https://agent.example.com/client",
+  "redirect_uri": "https://agent.example.com/callback",
+  "verified_domain": "agent.example.com",
+  "is_localhost_redirect": false,
+  "requested_scopes": ["repo", "user:email"],
+  "logo_uri": "https://agent.example.com/logo.png",
+  "scope": "repo user:email",
+  "expires_at": "2026-05-05T12:10:00Z"
+}
+```
+
+**Errors**:
+- `400 Bad Request`: Token is missing, malformed, or expired
+
 ### GET /api/consent/agent/{agent-id} (MODIFIED)
 
-When the consent session originates from a CIMD-based authorization request, the response includes additional `cimd_metadata`:
+When the consent session originates from a CIMD-based authorization request, the response includes additional `cimd_metadata`. The consent page obtains this data by first calling the decode endpoint above.
 
 ```json
 {
@@ -120,5 +145,6 @@ When the consent session originates from a CIMD-based authorization request, the
 ### `/api/enduser/openapi.yaml`
 
 - Extend `MetadataResponse` schema with `client_id_metadata_document_supported` (boolean, optional)
+- Add `GET /api/consent/session` endpoint schema: query param `token` (string, required), response body with CIMD display fields
 - Extend consent agent detail response with `cimd_metadata` object schema
 - Document new error responses for `/oauth2/authorize`

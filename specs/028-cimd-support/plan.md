@@ -7,7 +7,7 @@
 
 Add support for the [draft-ietf-oauth-client-id-metadata-document-01](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-01) specification, enabling AI agents to identify themselves using HTTPS URLs as `client_id` values. The broker fetches, validates, and caches the metadata document at the URL, enforces SSRF protection, and presents CIMD-sourced metadata (client name, domain verification, redirect warnings) on the consent screen. This extends the existing Agent entity, OAuth2 authorization flow, consent UI, and admin API without introducing new dependencies.
 
-**Mode Constraint**: CIMD support requires `issue_token` mode (`oauth2_authorization_server.mode: issue_token`). It is incompatible with `proxy` mode because CIMD requires the broker to control authorization code issuance, server-side session binding, and consent flow orchestration — all of which are delegated to the upstream server in proxy mode. Startup validation rejects `cimd.enabled: true` when `mode: proxy`. A future hybrid token issuing mode is expected to support CIMD.
+**Mode Constraint**: CIMD support requires `issue_token` mode (`oauth2_authorization_server.mode: issue_token`). It is incompatible with `proxy` mode because CIMD requires the broker to control authorization code issuance, JWE session token minting, and consent flow orchestration — all of which are delegated to the upstream server in proxy mode. Startup validation rejects `cimd.enabled: true` when `mode: proxy`. A future hybrid token issuing mode is expected to support CIMD.
 
 ## Technical Context
 
@@ -19,7 +19,7 @@ Add support for the [draft-ietf-oauth-client-id-metadata-document-01](https://da
 **Project Type**: Web application (Go backend + React SPA)
 **Performance Goals**: CIMD-based authorization flow < 2s total when CIMD host responds < 500ms (SC-001)
 **Constraints**: CIMD fetch timeout 1s, max response 5120 bytes, in-process cache only, requires `issue_token` mode (incompatible with `proxy` mode)
-**Scale/Scope**: Extension to existing OAuth2 authorization flow; ~7 new domain types, 1 migration, 1 new hexagonal port, 1 new storage repository (AuthorizationSession), 4 consent UI components
+**Scale/Scope**: Extension to existing OAuth2 authorization flow; ~7 new domain types, 1 migration, 1 new hexagonal port, 1 new shared JWE package, 4 consent UI components
 
 ## Constitution Check
 
@@ -38,7 +38,7 @@ Before proceeding, verify compliance with [.specify/memory/constitution.md](.spe
 - [x] **API Design First**: Admin API: existing `POST /api/agents` and `PUT /api/agents/{agent-id}` extended with `client_uris` field; Enduser API: `/.well-known/oauth-authorization-server` extended with `client_id_metadata_document_supported`; `/oauth2/authorize` transparently accepts URL-based client_id
 - [x] **API Documentation**: Will update `/api/admin/openapi.yaml` (Agent schema with `client_uris`) and `/api/enduser/openapi.yaml` (metadata field)
 - [x] **API Changes**: API-001 through API-004 defined in spec — requires user confirmation before implementation
-- [x] **Database Design**: Migration 015 (`015_add_cimd_support`): create normalized `agent_client_uris` child table with `UNIQUE(client_uri)` constraint and `authorization_sessions` table for server-side CIMD authorization session storage (SR-014) with session_id PK, authorization context, TTL, consumed_at — consolidated in a single migration
+- [x] **Database Design**: Migration 015 (`015_add_cimd_support`): create normalized `agent_client_uris` child table with `UNIQUE(client_uri)` constraint — no `authorization_sessions` table required; session state is carried in the stateless JWE `session_token` (SR-013/SR-014)
 - [x] **E2E Acceptance Tests**: 20+ acceptance scenarios across 5 user stories — all mapped to E2E tests
 - [x] **E2E Test Mapping**: 1:1 mapping from spec scenarios to It() blocks
 - [x] **E2E Red Phase**: Detailed expectations targeting HTTP status codes, response bodies, consent screen elements
@@ -83,16 +83,18 @@ internal/
 │   │   ├── cache.go             # CIMDCacheEntry + in-process cache logic
 │   │   ├── service.go           # CIMDService orchestrating fetch → validate → cache → audit
 │   │   └── client_resolver.go   # CIMDClientResolver: ClientResolver strategy for CIMD-enabled mode
+│   ├── jwe/
+│   │   └── token_service.go     # NEW: shared JWE encrypt/decrypt (A256GCMKW + A256GCM); used by OAuth2SessionService and OAuth2AuthorizationService
 │   ├── oauth2/
-│   │   ├── service.go           # MODIFIED: delegates client resolution to injected ClientResolver strategy; creates AuthorizationSession for CIMD flows before consent redirect
+│   │   ├── service.go           # MODIFIED: delegates client resolution to injected ClientResolver strategy; mints JWE session_token for CIMD flows before consent redirect
 │   │   ├── client_resolver.go   # NEW: OpaqueClientResolver (existing UUID lookup, rejects URL-format client_id)
-│   │   └── authorization_session.go  # NEW: AuthorizationSession domain type (opaque session ID, TTL, single-use)
+│   │   └── authorization_session_token.go  # NEW: AuthorizationSessionClaims struct + mint/validate helpers
 │   └── storage/
 │       └── agent.go             # MODIFIED: add ClientURIs field
 ├── ports/
 │   ├── cimd.go                  # NEW: CIMDFetcher port interface + ClientResolver strategy interface + ClientResolution DTO
 │   ├── config.go                # MODIFIED: add CIMDConfig to OAuth2AuthServerConfig
-│   └── storage.go               # MODIFIED: add GetByClientURI to AgentRepository; add AuthorizationSessionRepository interface
+│   └── storage.go               # MODIFIED: add GetByClientURI to AgentRepository
 ├── adapters/
 │   ├── cimd/                    # NEW: SSRF-hardened HTTP fetcher adapter
 │   │   └── fetcher.go           # Implements CIMDFetcher port
@@ -103,14 +105,14 @@ internal/
 │   │   │   └── enduser/
 │   │   │       ├── oauth2_metadata_handler.go  # MODIFIED: add client_id_metadata_document_supported
 │   │   │       └── consent/
-│   │   │           └── agent_detail_handler.go  # MODIFIED: accept session_id, load AuthorizationSession, build cimd_metadata from trusted state (FR-028/FR-029)
+│   │   │           └── agent_detail_handler.go  # MODIFIED: add decode endpoint GET /api/consent/session; accept session_token in submission, decrypt JWE, build cimd_metadata from trusted claims (FR-028/FR-029)
 │   │   └── routing/
 │   │       └── admin.go         # UNCHANGED (no new endpoints)
 │   └── storage/
 │       ├── memory/              # MODIFIED: Agent adapter with new fields + GetByClientURI
 │       └── postgres/            # MODIFIED: Agent adapter with new fields + GetByClientURI
 └── app/
-    └── builder.go               # MODIFIED: wire CIMDService + CIMDFetcher + AuthorizationSessionRepository
+    └── builder.go               # MODIFIED: wire CIMDService + CIMDFetcher + shared *jwe.TokenService injected into OAuth2SessionService and OAuth2AuthorizationService
 
 web/src/
 ├── components/
@@ -121,12 +123,12 @@ web/src/
 │       └── CIMDConsentSummary.tsx     # NEW: summary statement (CS-001)
 ├── pages/
 │   └── ConsentOverviewPage.tsx       # MODIFIED: integrate CIMD consent components
-│   └── AgentGrantDetailPage.tsx      # MODIFIED: read session_id from URL instead of reconstructing CIMD params from redirect_uri
+│   └── AgentGrantDetailPage.tsx      # MODIFIED: read session_token from URL, call decode endpoint, pass token in consent submission body
 └── types/
     └── consent.ts                    # MODIFIED: add CIMD-related API types
 
 migrations/
-└── 015_add_cimd_support.{up,down}.sql  # NEW: CIMD agent fields, agent_client_uris, cimd_redirect_uris, authorization_sessions
+└── 015_add_cimd_support.{up,down}.sql  # NEW: CIMD agent fields, agent_client_uris, cimd_redirect_uris
 
 api/
 ├── admin/openapi.yaml           # MODIFIED: Agent schema extension (client_uris)
@@ -154,7 +156,7 @@ tests/
 - **`domain/cimd/`**: Separate bounded context package — consistent with how `oauth2session/` is distinct from `oauth2/`. CIMD document parsing, URL validation, SSRF blocklist, and caching are a cohesive sub-concern that would roughly double `domain/oauth2/`'s surface area if merged. The `domain/oauth2/` service orchestrates the authorization flow and delegates to `domain/cimd/` for CIMD-specific logic.
 - **`ports/cimd.go`**: Dedicated port file — follows the one-file-per-concern convention (`ports/jwks.go`, `ports/cel.go`). The CIMDFetcher interface is analogous to JWKSPort: an external HTTP fetch with caching behind a hexagonal boundary.
 - **`adapters/cimd/`**: SSRF-hardened HTTP fetcher — mirrors the `adapters/jwks/` pattern (HTTP client from `upstream/`, caching, port implementation). Reuses the existing `upstream.NewSecureUpstreamClient()` factory for TLS-hardened HTTP transport.
-- **`domain/oauth2/authorization_session.go`**: AuthorizationSession domain type lives in `domain/oauth2/` alongside the service that creates and consumes it. Persisted in PostgreSQL via `AuthorizationSessionRepository` (port in `ports/storage.go`, dual adapters in `storage/memory/` and `storage/postgres/`). This secures CIMD consent flows by binding authorization context server-side (SR-013/SR-014).
+- **`domain/oauth2/authorization_session_token.go`**: `AuthorizationSessionClaims` struct and mint/validate helpers live in `domain/oauth2/` alongside the service that creates and validates the token. The claims are sealed into a JWE using the shared `internal/domain/jwe/TokenService`, eliminating the need for a database-backed repository. This secures CIMD consent flows by binding authorization context client-side in an encrypted, tamper-proof token (SR-013/SR-014).
 
 ## Implementation Phase Overview
 
@@ -216,8 +218,8 @@ tests/
 | US5 Scenario 2 | `cimd_consent_test.go` | `It("displays localhost redirect warning")` |
 | US5 Scenario 3 | `cimd_consent_test.go` | `It("reveals advanced details on expand")` |
 | US5 Scenario 4 | `cimd_consent_test.go` | `It("displays CIMD client_name on brand mismatch and logs audit event")` |
-| Session: expired | `cimd_authorization_test.go` | `It("rejects consent load with expired session_id")` |
-| Session: replayed | `cimd_authorization_test.go` | `It("rejects consent submission with already-consumed session_id")` |
+| Session: expired | `cimd_authorization_test.go` | `It("rejects consent load with expired session_token")` |
+| Session: replayed | `cimd_authorization_test.go` | `It("rejects consent submission with expired session_token")` |
 
 **Test Data Strategy**:
 - Use fixtures from `tests/e2e/fixtures/` for stable, reusable test data

@@ -59,8 +59,8 @@
 
 ### Phase 2d: Database Design
 
-- [X] T012 Create migration `migrations/015_add_cimd_support.up.sql`: create normalized `agent_client_uris` child table (`agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE`, `client_uri TEXT NOT NULL`, `UNIQUE(client_uri)`) and `authorization_sessions` table (`session_id TEXT PRIMARY KEY`, agent_id, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, cimd_metadata JSONB, principal, created_at, expires_at, consumed_at) with index on `expires_at` — consolidated single migration for all CIMD schema
-- [X] T013 [P] Create migration `migrations/015_add_cimd_support.down.sql`: drop `authorization_sessions` table, drop `agent_client_uris` table
+- [X] T012 Create migration `migrations/015_add_cimd_support.up.sql`: create normalized `agent_client_uris` child table (`agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE`, `client_uri TEXT NOT NULL`, `UNIQUE(client_uri)`) — no `authorization_sessions` table required; session state is carried in the stateless JWE `session_token`
+- [X] T013 [P] Create migration `migrations/015_add_cimd_support.down.sql`: drop `agent_client_uris` table
 
 **Checkpoint**: Database migrations created
 
@@ -147,39 +147,32 @@
 
 ---
 
-## Phase 3.5: Authorization Session — Server-Side Consent Context Binding (SR-013/SR-014)
+## Phase 3.5: Authorization Session — Stateless JWE Consent Context Binding (SR-013/SR-014)
 
-**Purpose**: Secure CIMD consent flows by persisting authorization request context server-side, eliminating URL parameter tampering. CIMD-only; opaque client_id flows unchanged.
+**Purpose**: Secure CIMD consent flows by sealing authorization request context into a JWE token, eliminating URL parameter tampering and server-side storage. CIMD-only; opaque client_id flows unchanged.
 
-### Domain & Ports
+### Shared JWE Package
 
-- [X] T108 Define `AuthorizationSession` domain type in `internal/domain/storage/authorization_session.go`: struct with all fields, `IsExpired()`, `IsConsumed()`, `Consume()` methods; `NewAuthorizationSession()` constructor generating `crypto/rand` session ID with 10-minute default TTL
-- [X] T109 [P] Add `AuthorizationSessionRepository` interface to `internal/ports/storage.go`: `Create(ctx, *AuthorizationSession) error`, `GetBySessionID(ctx, sessionID string) (*AuthorizationSession, error)`, `Consume(ctx, sessionID string) error`, `DeleteExpired(ctx) (int64, error)`
+- [X] T108 Extract shared `internal/domain/jwe/` package: `TokenService` struct with `Encrypt(v any) (string, error)` and `Decrypt(token string, target any) error`; algorithm `A256GCMKW` + `A256GCM`; key source: existing `IDENTITY_BROKER_JWE_SIGNING_KEY`. Write unit tests in `token_service_test.go` for encrypt/decrypt round-trip and expiry rejection.
+- [X] T109 [P] Refactor `OAuth2SessionService` in `internal/domain/oauth2session/service.go` to use `jwe.TokenService` for state token encrypt/decrypt instead of inline calls.
 
-### Adapters
+### Authorization Session Token
 
-- [X] T110 [P] Implement `AuthorizationSessionRepository` on in-memory adapter in `internal/adapters/storage/memory/`: `sync.RWMutex`-protected map, TTL enforcement on read, `Consume` sets consumed_at
-- [X] T111 [P] Implement `AuthorizationSessionRepository` on postgres adapter in `internal/adapters/storage/postgres/`: INSERT for Create, SELECT + expired/consumed checks for GetBySessionID, UPDATE consumed_at for Consume, DELETE for DeleteExpired
-
-### Tests
-
-- [X] T112 [P] Write unit tests for `AuthorizationSession` domain type in `internal/domain/storage/authorization_session_test.go`: session ID generation (length, randomness), IsExpired, IsConsumed, Consume idempotency
-- [X] T113 [P] Write postgres integration tests for `AuthorizationSessionRepository` in `tests/integration/storage/authorization_session_test.go`: create/get round-trip, expired session still returned (handler checks), consumed session (consume idempotent at domain level), second Consume returns error, DeleteExpired removes only expired rows
-- [X] T114 [P] Add `authorization_sessions` to migration lifecycle verification in `tests/integration/migrations/migrations_test.go`
+- [X] T110 Implement `AuthorizationSessionClaims` struct in `internal/domain/oauth2/authorization_session_token.go` with all authorization context fields plus `IssuedAt`/`ExpiresAt` (10-min TTL). Add `createAuthorizationSessionToken` and `validateAuthorizationSessionToken` helpers on `OAuth2AuthorizationService`.
 
 ### Integration into Authorization Flow
 
-- [X] T115 Modify `OAuth2AuthorizationService.HandleAuthorization` in `internal/domain/oauth2/service.go`: when `ClientResolution` contains CIMD metadata, create `AuthorizationSession` with full authorization context, persist via `AuthorizationSessionRepository`, and redirect to consent with `session_id` query param only (replacing the `OriginalURL` embedding pattern for CIMD flows)
-- [X] T116 Modify consent detail handler (`internal/adapters/http/handlers/consent/agent_detail_handler.go`): when `session_id` query param is present, load `AuthorizationSession` from repository, reject if expired/consumed, build `cimd_metadata` response from session's trusted state instead of caller-supplied query params (FR-028)
-- [X] T117 Modify consent submission handler: when `session_id` is present, load and consume `AuthorizationSession`, use session's `redirect_uri`/`state`/`code_challenge` for the authorization code redirect instead of frontend-supplied values (FR-029)
-- [X] T118 Wire `AuthorizationSessionRepository` in `internal/app/builder.go`: inject into `OAuth2AuthorizationService` and consent handlers
+- [X] T115 Modify `OAuth2AuthorizationService.HandleAuthorization` in `internal/domain/oauth2/service.go`: when `ClientResolution` contains CIMD metadata, mint JWE `session_token` with full authorization context and redirect to consent with `?session_token=<jwe>` only (replacing the `OriginalURL` embedding pattern for CIMD flows).
+- [X] T116 Add decode endpoint `GET /api/consent/session?token=<jwe>` in consent handler (`internal/adapters/http/handlers/consent/`): decrypt token, validate `exp`, return structured JSON with display fields and `cimd_metadata` (FR-028).
+- [X] T117 Modify consent submission handler: accept `session_token` in request body, decrypt, validate `exp` and `principal` binding, use token's trusted `redirect_uri`/`state`/`code_challenge` for the authorization code redirect (FR-029).
+- [X] T118 Wire shared `*jwe.TokenService` in `internal/app/builder.go`: inject into both `OAuth2SessionService` and `OAuth2AuthorizationService`.
 
 ### E2E Tests
 
-- [X] T119 [P] Write E2E tests in `tests/e2e/cimd_consent_test.go` for session edge cases: expired session_id → 400, consumed session_id → 400, non-existent session_id → 400
-- [X] T120 Verify session-based CIMD authorization flow E2E: authorization request → session created → consent page loads from session → consent submitted → session consumed → authorization code redirect uses trusted redirect_uri
+- [X] T119 [P] Write E2E tests in `tests/e2e/cimd_consent_test.go` for token edge cases: expired `session_token` → 400, malformed token → 400, wrong principal → 400.
+- [X] T120 Verify JWE-based CIMD authorization flow E2E: authorization request → `session_token` minted → consent page decodes token → consent submitted with token → authorization code redirect uses trusted redirect_uri.
 
-**Checkpoint**: CIMD consent flows are tamper-proof — all trust metadata comes from server-side session, not URL params
+**Checkpoint**: CIMD consent flows are tamper-proof — all trust metadata is sealed in the JWE `session_token`, not URL params
 
 ---
 
@@ -218,16 +211,16 @@
 
 ### Implementation for User Story 5
 
-- [X] T058 [US5] Modify consent detail handler to build `cimd_metadata` response object from `AuthorizationSession` trusted state when `session_id` is present (depends on Phase 3.5 T116); for non-session flows, existing behavior unchanged
+- [X] T058 [US5] Modify consent detail handler to build `cimd_metadata` response object from decrypted `session_token` when present (calls Phase 3.5 T116 decode endpoint); for non-session flows, existing behavior unchanged
 - [X] T059 [P] [US5] Add CIMD-related TypeScript types to `web/src/types/consent.ts`
 - [X] T060 [P] [US5] Implement `CIMDConsentSummary` component (CS-001) in `web/src/components/consent/CIMDConsentSummary.tsx`
 - [X] T061 [P] [US5] Implement `CIMDDomainBadge` component (CS-002) in `web/src/components/consent/CIMDDomainBadge.tsx`
 - [X] T062 [P] [US5] Implement `CIMDLocalhostWarning` component (CS-003) in `web/src/components/consent/CIMDLocalhostWarning.tsx`
 - [X] T063 [P] [US5] Implement `CIMDAdvancedDetails` component (CS-004) in `web/src/components/consent/CIMDAdvancedDetails.tsx`
 - [X] T064 [US5] Integrate CIMD consent components into `web/src/pages/AgentGrantDetailPage.tsx` (conditional rendering when `cimd_metadata` present)
-- [X] T064a [US5] Update `web/src/pages/AgentGrantDetailPage.tsx`: when URL contains `session_id` param, pass it to API instead of reconstructing CIMD params from `redirect_uri` query string
-- [X] T064b [P] [US5] Update `web/src/hooks/useAgentGrants.ts` and `web/src/services/api/consent.ts`: add `session_id` parameter; when present, sends `?session_id=` instead of CIMD params
-- [X] T064c [US5] Update consent submission in frontend: when `session_id` present, send `?session_id=` to grants endpoint instead of `?redirect_uri=`
+- [X] T064a [US5] Update `web/src/pages/AgentGrantDetailPage.tsx`: when URL contains `session_token` param, call `GET /api/consent/session?token=<jwe>` to retrieve CIMD display data instead of reconstructing params from query string
+- [X] T064b [P] [US5] Update `web/src/hooks/useAgentGrants.ts` and `web/src/services/api/consent.ts`: add `session_token` parameter; when present, sends token to decode endpoint instead of CIMD params
+- [X] T064c [US5] Update consent submission in frontend: when `session_token` present, include it in request body instead of `redirect_uri`
 - [X] T065 [US5] Verify US5 E2E tests in `tests/e2e/cimd_consent_test.go` turn green
 - [X] T066 [US5] Verify Playwright tests in `tests/e2e/frontend/cimd_consent_test.go` pass with screenshots captured
 
@@ -307,13 +300,13 @@
 - [X] T089 [P] Verify migration 015 follows sequential numbering
 - [X] T090 [P] Write integration tests for migration 015 apply/rollback in `tests/integration/migrations/migrations_test.go`
 - [X] T091 [P] Verify postgres adapter tested with new fields and `GetByClientURI`
-- [X] T091a [P] Verify postgres `AuthorizationSessionRepository` tested in integration tests (create, get, consume, expire, delete-expired)
+- [X] T091a [P] Verify shared `jwe.TokenService` is tested with encrypt/decrypt round-trips and expiry rejection in `internal/domain/jwe/token_service_test.go`
 
 **Security** (Principles I, III):
 - [X] T092 Verify SSRF protection enabled by default and cannot be fully disabled
 - [X] T093 [P] Verify no custom cryptography used (Go stdlib only)
 - [X] T094 [P] Verify structured audit logging for all security-critical operations (SSRF blocks, brand mismatch, security field changes)
-- [X] T094a Verify CIMD consent flows use server-side AuthorizationSession for all trust metadata (SR-013/SR-014); no CIMD query parameter relay in consent URL
+- [X] T094a Verify CIMD consent flows use JWE `session_token` for all trust metadata (SR-013/SR-014); no CIMD query parameter relay in consent URL; `exp` and `principal` validated on every submission
 
 **Architecture Patterns** (Principle VI):
 - [X] T095 Verify domain logic depends on ports only (no adapter imports in `domain/cimd/`)
