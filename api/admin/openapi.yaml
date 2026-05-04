@@ -1256,7 +1256,7 @@ components:
             type: string
             format: uri
           example:
-            - https://agent.example.com/client
+            - https://agent.example.com/oauth/client-metadata.json
         auth_method:
           type: string
           nullable: true
