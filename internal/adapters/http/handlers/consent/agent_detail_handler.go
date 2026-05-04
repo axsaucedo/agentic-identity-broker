@@ -420,7 +420,7 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agent *storage
 		if clientID != "" && strings.HasPrefix(clientID, "https://") {
 			return nil, errors.New("session_id is required for CIMD agent authorization")
 		}
-		return buildCIMDMetadata(r, agent), nil
+		return nil, nil
 	}
 
 	if h.authSessionRepo == nil {
