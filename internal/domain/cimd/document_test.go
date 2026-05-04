@@ -161,24 +161,22 @@ func TestParseDocument(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("accepts same-origin logo_uri", func(t *testing.T) {
+	t.Run("accepts logo_uri on same host", func(t *testing.T) {
 		data := validDoc(map[string]any{"logo_uri": "https://agent.example.com/logo.png"})
 		_, err := ParseDocument(data, fetchURL, nil)
 		require.NoError(t, err)
 	})
 
-	t.Run("rejects logo_uri on different host", func(t *testing.T) {
+	t.Run("accepts logo_uri on different host", func(t *testing.T) {
 		data := validDoc(map[string]any{"logo_uri": "https://cdn.example.com/logo.png"})
 		_, err := ParseDocument(data, fetchURL, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "logo_uri")
+		require.NoError(t, err)
 	})
 
-	t.Run("rejects logo_uri on same host but different port", func(t *testing.T) {
+	t.Run("accepts logo_uri on same host with different port", func(t *testing.T) {
 		data := validDoc(map[string]any{"logo_uri": "https://agent.example.com:8443/logo.png"})
 		_, err := ParseDocument(data, fetchURL, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "same-origin")
+		require.NoError(t, err)
 	})
 
 	t.Run("rejects http logo_uri", func(t *testing.T) {
@@ -186,28 +184,5 @@ func TestParseDocument(t *testing.T) {
 		_, err := ParseDocument(data, fetchURL, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "HTTPS")
-	})
-
-	t.Run("accepts same-origin logo_uri when client_id has explicit port", func(t *testing.T) {
-		fetchURLPort := "https://agent.example.com:9000/client"
-		data, _ := json.Marshal(map[string]any{
-			"client_id":     fetchURLPort,
-			"redirect_uris": []string{"https://agent.example.com:9000/callback"},
-			"logo_uri":      "https://agent.example.com:9000/logo.png",
-		})
-		_, err := ParseDocument(data, fetchURLPort, nil)
-		require.NoError(t, err)
-	})
-
-	t.Run("rejects logo_uri with different port than client_id explicit port", func(t *testing.T) {
-		fetchURLPort := "https://agent.example.com:9000/client"
-		data, _ := json.Marshal(map[string]any{
-			"client_id":     fetchURLPort,
-			"redirect_uris": []string{"https://agent.example.com:9000/callback"},
-			"logo_uri":      "https://agent.example.com:8443/logo.png",
-		})
-		_, err := ParseDocument(data, fetchURLPort, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "same-origin")
 	})
 }

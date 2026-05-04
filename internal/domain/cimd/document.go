@@ -96,10 +96,8 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 		}
 	}
 
-	// SR-009: logo_uri must be HTTPS and on the same host as client_id to prevent
-	// cross-origin image loads that leak user IP/UA from a security-sensitive screen.
 	if doc.LogoURI != "" {
-		if err := validateLogoURI(clientURL, doc.LogoURI); err != nil {
+		if err := validateLogoURI(doc.LogoURI); err != nil {
 			return nil, fmt.Errorf("logo_uri: %w", err)
 		}
 	}
@@ -107,21 +105,10 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 	return &doc, nil
 }
 
-// validateLogoURI enforces that logo_uri is HTTPS and same-origin (scheme + host + port)
-// as the client_id URL, preventing cross-origin image fetches from the consent page.
-func validateLogoURI(clientURL *url.URL, logoURI string) error {
+func validateLogoURI(logoURI string) error {
 	u, err := url.Parse(logoURI)
 	if err != nil || !u.IsAbs() || u.Scheme != "https" {
 		return fmt.Errorf("logo_uri %q must be an absolute HTTPS URL", logoURI)
-	}
-	if u.Scheme != clientURL.Scheme {
-		return fmt.Errorf("logo_uri %q is not same-origin with client_id", logoURI)
-	}
-	if u.Hostname() != clientURL.Hostname() {
-		return fmt.Errorf("logo_uri %q is not same-origin with client_id", logoURI)
-	}
-	if effectivePort(u) != effectivePort(clientURL) {
-		return fmt.Errorf("logo_uri %q is not same-origin with client_id", logoURI)
 	}
 	return nil
 }
