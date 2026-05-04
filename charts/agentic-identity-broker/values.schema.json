@@ -717,6 +717,58 @@
                   "agentIdClaimName": { "minLength": 1 }
                 }
               }
+            },
+            "cimd": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Client ID Metadata Document (CIMD) configuration. Only valid when mode is issue_token.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable URL-based client_id support via CIMD"
+                },
+                "fetchTimeout": {
+                  "type": "string",
+                  "description": "HTTP timeout for CIMD document fetches (e.g. 1s)"
+                },
+                "maxResponseBytes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Maximum response body size in bytes"
+                },
+                "cache": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Cache TTL bounds for CIMD responses",
+                  "properties": {
+                    "maxTtl": {
+                      "type": "string",
+                      "description": "Maximum TTL for cached documents (e.g. 1h)"
+                    },
+                    "minTtl": {
+                      "type": "string",
+                      "description": "Minimum TTL for cached documents (e.g. 60s)"
+                    }
+                  }
+                },
+                "ssrf": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "SSRF protection settings",
+                  "properties": {
+                    "extraBlockedCidrs": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Extra CIDR ranges blocked beyond RFC 6890 defaults"
+                    }
+                  }
+                },
+                "clientNameBlocklist": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Keyword blocklist for CIMD client_name values (case-insensitive)"
+                }
+              }
             }
           }
         },
