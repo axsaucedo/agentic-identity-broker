@@ -314,34 +314,6 @@ type AuthorizationCodeRepository interface {
 	DeleteExpired(ctx context.Context) (int, error)
 }
 
-// AuthorizationSessionRepository stores short-lived server-side authorization sessions
-// for CIMD-based consent flows. Sessions bind the consent page to the server's trusted
-// copy of the authorization context, preventing URL-parameter tampering (FR-028/FR-029).
-//
-// Sessions are single-use with a 10-minute TTL. Every CIMD authorization flow creates
-// one session; it is consumed exactly once during consent submission.
-type AuthorizationSessionMutation func(context.Context) error
-
-type AuthorizationSessionRepository interface {
-	// Create stores a new authorization session.
-	// Returns StorageError with Kind=Conflict if session_id already exists.
-	Create(ctx context.Context, session *storage.AuthorizationSession) error
-
-	// GetBySessionID retrieves a session by its opaque session ID.
-	// Returns StorageError with Kind=NotFound if session not found.
-	GetBySessionID(ctx context.Context, sessionID string) (*storage.AuthorizationSession, error)
-
-	// ConsumeIf atomically reserves the session, runs fn (if non-nil), and marks the session
-	// consumed only if fn returns nil. If fn returns an error the session remains available
-	// and the callback error is returned unchanged. Pass nil for fn to consume unconditionally.
-	// Returns StorageError with Kind=NotFound if session not found or expired, Kind=Conflict if
-	// already consumed.
-	ConsumeIf(ctx context.Context, sessionID string, fn AuthorizationSessionMutation) error
-
-	// DeleteExpired removes all expired sessions. Returns the count of deleted sessions.
-	DeleteExpired(ctx context.Context) (int, error)
-}
-
 // PKCESessionRepository stores the PKCE challenge for pending authorization codes.
 // The signature (fosite code signature) is the primary key; sessions are one-shot
 // and deleted immediately after the token endpoint consumes them.

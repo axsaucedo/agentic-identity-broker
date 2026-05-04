@@ -1315,24 +1315,24 @@ func (cp *ConsentPage) WaitForServiceToAppear(ctx context.Context, serviceDispla
 	return nil
 }
 
-// NavigateToAgentWithSessionID navigates to the consent page for a CIMD authorization
-// flow using a server-side session ID. This is the CIMD consent path where all trust
-// context is server-side and only the session_id is passed in the URL.
-func (cp *ConsentPage) NavigateToAgentWithSessionID(ctx context.Context, agentID, sessionID string) error {
+// NavigateToAgentWithSessionToken navigates to the consent page for a CIMD authorization
+// flow using a stateless JWE session token. The token encodes the full authorization
+// context and is passed as a session_token query parameter.
+func (cp *ConsentPage) NavigateToAgentWithSessionToken(ctx context.Context, agentID, sessionToken string) error {
 	if agentID == "" {
 		return fmt.Errorf("agentID cannot be empty")
 	}
-	if sessionID == "" {
-		return fmt.Errorf("sessionID cannot be empty")
+	if sessionToken == "" {
+		return fmt.Errorf("sessionToken cannot be empty")
 	}
 
-	path := fmt.Sprintf("%s?session_id=%s", fmt.Sprintf(agentDetailPath, agentID), url.QueryEscape(sessionID))
+	path := fmt.Sprintf("%s?session_token=%s", fmt.Sprintf(agentDetailPath, agentID), url.QueryEscape(sessionToken))
 	if err := cp.Navigate(ctx, path); err != nil {
-		return fmt.Errorf("failed to navigate to agent consent page with session_id: %w", err)
+		return fmt.Errorf("failed to navigate to agent consent page with session_token: %w", err)
 	}
 
 	if err := cp.waitForAgentNameHeading(ctx); err != nil {
-		return fmt.Errorf("agent name heading not found after navigation with session_id: %w", err)
+		return fmt.Errorf("agent name heading not found after navigation with session_token: %w", err)
 	}
 
 	return nil

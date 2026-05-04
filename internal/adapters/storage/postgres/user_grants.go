@@ -94,7 +94,7 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 	`
 
 	var returnedID id.GrantID
-	err = r.adapter.queryExecutor(ctxTimeout).QueryRowContext(
+	err = r.adapter.db.QueryRowContext(
 		ctxTimeout,
 		query,
 		grant.ID,
@@ -220,7 +220,7 @@ func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 		WHERE id = $1
 	`
 
-	result, err := r.adapter.queryExecutor(ctxTimeout).ExecContext(
+	result, err := r.adapter.db.ExecContext(
 		ctxTimeout,
 		query,
 		grant.ID,
@@ -273,7 +273,7 @@ func (r *UserGrantRepository) Delete(ctx context.Context, grantID id.GrantID) er
 
 	query := `DELETE FROM user_grants WHERE id = $1`
 
-	_, err := r.adapter.queryExecutor(ctxTimeout).ExecContext(ctxTimeout, query, grantID)
+	_, err := r.adapter.db.ExecContext(ctxTimeout, query, grantID)
 	if err != nil {
 		return r.handlePostgresError("DeleteUserGrant", err)
 	}
@@ -306,7 +306,7 @@ func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.adapter.queryExecutor(ctxTimeout).QueryContext(ctxTimeout, query, principal, agentID)
+	rows, err := r.adapter.db.QueryContext(ctxTimeout, query, principal, agentID)
 	if err != nil {
 		return nil, r.handlePostgresError("ListUserGrants", err)
 	}
@@ -387,7 +387,7 @@ func (r *UserGrantRepository) FindByPrincipalAndAgent(ctx context.Context, princ
 	var grant storage.UserGrant
 	var tokensJSON []byte
 
-	err := r.adapter.queryExecutor(ctxTimeout).QueryRowContext(ctxTimeout, query, principal, agentID).Scan(
+	err := r.adapter.db.QueryRowContext(ctxTimeout, query, principal, agentID).Scan(
 		&grant.ID,
 		&grant.Principal,
 		&grant.AgentID,
@@ -441,7 +441,7 @@ func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID id.Agen
 
 	query := `DELETE FROM user_grants WHERE agent_id = $1`
 
-	_, err := r.adapter.queryExecutor(ctxTimeout).ExecContext(ctxTimeout, query, agentID)
+	_, err := r.adapter.db.ExecContext(ctxTimeout, query, agentID)
 	if err != nil {
 		return r.handlePostgresError("DeleteGrantsByAgent", err)
 	}
@@ -482,7 +482,7 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 		ORDER BY updated_at DESC
 	`
 
-	rows, err := r.adapter.queryExecutor(ctxTimeout).QueryContext(ctxTimeout, query, principal)
+	rows, err := r.adapter.db.QueryContext(ctxTimeout, query, principal)
 	if err != nil {
 		return nil, r.handlePostgresError("ListByPrincipal", err)
 	}

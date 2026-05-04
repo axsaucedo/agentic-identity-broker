@@ -30,11 +30,10 @@ type Adapter struct {
 	providers             ports.ThirdpartyOAuth2ProviderRepository
 	userGrants            ports.UserGrantRepository
 	userSessions          ports.UserSessionRepository
-	brokerCredentials     ports.ClientCredentialRepository
-	signingKeys           ports.SigningKeyRepository
-	authorizationCodes    ports.AuthorizationCodeRepository
-	pkceSessions          ports.PKCESessionRepository
-	authorizationSessions ports.AuthorizationSessionRepository
+	brokerCredentials  ports.ClientCredentialRepository
+	signingKeys        ports.SigningKeyRepository
+	authorizationCodes ports.AuthorizationCodeRepository
+	pkceSessions       ports.PKCESessionRepository
 }
 
 // NewAdapter creates a storage adapter based on configuration.
@@ -74,9 +73,8 @@ func newMemoryAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		userSessions:          memory.NewInMemoryUserSessionRepository(),
 		brokerCredentials:     memory.NewClientCredentialStore(),
 		signingKeys:           memory.NewSigningKeyStore(),
-		authorizationCodes:    memory.NewAuthorizationCodeStore(),
-		pkceSessions:          memory.NewPKCESessionStore(),
-		authorizationSessions: memory.NewAuthorizationSessionRepository(),
+		authorizationCodes: memory.NewAuthorizationCodeStore(),
+		pkceSessions:       memory.NewPKCESessionStore(),
 	}, nil
 }
 
@@ -99,9 +97,8 @@ func newPostgresAdapter(config *ports.StorageConfig) (*Adapter, error) {
 		userSessions:          postgres.NewUserSessionRepository(pgAdapter),
 		brokerCredentials:     postgres.NewClientCredentialRepo(pgAdapter),
 		signingKeys:           postgres.NewSigningKeyRepo(pgAdapter),
-		authorizationCodes:    postgres.NewAuthorizationCodeRepo(pgAdapter),
-		pkceSessions:          postgres.NewPKCESessionRepo(pgAdapter),
-		authorizationSessions: postgres.NewAuthorizationSessionRepo(pgAdapter),
+		authorizationCodes: postgres.NewAuthorizationCodeRepo(pgAdapter),
+		pkceSessions:       postgres.NewPKCESessionRepo(pgAdapter),
 	}, nil
 }
 
@@ -195,7 +192,3 @@ func (a *Adapter) PKCESessions() ports.PKCESessionRepository {
 	return a.pkceSessions
 }
 
-// AuthorizationSessions returns the AuthorizationSessionRepository interface implementation.
-func (a *Adapter) AuthorizationSessions() ports.AuthorizationSessionRepository {
-	return a.authorizationSessions
-}
