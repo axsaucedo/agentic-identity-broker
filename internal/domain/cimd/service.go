@@ -93,9 +93,6 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 	if result.CacheControl != "" {
 		headers.Set("Cache-Control", result.CacheControl)
 	}
-	if result.ETag != "" {
-		headers.Set("ETag", result.ETag)
-	}
 	if result.Expires != "" {
 		headers.Set("Expires", result.Expires)
 	}

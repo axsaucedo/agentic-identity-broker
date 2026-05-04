@@ -52,8 +52,24 @@ func TestFetcher_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.Body)
 	assert.Equal(t, "max-age=300", result.CacheControl)
-	assert.Equal(t, `"v1"`, result.ETag)
 	assert.Equal(t, 1, dialCount)
+}
+
+func TestFetcher_NonJSONContentType(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html>not json</html>"))
+	}))
+	defer srv.Close()
+
+	bl, err := domaincimd.NewSSRFBlocklist(nil)
+	require.NoError(t, err)
+
+	fetcher := NewFetcherWithClient(srv.Client(), bl, 5120)
+	_, err = fetcher.Fetch(context.Background(), srv.URL+"/client")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-JSON Content-Type")
 }
 
 func TestFetcher_Non200(t *testing.T) {

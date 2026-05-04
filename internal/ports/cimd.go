@@ -56,7 +56,6 @@ type CIMDFetcher interface {
 type CIMDFetchResult struct {
 	Body         []byte
 	CacheControl string
-	ETag         string
 	Expires      string
 }
 

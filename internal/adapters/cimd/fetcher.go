@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"syscall"
 	"time"
 
@@ -103,6 +104,10 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (*ports.CIMDFetchRes
 		return nil, fmt.Errorf("CIMD endpoint returned status %d", resp.StatusCode)
 	}
 
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		return nil, fmt.Errorf("CIMD endpoint returned non-JSON Content-Type: %q", ct)
+	}
+
 	body, err := io.ReadAll(io.LimitReader(resp.Body, f.maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading CIMD response body: %w", err)
@@ -114,7 +119,6 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (*ports.CIMDFetchRes
 	return &ports.CIMDFetchResult{
 		Body:         body,
 		CacheControl: resp.Header.Get("Cache-Control"),
-		ETag:         resp.Header.Get("ETag"),
 		Expires:      resp.Header.Get("Expires"),
 	}, nil
 }
