@@ -98,7 +98,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create consent service
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
 
 	// Create handler
 	handler := NewGrantsHandler(consentService, nil)
@@ -326,7 +326,7 @@ func TestGrantsIntegration_SessionReplayDoesNotMutateStoredGrant(t *testing.T) {
 		},
 	}
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
 	handler := NewGrantsHandler(consentService, nil).WithAuthorizationSessionRepository(authSessionRepo)
 
 	firstValidUntil := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
@@ -427,7 +427,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 	err = providerService.Create(ctx, optionalService)
 	require.NoError(t, err)
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
 	handler := NewGrantsHandler(consentService, nil)
 
 	// Approval with no selected services creates a grant with empty delegations (201).
@@ -523,7 +523,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	err = providerService.Create(ctx, service)
 	require.NoError(t, err)
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
 	handler := NewGrantsHandler(consentService, nil)
 
 	tests := []struct {

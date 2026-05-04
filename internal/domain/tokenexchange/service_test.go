@@ -45,6 +45,7 @@ func newMockConsentService() *consent.Service {
 				UpdatedAt:  time.Now(),
 			},
 		},
+		nil,
 		slog.Default(),
 	)
 }
@@ -834,6 +835,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 		&MockAgentRepository{},
 		newTestProviderService(&MockServiceRepository{}),
 		&MockGrantRepository{err: ports.ErrNotFound},
+		nil,
 		slog.Default(),
 	)
 

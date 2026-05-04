@@ -268,6 +268,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.Agents(),
 			app.ProviderService,
 			b.storage.UserGrants(),
+			b.storage.UserSessions(),
 			b.logger,
 		)
 	}
@@ -546,11 +547,7 @@ func (b *Builder) Build() (*App, error) {
 		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
-	// Create agent detail handler with repository dependencies for service requirements (Phase 6)
 	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger).
-		WithAgentRepository(b.storage.Agents()).
-		WithSessionRepository(b.storage.UserSessions()).
-		WithProviderService(app.ProviderService).
 		WithAuthorizationSessionRepository(b.storage.AuthorizationSessions())
 
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.

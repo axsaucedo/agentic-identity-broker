@@ -12,6 +12,7 @@ import (
 // This allows for easier testing with mock implementations.
 type ConsentService interface {
 	GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error)
+	GetAgentWithServiceRequirements(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error)
 	ValidateGrantRequest(ctx context.Context, req *consent.GrantRequest) error
 	GrantConsent(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
 	RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error

@@ -12,16 +12,11 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
-
-type providerServiceGetter interface {
-	Get(ctx context.Context, serviceID id.ServiceID) (*model.ThirdpartyOAuth2ProviderEntity, error)
-}
 
 // ServiceRequirementForUser represents a service requirement enriched with user session status.
 // This is used in the consent screen to display which services the agent requires and user's connection status.
@@ -43,12 +38,9 @@ type ScopeWithDescription struct {
 // Implements User Story 2: Review Agent-Specific Grants (GET /api/consent/agent/:agentId).
 // Phase 6 extension: Includes service requirements with user connection status.
 type AgentDetailHandler struct {
-	consentService    ConsentService
-	agentRepository   ports.AgentRepository
-	sessionRepository ports.UserSessionRepository
-	authSessionRepo   ports.AuthorizationSessionRepository
-	providerService   providerServiceGetter
-	logger            *slog.Logger
+	consentService  ConsentService
+	authSessionRepo ports.AuthorizationSessionRepository
+	logger          *slog.Logger
 }
 
 // NewAgentDetailHandler creates a new agent detail handler.
@@ -60,27 +52,6 @@ func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger) *
 		consentService: consentService,
 		logger:         logger,
 	}
-}
-
-// WithAgentRepository sets the agent repository for this handler.
-// Used to lookup the full agent entity including service requirements.
-func (h *AgentDetailHandler) WithAgentRepository(repo ports.AgentRepository) *AgentDetailHandler {
-	h.agentRepository = repo
-	return h
-}
-
-// WithSessionRepository sets the session repository for this handler.
-// Used to lookup user session status with third-party services.
-func (h *AgentDetailHandler) WithSessionRepository(repo ports.UserSessionRepository) *AgentDetailHandler {
-	h.sessionRepository = repo
-	return h
-}
-
-// WithProviderService sets the provider service for this handler.
-// Used to lookup service metadata including display names and scope descriptions.
-func (h *AgentDetailHandler) WithProviderService(svc providerServiceGetter) *AgentDetailHandler {
-	h.providerService = svc
-	return h
 }
 
 // WithAuthorizationSessionRepository sets the authorization session repository.
@@ -132,7 +103,6 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Extract principal from context (middleware ensures this is present)
 	userID, ok := getPrincipalFromContext(ctx)
 	if !ok {
 		h.logger.Warn("principal not found in context")
@@ -140,7 +110,6 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Call consent service to get agent detail (used for basic agent info)
 	parsedAgentID, parseErr := id.ParseAgentID(agentID)
 	if parseErr != nil {
 		h.logger.Warn("invalid agent ID format", "agent_id", agentID, "error", parseErr)
@@ -148,9 +117,9 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	agent, err := h.agentRepository.Get(ctx, parsedAgentID)
+	agent, serviceRequirements, err := h.consentService.GetAgentWithServiceRequirements(ctx, id.Principal(userID), parsedAgentID)
 	if err != nil {
-		if errors.Is(err, ports.ErrNotFound) {
+		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found", "agent_id", agentID)
 			h.writeError(w, http.StatusNotFound, "not found", "agent not found")
 			return
@@ -169,19 +138,8 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		AgentInterfaceURL:    agent.AgentInterfaceURL,
 	}
 
-	// Build service requirements enriched with user session status
-	serviceRequirements, err := h.buildServiceRequirementsForUser(ctx, id.Principal(userID), agent)
-	if err != nil {
-		h.logger.Error("failed to build service requirements",
-			"agent_id", agentID,
-			"user_id", userID,
-			"error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
-	}
-
-	// Sort services: mandatory first, then optional
-	sortServiceRequirements(serviceRequirements)
+	services := toServiceRequirementForUser(serviceRequirements)
+	sortServiceRequirements(services)
 
 	cimdMeta, err := h.resolveCIMDMetadata(r, parsedAgentID)
 	if err != nil {
@@ -199,7 +157,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	response := GetAgentDetailResponse{
 		Data: AgentDetailData{
 			Agent:        *agentDetail,
-			Services:     serviceRequirements,
+			Services:     services,
 			CIMDMetadata: cimdMeta,
 		},
 	}
@@ -207,9 +165,31 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	h.logger.Info("agent detail retrieved",
 		"agent_id", agentID,
 		"user_id", userID,
-		"services_count", len(serviceRequirements))
+		"services_count", len(services))
 
 	h.writeJSON(w, http.StatusOK, response)
+}
+
+func toServiceRequirementForUser(reqs []consent.ServiceRequirementStatus) []ServiceRequirementForUser {
+	result := make([]ServiceRequirementForUser, len(reqs))
+	for i, req := range reqs {
+		scopes := make([]ScopeWithDescription, len(req.RequiredScopes))
+		for j, s := range req.RequiredScopes {
+			scopes[j] = ScopeWithDescription{Name: s.Name, Description: s.Description}
+		}
+		connStatus := "not_connected"
+		if req.IsConnected {
+			connStatus = "connected"
+		}
+		result[i] = ServiceRequirementForUser{
+			ServiceID:        req.ServiceID.String(),
+			ServiceName:      req.DisplayName,
+			RequirementType:  string(req.RequirementType),
+			RequiredScopes:   scopes,
+			ConnectionStatus: connStatus,
+		}
+	}
+	return result
 }
 
 // writeJSON writes a JSON response.
@@ -228,94 +208,6 @@ func (h *AgentDetailHandler) writeError(w http.ResponseWriter, statusCode int, e
 	h.writeJSON(w, statusCode, resp)
 }
 
-func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context, userID id.Principal, agent *storage.Agent) ([]ServiceRequirementForUser, error) {
-	if len(agent.ServiceRequirements) == 0 {
-		return []ServiceRequirementForUser{}, nil
-	}
-
-	serviceMap, err := h.batchLoadServices(ctx, agent)
-	if err != nil {
-		return nil, err
-	}
-
-	var results []ServiceRequirementForUser
-
-	for _, req := range agent.ServiceRequirements {
-		svc, ok := serviceMap[req.ServiceID.String()]
-		if !ok {
-			continue
-		}
-
-		// Check user's session status with this service
-		session, err := h.sessionRepository.FindByPrincipalAndService(ctx, userID, req.ServiceID)
-		if err != nil {
-			return nil, fmt.Errorf("checking session status for service %s: %w", req.ServiceID, err)
-		}
-
-		// Determine connection status
-		connStatus := "not_connected"
-		if session != nil && !session.IsExpired() {
-			connStatus = "connected"
-		}
-
-		// Build scope list with descriptions
-		var scopes []ScopeWithDescription
-		for _, scopeName := range req.RequiredScopes {
-			// Find scope description from service configuration
-			scopeDesc := ""
-			for _, svcScope := range svc.Scopes {
-				if svcScope.ScopeValue == scopeName {
-					scopeDesc = svcScope.Description
-					break
-				}
-			}
-
-			scope := ScopeWithDescription{
-				Name:        scopeName,
-				Description: scopeDesc,
-			}
-			scopes = append(scopes, scope)
-		}
-
-		result := ServiceRequirementForUser{
-			ServiceID:        req.ServiceID.String(),
-			ServiceName:      svc.DisplayName,
-			RequirementType:  string(req.RequirementType),
-			RequiredScopes:   scopes,
-			ConnectionStatus: connStatus,
-		}
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-// batchLoadServices loads all unique services referenced by an agent's service requirements.
-// Returns a map of service_id -> service for efficient lookup, avoiding N KMS decryptions.
-func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *storage.Agent) (map[string]*model.ThirdpartyOAuth2ProviderEntity, error) {
-	serviceIDs := make(map[id.ServiceID]bool)
-	for _, sr := range agent.ServiceRequirements {
-		serviceIDs[sr.ServiceID] = true
-	}
-
-	serviceMap := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
-	for serviceID := range serviceIDs {
-		svc, err := h.providerService.Get(ctx, serviceID)
-		if err != nil {
-			if !errors.Is(err, ports.ErrNotFound) {
-				return nil, fmt.Errorf("loading service %s: %w", serviceID, err)
-			}
-			h.logger.Warn("Service not found during requirement building",
-				"service_id", serviceID,
-				"error", err)
-			continue
-		}
-		serviceMap[serviceID.String()] = svc
-	}
-
-	return serviceMap, nil
-}
-
 // getPrincipalFromContext extracts the principal from the request context.
 func getPrincipalFromContext(ctx context.Context) (string, bool) {
 	return principal.FromContext(ctx)
@@ -323,7 +215,6 @@ func getPrincipalFromContext(ctx context.Context) (string, bool) {
 
 // sortServiceRequirements sorts service requirements with mandatory services first, then optional.
 func sortServiceRequirements(services []ServiceRequirementForUser) {
-	// Sort so mandatory services appear first
 	for i := range len(services) {
 		for j := i + 1; j < len(services); j++ {
 			if services[i].RequirementType == "optional" && services[j].RequirementType == "mandatory" {

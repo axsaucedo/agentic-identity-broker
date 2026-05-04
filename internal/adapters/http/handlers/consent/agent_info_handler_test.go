@@ -82,6 +82,11 @@ func (m *mockConsentService) RevokeConsentForPrincipal(ctx context.Context, prin
 }
 
 //nolint:unused // Used in tests
+func (m *mockConsentService) GetAgentWithServiceRequirements(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+//nolint:unused // Used in tests
 func (m *mockConsentService) GetAgentDelegations(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error) {
 	if m.getAgentDelegationsFunc != nil {
 		return m.getAgentDelegationsFunc(ctx, principal)
@@ -362,7 +367,7 @@ func (m *mockConsentServiceWrapper) asService() *consent.Service {
 	mockServiceRepo := &mockServiceRepo{services: services, err: m.err}
 	mockGrantRepo := &mockGrantRepo{}
 
-	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, slog.Default())
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, nil, slog.Default())
 }
 
 // Mock repository implementations

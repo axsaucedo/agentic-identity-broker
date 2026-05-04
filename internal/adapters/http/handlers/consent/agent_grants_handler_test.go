@@ -56,6 +56,10 @@ func (m *mockAgentGrantsService) RevokeConsentForPrincipal(ctx context.Context, 
 	return nil
 }
 
+func (m *mockAgentGrantsService) GetAgentWithServiceRequirements(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
 func TestGetAgentGrants_Success(t *testing.T) {
 	t.Parallel()
 	// Setup

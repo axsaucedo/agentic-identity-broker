@@ -41,6 +41,7 @@ type Service struct {
 	agentRepo       ports.AgentRepository
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService
 	grantRepo       ports.UserGrantRepository
+	sessionRepo     ports.UserSessionRepository
 	logger          *slog.Logger
 }
 
@@ -49,14 +50,106 @@ func NewService(
 	agentRepo ports.AgentRepository,
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	grantRepo ports.UserGrantRepository,
+	sessionRepo ports.UserSessionRepository,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		agentRepo:       agentRepo,
 		providerService: providerService,
 		grantRepo:       grantRepo,
+		sessionRepo:     sessionRepo,
 		logger:          logger,
 	}
+}
+
+// ServiceScopeInfo is an OAuth2 scope with its human-readable description.
+type ServiceScopeInfo struct {
+	Name        string
+	Description string
+}
+
+// ServiceRequirementStatus is an agent service requirement enriched with the user's session status.
+type ServiceRequirementStatus struct {
+	ServiceID       id.ServiceID
+	DisplayName     string
+	RequirementType storage.RequirementType
+	RequiredScopes  []ServiceScopeInfo
+	IsConnected     bool
+}
+
+// GetAgentWithServiceRequirements retrieves the agent and its service requirements enriched
+// with the authenticated user's session status for each required service.
+// Returns ErrAgentNotFound if the agent does not exist.
+func (s *Service) GetAgentWithServiceRequirements(
+	ctx context.Context,
+	userPrincipal id.Principal,
+	agentID id.AgentID,
+) (*storage.Agent, []ServiceRequirementStatus, error) {
+	agent, err := s.agentRepo.Get(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil, nil, ErrAgentNotFound
+		}
+		return nil, nil, fmt.Errorf("failed to get agent: %w", err)
+	}
+
+	if len(agent.ServiceRequirements) == 0 {
+		return agent, []ServiceRequirementStatus{}, nil
+	}
+
+	// Deduplicate service IDs before loading to avoid redundant decryptions.
+	serviceIDs := make(map[id.ServiceID]bool, len(agent.ServiceRequirements))
+	for _, req := range agent.ServiceRequirements {
+		serviceIDs[req.ServiceID] = true
+	}
+
+	serviceMap := make(map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity, len(serviceIDs))
+	for serviceID := range serviceIDs {
+		svc, err := s.providerService.Get(ctx, serviceID)
+		if err != nil {
+			if errors.Is(err, ports.ErrNotFound) {
+				s.logger.Warn("service not found for agent requirement",
+					"service_id", serviceID,
+					"agent_id", agentID)
+				continue
+			}
+			return nil, nil, fmt.Errorf("loading service %s: %w", serviceID, err)
+		}
+		serviceMap[serviceID] = svc
+	}
+
+	requirements := make([]ServiceRequirementStatus, 0, len(agent.ServiceRequirements))
+	for _, req := range agent.ServiceRequirements {
+		svc, ok := serviceMap[req.ServiceID]
+		if !ok {
+			continue
+		}
+
+		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, userPrincipal, req.ServiceID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("checking session status for service %s: %w", req.ServiceID, err)
+		}
+
+		scopeDesc := make(map[string]string, len(svc.Scopes))
+		for _, scope := range svc.Scopes {
+			scopeDesc[scope.ScopeValue] = scope.Description
+		}
+
+		scopes := make([]ServiceScopeInfo, len(req.RequiredScopes))
+		for i, name := range req.RequiredScopes {
+			scopes[i] = ServiceScopeInfo{Name: name, Description: scopeDesc[name]}
+		}
+
+		requirements = append(requirements, ServiceRequirementStatus{
+			ServiceID:       req.ServiceID,
+			DisplayName:     svc.DisplayName,
+			RequirementType: req.RequirementType,
+			RequiredScopes:  scopes,
+			IsConnected:     session != nil && !session.IsExpired(),
+		})
+	}
+
+	return agent, requirements, nil
 }
 
 // AgentConsentInfo contains all information needed for a user to make a consent decision.
