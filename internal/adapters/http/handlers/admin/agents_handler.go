@@ -129,6 +129,12 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err := storage.ValidateClientURIsForWrite(req.ClientURIs); err != nil {
+		h.logger.Warn("client_uris validation failed", "error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
 	// Create agent entity
 	now := time.Now().UTC()
 	agent := &storage.Agent{

@@ -782,10 +782,6 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
-		mockRepo.On("Create", mock.Anything, mock.Anything).Return(
-			storage.NewStorageError("CreateAgent", storage.ErrorKindValidation, nil, "client_uris[0] is not a valid HTTPS URL"),
-		)
-
 		reqBody := AgentRequest{
 			ClientID:    "cimd-client",
 			DisplayName: "CIMD Agent",
@@ -804,7 +800,7 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		var resp ErrorResponse
 		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 		assert.Equal(t, "validation failed", resp.Error)
-		mockRepo.AssertExpectations(t)
+		mockRepo.AssertNotCalled(t, "Create")
 	})
 
 	t.Run("Create: duplicate client_uri returns 409", func(t *testing.T) {
