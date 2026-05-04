@@ -96,7 +96,7 @@ func setupTestContainer(t *testing.T) (testcontainers.Container, string, func())
 // any issues with passing multi-statement SQL as a command-line argument.
 func applyMigrations(t *testing.T, container testcontainers.Container) {
 	t.Helper()
-	applyMigrationsUpTo(t, container, 16)
+	applyMigrationsUpTo(t, container, 15)
 }
 
 // applyMigrationsUpTo applies migrations sequentially from 001 up to and including
