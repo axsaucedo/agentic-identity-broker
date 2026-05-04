@@ -512,7 +512,6 @@ func TestGetAgentDetail_EmptyServicesList(t *testing.T) {
 	}
 }
 
-
 // mockSessionRepository is a mock implementation of UserSessionRepository for testing.
 type mockSessionRepository struct {
 	findByPrincipalAndServiceFunc func(ctx context.Context, p id.Principal, serviceID id.ServiceID) (*storage.UserSession, error)

@@ -59,10 +59,9 @@ type OAuth2Config struct {
 
 // Service implements the OAuth2Service port
 type Service struct {
-	agentRepo       ports.AgentRepository
 	grantRepo       ports.UserGrantRepository
 	sessionRepo     ports.UserSessionRepository
-	clientResolver  ports.ClientResolver // nil = default UUID-based resolution
+	clientResolver  ports.ClientResolver
 	authSessionRepo ports.AuthorizationSessionRepository
 	config          *OAuth2Config
 	logger          *slog.Logger
@@ -71,9 +70,9 @@ type Service struct {
 // NewService creates a new OAuth2Service implementation
 func NewService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, config *OAuth2Config) ports.OAuth2Service {
 	return &Service{
-		agentRepo: agentRepo,
-		grantRepo: grantRepo,
-		config:    config,
+		grantRepo:      grantRepo,
+		clientResolver: NewOpaqueClientResolver(agentRepo),
+		config:         config,
 	}
 }
 
@@ -87,19 +86,18 @@ func NewServiceWithSessions(
 	logger *slog.Logger,
 ) ports.OAuth2Service {
 	return &Service{
-		agentRepo:   agentRepo,
-		grantRepo:   grantRepo,
-		sessionRepo: sessionRepo,
-		config:      config,
-		logger:      logger,
+		grantRepo:      grantRepo,
+		sessionRepo:    sessionRepo,
+		clientResolver: NewOpaqueClientResolver(agentRepo),
+		config:         config,
+		logger:         logger,
 	}
 }
 
-// NewServiceWithClientResolver creates a new OAuth2Service with a custom ClientResolver strategy.
-// Used when CIMD support is enabled (cimd.enabled: true).
+// NewServiceWithClientResolver creates a new OAuth2Service with an explicit ClientResolver strategy.
+// Used when CIMD support is enabled (cimd.enabled: true) or when a custom resolver is required.
 // Pass a non-nil authSessionRepo to enable server-side session binding for CIMD consent flows (FR-028).
 func NewServiceWithClientResolver(
-	agentRepo ports.AgentRepository,
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
 	clientResolver ports.ClientResolver,
@@ -108,7 +106,6 @@ func NewServiceWithClientResolver(
 	logger *slog.Logger,
 ) ports.OAuth2Service {
 	return &Service{
-		agentRepo:       agentRepo,
 		grantRepo:       grantRepo,
 		sessionRepo:     sessionRepo,
 		clientResolver:  clientResolver,
@@ -124,54 +121,27 @@ func NewServiceWithClientResolver(
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
 func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
-	// Resolve the client — delegate to the injected strategy if available.
+	// Resolve the client via the injected strategy (OpaqueClientResolver or CIMDClientResolver).
 	var agent *storage.Agent
 	var cimdMeta *ports.CIMDMetadataDTO
 
-	if s.clientResolver != nil {
-		resolution, resolveErr := s.clientResolver.ResolveClient(ctx, req.ClientID)
-		if resolveErr != nil {
-			code := "invalid_client"
-			desc := "Client not registered"
-			var clientErr *ports.ClientIDError
-			if errors.As(resolveErr, &clientErr) {
-				code = clientErr.Code
-				desc = clientErr.Desc
-			}
-			return &ports.AuthorizationDecision{
-				Action:    "error",
-				ErrorCode: code,
-				ErrorDesc: desc,
-			}, nil
+	resolution, resolveErr := s.clientResolver.ResolveClient(ctx, req.ClientID)
+	if resolveErr != nil {
+		code := "invalid_client"
+		desc := "Client not registered"
+		var clientErr *ports.ClientIDError
+		if errors.As(resolveErr, &clientErr) {
+			code = clientErr.Code
+			desc = clientErr.Desc
 		}
-		agent = resolution.Agent
-		cimdMeta = resolution.CIMDMetadata
-	} else {
-		agentUUID, parseErr := id.ParseAgentID(string(req.ClientID))
-		if parseErr != nil {
-			return &ports.AuthorizationDecision{
-				Action:    "error",
-				ErrorCode: "invalid_client",
-				ErrorDesc: "Client not registered",
-			}, nil
-		}
-		var err error
-		agent, err = s.agentRepo.Get(ctx, agentUUID)
-		if err != nil {
-			if isNotFoundErr(err) {
-				return &ports.AuthorizationDecision{
-					Action:    "error",
-					ErrorCode: "invalid_client",
-					ErrorDesc: "Client not registered",
-				}, nil
-			}
-			return &ports.AuthorizationDecision{
-				Action:    "error",
-				ErrorCode: "server_error",
-				ErrorDesc: "Failed to validate client",
-			}, nil
-		}
+		return &ports.AuthorizationDecision{
+			Action:    "error",
+			ErrorCode: code,
+			ErrorDesc: desc,
+		}, nil
 	}
+	agent = resolution.Agent
+	cimdMeta = resolution.CIMDMetadata
 
 	// Step 1b: Validate redirect_uri.
 	// For CIMD clients, validate against the document's redirect_uris.
