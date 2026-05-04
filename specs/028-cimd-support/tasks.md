@@ -59,8 +59,8 @@
 
 ### Phase 2d: Database Design
 
-- [X] T012 Create migration `migrations/015_add_agent_cimd_fields.up.sql`: add `auth_method TEXT`, `jwks_uri TEXT` columns to agents table; create normalized `agent_client_uris` child table (`agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE`, `client_uri TEXT NOT NULL`, `UNIQUE(client_uri)`) as single source of truth for client URI storage and uniqueness enforcement
-- [X] T013 [P] Create migration `migrations/015_add_agent_cimd_fields.down.sql`: drop `agent_client_uris` table, drop `auth_method` and `jwks_uri` columns from agents
+- [X] T012 Create migration `migrations/015_add_cimd_support.up.sql`: create normalized `agent_client_uris` child table (`agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE`, `client_uri TEXT NOT NULL`, `UNIQUE(client_uri)`) and `authorization_sessions` table (`session_id TEXT PRIMARY KEY`, agent_id, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method, cimd_metadata JSONB, principal, created_at, expires_at, consumed_at) with index on `expires_at` — consolidated single migration for all CIMD schema
+- [X] T013 [P] Create migration `migrations/015_add_cimd_support.down.sql`: drop `authorization_sessions` table, drop `agent_client_uris` table
 
 **Checkpoint**: Database migrations created
 
@@ -150,11 +150,6 @@
 ## Phase 3.5: Authorization Session — Server-Side Consent Context Binding (SR-013/SR-014)
 
 **Purpose**: Secure CIMD consent flows by persisting authorization request context server-side, eliminating URL parameter tampering. CIMD-only; opaque client_id flows unchanged.
-
-### Database & Storage
-
-- [X] T106 Create migration `migrations/017_create_authorization_sessions.up.sql`: `authorization_sessions` table with `session_id TEXT PRIMARY KEY` (cryptographically random, opaque), `agent_id UUID NOT NULL REFERENCES agents(id)`, `client_id TEXT NOT NULL`, `redirect_uri TEXT NOT NULL`, `scope TEXT NOT NULL`, `state TEXT`, `code_challenge TEXT`, `code_challenge_method TEXT`, `cimd_metadata JSONB NOT NULL`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`, `consumed_at TIMESTAMPTZ`, `expires_at TIMESTAMPTZ NOT NULL`; add index on `expires_at` for cleanup queries
-- [X] T107 [P] Create migration `migrations/017_create_authorization_sessions.down.sql`: drop `authorization_sessions` table
 
 ### Domain & Ports
 
@@ -288,7 +283,7 @@
 - [X] T075 [P] Verify `examples/config/README.md` references CIMD configuration (Principle VII)
 - [X] T076 Verify API designs documented in `/api/admin/openapi.yaml` and `/api/enduser/openapi.yaml` (Principles IV, X)
 - [ ] T077 Verify user/stakeholder confirmed API designs (Principle X)
-- [X] T078 Verify database migrations 015 and 016 documented and tested (Principle IX)
+- [X] T078 Verify database migration 015 documented and tested (Principle IX)
 - [X] T079 Verify design system review completed for CIMD consent components (Principle XI)
 - [X] T080 Verify E2E acceptance tests in `tests/e2e/` cover all 24 spec scenarios (22 original + 2 session edge cases) (Principle XIII)
 - [X] T081 Verify E2E tests were verified to FAIL before implementation (red phase) (Principle XIII)
@@ -309,9 +304,8 @@
 - [X] T088 Verify Helm chart updated with CIMD config block
 
 **Database & Persistence** (Principle IX):
-- [X] T089 [P] Verify migrations 015 and 016 follow sequential numbering
+- [X] T089 [P] Verify migration 015 follows sequential numbering
 - [X] T090 [P] Write integration tests for migration 015 apply/rollback in `tests/integration/migrations/migrations_test.go`
-- [X] T090a [P] Write integration tests for migration 016 apply/rollback in `tests/integration/migrations/migrations_test.go`
 - [X] T091 [P] Verify postgres adapter tested with new fields and `GetByClientURI`
 - [X] T091a [P] Verify postgres `AuthorizationSessionRepository` tested in integration tests (create, get, consume, expire, delete-expired)
 
