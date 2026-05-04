@@ -30,7 +30,7 @@ export function CIMDAdvancedDetails({ clientName, clientIdUrl, redirectUri, requ
         </svg>
       </button>
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-neutral-200 pt-3">
+        <dl className="px-4 pb-4 space-y-3 border-t border-neutral-200 pt-3">
           <DetailRow label="Client Name" value={clientName} />
           <DetailRow label="Client ID" value={clientIdUrl} mono />
           <DetailRow label="Redirect URI" value={redirectUri} mono />
@@ -47,7 +47,7 @@ export function CIMDAdvancedDetails({ clientName, clientIdUrl, redirectUri, requ
               )}
             </dd>
           </div>
-        </div>
+        </dl>
       )}
     </div>
   );

@@ -20,6 +20,7 @@ describe('CIMDConsentSummary', () => {
     const img = screen.getByRole('img');
     expect(img).toHaveAttribute('src', 'https://example.com/logo.png');
     expect(img).toHaveAttribute('alt', 'My Agent logo');
+    expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
   });
 
   it('renders without logo when logoUri is not provided', () => {

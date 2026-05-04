@@ -27,6 +27,15 @@ func NewAuthorizationSessionRepository() *AuthorizationSessionRepository {
 }
 
 func (r *AuthorizationSessionRepository) Create(ctx context.Context, session *storage.AuthorizationSession) error {
+	if session == nil {
+		return storage.NewStorageError("AuthorizationSessionRepository.Create", storage.ErrorKindValidation, nil,
+			"session must not be nil")
+	}
+	if session.SessionID == "" {
+		return storage.NewStorageError("AuthorizationSessionRepository.Create", storage.ErrorKindValidation, nil,
+			"session ID must not be empty")
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
