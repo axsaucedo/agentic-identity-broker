@@ -3,13 +3,12 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 )
 
 // Agent represents an AI agent registered in the identity broker.
@@ -107,56 +106,12 @@ func validateClientURIFormats(uris []string) error {
 	return nil
 }
 
-// validateClientURIs validates CIMD client URIs for write-time paths (ValidateForCreate,
-// admin UpdateAgent). Mirrors cimd.ParseClientIDMetadataDocumentURL — a direct import
-// would create a circular dependency since cimd imports storage.
 func validateClientURIs(uris []string) error {
 	return validateClientURIFormats(uris)
 }
 
 func validateClientURI(uriStr string) error {
-	if strings.Contains(uriStr, "#") {
-		return errors.New("must not contain a fragment")
-	}
-	u, err := url.Parse(uriStr)
-	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
-	}
-	if u.Scheme != "https" {
-		return fmt.Errorf("must use https scheme, got %q", u.Scheme)
-	}
-	if u.User != nil {
-		return errors.New("must not contain credentials")
-	}
-	// Validate the authority explicitly: mirrors cimd.ParseClientIDMetadataDocumentURL.
-	// A circular dependency prevents a shared import, so both validators must stay in sync.
-	// Check for a port separator including empty-port trailing colons ("example.com:"),
-	// which url.Parse accepts but are structurally invalid per the validation rules.
-	rawPort := u.Port()
-	if rawPort != "" || (!strings.HasPrefix(u.Host, "[") && strings.ContainsRune(u.Host, ':')) {
-		h, p, splitErr := net.SplitHostPort(u.Host)
-		if splitErr != nil || h == "" || p == "" {
-			return fmt.Errorf("has malformed authority: %q", u.Host)
-		}
-		n, atoiErr := strconv.Atoi(p)
-		if atoiErr != nil || n < 1 || n > 65535 {
-			return fmt.Errorf("port is not a valid port number: %q", p)
-		}
-		if n != 443 {
-			return fmt.Errorf("port must be 443 or absent, got %q", p)
-		}
-	} else if u.Hostname() == "" {
-		return errors.New("must have a host")
-	}
-	if u.Path == "" || u.Path == "/" {
-		return errors.New("must have a non-empty path")
-	}
-	for _, seg := range strings.Split(u.Path, "/") {
-		if seg == "." || seg == ".." {
-			return errors.New("path must not contain dot segments")
-		}
-	}
-	return nil
+	return urivalidation.ValidateCIMDClientURL(uriStr)
 }
 
 // isValidURL validates that a string is a valid HTTP or HTTPS URL.

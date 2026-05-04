@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -43,8 +44,7 @@ func NewService(fetcher ports.CIMDFetcher, cache *CIMDCache, nameBlocklist []str
 
 // Resolve fetches and validates the CIMD document for the given URL and agent.
 func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Agent) (*ClientIDMetadataDocument, error) {
-	// Validate URL format
-	if _, err := ParseClientIDMetadataDocumentURL(rawURL); err != nil {
+	if err := urivalidation.ValidateCIMDClientURL(rawURL); err != nil {
 		return nil, err
 	}
 

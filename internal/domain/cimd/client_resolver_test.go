@@ -84,13 +84,12 @@ func TestCIMDClientResolver_InvalidURL_Rejected(t *testing.T) {
 	svc := cimdServiceForTest(nil, nil)
 	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
 
-	// http:// is not a valid CIMD URL
 	_, err := resolver.ResolveClient(context.Background(), "http://agent.example.com/client")
 	require.Error(t, err)
 
 	var clientErr *ports.ClientIDError
 	require.True(t, errors.As(err, &clientErr))
-	assert.Equal(t, "invalid_request", clientErr.Code)
+	assert.Equal(t, "invalid_client", clientErr.Code)
 }
 
 func TestCIMDClientResolver_URLNotRegistered(t *testing.T) {

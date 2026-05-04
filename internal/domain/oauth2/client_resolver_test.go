@@ -15,12 +15,17 @@ import (
 func TestOpaqueClientResolver_URLFormat_Rejected(t *testing.T) {
 	resolver := NewOpaqueClientResolver(NewMockAgentRepository())
 
-	_, err := resolver.ResolveClient(context.Background(), "https://agent.example.com/client")
-	require.Error(t, err)
+	for _, clientID := range []string{
+		"https://agent.example.com/client",
+		"http://agent.example.com/client",
+	} {
+		_, err := resolver.ResolveClient(context.Background(), id.ClientID(clientID))
+		require.Error(t, err, "expected error for %s", clientID)
 
-	var clientErr *ports.ClientIDError
-	require.True(t, errors.As(err, &clientErr))
-	assert.Equal(t, "invalid_client", clientErr.Code)
+		var clientErr *ports.ClientIDError
+		require.True(t, errors.As(err, &clientErr))
+		assert.Equal(t, "invalid_client", clientErr.Code)
+	}
 }
 
 func TestOpaqueClientResolver_NonUUID_Rejected(t *testing.T) {

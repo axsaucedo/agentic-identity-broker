@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -33,18 +33,13 @@ func NewCIMDClientResolver(agentRepo ports.AgentRepository, cimdService *Service
 // For URL-format client_id: validates URL, looks up agent by client URI, fetches/validates CIMD.
 // For opaque client_id: parses UUID and looks up agent by ID.
 func (r *CIMDClientResolver) ResolveClient(ctx context.Context, clientID id.ClientID) (*ports.ClientResolution, error) {
-	if strings.Contains(string(clientID), "://") {
+	if urivalidation.ValidateCIMDClientURL(string(clientID)) == nil {
 		return r.resolveCIMD(ctx, string(clientID))
 	}
 	return r.resolveOpaque(ctx, clientID)
 }
 
 func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*ports.ClientResolution, error) {
-	// Validate URL format first (fast rejection before any I/O)
-	if _, err := ParseClientIDMetadataDocumentURL(rawURL); err != nil {
-		return nil, &ports.ClientIDError{Code: "invalid_request", Desc: "invalid client_id URL: " + err.Error()}
-	}
-
 	// Look up agent by pre-registered client URI (FR-026)
 	agent, err := r.agentRepo.GetByClientURI(ctx, rawURL)
 	if err != nil {
