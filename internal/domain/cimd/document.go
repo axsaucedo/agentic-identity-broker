@@ -37,7 +37,7 @@ var blockedAuthMethods = map[string]bool{
 // match fetchURL, redirect_uris is empty, auth_method is a secret-bearing method,
 // any redirect_uri violates same-origin with fetchURL, or logo_uri (when present)
 // is not an HTTPS URL on the same host as client_id.
-// nameBlocklist is a case-insensitive list of forbidden client_name substrings.
+// nameBlocklist is a list of forbidden client_name values (case-insensitive exact match).
 func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*ClientIDMetadataDocument, error) {
 	var doc ClientIDMetadataDocument
 	if err := json.Unmarshal(data, &doc); err != nil {
