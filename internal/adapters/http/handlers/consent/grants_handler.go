@@ -2,7 +2,6 @@
 package consent
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +13,10 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -24,7 +24,7 @@ import (
 // Implements FR-011 through FR-014 (grant CRUD operations).
 type GrantsHandler struct {
 	consentService  ConsentService
-	authSessionRepo ports.AuthorizationSessionRepository
+	jweTokenService *domjwe.TokenService
 	logger          *slog.Logger
 }
 
@@ -39,10 +39,10 @@ func NewGrantsHandler(consentService ConsentService, logger *slog.Logger) *Grant
 	}
 }
 
-// WithAuthorizationSessionRepository sets the authorization session repository.
-// Required for FR-029: session-based redirect on CIMD consent submission.
-func (h *GrantsHandler) WithAuthorizationSessionRepository(repo ports.AuthorizationSessionRepository) *GrantsHandler {
-	h.authSessionRepo = repo
+// WithJWETokenService sets the JWE token service.
+// Required for FR-029: JWE session token validation on CIMD consent submission.
+func (h *GrantsHandler) WithJWETokenService(ts *domjwe.TokenService) *GrantsHandler {
+	h.jweTokenService = ts
 	return h
 }
 
@@ -171,65 +171,47 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// FR-029: When session_id is present (CIMD flow), load and validate the session.
-	// The handler validates the request, then consumes the single-use session, then persists
-	// the grant so a losing replay cannot mutate stored consent after the session is spent.
-	sessionID := r.URL.Query().Get("session_id")
+	// FR-029: When session_token is present (CIMD flow), validate the JWE token.
+	sessionToken := r.URL.Query().Get("session_token")
 	var sessionRedirectURI string
-	if sessionID != "" {
-		if h.authSessionRepo == nil {
-			h.logger.Warn("session_id provided but authorization session repository not configured",
+	if sessionToken != "" {
+		if h.jweTokenService == nil {
+			h.logger.Warn("session_token provided but JWE token service not configured",
 				"agent_id", agentID, "principal", principalValue)
 			h.writeError(w, http.StatusBadRequest, "bad request", "session-based consent not available")
 			return
 		}
-		authSession, sessionErr := h.authSessionRepo.GetBySessionID(r.Context(), sessionID)
-		if sessionErr != nil {
-			var storErr *storage.StorageError
-			if errors.As(sessionErr, &storErr) && storErr.Kind != storage.ErrorKindNotFound {
-				h.logger.Error("authorization session lookup failed", "session_id", sessionID,
-					"agent_id", agentID, "principal", principalValue, "error", sessionErr)
-				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-				return
-			}
-			h.logger.Warn("authorization session not found", "session_id", sessionID,
-				"agent_id", agentID, "principal", principalValue)
+		var claims domotp2.AuthorizationSessionClaims
+		if err := h.jweTokenService.Decrypt(sessionToken, &claims); err != nil {
+			h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
 			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
 			return
 		}
-		if authSession.IsExpired() {
-			h.logger.Warn("authorization session expired", "session_id", sessionID,
-				"agent_id", agentID, "principal", principalValue)
+		if claims.IsExpired() {
+			h.logger.Warn("authorization session token expired", "agent_id", agentID, "principal", principalValue)
 			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has expired")
 			return
 		}
-		if authSession.IsConsumed() {
-			h.logger.Warn("authorization session already consumed", "session_id", sessionID,
-				"agent_id", agentID, "principal", principalValue)
-			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has already been used")
-			return
-		}
-		if authSession.AgentID != parsedAgentID {
-			h.logger.Warn("authorization session agent mismatch", "session_id", sessionID,
-				"expected_agent", parsedAgentID, "session_agent", authSession.AgentID,
+		if claims.AgentID != parsedAgentID {
+			h.logger.Warn("authorization session agent mismatch",
+				"expected_agent", parsedAgentID, "session_agent", claims.AgentID,
 				"principal", principalValue)
 			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
 			return
 		}
-		if authSession.Principal != id.Principal(principalValue) {
-			h.logger.Warn("authorization session principal mismatch", "session_id", sessionID,
-				"principal", principalValue)
+		if claims.Principal != id.Principal(principalValue) {
+			h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
 			h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
 			return
 		}
-		sessionRedirectURI = authSession.OriginalURL
+		sessionRedirectURI = claims.OriginalURL
 	}
 
 	// Check for redirect_uri parameter early - validate before processing grant (T051-T054).
-	// When session_id is present the redirect comes from the server-side AuthorizationSession;
+	// When session_token is present the redirect comes from the JWE claims;
 	// redirect_uri is ignored in that case so we skip validation to avoid spurious 400s.
 	redirectURI := r.URL.Query().Get("redirect_uri")
-	if redirectURI != "" && sessionID == "" {
+	if redirectURI != "" && sessionToken == "" {
 		// Validate redirect_uri early to prevent unnecessary processing
 		valid, err := validateRedirectURI(redirectURI, r)
 		if err != nil {
@@ -334,59 +316,10 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 	}
 
-	var grant *storage.UserGrant
-
-	if sessionID != "" {
-		if err := h.consentService.ValidateGrantRequest(r.Context(), grantReq); err != nil {
-			handleGrantError(err)
-			return
-		}
-
-		var grantErr error
-		if consumeErr := h.authSessionRepo.ConsumeIf(r.Context(), sessionID, func(ctx context.Context) error {
-			grant, grantErr = h.consentService.GrantConsent(ctx, grantReq)
-			return grantErr
-		}); consumeErr != nil {
-			if grantErr != nil {
-				handleGrantError(grantErr)
-				return
-			}
-
-			var storErr *storage.StorageError
-			if errors.As(consumeErr, &storErr) {
-				switch storErr.Kind {
-				case storage.ErrorKindConflict:
-					h.logger.Warn("authorization session already consumed",
-						"session_id", sessionID,
-						"agent_id", agentID,
-						"principal", principalValue)
-					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has already been used")
-					return
-				case storage.ErrorKindNotFound:
-					h.logger.Warn("authorization session not found during consume",
-						"session_id", sessionID,
-						"agent_id", agentID,
-						"principal", principalValue)
-					h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
-					return
-				}
-			}
-
-			h.logger.Error("failed to consume authorization session",
-				"session_id", sessionID,
-				"agent_id", agentID,
-				"principal", principalValue,
-				"error", consumeErr)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
-	} else {
-		var err error
-		grant, err = h.consentService.GrantConsent(r.Context(), grantReq)
-		if err != nil {
-			handleGrantError(err)
-			return
-		}
+	grant, err := h.consentService.GrantConsent(r.Context(), grantReq)
+	if err != nil {
+		handleGrantError(err)
+		return
 	}
 
 	if grant == nil {
@@ -401,7 +334,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 		"grant_id", grant.ID)
 
-	if sessionID != "" {
+	if sessionToken != "" {
 		response := h.toGrantResponse(grant)
 		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
 			"data":         response,

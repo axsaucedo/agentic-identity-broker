@@ -63,7 +63,6 @@ type Service struct {
 	grantRepo       ports.UserGrantRepository
 	sessionRepo     ports.UserSessionRepository
 	clientResolver  ports.ClientResolver
-	authSessionRepo ports.AuthorizationSessionRepository
 	jweTokenService *jwe.TokenService
 	config          *OAuth2Config
 	logger          *slog.Logger
@@ -98,23 +97,28 @@ func NewServiceWithSessions(
 
 // NewServiceWithClientResolver creates a new OAuth2Service with an explicit ClientResolver strategy.
 // Used when CIMD support is enabled (cimd.enabled: true) or when a custom resolver is required.
-// Pass a non-nil authSessionRepo to enable server-side session binding for CIMD consent flows (FR-028).
+// Returns *Service so callers can chain WithJWETokenService before assigning to the port interface.
 func NewServiceWithClientResolver(
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
 	clientResolver ports.ClientResolver,
-	authSessionRepo ports.AuthorizationSessionRepository,
 	config *OAuth2Config,
 	logger *slog.Logger,
-) ports.OAuth2Service {
+) *Service {
 	return &Service{
-		grantRepo:       grantRepo,
-		sessionRepo:     sessionRepo,
-		clientResolver:  clientResolver,
-		authSessionRepo: authSessionRepo,
-		config:          config,
-		logger:          logger,
+		grantRepo:      grantRepo,
+		sessionRepo:    sessionRepo,
+		clientResolver: clientResolver,
+		config:         config,
+		logger:         logger,
 	}
+}
+
+// WithJWETokenService sets the JWE token service on the service.
+// Required for CIMD consent flows that use stateless JWE session tokens.
+func (s *Service) WithJWETokenService(ts *jwe.TokenService) *Service {
+	s.jweTokenService = ts
+	return s
 }
 
 // HandleAuthorization processes an OAuth2 authorization request
@@ -406,13 +410,10 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 }
 
 // buildConsentURL builds the consent redirect URL for a given agent and request.
-// For CIMD flows (cimdMeta != nil), creates a server-side AuthorizationSession and returns
-// a URL with ?session_id=<id> (FR-028). For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
-func (s *Service) buildConsentURL(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
+// For CIMD flows (cimdMeta != nil), seals an AuthorizationSessionClaims JWE and returns
+// a URL with ?session_token=<jwe>. For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
+func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
 	if cimdMeta != nil {
-		if s.authSessionRepo == nil {
-			return "", fmt.Errorf("CIMD authorization requires authSessionRepo to be configured")
-		}
 		meta := &storage.CIMDMetadataSnapshot{
 			ClientID:     cimdMeta.ClientID,
 			ClientName:   cimdMeta.ClientName,
@@ -421,7 +422,7 @@ func (s *Service) buildConsentURL(ctx context.Context, req *ports.AuthorizationR
 			AuthMethod:   cimdMeta.AuthMethod,
 			JwksURI:      cimdMeta.JwksURI,
 		}
-		session, err := storage.NewAuthorizationSession(
+		claims := NewAuthorizationSessionClaims(
 			agent.ID,
 			principal,
 			req.ClientID.String(),
@@ -433,13 +434,11 @@ func (s *Service) buildConsentURL(ctx context.Context, req *ports.AuthorizationR
 			req.CodeChallengeMethod,
 			meta,
 		)
+		token, err := s.CreateAuthorizationSessionToken(claims)
 		if err != nil {
-			return "", fmt.Errorf("failed to generate authorization session ID: %w", err)
+			return "", fmt.Errorf("failed to create authorization session token: %w", err)
 		}
-		if err := s.authSessionRepo.Create(ctx, session); err != nil {
-			return "", fmt.Errorf("failed to store authorization session: %w", err)
-		}
-		return fmt.Sprintf("%s/consent/agent/%s?session_id=%s", s.config.PublicURL, agent.ID, session.SessionID), nil
+		return fmt.Sprintf("%s/consent/agent/%s?session_token=%s", s.config.PublicURL, agent.ID, url.QueryEscape(token)), nil
 	}
 	return fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
 		s.config.PublicURL,

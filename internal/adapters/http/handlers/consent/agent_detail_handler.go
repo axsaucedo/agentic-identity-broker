@@ -4,17 +4,18 @@ package consent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -39,7 +40,7 @@ type ScopeWithDescription struct {
 // Phase 6 extension: Includes service requirements with user connection status.
 type AgentDetailHandler struct {
 	consentService  ConsentService
-	authSessionRepo ports.AuthorizationSessionRepository
+	jweTokenService *domjwe.TokenService
 	logger          *slog.Logger
 }
 
@@ -54,10 +55,10 @@ func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger) *
 	}
 }
 
-// WithAuthorizationSessionRepository sets the authorization session repository.
-// Required for FR-028: session-based CIMD metadata retrieval.
-func (h *AgentDetailHandler) WithAuthorizationSessionRepository(repo ports.AuthorizationSessionRepository) *AgentDetailHandler {
-	h.authSessionRepo = repo
+// WithJWETokenService sets the JWE token service.
+// Required for FR-028: JWE session token-based CIMD metadata retrieval.
+func (h *AgentDetailHandler) WithJWETokenService(ts *domjwe.TokenService) *AgentDetailHandler {
+	h.jweTokenService = ts
 	return h
 }
 
@@ -143,12 +144,6 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 
 	cimdMeta, err := h.resolveCIMDMetadata(r, parsedAgentID)
 	if err != nil {
-		var storErr *storage.StorageError
-		if errors.As(err, &storErr) {
-			h.logger.Error("authorization session repository error", "agent_id", agentID, "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-			return
-		}
 		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
 		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
 		return
@@ -225,72 +220,124 @@ func sortServiceRequirements(services []ServiceRequirementForUser) {
 }
 
 // resolveCIMDMetadata resolves CIMD metadata for the consent page.
-// When session_id is present (FR-028), loads from the server-side AuthorizationSession.
-// CIMD agents (agents with URL-format client_uris) require session_id — falling back
-// to query params for CIMD agents would reopen the metadata-spoofing surface that
-// server-side sessions were designed to close. Non-CIMD/opaque flows may use query params.
+// When session_token is present (FR-028), decrypts the JWE token to extract CIMD metadata.
+// CIMD agents require session_token — falling back to query params would reopen the
+// metadata-spoofing surface. Non-CIMD/opaque flows do not use session tokens.
 func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.AgentID) (*CIMDMetadataResponse, error) {
-	sessionID := r.URL.Query().Get("session_id")
-	if sessionID == "" {
-		// Require session_id only when the request is a CIMD authorization flow,
-		// identified by a URL-format client_id in the query params. Opaque flows
-		// (no client_id, or non-URL client_id) do not use sessions and may use
-		// the query-param path. Keying off agent.ClientURIs alone would break opaque
-		// flows for agents that also have CIMD client_uris configured.
+	sessionToken := r.URL.Query().Get("session_token")
+	if sessionToken == "" {
 		clientID := r.URL.Query().Get("client_id")
 		if clientID != "" && strings.HasPrefix(clientID, "https://") {
-			return nil, errors.New("session_id is required for CIMD agent authorization")
+			return nil, errors.New("session_token is required for CIMD agent authorization")
 		}
 		return nil, nil
 	}
 
-	if h.authSessionRepo == nil {
-		return nil, errors.New("session_id provided but authorization session repository not configured")
+	if h.jweTokenService == nil {
+		return nil, errors.New("session_token provided but JWE token service not configured")
 	}
 
-	session, err := h.authSessionRepo.GetBySessionID(r.Context(), sessionID)
-	if err != nil {
-		var storErr *storage.StorageError
-		if errors.As(err, &storErr) && storErr.Kind != storage.ErrorKindNotFound {
-			return nil, fmt.Errorf("authorization session lookup failed: %w", err)
-		}
+	var claims domotp2.AuthorizationSessionClaims
+	if err := h.jweTokenService.Decrypt(sessionToken, &claims); err != nil {
 		return nil, errors.New("authorization session not found or expired")
 	}
-	if session.IsExpired() {
+	if claims.IsExpired() {
 		return nil, errors.New("authorization session has expired")
 	}
-	if session.IsConsumed() {
-		return nil, errors.New("authorization session has already been used")
-	}
-	if session.AgentID != agentID {
+	if claims.AgentID != agentID {
 		return nil, errors.New("authorization session does not match requested agent")
 	}
 	userID, _ := getPrincipalFromContext(r.Context())
-	if string(session.Principal) != userID {
+	if string(claims.Principal) != userID {
 		return nil, errors.New("authorization session does not belong to this user")
 	}
 
-	if session.CIMDMetadata == nil {
+	if claims.CIMDMetadata == nil {
 		return nil, nil
 	}
 
-	u, err := url.Parse(session.CIMDMetadata.ClientID)
+	u, err := url.Parse(claims.CIMDMetadata.ClientID)
 	if err != nil {
 		return nil, errors.New("invalid client_id in authorization session")
 	}
 
-	requestedScopes := strings.Fields(session.Scope)
+	requestedScopes := strings.Fields(claims.Scope)
 	if requestedScopes == nil {
 		requestedScopes = []string{}
 	}
 
 	return &CIMDMetadataResponse{
-		ClientIDURL:         session.CIMDMetadata.ClientID,
-		RedirectURI:         session.RedirectURI,
+		ClientIDURL:         claims.CIMDMetadata.ClientID,
+		RedirectURI:         claims.RedirectURI,
 		VerifiedDomain:      u.Hostname(),
-		IsLocalhostRedirect: isLocalhostURI(session.RedirectURI),
+		IsLocalhostRedirect: isLocalhostURI(claims.RedirectURI),
 		RequestedScopes:     requestedScopes,
 	}, nil
+}
+
+// ConsentSessionResponse is the response body for GET /api/consent/session.
+type ConsentSessionResponse struct {
+	AgentID             string                        `json:"agent_id"`
+	Principal           string                        `json:"principal"`
+	ClientID            string                        `json:"client_id"`
+	OriginalURL         string                        `json:"original_url"`
+	RedirectURI         string                        `json:"redirect_uri"`
+	Scope               string                        `json:"scope"`
+	State               string                        `json:"state"`
+	CodeChallenge       string                        `json:"code_challenge"`
+	CodeChallengeMethod string                        `json:"code_challenge_method"`
+	CIMDMetadata        *storage.CIMDMetadataSnapshot `json:"cimd_metadata,omitempty"`
+	ExpiresAt           time.Time                     `json:"expires_at"`
+}
+
+// GetConsentSession handles GET /api/consent/session?token=<jwe>
+// Decrypts the JWE session token and returns the authorization context for the consent page.
+func (h *AgentDetailHandler) GetConsentSession(w http.ResponseWriter, r *http.Request) {
+	userID, ok := getPrincipalFromContext(r.Context())
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "unauthorized", "principal required")
+		return
+	}
+
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		h.writeError(w, http.StatusBadRequest, "bad request", "token parameter is required")
+		return
+	}
+
+	if h.jweTokenService == nil {
+		h.writeError(w, http.StatusBadRequest, "bad request", "session-based consent not available")
+		return
+	}
+
+	var claims domotp2.AuthorizationSessionClaims
+	if err := h.jweTokenService.Decrypt(token, &claims); err != nil {
+		h.logger.Warn("consent session token invalid", "error", err)
+		h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
+		return
+	}
+	if claims.IsExpired() {
+		h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has expired")
+		return
+	}
+	if string(claims.Principal) != userID {
+		h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, ConsentSessionResponse{
+		AgentID:             claims.AgentID.String(),
+		Principal:           string(claims.Principal),
+		ClientID:            claims.ClientID,
+		OriginalURL:         claims.OriginalURL,
+		RedirectURI:         claims.RedirectURI,
+		Scope:               claims.Scope,
+		State:               claims.State,
+		CodeChallenge:       claims.CodeChallenge,
+		CodeChallengeMethod: claims.CodeChallengeMethod,
+		CIMDMetadata:        claims.CIMDMetadata,
+		ExpiresAt:           claims.ExpiresAt,
+	})
 }
 
 // isLocalhostURI returns true if the URI's host is localhost or 127.0.0.1.

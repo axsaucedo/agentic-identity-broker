@@ -245,6 +245,18 @@ func (b *Builder) Build() (*App, error) {
 		app.BranchKeyManager = branchKeyManager
 	}
 
+	// Decode and import JWE signing key — required for both OAuth2SessionService and OAuth2Service
+	// (CIMD consent flows). Fail fast here before constructing any domain services.
+	keyBytes, err := base64.StdEncoding.DecodeString(b.config.ThirdPartyOAuth2.JWESigningKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWE signing key: %w", err)
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
+	}
+	jweTokenService := domjwe.New(jweKey)
+
 	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
 
@@ -332,10 +344,9 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
 			clientResolver,
-			b.storage.AuthorizationSessions(),
 			oauth2Config,
 			b.logger,
-		)
+		).WithJWETokenService(jweTokenService)
 	}
 
 	// OAuth2SessionService is always created because JWESigningKey is mandatory.
@@ -349,18 +360,6 @@ func (b *Builder) Build() (*App, error) {
 	// If services repository is not available, providerService will be nil and OAuth2SessionService
 	// will fail to fetch services. This is acceptable since the application is non-functional
 	// without the services repository anyway.
-
-	// Decode JWE signing key
-	keyBytes, err := base64.StdEncoding.DecodeString(b.config.ThirdPartyOAuth2.JWESigningKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JWE signing key: %w", err)
-	}
-
-	// Import key as JWK
-	jweKey, err := jwk.Import(keyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
-	}
 
 	// Build service configuration from application config
 	// Constitution Principle VII: Configuration-Driven Design
@@ -391,7 +390,7 @@ func (b *Builder) Build() (*App, error) {
 		b.storage.Agents(),
 		encryptor,
 		upstreamClient,
-		domjwe.New(jweKey),
+		jweTokenService,
 		cfg,
 		b.logger,
 	)
@@ -549,7 +548,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger).
-		WithAuthorizationSessionRepository(b.storage.AuthorizationSessions())
+		WithJWETokenService(jweTokenService)
 
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
 	// Config validation makes this error unreachable in practice, but structural fail-closed
@@ -646,7 +645,7 @@ func (b *Builder) Build() (*App, error) {
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:    agentDetailHandler,
 		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger).WithAuthorizationSessionRepository(b.storage.AuthorizationSessions()),
+		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger).WithJWETokenService(jweTokenService),
 		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{

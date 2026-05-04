@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,16 +13,47 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// newTestJWETokenService returns a real JWE token service backed by a deterministic test key.
+func newTestJWETokenService() *domjwe.TokenService {
+	keyBytes, err := base64.StdEncoding.DecodeString("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=")
+	if err != nil {
+		panic("grants_handler_test: failed to decode test JWE key: " + err.Error())
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		panic("grants_handler_test: failed to import test JWE key: " + err.Error())
+	}
+	return domjwe.New(jweKey)
+}
+
+// newTestSessionToken creates a valid JWE session token for the given agent and principal.
+func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string, originalURL string) string {
+	claims := domotp2.NewAuthorizationSessionClaims(
+		agentID, id.Principal(principalVal),
+		"https://agent.example.com/client",
+		originalURL,
+		"https://agent.example.com/callback",
+		"read", "state-xyz", "challenge", "S256", nil,
+	)
+	token, err := ts.Encrypt(claims)
+	if err != nil {
+		panic("newTestSessionToken: failed to encrypt claims: " + err.Error())
+	}
+	return token
+}
 
 // Helper to create request with principal context
 func newRequestWithPrincipal(method, path, principalValue string, body any) *http.Request {
@@ -1011,9 +1043,9 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 	}
 }
 
-// TestCreateGrant_SessionReplayRace verifies that a second request using the same
-// session_id gets 400 before any persistence work runs.
-func TestCreateGrant_SessionReplayRace(t *testing.T) {
+// TestCreateGrant_SessionToken_ValidFlow verifies that a valid JWE session token
+// produces a 201 with redirect_url from the token claims.
+func TestCreateGrant_SessionToken_ValidFlow(t *testing.T) {
 	t.Parallel()
 
 	testAgentID := id.NewAgentID()
@@ -1021,30 +1053,13 @@ func TestCreateGrant_SessionReplayRace(t *testing.T) {
 	now := time.Now()
 	futureTime := now.Add(24 * time.Hour)
 	principalVal := "user@example.com"
+	originalURL := "https://agent.example.com/authorize"
 
-	session, err := storage.NewAuthorizationSession(
-		testAgentID,
-		id.Principal(principalVal),
-		"https://agent.example.com/client",
-		"https://agent.example.com/authorize",
-		"/callback",
-		"read",
-		"state-xyz",
-		"challenge",
-		"S256",
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("failed to create session: %v", err)
-	}
-
-	authRepo := memory.NewAuthorizationSessionRepository()
-	if err := authRepo.Create(context.Background(), session); err != nil {
-		t.Fatalf("failed to store session: %v", err)
-	}
+	ts := newTestJWETokenService()
+	sessionToken := newTestSessionToken(ts, testAgentID, principalVal, originalURL)
 
 	mockService := &mockConsentService{
-		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
+		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
 			return &storage.UserGrant{
 				ID:                    testGrantID,
 				Principal:             id.Principal(principalVal),
@@ -1057,269 +1072,108 @@ func TestCreateGrant_SessionReplayRace(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil).WithAuthorizationSessionRepository(authRepo)
-
-	newReq := func() *http.Request {
-		req := newRequestWithPrincipal(
-			"POST",
-			"/api/consent/agent/"+testAgentID.String()+"/grants?session_id="+session.SessionID,
-			principalVal,
-			GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
-		)
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", testAgentID.String())
-		return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	}
-
-	// First request: session is valid → 201 Created
-	rr1 := httptest.NewRecorder()
-	handler.CreateGrant(rr1, newReq())
-	if rr1.Code != http.StatusCreated {
-		t.Errorf("first request: expected 201, got %d; body: %s", rr1.Code, rr1.Body.String())
-	}
-
-	// Second request with same session_id: session already consumed → 400
-	rr2 := httptest.NewRecorder()
-	handler.CreateGrant(rr2, newReq())
-	if rr2.Code != http.StatusBadRequest {
-		t.Errorf("replay request: expected 400, got %d; body: %s", rr2.Code, rr2.Body.String())
-	}
-}
-
-// mockAuthSessionRepo is a minimal stub for ports.AuthorizationSessionRepository
-// that lets tests inject failure scenarios not reachable via the real in-memory adapter.
-type mockAuthSessionRepo struct {
-	getBySessionIDFunc func(ctx context.Context, sessionID string) (*storage.AuthorizationSession, error)
-	consumeIfFunc      func(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error
-}
-
-func (m *mockAuthSessionRepo) Create(_ context.Context, _ *storage.AuthorizationSession) error {
-	return nil
-}
-
-func (m *mockAuthSessionRepo) GetBySessionID(ctx context.Context, sessionID string) (*storage.AuthorizationSession, error) {
-	if m.getBySessionIDFunc != nil {
-		return m.getBySessionIDFunc(ctx, sessionID)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockAuthSessionRepo) ConsumeIf(ctx context.Context, sessionID string, fn ports.AuthorizationSessionMutation) error {
-	if m.consumeIfFunc != nil {
-		return m.consumeIfFunc(ctx, sessionID, fn)
-	}
-	if fn != nil {
-		return fn(ctx)
-	}
-	return nil
-}
-
-func (m *mockAuthSessionRepo) DeleteExpired(_ context.Context) (int, error) {
-	return 0, nil
-}
-
-// TestCreateGrant_ValidateGrantRequestFails_DoesNotConsumeSession verifies that failed
-// grant validation does not burn the single-use authorization session.
-func TestCreateGrant_ValidateGrantRequestFails_DoesNotConsumeSession(t *testing.T) {
-	t.Parallel()
-	now := time.Now()
-	agentID := id.NewAgentID()
-	principalVal := "user@example.com"
-
-	sess := &storage.AuthorizationSession{
-		SessionID:   "test-session-abc",
-		AgentID:     agentID,
-		Principal:   id.Principal(principalVal),
-		OriginalURL: "/callback",
-		CreatedAt:   now,
-		ExpiresAt:   now.Add(10 * time.Minute),
-	}
-
-	var callOrder []string
-
-	authRepo := &mockAuthSessionRepo{
-		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
-			return sess, nil
-		},
-	}
-
-	mockService := &mockConsentService{
-		validateGrantRequestFunc: func(_ context.Context, _ *consent.GrantRequest) error {
-			callOrder = append(callOrder, "validate")
-			return consent.ErrServiceNotFound
-		},
-		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
-			callOrder = append(callOrder, "grant")
-			return nil, errors.New("GrantConsent should not be called after validation failure")
-		},
-	}
-
-	handler := NewGrantsHandler(mockService, nil).WithAuthorizationSessionRepository(authRepo)
+	handler := NewGrantsHandler(mockService, nil).WithJWETokenService(ts)
 
 	req := newRequestWithPrincipal(
 		"POST",
-		"/api/consent/agent/"+agentID.String()+"/grants?session_id="+sess.SessionID,
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token="+sessionToken,
 		principalVal,
 		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
 	)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID.String())
+	rctx.URLParams.Add("agent-id", testAgentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	rr := httptest.NewRecorder()
 	handler.CreateGrant(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 on validation failure, got %d; body: %s", rr.Code, rr.Body.String())
-	}
-	if len(callOrder) != 1 || callOrder[0] != "validate" {
-		t.Fatalf("expected validation failure before any consume, got call order %v", callOrder)
-	}
+	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, originalURL, resp["redirect_url"])
 }
 
-// TestCreateGrant_GrantConsentFailure_DoesNotConsumeSession verifies that a grant write
-// failure inside the consume/write critical section leaves the session reusable.
-func TestCreateGrant_GrantConsentFailure_DoesNotConsumeSession(t *testing.T) {
+// TestCreateGrant_SessionToken_InvalidToken verifies that a tampered or invalid
+// JWE session token produces 400.
+func TestCreateGrant_SessionToken_InvalidToken(t *testing.T) {
 	t.Parallel()
-	now := time.Now()
-	agentID := id.NewAgentID()
+
+	testAgentID := id.NewAgentID()
 	principalVal := "user@example.com"
 
-	sess := &storage.AuthorizationSession{
-		SessionID:   "test-session-write-failure",
-		AgentID:     agentID,
-		Principal:   id.Principal(principalVal),
-		OriginalURL: "/callback",
-		CreatedAt:   now,
-		ExpiresAt:   now.Add(10 * time.Minute),
-	}
-
-	authRepo := memory.NewAuthorizationSessionRepository()
-	require.NoError(t, authRepo.Create(context.Background(), sess))
-
-	grantID := id.NewGrantID()
-	grantAttempts := 0
-	mockService := &mockConsentService{
-		validateGrantRequestFunc: func(_ context.Context, _ *consent.GrantRequest) error {
-			return nil
-		},
-		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
-			grantAttempts++
-			if grantAttempts == 1 {
-				return nil, errors.New("grant persistence failed")
-			}
-
-			return &storage.UserGrant{
-				ID:        grantID,
-				Principal: id.Principal(principalVal),
-				AgentID:   agentID,
-				CreatedAt: now,
-				UpdatedAt: now,
-			}, nil
-		},
-	}
-
-	handler := NewGrantsHandler(mockService, nil).WithAuthorizationSessionRepository(authRepo)
-
-	newRequest := func() *http.Request {
-		req := newRequestWithPrincipal(
-			"POST",
-			"/api/consent/agent/"+agentID.String()+"/grants?session_id="+sess.SessionID,
-			principalVal,
-			GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
-		)
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", agentID.String())
-		return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	}
-
-	firstResponse := httptest.NewRecorder()
-	handler.CreateGrant(firstResponse, newRequest())
-	require.Equal(t, http.StatusInternalServerError, firstResponse.Code, firstResponse.Body.String())
-
-	storedAfterFailure, err := authRepo.GetBySessionID(context.Background(), sess.SessionID)
-	require.NoError(t, err)
-	assert.False(t, storedAfterFailure.IsConsumed())
-
-	secondResponse := httptest.NewRecorder()
-	handler.CreateGrant(secondResponse, newRequest())
-	require.Equal(t, http.StatusCreated, secondResponse.Code, secondResponse.Body.String())
-
-	storedAfterRetry, err := authRepo.GetBySessionID(context.Background(), sess.SessionID)
-	require.NoError(t, err)
-	assert.True(t, storedAfterRetry.IsConsumed())
-	assert.Equal(t, 2, grantAttempts)
-}
-
-// TestCreateGrant_ConsumeStorageError verifies that a storage error from Consume
-// blocks grant persistence and surfaces as 500.
-func TestCreateGrant_ConsumeStorageError(t *testing.T) {
-	t.Parallel()
-	now := time.Now()
-	agentID := id.NewAgentID()
-	principalVal := "user@example.com"
-
-	sess := &storage.AuthorizationSession{
-		SessionID:   "test-session-def",
-		AgentID:     agentID,
-		Principal:   id.Principal(principalVal),
-		OriginalURL: "/callback",
-		RedirectURI: "https://agent.example.com/callback",
-		CreatedAt:   now,
-		ExpiresAt:   now.Add(10 * time.Minute),
-	}
-
-	storageErr := storage.NewStorageError("ConsumeIf", storage.ErrorKindConnection, errors.New("db down"), "connection failed")
-	var callOrder []string
-
-	authRepo := &mockAuthSessionRepo{
-		getBySessionIDFunc: func(_ context.Context, _ string) (*storage.AuthorizationSession, error) {
-			return sess, nil
-		},
-		consumeIfFunc: func(_ context.Context, _ string, _ ports.AuthorizationSessionMutation) error {
-			callOrder = append(callOrder, "consume")
-			return storageErr
-		},
-	}
-
-	grantCalled := false
-	grantID := id.NewGrantID()
-	mockService := &mockConsentService{
-		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
-			grantCalled = true
-			callOrder = append(callOrder, "grant")
-			return &storage.UserGrant{
-				ID:        grantID,
-				Principal: id.Principal(principalVal),
-				AgentID:   agentID,
-				CreatedAt: now,
-				UpdatedAt: now,
-			}, nil
-		},
-	}
-
-	handler := NewGrantsHandler(mockService, nil).WithAuthorizationSessionRepository(authRepo)
+	ts := newTestJWETokenService()
+	handler := NewGrantsHandler(&mockConsentService{}, nil).WithJWETokenService(ts)
 
 	req := newRequestWithPrincipal(
 		"POST",
-		"/api/consent/agent/"+agentID.String()+"/grants?session_id="+sess.SessionID,
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token=notavalidjwetoken",
 		principalVal,
 		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
 	)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", agentID.String())
+	rctx.URLParams.Add("agent-id", testAgentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 	rr := httptest.NewRecorder()
 	handler.CreateGrant(rr, req)
 
-	if rr.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 when Consume fails, got %d; body: %s", rr.Code, rr.Body.String())
-	}
-	if grantCalled {
-		t.Error("GrantConsent must not be called when session consumption fails")
-	}
-	if len(callOrder) != 1 || callOrder[0] != "consume" {
-		t.Fatalf("expected consume to happen before grant persistence, got call order %v", callOrder)
-	}
+	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+}
+
+// TestCreateGrant_SessionToken_AgentMismatch verifies that a session token issued for
+// a different agent produces 400.
+func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
+	t.Parallel()
+
+	agentA := id.NewAgentID()
+	agentB := id.NewAgentID()
+	principalVal := "user@example.com"
+
+	ts := newTestJWETokenService()
+	tokenForAgentA := newTestSessionToken(ts, agentA, principalVal, "/callback")
+
+	handler := NewGrantsHandler(&mockConsentService{}, nil).WithJWETokenService(ts)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+agentB.String()+"/grants?session_token="+tokenForAgentA,
+		principalVal,
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentB.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+}
+
+// TestCreateGrant_SessionToken_PrincipalMismatch verifies that a session token issued
+// for a different user produces 403.
+func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+
+	ts := newTestJWETokenService()
+	tokenForUserA := newTestSessionToken(ts, testAgentID, "userA@example.com", "/callback")
+
+	handler := NewGrantsHandler(&mockConsentService{}, nil).WithJWETokenService(ts)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token="+tokenForUserA,
+		"userB@example.com",
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
 }
