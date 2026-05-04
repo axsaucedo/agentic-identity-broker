@@ -12,6 +12,7 @@ export function CIMDConsentSummary({ clientName, accessTarget, logoUri }: CIMDCo
           src={logoUri}
           alt={`${clientName} logo`}
           className="w-12 h-12 rounded-lg object-contain flex-shrink-0"
+          referrerPolicy="no-referrer"
         />
       )}
       <p className="text-neutral-900 text-base">
