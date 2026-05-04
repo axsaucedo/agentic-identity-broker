@@ -28,19 +28,9 @@ type Agent struct {
 	AllowedScopes        []string             `json:"allowed_scopes" db:"allowed_scopes"`
 	// ClientURIs holds pre-registered Client ID Metadata Document URLs.
 	// Each entry must be a valid HTTPS URL, globally unique across all agents.
-	ClientURIs []string `json:"client_uris,omitempty" db:"-"`
-	// AuthMethod is the last observed token_endpoint_auth_method from CIMD (nullable snapshot).
-	AuthMethod *string `json:"auth_method,omitempty" db:"auth_method"`
-	// JwksURI is the last observed jwks_uri from CIMD (nullable snapshot).
-	JwksURI *string `json:"jwks_uri,omitempty" db:"jwks_uri"`
-	// CIMDClientName is the last observed client_name from the CIMD document.
-	CIMDClientName *string `json:"cimd_client_name,omitempty" db:"cimd_client_name"`
-	// CIMDLogoURI is the last observed logo_uri from the CIMD document.
-	CIMDLogoURI *string `json:"cimd_logo_uri,omitempty" db:"cimd_logo_uri"`
-	// CIMDRedirectURIs is the last observed redirect_uris from the CIMD document (snapshot baseline for change detection).
-	CIMDRedirectURIs []string  `json:"cimd_redirect_uris,omitempty" db:"cimd_redirect_uris"`
-	CreatedAt        time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+	ClientURIs []string  `json:"client_uris,omitempty" db:"-"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Validate performs validation on the Agent entity.
@@ -96,18 +86,13 @@ func (a *Agent) Validate() error {
 	return nil
 }
 
-// ValidateClientURIsForWrite runs the full client URI validation (format, duplicates,
-// and CIMD cardinality). Used by admin mutation paths (create and update) where an
-// operator is setting the canonical set of client_uris. Not called during CIMD
-// snapshot refreshes, which go through agentRepo.Update and only call Validate().
+// ValidateClientURIsForWrite runs the full client URI validation (format and duplicates).
+// Used by admin mutation paths (create and update).
 func ValidateClientURIsForWrite(uris []string) error {
 	return validateClientURIs(uris)
 }
 
-// validateClientURIFormats validates the format and uniqueness of each entry in the
-// list but does NOT enforce cardinality. Called from Validate() so that CIMD snapshot
-// refreshes (agentRepo.Update during authorization) do not break agents that hold a
-// single legacy CIMD URI — the cardinality restriction is a write-time invariant only.
+// validateClientURIFormats validates the format and uniqueness of each entry in the list.
 func validateClientURIFormats(uris []string) error {
 	seen := make(map[string]struct{}, len(uris))
 	for i, uriStr := range uris {
@@ -122,28 +107,11 @@ func validateClientURIFormats(uris []string) error {
 	return nil
 }
 
-// validateClientURIs applies full CIMD URL validation to each entry in the list,
-// rejects duplicates, and enforces at most one URL-format (CIMD) entry.
-// Multiple CIMD URIs per agent are rejected because snapshot fields
-// (auth_method, jwks_uri, redirect_uris, etc.) are stored once per agent — a second
-// CIMD URI would overwrite the first's snapshot on every alternating request.
-// Called from write-time paths: ValidateForCreate and admin UpdateAgent.
-// Mirrors cimd.ParseClientIDMetadataDocumentURL (a direct import would create a
-// circular dependency since cimd imports storage).
+// validateClientURIs validates CIMD client URIs for write-time paths (ValidateForCreate,
+// admin UpdateAgent). Mirrors cimd.ParseClientIDMetadataDocumentURL — a direct import
+// would create a circular dependency since cimd imports storage.
 func validateClientURIs(uris []string) error {
-	if err := validateClientURIFormats(uris); err != nil {
-		return err
-	}
-	cimdCount := 0
-	for _, uriStr := range uris {
-		if strings.HasPrefix(uriStr, "https://") {
-			cimdCount++
-			if cimdCount > 1 {
-				return fmt.Errorf("client_uris: at most one CIMD (URL-format) client_uri is allowed per agent; use a single canonical URL")
-			}
-		}
-	}
-	return nil
+	return validateClientURIFormats(uris)
 }
 
 func validateClientURI(uriStr string) error {
@@ -284,28 +252,8 @@ func (a *Agent) Copy() *Agent {
 		copy.AllowedScopes = append([]string(nil), a.AllowedScopes...)
 	}
 
-	// Deep copy CIMD fields
 	if a.ClientURIs != nil {
 		copy.ClientURIs = append([]string(nil), a.ClientURIs...)
-	}
-	if a.AuthMethod != nil {
-		authMethod := *a.AuthMethod
-		copy.AuthMethod = &authMethod
-	}
-	if a.JwksURI != nil {
-		jwksURI := *a.JwksURI
-		copy.JwksURI = &jwksURI
-	}
-	if a.CIMDClientName != nil {
-		n := *a.CIMDClientName
-		copy.CIMDClientName = &n
-	}
-	if a.CIMDLogoURI != nil {
-		n := *a.CIMDLogoURI
-		copy.CIMDLogoURI = &n
-	}
-	if a.CIMDRedirectURIs != nil {
-		copy.CIMDRedirectURIs = append([]string(nil), a.CIMDRedirectURIs...)
 	}
 
 	return copy

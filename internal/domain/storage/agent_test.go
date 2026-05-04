@@ -557,12 +557,4 @@ func TestValidateClientURIsForWrite(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("rejects multiple CIMD URIs", func(t *testing.T) {
-		err := ValidateClientURIsForWrite([]string{
-			"https://a.example.com/client",
-			"https://b.example.com/client",
-		})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "at most one")
-	})
 }

@@ -102,8 +102,6 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 - What happens when a CIMD document omits `redirect_uris`? (Authorization request is rejected; `redirect_uris` is mandatory for the flow to proceed.)
 - What happens when a CIMD document's `token_endpoint_auth_method` specifies a client-secret-based method (`client_secret_post`, `client_secret_basic`, `client_secret_jwt`)? (Rejected; these methods are incompatible with URL-based client IDs per spec.)
 - What happens when a brand mismatch is detected (current `client_name` differs from `Agent.DisplayName`)? (Authorization flow continues; mismatch is logged as a structured audit event per FR-023a — blocking is not automatic.)
-- What happens when `redirect_uris` or `token_endpoint_auth_method` change between fetches? (A structured audit event is emitted per SR-011; the authorization flow continues. No blocking occurs.)
-- What happens when `jwks_uri` changes between fetches? (Authorization flow continues; a structured audit event is emitted per SR-012. No blocking occurs for JWKS URI rotation alone.)
 - What happens when a CIMD document's `client_name` matches a blacklisted keyword? (Document is rejected per FR-023b; the authorization request fails with an error, no redirect is issued.)
 - What happens when the broker is configured with an empty SSRF blocklist override? (Default RFC 6890 blocklist is always enforced regardless of operator configuration; it cannot be disabled.)
 - What happens during a CIMD cache eviction under memory pressure? (Document is treated as expired; next request triggers a re-fetch.)
@@ -150,7 +148,7 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 - **FR-023b**: System MUST validate the CIMD document's `client_name` against a blacklist of reserved and system-level keywords (e.g. "admin", "system", "operator", names of identity providers) before accepting the document. A document whose `client_name` matches a blacklisted term MUST be rejected with an appropriate error.
 - **FR-023c**: The keyword blacklist MUST be operator-configurable (additions); a non-empty default set of reserved terms MUST be enforced regardless of operator configuration.
 - **FR-024**: SSRF protection MUST be enabled by default and MUST NOT be configurable to fully disable; operators may only extend (not replace) the default blocklist.
-- **FR-025**: The `Agent` entity MUST be extended with: (a) a list of pre-registered Client ID Metadata Document URLs; and (b) `authMethod` and `jwksURI` fields storing the last observed values from the CIMD document (the existing `redirectURIs` field serves the same role). These fields act as the change-detection baseline for SR-011 and SR-012: each successful fetch compares incoming values against the stored fields, emits an audit event on any difference, then updates the fields. Both additions require a database migration.
+- **FR-025**: The `Agent` entity MUST be extended with a list of pre-registered Client ID Metadata Document URLs. This addition requires a database migration.
 - **FR-026**: When processing an authorization request whose `client_id` is a Client ID Metadata Document URL, the broker MUST attempt an exact-match lookup of that URL against each Agent's pre-registered Client ID Metadata Document URLs; if a match is found, that Agent record is the pre-registered client used for consent grouping.
 - **FR-027**: If a Client ID Metadata Document URL matches no Agent's pre-registered Client ID Metadata Document URLs, the authorization request MUST be rejected; clients presenting an unregistered Client ID Metadata Document URL are not permitted.
 - **FR-028**: The consent page API (`GET /api/consent/agent/{agentId}`) MUST accept a `session_id` parameter and retrieve all authorization request context (client_id, redirect_uri, scope, CIMD metadata) from the server-side session. It MUST NOT accept `client_id`, `redirect_uri`, or `scope` as query parameters for CIMD-based flows. For non-CIMD flows, existing behavior is unchanged.
@@ -233,8 +231,6 @@ erDiagram
         string displayName
         string[] redirectURIs
         string[] client_uris
-        string authMethod
-        string jwksURI
     }
 ```
 
@@ -252,7 +248,6 @@ erDiagram
 - **CIMDFetchBlocked**: Emitted when a fetch attempt is rejected by the SSRF guard. Includes URL and the reason (blocked IP range, invalid scheme, etc.).
 - **CIMDFetchFailed**: Emitted when the remote host returns a non-200 response, times out, or returns an oversized body.
 - **BrandPinMismatchDetected**: Emitted when the CIMD document's `client_name` differs from `Agent.DisplayName`. Includes Agent ID, `Agent.DisplayName`, and the CIMD `client_name`. The authorization flow continues.
-- **CIMDSecurityFieldChanged**: Emitted when `redirect_uris`, `token_endpoint_auth_method`, or `jwks_uri` changes between fetches (per SR-011/SR-012). Includes Agent ID, field name, previous value, new value, and timestamp. The authorization flow continues.
 
 ### Configuration Requirements
 
@@ -302,8 +297,6 @@ oauth2_authorization_server:
 - **SR-008**: The `client_id` field in the CIMD document MUST be compared to the fetch URL using exact byte-for-byte string comparison; normalization or case folding MUST NOT be applied.
 - **SR-009**: CIMD documents that specify client-secret-based `token_endpoint_auth_method` values MUST be rejected at validation time, not silently ignored.
 - **SR-010**: Any URL field within a fetched CIMD document (`logo_uri`, `jwks_uri`, `policy_uri`, `tos_uri`) that the broker resolves or fetches MUST be validated against the same SSRF blocklist as the `client_id` URL itself before any outbound connection is made. A document containing a blocked URL in any such field MUST be logged but need not be rejected outright; the offending field is silently ignored.
-- **SR-011**: On each successful CIMD document fetch, the broker MUST compare the current values of `redirect_uris` and `token_endpoint_auth_method` against the snapshot persisted on the Agent record from the previous fetch. If either field has changed, the broker MUST emit a structured audit event recording the previous and new values, Agent ID, and timestamp. The authorization flow continues regardless. The first successful fetch for a given Agent populates the snapshot without triggering an audit event.
-- **SR-012**: On each successful CIMD document fetch, the broker MUST compare the current `jwks_uri` value against the snapshot persisted on the Agent record. If it has changed, a structured audit event MUST be emitted (previous URI, new URI, timestamp, Agent ID); the authorization flow is NOT blocked for `jwks_uri` changes alone. The Agent record snapshot is updated on every fetch.
 - **SR-013**: When the authorization server redirects to the consent page for a CIMD-based (URL-format `client_id`) authorization request, the full authorization request context (`client_id`, `redirect_uri`, `scope`, `state`, `code_challenge`, resolved Agent ID, and CIMD metadata) MUST be persisted in a server-side session keyed by an opaque, cryptographically random session ID. Only this session ID is passed to the consent URL. The consent page and its backend API MUST retrieve all authorization context from the session — never from caller-supplied query parameters. This requirement applies only to CIMD-based flows; opaque (pre-registered UUID) `client_id` flows are unchanged.
 - **SR-014**: The server-side authorization session MUST have a short TTL (default: 10 minutes) after which the session is expired and any consent attempt using it is rejected. Sessions MUST be single-use: once consent is submitted (approved or denied), the session MUST be consumed and any subsequent use of the same session ID MUST be rejected. Sessions MUST be stored in PostgreSQL (consistent with the persistence consistency constitution principle) to survive restarts and maintain consistency across replicas. A database migration is required.
 
@@ -333,8 +326,7 @@ oauth2_authorization_server:
 - Q: Which authority governs the acceptable `redirect_uri` values for a client identified by a Client ID Metadata Document URL? → A: Same-origin as the `client_id` URL (scheme + host + port); `localhost` and `127.0.0.1` are always permitted regardless of origin to support locally-running tooling and coding agents.
 - Q: Which metadata drives the consent screen when a CIMD document resolves to an Agent? → A: CIMD document metadata (`client_name`, `logo_uri`) is displayed to show current app branding. Brand Pinning is enforced: the CIMD `client_name` is compared against `Agent.DisplayName` (set by the operator at provisioning); a mismatch is logged as an audit event but does not block the flow. The `client_name` is also validated against a blacklist of reserved/system-level keywords to prevent spoofing.
 - Q: Where is the Brand Pin baseline stored, and what is it anchored to? → A: The pin IS `Agent.DisplayName` — already persisted on the Agent record. No new baseline storage is required. Only `client_name` is subject to brand pinning (not `logo_uri`).
-- RFC security gap review applied: (1) Added FR-014a requiring path component in `client_id` URL. (2) Added SR-010 requiring SSRF validation for all URLs embedded within the CIMD document. (3) Documented `logo_uri` prefetching as a known deferred security tradeoff. (4) Q: Scope of metadata change monitoring beyond `client_name` → A: Log-only for all three security-critical fields (`redirect_uris`, `token_endpoint_auth_method`, `jwks_uri`); no blocking on any field change. Authorization flow continues regardless.
-- Q: Where is the previously-observed CIMD snapshot stored for SR-011/SR-012 change detection? → A: The Agent entity's own `redirectURIs`, `authMethod`, and `jwksURI` fields serve as the snapshot — updated on every successful CIMD fetch. No separate snapshot columns are required; the stored Agent state IS the baseline. Persisted in the database; survives restarts and is consistent across replicas.
+- RFC security gap review applied: (1) Added FR-014a requiring path component in `client_id` URL. (2) Added SR-010 requiring SSRF validation for all URLs embedded within the CIMD document. (3) Documented `logo_uri` prefetching as a known deferred security tradeoff.
 
 ### Session 2026-04-23
 

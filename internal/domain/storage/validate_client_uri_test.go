@@ -7,15 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidateClientURIs_MultipleRejected(t *testing.T) {
-	err := validateClientURIs([]string{
-		"https://agent.example.com/client-a",
-		"https://agent.example.com/client-b",
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "at most one CIMD")
-}
-
 func TestValidateClientURI(t *testing.T) {
 	tests := []struct {
 		name    string

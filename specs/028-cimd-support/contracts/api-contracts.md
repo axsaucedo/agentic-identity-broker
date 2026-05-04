@@ -42,7 +42,7 @@ Extended `AgentRequest` to include `client_uris` (optional, defaults to `[]`).
 
 ### GET /api/agents/{agent-id} (MODIFIED)
 
-Extended `AgentResponse` to include `client_uris`, `auth_method`, `jwks_uri`.
+Extended `AgentResponse` to include `client_uris`.
 
 ```json
 {
@@ -50,8 +50,6 @@ Extended `AgentResponse` to include `client_uris`, `auth_method`, `jwks_uri`.
   "client_id": "my-agent",
   "display_name": "My Agent",
   "client_uris": ["https://agent.example.com/client"],
-  "auth_method": "none",
-  "jwks_uri": null,
   "redirect_uris": ["https://agent.example.com/callback"],
   ...
 }
@@ -117,7 +115,7 @@ When the consent session originates from a CIMD-based authorization request, the
 ### `/api/admin/openapi.yaml`
 
 - Extend `AgentRequest` schema with `client_uris` (array of strings, optional, defaults to `[]`)
-- Extend `AgentResponse` schema with `client_uris`, `auth_method`, `jwks_uri`
+- Extend `AgentResponse` schema with `client_uris`
 
 ### `/api/enduser/openapi.yaml`
 

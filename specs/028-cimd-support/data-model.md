@@ -12,22 +12,15 @@
 | `ClientID` | `id.ClientID` (string) | No | Opaque client identifier |
 | `DisplayName` | `string` | No | Operator-set display name; brand pin baseline |
 | `ClientURIs` | `[]string` | **Yes** | Pre-registered Client ID Metadata Document URLs |
-| `AuthMethod` | `*string` | **Yes** | Last observed `token_endpoint_auth_method` from CIMD (snapshot for SR-011) |
-| `JwksURI` | `*string` | **Yes** | Last observed `jwks_uri` from CIMD (snapshot for SR-012) |
 | *(all existing fields preserved)* | | | |
 
 **Validation rules**:
 - `ClientURIs`: each entry must be a valid HTTPS URL (validated via `ClientIDMetadataDocumentURL.Parse()`)
 - `ClientURIs`: must be globally unique across all agents (no two agents share a Client URI)
-- `AuthMethod`: nullable — populated on first successful CIMD fetch
-- `JwksURI`: nullable — populated on first successful CIMD fetch
 
 **Database migration** (015):
 ```sql
 -- UP
-ALTER TABLE agents ADD COLUMN auth_method TEXT;
-ALTER TABLE agents ADD COLUMN jwks_uri TEXT;
-
 CREATE TABLE agent_client_uris (
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     client_uri TEXT NOT NULL,
@@ -36,8 +29,6 @@ CREATE TABLE agent_client_uris (
 
 -- DOWN
 DROP TABLE agent_client_uris;
-ALTER TABLE agents DROP COLUMN auth_method;
-ALTER TABLE agents DROP COLUMN jwks_uri;
 ```
 
 **Uniqueness**: `UNIQUE(client_uri)` on the child table is the sole enforcement mechanism. No two agents may share a Client ID Metadata Document URL; the constraint violation maps to a 409 Conflict response on admin writes.
@@ -211,7 +202,6 @@ type CIMDSSRFConfig struct {
 | `CIMDFetchBlocked` | URL, reason (blocked IP, invalid scheme, etc.) | SSRF guard rejection |
 | `CIMDFetchFailed` | URL, reason (non-200, timeout, oversized) | Fetch error |
 | `BrandPinMismatchDetected` | AgentID, Agent.DisplayName, CIMD client_name | client_name differs from DisplayName |
-| `CIMDSecurityFieldChanged` | AgentID, field name, previous value, new value | redirect_uris/auth_method/jwks_uri changed |
 
 Events are emitted via structured logging (existing `slog` logger), not a separate event bus.
 
@@ -219,8 +209,6 @@ Events are emitted via structured logging (existing `slog` logger), not a separa
 
 ```
 Agent 1──* ClientIDMetadataDocumentURL (pre-registered, stored in agent_client_uris child table)
-Agent 1──0..1 AuthMethod snapshot (nullable)
-Agent 1──0..1 JwksURI snapshot (nullable)
 CIMDCacheEntry *──1 ClientIDMetadataDocument (in-process only)
 ```
 
@@ -235,8 +223,7 @@ CIMDCacheEntry *──1 ClientIDMetadataDocument (in-process only)
     → SSRF validate resolved IPs → [IPs safe]
     → HTTP GET (timeout + size limit) → [200 OK, valid JSON]
     → validate document (client_id match, auth method, redirect URIs, blocklist)
-    → compare snapshots (brand pin, security fields) → emit audit events
-    → update Agent snapshot fields
+    → compare brand pin (client_name vs Agent.DisplayName) → emit audit event on mismatch
     → proceed to consent/authorization
 ```
 

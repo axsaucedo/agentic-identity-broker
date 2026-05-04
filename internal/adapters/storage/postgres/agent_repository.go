@@ -160,8 +160,8 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 			id, client_id, external_id, display_name, description,
 			governance_url, user_documentation_url, agent_interface_url,
 			service_requirements, redirect_uris, allowed_scopes,
-			auth_method, jwks_uri, cimd_client_name, cimd_logo_uri, cimd_redirect_uris, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		agent.ID,
 		agent.ClientID,
 		agent.ExternalID,
@@ -173,11 +173,6 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		serviceReqsJSON,
 		pq.Array(emptyIfNil(agent.RedirectURIs)),
 		pq.Array(emptyIfNil(agent.AllowedScopes)),
-		agent.AuthMethod,
-		agent.JwksURI,
-		agent.CIMDClientName,
-		agent.CIMDLogoURI,
-		pq.Array(agent.CIMDRedirectURIs),
 		agent.CreatedAt,
 		agent.UpdatedAt,
 	)
@@ -245,7 +240,7 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 		`SELECT id, client_id, external_id, display_name, description,
 		        governance_url, user_documentation_url, agent_interface_url,
 		        service_requirements, redirect_uris, allowed_scopes,
-		        auth_method, jwks_uri, cimd_client_name, cimd_logo_uri, cimd_redirect_uris, created_at, updated_at
+		        created_at, updated_at
 		 FROM agents
 		 WHERE id = $1`,
 		agentID,
@@ -261,11 +256,6 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 		&serviceReqsJSON,
 		pq.Array(&agent.RedirectURIs),
 		pq.Array(&agent.AllowedScopes),
-		&agent.AuthMethod,
-		&agent.JwksURI,
-		&agent.CIMDClientName,
-		&agent.CIMDLogoURI,
-		pq.Array(&agent.CIMDRedirectURIs),
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
@@ -361,12 +351,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		     service_requirements = $9,
 		     redirect_uris = $10,
 		     allowed_scopes = $11,
-		     auth_method = $12,
-		     jwks_uri = $13,
-		     cimd_client_name = $14,
-		     cimd_logo_uri = $15,
-		     cimd_redirect_uris = $16,
-		     updated_at = $17
+		     updated_at = $12
 		 WHERE id = $1`,
 		agent.ID,
 		agent.ClientID,
@@ -379,11 +364,6 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		serviceReqsJSON,
 		pq.Array(emptyIfNil(agent.RedirectURIs)),
 		pq.Array(emptyIfNil(agent.AllowedScopes)),
-		agent.AuthMethod,
-		agent.JwksURI,
-		agent.CIMDClientName,
-		agent.CIMDLogoURI,
-		pq.Array(agent.CIMDRedirectURIs),
 		agent.UpdatedAt,
 	)
 	if err != nil {
@@ -478,7 +458,7 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 		`SELECT id, client_id, external_id, display_name, description,
 		        governance_url, user_documentation_url, agent_interface_url,
 		        service_requirements, redirect_uris, allowed_scopes,
-		        auth_method, jwks_uri, cimd_client_name, cimd_logo_uri, cimd_redirect_uris, created_at, updated_at
+		        created_at, updated_at
 		 FROM agents
 		 ORDER BY created_at DESC`,
 	)
@@ -500,8 +480,6 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 			&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
 			&serviceReqsJSON,
 			pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
-			&agent.AuthMethod, &agent.JwksURI,
-			&agent.CIMDClientName, &agent.CIMDLogoURI, pq.Array(&agent.CIMDRedirectURIs),
 			&agent.CreatedAt, &agent.UpdatedAt,
 		); err != nil {
 			return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "failed to scan agent row")
@@ -559,7 +537,7 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 		`SELECT id, client_id, external_id, display_name, description,
 		        governance_url, user_documentation_url, agent_interface_url,
 		        service_requirements, redirect_uris, allowed_scopes,
-		        auth_method, jwks_uri, cimd_client_name, cimd_logo_uri, cimd_redirect_uris, created_at, updated_at
+		        created_at, updated_at
 		 FROM agents
 		 WHERE client_id = $1`,
 		clientID,
@@ -569,8 +547,6 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
 		&serviceReqsJSON,
 		pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
-		&agent.AuthMethod, &agent.JwksURI,
-		&agent.CIMDClientName, &agent.CIMDLogoURI, pq.Array(&agent.CIMDRedirectURIs),
 		&agent.CreatedAt, &agent.UpdatedAt,
 	)
 	if err != nil {
@@ -620,7 +596,7 @@ func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*stor
 		`SELECT a.id, a.client_id, a.external_id, a.display_name, a.description,
 		        a.governance_url, a.user_documentation_url, a.agent_interface_url,
 		        a.service_requirements, a.redirect_uris, a.allowed_scopes,
-		        a.auth_method, a.jwks_uri, a.cimd_client_name, a.cimd_logo_uri, a.cimd_redirect_uris, a.created_at, a.updated_at
+		        a.created_at, a.updated_at
 		 FROM agents a
 		 JOIN agent_client_uris acu ON acu.agent_id = a.id
 		 WHERE acu.client_uri = $1`,
@@ -631,8 +607,6 @@ func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*stor
 		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
 		&serviceReqsJSON,
 		pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
-		&agent.AuthMethod, &agent.JwksURI,
-		&agent.CIMDClientName, &agent.CIMDLogoURI, pq.Array(&agent.CIMDRedirectURIs),
 		&agent.CreatedAt, &agent.UpdatedAt,
 	)
 	if err != nil {

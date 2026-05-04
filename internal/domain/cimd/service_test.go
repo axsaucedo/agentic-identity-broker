@@ -121,100 +121,12 @@ func TestService_Resolve_CacheHit(t *testing.T) {
 	cache.Set("https://agent.example.com/client", cached, nil, time.Now())
 
 	fetcher := &mockFetcher{}
-	svc := NewService(fetcher, cache, newMockAgentRepo(agent), nil, slog.Default())
+	svc := NewService(fetcher, cache, nil, slog.Default())
 
 	doc, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
 	require.NoError(t, err)
 	assert.Equal(t, cached, doc)
 	assert.Equal(t, 0, fetcher.calls, "should not fetch when cache hit")
-}
-
-func TestService_Resolve_FirstFetch_PopulatesSnapshotSilently(t *testing.T) {
-	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
-	agent := testAgent(agentID)
-	// No AuthMethod or JwksURI yet — first fetch
-	require.Nil(t, agent.AuthMethod)
-	require.Nil(t, agent.JwksURI)
-
-	fetchResult := cimdFetchResult(t, "https://agent.example.com/client", "private_key_jwt", "https://agent.example.com/.well-known/jwks.json")
-	repo := newMockAgentRepo(agent)
-	svc := NewService(
-		&mockFetcher{result: fetchResult},
-		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		repo,
-		nil,
-		slog.Default(),
-	)
-
-	doc, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
-	require.NoError(t, err)
-	assert.Equal(t, "https://agent.example.com/client", doc.ClientID)
-
-	// Snapshot should be updated on agent
-	require.Len(t, repo.updated, 1)
-	updated := repo.updated[0]
-	require.NotNil(t, updated.AuthMethod)
-	assert.Equal(t, "private_key_jwt", *updated.AuthMethod)
-	require.NotNil(t, updated.JwksURI)
-	assert.Equal(t, "https://agent.example.com/.well-known/jwks.json", *updated.JwksURI)
-}
-
-func TestService_Resolve_SubsequentFetch_ChangedAuthMethod_EmitsAuditAndUpdates(t *testing.T) {
-	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
-	prev := "private_key_jwt"
-	agent := &storage.Agent{
-		ID:          agentID,
-		ClientID:    "https://agent.example.com/client",
-		DisplayName: "Test Agent",
-		AuthMethod:  &prev, // already has a snapshot
-	}
-
-	fetchResult := cimdFetchResult(t, "https://agent.example.com/client", "none", "")
-	repo := newMockAgentRepo(agent)
-	svc := NewService(
-		&mockFetcher{result: fetchResult},
-		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		repo,
-		nil,
-		slog.Default(),
-	)
-
-	doc, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
-	require.NoError(t, err)
-	assert.Equal(t, "https://agent.example.com/client", doc.ClientID)
-
-	require.Len(t, repo.updated, 1)
-	assert.Equal(t, "none", *repo.updated[0].AuthMethod)
-}
-
-func TestService_Resolve_SubsequentFetch_UnchangedFields_NoUpdate(t *testing.T) {
-	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
-	method := "private_key_jwt"
-	jwks := "https://agent.example.com/.well-known/jwks.json"
-	clientName := "Test Agent"
-	agent := &storage.Agent{
-		ID:               agentID,
-		ClientID:         "https://agent.example.com/client",
-		DisplayName:      "Test Agent",
-		AuthMethod:       &method,
-		JwksURI:          &jwks,
-		CIMDClientName:   &clientName,
-		CIMDRedirectURIs: []string{"https://agent.example.com/cb"},
-	}
-
-	fetchResult := cimdFetchResult(t, "https://agent.example.com/client", "private_key_jwt", "https://agent.example.com/.well-known/jwks.json")
-	repo := newMockAgentRepo(agent)
-	svc := NewService(
-		&mockFetcher{result: fetchResult},
-		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		repo,
-		nil,
-		slog.Default(),
-	)
-
-	_, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
-	require.NoError(t, err)
-	assert.Empty(t, repo.updated, "should not update agent when fields are unchanged")
 }
 
 func TestService_Resolve_FetchError(t *testing.T) {
@@ -224,7 +136,6 @@ func TestService_Resolve_FetchError(t *testing.T) {
 	svc := NewService(
 		&mockFetcher{err: fmt.Errorf("connection refused")},
 		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		newMockAgentRepo(agent),
 		nil,
 		slog.Default(),
 	)
@@ -243,41 +154,12 @@ func TestService_Resolve_InvalidDocument(t *testing.T) {
 	svc := NewService(
 		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(badBody)}},
 		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		newMockAgentRepo(agent),
 		nil,
 		slog.Default(),
 	)
 
 	_, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
 	require.Error(t, err)
-}
-
-func TestService_Resolve_UpdateFailureFails(t *testing.T) {
-	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
-	agent := testAgent(agentID)
-
-	fetchResult := cimdFetchResult(t, "https://agent.example.com/client", "private_key_jwt", "")
-	repo := newMockAgentRepo(agent)
-	repo.updateErr = fmt.Errorf("database unavailable")
-
-	svc := NewService(
-		&mockFetcher{result: fetchResult},
-		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		repo,
-		nil,
-		slog.Default(),
-	)
-
-	// Snapshot update failure must propagate as an error to prevent stale baselines
-	// from causing repeated false-positive cimd_security_field_changed events.
-	// The error must be wrapped in SnapshotPersistenceError so callers can return server_error.
-	_, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "database unavailable")
-	var snapErr *SnapshotPersistenceError
-	require.ErrorAs(t, err, &snapErr)
-	assert.Nil(t, agent.AuthMethod, "caller agent must remain unchanged when snapshot persistence fails")
-	assert.Nil(t, agent.JwksURI, "caller agent must remain unchanged when snapshot persistence fails")
 }
 
 func TestService_Resolve_BareQueryDelimiterLogsWarning(t *testing.T) {
@@ -291,7 +173,6 @@ func TestService_Resolve_BareQueryDelimiterLogsWarning(t *testing.T) {
 	svc := NewService(
 		fetcher,
 		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		newMockAgentRepo(agent),
 		nil,
 		logger,
 	)
@@ -309,8 +190,7 @@ func TestService_Resolve_NameBlocklist_Rejected(t *testing.T) {
 	svc := NewService(
 		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(badName)}},
 		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		newMockAgentRepo(agent),
-		[]string{"blocked"}, // name blocklist
+		[]string{"blocked"},
 		slog.Default(),
 	)
 
@@ -327,38 +207,12 @@ func TestService_Resolve_NameBlocklist_PartialMatchNotRejected(t *testing.T) {
 	svc := NewService(
 		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(doc)}},
 		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		newMockAgentRepo(agent),
 		[]string{"blocked"},
 		slog.Default(),
 	)
 
 	_, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
 	require.NoError(t, err, "partial substring match must not be rejected")
-}
-
-func TestService_Resolve_OmittedAuthMethodDefaultsToNone(t *testing.T) {
-	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
-	agent := testAgent(agentID)
-	require.Nil(t, agent.AuthMethod)
-
-	// Document omits token_endpoint_auth_method entirely
-	noMethod := `{"client_id":"https://agent.example.com/client","client_name":"Test Agent","redirect_uris":["https://agent.example.com/cb"]}`
-	repo := newMockAgentRepo(agent)
-	svc := NewService(
-		&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(noMethod)}},
-		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		repo,
-		nil,
-		slog.Default(),
-	)
-
-	doc, err := svc.Resolve(context.Background(), "https://agent.example.com/client", agent)
-	require.NoError(t, err)
-	assert.Equal(t, "none", doc.AuthMethod, "omitted auth method should default to none")
-
-	require.Len(t, repo.updated, 1)
-	require.NotNil(t, repo.updated[0].AuthMethod)
-	assert.Equal(t, "none", *repo.updated[0].AuthMethod, "snapshot should record default none")
 }
 
 func TestService_Resolve_InvalidURL(t *testing.T) {
@@ -368,7 +222,6 @@ func TestService_Resolve_InvalidURL(t *testing.T) {
 	svc := NewService(
 		&mockFetcher{},
 		mustNewCIMDCache(t, 60*time.Second, time.Hour),
-		newMockAgentRepo(agent),
 		nil,
 		slog.Default(),
 	)
@@ -390,8 +243,7 @@ func TestService_Resolve_BuiltinReservedNamesRejectedWithEmptyConfig(t *testing.
 			svc := NewService(
 				&mockFetcher{result: &ports.CIMDFetchResult{Body: []byte(body)}},
 				mustNewCIMDCache(t, 60*time.Second, time.Hour),
-				newMockAgentRepo(agent),
-				nil, // empty operator list — built-ins must still apply
+				nil,
 				slog.Default(),
 			)
 

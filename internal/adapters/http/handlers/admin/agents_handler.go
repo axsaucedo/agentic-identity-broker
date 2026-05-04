@@ -85,8 +85,6 @@ type AgentResponse struct {
 	RedirectURIs         []string                     `json:"redirect_uris,omitempty"`
 	AllowedScopes        []string                     `json:"allowed_scopes,omitempty"`
 	ClientURIs           []string                     `json:"client_uris,omitempty"`
-	AuthMethod           *string                      `json:"auth_method,omitempty"`
-	JwksURI              *string                      `json:"jwks_uri,omitempty"`
 	CreatedAt            string                       `json:"created_at"`
 	UpdatedAt            string                       `json:"updated_at"`
 }
@@ -263,7 +261,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update agent entity — preserve read-only CIMD snapshot fields from existing record.
 	agent := &storage.Agent{
 		ID:                   parsedAgentID,
 		ClientID:             id.ClientID(req.ClientID),
@@ -277,11 +274,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs:         req.RedirectURIs,
 		AllowedScopes:        req.AllowedScopes,
 		ClientURIs:           req.ClientURIs,
-		AuthMethod:           existing.AuthMethod,
-		JwksURI:              existing.JwksURI,
-		CIMDClientName:       existing.CIMDClientName,
-		CIMDLogoURI:          existing.CIMDLogoURI,
-		CIMDRedirectURIs:     existing.CIMDRedirectURIs,
 		CreatedAt:            existing.CreatedAt,
 		UpdatedAt:            time.Now().UTC(),
 	}
@@ -408,8 +400,6 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 		RedirectURIs:         agent.RedirectURIs,
 		AllowedScopes:        agent.AllowedScopes,
 		ClientURIs:           agent.ClientURIs,
-		AuthMethod:           agent.AuthMethod,
-		JwksURI:              agent.JwksURI,
 		CreatedAt:            agent.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:            agent.UpdatedAt.Format(time.RFC3339),
 	}

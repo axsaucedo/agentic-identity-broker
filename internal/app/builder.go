@@ -316,7 +316,7 @@ func (b *Builder) Build() (*App, error) {
 			if cacheErr != nil {
 				return nil, fmt.Errorf("failed to create CIMD cache: %w", cacheErr)
 			}
-			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, b.storage.Agents(), cimdCfg.ClientNameBlocklist, b.logger)
+			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, cimdCfg.ClientNameBlocklist, b.logger)
 			clientResolver = domaincimd.NewCIMDClientResolver(b.storage.Agents(), cimdSvc, b.logger)
 			b.logger.Info("CIMD client resolution enabled",
 				"fetch_timeout", cimdCfg.FetchTimeout,

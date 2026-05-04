@@ -116,14 +116,13 @@ var _ = Describe("CIMD Consent Screen", func() {
 		It("returns cimd_metadata with is_localhost_redirect=true", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
-				ID:               id.NewAgentID(),
-				ClientID:         id.ClientID("https://agent.example.com/client"),
-				DisplayName:      "Localhost Redirect Agent",
-				Description:      "E2E test agent for localhost redirect CIMD scenario",
-				ClientURIs:       []string{"https://agent.example.com/client"},
-				CIMDRedirectURIs: []string{"http://localhost:3000/callback"},
-				CreatedAt:        now,
-				UpdatedAt:        now,
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID("https://agent.example.com/client"),
+				DisplayName: "Localhost Redirect Agent",
+				Description: "E2E test agent for localhost redirect CIMD scenario",
+				ClientURIs:  []string{"https://agent.example.com/client"},
+				CreatedAt:   now,
+				UpdatedAt:   now,
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
@@ -170,14 +169,13 @@ var _ = Describe("CIMD Consent Screen", func() {
 		It("returns cimd_metadata with client_id_url, redirect_uri, and requested_scopes populated", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
-				ID:               id.NewAgentID(),
-				ClientID:         id.ClientID("https://agent.example.com/client"),
-				DisplayName:      "Advanced Detail Agent",
-				Description:      "E2E test agent for CIMD advanced detail scenario",
-				ClientURIs:       []string{"https://agent.example.com/client"},
-				CIMDRedirectURIs: []string{"https://agent.example.com/callback"},
-				CreatedAt:        now,
-				UpdatedAt:        now,
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID("https://agent.example.com/client"),
+				DisplayName: "Advanced Detail Agent",
+				Description: "E2E test agent for CIMD advanced detail scenario",
+				ClientURIs:  []string{"https://agent.example.com/client"},
+				CreatedAt:   now,
+				UpdatedAt:   now,
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
@@ -451,14 +449,13 @@ var _ = Describe("CIMD Consent Screen", func() {
 		It("does not require session_id when the request omits a URL-format client_id even if the agent has a snapshot", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
-				ID:               id.NewAgentID(),
-				ClientID:         id.ClientID("https://agent.example.com/client"),
-				DisplayName:      "Snapshot Agent",
-				Description:      "E2E test for session_id requirement: with snapshot",
-				ClientURIs:       []string{"https://agent.example.com/client"},
-				CIMDRedirectURIs: []string{"https://agent.example.com/registered-callback"},
-				CreatedAt:        now,
-				UpdatedAt:        now,
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID("https://agent.example.com/client"),
+				DisplayName: "Snapshot Agent",
+				Description: "E2E test for session_id requirement: with snapshot",
+				ClientURIs:  []string{"https://agent.example.com/client"},
+				CreatedAt:   now,
+				UpdatedAt:   now,
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 

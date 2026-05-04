@@ -375,12 +375,6 @@ func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataRespo
 	}
 
 	redirectURI := r.URL.Query().Get("redirect_uri")
-	// Fail closed: accept redirect_uri only when the CIMD snapshot is populated and matches.
-	if redirectURI != "" {
-		if len(agent.CIMDRedirectURIs) == 0 || !slices.Contains(agent.CIMDRedirectURIs, redirectURI) {
-			redirectURI = ""
-		}
-	}
 	scope := r.URL.Query().Get("scope")
 
 	u, err := url.Parse(clientID)
@@ -398,14 +392,6 @@ func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataRespo
 	}
 
 	clientName := agent.DisplayName
-	if agent.CIMDClientName != nil && *agent.CIMDClientName != "" {
-		clientName = *agent.CIMDClientName
-	}
-
-	logoURI := ""
-	if agent.CIMDLogoURI != nil {
-		logoURI = *agent.CIMDLogoURI
-	}
 
 	return &CIMDMetadataResponse{
 		ClientName:          clientName,
@@ -414,7 +400,6 @@ func buildCIMDMetadata(r *http.Request, agent *storage.Agent) *CIMDMetadataRespo
 		VerifiedDomain:      verifiedDomain,
 		IsLocalhostRedirect: isLocalhostURI(redirectURI),
 		RequestedScopes:     requestedScopes,
-		LogoURI:             logoURI,
 	}
 }
 

@@ -452,22 +452,13 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 		agentID := id.NewAgentID()
 		now := time.Now().UTC()
-		authMethod := "private_key_jwt"
-		jwksURI := "https://agent.example.com/.well-known/jwks.json"
-		cimdName := "Test Agent"
-		cimdLogo := "https://agent.example.com/logo.png"
 		existingAgent := &storage.Agent{
-			ID:               agentID,
-			ClientID:         "https://agent.example.com/client",
-			DisplayName:      "Test Agent",
-			Description:      "Test description",
-			AuthMethod:       &authMethod,
-			JwksURI:          &jwksURI,
-			CIMDClientName:   &cimdName,
-			CIMDLogoURI:      &cimdLogo,
-			CIMDRedirectURIs: []string{"https://agent.example.com/callback"},
-			CreatedAt:        now,
-			UpdatedAt:        now,
+			ID:          agentID,
+			ClientID:    "https://agent.example.com/client",
+			DisplayName: "Test Agent",
+			Description: "Test description",
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 
 		reqBody := AgentRequest{
@@ -479,12 +470,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 		mockRepo.On("Get", mock.Anything, agentID).Return(existingAgent, nil)
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
-			return a.ID == agentID &&
-				a.AuthMethod != nil && *a.AuthMethod == authMethod &&
-				a.JwksURI != nil && *a.JwksURI == jwksURI &&
-				a.CIMDClientName != nil && *a.CIMDClientName == cimdName &&
-				a.CIMDLogoURI != nil && *a.CIMDLogoURI == cimdLogo &&
-				len(a.CIMDRedirectURIs) == 1 && a.CIMDRedirectURIs[0] == "https://agent.example.com/callback"
+			return a.ID == agentID && a.DisplayName == "Updated Name"
 		})).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))

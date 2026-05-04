@@ -1244,11 +1244,8 @@ components:
         client_uris:
           type: array
           nullable: true
-          maxItems: 1
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
-            At most one HTTPS URL is allowed per agent (snapshot fields such as
-            auth_method, jwks_uri, and redirect_uris are stored once per agent).
             Each entry must be a valid HTTPS URL and globally unique across all agents.
             When CIMD is enabled, authorization requests with a matching URL as client_id
             are resolved to this agent via CIMD fetch/validate/cache.
@@ -1257,23 +1254,6 @@ components:
             format: uri
           example:
             - https://agent.example.com/oauth/client-metadata.json
-        auth_method:
-          type: string
-          nullable: true
-          description: |
-            Last observed token_endpoint_auth_method from a successful CIMD fetch.
-            Populated automatically on first CIMD fetch; null until then.
-          readOnly: true
-          example: none
-        jwks_uri:
-          type: string
-          format: uri
-          nullable: true
-          description: |
-            Last observed jwks_uri from a successful CIMD fetch.
-            Populated automatically on first CIMD fetch; null until then.
-          readOnly: true
-          example: https://agent.example.com/.well-known/jwks.json
         created_at:
           type: string
           format: date-time
@@ -1377,10 +1357,8 @@ components:
         client_uris:
           type: array
           nullable: true
-          maxItems: 1
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
-            At most one HTTPS URL is allowed per agent.
             Each entry must be a valid HTTPS URL and globally unique across all agents.
             Returns 400 for malformed URLs; returns 409 Conflict when a URI is already
             registered to a different agent.
@@ -1480,10 +1458,8 @@ components:
         client_uris:
           type: array
           nullable: true
-          maxItems: 1
           description: |
             Pre-registered Client ID Metadata Document URLs for this agent.
-            At most one HTTPS URL is allowed per agent.
             Replaces the previous list on PUT (full replacement semantics).
             Each entry must be a valid HTTPS URL and globally unique across all agents.
             Returns 400 for malformed URLs; returns 409 Conflict when a URI is already

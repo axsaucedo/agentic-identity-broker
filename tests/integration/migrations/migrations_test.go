@@ -151,7 +151,7 @@ func TestMigration007OAuth2Flavor(t *testing.T) {
 }
 
 // TestMigration015AgentCIMDFields verifies migration 015 lifecycle:
-// adds agent_client_uris child table, auth_method and jwks_uri columns to agents.
+// adds agent_client_uris child table to agents.
 func TestMigration015AgentCIMDFields(t *testing.T) {
 	f := NewMigrationTestFramework(t)
 	defer f.Cleanup(t)
@@ -165,10 +165,6 @@ func TestMigration015AgentCIMDFields(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, exists, "agent_client_uris table should NOT exist before migration 015")
 
-	colExists, err := f.ColumnExists(t, "agents", "auth_method")
-	require.NoError(t, err)
-	assert.False(t, colExists, "auth_method column should NOT exist before migration 015")
-
 	// Apply migration 015
 	err = f.UpAll(t)
 	require.NoError(t, err)
@@ -178,14 +174,6 @@ func TestMigration015AgentCIMDFields(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, exists, "agent_client_uris table should exist after migration 015")
 
-	colExists, err = f.ColumnExists(t, "agents", "auth_method")
-	require.NoError(t, err)
-	assert.True(t, colExists, "auth_method column should exist after migration 015")
-
-	colExists, err = f.ColumnExists(t, "agents", "jwks_uri")
-	require.NoError(t, err)
-	assert.True(t, colExists, "jwks_uri column should exist after migration 015")
-
 	// Rollback migration 015
 	err = f.Down(t, 14)
 	require.NoError(t, err)
@@ -194,37 +182,5 @@ func TestMigration015AgentCIMDFields(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, exists, "agent_client_uris table should be gone after rollback")
 
-	colExists, err = f.ColumnExists(t, "agents", "auth_method")
-	require.NoError(t, err)
-	assert.False(t, colExists, "auth_method column should be gone after rollback")
-
 	t.Log("Migration 015 lifecycle test complete")
-}
-
-// TestMigration015CIMDRedirectURIs verifies migration 015 lifecycle:
-// adds cimd_redirect_uris TEXT[] column to agents.
-func TestMigration015CIMDRedirectURIs(t *testing.T) {
-	f := NewMigrationTestFramework(t)
-	defer f.Cleanup(t)
-
-	err := f.UpAll(t)
-	require.NoError(t, err)
-
-	colExists, err := f.ColumnExists(t, "agents", "cimd_redirect_uris")
-	require.NoError(t, err)
-	assert.True(t, colExists, "cimd_redirect_uris column should exist after migration 015")
-
-	err = f.DownAll(t)
-	require.NoError(t, err)
-
-	version, dirty, err := f.Version(t)
-	require.NoError(t, err)
-	assert.Equal(t, uint(0), version, "all migrations should be rolled back")
-	assert.False(t, dirty, "database must not be left dirty after rollback")
-
-	colExists, err = f.ColumnExists(t, "agents", "cimd_redirect_uris")
-	require.NoError(t, err)
-	assert.False(t, colExists, "cimd_redirect_uris column should be gone after rollback")
-
-	t.Log("Migration 015 cimd_redirect_uris lifecycle test complete")
 }
