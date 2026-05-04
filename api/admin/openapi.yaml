@@ -1366,7 +1366,7 @@ components:
             type: string
             format: uri
           example:
-            - https://agent.example.com/client
+            - https://agent.example.com/oauth/client-metadata.json
 
     AgentUpdateRequest:
       type: object
@@ -1468,7 +1468,7 @@ components:
             type: string
             format: uri
           example:
-            - https://agent.example.com/client
+            - https://agent.example.com/oauth/client-metadata.json
 
     ServiceRequirement:
       type: object
