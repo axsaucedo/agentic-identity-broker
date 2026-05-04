@@ -2095,17 +2095,12 @@ components:
     CIMDMetadata:
       type: object
       required:
-      - client_name
       - client_id_url
       - redirect_uri
       - verified_domain
       - is_localhost_redirect
       - requested_scopes
       properties:
-        client_name:
-          type: string
-          description: Display name from the CIMD document (falls back to agent DisplayName)
-          example: My AI Assistant
         client_id_url:
           type: string
           format: uri

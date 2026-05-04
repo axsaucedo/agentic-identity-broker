@@ -1,17 +1,17 @@
 interface CIMDConsentSummaryProps {
   domain: string;
-  clientName: string;
+  agentName: string;
   accessTarget: string;
-  logoUri?: string;
+  agentLogoUrl?: string | null;
 }
 
-export function CIMDConsentSummary({ domain, clientName, accessTarget, logoUri }: CIMDConsentSummaryProps) {
+export function CIMDConsentSummary({ domain, agentName, accessTarget, agentLogoUrl }: CIMDConsentSummaryProps) {
   return (
     <div className="flex items-start gap-4 p-4 bg-neutral-50 rounded-lg border border-neutral-200">
-      {logoUri && (
+      {agentLogoUrl && (
         <img
-          src={logoUri}
-          alt={`${clientName} logo`}
+          src={agentLogoUrl}
+          alt={`${agentName} logo`}
           className="w-12 h-12 rounded-lg object-contain flex-shrink-0"
           referrerPolicy="no-referrer"
         />
@@ -24,7 +24,7 @@ export function CIMDConsentSummary({ domain, clientName, accessTarget, logoUri }
           <span className="font-mono font-semibold text-trust-deep">{domain}</span>
         </div>
         <p className="text-neutral-600 text-sm">
-          <span>{clientName}</span>{' '}
+          <span>{agentName}</span>{' '}
           wants to access{' '}
           <span className="font-medium text-neutral-900">{accessTarget}</span>.
         </p>

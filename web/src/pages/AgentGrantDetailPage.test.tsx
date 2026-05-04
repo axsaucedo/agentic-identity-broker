@@ -761,7 +761,6 @@ describe('AgentGrantDetailPage - CIMD session_id flow', () => {
 
   it('renders CIMDConsentSummary and domain badge when cimdMeta is present', () => {
     const mockCimdMeta: CIMDMetadata = {
-      client_name: 'Acme Corp Assistant',
       client_id_url: 'https://acme.example.com/client',
       redirect_uri: 'https://acme.example.com/callback',
       verified_domain: 'acme.example.com',

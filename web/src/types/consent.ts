@@ -180,8 +180,6 @@ export interface GetAgentDelegationsResponse {
  * Null/absent for opaque UUID-based client_id values.
  */
 export interface CIMDMetadata {
-  /** client_name from the CIMD document (or Agent.DisplayName as fallback) */
-  client_name: string;
   /** The CIMD URL used as client_id */
   client_id_url: string;
   /** The requested redirect_uri */
@@ -192,8 +190,6 @@ export interface CIMDMetadata {
   is_localhost_redirect: boolean;
   /** OAuth2 scopes requested by this authorization */
   requested_scopes: string[];
-  /** logo_uri from CIMD document (optional) */
-  logo_uri?: string;
 }
 
 /**

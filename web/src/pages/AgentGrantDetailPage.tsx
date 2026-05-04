@@ -502,7 +502,7 @@ export function AgentGrantDetailPage() {
             <div className="space-y-3">
               <CIMDConsentSummary
                 domain={cimdMeta.verified_domain}
-                clientName={cimdMeta.client_name}
+                agentName={agent.displayName}
                 accessTarget={
                   services
                     .filter(s =>
@@ -512,13 +512,12 @@ export function AgentGrantDetailPage() {
                     .map(s => s.displayName || s.serviceName || s.serviceId)
                     .join(', ') || cimdMeta.requested_scopes.join(', ') || 'requested services'
                 }
-                logoUri={cimdMeta.logo_uri}
+                agentLogoUrl={agent.logoUrl}
               />
               {cimdMeta.is_localhost_redirect && (
                 <CIMDLocalhostWarning agentDisplayName={agent.displayName} />
               )}
               <CIMDAdvancedDetails
-                clientName={cimdMeta.client_name}
                 clientIdUrl={cimdMeta.client_id_url}
                 redirectUri={cimdMeta.redirect_uri}
                 requestedScopes={cimdMeta.requested_scopes}

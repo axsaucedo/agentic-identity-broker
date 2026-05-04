@@ -5,7 +5,7 @@ import { CIMDConsentSummary } from './CIMDConsentSummary';
 describe('CIMDConsentSummary', () => {
   const baseProps = {
     domain: 'agent.example.com',
-    clientName: 'My Agent',
+    agentName: 'My Agent',
     accessTarget: 'GitHub',
   };
 
@@ -21,15 +21,15 @@ describe('CIMDConsentSummary', () => {
     expect(screen.getByText(/wants to access/)).toBeInTheDocument();
   });
 
-  it('renders logo when logoUri is provided', () => {
-    render(<CIMDConsentSummary {...baseProps} logoUri="https://example.com/logo.png" />);
+  it('renders logo when agentLogoUrl is provided', () => {
+    render(<CIMDConsentSummary {...baseProps} agentLogoUrl="https://example.com/logo.png" />);
     const img = screen.getByRole('img');
     expect(img).toHaveAttribute('src', 'https://example.com/logo.png');
     expect(img).toHaveAttribute('alt', 'My Agent logo');
     expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
   });
 
-  it('renders without logo when logoUri is not provided', () => {
+  it('renders without logo when agentLogoUrl is not provided', () => {
     render(<CIMDConsentSummary {...baseProps} />);
     expect(screen.queryByRole('img')).toBeNull();
   });

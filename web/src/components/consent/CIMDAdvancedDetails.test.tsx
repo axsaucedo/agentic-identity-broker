@@ -5,7 +5,6 @@ import { CIMDAdvancedDetails } from './CIMDAdvancedDetails';
 
 describe('CIMDAdvancedDetails', () => {
   const baseProps = {
-    clientName: 'My Agent',
     clientIdUrl: 'https://agent.example.com/client',
     redirectUri: 'https://agent.example.com/callback',
     requestedScopes: ['repo', 'user:email'],
@@ -14,8 +13,7 @@ describe('CIMDAdvancedDetails', () => {
   it('renders collapsed by default', () => {
     render(<CIMDAdvancedDetails {...baseProps} />);
     expect(screen.getByText(/Advanced Details/i)).toBeInTheDocument();
-    // The detail fields should not be visible when collapsed
-    expect(screen.queryByText('My Agent')).toBeNull();
+    expect(screen.queryByText('https://agent.example.com/client')).toBeNull();
   });
 
   it('expands when clicked to reveal advanced details', async () => {
@@ -24,7 +22,6 @@ describe('CIMDAdvancedDetails', () => {
 
     await user.click(screen.getByRole('button', { name: /Advanced Details/i }));
 
-    expect(screen.getByText('My Agent')).toBeInTheDocument();
     expect(screen.getByText('https://agent.example.com/client')).toBeInTheDocument();
     expect(screen.getByText('https://agent.example.com/callback')).toBeInTheDocument();
     expect(screen.getByText('repo')).toBeInTheDocument();

@@ -93,13 +93,11 @@ func (h *AgentDetailHandler) WithAuthorizationSessionRepository(repo ports.Autho
 // CIMDMetadataResponse is included in the agent detail response when the authorization
 // request originated from a CIMD-based client_id.
 type CIMDMetadataResponse struct {
-	ClientName          string   `json:"client_name"`
 	ClientIDURL         string   `json:"client_id_url"`
 	RedirectURI         string   `json:"redirect_uri"`
 	VerifiedDomain      string   `json:"verified_domain"`
 	IsLocalhostRedirect bool     `json:"is_localhost_redirect"`
 	RequestedScopes     []string `json:"requested_scopes"`
-	LogoURI             string   `json:"logo_uri,omitempty"`
 }
 
 // GetAgentDetailResponse represents the response for GET /api/consent/agent/:agentId.
@@ -185,7 +183,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	// Sort services: mandatory first, then optional
 	sortServiceRequirements(serviceRequirements)
 
-	cimdMeta, err := h.resolveCIMDMetadata(r, agent, parsedAgentID)
+	cimdMeta, err := h.resolveCIMDMetadata(r, parsedAgentID)
 	if err != nil {
 		var storErr *storage.StorageError
 		if errors.As(err, &storErr) {
@@ -340,7 +338,7 @@ func sortServiceRequirements(services []ServiceRequirementForUser) {
 // CIMD agents (agents with URL-format client_uris) require session_id — falling back
 // to query params for CIMD agents would reopen the metadata-spoofing surface that
 // server-side sessions were designed to close. Non-CIMD/opaque flows may use query params.
-func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agent *storage.Agent, agentID id.AgentID) (*CIMDMetadataResponse, error) {
+func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.AgentID) (*CIMDMetadataResponse, error) {
 	sessionID := r.URL.Query().Get("session_id")
 	if sessionID == "" {
 		// Require session_id only when the request is a CIMD authorization flow,
@@ -390,27 +388,17 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agent *storage
 		return nil, errors.New("invalid client_id in authorization session")
 	}
 
-	var requestedScopes []string
-	if session.Scope != "" {
-		requestedScopes = strings.Fields(session.Scope)
-	}
+	requestedScopes := strings.Fields(session.Scope)
 	if requestedScopes == nil {
 		requestedScopes = []string{}
 	}
 
-	clientName := agent.DisplayName
-	if session.CIMDMetadata.ClientName != "" {
-		clientName = session.CIMDMetadata.ClientName
-	}
-
 	return &CIMDMetadataResponse{
-		ClientName:          clientName,
 		ClientIDURL:         session.CIMDMetadata.ClientID,
 		RedirectURI:         session.RedirectURI,
 		VerifiedDomain:      u.Hostname(),
 		IsLocalhostRedirect: isLocalhostURI(session.RedirectURI),
 		RequestedScopes:     requestedScopes,
-		LogoURI:             session.CIMDMetadata.LogoURI,
 	}, nil
 }
 

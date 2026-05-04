@@ -1,13 +1,12 @@
 import { useState } from 'react';
 
 interface CIMDAdvancedDetailsProps {
-  clientName: string;
   clientIdUrl: string;
   redirectUri: string;
   requestedScopes: string[];
 }
 
-export function CIMDAdvancedDetails({ clientName, clientIdUrl, redirectUri, requestedScopes }: CIMDAdvancedDetailsProps) {
+export function CIMDAdvancedDetails({ clientIdUrl, redirectUri, requestedScopes }: CIMDAdvancedDetailsProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -31,7 +30,6 @@ export function CIMDAdvancedDetails({ clientName, clientIdUrl, redirectUri, requ
       </button>
       {expanded && (
         <dl className="px-4 pb-4 space-y-3 border-t border-neutral-200 pt-3">
-          <DetailRow label="Client Name" value={clientName} />
           <DetailRow label="Client ID" value={clientIdUrl} mono />
           <DetailRow label="Redirect URI" value={redirectUri} mono />
           <div>
