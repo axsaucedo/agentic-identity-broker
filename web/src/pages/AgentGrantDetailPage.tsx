@@ -27,7 +27,6 @@ import { Card } from '@design-system/components/data-display/Card';
 import { ServiceCard } from '@components/consent/ServiceCard';
 import { RevokeGrantButton } from '@components/consent/RevokeGrantButton';
 import { CIMDConsentSummary } from '@components/consent/CIMDConsentSummary';
-import { CIMDDomainBadge } from '@components/consent/CIMDDomainBadge';
 import { CIMDLocalhostWarning } from '@components/consent/CIMDLocalhostWarning';
 import { CIMDAdvancedDetails } from '@components/consent/CIMDAdvancedDetails';
 import { GrantValidityControl } from '@components/consent/GrantValidityControl';
@@ -502,6 +501,7 @@ export function AgentGrantDetailPage() {
           {cimdMeta && (
             <div className="space-y-3">
               <CIMDConsentSummary
+                domain={cimdMeta.verified_domain}
                 clientName={cimdMeta.client_name}
                 accessTarget={
                   services
@@ -514,7 +514,6 @@ export function AgentGrantDetailPage() {
                 }
                 logoUri={cimdMeta.logo_uri}
               />
-              <CIMDDomainBadge domain={cimdMeta.verified_domain} />
               {cimdMeta.is_localhost_redirect && (
                 <CIMDLocalhostWarning agentDisplayName={agent.displayName} />
               )}

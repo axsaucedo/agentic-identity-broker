@@ -4,15 +4,21 @@ import { CIMDConsentSummary } from './CIMDConsentSummary';
 
 describe('CIMDConsentSummary', () => {
   const baseProps = {
+    domain: 'agent.example.com',
     clientName: 'My Agent',
     accessTarget: 'GitHub',
   };
 
-  it('renders the summary statement with client_name and access target', () => {
+  it('renders domain as the primary identifier', () => {
     render(<CIMDConsentSummary {...baseProps} />);
-    expect(screen.getByText(/The application/)).toBeInTheDocument();
+    expect(screen.getByText('agent.example.com')).toBeInTheDocument();
+  });
+
+  it('renders client name and access target in the secondary sentence', () => {
+    render(<CIMDConsentSummary {...baseProps} />);
     expect(screen.getByText(/My Agent/)).toBeInTheDocument();
     expect(screen.getByText(/GitHub/)).toBeInTheDocument();
+    expect(screen.getByText(/wants to access/)).toBeInTheDocument();
   });
 
   it('renders logo when logoUri is provided', () => {

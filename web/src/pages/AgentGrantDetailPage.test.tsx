@@ -785,10 +785,10 @@ describe('AgentGrantDetailPage - CIMD session_id flow', () => {
       </MemoryRouterWrapper>,
     );
 
-    // CIMDConsentSummary renders the client name and access description
+    // CIMDConsentSummary renders the verified domain as primary identifier
+    expect(screen.getByText('acme.example.com')).toBeInTheDocument();
+    // and the client name + access sentence as secondary text
     expect(screen.getByText('Acme Corp Assistant')).toBeInTheDocument();
     expect(screen.getByText(/wants to access/)).toBeInTheDocument();
-    // CIMDDomainBadge renders the verified domain
-    expect(screen.getByText('acme.example.com')).toBeInTheDocument();
   });
 });
