@@ -12,6 +12,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 )
@@ -269,7 +270,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 		agentRepo1,
 		nil,
 		&http.Client{},
-		key1,
+		domjwe.New(key1),
 		config,
 		slog.Default(),
 	)
@@ -303,7 +304,7 @@ func TestStateTokenSecurityTampered_WrongKeyDecryption(t *testing.T) {
 		agentRepo2,
 		nil,
 		&http.Client{},
-		key2,
+		domjwe.New(key2),
 		config,
 		slog.Default(),
 	)

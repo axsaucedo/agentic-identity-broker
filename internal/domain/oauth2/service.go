@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -63,6 +64,7 @@ type Service struct {
 	sessionRepo     ports.UserSessionRepository
 	clientResolver  ports.ClientResolver
 	authSessionRepo ports.AuthorizationSessionRepository
+	jweTokenService *jwe.TokenService
 	config          *OAuth2Config
 	logger          *slog.Logger
 }

@@ -28,12 +28,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 	"golang.org/x/oauth2"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -50,7 +48,7 @@ type OAuth2SessionService struct {
 	agentRepo       ports.AgentRepository     // For agent display names
 	encryption      ports.EncryptionPort
 	httpClient      *http.Client // For upstream OAuth2 token endpoint calls
-	jweKey          jwk.Key
+	jweTokenService *domjwe.TokenService
 	config          Config
 	logger          *slog.Logger
 }
@@ -110,7 +108,7 @@ func NewOAuth2SessionService(
 	agentRepo ports.AgentRepository,
 	encryption ports.EncryptionPort,
 	httpClient *http.Client,
-	jweKey jwk.Key,
+	jweTokenService *domjwe.TokenService,
 	config Config,
 	logger *slog.Logger,
 ) *OAuth2SessionService {
@@ -134,7 +132,7 @@ func NewOAuth2SessionService(
 		agentRepo:       agentRepo,
 		encryption:      encryption,
 		httpClient:      httpClient,
-		jweKey:          jweKey,
+		jweTokenService: jweTokenService,
 		config:          config,
 		logger:          logger,
 	}
@@ -195,27 +193,16 @@ type SessionWithAgents struct {
 
 // CreateStateToken encrypts the state token claims into a JWE string.
 func (s *OAuth2SessionService) CreateStateToken(claims *OAuth2StateTokenClaims) (string, error) {
-	// Validate claims
 	if err := claims.Validate(); err != nil {
 		return "", fmt.Errorf("invalid state token claims: %w", err)
 	}
 
-	// Marshal claims to JSON
-	payload, err := json.Marshal(claims)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal claims: %w", err)
-	}
-
-	// Encrypt JSON using JWE with symmetric key (A256GCMKW for key wrap + A256GCM for content)
-	encrypted, err := jwe.Encrypt(payload,
-		jwe.WithKey(jwa.A256GCMKW(), s.jweKey),
-		jwe.WithContentEncryption(jwa.A256GCM()),
-		jwe.WithCompact())
+	token, err := s.jweTokenService.Encrypt(claims)
 	if err != nil {
 		return "", fmt.Errorf("failed to encrypt state token: %w", err)
 	}
 
-	return string(encrypted), nil
+	return token, nil
 }
 
 // ValidateStateToken decrypts and validates a state token.
@@ -232,23 +219,9 @@ func (s *OAuth2SessionService) ValidateStateToken(
 		return nil, fmt.Errorf("state token is empty: %w", ErrInvalidStateToken)
 	}
 
-	// Decrypt JWE with explicit content encryption algorithm for enhanced security
-	// Specifying the algorithm during decryption provides defense-in-depth:
-	// - Validates algorithm match
-	// - Prevents algorithm confusion attacks
-	// - Ensures consistent decryption behavior
-	decrypted, err := jwe.Decrypt(
-		[]byte(tokenString),
-		jwe.WithKey(jwa.A256GCMKW(), s.jweKey),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt state token: %w", ErrInvalidStateToken)
-	}
-
-	// Unmarshal JSON to claims
 	var claims OAuth2StateTokenClaims
-	if err := json.Unmarshal(decrypted, &claims); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal state token claims: %w", err)
+	if err := s.jweTokenService.Decrypt(tokenString, &claims); err != nil {
+		return nil, fmt.Errorf("failed to decrypt state token: %w", ErrInvalidStateToken)
 	}
 
 	// Validate claims structure

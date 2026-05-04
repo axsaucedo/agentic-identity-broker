@@ -34,6 +34,7 @@ import (
 	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
@@ -390,7 +391,7 @@ func (b *Builder) Build() (*App, error) {
 		b.storage.Agents(),
 		encryptor,
 		upstreamClient,
-		jweKey,
+		domjwe.New(jweKey),
 		cfg,
 		b.logger,
 	)
