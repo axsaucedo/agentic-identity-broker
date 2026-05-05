@@ -118,7 +118,7 @@ func TestService_Resolve_CacheHit(t *testing.T) {
 		ClientName:   "Test Agent",
 		RedirectURIs: []string{"https://agent.example.com/cb"},
 	}
-	cache.Set("https://agent.example.com/client", cached, nil, time.Now())
+	cache.Set("https://agent.example.com/client", cached, CacheHeaders{}, time.Now())
 
 	fetcher := &mockFetcher{}
 	svc := NewService(fetcher, cache, nil, slog.Default())

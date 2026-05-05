@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"time"
 
@@ -88,15 +87,7 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 		)
 	}
 
-	// Store in cache
-	headers := make(http.Header)
-	if result.CacheControl != "" {
-		headers.Set("Cache-Control", result.CacheControl)
-	}
-	if result.Expires != "" {
-		headers.Set("Expires", result.Expires)
-	}
-	s.cache.Set(rawURL, doc, headers, time.Now())
+	s.cache.Set(rawURL, doc, CacheHeaders{CacheControl: result.CacheControl, Expires: result.Expires}, time.Now())
 
 	s.logger.Info("cimd_document_fetched",
 		"url", rawURL,

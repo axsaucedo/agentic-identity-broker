@@ -1,7 +1,6 @@
 package cimd
 
 import (
-	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -35,8 +34,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("hit returns entry within TTL", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=300")
+		h := CacheHeaders{CacheControl: "max-age=300"}
 		c.Set(testURL, doc, h, time.Now())
 
 		entry := c.Get(testURL)
@@ -47,8 +45,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("expired entry returns nil", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=300")
+		h := CacheHeaders{CacheControl: "max-age=300"}
 		fetchedAt := time.Now().Add(-10 * time.Minute) // 10 min ago
 		c.Set(testURL, doc, h, fetchedAt)
 
@@ -57,8 +54,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("max-age from Cache-Control is used", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=7200") // 2 hours — clamped to maxTTL (1h)
+		h := CacheHeaders{CacheControl: "max-age=7200"} // 2 hours — clamped to maxTTL (1h)
 
 		now := time.Now()
 		c.Set(testURL, doc, h, now)
@@ -71,8 +67,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("operator maxTTL clamps document max-age", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, 30*time.Minute)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=7200")
+		h := CacheHeaders{CacheControl: "max-age=7200"}
 
 		now := time.Now()
 		c.Set(testURL, doc, h, now)
@@ -84,8 +79,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("minTTL floor applied when max-age is too short", func(t *testing.T) {
 		c := mustNewCIMDCache(t, 60*time.Second, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=10") // 10s — below minTTL (60s)
+		h := CacheHeaders{CacheControl: "max-age=10"} // 10s — below minTTL (60s)
 
 		now := time.Now()
 		c.Set(testURL, doc, h, now)
@@ -98,7 +92,7 @@ func TestCIMDCache(t *testing.T) {
 	t.Run("minTTL applied when no Cache-Control header", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		now := time.Now()
-		c.Set(testURL, doc, make(http.Header), now)
+		c.Set(testURL, doc, CacheHeaders{}, now)
 
 		entry := c.Get(testURL)
 		require.NotNil(t, entry)
@@ -107,8 +101,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("expired entry is evicted from map on Get", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=300")
+		h := CacheHeaders{CacheControl: "max-age=300"}
 		c.Set(testURL, doc, h, time.Now().Add(-10*time.Minute))
 
 		assert.Nil(t, c.Get(testURL))
@@ -121,8 +114,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("Get does not evict entry refreshed by concurrent Set", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=300")
+		h := CacheHeaders{CacheControl: "max-age=300"}
 
 		freshDoc := &ClientIDMetadataDocument{ClientID: testURL, ClientName: "Fresh Agent"}
 
@@ -137,8 +129,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("Get concurrent with Set does not race", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=300")
+		h := CacheHeaders{CacheControl: "max-age=300"}
 
 		freshDoc := &ClientIDMetadataDocument{ClientID: testURL, ClientName: "Fresh"}
 		c.Set(testURL, doc, h, time.Now().Add(-10*time.Minute))
@@ -162,8 +153,7 @@ func TestCIMDCache(t *testing.T) {
 
 	t.Run("Set deep-copies document so caller mutations do not corrupt cache", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=300")
+		h := CacheHeaders{CacheControl: "max-age=300"}
 
 		mutableDoc := &ClientIDMetadataDocument{
 			ClientID:      testURL,
@@ -210,8 +200,7 @@ func TestCIMDCache(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		c.maxEntries = 2
 
-		h := make(http.Header)
-		h.Set("Cache-Control", "max-age=300")
+		h := CacheHeaders{CacheControl: "max-age=300"}
 
 		c.Set("https://a.example.com/client", doc, h, time.Now())
 		c.Set("https://b.example.com/client", doc, h, time.Now())

@@ -2,7 +2,6 @@ package cimd
 
 import (
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +14,29 @@ type CIMDCacheEntry struct {
 	Document  *ClientIDMetadataDocument
 	FetchedAt time.Time
 	ExpiresAt time.Time
+}
+
+// CacheHeaders holds the two HTTP response headers relevant to TTL derivation.
+// Using a plain struct keeps the domain free of net/http.
+type CacheHeaders struct {
+	CacheControl string
+	Expires      string
+}
+
+// httpTimeFormats mirrors the formats tried by net/http.ParseTime (IMF-fixdate, RFC850, ANSIC).
+var httpTimeFormats = []string{
+	"Mon, 02 Jan 2006 15:04:05 GMT",
+	"Monday, 02-Jan-06 15:04:05 MST",
+	"Mon Jan _2 15:04:05 2006",
+}
+
+func parseHTTPTime(s string) (time.Time, error) {
+	for _, layout := range httpTimeFormats {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as HTTP-date", s)
 }
 
 // CIMDCache is a thread-safe in-process cache for CIMD documents.
@@ -93,7 +115,7 @@ func deepCopyEntry(entry *CIMDCacheEntry) *CIMDCacheEntry {
 
 // Set stores a document in the cache for the given URL, deriving TTL from headers
 // clamped to [minTTL, maxTTL]. Does nothing if the entry cap is reached.
-func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers http.Header, fetchedAt time.Time) {
+func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers CacheHeaders, fetchedAt time.Time) {
 	ttl := c.deriveTTL(headers)
 	entry := &CIMDCacheEntry{
 		URL:       url,
@@ -112,15 +134,15 @@ func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers http.
 
 // deriveTTL extracts TTL from Cache-Control max-age or Expires headers,
 // clamped to [minTTL, maxTTL]. max-age takes precedence over Expires.
-func (c *CIMDCache) deriveTTL(headers http.Header) time.Duration {
+func (c *CIMDCache) deriveTTL(headers CacheHeaders) time.Duration {
 	ttl := c.minTTL
 
-	if cc := headers.Get("Cache-Control"); cc != "" {
-		if maxAge := extractMaxAge(cc); maxAge > 0 {
+	if headers.CacheControl != "" {
+		if maxAge := extractMaxAge(headers.CacheControl); maxAge > 0 {
 			ttl = time.Duration(maxAge) * time.Second
 		}
-	} else if expires := headers.Get("Expires"); expires != "" {
-		if t, err := http.ParseTime(expires); err == nil && t.After(time.Now()) {
+	} else if headers.Expires != "" {
+		if t, err := parseHTTPTime(headers.Expires); err == nil && t.After(time.Now()) {
 			ttl = time.Until(t)
 		}
 	}
