@@ -225,7 +225,9 @@ func (p *Provider) HandleAuthorize(
 	agent := h.getAgent()
 
 	// Validate redirect_uri: must be registered and use HTTPS (or loopback HTTP).
-	if !contains(agent.RedirectURIs, redirectURI) {
+	// GetRedirectURIs() returns the agent's registered URIs for confidential clients,
+	// and the CIMD document's redirect_uris for public (CIMD) clients.
+	if !contains(fositeClient.GetRedirectURIs(), redirectURI) {
 		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
 			fosite.ErrInvalidRequest.WithHintf("redirect_uri %q is not registered for this client", redirectURI))
 	}

@@ -242,7 +242,7 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 	}
 
 	if resolution.CIMDMetadata != nil {
-		return &publicClient{clientID: clientID, agent: resolution.Agent}, nil
+		return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.CIMDMetadata.RedirectURIs}, nil
 	}
 
 	cred, err := s.credRepo.GetByAgentID(ctx, resolution.Agent.ID)

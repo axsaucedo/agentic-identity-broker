@@ -94,6 +94,20 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 
 ---
 
+### User Story 6 - End-to-End CIMD Authorization Flow (Priority: P1)
+
+The individual CIMD components (authorize redirect, consent context decode, grant submission) are each verified in isolation by separate tests. However a regression in JWE token format, embedded URL encoding, or grant-check sequencing could break the full flow without any individual test catching it. The complete round-trip must be exercised as a single connected sequence to close this gap.
+
+**Why this priority**: The full flow is the only thing users and agents actually experience. Component isolation tests are necessary but not sufficient; format drift between the authorize handler and the consent decoder is exactly the kind of defect they cannot catch.
+
+**Independent Test**: Can be fully tested without a real browser by driving the full sequence programmatically: authorize → extract `session_token` from redirect Location → load consent API with token → submit grant → re-authorize → assert authorization code redirect.
+
+**Acceptance Scenarios**:
+
+1. **Given** a CIMD agent is registered and a valid document is served at its `client_id` URL, **When** a user initiates an authorization request (no grant exists), is redirected to the consent page, loads the consent context using the `session_token` extracted from the redirect, approves the grant using that same token, and the `redirect_url` from the grant response is requested again, **Then** the broker issues an authorization code redirect to the agent's registered `redirect_uri` carrying the original `state` value.
+
+---
+
 ### Edge Cases
 
 - What happens when `cimd.enabled: true` is configured but the broker is in `proxy` mode? (Startup validation error; the broker refuses to start. CIMD requires `issue_token` mode.)
