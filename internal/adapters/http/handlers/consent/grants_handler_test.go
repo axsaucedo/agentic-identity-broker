@@ -55,6 +55,23 @@ func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalV
 	return token
 }
 
+// newExpiredTestSessionToken creates a JWE session token whose TTL has already elapsed.
+func newExpiredTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string) string {
+	past := time.Now().Add(-time.Hour)
+	claims := &domotp2.AuthorizationSessionClaims{
+		AgentID:   agentID,
+		Principal: id.Principal(principalVal),
+		ClientID:  "https://agent.example.com/client",
+		IssuedAt:  past,
+		ExpiresAt: past,
+	}
+	token, err := ts.Encrypt(claims)
+	if err != nil {
+		panic("newExpiredTestSessionToken: failed to encrypt claims: " + err.Error())
+	}
+	return token
+}
+
 // Helper to create request with principal context
 func newRequestWithPrincipal(method, path, principalValue string, body any) *http.Request {
 	var reqBody *bytes.Buffer

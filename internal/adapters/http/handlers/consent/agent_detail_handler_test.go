@@ -311,6 +311,10 @@ func TestResolveCIMDMetadata_SessionAgentMismatch(t *testing.T) {
 	handler.GetAgentDetail(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+	var resp ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, "bad request", resp.Error)
+	assert.Contains(t, resp.Message, "does not match")
 }
 
 func TestResolveCIMDMetadata_SessionPrincipalMismatch(t *testing.T) {
@@ -339,7 +343,42 @@ func TestResolveCIMDMetadata_SessionPrincipalMismatch(t *testing.T) {
 	handler.GetAgentDetail(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+	var resp ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, "bad request", resp.Error)
+	assert.Contains(t, resp.Message, "does not belong")
 }
+
+func TestGetAgentDetail_ExpiredSessionToken(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	mockService := &mockAgentDetailService{
+		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, aID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
+			return &storage.Agent{ID: aID, ClientID: id.NewClientID("test"), DisplayName: "Agent"}, []consent.ServiceRequirementStatus{}, nil
+		},
+	}
+
+	ts := newTestJWETokenService()
+	expiredToken := newExpiredTestSessionToken(ts, agentID, "user@example.com")
+
+	handler := NewAgentDetailHandler(mockService, nil).WithJWETokenService(ts)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/consent/agent/"+agentID.String()+"?session_token="+expiredToken, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+	var resp ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, "session_expired", resp.Error)
+}
+
 
 func TestGetAgentDetail_SortsMandatoryFirst(t *testing.T) {
 	agentID := id.NewAgentID()

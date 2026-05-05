@@ -35,6 +35,13 @@ type ScopeWithDescription struct {
 	Description string `json:"description,omitempty"`
 }
 
+// errSessionExpired is returned by resolveCIMDMetadata when the JWE session token
+// cannot be decrypted or has passed its TTL. Callers use errors.Is to distinguish
+// this from other validation errors (agent mismatch, principal mismatch) and return
+// a machine-readable "session_expired" error code so the frontend can redirect the
+// user back through the /oauth2/authorize flow.
+var errSessionExpired = errors.New("authorization session expired")
+
 // AgentDetailHandler handles HTTP requests for retrieving detailed agent information.
 // Implements User Story 2: Review Agent-Specific Grants (GET /api/consent/agent/:agentId).
 // Phase 6 extension: Includes service requirements with user connection status.
@@ -144,6 +151,11 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 
 	cimdMeta, err := h.resolveCIMDMetadata(r, parsedAgentID)
 	if err != nil {
+		if errors.Is(err, errSessionExpired) {
+			h.logger.Warn("authorization session expired", "agent_id", agentID)
+			h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
+			return
+		}
 		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
 		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
 		return
@@ -239,7 +251,7 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.Age
 
 	var claims domotp2.AuthorizationSessionClaims
 	if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
-		return nil, errors.New("authorization session not found or expired")
+		return nil, errSessionExpired
 	}
 	if claims.AgentID != agentID {
 		return nil, errors.New("authorization session does not match requested agent")
@@ -310,7 +322,7 @@ func (h *AgentDetailHandler) GetConsentSession(w http.ResponseWriter, r *http.Re
 	var claims domotp2.AuthorizationSessionClaims
 	if err := h.jweTokenService.DecryptAndValidate(token, &claims); err != nil {
 		h.logger.Warn("consent session token invalid", "error", err)
-		h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
+		h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
 		return
 	}
 	if string(claims.Principal) != userID {
