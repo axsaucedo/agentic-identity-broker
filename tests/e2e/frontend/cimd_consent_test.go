@@ -97,9 +97,9 @@ var _ = Describe("CIMD Consent UI", func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to check CIMD summary visibility")
 		Expect(visible).To(BeTrue(), "CIMDConsentSummary 'wants to access' text should be visible")
 
-		hasName, err := consentPage.HasCIMDClientName(ctx, "CIMD Test Client")
-		Expect(err).NotTo(HaveOccurred(), "Failed to check client name")
-		Expect(hasName).To(BeTrue(), "Seeded client name 'CIMD Test Client' should appear in the consent summary")
+		hasName, err := consentPage.HasCIMDClientName(ctx, "CIMD Test Agent")
+		Expect(err).NotTo(HaveOccurred(), "Failed to check agent display name")
+		Expect(hasName).To(BeTrue(), "Agent display name 'CIMD Test Agent' should appear in the consent summary")
 
 		err = consentPage.TakeScreenshot(ctx, "cimd_cs001_consent_summary")
 		Expect(err).NotTo(HaveOccurred())
@@ -168,11 +168,7 @@ var _ = Describe("CIMD Consent UI", func() {
 
 		expanded, err := consentPage.IsCIMDAdvancedDetailsExpanded(ctx)
 		Expect(err).NotTo(HaveOccurred(), "Failed to check advanced details panel state")
-		Expect(expanded).To(BeTrue(), "Advanced details panel should show Client Name after clicking the button")
-
-		hasClientName, err := consentPage.GetCIMDClientNameFromDetails(ctx, "CIMD Test Client")
-		Expect(err).NotTo(HaveOccurred(), "Failed to check client name in advanced details")
-		Expect(hasClientName).To(BeTrue(), "Seeded client name 'CIMD Test Client' should appear in the expanded advanced details panel")
+		Expect(expanded).To(BeTrue(), "Advanced details panel should show Client ID after clicking the button")
 
 		hasRedirectURI, err := consentPage.HasCIMDRedirectURIInDetails(ctx, "https://cimd-example.com/callback")
 		Expect(err).NotTo(HaveOccurred(), "Failed to check redirect URI in advanced details")

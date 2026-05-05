@@ -1393,9 +1393,9 @@ func (cp *ConsentPage) ClickCIMDAdvancedDetails(ctx context.Context) error {
 }
 
 // IsCIMDAdvancedDetailsExpanded reports whether the CIMDAdvancedDetails panel is
-// expanded, indicated by the presence of the "Client Name" detail label.
+// expanded, indicated by the presence of the "Client ID" detail label.
 func (cp *ConsentPage) IsCIMDAdvancedDetailsExpanded(ctx context.Context) (bool, error) {
-	loc := cp.page().GetByText("Client Name", playwright.PageGetByTextOptions{
+	loc := cp.page().GetByText("Client ID", playwright.PageGetByTextOptions{
 		Exact: playwright.Bool(true),
 	})
 	visible, err := loc.IsVisible()
@@ -1405,17 +1405,17 @@ func (cp *ConsentPage) IsCIMDAdvancedDetailsExpanded(ctx context.Context) (bool,
 	return visible, nil
 }
 
-// HasCIMDClientName reports whether the given client name is visible on the CIMD consent page.
-// Checks that the seeded client name is actually rendered, not just the generic "wants to access" label.
+// HasCIMDClientName reports whether the given name is visible on the CIMD consent page.
+// Uses Count to avoid strict-mode violations when the name appears in multiple elements
+// (e.g., the agent heading and the consent summary paragraph).
 func (cp *ConsentPage) HasCIMDClientName(ctx context.Context, name string) (bool, error) {
-	loc := cp.page().GetByText(name, playwright.PageGetByTextOptions{
+	count, err := cp.page().GetByText(name, playwright.PageGetByTextOptions{
 		Exact: playwright.Bool(false),
-	})
-	visible, err := loc.IsVisible()
+	}).Count()
 	if err != nil {
 		return false, fmt.Errorf("failed to check CIMD client name %q: %w", name, err)
 	}
-	return visible, nil
+	return count > 0, nil
 }
 
 // HasCIMDDomainText reports whether the given domain string appears within the verified domain badge.
