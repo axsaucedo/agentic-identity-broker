@@ -30,7 +30,7 @@ import { RevokeGrantButton } from '@components/consent/RevokeGrantButton';
 import { CIMDSection } from '@components/consent/CIMDSection';
 import { GrantValidityControl } from '@components/consent/GrantValidityControl';
 import { useAgentGrants, useToggleGrant, useUpdateValidity } from '@hooks';
-import { validateGrantRequest } from '../utils/validation';
+import { validateGrantRequest, isSafeRedirectUrl } from '../utils/validation';
 import { scrollToError } from '../utils/scrollToError';
 import type { DelegatedToken } from '../types/consent';
 
@@ -163,6 +163,10 @@ export function AgentGrantDetailPage() {
       if (!result) return;
 
       if (result.kind === 'redirect') {
+        if (!isSafeRedirectUrl(result.redirectUrl)) {
+          showToast('Invalid redirect URL', 'error');
+          return;
+        }
         window.location.href = result.redirectUrl;
         return;
       }
