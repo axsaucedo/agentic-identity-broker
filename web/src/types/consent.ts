@@ -233,6 +233,11 @@ export interface CreateOrUpdateGrantResponse {
   redirect_url?: string;
 }
 
+export type GrantResult =
+  | { kind: 'created'; grant: UserGrant }
+  | { kind: 'noContent' }
+  | { kind: 'redirect'; redirectUrl: string };
+
 /**
  * Standard error response from backend APIs.
  */

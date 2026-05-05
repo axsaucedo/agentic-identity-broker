@@ -13,7 +13,7 @@ import { isAxiosError } from 'axios';
 import type {
   DelegatedToken,
   CreateOrUpdateGrantRequest,
-  UserGrant,
+  GrantResult,
 } from '../types/consent';
 import { consentApi } from '../services/api/consent';
 import { extractApiError } from '../utils/api';
@@ -36,7 +36,7 @@ interface UseToggleGrantReturn extends UseToggleGrantState {
   submit: (
     validUntil?: string | null,
     submitOptions?: { redirectUri?: string; sessionToken?: string },
-  ) => Promise<UserGrant | null>;
+  ) => Promise<GrantResult | undefined>;
   /** Reset state */
   reset: () => void;
   /** Clear error */
@@ -79,7 +79,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
     async (
       validUntil?: string | null,
       submitOptions?: { redirectUri?: string; sessionToken?: string },
-    ): Promise<UserGrant | null> => {
+    ): Promise<GrantResult | undefined> => {
       // Set submitting state
       setState((prev) => ({
         ...prev,
@@ -98,7 +98,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
           valid_until: validUntil || undefined,
         };
 
-        const grant = await consentApi.createOrUpdateGrant(
+        const result = await consentApi.createOrUpdateGrant(
           agentId,
           request,
           submitOptions,
@@ -112,7 +112,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
           error: null,
         }));
 
-        return grant;
+        return result;
       } catch (err: unknown) {
         let errorMessage = extractApiError(err, 'Failed to update grant');
 

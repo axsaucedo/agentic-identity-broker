@@ -15,6 +15,7 @@ import type {
   ThirdpartyService,
   CIMDMetadata,
   UserGrant,
+  GrantResult,
   GetUserInfoResponse,
   GetAgentDelegationsResponse,
   GetAgentDetailResponse,
@@ -169,7 +170,7 @@ export class ConsentApiService {
     agentId: string,
     request: CreateOrUpdateGrantRequest,
     options?: { redirectUri?: string; sessionToken?: string },
-  ): Promise<UserGrant | null> {
+  ): Promise<GrantResult> {
     let url = `/consent/agent/${agentId}/grants`;
     if (options?.sessionToken) {
       url += `?session_token=${encodeURIComponent(options.sessionToken)}`;
@@ -188,30 +189,22 @@ export class ConsentApiService {
 
     // Handle 204 No Content response (grant revoked with empty tokens)
     if (response.status === 204) {
-      return null;
+      return { kind: 'noContent' };
     }
 
     // Handle 201 Created response
     if (response.status === 201) {
-      // Check if backend provided a redirect_url in the response body (FR-025, T056)
-      // Backend returns redirect_url instead of HTTP 303 to avoid CORS issues with cross-origin redirects
       const redirectUrl = response.data.redirect_url;
       if (redirectUrl) {
-        // Defense-in-depth: Validate redirect URL is same-origin before following
-        // Backend already validates (SR-003), but frontend validation adds security layer
         if (!isSafeRedirectUrl(redirectUrl)) {
           throw new Error(
             'Redirect URL validation failed: URL must be same-origin',
           );
         }
-
-        // Use window.location.href to navigate (not XHR/fetch)
-        // This allows proper handling of redirect chains including cross-origin redirects
-        window.location.href = redirectUrl;
-        return null; // We're navigating away
+        return { kind: 'redirect', redirectUrl };
       }
 
-      return response.data.data;
+      return { kind: 'created', grant: response.data.data };
     }
 
     // Unexpected status

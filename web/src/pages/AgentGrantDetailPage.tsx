@@ -147,11 +147,9 @@ export function AgentGrantDetailPage() {
 
   // Handle form submission
   const handleSubmit = async () => {
-    // Clear previous errors
     clearError();
     setValidationErrors([]);
 
-    // Validate form
     if (!validateForm()) {
       return;
     }
@@ -162,14 +160,18 @@ export function AgentGrantDetailPage() {
         sessionToken ? { sessionToken } : { redirectUri },
       );
 
-      // Null result with a redirect target means the API navigated away (session or redirect_uri flow).
-      if (!result && (redirectUri || sessionToken)) {
+      if (!result) return;
+
+      if (result.kind === 'redirect') {
+        window.location.href = result.redirectUrl;
         return;
       }
 
-      // Success — refetch data and show toast
-      await refetch();
-      showToast(result ? 'Grant updated successfully!' : 'Grant revoked successfully!', 'success');
+      if (result.kind === 'created') {
+        await refetch();
+        showToast('Grant updated successfully!', 'success');
+      }
+      // 'noContent' — grant revoked, no further action
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update grant';
       showToast(message, 'error');

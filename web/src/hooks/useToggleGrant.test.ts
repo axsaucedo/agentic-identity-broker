@@ -7,7 +7,7 @@ import { renderHook, act } from '@testing-library/react';
 import axios from 'axios';
 import { useToggleGrant } from './useToggleGrant';
 import { consentApi } from '../services/api/consent';
-import type { UserGrant } from '../types/consent';
+import type { UserGrant, GrantResult } from '../types/consent';
 
 // Mock the API
 vi.mock('../services/api/consent', () => ({
@@ -65,7 +65,8 @@ describe('useToggleGrant', () => {
       updated_at: '2024-01-01T00:00:00Z',
     };
 
-    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(mockGrant);
+    const mockResult: GrantResult = { kind: 'created', grant: mockGrant };
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(mockResult);
 
     const { result } = renderHook(() => useToggleGrant(agentId));
 
@@ -75,12 +76,12 @@ describe('useToggleGrant', () => {
     });
 
     // Submit
-    let returnedGrant: UserGrant | null = null;
+    let returnedResult: GrantResult | undefined;
     await act(async () => {
-      returnedGrant = await result.current.submit();
+      returnedResult = await result.current.submit();
     });
 
-    expect(returnedGrant).toEqual(mockGrant);
+    expect(returnedResult).toEqual(mockResult);
     expect(result.current.isSuccess).toBe(true);
     expect(result.current.error).toBeNull();
     expect(result.current.isSubmitting).toBe(false);
@@ -220,7 +221,7 @@ describe('useToggleGrant', () => {
       updated_at: '2024-01-01T00:00:00Z',
     };
 
-    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(mockGrant);
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue({ kind: 'created', grant: mockGrant });
 
     const { result } = renderHook(() => useToggleGrant(agentId));
 
