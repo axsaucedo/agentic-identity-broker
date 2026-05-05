@@ -105,6 +105,7 @@ The individual CIMD components (authorize redirect, consent context decode, gran
 **Acceptance Scenarios**:
 
 1. **Given** a CIMD agent is registered and a valid document is served at its `client_id` URL, **When** a user initiates an authorization request (no grant exists), is redirected to the consent page, loads the consent context using the `session_token` extracted from the redirect, approves the grant using that same token, and the `redirect_url` from the grant response is requested again, **Then** the broker issues an authorization code redirect to the agent's registered `redirect_uri` carrying the original `state` value.
+2. **Given** a CIMD agent is registered and a valid document is served at its `client_id` URL, **When** a user's browser navigates to `/oauth2/authorize` with a URL-based `client_id`, follows the redirect to the consent screen, sees the CIMD consent UI components (summary, verified-domain badge), and clicks "Approve & Delegate", **Then** the browser is redirected to the `redirect_uri` carrying a valid authorization code and the original `state` value.
 
 ---
 

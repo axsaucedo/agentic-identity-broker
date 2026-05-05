@@ -1315,6 +1315,13 @@ func (cp *ConsentPage) WaitForServiceToAppear(ctx context.Context, serviceDispla
 	return nil
 }
 
+// WaitForPageLoad waits for the consent page to be fully interactive — specifically,
+// for the agent name heading to appear. Use this after browser-level redirects where
+// navigation happens outside of Navigate() (e.g., after GetTestPage().Goto()).
+func (cp *ConsentPage) WaitForPageLoad(ctx context.Context) error {
+	return cp.waitForAgentNameHeading(ctx)
+}
+
 // NavigateToAgentWithSessionToken navigates to the consent page for a CIMD authorization
 // flow using a stateless JWE session token. The token encodes the full authorization
 // context and is passed as a session_token query parameter.

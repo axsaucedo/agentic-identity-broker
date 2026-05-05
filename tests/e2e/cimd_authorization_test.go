@@ -2,14 +2,11 @@ package e2e_test
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"sync/atomic"
 	"time"
@@ -17,9 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	adaptercmd "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/cimd"
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
-	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -39,25 +34,6 @@ func cimdDocument(clientID string, redirectURIs []string) []byte {
 	return b
 }
 
-// cimdTestHTTPClient returns an HTTP client that redirects all connections to
-// fakeHostname to the given test server. Uses InsecureSkipVerify since the test
-// server cert covers 127.0.0.1, not the fake hostname. Safe for test use only.
-func cimdTestHTTPClient(server *httptest.Server, fakeHostname string) *http.Client {
-	parsed, _ := url.Parse(server.URL)
-	serverAddr := parsed.Host
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				host, _, _ := net.SplitHostPort(addr)
-				if host == fakeHostname {
-					addr = serverAddr
-				}
-				return (&net.Dialer{}).DialContext(ctx, network, addr)
-			},
-		},
-	}
-}
 
 type countingCIMDFetcher struct {
 	calls atomic.Int32
@@ -167,9 +143,8 @@ var _ = Describe("CIMD Authorization", func() {
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
 			serverFactory = bootstrap.NewServerFactory(config, logger)
 
-			bl, err := domaincimd.NewSSRFBlocklist(nil)
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
@@ -240,9 +215,8 @@ var _ = Describe("CIMD Authorization", func() {
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
 			serverFactory = bootstrap.NewServerFactory(config, logger)
 
-			bl, err := domaincimd.NewSSRFBlocklist(nil)
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
@@ -310,9 +284,8 @@ var _ = Describe("CIMD Authorization", func() {
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
 			serverFactory = bootstrap.NewServerFactory(config, logger)
 
-			bl, err := domaincimd.NewSSRFBlocklist(nil)
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
@@ -383,9 +356,8 @@ var _ = Describe("CIMD Authorization", func() {
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
 			serverFactory = bootstrap.NewServerFactory(config, logger)
 
-			bl, err := domaincimd.NewSSRFBlocklist(nil)
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
 			Expect(err).ToNot(HaveOccurred())
-			cimdFetcher := adaptercmd.NewFetcherWithClient(cimdTestHTTPClient(cimdServer, fakeHost), bl, 5120)
 
 			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
 			Expect(err).ToNot(HaveOccurred())
