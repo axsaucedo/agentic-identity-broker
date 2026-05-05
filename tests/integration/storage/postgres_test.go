@@ -46,12 +46,11 @@ func canAccessContainerRuntime() error {
 
 	// Fall back to Podman if Docker is not available
 	cmd = exec.Command("podman", "ps")
-	out, err := cmd.CombinedOutput()
-	if err == nil {
+	if err := cmd.Run(); err == nil {
 		return nil // Podman is available
 	}
 
-	return fmt.Errorf("neither docker nor podman is accessible (podman output: %q, err: %v)", string(out), err)
+	return fmt.Errorf("neither docker nor podman is accessible")
 }
 
 // setupPostgresContainer creates a test PostgreSQL container

@@ -28,17 +28,12 @@ func init() {
 
 // canAccessContainerRuntime checks if Docker or Podman is available
 func canAccessContainerRuntime() bool {
-	fmt.Fprintln(os.Stderr, "[DEBUG] canAccessContainerRuntime called")
-	dockerCmd := exec.Command("docker", "ps")
-	dockerOut, dockerErr := dockerCmd.CombinedOutput()
-	fmt.Fprintf(os.Stderr, "[DEBUG] docker ps: err=%v output=%q\n", dockerErr, string(dockerOut))
-	if dockerErr == nil {
+	cmd := exec.Command("docker", "ps")
+	if err := cmd.Run(); err == nil {
 		return true
 	}
-	podmanCmd := exec.Command("podman", "ps")
-	podmanOut, podmanErr := podmanCmd.CombinedOutput()
-	fmt.Fprintf(os.Stderr, "[DEBUG] podman ps: err=%v output=%q\n", podmanErr, string(podmanOut))
-	return podmanErr == nil
+	cmd = exec.Command("podman", "ps")
+	return cmd.Run() == nil
 }
 
 // setupTestContainer creates a PostgreSQL test container
