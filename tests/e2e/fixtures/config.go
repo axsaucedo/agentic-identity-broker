@@ -67,7 +67,7 @@ func DefaultOAuth2Config() *ports.Config {
 			Mode:                      "proxy",
 		},
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey:      base64.StdEncoding.EncodeToString([]byte("test-32-byte-key-must-be-exact-")),
+			JWESigningKey:      base64.StdEncoding.EncodeToString([]byte("test-32-byte-key-must-be-exact-x")),
 			StateTokenTTL:      10 * time.Minute,
 			PKCEVerifierLength: 32,
 		},
