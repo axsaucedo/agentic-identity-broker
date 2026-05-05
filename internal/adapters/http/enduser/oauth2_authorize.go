@@ -71,7 +71,12 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("authorization error: %v", err), http.StatusInternalServerError)
+		if h.logger != nil {
+			h.logger.ErrorContext(r.Context(), "authorization_request_failed", "error", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, `{"error":"server_error"}`)
 		return
 	}
 
