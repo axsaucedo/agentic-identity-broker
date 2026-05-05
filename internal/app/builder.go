@@ -316,8 +316,7 @@ func (b *Builder) Build() (*App, error) {
 		if cimdCfg.Enabled {
 			activeFetcher := b.cimdFetcher
 			if activeFetcher == nil {
-				var fetchErr error
-				activeFetcher, fetchErr = adaptercmd.NewFetcher(
+				concreteFetcher, fetchErr := adaptercmd.NewFetcher(
 					cimdCfg.FetchTimeout,
 					int64(cimdCfg.MaxResponseBytes),
 					cimdCfg.SSRF.ExtraBlockedCIDRs,
@@ -325,6 +324,12 @@ func (b *Builder) Build() (*App, error) {
 				if fetchErr != nil {
 					return nil, fmt.Errorf("failed to create CIMD fetcher: %w", fetchErr)
 				}
+				if b.config.Telemetry.Enabled && b.config.Telemetry.Traces.Enabled {
+					concreteFetcher.WrapTransport(func(base http.RoundTripper) http.RoundTripper {
+						return otelhttp.NewTransport(base)
+					})
+				}
+				activeFetcher = concreteFetcher
 			}
 			cimdCache, cacheErr := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL, cimdCfg.Cache.MaxEntries)
 			if cacheErr != nil {

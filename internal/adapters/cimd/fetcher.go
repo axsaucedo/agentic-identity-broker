@@ -76,6 +76,16 @@ func NewFetcherWithClient(client *http.Client, blocklist domaincimd.SSRFBlocklis
 	}
 }
 
+// WrapTransport replaces the fetcher's HTTP transport with wrap(existingTransport).
+// Called at builder time to add instrumentation around the base SSRF-hardened transport.
+func (f *Fetcher) WrapTransport(wrap func(http.RoundTripper) http.RoundTripper) {
+	base := f.client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	f.client.Transport = wrap(base)
+}
+
 // Fetch fetches and validates a CIMD document from the given URL.
 // Returns an error if the URL is blocked, the response is non-200, the body
 // exceeds maxResponseBytes, or the document fails validation.

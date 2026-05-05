@@ -235,6 +235,23 @@ func TestFetcher_SSRF_OperatorExtraCIDRBlocked(t *testing.T) {
 	assert.Contains(t, err.Error(), "blocked range")
 }
 
+func TestFetcher_WrapTransport(t *testing.T) {
+	bl, err := domaincimd.NewSSRFBlocklist(nil)
+	require.NoError(t, err)
+
+	type sentinelTransport struct{ http.RoundTripper }
+
+	base := http.DefaultTransport
+	fetcher := NewFetcherWithClient(&http.Client{Transport: base}, bl, 5120)
+	fetcher.WrapTransport(func(inner http.RoundTripper) http.RoundTripper {
+		assert.Same(t, base, inner)
+		return sentinelTransport{inner}
+	})
+
+	_, ok := fetcher.client.Transport.(sentinelTransport)
+	assert.True(t, ok, "transport should be wrapped by WrapTransport")
+}
+
 func TestFetcher_SSRF_OperatorExtraCIDRDoesNotBlockOthers(t *testing.T) {
 	bl, err := domaincimd.NewSSRFBlocklist([]string{"203.0.113.0/24"})
 	require.NoError(t, err)
