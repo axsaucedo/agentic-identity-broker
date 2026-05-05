@@ -14,6 +14,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 func bufLogger() (*slog.Logger, *bytes.Buffer) {
@@ -161,7 +162,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create test credential
-		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
+		svc := NewClientAuthService(credRepo, &testClientResolver{agentRepo: agentRepo}, testSlogger())
 		cred, plaintext, err := svc.GenerateCredentials(agent.ID)
 		require.NoError(t, err)
 		err = credRepo.Create(context.Background(), cred)
@@ -177,7 +178,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 	t.Run("unknown agent_id fails", func(t *testing.T) {
 		credRepo := memory.NewClientCredentialStore()
 		agentRepo := memory.NewAgentRepository()
-		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
+		svc := NewClientAuthService(credRepo, &testClientResolver{agentRepo: agentRepo}, testSlogger())
 
 		_, err := svc.Authenticate(context.Background(), id.NewAgentID(), "secret")
 		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
@@ -192,7 +193,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		err := agentRepo.Create(context.Background(), agent)
 		require.NoError(t, err)
 
-		svc := NewClientAuthService(credRepo, agentRepo, testSlogger())
+		svc := NewClientAuthService(credRepo, &testClientResolver{agentRepo: agentRepo}, testSlogger())
 		cred, _, err := svc.GenerateCredentials(agent.ID)
 		require.NoError(t, err)
 		err = credRepo.Create(context.Background(), cred)
@@ -211,7 +212,7 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 			},
 		}
 		logger, buf := bufLogger()
-		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
+		svc := NewClientAuthService(credRepo, &testClientResolver{agentRepo: memory.NewAgentRepository()}, logger)
 
 		_, err := svc.Authenticate(context.Background(), agentID, "secret")
 		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
@@ -226,14 +227,14 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 			},
 		}
 		logger, buf := bufLogger()
-		svc := NewClientAuthService(credRepo, memory.NewAgentRepository(), logger)
+		svc := NewClientAuthService(credRepo, &testClientResolver{agentRepo: memory.NewAgentRepository()}, logger)
 
 		_, err := svc.Authenticate(context.Background(), agentID, "secret")
 		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 		assert.Empty(t, buf.String(), "not-found must not produce an error log")
 	})
 
-	t.Run("agent repo timeout error logs at error level", func(t *testing.T) {
+	t.Run("client resolver timeout error logs at error level", func(t *testing.T) {
 		credRepo := memory.NewClientCredentialStore()
 		agentID := id.NewAgentID()
 		cred := &storage.ClientCredential{
@@ -243,20 +244,20 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))
 
-		agentRepo := &mockAgentRepo{
-			getFunc: func(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+		resolver := &mockClientResolver{
+			resolveFunc: func(_ context.Context, _ id.ClientID) (*ports.ClientResolution, error) {
 				return nil, storage.NewStorageError("Get", storage.ErrorKindTimeout, nil, "query timeout")
 			},
 		}
 		logger, buf := bufLogger()
-		svc := NewClientAuthService(credRepo, agentRepo, logger)
+		svc := NewClientAuthService(credRepo, resolver, logger)
 
 		_, err := svc.Authenticate(context.Background(), agentID, "irrelevant")
 		assert.ErrorIs(t, err, fosite.ErrInvalidClient)
 		assert.Contains(t, buf.String(), "storage failure during client authentication")
 	})
 
-	t.Run("agent repo not-found does not log an error", func(t *testing.T) {
+	t.Run("client resolver not-found does not log an error", func(t *testing.T) {
 		credRepo := memory.NewClientCredentialStore()
 		agentID := id.NewAgentID()
 		cred := &storage.ClientCredential{
@@ -266,13 +267,13 @@ func TestClientAuthService_Authenticate(t *testing.T) {
 		}
 		require.NoError(t, credRepo.Create(context.Background(), cred))
 
-		agentRepo := &mockAgentRepo{
-			getFunc: func(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
-				return nil, storage.NewStorageError("Get", storage.ErrorKindNotFound, nil, "not found")
+		resolver := &mockClientResolver{
+			resolveFunc: func(_ context.Context, _ id.ClientID) (*ports.ClientResolution, error) {
+				return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "not found"}
 			},
 		}
 		logger, buf := bufLogger()
-		svc := NewClientAuthService(credRepo, agentRepo, logger)
+		svc := NewClientAuthService(credRepo, resolver, logger)
 
 		_, err := svc.Authenticate(context.Background(), agentID, "irrelevant")
 		assert.ErrorIs(t, err, fosite.ErrInvalidClient)

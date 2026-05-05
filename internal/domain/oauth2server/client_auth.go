@@ -20,7 +20,7 @@ const clientSecretBytes = 32
 // ClientAuthService handles client authentication and credential management.
 type ClientAuthService struct {
 	credentialRepo ports.ClientCredentialRepository
-	agentRepo      ports.AgentRepository
+	clientResolver ports.ClientResolver
 	hasher         *Argon2Hasher
 	logger         *slog.Logger
 }
@@ -28,12 +28,12 @@ type ClientAuthService struct {
 // NewClientAuthService creates a new ClientAuthService.
 func NewClientAuthService(
 	credentialRepo ports.ClientCredentialRepository,
-	agentRepo ports.AgentRepository,
+	clientResolver ports.ClientResolver,
 	logger *slog.Logger,
 ) *ClientAuthService {
 	return &ClientAuthService{
 		credentialRepo: credentialRepo,
-		agentRepo:      agentRepo,
+		clientResolver: clientResolver,
 		hasher:         &Argon2Hasher{},
 		logger:         logger,
 	}
@@ -53,7 +53,7 @@ func (s *ClientAuthService) Authenticate(ctx context.Context, agentID id.AgentID
 		return nil, fosite.ErrInvalidClient
 	}
 
-	agent, err := s.agentRepo.Get(ctx, agentID)
+	resolution, err := s.clientResolver.ResolveClient(ctx, id.ClientID(agentID.String()))
 	if err != nil {
 		s.logStorageFailure(ctx, err)
 		return nil, fosite.ErrInvalidClient
@@ -64,7 +64,7 @@ func (s *ClientAuthService) Authenticate(ctx context.Context, agentID id.AgentID
 	}
 
 	return &AuthenticatedClient{
-		Agent:      agent,
+		Agent:      resolution.Agent,
 		Credential: cred,
 	}, nil
 }

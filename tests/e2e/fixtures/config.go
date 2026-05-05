@@ -459,8 +459,9 @@ func OAuth2ConfigWithCIMD(upstreamURL string) *ports.Config {
 		FetchTimeout:     5 * time.Second,
 		MaxResponseBytes: 5120,
 		Cache: ports.CIMDCacheConfig{
-			MinTTL: 60 * time.Second,
-			MaxTTL: 1 * time.Hour,
+			MinTTL:     60 * time.Second,
+			MaxTTL:     1 * time.Hour,
+			MaxEntries: 1000,
 		},
 	}
 	return config

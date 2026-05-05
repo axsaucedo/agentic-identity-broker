@@ -224,13 +224,7 @@ func (s *issueTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 			return
 		}
 
-		agentID, err := id.ParseAgentID(rawClientID)
-		if err != nil {
-			writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client_id is not a valid agent UUID")
-			return
-		}
-
-		resp, err := s.minting.HandleClientCredentials(r.Context(), agentID, clientSecret, scope)
+		resp, err := s.minting.HandleClientCredentials(r.Context(), id.ClientID(rawClientID), clientSecret, scope)
 		if err != nil {
 			if s.logger != nil {
 				s.logger.Error("client_credentials grant failed", "error", err, "client_id", rawClientID)
@@ -257,8 +251,8 @@ func (s *issueTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 		redirectURI := formData.Get("redirect_uri")
 		codeVerifier := formData.Get("code_verifier")
 
-		if rawClientID == "" || clientSecret == "" {
-			writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required")
+		if rawClientID == "" {
+			writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id is required")
 			return
 		}
 		if code == "" {
@@ -266,13 +260,7 @@ func (s *issueTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 			return
 		}
 
-		agentID, err := id.ParseAgentID(rawClientID)
-		if err != nil {
-			writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client_id is not a valid agent UUID")
-			return
-		}
-
-		resp, err := s.minting.HandleAuthorizationCodeExchange(r.Context(), agentID, clientSecret, code, redirectURI, codeVerifier)
+		resp, err := s.minting.HandleAuthorizationCodeExchange(r.Context(), id.ClientID(rawClientID), clientSecret, code, redirectURI, codeVerifier)
 		if err != nil {
 			if s.logger != nil {
 				s.logger.Error("authorization_code exchange failed", "error", err, "client_id", rawClientID)

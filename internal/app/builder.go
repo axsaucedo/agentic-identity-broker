@@ -290,6 +290,7 @@ func (b *Builder) Build() (*App, error) {
 	// T038: Use NewServiceWithSessions (enables mandatory requirement validation + multi-agent
 	// client config) and pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient.
 	// In issue_token mode, also create the service for consent checks and metadata generation.
+	var clientResolver ports.ClientResolver
 	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "issue_token" {
 		oauth2Config := &oauth2service.OAuth2Config{
 			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
@@ -311,7 +312,6 @@ func (b *Builder) Build() (*App, error) {
 			}
 		}
 
-		var clientResolver ports.ClientResolver
 		cimdCfg := b.config.OAuth2AuthServer.CIMD
 		if cimdCfg.Enabled {
 			activeFetcher := b.cimdFetcher
@@ -600,7 +600,7 @@ func (b *Builder) Build() (*App, error) {
 
 	if b.config.OAuth2AuthServer.Mode == "issue_token" {
 		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
-		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), b.storage.Agents(), b.logger)
+		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
 		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
 		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
 
@@ -608,7 +608,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.AuthorizationCodes(),
 			b.storage.PKCESessions(),
 			b.storage.BrokerCredentials(),
-			b.storage.Agents(),
+			clientResolver,
 			b.storage.SigningKeys(),
 			encryptor,
 			b.config.Server.EndUser.PublicURL,

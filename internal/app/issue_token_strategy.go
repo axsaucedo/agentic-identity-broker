@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
@@ -17,12 +16,12 @@ func newIssueTokenMintingStrategy(provider *oauth2server.Provider) *issueTokenMi
 	return &issueTokenMintingStrategy{provider: provider}
 }
 
-func (s *issueTokenMintingStrategy) HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*ports.TokenResponse, error) {
-	return s.provider.HandleClientCredentials(ctx, agentID, clientSecret, scope)
+func (s *issueTokenMintingStrategy) HandleClientCredentials(ctx context.Context, clientID id.ClientID, clientSecret, scope string) (*ports.TokenResponse, error) {
+	return s.provider.HandleClientCredentials(ctx, string(clientID), clientSecret, scope)
 }
 
-func (s *issueTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
-	return s.provider.HandleAuthorizationCodeExchange(ctx, agentID, clientSecret, code, redirectURI, codeVerifier)
+func (s *issueTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, clientID id.ClientID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
+	return s.provider.HandleAuthorizationCodeExchange(ctx, string(clientID), clientSecret, code, redirectURI, codeVerifier)
 }
 
 type issueTokenCodeIssuer struct {
@@ -34,13 +33,9 @@ func newIssueTokenCodeIssuer(provider *oauth2server.Provider) *issueTokenCodeIss
 }
 
 func (s *issueTokenCodeIssuer) IssueAuthorizationCode(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (string, error) {
-	agentID, err := id.ParseAgentID(string(req.ClientID))
-	if err != nil {
-		return "", fmt.Errorf("%w: invalid client_id: %v", oauth2server.ErrInvalidClient, err)
-	}
 	return s.provider.HandleAuthorize(
 		ctx,
-		agentID,
+		string(req.ClientID),
 		req.RedirectURI,
 		req.ResponseType,
 		req.Scope,

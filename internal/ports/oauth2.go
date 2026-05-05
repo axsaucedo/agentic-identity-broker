@@ -117,11 +117,11 @@ type MetadataResponse struct {
 type TokenMintingStrategy interface {
 	// HandleClientCredentials processes a client_credentials grant type request.
 	// Returns the token response or an error.
-	HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*TokenResponse, error)
+	HandleClientCredentials(ctx context.Context, clientID id.ClientID, clientSecret, scope string) (*TokenResponse, error)
 
 	// HandleAuthorizationCodeExchange processes an authorization_code grant type request.
 	// Returns the token response or an error.
-	HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
+	HandleAuthorizationCodeExchange(ctx context.Context, clientID id.ClientID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
 }
 
 // TokenResponse represents a successful OAuth2 token response from a minting strategy.
