@@ -23,6 +23,7 @@ import { InlineError } from '@components/ui/InlineError';
 import { Button } from '@components/ui/Button';
 import { useToast } from '@components/ui/Toast';
 import { Breadcrumb } from '@design-system/components/navigation/Breadcrumb';
+import { Alert } from '@design-system/components/feedback/Alert';
 import { Card } from '@design-system/components/data-display/Card';
 import { ServiceCard } from '@components/consent/ServiceCard';
 import { RevokeGrantButton } from '@components/consent/RevokeGrantButton';
@@ -399,7 +400,7 @@ export function AgentGrantDetailPage() {
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-20 h-20 bg-gradient-to-br from-success-primary to-success-primary rounded-lg flex items-center justify-center">
+                  <div className="w-20 h-20 bg-gradient-to-br from-trust to-trust-hover rounded-lg flex items-center justify-center">
                     <span className="text-white text-2xl font-semibold">
                       {agent.displayName.charAt(0).toUpperCase()}
                     </span>
@@ -412,12 +413,12 @@ export function AgentGrantDetailPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <h1
-                      className="text-2xl font-bold text-trust-deep"
+                      className="text-2xl font-display font-bold text-trust-deep"
                       data-testid="agent-name-heading"
                     >
                       {agent.displayName}
                     </h1>
-                    <p className="mt-2 text-slate-600">{agent.description}</p>
+                    <p className="mt-2 text-neutral-600">{agent.description}</p>
                   </div>
                 </div>
 
@@ -527,38 +528,19 @@ export function AgentGrantDetailPage() {
 
           {/* Validation errors */}
           {validationErrors.length > 0 && (
-            <div
+            <Alert
+              variant="warning"
+              title="Validation Error"
               data-error="true"
-              className="bg-amber-50 border border-amber-200 rounded-lg p-4"
               role="alert"
               aria-live="assertive"
             >
-              <div className="flex items-start gap-3">
-                <svg
-                  className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-amber-800">
-                    Validation Error
-                  </h3>
-                  <ul className="mt-2 text-sm text-amber-700 list-disc list-inside">
-                    {validationErrors.map((error, index) => (
-                      <li key={index}>{error}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
+              <ul className="list-disc list-inside">
+                {validationErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </Alert>
           )}
 
           {/* Submit error */}
@@ -567,27 +549,27 @@ export function AgentGrantDetailPage() {
           )}
 
           {/* Grant validity control */}
-          <div className="card p-6">
-            <h3 className="text-lg font-semibold text-trust-deep mb-4">
+          <Card padding="default">
+            <h3 className="text-lg font-display font-semibold text-trust-deep mb-4">
               Grant Validity
             </h3>
             <GrantValidityControl
               value={validityState}
               onChange={handleValidityChange}
             />
-          </div>
+          </Card>
 
           {/* Services section - Flattened layout with mandatory services first */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-trust-deep">
+                <h2 className="text-xl font-display font-semibold text-trust-deep">
                   Services
-                  <span className="ml-2 text-sm font-normal text-slate-500">
+                  <span className="ml-2 text-sm font-sans font-normal text-neutral-500">
                     ({services.length})
                   </span>
                 </h2>
-                <p className="mt-2 text-sm text-slate-600">
+                <p className="mt-2 text-sm text-neutral-600">
                   Delegate your permissions in these services to{' '}
                   {agent.displayName}. The agent will use these services on your
                   behalf.
@@ -599,7 +581,7 @@ export function AgentGrantDetailPage() {
               <Card padding="default">
                 <div className="text-center">
                   <svg
-                    className="mx-auto h-12 w-12 text-slate-400"
+                    className="mx-auto h-12 w-12 text-neutral-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -611,10 +593,10 @@ export function AgentGrantDetailPage() {
                       d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
                     />
                   </svg>
-                  <h3 className="mt-4 text-lg font-medium text-trust-deep">
+                  <h3 className="mt-4 text-lg font-display font-medium text-trust-deep">
                     No services available
                   </h3>
-                  <p className="mt-2 text-slate-600">
+                  <p className="mt-2 text-neutral-600">
                     This agent has no services configured yet.
                   </p>
                 </div>
