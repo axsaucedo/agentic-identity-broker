@@ -149,7 +149,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	services := toServiceRequirementForUser(serviceRequirements)
 	sortServiceRequirements(services)
 
-	cimdMeta, err := h.resolveCIMDMetadata(r, parsedAgentID)
+	cimdMeta, err := h.resolveCIMDMetadata(r, parsedAgentID, agent.ClientID)
 	if err != nil {
 		if errors.Is(err, errSessionExpired) {
 			h.logger.Warn("authorization session expired", "agent_id", agentID)
@@ -235,11 +235,10 @@ func sortServiceRequirements(services []ServiceRequirementForUser) {
 // When session_token is present (FR-028), decrypts the JWE token to extract CIMD metadata.
 // CIMD agents require session_token — falling back to query params would reopen the
 // metadata-spoofing surface. Non-CIMD/opaque flows do not use session tokens.
-func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.AgentID) (*CIMDMetadataResponse, error) {
+func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.AgentID, clientID id.ClientID) (*CIMDMetadataResponse, error) {
 	sessionToken := r.URL.Query().Get("session_token")
 	if sessionToken == "" {
-		clientID := r.URL.Query().Get("client_id")
-		if clientID != "" && strings.HasPrefix(clientID, "https://") {
+		if strings.HasPrefix(string(clientID), "https://") {
 			return nil, errors.New("session_token is required for CIMD agent authorization")
 		}
 		return nil, nil
