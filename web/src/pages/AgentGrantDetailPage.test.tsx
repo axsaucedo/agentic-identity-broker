@@ -810,8 +810,9 @@ describe('AgentGrantDetailPage - CIMD session_token flow', () => {
 
     // CIMDConsentSummary renders the verified domain as primary identifier
     expect(screen.getByText('acme.example.com')).toBeInTheDocument();
-    // and the client name + access sentence as secondary text
-    expect(screen.getByText('Acme Corp Assistant')).toBeInTheDocument();
-    expect(screen.getByText(/wants to access/)).toBeInTheDocument();
+    // and the "wants to access" sentence that includes the agent name
+    const cimdParagraph = screen.getByText(/wants to access/);
+    expect(cimdParagraph).toBeInTheDocument();
+    expect(cimdParagraph.textContent).toContain('Research Assistant');
   });
 });
