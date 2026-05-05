@@ -53,7 +53,7 @@
 
 - [X] T009 Update `/api/admin/openapi.yaml`: extend AgentRequest/AgentResponse schemas with `client_uris`, `auth_method`, `jwks_uri`
 - [X] T010 [P] Update `/api/enduser/openapi.yaml`: add `client_id_metadata_document_supported` to metadata response, add `cimd_metadata` to consent response, document new error responses for `/oauth2/authorize`
-- [ ] T011 Get user/stakeholder confirmation for API design changes (API-001 through API-004)
+- [X] T011 Get user/stakeholder confirmation for API design changes (API-001 through API-004)
 
 **Checkpoint**: APIs designed and confirmed
 
@@ -110,6 +110,7 @@
 - [X] T031 [P] Implement `ClientIDMetadataDocumentURL` value object with parse-time validation (scheme, path, fragment, credentials, port, dot-segments) in `internal/domain/cimd/url.go`
 - [X] T032 [P] Implement `SSRFBlocklist` value object with RFC 6890 default ranges + operator extras in `internal/domain/cimd/blocklist.go`
 - [X] T033 [P] Implement `ClientIDMetadataDocument` value object with JSON parsing and validation (client_id match, auth method, redirect URI same-origin, keyword blocklist) in `internal/domain/cimd/document.go`
+- [ ] T033a [P] [US2] Implement SSRF validation for embedded URL fields (`logo_uri`, `jwks_uri`, `policy_uri`, `tos_uri`) during CIMD document parsing in `internal/domain/cimd/document.go`: resolve each URL's hostname, validate against SSRFBlocklist, log blocked fields as structured audit events, silently omit blocked fields from the returned document (SR-010). Write unit tests in `internal/domain/cimd/document_test.go`.
 - [X] T034 Implement `CIMDCache` (sync.RWMutex-protected map with TTL clamping from HTTP headers) in `internal/domain/cimd/cache.go`
 - [X] T035 Implement SSRF-hardened HTTP fetcher adapter (custom Dialer.Control, no redirects, LimitReader, context timeout) in `internal/adapters/cimd/fetcher.go`
 - [X] T036 [P] Write unit tests for `ClientIDMetadataDocumentURL` in `internal/domain/cimd/url_test.go`
@@ -275,7 +276,7 @@
 - [X] T074 Verify configuration design YAML examples exist in `examples/config/cimd.yaml` (Principle VII)
 - [X] T075 [P] Verify `examples/config/README.md` references CIMD configuration (Principle VII)
 - [X] T076 Verify API designs documented in `/api/admin/openapi.yaml` and `/api/enduser/openapi.yaml` (Principles IV, X)
-- [ ] T077 Verify user/stakeholder confirmed API designs (Principle X)
+- [X] T077 Verify user/stakeholder confirmed API designs (Principle X)
 - [X] T078 Verify database migration 015 documented and tested (Principle IX)
 - [X] T079 Verify design system review completed for CIMD consent components (Principle XI)
 - [X] T080 Verify E2E acceptance tests in `tests/e2e/` cover all 24 spec scenarios (22 original + 2 session edge cases) (Principle XIII)

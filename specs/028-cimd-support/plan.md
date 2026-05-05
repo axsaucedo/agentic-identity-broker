@@ -128,7 +128,7 @@ web/src/
     └── consent.ts                    # MODIFIED: add CIMD-related API types
 
 migrations/
-└── 015_add_cimd_support.{up,down}.sql  # NEW: CIMD agent fields, agent_client_uris, cimd_redirect_uris
+└── 015_add_cimd_support.{up,down}.sql  # NEW: agent_client_uris child table (UNIQUE(client_uri))
 
 api/
 ├── admin/openapi.yaml           # MODIFIED: Agent schema extension (client_uris)
