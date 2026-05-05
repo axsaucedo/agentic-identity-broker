@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"sync/atomic"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/matchers"
 )
 
 // cimdDocument builds a CIMD JSON document with the given clientID and redirectURIs.
@@ -93,10 +95,8 @@ var _ = Describe("CIMD Authorization", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-			var body map[string]any
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body["error"]).To(Equal("invalid_client"))
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
 		})
 	})
 
@@ -104,6 +104,7 @@ var _ = Describe("CIMD Authorization", func() {
 	Describe("when CIMD is enabled and the document is valid", func() {
 		var (
 			cimdServer  *httptest.Server
+			agent       *storage.Agent
 			clientURL   string
 			redirectURI string
 			server      *bootstrap.TestServer
@@ -114,7 +115,7 @@ var _ = Describe("CIMD Authorization", func() {
 			// The custom HTTP client redirects connections to this hostname to the test server.
 			const fakeHost = "cimd-e2e.test.invalid"
 
-			// Start TLS mock CIMD server — URL known only after server starts
+			// Start TLS mock CIMD server — URL known only after server starts.
 			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Cache-Control", "max-age=300")
@@ -125,9 +126,9 @@ var _ = Describe("CIMD Authorization", func() {
 			clientURL = "https://" + fakeHost + "/client"
 			redirectURI = "https://" + fakeHost + "/callback"
 
-			// Register agent with pre-registered CIMD client URI (FR-026)
+			// Register agent with pre-registered CIMD client URI (FR-026).
 			now := time.Now()
-			agent := &storage.Agent{
+			agent = &storage.Agent{
 				ID:          id.NewAgentID(),
 				ClientID:    id.ClientID(clientURL),
 				ClientURIs:  []string{clientURL},
@@ -138,7 +139,7 @@ var _ = Describe("CIMD Authorization", func() {
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
-			// Wire CIMD-enabled config with custom test client that redirects fakeHost → test server
+			// Wire CIMD-enabled config with custom test client that redirects fakeHost → test server.
 			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
 			serverFactory = bootstrap.NewServerFactory(config, logger)
 
@@ -161,7 +162,7 @@ var _ = Describe("CIMD Authorization", func() {
 			}
 		})
 
-		It("resolves the agent and redirects to the consent page", func() {
+		It("resolves the agent, redirects to the consent page, and embeds an opaque session_token", func() {
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf(
 					"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz",
@@ -172,9 +173,15 @@ var _ = Describe("CIMD Authorization", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			// Successful CIMD resolution with no existing grant → redirect to consent page
-			Expect(resp.StatusCode).To(Equal(http.StatusFound))
-			Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent/agent/"))
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusFound))
+
+			loc, parseErr := url.Parse(resp.Header.Get("Location"))
+			Expect(parseErr).ToNot(HaveOccurred())
+			// Consent redirect must land on the correct agent's page.
+			Expect(loc.Path).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+			// SR-013: full authorization context must be sealed in an opaque JWE session_token.
+			Expect(loc.Query().Get("session_token")).ToNot(BeEmpty(),
+				"consent redirect must carry an opaque session_token per SR-013")
 		})
 	})
 
@@ -189,11 +196,10 @@ var _ = Describe("CIMD Authorization", func() {
 		BeforeEach(func() {
 			const fakeHost = "cimd-e2e-mismatch.test.invalid"
 
-			// CIMD server returns a document with a DIFFERENT client_id
+			// CIMD server returns a document with a DIFFERENT client_id.
 			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				// Intentionally wrong client_id in the document
 				_, _ = w.Write(cimdDocument("https://other.example.com/different", []string{clientURL + "/callback"}))
 			}))
 
@@ -244,10 +250,8 @@ var _ = Describe("CIMD Authorization", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-			var body map[string]any
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body["error"]).To(Equal("invalid_client"))
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
 		})
 	})
 
@@ -313,10 +317,8 @@ var _ = Describe("CIMD Authorization", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-			var body map[string]any
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body["error"]).To(Equal("invalid_client"))
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
 		})
 	})
 
@@ -334,7 +336,7 @@ var _ = Describe("CIMD Authorization", func() {
 			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				// Document only allows /registered-callback, not /other-callback
+				// Document only allows /registered-callback, not /other-callback.
 				_, _ = w.Write(cimdDocument(clientURL, []string{clientURL + "/registered-callback"}))
 			}))
 
@@ -375,7 +377,7 @@ var _ = Describe("CIMD Authorization", func() {
 		})
 
 		It("rejects the request with invalid_request", func() {
-			// Use a redirect URI that is NOT registered in the CIMD document
+			// Use a redirect URI that is NOT registered in the CIMD document.
 			resp, err := server.AuthenticatedGET(
 				fmt.Sprintf(
 					"/oauth2/authorize?client_id=%s&redirect_uri=%s/other-callback&response_type=code&state=xyz",
@@ -386,10 +388,8 @@ var _ = Describe("CIMD Authorization", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-			var body map[string]any
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body["error"]).To(Equal("invalid_request"))
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_request"))
 		})
 	})
 
@@ -412,11 +412,564 @@ var _ = Describe("CIMD Authorization", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-			var body map[string]any
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body["error"]).To(Equal("invalid_client"))
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
+			// FR-027: lookup must happen before any network call — no fetch should be attempted.
 			Expect(cimdFetcher.CallCount()).To(Equal(0))
+		})
+	})
+
+	// FR-022 from specs/028-cimd-support/spec.md
+	Describe("when the CIMD document specifies a secret-bearing token_endpoint_auth_method", func() {
+		var (
+			cimdServer *httptest.Server
+			clientURL  string
+			server     *bootstrap.TestServer
+		)
+
+		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-auth-method.test.invalid"
+
+			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				doc := map[string]any{
+					"client_id":                  clientURL,
+					"client_name":                "Auth Method Agent",
+					"redirect_uris":              []string{clientURL + "/callback"},
+					"token_endpoint_auth_method": "client_secret_post",
+				}
+				b, _ := json.Marshal(doc)
+				_, _ = w.Write(b)
+			}))
+
+			clientURL = "https://" + fakeHost + "/client"
+
+			now := time.Now()
+			agent := &storage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
+				DisplayName: "Auth Method Agent",
+				Description: "E2E test agent for non-public auth method rejection",
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+			serverFactory = bootstrap.NewServerFactory(config, logger)
+
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
+			Expect(err).ToNot(HaveOccurred())
+
+			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
+			Expect(err).ToNot(HaveOccurred())
+
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if cimdServer != nil {
+				cimdServer.Close()
+			}
+			if server != nil {
+				server.Close()
+			}
+		})
+
+		It("rejects the authorization request with invalid_client", func() {
+			// FR-022: CIMD clients are always public clients — any auth method other than
+			// "none" is rejected, even if the document is otherwise structurally valid.
+			resp, err := server.AuthenticatedGET(
+				fmt.Sprintf(
+					"/oauth2/authorize?client_id=%s&redirect_uri=%s/callback&response_type=code&state=xyz",
+					clientURL, clientURL,
+				),
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
+		})
+	})
+
+	// Edge case from specs/028-cimd-support/spec.md: redirect_uris is mandatory (FR-004)
+	Describe("when the CIMD document has an empty redirect_uris array", func() {
+		var (
+			cimdServer *httptest.Server
+			clientURL  string
+			server     *bootstrap.TestServer
+		)
+
+		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-empty-redirects.test.invalid"
+
+			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				doc := map[string]any{
+					"client_id":     clientURL,
+					"client_name":   "Empty Redirects Agent",
+					"redirect_uris": []string{},
+				}
+				b, _ := json.Marshal(doc)
+				_, _ = w.Write(b)
+			}))
+
+			clientURL = "https://" + fakeHost + "/client"
+
+			now := time.Now()
+			agent := &storage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
+				DisplayName: "Empty Redirects Agent",
+				Description: "E2E test agent for empty redirect_uris scenario",
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+			serverFactory = bootstrap.NewServerFactory(config, logger)
+
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
+			Expect(err).ToNot(HaveOccurred())
+
+			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
+			Expect(err).ToNot(HaveOccurred())
+
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if cimdServer != nil {
+				cimdServer.Close()
+			}
+			if server != nil {
+				server.Close()
+			}
+		})
+
+		It("rejects the authorization request with invalid_client", func() {
+			// FR-004: redirect_uris is required; an empty array is treated the same as omission.
+			resp, err := server.AuthenticatedGET(
+				fmt.Sprintf(
+					"/oauth2/authorize?client_id=%s&redirect_uri=%s/callback&response_type=code&state=xyz",
+					clientURL, clientURL,
+				),
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
+		})
+	})
+
+	// RFC §4.1 (from specs/028-cimd-support/spec.md document validation rules)
+	Describe("when the CIMD document contains a client_secret field", func() {
+		var (
+			cimdServer *httptest.Server
+			clientURL  string
+			server     *bootstrap.TestServer
+		)
+
+		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-client-secret.test.invalid"
+
+			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				doc := map[string]any{
+					"client_id":     clientURL,
+					"client_name":   "Secret-Bearing Agent",
+					"redirect_uris": []string{clientURL + "/callback"},
+					"client_secret": "this-field-must-not-be-present",
+				}
+				b, _ := json.Marshal(doc)
+				_, _ = w.Write(b)
+			}))
+
+			clientURL = "https://" + fakeHost + "/client"
+
+			now := time.Now()
+			agent := &storage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
+				DisplayName: "Secret-Bearing Agent",
+				Description: "E2E test agent for client_secret rejection",
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+			serverFactory = bootstrap.NewServerFactory(config, logger)
+
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
+			Expect(err).ToNot(HaveOccurred())
+
+			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
+			Expect(err).ToNot(HaveOccurred())
+
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if cimdServer != nil {
+				cimdServer.Close()
+			}
+			if server != nil {
+				server.Close()
+			}
+		})
+
+		It("rejects the authorization request with invalid_client", func() {
+			// RFC §4.1: client_secret MUST NOT appear in a CIMD document — presence of this
+			// field is treated as a malformed document regardless of the secret's value.
+			resp, err := server.AuthenticatedGET(
+				fmt.Sprintf(
+					"/oauth2/authorize?client_id=%s&redirect_uri=%s/callback&response_type=code&state=xyz",
+					clientURL, clientURL,
+				),
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
+		})
+	})
+
+	// FR-004a from specs/028-cimd-support/spec.md
+	Describe("when the CIMD document contains a cross-origin redirect_uri", func() {
+		var (
+			cimdServer *httptest.Server
+			clientURL  string
+			server     *bootstrap.TestServer
+		)
+
+		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-cross-origin.test.invalid"
+
+			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				// redirect_uri origin differs from the client_id URL origin.
+				doc := map[string]any{
+					"client_id":     clientURL,
+					"client_name":   "Cross-Origin Agent",
+					"redirect_uris": []string{"https://other-domain.example.com/callback"},
+				}
+				b, _ := json.Marshal(doc)
+				_, _ = w.Write(b)
+			}))
+
+			clientURL = "https://" + fakeHost + "/client"
+
+			now := time.Now()
+			agent := &storage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
+				DisplayName: "Cross-Origin Agent",
+				Description: "E2E test agent for cross-origin redirect_uri rejection",
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+			serverFactory = bootstrap.NewServerFactory(config, logger)
+
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
+			Expect(err).ToNot(HaveOccurred())
+
+			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
+			Expect(err).ToNot(HaveOccurred())
+
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if cimdServer != nil {
+				cimdServer.Close()
+			}
+			if server != nil {
+				server.Close()
+			}
+		})
+
+		It("rejects the authorization request with invalid_client", func() {
+			// FR-004a: every redirect_uri in the document must be same-origin with the
+			// client_id URL; cross-origin redirect URIs make the entire document invalid.
+			resp, err := server.AuthenticatedGET(
+				fmt.Sprintf(
+					"/oauth2/authorize?client_id=%s&redirect_uri=https://other-domain.example.com/callback&response_type=code&state=xyz",
+					clientURL,
+				),
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
+		})
+	})
+
+	// FR-004a localhost exception from specs/028-cimd-support/spec.md
+	Describe("when the CIMD document redirect_uri is a localhost address", func() {
+		var (
+			cimdServer *httptest.Server
+			agent      *storage.Agent
+			clientURL  string
+			server     *bootstrap.TestServer
+		)
+
+		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-localhost-redir.test.invalid"
+
+			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				// localhost redirect URI is always permitted regardless of the client_id origin.
+				doc := map[string]any{
+					"client_id":     clientURL,
+					"client_name":   "Localhost Redirect Agent",
+					"redirect_uris": []string{"http://localhost:3000/callback"},
+				}
+				b, _ := json.Marshal(doc)
+				_, _ = w.Write(b)
+			}))
+
+			clientURL = "https://" + fakeHost + "/client"
+
+			now := time.Now()
+			agent = &storage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
+				DisplayName: "Localhost Redirect Agent",
+				Description: "E2E test agent for localhost redirect URI exception",
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+			serverFactory = bootstrap.NewServerFactory(config, logger)
+
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
+			Expect(err).ToNot(HaveOccurred())
+
+			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
+			Expect(err).ToNot(HaveOccurred())
+
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if cimdServer != nil {
+				cimdServer.Close()
+			}
+			if server != nil {
+				server.Close()
+			}
+		})
+
+		It("accepts the document and redirects to the consent page", func() {
+			// FR-004a exception: localhost and 127.0.0.1 redirect URIs are unconditionally
+			// permitted regardless of the client_id origin — supporting locally-running agents.
+			resp, err := server.AuthenticatedGET(
+				fmt.Sprintf(
+					"/oauth2/authorize?client_id=%s&redirect_uri=http://localhost:3000/callback&response_type=code&state=xyz",
+					clientURL,
+				),
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusFound))
+
+			loc, parseErr := url.Parse(resp.Header.Get("Location"))
+			Expect(parseErr).ToNot(HaveOccurred())
+			Expect(loc.Path).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+		})
+	})
+
+	// FR-023a from specs/028-cimd-support/spec.md
+	Describe("when the CIMD document client_name differs from Agent.DisplayName", func() {
+		var (
+			cimdServer  *httptest.Server
+			agent       *storage.Agent
+			clientURL   string
+			redirectURI string
+			server      *bootstrap.TestServer
+		)
+
+		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-brand-mismatch.test.invalid"
+
+			clientURL = "https://" + fakeHost + "/client"
+			redirectURI = "https://" + fakeHost + "/callback"
+
+			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				// client_name intentionally differs from the Agent's DisplayName.
+				doc := map[string]any{
+					"client_id":     clientURL,
+					"client_name":   "Rebranded Agent Name",
+					"redirect_uris": []string{redirectURI},
+				}
+				b, _ := json.Marshal(doc)
+				_, _ = w.Write(b)
+			}))
+
+			now := time.Now()
+			agent = &storage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
+				DisplayName: "Official Agent Name",
+				Description: "E2E test agent for brand pin mismatch scenario",
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+			serverFactory = bootstrap.NewServerFactory(config, logger)
+
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
+			Expect(err).ToNot(HaveOccurred())
+
+			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
+			Expect(err).ToNot(HaveOccurred())
+
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if cimdServer != nil {
+				cimdServer.Close()
+			}
+			if server != nil {
+				server.Close()
+			}
+		})
+
+		It("continues the authorization flow and redirects to the consent page", func() {
+			// FR-023a: brand pin mismatch emits a structured audit log event but does NOT
+			// block the flow — the authorization continues to the consent page.
+			resp, err := server.AuthenticatedGET(
+				fmt.Sprintf(
+					"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=xyz",
+					clientURL, redirectURI,
+				),
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusFound))
+
+			loc, parseErr := url.Parse(resp.Header.Get("Location"))
+			Expect(parseErr).ToNot(HaveOccurred())
+			Expect(loc.Path).To(ContainSubstring("/consent/agent/" + agent.ID.String()))
+		})
+	})
+
+	// FR-023b from specs/028-cimd-support/spec.md
+	Describe("when the CIMD document client_name matches a built-in blocked term", func() {
+		var (
+			cimdServer *httptest.Server
+			clientURL  string
+			server     *bootstrap.TestServer
+		)
+
+		BeforeEach(func() {
+			const fakeHost = "cimd-e2e-blocklist.test.invalid"
+
+			cimdServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				// "admin" is in the built-in reserved name list (FR-023c default set).
+				doc := map[string]any{
+					"client_id":     clientURL,
+					"client_name":   "admin",
+					"redirect_uris": []string{clientURL + "/callback"},
+				}
+				b, _ := json.Marshal(doc)
+				_, _ = w.Write(b)
+			}))
+
+			clientURL = "https://" + fakeHost + "/client"
+
+			now := time.Now()
+			agent := &storage.Agent{
+				ID:          id.NewAgentID(),
+				ClientID:    id.ClientID(clientURL),
+				ClientURIs:  []string{clientURL},
+				DisplayName: "Admin-Spoofing Agent",
+				Description: "E2E test agent for built-in client_name blocklist",
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			config := fixtures.OAuth2ConfigWithCIMD(mockUpstream.Server.URL)
+			serverFactory = bootstrap.NewServerFactory(config, logger)
+
+			cimdFetcher, err := bootstrap.NewCIMDTestFetcher(cimdServer, fakeHost, 5120)
+			Expect(err).ToNot(HaveOccurred())
+
+			appInstance, err := serverFactory.BuildAppWithCIMDFetcher(testStorage, cimdFetcher)
+			Expect(err).ToNot(HaveOccurred())
+
+			server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if cimdServer != nil {
+				cimdServer.Close()
+			}
+			if server != nil {
+				server.Close()
+			}
+		})
+
+		It("rejects the authorization request with invalid_client", func() {
+			// FR-023b/c: "admin" and other reserved terms are in the non-empty default
+			// blocklist and are always enforced regardless of operator configuration.
+			resp, err := server.AuthenticatedGET(
+				fmt.Sprintf(
+					"/oauth2/authorize?client_id=%s&redirect_uri=%s/callback&response_type=code&state=xyz",
+					clientURL, clientURL,
+				),
+				fixtures.DefaultPrincipal().String(),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp).To(matchers.HaveStatusCode(http.StatusBadRequest))
+			Expect(resp).To(matchers.HaveOAuth2Error("invalid_client"))
 		})
 	})
 })

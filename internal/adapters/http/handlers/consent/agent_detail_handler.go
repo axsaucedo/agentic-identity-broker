@@ -234,7 +234,10 @@ func sortServiceRequirements(services []ServiceRequirementForUser) {
 func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.AgentID, clientID id.ClientID) (*CIMDMetadataResponse, error) {
 	sessionToken := r.URL.Query().Get("session_token")
 	if sessionToken == "" {
-		if strings.HasPrefix(string(clientID), "https://") {
+		// Reject only when the request carries authorization params (client_id in URL),
+		// which signals an attempt to drive the CIMD consent flow without a session_token.
+		// Plain detail lookups (no auth params) are allowed through — no CIMD metadata returned.
+		if strings.HasPrefix(string(clientID), "https://") && r.URL.Query().Get("client_id") != "" {
 			return nil, errors.New("session_token is required for CIMD agent authorization")
 		}
 		return nil, nil
