@@ -176,8 +176,8 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer server.Close()
 
-			// http:// is detected as a URL-format client_id (contains "://"), so it
-			// routes through ParseClientIDMetadataDocumentURL which rejects non-HTTPS → invalid_request
+			// http:// is detected as a URL-format client_id (contains "://"), but fails
+			// ValidateCIMDClientURL → falls through to opaque path → UUID parse fails → invalid_client
 			resp, err := server.AuthenticatedGET(
 				"/oauth2/authorize?client_id=http://example.com/client&redirect_uri=http://example.com/cb&response_type=code&state=xyz",
 				fixtures.DefaultPrincipal().String(),
@@ -188,7 +188,7 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 			var body map[string]any
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body["error"]).To(Equal("invalid_request"))
+			Expect(body["error"]).To(Equal("invalid_client"))
 		})
 	})
 
@@ -213,8 +213,8 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 			var body map[string]any
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			// URL format validation failures return invalid_request per OAuth2 spec
-			Expect(body["error"]).To(Equal("invalid_request"))
+			// URL format validation failures return invalid_client (falls through to opaque path)
+			Expect(body["error"]).To(Equal("invalid_client"))
 		})
 	})
 
