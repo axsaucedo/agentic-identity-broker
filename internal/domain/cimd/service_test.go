@@ -168,7 +168,7 @@ func TestService_Resolve_BareQueryDelimiterLogsWarning(t *testing.T) {
 
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
-	fetcher := &mockFetcher{result: cimdFetchResult(t, "https://agent.example.com/client?", "private_key_jwt", "")}
+	fetcher := &mockFetcher{result: cimdFetchResult(t, "https://agent.example.com/client?", "none", "")}
 
 	svc := NewService(
 		fetcher,
