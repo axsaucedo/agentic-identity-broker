@@ -52,21 +52,18 @@ type AgentDetailHandler struct {
 }
 
 // NewAgentDetailHandler creates a new agent detail handler.
-func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger) *AgentDetailHandler {
+func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, jweTokenService *domjwe.TokenService) *AgentDetailHandler {
+	if jweTokenService == nil {
+		panic("AgentDetailHandler requires a non-nil JWE token service")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentDetailHandler{
-		consentService: consentService,
-		logger:         logger,
+		consentService:  consentService,
+		jweTokenService: jweTokenService,
+		logger:          logger,
 	}
-}
-
-// WithJWETokenService sets the JWE token service.
-// Required for FR-028: JWE session token-based CIMD metadata retrieval.
-func (h *AgentDetailHandler) WithJWETokenService(ts *domjwe.TokenService) *AgentDetailHandler {
-	h.jweTokenService = ts
-	return h
 }
 
 // CIMDMetadataResponse is included in the agent detail response when the authorization
@@ -244,10 +241,6 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.Age
 		return nil, nil
 	}
 
-	if h.jweTokenService == nil {
-		return nil, errors.New("session_token provided but JWE token service not configured")
-	}
-
 	var claims domotp2.AuthorizationSessionClaims
 	if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
 		return nil, errSessionExpired
@@ -310,11 +303,6 @@ func (h *AgentDetailHandler) GetConsentSession(w http.ResponseWriter, r *http.Re
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		h.writeError(w, http.StatusBadRequest, "bad request", "token parameter is required")
-		return
-	}
-
-	if h.jweTokenService == nil {
-		h.writeError(w, http.StatusBadRequest, "bad request", "session-based consent not available")
 		return
 	}
 

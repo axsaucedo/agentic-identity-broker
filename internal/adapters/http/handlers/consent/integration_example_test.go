@@ -2,6 +2,7 @@ package consent_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -13,13 +14,27 @@ import (
 	memorystorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/go-chi/chi/v5"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
+
+func newIntegrationJWETokenService() *domjwe.TokenService {
+	keyBytes, err := base64.StdEncoding.DecodeString("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=")
+	if err != nil {
+		panic("newIntegrationJWETokenService: " + err.Error())
+	}
+	key, err := jwk.Import(keyBytes)
+	if err != nil {
+		panic("newIntegrationJWETokenService: " + err.Error())
+	}
+	return domjwe.New(key)
+}
 
 func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2ProviderService {
 	t.Helper()
@@ -80,7 +95,7 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 	}
 
 	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, memorystorage.NewInMemoryUserSessionRepository(), slog.Default())
-	handler := consent.NewAgentDetailHandler(consentSvc, nil)
+	handler := consent.NewAgentDetailHandler(consentSvc, nil, newIntegrationJWETokenService())
 
 	reqCtx := principal.WithPrincipal(ctx, principalValue)
 	rctx := chi.NewRouteContext()
@@ -298,7 +313,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 	consentSvc := consentservice.NewService(agentRepo, providerService, grantRepo, memorystorage.NewInMemoryUserSessionRepository(), slog.Default())
 
 	t.Run("GetAgentDetail", func(t *testing.T) {
-		handler := consent.NewAgentDetailHandler(consentSvc, nil)
+		handler := consent.NewAgentDetailHandler(consentSvc, nil, newIntegrationJWETokenService())
 
 		reqCtx := principal.WithPrincipal(context.Background(), principalValue)
 		rctx := chi.NewRouteContext()

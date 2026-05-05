@@ -89,7 +89,7 @@ func newRequestWithPrincipal(method, path, principalValue string, body any) *htt
 
 func TestGetGrants_NoPrincipal(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 	testAgentID := id.NewAgentID()
 
 	// Create request without principal
@@ -119,7 +119,7 @@ func TestGetGrants_NoPrincipal(t *testing.T) {
 
 func TestCreateGrant_NoPrincipal(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 	testAgentID := id.NewAgentID()
 
 	reqBody := GrantRequest{
@@ -149,7 +149,7 @@ func TestCreateGrant_NoPrincipal(t *testing.T) {
 
 func TestCreateGrant_InvalidJSON(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 	testAgentID := id.NewAgentID()
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
@@ -180,7 +180,7 @@ func TestCreateGrant_InvalidJSON(t *testing.T) {
 
 func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 	testAgentID := id.NewAgentID()
 
 	pastTime := time.Now().Add(-1 * time.Hour)
@@ -226,7 +226,7 @@ func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 
 func TestToGrantResponse(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 
 	testGrantID := id.NewGrantID()
 	testAgentID := id.NewAgentID()
@@ -358,7 +358,7 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 					return nil, tt.serviceError
 				},
 			}
-			handler := NewGrantsHandler(mockService, nil)
+			handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 			// Create valid request
 			reqBody := GrantRequest{
@@ -427,7 +427,7 @@ func TestCreateGrant_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	// Create request
 	reqBody := GrantRequest{
@@ -527,7 +527,7 @@ func TestGetGrants_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	req := newRequestWithPrincipal("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
@@ -567,7 +567,7 @@ func TestGetGrants_AgentNotFound(t *testing.T) {
 			return nil, consent.ErrAgentNotFound
 		},
 	}
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	req := newRequestWithPrincipal("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
@@ -779,7 +779,7 @@ func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -847,7 +847,7 @@ func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -892,7 +892,7 @@ func TestCreateGrant_WithRedirectURI_InvalidDomain(t *testing.T) {
 	t.Parallel()
 	// T050: Test case 4 - Approval with invalid redirect_uri (external domain) should return error
 	testAgentID := id.NewAgentID()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -955,7 +955,7 @@ func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -1018,7 +1018,7 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -1089,7 +1089,7 @@ func TestCreateGrant_SessionToken_ValidFlow(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil).WithJWETokenService(ts)
+	handler := NewGrantsHandler(mockService, nil, ts)
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -1119,7 +1119,7 @@ func TestCreateGrant_SessionToken_InvalidToken(t *testing.T) {
 	principalVal := "user@example.com"
 
 	ts := newTestJWETokenService()
-	handler := NewGrantsHandler(&mockConsentService{}, nil).WithJWETokenService(ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -1149,7 +1149,7 @@ func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
 	ts := newTestJWETokenService()
 	tokenForAgentA := newTestSessionToken(ts, agentA, principalVal, "/callback")
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil).WithJWETokenService(ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -1177,7 +1177,7 @@ func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
 	ts := newTestJWETokenService()
 	tokenForUserA := newTestSessionToken(ts, testAgentID, "userA@example.com", "/callback")
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil).WithJWETokenService(ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
 
 	req := newRequestWithPrincipal(
 		"POST",

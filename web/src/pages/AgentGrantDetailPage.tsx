@@ -583,7 +583,7 @@ export function AgentGrantDetailPage() {
             ) : (
               <div className="space-y-4">
                 {/* Sort services: mandatory first, then optional, then others */}
-                {services
+                {[...services]
                   .sort((a, b) => {
                     const aMandatory = a.kind === 'requirement' && a.requirementType === 'mandatory';
                     const bMandatory = b.kind === 'requirement' && b.requirementType === 'mandatory';

@@ -547,8 +547,7 @@ func (b *Builder) Build() (*App, error) {
 		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
-	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger).
-		WithJWETokenService(jweTokenService)
+	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, jweTokenService)
 
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
 	// Config validation makes this error unreachable in practice, but structural fail-closed
@@ -645,7 +644,7 @@ func (b *Builder) Build() (*App, error) {
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:    agentDetailHandler,
 		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger).WithJWETokenService(jweTokenService),
+		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, jweTokenService),
 		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{

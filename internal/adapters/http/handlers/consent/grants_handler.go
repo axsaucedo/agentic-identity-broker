@@ -29,21 +29,18 @@ type GrantsHandler struct {
 }
 
 // NewGrantsHandler creates a new grants handler.
-func NewGrantsHandler(consentService ConsentService, logger *slog.Logger) *GrantsHandler {
+func NewGrantsHandler(consentService ConsentService, logger *slog.Logger, jweTokenService *domjwe.TokenService) *GrantsHandler {
+	if jweTokenService == nil {
+		panic("GrantsHandler requires a non-nil JWE token service")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &GrantsHandler{
-		consentService: consentService,
-		logger:         logger,
+		consentService:  consentService,
+		jweTokenService: jweTokenService,
+		logger:          logger,
 	}
-}
-
-// WithJWETokenService sets the JWE token service.
-// Required for FR-029: JWE session token validation on CIMD consent submission.
-func (h *GrantsHandler) WithJWETokenService(ts *domjwe.TokenService) *GrantsHandler {
-	h.jweTokenService = ts
-	return h
 }
 
 // DelegatedTokenRequest represents a delegated token in the request.
@@ -175,12 +172,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	sessionToken := r.URL.Query().Get("session_token")
 	var sessionRedirectURI string
 	if sessionToken != "" {
-		if h.jweTokenService == nil {
-			h.logger.Warn("session_token provided but JWE token service not configured",
-				"agent_id", agentID, "principal", principalValue)
-			h.writeError(w, http.StatusBadRequest, "bad request", "session-based consent not available")
-			return
-		}
 		var claims domotp2.AuthorizationSessionClaims
 		if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
 			h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
