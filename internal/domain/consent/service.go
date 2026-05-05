@@ -197,8 +197,9 @@ type GrantRequest struct {
 	DelegatedOAuth2Tokens []storage.DelegatedToken
 }
 
-// ValidateGrantRequest verifies the non-persistence parts of a grant request so callers
-// can fail before consuming one-shot coordination state like authorization sessions.
+// ValidateGrantRequest validates a grant request without persisting anything.
+// Exposed separately from GrantConsent so callers can fail fast before
+// consuming irreversible state (e.g., a one-shot authorization session).
 func (s *Service) ValidateGrantRequest(ctx context.Context, req *GrantRequest) error {
 	// Validate agent exists
 	agent, err := s.agentRepo.Get(ctx, req.AgentID)
