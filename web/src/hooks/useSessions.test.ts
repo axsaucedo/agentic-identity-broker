@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import axios from 'axios';
 import { useSessions, useSession } from './useSessions';
 import { sessionsApi } from '../services/api/sessions';
 import type { SessionSummary } from '../services/api/sessions';
@@ -119,12 +120,8 @@ describe('useSessions', () => {
     });
 
     it('handles 404 errors with custom message', async () => {
-      const error = {
-        response: {
-          status: 404,
-          data: { message: 'Not found' },
-        },
-      };
+      const error = new axios.AxiosError('Not Found');
+      error.response = { status: 404, data: { message: 'Not found' } } as never;
       vi.mocked(sessionsApi.listSessions).mockRejectedValueOnce(error);
 
       const { result } = renderHook(() => useSessions());
@@ -137,12 +134,8 @@ describe('useSessions', () => {
     });
 
     it('handles API error responses with message', async () => {
-      const error = {
-        response: {
-          status: 500,
-          data: { message: 'Internal server error' },
-        },
-      };
+      const error = new axios.AxiosError('Internal Server Error');
+      error.response = { status: 500, data: { message: 'Internal server error' } } as never;
       vi.mocked(sessionsApi.listSessions).mockRejectedValueOnce(error);
 
       const { result } = renderHook(() => useSessions());

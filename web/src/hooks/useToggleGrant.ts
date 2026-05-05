@@ -9,12 +9,14 @@
  */
 
 import { useState, useCallback } from 'react';
+import { isAxiosError } from 'axios';
 import type {
   DelegatedToken,
   CreateOrUpdateGrantRequest,
   UserGrant,
 } from '../types/consent';
 import { consentApi } from '../services/api/consent';
+import { extractApiError } from '../utils/api';
 
 interface UseToggleGrantState {
   /** Selected delegated tokens */
@@ -112,34 +114,15 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
 
         return grant;
       } catch (err: unknown) {
-        // Handle error
-        let errorMessage = 'Failed to update grant';
+        let errorMessage = extractApiError(err, 'Failed to update grant');
 
-        if (err && typeof err === 'object') {
-          if (
-            'response' in err &&
-            err.response &&
-            typeof err.response === 'object'
-          ) {
-            const response = err.response as {
-              status?: number;
-              data?: { message?: string; details?: Record<string, string[]> };
-            };
-
-            if (response.data?.message) {
-              errorMessage = response.data.message;
-            }
-
-            // Handle validation errors
-            if (response.data?.details) {
-              const details = Object.entries(response.data.details)
-                .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
-                .join('; ');
-              errorMessage = `Validation error: ${details}`;
-            }
-          } else if ('message' in err && typeof err.message === 'string') {
-            errorMessage = err.message;
-          }
+        if (isAxiosError(err) && err.response?.data?.details) {
+          const details = Object.entries(
+            err.response.data.details as Record<string, string[]>,
+          )
+            .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+            .join('; ');
+          errorMessage = `Validation error: ${details}`;
         }
 
         // Update state with error

@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { isAxiosError } from 'axios';
 import type {
   AgentDetail,
   ThirdpartyService,
@@ -16,6 +17,7 @@ import type {
   UserGrant,
 } from '../types/consent';
 import { consentApi } from '../services/api/consent';
+import { extractApiError } from '../utils/api';
 
 interface UseAgentGrantsState {
   /** Agent detail information */
@@ -96,27 +98,11 @@ export function useAgentGrants(
         error: null,
       });
     } catch (err: unknown) {
-      let errorMessage = 'Failed to load agent details';
-
-      if (err && typeof err === 'object') {
-        if (
-          'response' in err &&
-          err.response &&
-          typeof err.response === 'object'
-        ) {
-          const response = err.response as {
-            status?: number;
-            data?: { message?: string };
-          };
-
-          if (response.status === 404) {
-            errorMessage = 'Agent not found';
-          } else if (response.data?.message) {
-            errorMessage = response.data.message;
-          }
-        } else if ('message' in err && typeof err.message === 'string') {
-          errorMessage = err.message;
-        }
+      let errorMessage: string;
+      if (isAxiosError(err) && err.response?.status === 404) {
+        errorMessage = 'Agent not found';
+      } else {
+        errorMessage = extractApiError(err, 'Failed to load agent details');
       }
 
       setState({
