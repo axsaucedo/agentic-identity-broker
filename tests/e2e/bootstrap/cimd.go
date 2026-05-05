@@ -105,4 +105,3 @@ func NewCIMDEndUserTestServer(storage interface{}, sf *ServerFactory, cimdFetche
 
 	return &TestServer{app: appInstance, server: testServer, logger: logger}, nil
 }
-

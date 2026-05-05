@@ -34,7 +34,6 @@ func cimdDocument(clientID string, redirectURIs []string) []byte {
 	return b
 }
 
-
 type countingCIMDFetcher struct {
 	calls atomic.Int32
 }

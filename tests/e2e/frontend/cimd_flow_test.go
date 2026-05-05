@@ -46,7 +46,7 @@ var _ = Describe("CIMD Full Browser Authorization Flow", func() {
 		cimdDocServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "max-age=300")
-			fmt.Fprintf(w, `{"client_id":%q,"client_name":"CIMD Browser Agent","redirect_uris":[%q]}`,
+			_, _ = fmt.Fprintf(w, `{"client_id":%q,"client_name":"CIMD Browser Agent","redirect_uris":[%q]}`,
 				cimdClientURL, redirectURI)
 		}))
 

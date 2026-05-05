@@ -329,4 +329,3 @@ func (h *AgentDetailHandler) GetConsentSession(w http.ResponseWriter, r *http.Re
 		ExpiresAt:           claims.ExpiresAt,
 	})
 }
-
