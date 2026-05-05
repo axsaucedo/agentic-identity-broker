@@ -64,9 +64,9 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 	if err != nil {
 		var ssrfErr *ports.SSRFBlockedError
 		if errors.As(err, &ssrfErr) {
-			s.logger.Warn("cimd_fetch_blocked", "url", rawURL, "error", err)
+			s.logger.WarnContext(ctx, "cimd_fetch_blocked", "url", rawURL, "error", err)
 		} else {
-			s.logger.Warn("cimd_fetch_failed", "url", rawURL, "error", err)
+			s.logger.WarnContext(ctx, "cimd_fetch_failed", "url", rawURL, "error", err)
 		}
 		return nil, err
 	}
@@ -74,13 +74,13 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, agent *storage.Age
 	// Parse and validate the raw response body
 	doc, err := ParseDocument(result.Body, rawURL, s.nameBlocklist)
 	if err != nil {
-		s.logger.Warn("cimd_document_invalid", "url", rawURL, "error", err)
+		s.logger.WarnContext(ctx, "cimd_document_invalid", "url", rawURL, "error", err)
 		return nil, err
 	}
 
 	// Brand pin check (informational — flow continues)
 	if doc.ClientName != "" && agent.DisplayName != "" && doc.ClientName != agent.DisplayName {
-		s.logger.Warn("cimd_brand_pin_mismatch",
+		s.logger.WarnContext(ctx, "cimd_brand_pin_mismatch",
 			"agent_id", agent.ID,
 			"agent_display_name", agent.DisplayName,
 			"cimd_client_name", doc.ClientName,
