@@ -28,7 +28,7 @@ type ClientIDMetadataDocument struct {
 // Returns an error if the document is malformed, the client_id field does not
 // match fetchURL, redirect_uris is empty, auth_method is a secret-bearing method,
 // any redirect_uri violates same-origin with fetchURL, or logo_uri (when present)
-// is not an HTTPS URL on the same host as client_id.
+// is not an absolute HTTPS URL.
 // nameBlocklist is a list of forbidden client_name values (case-insensitive exact match).
 func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*ClientIDMetadataDocument, error) {
 	var doc ClientIDMetadataDocument
