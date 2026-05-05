@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
@@ -295,21 +294,14 @@ func TestResolveCIMDMetadata_SessionAgentMismatch(t *testing.T) {
 		},
 	}
 
-	authSessionRepo := memory.NewAuthorizationSessionRepository()
-	session, err := storage.NewAuthorizationSession(
-		agentA, id.Principal(principalID),
-		"client-a", "https://example.com/original", "https://example.com/cb",
-		"openid", "state123", "challenge", "S256", nil,
-	)
-	require.NoError(t, err)
-	require.NoError(t, authSessionRepo.Create(context.Background(), session))
+	ts := newTestJWETokenService()
+	tokenForAgentA := newTestSessionToken(ts, agentA, principalID, "https://example.com/original")
 
-	handler := NewAgentDetailHandler(mockService, nil).
-		WithAuthorizationSessionRepository(authSessionRepo)
+	handler := NewAgentDetailHandler(mockService, nil).WithJWETokenService(ts)
 
-	// Request agent B's detail with a session that belongs to agent A
+	// Request agent B's detail with a session token that belongs to agent A
 	req := httptest.NewRequest(http.MethodGet,
-		"/api/consent/agent/"+agentB.String()+"?session_id="+session.SessionID, nil)
+		"/api/consent/agent/"+agentB.String()+"?session_token="+tokenForAgentA, nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", agentB.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -330,21 +322,14 @@ func TestResolveCIMDMetadata_SessionPrincipalMismatch(t *testing.T) {
 		},
 	}
 
-	authSessionRepo := memory.NewAuthorizationSessionRepository()
-	session, err := storage.NewAuthorizationSession(
-		agentID, id.Principal("userA@example.com"),
-		"client-a", "https://example.com/original", "https://example.com/cb",
-		"openid", "state123", "challenge", "S256", nil,
-	)
-	require.NoError(t, err)
-	require.NoError(t, authSessionRepo.Create(context.Background(), session))
+	ts := newTestJWETokenService()
+	tokenForUserA := newTestSessionToken(ts, agentID, "userA@example.com", "https://example.com/original")
 
-	handler := NewAgentDetailHandler(mockService, nil).
-		WithAuthorizationSessionRepository(authSessionRepo)
+	handler := NewAgentDetailHandler(mockService, nil).WithJWETokenService(ts)
 
-	// User B tries to use user A's session
+	// User B tries to use user A's session token
 	req := httptest.NewRequest(http.MethodGet,
-		"/api/consent/agent/"+agentID.String()+"?session_id="+session.SessionID, nil)
+		"/api/consent/agent/"+agentID.String()+"?session_token="+tokenForUserA, nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", agentID.String())
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -439,4 +424,3 @@ func TestGetAgentDetail_ConnectionStatus(t *testing.T) {
 		assert.Equal(t, "not_connected", resp.Data.Services[0].ConnectionStatus)
 	})
 }
-

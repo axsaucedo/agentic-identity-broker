@@ -807,7 +807,7 @@ mock-third-party-oauth2-register:
 mock-third-party-oauth2-setup: mock-third-party-oauth2-build
     @echo "Setting up mock third-party OAuth2 testing environment..."
     @echo "1. Starting mock third-party OAuth2 server (background)..."
-    @./bin/mock-oauth2-server &
+    @./bin/mock-oauth2-server mocks/third-party-service &
     @sleep 2
     @echo "2. Checking mock server health..."
     @curl -s -f http://localhost:9000/health || (echo "Mock server failed to start"; exit 1)

@@ -203,6 +203,9 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("telemetry.exporter.insecure", "IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE")
 	_ = l.v.BindEnv("telemetry.exporter.compression", "IDENTITY_BROKER_TELEMETRY_EXPORTER_COMPRESSION")
 
+	// Bind OAuth2 authorization server env vars
+	_ = l.v.BindEnv("oauth2_authorization_server.mode", "IDENTITY_BROKER_OAUTH2_MODE")
+
 	// Set CIMD configuration defaults
 	cimdDefaults := ports.DefaultCIMDConfig()
 	l.v.SetDefault("oauth2_authorization_server.cimd.enabled", cimdDefaults.Enabled)

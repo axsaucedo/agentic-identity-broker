@@ -357,7 +357,7 @@ func (m *mockSessionRepo) FindByPrincipalAndService(ctx context.Context, p id.Pr
 	return nil, nil
 }
 
-func (m *mockSessionRepo) Create(_ context.Context, _ *storage.UserSession) error    { return nil }
+func (m *mockSessionRepo) Create(_ context.Context, _ *storage.UserSession) error { return nil }
 func (m *mockSessionRepo) Get(_ context.Context, _ id.SessionID) (*storage.UserSession, error) {
 	return nil, nil
 }
