@@ -379,7 +379,6 @@ func TestGetAgentDetail_ExpiredSessionToken(t *testing.T) {
 	assert.Equal(t, "session_expired", resp.Error)
 }
 
-
 func TestGetAgentDetail_SortsMandatoryFirst(t *testing.T) {
 	agentID := id.NewAgentID()
 	optionalServiceID := id.NewServiceID()
