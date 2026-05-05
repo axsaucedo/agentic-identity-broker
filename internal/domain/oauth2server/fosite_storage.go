@@ -264,5 +264,3 @@ func (s *FositeStorage) ClientAssertionJWTValid(_ context.Context, _ string) err
 func (s *FositeStorage) SetClientAssertionJWT(_ context.Context, _ string, _ time.Time) error {
 	return nil
 }
-
-

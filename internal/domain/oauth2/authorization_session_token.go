@@ -72,11 +72,8 @@ func (s *Service) ValidateAuthorizationSessionToken(token string) (*Authorizatio
 		return nil, fmt.Errorf("jweTokenService not configured")
 	}
 	var claims AuthorizationSessionClaims
-	if err := s.jweTokenService.Decrypt(token, &claims); err != nil {
+	if err := s.jweTokenService.DecryptAndValidate(token, &claims); err != nil {
 		return nil, err
-	}
-	if claims.IsExpired() {
-		return nil, fmt.Errorf("authorization session token has expired")
 	}
 	return &claims, nil
 }

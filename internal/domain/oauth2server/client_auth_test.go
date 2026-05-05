@@ -47,25 +47,6 @@ func (m *mockCredentialRepo) Rotate(_ context.Context, _ id.AgentID, _ *storage.
 	return nil
 }
 
-type mockAgentRepo struct {
-	getFunc func(context.Context, id.AgentID) (*storage.Agent, error)
-}
-
-func (m *mockAgentRepo) Create(_ context.Context, _ *storage.Agent) error { return nil }
-func (m *mockAgentRepo) Get(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
-	return m.getFunc(ctx, agentID)
-}
-func (m *mockAgentRepo) Update(_ context.Context, _ *storage.Agent) error { return nil }
-func (m *mockAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { return nil }
-func (m *mockAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
-func (m *mockAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
-	return nil, nil
-}
-
-func (m *mockAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
-	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
-}
-
 func TestArgon2Hasher_HashAndCompare(t *testing.T) {
 	hasher := &Argon2Hasher{}
 

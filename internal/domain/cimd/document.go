@@ -24,7 +24,6 @@ type ClientIDMetadataDocument struct {
 	TosURI        string   `json:"tos_uri,omitempty"`
 }
 
-
 // ParseDocument parses and validates a CIMD JSON document fetched from fetchURL.
 // Returns an error if the document is malformed, the client_id field does not
 // match fetchURL, redirect_uris is empty, auth_method is a secret-bearing method,

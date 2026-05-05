@@ -103,7 +103,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		require.NoError(t, err)
 
 		req := &fosite.Request{
-			Client: &confidentialClient{clientID: "test", 
+			Client: &confidentialClient{clientID: "test",
 				agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c", DisplayName: "My Agent"},
 				credential: &storage.ClientCredential{},
 			},
@@ -127,7 +127,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 			ExpiresAt: map[fosite.TokenType]time.Time{fosite.AccessToken: time.Now().Add(time.Hour)},
 		}
 		ar := fosite.NewAccessRequest(session)
-		ar.Client = &confidentialClient{clientID: "test", 
+		ar.Client = &confidentialClient{clientID: "test",
 			agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c"},
 			credential: &storage.ClientCredential{},
 		}

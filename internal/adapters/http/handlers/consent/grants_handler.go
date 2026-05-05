@@ -182,14 +182,9 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var claims domotp2.AuthorizationSessionClaims
-		if err := h.jweTokenService.Decrypt(sessionToken, &claims); err != nil {
+		if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
 			h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
 			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
-			return
-		}
-		if claims.IsExpired() {
-			h.logger.Warn("authorization session token expired", "agent_id", agentID, "principal", principalValue)
-			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has expired")
 			return
 		}
 		if claims.AgentID != parsedAgentID {

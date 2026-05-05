@@ -32,7 +32,7 @@ func (c *confidentialClient) GetScopes() fosite.Arguments {
 	}
 	return fosite.Arguments{}
 }
-func (c *confidentialClient) IsPublic() bool              { return false }
+func (c *confidentialClient) IsPublic() bool                { return false }
 func (c *confidentialClient) GetAudience() fosite.Arguments { return fosite.Arguments{} }
 
 // publicClient wraps a CIMD agent that uses no client secret (public client).
@@ -56,7 +56,7 @@ func (c *publicClient) GetScopes() fosite.Arguments {
 	}
 	return fosite.Arguments{}
 }
-func (c *publicClient) IsPublic() bool              { return true }
+func (c *publicClient) IsPublic() bool                { return true }
 func (c *publicClient) GetAudience() fosite.Arguments { return fosite.Arguments{} }
 
 // agentHolder provides access to the underlying Agent for internal use.

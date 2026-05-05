@@ -38,6 +38,23 @@ func (s *TokenService) Encrypt(v any) (string, error) {
 	return string(encrypted), nil
 }
 
+// Expirable is implemented by claims types that carry an expiry timestamp.
+type Expirable interface {
+	IsExpired() bool
+}
+
+// DecryptAndValidate decrypts a compact JWE string into target and returns an
+// error if decryption fails or if target.IsExpired() reports true.
+func (s *TokenService) DecryptAndValidate(token string, target Expirable) error {
+	if err := s.Decrypt(token, target); err != nil {
+		return err
+	}
+	if target.IsExpired() {
+		return fmt.Errorf("token has expired")
+	}
+	return nil
+}
+
 // Decrypt decrypts a compact JWE string and unmarshals the payload into target.
 func (s *TokenService) Decrypt(token string, target any) error {
 	if token == "" {

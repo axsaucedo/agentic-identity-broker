@@ -238,11 +238,8 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.Age
 	}
 
 	var claims domotp2.AuthorizationSessionClaims
-	if err := h.jweTokenService.Decrypt(sessionToken, &claims); err != nil {
+	if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
 		return nil, errors.New("authorization session not found or expired")
-	}
-	if claims.IsExpired() {
-		return nil, errors.New("authorization session has expired")
 	}
 	if claims.AgentID != agentID {
 		return nil, errors.New("authorization session does not match requested agent")
@@ -311,13 +308,9 @@ func (h *AgentDetailHandler) GetConsentSession(w http.ResponseWriter, r *http.Re
 	}
 
 	var claims domotp2.AuthorizationSessionClaims
-	if err := h.jweTokenService.Decrypt(token, &claims); err != nil {
+	if err := h.jweTokenService.DecryptAndValidate(token, &claims); err != nil {
 		h.logger.Warn("consent session token invalid", "error", err)
 		h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
-		return
-	}
-	if claims.IsExpired() {
-		h.writeError(w, http.StatusBadRequest, "bad request", "authorization session has expired")
 		return
 	}
 	if string(claims.Principal) != userID {
