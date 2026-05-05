@@ -24,13 +24,6 @@ type ClientIDMetadataDocument struct {
 	TosURI        string   `json:"tos_uri,omitempty"`
 }
 
-// blockedAuthMethods are token endpoint auth methods that imply a client secret,
-// which CIMD agents cannot hold (they are public clients).
-var blockedAuthMethods = map[string]bool{
-	"client_secret_post":  true,
-	"client_secret_basic": true,
-	"client_secret_jwt":   true,
-}
 
 // ParseDocument parses and validates a CIMD JSON document fetched from fetchURL.
 // Returns an error if the document is malformed, the client_id field does not
@@ -70,9 +63,9 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 		return nil, fmt.Errorf("redirect_uris is required and must not be empty")
 	}
 
-	// FR-022: block secret-bearing auth methods
-	if blockedAuthMethods[doc.AuthMethod] {
-		return nil, fmt.Errorf("token_endpoint_auth_method %q is not allowed for CIMD clients", doc.AuthMethod)
+	// FR-022: only "none" is permitted; CIMD clients are always public clients
+	if doc.AuthMethod != "none" {
+		return nil, fmt.Errorf("token_endpoint_auth_method %q is not supported; CIMD clients must use \"none\"", doc.AuthMethod)
 	}
 
 	// FR-023b: client_name keyword blocklist (case-insensitive exact match)

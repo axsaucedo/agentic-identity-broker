@@ -88,10 +88,18 @@ func TestParseDocument(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("accepts private_key_jwt auth method", func(t *testing.T) {
+	t.Run("rejects private_key_jwt auth method", func(t *testing.T) {
 		data := validDoc(map[string]any{"token_endpoint_auth_method": "private_key_jwt"})
 		_, err := ParseDocument(data, fetchURL, nil)
-		require.NoError(t, err)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "private_key_jwt")
+	})
+
+	t.Run("rejects unknown auth method", func(t *testing.T) {
+		data := validDoc(map[string]any{"token_endpoint_auth_method": "tls_client_auth"})
+		_, err := ParseDocument(data, fetchURL, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tls_client_auth")
 	})
 
 	t.Run("rejects document containing client_secret", func(t *testing.T) {
