@@ -130,7 +130,7 @@ describe('AgentGrantDetailPage - Integration', () => {
       ],
     };
 
-    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(updatedGrant);
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue({ kind: 'created', grant: updatedGrant });
 
     renderPage();
 
@@ -178,7 +178,7 @@ describe('AgentGrantDetailPage - Integration', () => {
       ],
     };
 
-    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(updatedGrant);
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue({ kind: 'created', grant: updatedGrant });
 
     renderPage();
 
