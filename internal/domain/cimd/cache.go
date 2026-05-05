@@ -127,7 +127,17 @@ func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers Cache
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, exists := c.entries[url]; !exists && len(c.entries) >= c.maxEntries {
-		return
+		// Evict one expired entry to prevent stale entries from permanently blocking inserts.
+		now := time.Now()
+		for k, e := range c.entries {
+			if now.After(e.ExpiresAt) {
+				delete(c.entries, k)
+				break
+			}
+		}
+		if len(c.entries) >= c.maxEntries {
+			return
+		}
 	}
 	c.entries[url] = entry
 }
