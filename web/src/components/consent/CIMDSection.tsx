@@ -14,10 +14,11 @@ export function CIMDSection({ cimdMeta, agentDisplayName, agentLogoUrl, services
   const accessTarget =
     services
       .filter(s =>
-        s.requiredScopes?.some(sc => cimdMeta.requested_scopes.includes(sc.name)) ||
-        s.scopes?.some(sc => cimdMeta.requested_scopes.includes(sc.value))
+        s.kind === 'requirement'
+          ? s.requiredScopes.some(sc => cimdMeta.requested_scopes.includes(sc.name))
+          : (s.scopes?.some(sc => cimdMeta.requested_scopes.includes(sc.value)) ?? false)
       )
-      .map(s => s.displayName || s.serviceName || s.serviceId)
+      .map(s => (s.kind === 'scoped' ? (s.displayName ?? s.serviceId) : (s.serviceName ?? s.serviceId)))
       .join(', ') || cimdMeta.requested_scopes.join(', ') || 'requested services';
 
   return (

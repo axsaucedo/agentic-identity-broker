@@ -15,6 +15,7 @@ import type { ThirdpartyService, DelegatedToken } from '../../types/consent';
 
 describe('ServiceCard', () => {
   const mockService: ThirdpartyService = {
+    kind: 'scoped',
     serviceId: 'github',
     displayName: 'GitHub',
     logoUrl: 'https://example.com/github-logo.png',

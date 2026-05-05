@@ -13,6 +13,8 @@ import type {
   AgentDelegation,
   AgentDetail,
   ThirdpartyService,
+  ServiceWithScopes,
+  ServiceRequirement,
   CIMDMetadata,
   UserGrant,
   GrantResult,
@@ -117,7 +119,16 @@ export class ConsentApiService {
     }
 
     const response = await apiClient.get<GetAgentDetailResponse>(url);
-    const data = response.data.data;
+    const raw = response.data.data;
+    const services: ThirdpartyService[] = (raw.services as unknown[]).map(
+      (s) => {
+        const obj = s as Record<string, unknown>;
+        return 'requirementType' in obj && obj.requirementType
+          ? ({ kind: 'requirement', ...obj } as ServiceRequirement)
+          : ({ kind: 'scoped', ...obj } as ServiceWithScopes);
+      },
+    );
+    const data = { ...raw, services };
 
     // Session-scoped requests are single-use; skip caching so expiry is always server-checked.
     if (!options?.sessionToken) {

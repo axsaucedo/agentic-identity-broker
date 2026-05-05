@@ -73,40 +73,18 @@ export interface AgentDetail {
 }
 
 /**
- * External OAuth2 service that can be delegated to agents.
- * Part of GET /api/consent/agent/:agent-id response.
- *
- * Note: Can be either a full ThirdpartyService or a ServiceRequirementForUser
- * (when agent has service requirements defined).
+ * External OAuth2 service delegated to an agent (scoped variant).
+ * Used when the backend returns a plain service with available scopes.
  */
-export interface ThirdpartyService {
-  /** Unique service identifier */
+export interface ServiceWithScopes {
+  kind: 'scoped';
   serviceId: string;
-
-  /** Service display name (e.g., "Google Drive", "GitHub") */
   displayName?: string;
-
-  /** Service name (used when service is a requirement) */
-  serviceName?: string;
-
-  /** URL to service logo */
   logoUrl?: string;
-
-  /** Available OAuth2 scopes for this service */
   scopes?: ServiceScope[];
-
-  /** Required scopes when service is a requirement */
-  requiredScopes?: Array<{
-    name: string;
-    description?: string;
-  }>;
-
-  /** Whether this service is mandatory or optional (when it's a requirement) */
-  requirementType?: 'mandatory' | 'optional';
-
-  /** Connection status with the service (when it's a requirement) */
-  connectionStatus?: 'connected' | 'not_connected';
 }
+
+export type ThirdpartyService = ServiceWithScopes | ServiceRequirement;
 
 /**
  * OAuth2 scope within a third-party service.
@@ -288,25 +266,16 @@ export interface LoadingState {
  * Specifies which services an agent needs access to.
  */
 export interface ServiceRequirement {
-  /** Unique service identifier */
+  kind: 'requirement';
   serviceId: string;
-
-  /** Service display name */
   serviceName: string;
-
-  /** Whether this service is mandatory or optional for the agent */
   requirementType: 'mandatory' | 'optional';
-
-  /** Scopes required for this service */
   requiredScopes: Array<{
-    /** OAuth2 scope value (e.g., "read:email") */
     name: string;
-    /** Human-readable description of what the scope does */
     description?: string;
   }>;
-
-  /** Current connection status with the service */
   connectionStatus: 'connected' | 'not_connected';
+  logoUrl?: string;
 }
 
 /**

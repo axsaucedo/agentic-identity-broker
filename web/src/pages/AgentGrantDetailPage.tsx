@@ -115,7 +115,7 @@ export function AgentGrantDetailPage() {
     // Require at least one service only when the agent has mandatory service requirements.
     // Optional services are never required — the user may approve without delegating any.
     const hasMandatoryRequirements = services.some(
-      (s) => s.requirementType === 'mandatory',
+      (s) => s.kind === 'requirement' && s.requirementType === 'mandatory',
     );
     const requireAtLeastOneService = hasMandatoryRequirements;
 
@@ -200,17 +200,16 @@ export function AgentGrantDetailPage() {
       if (!service) return;
 
       // If service is not connected, initiate login first
-      if (service.connectionStatus !== 'connected') {
+      if (service.kind === 'requirement' && service.connectionStatus !== 'connected') {
         handleServiceLogin(serviceId);
         return;
       }
 
       // Otherwise, add to delegated tokens with all required scopes
-      const scopesToDelegate = service.requiredScopes
-        ? service.requiredScopes.map((s) => s.name)
-        : service.scopes
-          ? service.scopes.map((s) => s.value)
-          : [];
+      const scopesToDelegate =
+        service.kind === 'requirement'
+          ? service.requiredScopes.map((s) => s.name)
+          : (service.scopes ?? []).map((s) => s.value);
 
       const newToken = {
         thirdparty_oauth2_service_id: serviceId,
@@ -260,9 +259,9 @@ export function AgentGrantDetailPage() {
       return;
     }
 
-    // Filter for services that are requirements (have requirementType) and are mandatory
     const mandatoryRequirements = services.filter(
       (s) =>
+        s.kind === 'requirement' &&
         s.requirementType === 'mandatory' &&
         s.connectionStatus === 'not_connected',
     );
@@ -586,26 +585,14 @@ export function AgentGrantDetailPage() {
                 {/* Sort services: mandatory first, then optional, then others */}
                 {services
                   .sort((a, b) => {
-                    if (
-                      a.requirementType === 'mandatory' &&
-                      b.requirementType !== 'mandatory'
-                    )
-                      return -1;
-                    if (
-                      a.requirementType !== 'mandatory' &&
-                      b.requirementType === 'mandatory'
-                    )
-                      return 1;
-                    if (
-                      a.requirementType === 'optional' &&
-                      b.requirementType !== 'optional'
-                    )
-                      return -1;
-                    if (
-                      a.requirementType !== 'optional' &&
-                      b.requirementType === 'optional'
-                    )
-                      return 1;
+                    const aMandatory = a.kind === 'requirement' && a.requirementType === 'mandatory';
+                    const bMandatory = b.kind === 'requirement' && b.requirementType === 'mandatory';
+                    const aOptional = a.kind === 'requirement' && a.requirementType === 'optional';
+                    const bOptional = b.kind === 'requirement' && b.requirementType === 'optional';
+                    if (aMandatory && !bMandatory) return -1;
+                    if (!aMandatory && bMandatory) return 1;
+                    if (aOptional && !bOptional) return -1;
+                    if (!aOptional && bOptional) return 1;
                     return 0;
                   })
                   .map((service) => (

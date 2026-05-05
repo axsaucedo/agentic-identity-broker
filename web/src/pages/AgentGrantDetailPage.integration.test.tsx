@@ -38,6 +38,7 @@ describe('AgentGrantDetailPage - Integration', () => {
 
   const mockServices: ThirdpartyService[] = [
     {
+      kind: 'scoped',
       serviceId: 'github',
       displayName: 'GitHub',
       scopes: [

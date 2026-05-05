@@ -12,6 +12,7 @@ const baseMeta: CIMDMetadata = {
 };
 
 const matchingService: ThirdpartyService = {
+  kind: 'scoped',
   serviceId: 'svc-1',
   displayName: 'GitHub',
   scopes: [{ value: 'read:email', description: 'Read email' }],

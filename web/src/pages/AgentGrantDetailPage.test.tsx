@@ -47,6 +47,7 @@ const mockAgent: AgentDetail = {
 
 const mockServices: ThirdpartyService[] = [
   {
+    kind: 'scoped',
     serviceId: 'github',
     displayName: 'GitHub',
     logoUrl: 'https://example.com/github.png',
@@ -56,6 +57,7 @@ const mockServices: ThirdpartyService[] = [
     ],
   },
   {
+    kind: 'scoped',
     serviceId: 'google',
     displayName: 'Google Drive',
     logoUrl: 'https://example.com/google.png',
