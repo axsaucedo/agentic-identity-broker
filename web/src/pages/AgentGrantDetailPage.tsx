@@ -27,9 +27,7 @@ import { Alert } from '@design-system/components/feedback/Alert';
 import { Card } from '@design-system/components/data-display/Card';
 import { ServiceCard } from '@components/consent/ServiceCard';
 import { RevokeGrantButton } from '@components/consent/RevokeGrantButton';
-import { CIMDConsentSummary } from '@components/consent/CIMDConsentSummary';
-import { CIMDLocalhostWarning } from '@components/consent/CIMDLocalhostWarning';
-import { CIMDAdvancedDetails } from '@components/consent/CIMDAdvancedDetails';
+import { CIMDSection } from '@components/consent/CIMDSection';
 import { GrantValidityControl } from '@components/consent/GrantValidityControl';
 import { useAgentGrants, useToggleGrant, useUpdateValidity } from '@hooks';
 import { validateGrantRequest } from '../utils/validation';
@@ -498,30 +496,12 @@ export function AgentGrantDetailPage() {
 
           {/* CIMD metadata section — shown only for URL-based (CIMD) agents */}
           {cimdMeta && (
-            <div className="space-y-3">
-              <CIMDConsentSummary
-                domain={cimdMeta.verified_domain}
-                agentName={agent.displayName}
-                accessTarget={
-                  services
-                    .filter(s =>
-                      s.requiredScopes?.some(sc => cimdMeta.requested_scopes.includes(sc.name)) ||
-                      s.scopes?.some(sc => cimdMeta.requested_scopes.includes(sc.value))
-                    )
-                    .map(s => s.displayName || s.serviceName || s.serviceId)
-                    .join(', ') || cimdMeta.requested_scopes.join(', ') || 'requested services'
-                }
-                agentLogoUrl={agent.logoUrl}
-              />
-              {cimdMeta.is_localhost_redirect && (
-                <CIMDLocalhostWarning agentDisplayName={agent.displayName} />
-              )}
-              <CIMDAdvancedDetails
-                clientIdUrl={cimdMeta.client_id_url}
-                redirectUri={cimdMeta.redirect_uri}
-                requestedScopes={cimdMeta.requested_scopes}
-              />
-            </div>
+            <CIMDSection
+              cimdMeta={cimdMeta}
+              agentDisplayName={agent.displayName}
+              agentLogoUrl={agent.logoUrl}
+              services={services}
+            />
           )}
 
           {/* Validation errors */}
