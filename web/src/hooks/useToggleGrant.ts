@@ -33,7 +33,7 @@ interface UseToggleGrantReturn extends UseToggleGrantState {
   /** Submit grant request */
   submit: (
     validUntil?: string | null,
-    submitOptions?: { redirectUri?: string; sessionId?: string },
+    submitOptions?: { redirectUri?: string; sessionToken?: string },
   ) => Promise<UserGrant | null>;
   /** Reset state */
   reset: () => void;
@@ -76,7 +76,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
   const submit = useCallback(
     async (
       validUntil?: string | null,
-      submitOptions?: { redirectUri?: string; sessionId?: string },
+      submitOptions?: { redirectUri?: string; sessionToken?: string },
     ): Promise<UserGrant | null> => {
       // Set submitting state
       setState((prev) => ({

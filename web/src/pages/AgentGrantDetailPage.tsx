@@ -49,18 +49,18 @@ export function AgentGrantDetailPage() {
 
   // Extract query parameters for both session-based (CIMD) and redirect-based flows.
   const searchParams = new URLSearchParams(location.search);
-  const sessionId = searchParams.get('session_id') || undefined;
+  const sessionToken = searchParams.get('session_token') || undefined;
   const redirectUri = searchParams.get('redirect_uri') || undefined;
 
   const resolvedAgentId = agentId ?? '';
 
   // Memoize options to keep a stable object reference across renders.
-  // Without this, { sessionId } creates a new object every render, causing
+  // Without this, { sessionToken } creates a new object every render, causing
   // useCallback in useAgentGrants to recreate fetchData, which triggers
   // useEffect on every render, causing an infinite loading loop.
   const agentGrantOptions = useMemo(
-    () => (sessionId ? { sessionId } : undefined),
-    [sessionId],
+    () => (sessionToken ? { sessionToken } : undefined),
+    [sessionToken],
   );
 
   // Fetch agent data and grants
@@ -162,11 +162,11 @@ export function AgentGrantDetailPage() {
     try {
       const result = await submit(
         getValidUntil(),
-        sessionId ? { sessionId } : { redirectUri },
+        sessionToken ? { sessionToken } : { redirectUri },
       );
 
       // Null result with a redirect target means the API navigated away (session or redirect_uri flow).
-      if (!result && (redirectUri || sessionId)) {
+      if (!result && (redirectUri || sessionToken)) {
         return;
       }
 

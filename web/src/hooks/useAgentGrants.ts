@@ -42,13 +42,13 @@ interface UseAgentGrantsReturn extends UseAgentGrantsState {
  * Fetches data in parallel on mount and provides refetch capability.
  *
  * @param agentId - Unique agent identifier
- * @param options - Optional: sessionId for session-based CIMD flows
+ * @param options - Optional: sessionToken for session-based CIMD flows
  * @returns Agent data, grants, CIMD metadata, loading state, error, and refetch function
  */
 export function useAgentGrants(
   agentId: string,
   options?: {
-    sessionId?: string;
+    sessionToken?: string;
   },
 ): UseAgentGrantsReturn {
   const [state, setState] = useState<UseAgentGrantsState>({
@@ -60,7 +60,7 @@ export function useAgentGrants(
     error: null,
   });
 
-  const sessionId = options?.sessionId;
+  const sessionToken = options?.sessionToken;
 
   const fetchData = useCallback(async () => {
     if (!agentId) {
@@ -83,7 +83,7 @@ export function useAgentGrants(
 
     try {
       const [agentDetailData, grantsData] = await Promise.all([
-        consentApi.getAgentDetail(agentId, sessionId ? { sessionId } : undefined),
+        consentApi.getAgentDetail(agentId, sessionToken ? { sessionToken } : undefined),
         consentApi.getAgentGrants(agentId),
       ]);
 
@@ -128,7 +128,7 @@ export function useAgentGrants(
         error: errorMessage,
       });
     }
-  }, [agentId, sessionId]);
+  }, [agentId, sessionToken]);
 
   /**
    * Refetch function that can be called manually.

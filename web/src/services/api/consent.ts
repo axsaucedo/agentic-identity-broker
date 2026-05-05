@@ -82,17 +82,17 @@ export class ConsentApiService {
 
   /**
    * Get detailed information about a specific agent and available services.
-   * Results are cached for 5 minutes. Pass sessionId for CIMD authorization flows.
+   * Results are cached for 5 minutes. Pass sessionToken for CIMD authorization flows.
    *
    * @param agentId - Unique agent identifier
-   * @param options - Optional: sessionId for session-based CIMD flows
+   * @param options - Optional: sessionToken for session-based CIMD flows
    * @returns Agent details, available services, and optional CIMD metadata
    * @throws {ApiError} if request fails or agent not found
    */
   async getAgentDetail(
     agentId: string,
     options?: {
-      sessionId?: string;
+      sessionToken?: string;
     },
   ): Promise<{
     agent: AgentDetail;
@@ -100,8 +100,8 @@ export class ConsentApiService {
     cimd_metadata?: CIMDMetadata | null;
   }> {
     let url = `/consent/agent/${agentId}`;
-    if (options?.sessionId) {
-      url += `?session_id=${encodeURIComponent(options.sessionId)}`;
+    if (options?.sessionToken) {
+      url += `?session_token=${encodeURIComponent(options.sessionToken)}`;
     }
 
     const cacheKey = url;
@@ -119,7 +119,7 @@ export class ConsentApiService {
     const data = response.data.data;
 
     // Session-scoped requests are single-use; skip caching so expiry is always server-checked.
-    if (!options?.sessionId) {
+    if (!options?.sessionToken) {
       apiCache.set(cacheKey, data, 5 * 60 * 1000);
     }
 
@@ -168,11 +168,11 @@ export class ConsentApiService {
   async createOrUpdateGrant(
     agentId: string,
     request: CreateOrUpdateGrantRequest,
-    options?: { redirectUri?: string; sessionId?: string },
+    options?: { redirectUri?: string; sessionToken?: string },
   ): Promise<UserGrant | null> {
     let url = `/consent/agent/${agentId}/grants`;
-    if (options?.sessionId) {
-      url += `?session_id=${encodeURIComponent(options.sessionId)}`;
+    if (options?.sessionToken) {
+      url += `?session_token=${encodeURIComponent(options.sessionToken)}`;
     } else if (options?.redirectUri) {
       url += `?redirect_uri=${encodeURIComponent(options.redirectUri)}`;
     }

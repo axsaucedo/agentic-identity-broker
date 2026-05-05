@@ -722,7 +722,7 @@ describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
   });
 });
 
-describe('AgentGrantDetailPage - CIMD session_id flow', () => {
+describe('AgentGrantDetailPage - CIMD session_token flow', () => {
   const mockUseConsentReturn = {
     delegations: [],
     userInfo: { principal: 'user@example.com', displayName: 'Test User', pictureUrl: '' },
@@ -736,7 +736,7 @@ describe('AgentGrantDetailPage - CIMD session_id flow', () => {
     vi.spyOn(useConsentModule, 'useConsent').mockReturnValue(mockUseConsentReturn);
   });
 
-  it('forwards session_id from URL to useAgentGrants', () => {
+  it('forwards session_token from URL to useAgentGrants', () => {
     const useAgentGrantsSpy = vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
@@ -748,14 +748,14 @@ describe('AgentGrantDetailPage - CIMD session_id flow', () => {
     });
 
     render(
-      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_id=test-session-abc">
+      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_token=test-session-abc">
         <AgentGrantDetailPage />
       </MemoryRouterWrapper>,
     );
 
     expect(useAgentGrantsSpy).toHaveBeenCalledWith(
       'agent-123',
-      { sessionId: 'test-session-abc' },
+      { sessionToken: 'test-session-abc' },
     );
   });
 
@@ -779,7 +779,7 @@ describe('AgentGrantDetailPage - CIMD session_id flow', () => {
     });
 
     render(
-      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_id=test-session-abc">
+      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_token=test-session-abc">
         <AgentGrantDetailPage />
       </MemoryRouterWrapper>,
     );
