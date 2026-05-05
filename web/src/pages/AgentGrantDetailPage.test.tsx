@@ -788,7 +788,6 @@ describe('AgentGrantDetailPage - CIMD session_token flow', () => {
       client_id_url: 'https://acme.example.com/client',
       redirect_uri: 'https://acme.example.com/callback',
       verified_domain: 'acme.example.com',
-      is_localhost_redirect: false,
       requested_scopes: ['read:user'],
     };
 

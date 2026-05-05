@@ -10,7 +10,17 @@ interface CIMDSectionProps {
   services: ThirdpartyService[];
 }
 
+function isLocalhostURI(uri: string): boolean {
+  try {
+    const host = new URL(uri).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
 export function CIMDSection({ cimdMeta, agentDisplayName, agentLogoUrl, services }: CIMDSectionProps) {
+  const isLocalhostRedirect = isLocalhostURI(cimdMeta.redirect_uri);
   const accessTarget =
     services
       .filter(s =>
@@ -29,7 +39,7 @@ export function CIMDSection({ cimdMeta, agentDisplayName, agentLogoUrl, services
         accessTarget={accessTarget}
         agentLogoUrl={agentLogoUrl}
       />
-      {cimdMeta.is_localhost_redirect && (
+      {isLocalhostRedirect && (
         <CIMDLocalhostWarning agentDisplayName={agentDisplayName} />
       )}
       <CIMDAdvancedDetails

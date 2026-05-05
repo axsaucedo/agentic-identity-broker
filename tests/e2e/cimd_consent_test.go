@@ -150,13 +150,12 @@ var _ = Describe("CIMD Consent Screen", func() {
 			cimdMeta, ok := data["cimd_metadata"].(map[string]any)
 			Expect(ok).To(BeTrue(), "cimd_metadata should be present")
 			Expect(cimdMeta["verified_domain"]).To(Equal("agent.example.com"))
-			Expect(cimdMeta["is_localhost_redirect"]).To(BeFalse())
 		})
 	})
 
 	// Scenario 5.2 from specs/028-cimd-support/spec.md
 	Describe("when redirect_uri points to localhost", func() {
-		It("returns cimd_metadata with is_localhost_redirect=true", func() {
+		It("returns cimd_metadata with localhost redirect_uri", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
@@ -194,7 +193,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			cimdMeta, ok := data["cimd_metadata"].(map[string]any)
 			Expect(ok).To(BeTrue(), "cimd_metadata should be present")
-			Expect(cimdMeta["is_localhost_redirect"]).To(BeTrue())
+			Expect(cimdMeta["redirect_uri"]).To(Equal("http://localhost:3000/callback"))
 		})
 	})
 

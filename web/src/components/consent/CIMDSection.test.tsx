@@ -7,7 +7,6 @@ const baseMeta: CIMDMetadata = {
   client_id_url: 'https://agent.example.com/cimd.json',
   redirect_uri: 'https://agent.example.com/callback',
   verified_domain: 'agent.example.com',
-  is_localhost_redirect: false,
   requested_scopes: ['read:email'],
 };
 
@@ -19,7 +18,7 @@ const matchingService: ThirdpartyService = {
 };
 
 describe('CIMDSection', () => {
-  it('renders summary and advanced details without localhost warning when is_localhost_redirect is false', () => {
+  it('renders summary and advanced details without localhost warning when redirect_uri is not localhost', () => {
     render(
       <CIMDSection
         cimdMeta={baseMeta}
@@ -33,8 +32,8 @@ describe('CIMDSection', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('renders summary, localhost warning, and advanced details when is_localhost_redirect is true', () => {
-    const meta = { ...baseMeta, is_localhost_redirect: true };
+  it('renders summary, localhost warning, and advanced details when redirect_uri is localhost', () => {
+    const meta = { ...baseMeta, redirect_uri: 'http://localhost:3000/callback' };
 
     render(
       <CIMDSection

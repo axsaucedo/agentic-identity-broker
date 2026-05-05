@@ -69,11 +69,10 @@ func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, j
 // CIMDMetadataResponse is included in the agent detail response when the authorization
 // request originated from a CIMD-based client_id.
 type CIMDMetadataResponse struct {
-	ClientIDURL         string   `json:"client_id_url"`
-	RedirectURI         string   `json:"redirect_uri"`
-	VerifiedDomain      string   `json:"verified_domain"`
-	IsLocalhostRedirect bool     `json:"is_localhost_redirect"`
-	RequestedScopes     []string `json:"requested_scopes"`
+	ClientIDURL     string   `json:"client_id_url"`
+	RedirectURI     string   `json:"redirect_uri"`
+	VerifiedDomain  string   `json:"verified_domain"`
+	RequestedScopes []string `json:"requested_scopes"`
 }
 
 // GetAgentDetailResponse represents the response for GET /api/consent/agent/:agentId.
@@ -268,11 +267,10 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.Age
 	}
 
 	return &CIMDMetadataResponse{
-		ClientIDURL:         claims.CIMDMetadata.ClientID,
-		RedirectURI:         claims.RedirectURI,
-		VerifiedDomain:      u.Hostname(),
-		IsLocalhostRedirect: isLocalhostURI(claims.RedirectURI),
-		RequestedScopes:     requestedScopes,
+		ClientIDURL:     claims.CIMDMetadata.ClientID,
+		RedirectURI:     claims.RedirectURI,
+		VerifiedDomain:  u.Hostname(),
+		RequestedScopes: requestedScopes,
 	}, nil
 }
 
@@ -332,12 +330,3 @@ func (h *AgentDetailHandler) GetConsentSession(w http.ResponseWriter, r *http.Re
 	})
 }
 
-// isLocalhostURI returns true if the URI's host is localhost or 127.0.0.1.
-func isLocalhostURI(rawURL string) bool {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return false
-	}
-	h := u.Hostname()
-	return h == "localhost" || h == "127.0.0.1" || h == "::1"
-}

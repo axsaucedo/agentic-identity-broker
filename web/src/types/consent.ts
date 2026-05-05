@@ -164,8 +164,6 @@ export interface CIMDMetadata {
   redirect_uri: string;
   /** Hostname from client_id_url, pre-registered and verified */
   verified_domain: string;
-  /** True when redirect_uri host is localhost or 127.0.0.1 */
-  is_localhost_redirect: boolean;
   /** OAuth2 scopes requested by this authorization */
   requested_scopes: string[];
 }
