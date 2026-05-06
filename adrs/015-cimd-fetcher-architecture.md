@@ -31,7 +31,7 @@ type CIMDFetcher interface {
 }
 ```
 
-The domain package `internal/domain/cimd` depends only on this interface. The implementation lives in `internal/adapters/cimd/fetcher.go`.
+The domain package `internal/domain/oauth2server/cimd` depends only on this interface. The implementation lives in `internal/adapters/cimd/fetcher.go`.
 
 ### SSRF Hardening via Custom Dialer.Control
 
@@ -51,7 +51,7 @@ Additionally:
 
 ### In-Process Cache
 
-A `CIMDCache` domain type (`internal/domain/cimd/cache.go`) provides a `sync.RWMutex`-protected in-memory map. TTL is computed from HTTP response headers (Cache-Control `max-age`, `Expires`) and clamped to operator-configured `[min_ttl, max_ttl]` bounds (defaults: 60s min, 1h max). Entries are lazily evicted on next access after expiry.
+A `CIMDCache` domain type (`internal/domain/oauth2server/cimd/cache.go`) provides a `sync.RWMutex`-protected in-memory map. TTL is computed from HTTP response headers (Cache-Control `max-age`, `Expires`) and clamped to operator-configured `[min_ttl, max_ttl]` bounds (defaults: 60s min, 1h max). Entries are lazily evicted on next access after expiry.
 
 The cache lives in the domain layer (not the adapter) because the TTL clamping logic is a business policy, not an infrastructure detail.
 
@@ -71,7 +71,7 @@ This keeps the domain service unaware of CIMD mode; the build-time strategy sele
 **Benefits**:
 - TOCTOU-safe SSRF protection — DNS rebinding cannot bypass the blocklist because validation occurs on the resolved IP, not the hostname
 - Predictable latency — in-process cache eliminates repeated network round-trips for the same agent
-- Domain isolation — `internal/domain/cimd/` imports no infrastructure packages; the fetcher adapter implements the port
+- Domain isolation — `internal/domain/oauth2server/cimd/` imports no infrastructure packages; the fetcher adapter implements the port
 - Backward compatibility — when `cimd.enabled = false`, the `OpaqueClientResolver` rejects URL-format IDs and the CIMD adapter is never instantiated
 
 **Trade-offs**:

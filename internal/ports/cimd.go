@@ -30,7 +30,7 @@ type ClientResolution struct {
 
 // CIMDMetadataDTO carries CIMD document fields relevant to the authorization flow.
 // It is a port-layer DTO — not the domain type — to avoid import cycles between
-// ports/ and domain/cimd/.
+// ports/ and domain/oauth2server/cimd.
 type CIMDMetadataDTO struct {
 	ClientID      string
 	ClientName    string
@@ -52,7 +52,7 @@ type CIMDFetcher interface {
 
 // CIMDFetchResult holds the result of a successful CIMD document fetch.
 // The body is raw bytes to avoid an import cycle — callers parse it with
-// domain/cimd.ParseDocument.
+// cimd.ParseDocument from internal/domain/oauth2server/cimd.
 type CIMDFetchResult struct {
 	Body         []byte
 	CacheControl string
