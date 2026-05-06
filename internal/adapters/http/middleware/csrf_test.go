@@ -122,12 +122,10 @@ func TestCSRFProtection_PostWithDifferentPrincipalFailsEvenWhenRemoteAddrMatches
 	}
 }
 
-func TestCSRFProtection_PostWithValidTokenFallsBackToRemoteAddr(t *testing.T) {
+func TestCSRFProtection_PostWithoutPrincipalForbidden(t *testing.T) {
 	store := NewCSRFStore(slog.Default())
-	sessionID := "127.0.0.1:12345"
-	token := "test-csrf-token"
-
-	store.Set(sessionID, token)
+	// Pre-store a token keyed by RemoteAddr to verify it is never consulted.
+	store.Set("127.0.0.1:12345", "test-csrf-token")
 
 	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -135,39 +133,39 @@ func TestCSRFProtection_PostWithValidTokenFallsBackToRemoteAddr(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/test", nil)
-	req.RemoteAddr = sessionID
-	req.Header.Set(CSRFTokenHeader, token)
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set(CSRFTokenHeader, "test-csrf-token")
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
+	// Must be 403: no principal means no session ID; RemoteAddr must not be used as fallback.
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected status %d, got %d", http.StatusForbidden, rr.Code)
 	}
 }
 
-func TestCSRFProtection_PostWithInvalidTokenFallsBackToRemoteAddr(t *testing.T) {
+func TestCSRFProtection_GetWithoutPrincipalPassesWithoutCookie(t *testing.T) {
 	store := NewCSRFStore(slog.Default())
-	sessionID := "127.0.0.1:12345"
-	correctToken := "correct-token"
-	wrongToken := "wrong-token"
-
-	store.Set(sessionID, correctToken)
-
 	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	req := httptest.NewRequest("POST", "/api/test", nil)
-	req.RemoteAddr = sessionID
-	req.Header.Set(CSRFTokenHeader, wrongToken)
+	req := httptest.NewRequest("GET", "/api/test", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("expected status %d, got %d", http.StatusForbidden, rr.Code)
+	// GET passes through even without a principal, but no CSRF cookie is set.
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
+	}
+	for _, cookie := range rr.Result().Cookies() {
+		if cookie.Name == CSRFCookieName {
+			t.Error("CSRF cookie must not be set when no principal is present")
+		}
 	}
 }
 
