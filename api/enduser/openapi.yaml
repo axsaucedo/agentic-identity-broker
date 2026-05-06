@@ -403,22 +403,24 @@ paths:
                         userDocumentationUrl: https://docs.example.com/agents/data-assistant
                         agentInterfaceUrl: https://agents.example.com/data-assistant
                       services:
-                      - serviceId: google-drive-service-id
-                        displayName: Google Drive
-                        logoUrl: https://cdn.example.com/services/google-drive.png
-                        scopes:
-                        - value: read:files
+                      - serviceId: 11111111-1111-1111-1111-111111111111
+                        serviceName: Google Drive
+                        requirementType: mandatory
+                        requiredScopes:
+                        - name: read:files
                           description: Read files from your Google Drive
-                        - value: write:files
+                        - name: write:files
                           description: Create and update files in your Google Drive
-                      - serviceId: github-service-id
-                        displayName: GitHub
-                        logoUrl: https://cdn.example.com/services/github.png
-                        scopes:
-                        - value: read:repos
+                        connectionStatus: connected
+                      - serviceId: 22222222-2222-2222-2222-222222222222
+                        serviceName: GitHub
+                        requirementType: optional
+                        requiredScopes:
+                        - name: read:repos
                           description: Read access to repositories
-                        - value: write:repos
+                        - name: write:repos
                           description: Write access to repositories
+                        connectionStatus: not_connected
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -551,7 +553,9 @@ paths:
 
         - Returns HTTP 201 with `redirect_url` field containing the original authorization URL
 
-        - Returns `400 Bad Request` if the token is invalid, expired, or the agent/principal does not match
+        - Returns `400 Bad Request` if the token is invalid, expired, or the session agent does not match
+
+        - Returns `403 Forbidden` if the session principal does not match the authenticated user
 
 
         **Redirect After Approval (Optional)**:
@@ -604,7 +608,7 @@ paths:
       - $ref: '#/components/parameters/AgentIdParam'
       - name: session_token
         in: query
-        description: 'JWE authorization session token (FR-029). When present, the grant endpoint decrypts the token to resolve the redirect target. Takes precedence over redirect_uri for the response redirect. Returns 400 if the token is invalid or expired; 400 if the session agent or principal does not match the authenticated caller.'
+        description: 'JWE authorization session token (FR-029). When present, the grant endpoint decrypts the token to resolve the redirect target. Takes precedence over redirect_uri for the response redirect. Returns 400 if the token is invalid or expired; 400 if the session agent does not match the requested agent; 403 if the session principal does not match the authenticated caller.'
         required: false
         schema:
           type: string
