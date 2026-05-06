@@ -102,6 +102,10 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 			// Register consent routes if handlers are available
 			if h.Agents != nil && h.AgentDetail != nil && h.AgentGrants != nil && h.Grants != nil {
 				authRouter.Route("/consent", func(consentRouter chi.Router) {
+					if cfg.CSRFStore != nil {
+						consentRouter.Use(middleware.CSRFProtection(cfg.CSRFStore))
+					}
+
 					// Agents list endpoint
 					consentRouter.Get("/agents", h.Agents.GetAgentDelegations)
 
@@ -112,15 +116,10 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 					consentRouter.Route("/agent/{agent-id}", func(r chi.Router) {
 						r.Get("/", h.AgentDetail.GetAgentDetail)
 						r.Get("/grants", h.AgentGrants.GetAgentGrants)
-						r.Group(func(mutating chi.Router) {
-							if cfg.CSRFStore != nil {
-								mutating.Use(middleware.CSRFProtection(cfg.CSRFStore))
-							}
-							mutating.Post("/grants", h.Grants.CreateGrant)
-							if h.RevokeGrant != nil {
-								mutating.Delete("/grants", h.RevokeGrant.RevokeGrant)
-							}
-						})
+						r.Post("/grants", h.Grants.CreateGrant)
+						if h.RevokeGrant != nil {
+							r.Delete("/grants", h.RevokeGrant.RevokeGrant)
+						}
 					})
 				})
 			}
