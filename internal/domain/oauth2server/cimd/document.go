@@ -35,9 +35,7 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 		return nil, fmt.Errorf("malformed CIMD document: %w", err)
 	}
 
-	// RFC §4.1: client_secret and client_secret_expires_at MUST NOT be used.
-	// jwks_uri is also rejected: CIMD clients are always public clients (auth_method=none);
-	// key-based auth is not supported and its presence signals misconfiguration.
+	// RFC §4.1: client_secret and client_secret_expires_at MUST NOT be used
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err == nil {
 		if _, ok := raw["client_secret"]; ok {
@@ -45,9 +43,6 @@ func ParseDocument(data []byte, fetchURL string, nameBlocklist []string) (*Clien
 		}
 		if _, ok := raw["client_secret_expires_at"]; ok {
 			return nil, fmt.Errorf("CIMD document must not contain client_secret_expires_at")
-		}
-		if _, ok := raw["jwks_uri"]; ok {
-			return nil, fmt.Errorf("CIMD document must not contain jwks_uri; CIMD clients must use token_endpoint_auth_method=none")
 		}
 	}
 
