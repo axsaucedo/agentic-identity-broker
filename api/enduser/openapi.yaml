@@ -785,22 +785,22 @@ paths:
     get:
       summary: Decode CIMD authorization session token
       description: |
-        Decodes an opaque, self-contained JWE authorization session token and returns the
-        OAuth2 authorization context required to render the consent page.
+        Decodes a JWE authorization session token issued exclusively for CIMD-based authorization
+        flows and returns the OAuth2 authorization context required to render the consent page.
 
-        This endpoint is only used in CIMD flows, where the client_id is a URL-format identifier
-        (e.g. `https://agent.example.com/client`). For opaque (UUID) client_id values,
-        `GET /oauth2/authorize` redirects to the consent page with a `?redirect_uri=` parameter
-        instead, and no session token is issued.
+        **CIMD flows only.** `GET /oauth2/authorize` mints a `session_token` and redirects to the
+        consent page with `?session_token=<jwe>` only when the `client_id` is a URL-format CIMD
+        identifier (e.g. `https://agent.example.com/client`). For opaque (UUID) `client_id` values
+        the authorize endpoint redirects with `?redirect_uri=` instead and never produces a session
+        token; this endpoint cannot be used for those flows.
 
-        The token is issued by `GET /oauth2/authorize` when the agent uses a CIMD-format client_id
-        and requires user consent. It carries all authorization state as encrypted claims with a
-        10-minute TTL — there is no server-side session record; the token itself is the session.
+        The token carries all authorization state as encrypted claims with a 10-minute TTL — there
+        is no server-side session record; the token itself is the session.
 
         **Use Cases**:
         - Consent page reads the pending authorization context (agent, scopes, redirect URI) for CIMD clients
         - Validates that the session belongs to the authenticated user
-        - Provides CIMD metadata when the client_id is a URL-format identifier
+        - Provides CIMD client metadata (name, logo, redirect URIs) extracted from the CIMD document
 
         **Security**:
         - Token is a JWE (encrypted) — opaque to clients, tamper-proof, self-contained
