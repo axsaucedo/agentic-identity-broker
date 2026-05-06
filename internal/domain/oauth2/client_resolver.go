@@ -34,7 +34,7 @@ func (r *OpaqueClientResolver) ResolveClient(ctx context.Context, clientID id.Cl
 
 	agent, err := r.agentRepo.Get(ctx, agentUUID)
 	if err != nil {
-		if isNotFoundErr(err) {
+		if ports.IsNotFoundErr(err) {
 			return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 		}
 		return nil, &ports.ClientIDError{Code: "server_error", Desc: "Failed to validate client"}

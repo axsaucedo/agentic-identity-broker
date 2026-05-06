@@ -9,7 +9,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -151,7 +150,7 @@ func (h *ClientCredentialsHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	cred, err := h.credentialRepo.GetByAgentID(r.Context(), agentID)
 	if err != nil {
-		if isNotFoundErr(err) {
+		if ports.IsNotFoundErr(err) {
 			h.writeError(w, http.StatusNotFound, "credentials not found", "")
 			return
 		}
@@ -194,7 +193,7 @@ func (h *ClientCredentialsHandler) Revoke(w http.ResponseWriter, r *http.Request
 
 	err = h.credentialRepo.Delete(r.Context(), agentID)
 	if err != nil {
-		if isNotFoundErr(err) {
+		if ports.IsNotFoundErr(err) {
 			h.writeError(w, http.StatusNotFound, "credentials not found", "")
 			return
 		}
@@ -224,11 +223,4 @@ func (h *ClientCredentialsHandler) writeError(w http.ResponseWriter, statusCode 
 		Message: message,
 	}
 	h.writeJSON(w, statusCode, resp)
-}
-
-func isNotFoundErr(err error) bool {
-	if storageErr, ok := err.(*storage.StorageError); ok {
-		return storageErr.Kind == storage.ErrorKindNotFound
-	}
-	return false
 }

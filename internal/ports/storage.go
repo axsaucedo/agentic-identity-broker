@@ -16,6 +16,17 @@ var (
 	ErrNotFound = errors.New("entity not found")
 )
 
+// IsNotFoundErr returns true if err represents a not-found condition from any
+// storage adapter. Handles both ErrNotFound and storage.StorageError with
+// ErrorKindNotFound.
+func IsNotFoundErr(err error) bool {
+	if errors.Is(err, ErrNotFound) {
+		return true
+	}
+	var storageErr *storage.StorageError
+	return errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound
+}
+
 // HealthChecker verifies storage backend health.
 type HealthChecker interface {
 	// HealthCheck verifies storage backend is operational.

@@ -2,11 +2,9 @@ package cimd
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -43,7 +41,7 @@ func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*p
 	// Look up agent by pre-registered client URI (FR-026)
 	agent, err := r.agentRepo.GetByClientURI(ctx, rawURL)
 	if err != nil {
-		if isNotFoundErr(err) {
+		if ports.IsNotFoundErr(err) {
 			return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 		}
 		r.logger.ErrorContext(ctx, "failed to look up agent by client URI", "error", err, "client_uri", rawURL)
@@ -87,7 +85,7 @@ func (r *CIMDClientResolver) resolveOpaque(ctx context.Context, clientID id.Clie
 
 	agent, err := r.agentRepo.Get(ctx, agentUUID)
 	if err != nil {
-		if isNotFoundErr(err) {
+		if ports.IsNotFoundErr(err) {
 			return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 		}
 		r.logger.ErrorContext(ctx, "failed to look up agent by ID", "error", err, "agent_id", agentUUID)
@@ -95,12 +93,4 @@ func (r *CIMDClientResolver) resolveOpaque(ctx context.Context, clientID id.Clie
 	}
 
 	return &ports.ClientResolution{Agent: agent}, nil
-}
-
-func isNotFoundErr(err error) bool {
-	if errors.Is(err, ports.ErrNotFound) {
-		return true
-	}
-	var storageErr *storage.StorageError
-	return errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound
 }

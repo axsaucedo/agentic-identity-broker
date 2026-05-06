@@ -14,20 +14,6 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// isNotFoundErr returns true if err represents a not-found condition from any storage adapter.
-// Handles both ports.ErrNotFound (used in mocks/tests) and storage.StorageError{Kind: ErrorKindNotFound}
-// (used by production adapters).
-func isNotFoundErr(err error) bool {
-	if errors.Is(err, ports.ErrNotFound) {
-		return true
-	}
-	var storageErr *storage.StorageError
-	if errors.As(err, &storageErr) {
-		return storageErr.Kind == storage.ErrorKindNotFound
-	}
-	return false
-}
-
 // OAuth2Config contains configuration for the OAuth2 service
 type OAuth2Config struct {
 	// Upstream OAuth2 server authorization endpoint
