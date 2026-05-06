@@ -375,7 +375,7 @@ paths:
         description: >-
           JWE authorization session token for CIMD-based flows. When present, the
           response includes CIMD metadata (client_id_url, redirect_uri,
-          verified_domain, requested_scopes) extracted from the decrypted token.
+          verified_domain, requested_scopes, logo_uri) extracted from the decrypted token.
           Required for agents identified by a Client ID Metadata Document URL; omit
           for pre-registered opaque client_id flows.
         schema:
@@ -2209,6 +2209,12 @@ components:
           example:
           - openid
           - profile
+        logo_uri:
+          type: string
+          format: uri
+          nullable: true
+          description: Logo URL from the CIMD document, if present. Always an absolute HTTPS URL.
+          example: https://agent.example.com/logo.png
     DelegatedToken:
       type: object
       required:
