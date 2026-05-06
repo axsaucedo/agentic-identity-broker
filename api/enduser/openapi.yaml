@@ -369,19 +369,19 @@ paths:
       - Consent
       parameters:
       - $ref: '#/components/parameters/AgentIdParam'
-      - name: session_id
+      - name: session_token
         in: query
         required: false
         description: >-
-          Opaque authorization session ID for CIMD-based flows. When present, the
-          response includes CIMD metadata (client_name, logo_uri, redirect_uri,
-          verified domain) retrieved from the server-side session. Required for
-          agents identified by a Client ID Metadata Document URL; omit for
-          pre-registered opaque client_id flows.
+          JWE authorization session token for CIMD-based flows. When present, the
+          response includes CIMD metadata (client_id_url, redirect_uri,
+          verified_domain, requested_scopes) extracted from the decrypted token.
+          Required for agents identified by a Client ID Metadata Document URL; omit
+          for pre-registered opaque client_id flows.
         schema:
           type: string
           minLength: 1
-          example: a1b2c3d4e5f6...
+          example: eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0...
       responses:
         '200':
           description: Agent detail retrieved successfully
@@ -545,17 +545,13 @@ paths:
 
         **CIMD Session-Based Consent (FR-029)**:
 
-        - Use `session_id` query parameter for CIMD authorization flows
+        - Use `session_token` query parameter for CIMD authorization flows
 
-        - Session is a single-use server-side record created during the authorization request
-
-        - Session is consumed after successful grant creation (prevents replay attacks)
+        - Token is a JWE containing the authorization session claims (agent, principal, redirect_uri)
 
         - Returns HTTP 201 with `redirect_url` field containing the original authorization URL
 
-        - Returns `400 Bad Request` if session is not found, expired, or already consumed
-
-        - Returns `403 Forbidden` if session belongs to a different principal
+        - Returns `400 Bad Request` if the token is invalid, expired, or the agent/principal does not match
 
 
         **Redirect After Approval (Optional)**:
@@ -606,15 +602,15 @@ paths:
       - Consent
       parameters:
       - $ref: '#/components/parameters/AgentIdParam'
-      - name: session_id
+      - name: session_token
         in: query
-        description: 'CIMD authorization session ID (FR-029). When present, the grant endpoint uses the server-side AuthorizationSession to resolve the redirect target and enforces single-use semantics. Takes precedence over redirect_uri for the response redirect. Returns 400 if the session is not found, expired, or already consumed; 403 if the session principal does not match the authenticated caller.'
+        description: 'JWE authorization session token (FR-029). When present, the grant endpoint decrypts the token to resolve the redirect target. Takes precedence over redirect_uri for the response redirect. Returns 400 if the token is invalid or expired; 400 if the session agent or principal does not match the authenticated caller.'
         required: false
         schema:
           type: string
       - name: redirect_uri
         in: query
-        description: 'Optional URL for OAuth2 flow continuation after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). When provided, response includes redirect_url field in body instead of HTTP redirect (avoids CORS issues with cross-origin redirect chains). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected. Ignored when session_id is also present.'
+        description: 'Optional URL for OAuth2 flow continuation after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). When provided, response includes redirect_url field in body instead of HTTP redirect (avoids CORS issues with cross-origin redirect chains). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected. Ignored when session_token is also present.'
         required: false
         schema:
           type: string
@@ -723,7 +719,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden - Authorization session belongs to a different principal (session_id mismatch).
+          description: Forbidden - Authorization session belongs to a different principal (session_token mismatch).
           content:
             application/json:
               schema:
@@ -2067,22 +2063,12 @@ components:
             services:
               type: array
               items:
-                $ref: '#/components/schemas/ThirdpartyService'
-              description: 'Array of available third-party services that can be delegated
-
-                to this agent. Empty array if no services are available.
-
-                '
-            serviceRequirements:
-              type: array
-              items:
                 $ref: '#/components/schemas/ServiceRequirementForUser'
-              nullable: true
               description: 'Array of service requirements for this agent with user connection status.
 
-                Includes mandatory and optional third-party services the agent needs.
+                Includes mandatory and optional third-party services the agent needs,
 
-                Null or empty if agent has no service requirements.
+                sorted mandatory-first. Empty array if the agent has no service requirements.
 
                 '
             cimd_metadata:
@@ -2098,7 +2084,6 @@ components:
       - client_id_url
       - redirect_uri
       - verified_domain
-      - is_localhost_redirect
       - requested_scopes
       properties:
         client_id_url:
@@ -2114,9 +2099,6 @@ components:
           type: string
           description: Hostname extracted from the client_id URL
           example: agent.example.com
-        is_localhost_redirect:
-          type: boolean
-          description: True when the redirect URI targets localhost or 127.0.0.1
         requested_scopes:
           type: array
           items:
@@ -2125,10 +2107,6 @@ components:
           example:
           - openid
           - profile
-        logo_uri:
-          type: string
-          format: uri
-          description: Logo URI from the CIMD document, if present
     DelegatedToken:
       type: object
       required:
