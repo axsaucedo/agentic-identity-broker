@@ -770,6 +770,21 @@
                 }
               }
             }
+          },
+          "if": {
+            "properties": {
+              "cimd": {
+                "properties": { "enabled": { "const": true } },
+                "required": ["enabled"]
+              }
+            },
+            "required": ["cimd"]
+          },
+          "then": {
+            "properties": {
+              "mode": { "const": "issue_token" }
+            },
+            "required": ["mode"]
           }
         },
         "tokenExchange": {
