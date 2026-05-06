@@ -549,7 +549,7 @@ paths:
 
         - Use `session_token` query parameter for CIMD authorization flows
 
-        - Token is a JWE containing the authorization session claims (agent, principal, redirect_uri)
+        - Token is a self-contained JWE carrying all authorization session claims (agent, principal, redirect_uri) — no server-side session lookup is performed
 
         - Returns HTTP 201 with `redirect_url` field containing the original authorization URL
 
@@ -785,12 +785,12 @@ paths:
     get:
       summary: Decode authorization session token
       description: |
-        Decrypts a JWE authorization session token and returns the OAuth2 authorization
-        context required to render the consent page.
+        Decodes an opaque, self-contained JWE authorization session token and returns the
+        OAuth2 authorization context required to render the consent page.
 
         The token is issued by `GET /oauth2/authorize` when the agent requires user consent.
-        It is short-lived (10 minutes) and binds the original authorization request to the
-        consent interaction.
+        It carries all authorization state as encrypted claims with a 10-minute TTL — there
+        is no server-side session record; the token itself is the session.
 
         **Use Cases**:
         - Consent page reads the pending authorization context (agent, scopes, redirect URI)
@@ -798,7 +798,7 @@ paths:
         - Provides CIMD metadata when the client_id is a URL-format identifier
 
         **Security**:
-        - Token is a JWE (encrypted) — opaque to clients, tamper-proof
+        - Token is a JWE (encrypted) — opaque to clients, tamper-proof, self-contained
         - Principal in token must match the authenticated user (403 if mismatch)
         - Expired or malformed tokens return 400 with error code `session_expired`
       operationId: getConsentSession
