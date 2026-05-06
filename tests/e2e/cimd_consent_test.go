@@ -112,7 +112,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 	// Scenario 5.1 from specs/028-cimd-support/spec.md
 	Describe("when the authorization request uses a CIMD-based client_id", func() {
-		It("returns cimd_metadata with verified_domain and is_localhost_redirect=false when session_token is provided", func() {
+		It("returns cimd_metadata with verified_domain when session_token is provided", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
