@@ -14,6 +14,11 @@ import axios, {
 } from 'axios';
 import type { ApiError } from '../../types/consent';
 
+function getCookie(name: string): string | undefined {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
 /**
  * Create and configure the axios instance with interceptors.
  */
@@ -26,12 +31,16 @@ function createApiClient(): AxiosInstance {
     },
   });
 
-  // Request interceptor: Reserved for future use
-  // Note: Authentication is handled by Vite proxy in development (injects X-Remote-User header)
-  // In production, authentication is handled by the reverse proxy/API gateway
+  // Request interceptor: Attach CSRF token on mutating requests
   client.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
-      // No authentication logic here - handled externally
+      const method = config.method?.toUpperCase();
+      if (method === 'POST' || method === 'PUT' || method === 'DELETE' || method === 'PATCH') {
+        const csrfToken = getCookie('csrf_token');
+        if (csrfToken) {
+          config.headers.set('X-CSRF-Token', csrfToken);
+        }
+      }
       return config;
     },
     (error) => {
