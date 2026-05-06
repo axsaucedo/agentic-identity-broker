@@ -16,6 +16,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domcimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
@@ -83,7 +84,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 			"xyz",
 			"challenge123",
 			"S256",
-			&domstorage.CIMDMetadataSnapshot{
+			&domcimd.MetadataSnapshot{
 				ClientID:     "https://agent.example.com/client",
 				ClientName:   "Test CIMD Agent",
 				RedirectURIs: []string{redirectURI},

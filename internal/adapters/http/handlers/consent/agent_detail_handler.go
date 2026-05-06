@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -288,7 +288,7 @@ type ConsentSessionResponse struct {
 	State               string                        `json:"state"`
 	CodeChallenge       string                        `json:"code_challenge"`
 	CodeChallengeMethod string                        `json:"code_challenge_method"`
-	CIMDMetadata        *storage.CIMDMetadataSnapshot `json:"cimd_metadata,omitempty"`
+	CIMDMetadata        *cimd.MetadataSnapshot `json:"cimd_metadata,omitempty"`
 	ExpiresAt           time.Time                     `json:"expires_at"`
 }
 

@@ -15,6 +15,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domcimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
@@ -31,7 +32,7 @@ func cimdOAuth2Service(appInstance *app.App) *domotp2.Service {
 }
 
 // createCIMDSessionToken builds a JWE authorization session token for use in CIMD tests.
-func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, redirectURI string, meta *domstorage.CIMDMetadataSnapshot) string {
+func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, redirectURI string, meta *domcimd.MetadataSnapshot) string {
 	claims := domotp2.NewAuthorizationSessionClaims(
 		agentID,
 		id.Principal(principal),
@@ -50,7 +51,7 @@ func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal 
 }
 
 // createExpiredCIMDSessionToken builds a JWE token with a past ExpiresAt.
-func createExpiredCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, meta *domstorage.CIMDMetadataSnapshot) string {
+func createExpiredCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, meta *domcimd.MetadataSnapshot) string {
 	past := time.Now().Add(-1 * time.Hour)
 	claims := &domotp2.AuthorizationSessionClaims{
 		AgentID:             agentID,
@@ -127,7 +128,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token := createCIMDSessionToken(cimdOAuth2Service(appInstance), agent.ID,
 				fixtures.DefaultPrincipal().String(),
 				"https://agent.example.com/callback",
-				&domstorage.CIMDMetadataSnapshot{
+				&domcimd.MetadataSnapshot{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -171,7 +172,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token := createCIMDSessionToken(cimdOAuth2Service(appInstance), agent.ID,
 				fixtures.DefaultPrincipal().String(),
 				"http://localhost:3000/callback",
-				&domstorage.CIMDMetadataSnapshot{
+				&domcimd.MetadataSnapshot{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"http://localhost:3000/callback"},
@@ -223,7 +224,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 				"xyz",
 				"challenge123",
 				"S256",
-				&domstorage.CIMDMetadataSnapshot{
+				&domcimd.MetadataSnapshot{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -308,7 +309,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			token := createExpiredCIMDSessionToken(cimdOAuth2Service(appInstance), agent.ID,
 				fixtures.DefaultPrincipal().String(),
-				&domstorage.CIMDMetadataSnapshot{
+				&domcimd.MetadataSnapshot{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -368,7 +369,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token := createCIMDSessionToken(cimdOAuth2Service(appInstance), differentAgentID,
 				fixtures.DefaultPrincipal().String(),
 				"https://agent.example.com/callback",
-				&domstorage.CIMDMetadataSnapshot{
+				&domcimd.MetadataSnapshot{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -403,7 +404,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token := createCIMDSessionToken(cimdOAuth2Service(appInstance), agent.ID,
 				"other-user@example.com",
 				"https://agent.example.com/callback",
-				&domstorage.CIMDMetadataSnapshot{
+				&domcimd.MetadataSnapshot{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},

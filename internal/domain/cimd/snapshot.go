@@ -1,9 +1,9 @@
-package storage
+package cimd
 
-// CIMDMetadataSnapshot stores CIMD document fields captured at authorization time.
+// MetadataSnapshot stores CIMD document fields captured at authorization time.
 // It is embedded in AuthorizationSessionClaims (JWE) as a trusted record, used to
 // build the cimd_metadata response on the consent page without re-fetching the document.
-type CIMDMetadataSnapshot struct {
+type MetadataSnapshot struct {
 	ClientID     string   `json:"client_id"`
 	ClientName   string   `json:"client_name"`
 	LogoURI      string   `json:"logo_uri,omitempty"`

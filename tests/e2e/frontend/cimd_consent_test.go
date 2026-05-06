@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -23,7 +24,7 @@ func oauth2ServiceFromApp() *domotp2.Service {
 }
 
 // newCIMDSessionToken builds a JWE authorization session token for use in CIMD consent UI tests.
-func newCIMDSessionToken(agentID id.AgentID, redirectURI string, meta *storage.CIMDMetadataSnapshot) string {
+func newCIMDSessionToken(agentID id.AgentID, redirectURI string, meta *cimd.MetadataSnapshot) string {
 	claims := domotp2.NewAuthorizationSessionClaims(
 		agentID,
 		id.Principal("user@example.com"),
@@ -71,7 +72,7 @@ var _ = Describe("CIMD Consent UI", func() {
 		sessionToken = newCIMDSessionToken(
 			cimdAgent.ID,
 			"https://cimd-example.com/callback",
-			&storage.CIMDMetadataSnapshot{
+			&cimd.MetadataSnapshot{
 				ClientID:     "https://cimd-example.com/client_metadata.json",
 				ClientName:   "CIMD Test Client",
 				RedirectURIs: []string{"https://cimd-example.com/callback"},
@@ -131,7 +132,7 @@ var _ = Describe("CIMD Consent UI", func() {
 			localhostSessionToken = newCIMDSessionToken(
 				cimdAgent.ID,
 				"http://localhost:8080/callback",
-				&storage.CIMDMetadataSnapshot{
+				&cimd.MetadataSnapshot{
 					ClientID:     "https://cimd-example.com/client_metadata.json",
 					ClientName:   "CIMD Test Client",
 					RedirectURIs: []string{"http://localhost:8080/callback"},

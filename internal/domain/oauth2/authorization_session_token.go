@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
 // authorizationSessionTokenTTL is the lifetime of an AuthorizationSessionClaims JWE token.
@@ -24,7 +24,7 @@ type AuthorizationSessionClaims struct {
 	State               string                        `json:"state"`
 	CodeChallenge       string                        `json:"code_challenge"`
 	CodeChallengeMethod string                        `json:"code_challenge_method"`
-	CIMDMetadata        *storage.CIMDMetadataSnapshot `json:"cimd_metadata,omitempty"`
+	CIMDMetadata        *cimd.MetadataSnapshot `json:"cimd_metadata,omitempty"`
 	IssuedAt            time.Time                     `json:"iat"`
 	ExpiresAt           time.Time                     `json:"exp"`
 }
@@ -39,7 +39,7 @@ func NewAuthorizationSessionClaims(
 	agentID id.AgentID,
 	principal id.Principal,
 	clientID, originalURL, redirectURI, scope, state, codeChallenge, codeChallengeMethod string,
-	cimdMetadata *storage.CIMDMetadataSnapshot,
+	cimdMetadata *cimd.MetadataSnapshot,
 ) *AuthorizationSessionClaims {
 	now := time.Now()
 	return &AuthorizationSessionClaims{

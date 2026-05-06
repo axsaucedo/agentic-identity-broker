@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -400,7 +401,7 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 // a URL with ?session_token=<jwe>. For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
 func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
 	if cimdMeta != nil {
-		meta := &storage.CIMDMetadataSnapshot{
+		meta := &cimd.MetadataSnapshot{
 			ClientID:     cimdMeta.ClientID,
 			ClientName:   cimdMeta.ClientName,
 			LogoURI:      cimdMeta.LogoURI,
