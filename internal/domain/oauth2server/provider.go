@@ -349,6 +349,9 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		"grant_type":    {"authorization_code"},
 	}
 
+	// redirect_uri binding: fosite's AuthorizeExplicitGrantHandler.HandleTokenEndpointRequest
+	// compares this redirect_uri against the one stored in the authorization code session,
+	// returning invalid_grant on mismatch (RFC 6749 §4.1.3).
 	if err := p.authCodeHandler.HandleTokenEndpointRequest(ctx, req); err != nil {
 		return nil, err
 	}
