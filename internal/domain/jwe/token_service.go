@@ -56,6 +56,9 @@ func (s *TokenService) DecryptAndValidate(token string, target Expirable) error 
 }
 
 // Decrypt decrypts a compact JWE string and unmarshals the payload into target.
+// WARNING: This method does NOT validate expiry. For Expirable types, prefer
+// DecryptAndValidate which enforces expiry checks. Use Decrypt only when the
+// caller needs to inspect claims before validation (e.g., for audit logging).
 func (s *TokenService) Decrypt(token string, target any) error {
 	if token == "" {
 		return fmt.Errorf("token is empty")
