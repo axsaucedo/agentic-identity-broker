@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server/cimd"
 )
 
 // authorizationSessionTokenTTL is the lifetime of an AuthorizationSessionClaims JWE token.
@@ -15,18 +15,18 @@ const authorizationSessionTokenTTL = 10 * time.Minute
 // It replaces the DB-backed AuthorizationSession: the same tamper-proof, expiring,
 // principal-bound properties are achieved by sealing the claims in a JWE.
 type AuthorizationSessionClaims struct {
-	AgentID             id.AgentID                    `json:"agent_id"`
-	Principal           id.Principal                  `json:"principal"`
-	ClientID            string                        `json:"client_id"`
-	OriginalURL         string                        `json:"original_url"`
-	RedirectURI         string                        `json:"redirect_uri"`
-	Scope               string                        `json:"scope"`
-	State               string                        `json:"state"`
-	CodeChallenge       string                        `json:"code_challenge"`
-	CodeChallengeMethod string                        `json:"code_challenge_method"`
+	AgentID             id.AgentID             `json:"agent_id"`
+	Principal           id.Principal           `json:"principal"`
+	ClientID            string                 `json:"client_id"`
+	OriginalURL         string                 `json:"original_url"`
+	RedirectURI         string                 `json:"redirect_uri"`
+	Scope               string                 `json:"scope"`
+	State               string                 `json:"state"`
+	CodeChallenge       string                 `json:"code_challenge"`
+	CodeChallengeMethod string                 `json:"code_challenge_method"`
 	CIMDMetadata        *cimd.MetadataSnapshot `json:"cimd_metadata,omitempty"`
-	IssuedAt            time.Time                     `json:"iat"`
-	ExpiresAt           time.Time                     `json:"exp"`
+	IssuedAt            time.Time              `json:"iat"`
+	ExpiresAt           time.Time              `json:"exp"`
 }
 
 // IsExpired reports whether the session token TTL has elapsed.

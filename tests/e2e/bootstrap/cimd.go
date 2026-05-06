@@ -15,7 +15,7 @@ import (
 	adaptercmd "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/cimd"
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
-	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
+	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 

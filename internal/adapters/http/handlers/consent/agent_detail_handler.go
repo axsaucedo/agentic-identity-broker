@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/go-chi/chi/v5"
 )
@@ -279,17 +279,17 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.Age
 
 // ConsentSessionResponse is the response body for GET /api/consent/session.
 type ConsentSessionResponse struct {
-	AgentID             string                        `json:"agent_id"`
-	Principal           string                        `json:"principal"`
-	ClientID            string                        `json:"client_id"`
-	OriginalURL         string                        `json:"original_url"`
-	RedirectURI         string                        `json:"redirect_uri"`
-	Scope               string                        `json:"scope"`
-	State               string                        `json:"state"`
-	CodeChallenge       string                        `json:"code_challenge"`
-	CodeChallengeMethod string                        `json:"code_challenge_method"`
+	AgentID             string                 `json:"agent_id"`
+	Principal           string                 `json:"principal"`
+	ClientID            string                 `json:"client_id"`
+	OriginalURL         string                 `json:"original_url"`
+	RedirectURI         string                 `json:"redirect_uri"`
+	Scope               string                 `json:"scope"`
+	State               string                 `json:"state"`
+	CodeChallenge       string                 `json:"code_challenge"`
+	CodeChallengeMethod string                 `json:"code_challenge_method"`
 	CIMDMetadata        *cimd.MetadataSnapshot `json:"cimd_metadata,omitempty"`
-	ExpiresAt           time.Time                     `json:"expires_at"`
+	ExpiresAt           time.Time              `json:"expires_at"`
 }
 
 // GetConsentSession handles GET /api/consent/session?token=<jwe>

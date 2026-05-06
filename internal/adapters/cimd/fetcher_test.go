@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/cimd"
+	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server/cimd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
