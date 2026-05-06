@@ -166,6 +166,8 @@ export interface CIMDMetadata {
   verified_domain: string;
   /** OAuth2 scopes requested by this authorization */
   requested_scopes: string[];
+  /** Logo URL from the CIMD document, if present */
+  logo_uri?: string;
 }
 
 /**

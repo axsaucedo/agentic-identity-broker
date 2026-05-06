@@ -783,17 +783,22 @@ paths:
           $ref: '#/components/responses/InternalServerError'
   /api/consent/session:
     get:
-      summary: Decode authorization session token
+      summary: Decode CIMD authorization session token
       description: |
         Decodes an opaque, self-contained JWE authorization session token and returns the
         OAuth2 authorization context required to render the consent page.
 
-        The token is issued by `GET /oauth2/authorize` when the agent requires user consent.
-        It carries all authorization state as encrypted claims with a 10-minute TTL — there
-        is no server-side session record; the token itself is the session.
+        This endpoint is only used in CIMD flows, where the client_id is a URL-format identifier
+        (e.g. `https://agent.example.com/client`). For opaque (UUID) client_id values,
+        `GET /oauth2/authorize` redirects to the consent page with a `?redirect_uri=` parameter
+        instead, and no session token is issued.
+
+        The token is issued by `GET /oauth2/authorize` when the agent uses a CIMD-format client_id
+        and requires user consent. It carries all authorization state as encrypted claims with a
+        10-minute TTL — there is no server-side session record; the token itself is the session.
 
         **Use Cases**:
-        - Consent page reads the pending authorization context (agent, scopes, redirect URI)
+        - Consent page reads the pending authorization context (agent, scopes, redirect URI) for CIMD clients
         - Validates that the session belongs to the authenticated user
         - Provides CIMD metadata when the client_id is a URL-format identifier
 
@@ -821,19 +826,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConsentSessionResponse'
               examples:
-                standardFlow:
-                  summary: Standard OAuth2 authorization session
-                  value:
-                    agent_id: 550e8400-e29b-41d4-a716-446655440000
-                    principal: user@example.com
-                    client_id: 550e8400-e29b-41d4-a716-446655440000
-                    original_url: /oauth2/authorize?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https://agent.example.com/callback&scope=openid+profile&state=abc123&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256
-                    redirect_uri: https://agent.example.com/callback
-                    scope: openid profile
-                    state: abc123
-                    code_challenge: E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
-                    code_challenge_method: S256
-                    expires_at: '2025-12-20T10:40:00Z'
                 cimdFlow:
                   summary: CIMD-based authorization session
                   value:
@@ -2993,12 +2985,12 @@ components:
           example: user@example.com
         client_id:
           type: string
-          description: OAuth2 client_id from the authorization request (UUID or URL for CIMD flows)
-          example: 550e8400-e29b-41d4-a716-446655440000
+          description: OAuth2 client_id from the authorization request (URL-format identifier for CIMD flows)
+          example: https://agent.example.com/client
         original_url:
           type: string
           description: Original /oauth2/authorize URL to resume the flow after consent
-          example: /oauth2/authorize?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https://agent.example.com/callback&scope=openid+profile&state=abc123
+          example: /oauth2/authorize?client_id=https://agent.example.com/client&redirect_uri=https://agent.example.com/callback&scope=openid+profile&state=abc123
         redirect_uri:
           type: string
           description: Redirect URI to which the authorization response will be sent

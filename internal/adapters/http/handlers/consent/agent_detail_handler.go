@@ -73,6 +73,7 @@ type CIMDMetadataResponse struct {
 	RedirectURI     string   `json:"redirect_uri"`
 	VerifiedDomain  string   `json:"verified_domain"`
 	RequestedScopes []string `json:"requested_scopes"`
+	LogoURI         string   `json:"logo_uri,omitempty"`
 }
 
 // GetAgentDetailResponse represents the response for GET /api/consent/agent/:agentId.
@@ -274,6 +275,7 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.Age
 		RedirectURI:     claims.RedirectURI,
 		VerifiedDomain:  u.Hostname(),
 		RequestedScopes: requestedScopes,
+		LogoURI:         claims.CIMDMetadata.LogoURI,
 	}, nil
 }
 
