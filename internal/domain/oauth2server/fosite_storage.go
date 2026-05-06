@@ -112,8 +112,11 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 		RequestedScope: splitScope(authCode.Scope),
 		GrantedScope:   splitScope(authCode.Scope),
 		Form: map[string][]string{
-			"redirect_uri":          {authCode.RedirectURI},
-			"code_challenge":        {authCode.CodeChallenge},
+			"redirect_uri":   {authCode.RedirectURI},
+			"code_challenge": {authCode.CodeChallenge},
+			// code_challenge_method is hardcoded to S256 because EnablePKCEPlainChallengeMethod
+			// is false in provider config, so only S256 can reach this point. The actual PKCE
+			// verification uses GetPKCERequestSession which stores the method independently.
 			"code_challenge_method": {"S256"},
 		},
 		RequestedAt: authCode.CreatedAt,
@@ -236,6 +239,11 @@ func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.
 	if err != nil {
 		var clientErr *ports.ClientIDError
 		if errors.As(err, &clientErr) {
+			if clientErr.Code == "server_error" {
+				s.logger.ErrorContext(ctx, "infrastructure error during client resolution",
+					"client_id", clientID, "error", clientErr.Desc)
+				return nil, err
+			}
 			return nil, fosite.ErrNotFound
 		}
 		return nil, err
