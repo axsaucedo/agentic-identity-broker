@@ -56,6 +56,7 @@ func TestCSRFProtection_PostWithoutToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/test", nil)
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
 	req.RemoteAddr = "127.0.0.1:12345"
 
 	rr := httptest.NewRecorder()
