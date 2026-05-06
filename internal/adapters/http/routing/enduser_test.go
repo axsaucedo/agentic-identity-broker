@@ -19,8 +19,47 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSetupEnduserRoutes_GetConsentMintsCSRFCookieForSubsequentGrantPost(t *testing.T) {
+func TestSetupEnduserRoutes_ConsentCSRFTokenAllowsSamePrincipalAcrossRemoteAddrChanges(t *testing.T) {
 	t.Parallel()
+
+	router, testAgentID := newEnduserConsentRouter(t)
+	const principal = "user@example.com"
+	csrfCookie := mintCSRFCookie(t, router, testAgentID, principal, "127.0.0.1:12345")
+
+	postReq := newGrantRequest(t, testAgentID)
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("X-Remote-User", principal)
+	postReq.Header.Set(httpmiddleware.CSRFTokenHeader, csrfCookie.Value)
+	postReq.AddCookie(csrfCookie)
+	postReq.RemoteAddr = "127.0.0.1:54321"
+
+	postResp := httptest.NewRecorder()
+	router.ServeHTTP(postResp, postReq)
+
+	require.Equal(t, http.StatusCreated, postResp.Code)
+}
+
+func TestSetupEnduserRoutes_ConsentCSRFTokenRejectsDifferentPrincipalEvenWithSameRemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	router, testAgentID := newEnduserConsentRouter(t)
+	csrfCookie := mintCSRFCookie(t, router, testAgentID, "user@example.com", "127.0.0.1:12345")
+
+	postReq := newGrantRequest(t, testAgentID)
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("X-Remote-User", "other@example.com")
+	postReq.Header.Set(httpmiddleware.CSRFTokenHeader, csrfCookie.Value)
+	postReq.AddCookie(csrfCookie)
+	postReq.RemoteAddr = "127.0.0.1:12345"
+
+	postResp := httptest.NewRecorder()
+	router.ServeHTTP(postResp, postReq)
+
+	require.Equal(t, http.StatusForbidden, postResp.Code)
+}
+
+func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
+	t.Helper()
 
 	logger := slog.Default()
 	cfg := fixtures.DefaultOAuth2Config()
@@ -60,10 +99,13 @@ func TestSetupEnduserRoutes_GetConsentMintsCSRFCookieForSubsequentGrantPost(t *t
 		logger,
 	)
 
-	const principal = "user@example.com"
-	const remoteAddr = "127.0.0.1:12345"
+	return router, testAgent.ID.String()
+}
 
-	getReq := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+testAgent.ID.String()+"/grants", nil)
+func mintCSRFCookie(t *testing.T, router http.Handler, agentID, principal, remoteAddr string) *http.Cookie {
+	t.Helper()
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/consent/agent/"+agentID+"/grants", nil)
 	getReq.Header.Set("X-Remote-User", principal)
 	getReq.RemoteAddr = remoteAddr
 
@@ -72,34 +114,28 @@ func TestSetupEnduserRoutes_GetConsentMintsCSRFCookieForSubsequentGrantPost(t *t
 
 	require.Equal(t, http.StatusOK, getResp.Code)
 
-	var csrfCookie *http.Cookie
 	for _, cookie := range getResp.Result().Cookies() {
 		if cookie.Name == httpmiddleware.CSRFCookieName {
-			csrfCookie = cookie
-			break
+			require.NotEmpty(t, cookie.Value)
+			return cookie
 		}
 	}
-	require.NotNil(t, csrfCookie)
-	require.NotEmpty(t, csrfCookie.Value)
+
+	t.Fatal("expected CSRF cookie to be minted")
+	return nil
+}
+
+func newGrantRequest(t *testing.T, agentID string) *http.Request {
+	t.Helper()
 
 	postBody, err := json.Marshal(map[string]any{
 		"delegated_oauth2_tokens": []any{},
 	})
 	require.NoError(t, err)
 
-	postReq := httptest.NewRequest(
+	return httptest.NewRequest(
 		http.MethodPost,
-		"/api/consent/agent/"+testAgent.ID.String()+"/grants",
+		"/api/consent/agent/"+agentID+"/grants",
 		bytes.NewReader(postBody),
 	)
-	postReq.Header.Set("Content-Type", "application/json")
-	postReq.Header.Set("X-Remote-User", principal)
-	postReq.Header.Set(httpmiddleware.CSRFTokenHeader, csrfCookie.Value)
-	postReq.AddCookie(csrfCookie)
-	postReq.RemoteAddr = remoteAddr
-
-	postResp := httptest.NewRecorder()
-	router.ServeHTTP(postResp, postReq)
-
-	require.Equal(t, http.StatusCreated, postResp.Code)
 }

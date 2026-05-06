@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 )
 
 const (
@@ -186,11 +188,9 @@ func CSRFProtection(store *CSRFStore) func(next http.Handler) http.Handler {
 // getSessionID extracts session ID from request
 // For now, use principal as session ID (in production, use real session management)
 func getSessionID(r *http.Request) string {
-	// Try to get principal from context (set by auth middleware)
-	if principal, ok := r.Context().Value("principal").(string); ok && principal != "" {
-		return principal
+	if principalValue, ok := principal.FromContext(r.Context()); ok && principalValue != "" {
+		return principalValue
 	}
 
-	// Fallback to remote address (not ideal, but works for testing)
 	return r.RemoteAddr
 }
