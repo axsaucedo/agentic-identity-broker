@@ -196,20 +196,21 @@ func TestCIMDCache(t *testing.T) {
 		assert.NotNil(t, c)
 	})
 
-	t.Run("Set does not cache beyond maxEntries", func(t *testing.T) {
+	t.Run("Set evicts oldest entry when maxEntries reached", func(t *testing.T) {
 		c := mustNewCIMDCache(t, minTTL, maxTTL)
 		c.maxEntries = 2
 
 		h := CacheHeaders{CacheControl: "max-age=300"}
 
-		c.Set("https://a.example.com/client", doc, h, time.Now())
-		c.Set("https://b.example.com/client", doc, h, time.Now())
-		c.Set("https://c.example.com/client", doc, h, time.Now()) // must be dropped
+		c.Set("https://a.example.com/client", doc, h, time.Now().Add(-2*time.Second))
+		c.Set("https://b.example.com/client", doc, h, time.Now().Add(-1*time.Second))
+		c.Set("https://c.example.com/client", doc, h, time.Now()) // evicts oldest (a)
 
 		c.mu.RLock()
 		count := len(c.entries)
 		c.mu.RUnlock()
 		assert.Equal(t, 2, count, "cache must not exceed maxEntries")
-		assert.Nil(t, c.Get("https://c.example.com/client"), "over-cap URL must not be cached")
+		assert.Nil(t, c.Get("https://a.example.com/client"), "oldest entry must be evicted")
+		assert.NotNil(t, c.Get("https://c.example.com/client"), "new entry must be cached")
 	})
 }

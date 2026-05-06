@@ -114,7 +114,8 @@ func deepCopyEntry(entry *CIMDCacheEntry) *CIMDCacheEntry {
 }
 
 // Set stores a document in the cache for the given URL, deriving TTL from headers
-// clamped to [minTTL, maxTTL]. Does nothing if the entry cap is reached.
+// clamped to [minTTL, maxTTL]. If the cache is full, the least-recently-fetched
+// entry is evicted to make room.
 func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers CacheHeaders, fetchedAt time.Time) {
 	ttl := c.deriveTTL(headers)
 	entry := &CIMDCacheEntry{
@@ -127,17 +128,15 @@ func (c *CIMDCache) Set(url string, doc *ClientIDMetadataDocument, headers Cache
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, exists := c.entries[url]; !exists && len(c.entries) >= c.maxEntries {
-		// Evict one expired entry to prevent stale entries from permanently blocking inserts.
-		now := time.Now()
+		var oldestKey string
+		var oldestTime time.Time
 		for k, e := range c.entries {
-			if now.After(e.ExpiresAt) {
-				delete(c.entries, k)
-				break
+			if oldestKey == "" || e.FetchedAt.Before(oldestTime) {
+				oldestKey = k
+				oldestTime = e.FetchedAt
 			}
 		}
-		if len(c.entries) >= c.maxEntries {
-			return
-		}
+		delete(c.entries, oldestKey)
 	}
 	c.entries[url] = entry
 }
