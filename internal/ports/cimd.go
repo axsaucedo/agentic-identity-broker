@@ -39,7 +39,6 @@ type CIMDMetadataDTO struct {
 	AuthMethod    string
 	GrantTypes    []string
 	ResponseTypes []string
-	JwksURI       string
 	PolicyURI     string
 	TosURI        string
 }

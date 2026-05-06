@@ -407,7 +407,6 @@ func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationReq
 			LogoURI:      cimdMeta.LogoURI,
 			RedirectURIs: cimdMeta.RedirectURIs,
 			AuthMethod:   cimdMeta.AuthMethod,
-			JwksURI:      cimdMeta.JwksURI,
 		}
 		claims := NewAuthorizationSessionClaims(
 			agent.ID,

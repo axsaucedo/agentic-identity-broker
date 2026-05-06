@@ -86,11 +86,11 @@ func (m *mockAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Ag
 
 // --- helpers ---
 
-func cimdFetchResult(t *testing.T, clientID string, authMethod, jwksURI string) *ports.CIMDFetchResult {
+func cimdFetchResult(t *testing.T, clientID string, authMethod string) *ports.CIMDFetchResult {
 	t.Helper()
 	doc := fmt.Sprintf(
-		`{"client_id":%q,"client_name":"Test Agent","redirect_uris":["https://agent.example.com/cb"],"token_endpoint_auth_method":%q,"jwks_uri":%q}`,
-		clientID, authMethod, jwksURI,
+		`{"client_id":%q,"client_name":"Test Agent","redirect_uris":["https://agent.example.com/cb"],"token_endpoint_auth_method":%q}`,
+		clientID, authMethod,
 	)
 	return &ports.CIMDFetchResult{
 		Body:         []byte(doc),
@@ -168,7 +168,7 @@ func TestService_Resolve_BareQueryDelimiterLogsWarning(t *testing.T) {
 
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
-	fetcher := &mockFetcher{result: cimdFetchResult(t, "https://agent.example.com/client?", "none", "")}
+	fetcher := &mockFetcher{result: cimdFetchResult(t, "https://agent.example.com/client?", "none")}
 
 	svc := NewService(
 		fetcher,

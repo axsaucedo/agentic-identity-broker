@@ -19,7 +19,6 @@ type ClientIDMetadataDocument struct {
 	AuthMethod    string   `json:"token_endpoint_auth_method,omitempty"`
 	GrantTypes    []string `json:"grant_types,omitempty"`
 	ResponseTypes []string `json:"response_types,omitempty"`
-	JwksURI       string   `json:"jwks_uri,omitempty"`
 	PolicyURI     string   `json:"policy_uri,omitempty"`
 	TosURI        string   `json:"tos_uri,omitempty"`
 }

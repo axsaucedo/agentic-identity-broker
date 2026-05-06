@@ -9,5 +9,4 @@ type MetadataSnapshot struct {
 	LogoURI      string   `json:"logo_uri,omitempty"`
 	RedirectURIs []string `json:"redirect_uris"`
 	AuthMethod   string   `json:"auth_method,omitempty"`
-	JwksURI      string   `json:"jwks_uri,omitempty"`
 }

@@ -71,7 +71,6 @@ func toDTO(doc *ClientIDMetadataDocument) *ports.CIMDMetadataDTO {
 		AuthMethod:    doc.AuthMethod,
 		GrantTypes:    append([]string(nil), doc.GrantTypes...),
 		ResponseTypes: append([]string(nil), doc.ResponseTypes...),
-		JwksURI:       doc.JwksURI,
 		PolicyURI:     doc.PolicyURI,
 		TosURI:        doc.TosURI,
 	}
