@@ -109,9 +109,6 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 					// Agents list endpoint
 					consentRouter.Get("/agents", h.Agents.GetAgentDelegations)
 
-					// Consent session decode endpoint
-					consentRouter.Get("/session", h.AgentDetail.GetConsentSession)
-
 					// Agent-specific routes
 					consentRouter.Route("/agent/{agent-id}", func(r chi.Router) {
 						r.Get("/", h.AgentDetail.GetAgentDetail)

@@ -8,13 +8,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/go-chi/chi/v5"
 )
@@ -146,7 +144,7 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 	services := toServiceRequirementForUser(serviceRequirements)
 	sortServiceRequirements(services)
 
-	cimdMeta, err := h.resolveCIMDMetadata(r, parsedAgentID, agent.ClientID)
+	cimdMeta, err := h.resolveSessionContext(r, parsedAgentID, agent.ClientID)
 	if err != nil {
 		if errors.Is(err, errSessionExpired) {
 			h.logger.Warn("authorization session expired", "agent_id", agentID)
@@ -228,11 +226,12 @@ func sortServiceRequirements(services []ServiceRequirementForUser) {
 	}
 }
 
-// resolveCIMDMetadata resolves CIMD metadata for the consent page.
-// When session_token is present (FR-028), decrypts the JWE token to extract CIMD metadata.
+// resolveSessionContext decodes the session_token (when present) and returns CIMD display
+// metadata extracted from the claims. The session_token itself is passed opaquely to the
+// grants endpoint; authorization-resumption state (original_url, PKCE, state) stays server-side.
 // CIMD agents require session_token — falling back to query params would reopen the
 // metadata-spoofing surface. Non-CIMD/opaque flows do not use session tokens.
-func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.AgentID, clientID id.ClientID) (*CIMDMetadataResponse, error) {
+func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.AgentID, clientID id.ClientID) (*CIMDMetadataResponse, error) {
 	sessionToken := r.URL.Query().Get("session_token")
 	if sessionToken == "" {
 		// Reject only when the request carries authorization params (client_id in URL),
@@ -277,60 +276,4 @@ func (h *AgentDetailHandler) resolveCIMDMetadata(r *http.Request, agentID id.Age
 		RequestedScopes: requestedScopes,
 		LogoURI:         claims.CIMDMetadata.LogoURI,
 	}, nil
-}
-
-// ConsentSessionResponse is the response body for GET /api/consent/session.
-type ConsentSessionResponse struct {
-	AgentID             string                 `json:"agent_id"`
-	Principal           string                 `json:"principal"`
-	ClientID            string                 `json:"client_id"`
-	OriginalURL         string                 `json:"original_url"`
-	RedirectURI         string                 `json:"redirect_uri"`
-	Scope               string                 `json:"scope"`
-	State               string                 `json:"state"`
-	CodeChallenge       string                 `json:"code_challenge"`
-	CodeChallengeMethod string                 `json:"code_challenge_method"`
-	CIMDMetadata        *cimd.MetadataSnapshot `json:"cimd_metadata,omitempty"`
-	ExpiresAt           time.Time              `json:"expires_at"`
-}
-
-// GetConsentSession handles GET /api/consent/session?token=<jwe>
-// Decrypts the JWE session token and returns the authorization context for the consent page.
-func (h *AgentDetailHandler) GetConsentSession(w http.ResponseWriter, r *http.Request) {
-	userID, ok := getPrincipalFromContext(r.Context())
-	if !ok {
-		h.writeError(w, http.StatusUnauthorized, "unauthorized", "principal required")
-		return
-	}
-
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		h.writeError(w, http.StatusBadRequest, "bad request", "token parameter is required")
-		return
-	}
-
-	var claims domotp2.AuthorizationSessionClaims
-	if err := h.jweTokenService.DecryptAndValidate(token, &claims); err != nil {
-		h.logger.Warn("consent session token invalid", "error", err)
-		h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
-		return
-	}
-	if string(claims.Principal) != userID {
-		h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, ConsentSessionResponse{
-		AgentID:             claims.AgentID.String(),
-		Principal:           string(claims.Principal),
-		ClientID:            claims.ClientID,
-		OriginalURL:         claims.OriginalURL,
-		RedirectURI:         claims.RedirectURI,
-		Scope:               claims.Scope,
-		State:               claims.State,
-		CodeChallenge:       claims.CodeChallenge,
-		CodeChallengeMethod: claims.CodeChallengeMethod,
-		CIMDMetadata:        claims.CIMDMetadata,
-		ExpiresAt:           claims.ExpiresAt,
-	})
 }
