@@ -124,8 +124,8 @@ export class ConsentApiService {
       (s) => {
         const obj = s as Record<string, unknown>;
         return 'requirementType' in obj && obj.requirementType
-          ? ({ kind: 'requirement', ...obj } as ServiceRequirement)
-          : ({ kind: 'scoped', ...obj } as ServiceWithScopes);
+          ? ({ ...obj, kind: 'requirement' } as ServiceRequirement)
+          : ({ ...obj, kind: 'scoped' } as ServiceWithScopes);
       },
     );
     const data = { ...raw, services };
