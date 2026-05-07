@@ -14,19 +14,15 @@ const authorizationSessionTokenTTL = 10 * time.Minute
 // AuthorizationSessionClaims carries the full authorization context in a JWE token.
 // It replaces the DB-backed AuthorizationSession: the same tamper-proof, expiring,
 // principal-bound properties are achieved by sealing the claims in a JWE.
+// OriginalURL is the raw authorize request URL; scope and redirect_uri are parsed from
+// it at the consumption site rather than duplicated as flat fields.
 type AuthorizationSessionClaims struct {
-	AgentID             id.AgentID                     `json:"agent_id"`
-	Principal           id.Principal                   `json:"principal"`
-	ClientID            string                         `json:"client_id"`
-	OriginalURL         string                         `json:"original_url"`
-	RedirectURI         string                         `json:"redirect_uri"`
-	Scope               string                         `json:"scope"`
-	State               string                         `json:"state"`
-	CodeChallenge       string                         `json:"code_challenge"`
-	CodeChallengeMethod string                         `json:"code_challenge_method"`
-	CIMDMetadata        *cimd.ClientIDMetadataDocument `json:"cimd_metadata,omitempty"`
-	IssuedAt            time.Time                      `json:"iat"`
-	ExpiresAt           time.Time                      `json:"exp"`
+	AgentID      id.AgentID                     `json:"agent_id"`
+	Principal    id.Principal                   `json:"principal"`
+	OriginalURL  string                         `json:"original_url"`
+	CIMDMetadata *cimd.ClientIDMetadataDocument `json:"cimd_metadata,omitempty"`
+	IssuedAt     time.Time                      `json:"iat"`
+	ExpiresAt    time.Time                      `json:"exp"`
 }
 
 // IsExpired reports whether the session token TTL has elapsed.
@@ -38,23 +34,17 @@ func (c *AuthorizationSessionClaims) IsExpired() bool {
 func NewAuthorizationSessionClaims(
 	agentID id.AgentID,
 	principal id.Principal,
-	clientID, originalURL, redirectURI, scope, state, codeChallenge, codeChallengeMethod string,
+	originalURL string,
 	cimdMetadata *cimd.ClientIDMetadataDocument,
 ) *AuthorizationSessionClaims {
 	now := time.Now()
 	return &AuthorizationSessionClaims{
-		AgentID:             agentID,
-		Principal:           principal,
-		ClientID:            clientID,
-		OriginalURL:         originalURL,
-		RedirectURI:         redirectURI,
-		Scope:               scope,
-		State:               state,
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: codeChallengeMethod,
-		CIMDMetadata:        cimdMetadata,
-		IssuedAt:            now,
-		ExpiresAt:           now.Add(authorizationSessionTokenTTL),
+		AgentID:      agentID,
+		Principal:    principal,
+		OriginalURL:  originalURL,
+		CIMDMetadata: cimdMetadata,
+		IssuedAt:     now,
+		ExpiresAt:    now.Add(authorizationSessionTokenTTL),
 	}
 }
 
@@ -64,16 +54,4 @@ func (s *Service) CreateAuthorizationSessionToken(claims *AuthorizationSessionCl
 		return "", fmt.Errorf("jweTokenService not configured")
 	}
 	return s.jweTokenService.Encrypt(claims)
-}
-
-// ValidateAuthorizationSessionToken decrypts and validates an AuthorizationSessionClaims token.
-func (s *Service) ValidateAuthorizationSessionToken(token string) (*AuthorizationSessionClaims, error) {
-	if s.jweTokenService == nil {
-		return nil, fmt.Errorf("jweTokenService not configured")
-	}
-	var claims AuthorizationSessionClaims
-	if err := s.jweTokenService.DecryptAndValidate(token, &claims); err != nil {
-		return nil, err
-	}
-	return &claims, nil
 }

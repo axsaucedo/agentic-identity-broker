@@ -410,13 +410,7 @@ func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationReq
 		claims := NewAuthorizationSessionClaims(
 			agent.ID,
 			principal,
-			req.ClientID.String(),
 			req.OriginalURL,
-			req.RedirectURI,
-			req.Scope,
-			req.State,
-			req.CodeChallenge,
-			req.CodeChallengeMethod,
 			meta,
 		)
 		token, err := s.CreateAuthorizationSessionToken(claims)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -33,16 +34,14 @@ func cimdOAuth2Service(appInstance *app.App) *domotp2.Service {
 
 // createCIMDSessionToken builds a JWE authorization session token for use in CIMD tests.
 func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, redirectURI string, meta *domcimd.ClientIDMetadataDocument) string {
+	q := url.Values{}
+	q.Set("client_id", "https://agent.example.com/client")
+	q.Set("redirect_uri", redirectURI)
+	q.Set("scope", "repo")
 	claims := domotp2.NewAuthorizationSessionClaims(
 		agentID,
 		id.Principal(principal),
-		"https://agent.example.com/client",
-		"/oauth2/authorize?client_id=https://agent.example.com/client",
-		redirectURI,
-		"repo",
-		"xyz",
-		"challenge123",
-		"S256",
+		"/oauth2/authorize?"+q.Encode(),
 		meta,
 	)
 	token, err := svc.CreateAuthorizationSessionToken(claims)
@@ -54,18 +53,12 @@ func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal 
 func createExpiredCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, meta *domcimd.ClientIDMetadataDocument) string {
 	past := time.Now().Add(-1 * time.Hour)
 	claims := &domotp2.AuthorizationSessionClaims{
-		AgentID:             agentID,
-		Principal:           id.Principal(principal),
-		ClientID:            "https://agent.example.com/client",
-		OriginalURL:         "/oauth2/authorize?...",
-		RedirectURI:         "https://agent.example.com/callback",
-		Scope:               "repo",
-		State:               "xyz",
-		CodeChallenge:       "challenge123",
-		CodeChallengeMethod: "S256",
-		CIMDMetadata:        meta,
-		IssuedAt:            past,
-		ExpiresAt:           past,
+		AgentID:      agentID,
+		Principal:    id.Principal(principal),
+		OriginalURL:  "/oauth2/authorize?client_id=https://agent.example.com/client",
+		CIMDMetadata: meta,
+		IssuedAt:     past,
+		ExpiresAt:    past,
 	}
 	token, err := svc.CreateAuthorizationSessionToken(claims)
 	Expect(err).ToNot(HaveOccurred())
@@ -214,16 +207,14 @@ var _ = Describe("CIMD Consent Screen", func() {
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
 
 			svc := cimdOAuth2Service(appInstance)
+			origQ := url.Values{}
+			origQ.Set("client_id", "https://agent.example.com/client")
+			origQ.Set("redirect_uri", "https://agent.example.com/callback")
+			origQ.Set("scope", "repo read:user")
 			claims := domotp2.NewAuthorizationSessionClaims(
 				agent.ID,
 				id.Principal(fixtures.DefaultPrincipal().String()),
-				"https://agent.example.com/client",
-				"/oauth2/authorize?...",
-				"https://agent.example.com/callback",
-				"repo read:user",
-				"xyz",
-				"challenge123",
-				"S256",
+				"/oauth2/authorize?"+origQ.Encode(),
 				&domcimd.ClientIDMetadataDocument{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",

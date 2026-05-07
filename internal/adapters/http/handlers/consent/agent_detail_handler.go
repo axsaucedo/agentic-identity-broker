@@ -258,14 +258,20 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 		return nil, errors.New("invalid client_id in authorization session")
 	}
 
-	requestedScopes := strings.Fields(claims.Scope)
-	if requestedScopes == nil {
+	orig, err := url.Parse(claims.OriginalURL)
+	if err != nil {
+		return nil, errors.New("invalid original_url in authorization session")
+	}
+	q := orig.Query()
+
+	requestedScopes := strings.Fields(q.Get("scope"))
+	if len(requestedScopes) == 0 {
 		requestedScopes = []string{}
 	}
 
 	return &CIMDMetadataResponse{
 		ClientIDURL:     claims.CIMDMetadata.ClientID,
-		RedirectURI:     claims.RedirectURI,
+		RedirectURI:     q.Get("redirect_uri"),
 		VerifiedDomain:  u.Hostname(),
 		RequestedScopes: requestedScopes,
 		LogoURI:         claims.CIMDMetadata.LogoURI,

@@ -71,19 +71,13 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 	})
 
 	// buildToken creates a valid JWE session token for the given agent and principal.
-	buildToken := func(agentID id.AgentID, principal, redirectURI, originalURL, scope string) string {
+	buildToken := func(agentID id.AgentID, principal, redirectURI, originalURL string) string {
 		svc, ok := appInstance.OAuth2Service.(*domotp2.Service)
 		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
 		claims := domotp2.NewAuthorizationSessionClaims(
 			agentID,
 			id.Principal(principal),
-			"https://agent.example.com/client",
 			originalURL,
-			redirectURI,
-			scope,
-			"xyz",
-			"challenge123",
-			"S256",
 			&domcimd.ClientIDMetadataDocument{
 				ClientID:     "https://agent.example.com/client",
 				ClientName:   "Test CIMD Agent",
@@ -101,18 +95,10 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
 		past := time.Now().Add(-1 * time.Hour)
 		claims := &domotp2.AuthorizationSessionClaims{
-			AgentID:             agentID,
-			Principal:           id.Principal(principal),
-			ClientID:            "https://agent.example.com/client",
-			OriginalURL:         "/oauth2/authorize?client_id=https://agent.example.com/client",
-			RedirectURI:         "https://agent.example.com/callback",
-			Scope:               "repo",
-			State:               "xyz",
-			CodeChallenge:       "challenge123",
-			CodeChallengeMethod: "S256",
-			CIMDMetadata:        nil,
-			IssuedAt:            past,
-			ExpiresAt:           past,
+			AgentID:   agentID,
+			Principal: id.Principal(principal),
+			IssuedAt:  past,
+			ExpiresAt: past,
 		}
 		token, err := svc.CreateAuthorizationSessionToken(claims)
 		Expect(err).ToNot(HaveOccurred())
@@ -146,7 +132,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		It("creates the grant and returns redirect_url from the JWE claims OriginalURL", func() {
 			agent := createAgent()
 			originalURL := "/oauth2/authorize?client_id=https://agent.example.com/client&redirect_uri=https://agent.example.com/callback&scope=repo&response_type=code&state=xyz"
-			token := buildToken(agent.ID, principalStr, "https://agent.example.com/callback", originalURL, "repo")
+			token := buildToken(agent.ID, principalStr, "https://agent.example.com/callback", originalURL)
 
 			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s", agent.ID, token)
 			resp, err := server.AuthenticatedPOST(path, principalStr, "application/json", emptyGrantBody())
@@ -200,8 +186,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 			// Token issued for a different principal
 			token := buildToken(agent.ID, "other-user@example.com",
 				"https://agent.example.com/callback",
-				"/oauth2/authorize?...",
-				"repo",
+				"/oauth2/authorize?client_id=https://agent.example.com/client",
 			)
 
 			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s", agent.ID, token)
@@ -222,8 +207,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 			differentAgentID := id.NewAgentID()
 			token := buildToken(differentAgentID, principalStr,
 				"https://agent.example.com/callback",
-				"/oauth2/authorize?...",
-				"repo",
+				"/oauth2/authorize?client_id=https://agent.example.com/client",
 			)
 
 			path := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s", agent.ID, token)

@@ -41,13 +41,7 @@ func newTestJWETokenService() *domjwe.TokenService {
 
 // newTestSessionToken creates a valid JWE session token for the given agent and principal.
 func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string, originalURL string) string {
-	claims := domotp2.NewAuthorizationSessionClaims(
-		agentID, id.Principal(principalVal),
-		"https://agent.example.com/client",
-		originalURL,
-		"https://agent.example.com/callback",
-		"read", "state-xyz", "challenge", "S256", nil,
-	)
+	claims := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
 	token, err := ts.Encrypt(claims)
 	if err != nil {
 		panic("newTestSessionToken: failed to encrypt claims: " + err.Error())
@@ -61,7 +55,6 @@ func newExpiredTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, pri
 	claims := &domotp2.AuthorizationSessionClaims{
 		AgentID:   agentID,
 		Principal: id.Principal(principalVal),
-		ClientID:  "https://agent.example.com/client",
 		IssuedAt:  past,
 		ExpiresAt: past,
 	}
