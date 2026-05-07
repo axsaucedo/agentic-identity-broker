@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 )
 
 // authorizationSessionTokenTTL is the lifetime of an AuthorizationSessionClaims JWE token.
