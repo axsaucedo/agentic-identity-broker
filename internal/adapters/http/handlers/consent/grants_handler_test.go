@@ -41,7 +41,10 @@ func newTestJWETokenService() *domjwe.TokenService {
 
 // newTestSessionToken creates a valid JWE session token for the given agent and principal.
 func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string, originalURL string) string {
-	claims := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
+	claims, err := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
+	if err != nil {
+		panic("newTestSessionToken: invalid claims: " + err.Error())
+	}
 	token, err := ts.Encrypt(claims)
 	if err != nil {
 		panic("newTestSessionToken: failed to encrypt claims: " + err.Error())

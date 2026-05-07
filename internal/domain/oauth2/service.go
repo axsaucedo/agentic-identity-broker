@@ -407,12 +407,15 @@ func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationReq
 			LogoURI:      cimdMeta.LogoURI,
 			RedirectURIs: cimdMeta.RedirectURIs,
 		}
-		claims := NewAuthorizationSessionClaims(
+		claims, err := NewAuthorizationSessionClaims(
 			agent.ID,
 			principal,
 			req.OriginalURL,
 			meta,
 		)
+		if err != nil {
+			return "", fmt.Errorf("failed to create authorization session claims: %w", err)
+		}
 		token, err := s.CreateAuthorizationSessionToken(claims)
 		if err != nil {
 			return "", fmt.Errorf("failed to create authorization session token: %w", err)

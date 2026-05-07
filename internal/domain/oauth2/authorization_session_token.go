@@ -1,6 +1,7 @@
 package oauth2
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -36,7 +37,16 @@ func NewAuthorizationSessionClaims(
 	principal id.Principal,
 	originalURL string,
 	cimdMetadata *cimd.ClientIDMetadataDocument,
-) *AuthorizationSessionClaims {
+) (*AuthorizationSessionClaims, error) {
+	if agentID.IsZero() {
+		return nil, errors.New("agentID must not be zero")
+	}
+	if principal.IsZero() {
+		return nil, errors.New("principal must not be zero")
+	}
+	if originalURL == "" {
+		return nil, errors.New("originalURL must not be empty")
+	}
 	now := time.Now()
 	return &AuthorizationSessionClaims{
 		AgentID:      agentID,
@@ -45,7 +55,7 @@ func NewAuthorizationSessionClaims(
 		CIMDMetadata: cimdMetadata,
 		IssuedAt:     now,
 		ExpiresAt:    now.Add(authorizationSessionTokenTTL),
-	}
+	}, nil
 }
 
 // CreateAuthorizationSessionToken seals claims into a compact JWE string.

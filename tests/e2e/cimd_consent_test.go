@@ -38,12 +38,13 @@ func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal 
 	q.Set("client_id", "https://agent.example.com/client")
 	q.Set("redirect_uri", redirectURI)
 	q.Set("scope", "repo")
-	claims := domotp2.NewAuthorizationSessionClaims(
+	claims, err := domotp2.NewAuthorizationSessionClaims(
 		agentID,
 		id.Principal(principal),
 		"/oauth2/authorize?"+q.Encode(),
 		meta,
 	)
+	Expect(err).ToNot(HaveOccurred())
 	token, err := svc.CreateAuthorizationSessionToken(claims)
 	Expect(err).ToNot(HaveOccurred())
 	return token
@@ -211,7 +212,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			origQ.Set("client_id", "https://agent.example.com/client")
 			origQ.Set("redirect_uri", "https://agent.example.com/callback")
 			origQ.Set("scope", "repo read:user")
-			claims := domotp2.NewAuthorizationSessionClaims(
+			claims, err := domotp2.NewAuthorizationSessionClaims(
 				agent.ID,
 				id.Principal(fixtures.DefaultPrincipal().String()),
 				"/oauth2/authorize?"+origQ.Encode(),
@@ -221,6 +222,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 					RedirectURIs: []string{"https://agent.example.com/callback"},
 				},
 			)
+			Expect(err).ToNot(HaveOccurred())
 			token, err := svc.CreateAuthorizationSessionToken(claims)
 			Expect(err).ToNot(HaveOccurred())
 

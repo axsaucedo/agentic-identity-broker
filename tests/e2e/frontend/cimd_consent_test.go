@@ -26,7 +26,8 @@ func oauth2ServiceFromApp() *domotp2.Service {
 // newCIMDSessionToken builds a JWE authorization session token for use in CIMD consent UI tests.
 func newCIMDSessionToken(agentID id.AgentID, redirectURI string, meta *cimd.ClientIDMetadataDocument) string {
 	originalURL := "https://cimd-example.com/authorize?client_id=https://cimd-example.com/client_metadata.json&redirect_uri=" + redirectURI + "&scope=read"
-	claims := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal("user@example.com"), originalURL, meta)
+	claims, err := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal("user@example.com"), originalURL, meta)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create authorization session claims")
 	token, err := oauth2ServiceFromApp().CreateAuthorizationSessionToken(claims)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create authorization session token")
 	return token

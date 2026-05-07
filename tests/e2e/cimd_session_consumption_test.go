@@ -74,7 +74,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 	buildToken := func(agentID id.AgentID, principal, redirectURI, originalURL string) string {
 		svc, ok := appInstance.OAuth2Service.(*domotp2.Service)
 		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
-		claims := domotp2.NewAuthorizationSessionClaims(
+		claims, err := domotp2.NewAuthorizationSessionClaims(
 			agentID,
 			id.Principal(principal),
 			originalURL,
@@ -84,6 +84,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 				RedirectURIs: []string{redirectURI},
 			},
 		)
+		Expect(err).NotTo(HaveOccurred())
 		token, err := svc.CreateAuthorizationSessionToken(claims)
 		Expect(err).ToNot(HaveOccurred())
 		return token
