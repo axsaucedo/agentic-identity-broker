@@ -84,7 +84,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 			"xyz",
 			"challenge123",
 			"S256",
-			&domcimd.MetadataSnapshot{
+			&domcimd.ClientIDMetadataDocument{
 				ClientID:     "https://agent.example.com/client",
 				ClientName:   "Test CIMD Agent",
 				RedirectURIs: []string{redirectURI},

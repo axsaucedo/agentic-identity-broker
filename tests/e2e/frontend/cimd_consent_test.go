@@ -24,7 +24,7 @@ func oauth2ServiceFromApp() *domotp2.Service {
 }
 
 // newCIMDSessionToken builds a JWE authorization session token for use in CIMD consent UI tests.
-func newCIMDSessionToken(agentID id.AgentID, redirectURI string, meta *cimd.MetadataSnapshot) string {
+func newCIMDSessionToken(agentID id.AgentID, redirectURI string, meta *cimd.ClientIDMetadataDocument) string {
 	claims := domotp2.NewAuthorizationSessionClaims(
 		agentID,
 		id.Principal("user@example.com"),
@@ -72,7 +72,7 @@ var _ = Describe("CIMD Consent UI", func() {
 		sessionToken = newCIMDSessionToken(
 			cimdAgent.ID,
 			"https://cimd-example.com/callback",
-			&cimd.MetadataSnapshot{
+			&cimd.ClientIDMetadataDocument{
 				ClientID:     "https://cimd-example.com/client_metadata.json",
 				ClientName:   "CIMD Test Client",
 				RedirectURIs: []string{"https://cimd-example.com/callback"},
@@ -132,7 +132,7 @@ var _ = Describe("CIMD Consent UI", func() {
 			localhostSessionToken = newCIMDSessionToken(
 				cimdAgent.ID,
 				"http://localhost:8080/callback",
-				&cimd.MetadataSnapshot{
+				&cimd.ClientIDMetadataDocument{
 					ClientID:     "https://cimd-example.com/client_metadata.json",
 					ClientName:   "CIMD Test Client",
 					RedirectURIs: []string{"http://localhost:8080/callback"},

@@ -401,12 +401,11 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 // a URL with ?session_token=<jwe>. For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
 func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
 	if cimdMeta != nil {
-		meta := &cimd.MetadataSnapshot{
+		meta := &cimd.ClientIDMetadataDocument{
 			ClientID:     cimdMeta.ClientID,
 			ClientName:   cimdMeta.ClientName,
 			LogoURI:      cimdMeta.LogoURI,
 			RedirectURIs: cimdMeta.RedirectURIs,
-			AuthMethod:   cimdMeta.AuthMethod,
 		}
 		claims := NewAuthorizationSessionClaims(
 			agent.ID,

@@ -15,18 +15,18 @@ const authorizationSessionTokenTTL = 10 * time.Minute
 // It replaces the DB-backed AuthorizationSession: the same tamper-proof, expiring,
 // principal-bound properties are achieved by sealing the claims in a JWE.
 type AuthorizationSessionClaims struct {
-	AgentID             id.AgentID             `json:"agent_id"`
-	Principal           id.Principal           `json:"principal"`
-	ClientID            string                 `json:"client_id"`
-	OriginalURL         string                 `json:"original_url"`
-	RedirectURI         string                 `json:"redirect_uri"`
-	Scope               string                 `json:"scope"`
-	State               string                 `json:"state"`
-	CodeChallenge       string                 `json:"code_challenge"`
-	CodeChallengeMethod string                 `json:"code_challenge_method"`
-	CIMDMetadata        *cimd.MetadataSnapshot `json:"cimd_metadata,omitempty"`
-	IssuedAt            time.Time              `json:"iat"`
-	ExpiresAt           time.Time              `json:"exp"`
+	AgentID             id.AgentID                     `json:"agent_id"`
+	Principal           id.Principal                   `json:"principal"`
+	ClientID            string                         `json:"client_id"`
+	OriginalURL         string                         `json:"original_url"`
+	RedirectURI         string                         `json:"redirect_uri"`
+	Scope               string                         `json:"scope"`
+	State               string                         `json:"state"`
+	CodeChallenge       string                         `json:"code_challenge"`
+	CodeChallengeMethod string                         `json:"code_challenge_method"`
+	CIMDMetadata        *cimd.ClientIDMetadataDocument `json:"cimd_metadata,omitempty"`
+	IssuedAt            time.Time                      `json:"iat"`
+	ExpiresAt           time.Time                      `json:"exp"`
 }
 
 // IsExpired reports whether the session token TTL has elapsed.
@@ -39,7 +39,7 @@ func NewAuthorizationSessionClaims(
 	agentID id.AgentID,
 	principal id.Principal,
 	clientID, originalURL, redirectURI, scope, state, codeChallenge, codeChallengeMethod string,
-	cimdMetadata *cimd.MetadataSnapshot,
+	cimdMetadata *cimd.ClientIDMetadataDocument,
 ) *AuthorizationSessionClaims {
 	now := time.Now()
 	return &AuthorizationSessionClaims{
