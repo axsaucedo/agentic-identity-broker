@@ -635,8 +635,6 @@ OAuth2 /authorize request
   ↓  │         ↓ Cache hit? → return cached document
   ↓  │         ↓ CIMDFetcher.Fetch (SSRF blocklist enforced at dial time)
   ↓  │         ↓ Validate: client_id match, redirect_uris present, auth_method safe
-  ↓  │         ↓ SecurityFieldChanged audit event if snapshot differs
-  ↓  │         ↓ Agent.Update (persist new snapshot fields)
   ↓  │         ↓ Cache store with HTTP-header-derived TTL (clamped to operator bounds)
   ↓  │    ↓ Return ClientResolution{Agent, CIMDDocument}
   ↓  └─ UUID detected → OpaqueClientResolver (unchanged path)
@@ -1006,7 +1004,7 @@ Define any project-specific terms or acronyms.)
 
 ### Domain Model and Consent Management
 
-**Agent**: An AI agent registered in the identity broker system. Each agent has a unique client_id, display name, description, and optional URLs for governance documentation and user interface. Agents request delegated OAuth2 permissions from users through the consent flow. Optionally, agents may specify service requirements (mandatory and optional third-party services with required scopes).
+**Agent**: An AI agent registered in the identity broker system. Each agent has a unique client_id (the `ClientID` field — a short opaque identifier used in existing OAuth2/consent flows via `GetByClientID`), display name, description, and optional URLs for governance documentation and user interface. Agents may additionally register one or more **client_uris** (Client ID Metadata Document URLs per IETF draft-parecki-oauth-client-id-metadata-document) which provide an alternative resolution path via `GetByClientURI` for CIMD-aware clients. The `client_id` remains the canonical primary identifier; client_uris are supplementary discovery handles that resolve to the same Agent entity. Agents request delegated OAuth2 permissions from users through the consent flow. Optionally, agents may specify service requirements (mandatory and optional third-party services with required scopes).
 
 **ServiceRequirement**: A value object representing a single third-party OAuth2 service that an agent requires or can optionally use. Each requirement specifies: (1) service_id - which third-party service (UUID reference), (2) requirement_type - whether "mandatory" or "optional", and (3) required_scopes - which OAuth2 scopes must be granted (string array). Stored as JSONB in the agent's service_requirements column. Validates structure at domain layer and referential integrity at application layer.
 
@@ -1126,19 +1124,17 @@ Define any project-specific terms or acronyms.)
 
 ### Client ID Metadata Document (CIMD) Domain
 
-**ClientIDMetadataDocument**: Immutable value object representing a parsed and validated CIMD JSON document fetched from a client's registered HTTPS URL. Validated at construction time: `client_id` field must exactly match the fetch URL, `redirect_uris` must not be empty, `token_endpoint_auth_method` must not be a client-secret variant, and `client_name` must not match the keyword blocklist. Located in `internal/domain/oauth2server/cimd/`.
+**ClientIDMetadataDocument**: Immutable value object representing a parsed and validated CIMD JSON document fetched from a client's registered HTTPS URL. Validated at construction time: `client_id` field must exactly match the fetch URL, `redirect_uris` must not be empty, `token_endpoint_auth_method` must not be a client-secret variant, and `client_name` must not match the keyword blocklist. Located in `internal/domain/oauth2/cimd/`.
 
-**CIMDCacheEntry**: In-process (non-persisted) cache record keyed by the Client ID Metadata Document URL. Fields: URL (cache key), parsed Document, FetchedAt timestamp, ExpiresAt (computed from HTTP cache headers clamped to operator TTL bounds), and ETag for future conditional requests. Stored in a `sync.RWMutex`-protected map; expired entries are lazily evicted on next access. Located in `internal/domain/oauth2server/cimd/`.
+**CIMDCacheEntry**: In-process (non-persisted) cache record keyed by the Client ID Metadata Document URL. Fields: URL (cache key), parsed Document, FetchedAt timestamp, ExpiresAt (computed from HTTP cache headers clamped to operator TTL bounds). Stored in a `sync.RWMutex`-protected map; expired entries are lazily evicted on next access. Located in `internal/domain/oauth2/cimd/`.
 
-**ClientIDMetadataDocumentURL**: Value object representing a validated HTTPS URL used as a `client_id`. Validated at parse time — invalid URLs cannot be constructed. Enforces: HTTPS scheme only, non-empty path component, no `.`/`..` path segments, no fragment (`#`), no userinfo (credentials), and port must be 443 or absent. Located in `internal/domain/oauth2server/cimd/`.
+**ClientIDMetadataDocumentURL**: Value object representing a validated HTTPS URL used as a `client_id`. Validated at parse time — invalid URLs cannot be constructed. Enforces: HTTPS scheme only, non-empty path component, no `.`/`..` path segments, no fragment (`#`), no userinfo (credentials), and port must be 443 or absent. Located in `internal/domain/oauth2/cimd/`.
 
-**SSRFBlocklist**: Immutable value object holding the set of CIDR ranges blocked for CIMD HTTP fetches. Initialized at startup from RFC 6890 Special-Purpose Address Registry defaults plus operator `extra_blocked_cidrs`. Consulted by the SSRF-hardened fetcher adapter's custom `net.Dialer.Control` callback to reject resolved IP addresses before TCP connect. Located in `internal/domain/oauth2server/cimd/`.
+**SSRFBlocklist**: Immutable value object holding the set of CIDR ranges blocked for CIMD HTTP fetches. Initialized at startup from RFC 6890 Special-Purpose Address Registry defaults plus operator `extra_blocked_cidrs`. Consulted by the SSRF-hardened fetcher adapter's custom `net.Dialer.Control` callback to reject resolved IP addresses before TCP connect. Located in `internal/domain/oauth2/cimd/`.
 
 **BrandPinMismatchDetected**: Domain audit event emitted as a structured log entry when a CIMD document's `client_name` differs from the registered Agent's `DisplayName`. Non-blocking — authorization proceeds, but the mismatch is recorded. Fields: AgentID, Agent.DisplayName, CIMD client_name.
 
-**CIMDSecurityFieldChanged**: Domain audit event emitted when a CIMD document's `redirect_uris`, `token_endpoint_auth_method`, or `jwks_uri` differ from the snapshot previously stored on the Agent entity. The Agent's snapshot fields are updated atomically after the event is emitted. Fields: AgentID, field name, previous value, new value.
-
-**ClientResolver**: Strategy interface injected into `OAuth2AuthorizationService` that resolves a `client_id` from an authorization request to an Agent and optional CIMD metadata. Two implementations selected by the builder based on `cimd.enabled`: `OpaqueClientResolver` (rejects URL-format client IDs with `invalid_client`) and `CIMDClientResolver` (routes URL-format client IDs through CIMD fetch/validate/cache, delegates non-URL IDs to UUID lookup). The builder wires the correct strategy — the domain service is mode-agnostic. Located in `internal/ports/cimd.go` (interface), `internal/domain/oauth2/client_resolver.go`, and `internal/domain/oauth2server/cimd/client_resolver.go`.
+**ClientResolver**: Strategy interface injected into `OAuth2AuthorizationService` that resolves a `client_id` from an authorization request to an Agent and optional CIMD metadata. Two implementations selected by the builder based on `cimd.enabled`: `OpaqueClientResolver` (rejects URL-format client IDs with `invalid_client`) and `CIMDClientResolver` (routes URL-format client IDs through CIMD fetch/validate/cache, delegates non-URL IDs to UUID lookup). The builder wires the correct strategy — the domain service is mode-agnostic. Located in `internal/ports/cimd.go` (interface), `internal/domain/oauth2/client_resolver.go`, and `internal/domain/oauth2/cimd/client_resolver.go`.
 
 **CIMDFetcher**: Hexagonal port interface (outbound, infrastructure-side) for fetching Client ID Metadata Documents from remote HTTPS endpoints with SSRF protection, configurable timeout, and response size limits. Analogous to `JWKSPort`. Implemented by the SSRF-hardened HTTP fetcher adapter in `internal/adapters/cimd/fetcher.go` which uses a custom `net.Dialer.Control` callback for TOCTOU-safe IP address validation before TCP connect.
 
