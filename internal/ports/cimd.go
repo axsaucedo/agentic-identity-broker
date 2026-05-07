@@ -28,6 +28,15 @@ type ClientResolution struct {
 	CIMDMetadata *CIMDMetadataDTO
 }
 
+// NewClientResolution constructs a ClientResolution. Panics if agent is nil,
+// which would indicate a programming error in a ClientResolver implementation.
+func NewClientResolution(agent *storage.Agent, meta *CIMDMetadataDTO) *ClientResolution {
+	if agent == nil {
+		panic("NewClientResolution: agent must not be nil")
+	}
+	return &ClientResolution{Agent: agent, CIMDMetadata: meta}
+}
+
 // CIMDMetadataDTO carries CIMD document fields relevant to the authorization flow.
 // It is a port-layer DTO — not the domain type — to avoid import cycles between
 // ports/ and domain/oauth2/cimd.

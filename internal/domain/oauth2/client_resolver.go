@@ -40,5 +40,5 @@ func (r *OpaqueClientResolver) ResolveClient(ctx context.Context, clientID id.Cl
 		return nil, &ports.ClientIDError{Code: "server_error", Desc: "Failed to validate client"}
 	}
 
-	return &ports.ClientResolution{Agent: agent}, nil
+	return ports.NewClientResolution(agent, nil), nil
 }

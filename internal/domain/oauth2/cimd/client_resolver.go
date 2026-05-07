@@ -55,7 +55,7 @@ func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*p
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "CIMD document validation failed"}
 	}
 
-	return &ports.ClientResolution{Agent: agent, CIMDMetadata: toDTO(doc)}, nil
+	return ports.NewClientResolution(agent, toDTO(doc)), nil
 }
 
 // toDTO converts a domain ClientIDMetadataDocument to the port DTO.
@@ -91,5 +91,5 @@ func (r *CIMDClientResolver) resolveOpaque(ctx context.Context, clientID id.Clie
 		return nil, &ports.ClientIDError{Code: "server_error", Desc: "Failed to validate client"}
 	}
 
-	return &ports.ClientResolution{Agent: agent}, nil
+	return ports.NewClientResolution(agent, nil), nil
 }
