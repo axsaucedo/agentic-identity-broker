@@ -25,7 +25,6 @@ import (
 type mockConsentService struct {
 	getAgentConsentInfoFunc       func(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error)
 	getActiveGrantsFunc           func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
-	validateGrantRequestFunc      func(ctx context.Context, req *consent.GrantRequest) error
 	grantConsentFunc              func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
 	revokeConsentFunc             func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
 	revokeConsentForPrincipalFunc func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
@@ -47,14 +46,6 @@ func (m *mockConsentService) GetActiveGrants(ctx context.Context, principal id.P
 		return m.getActiveGrantsFunc(ctx, principal, agentID)
 	}
 	return nil, errors.New("not implemented")
-}
-
-//nolint:unused // Used in tests
-func (m *mockConsentService) ValidateGrantRequest(ctx context.Context, req *consent.GrantRequest) error {
-	if m.validateGrantRequestFunc != nil {
-		return m.validateGrantRequestFunc(ctx, req)
-	}
-	return nil
 }
 
 //nolint:unused // Used in tests

@@ -59,10 +59,6 @@ func (m *mockAgentDetailService) GetAgentWithServiceRequirements(ctx context.Con
 	return nil, nil, errors.New("not implemented")
 }
 
-func (m *mockAgentDetailService) ValidateGrantRequest(ctx context.Context, req *consent.GrantRequest) error {
-	return nil
-}
-
 func (m *mockAgentDetailService) GrantConsent(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
 	return nil, errors.New("not implemented")
 }
