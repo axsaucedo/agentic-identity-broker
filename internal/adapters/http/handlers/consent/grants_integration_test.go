@@ -188,34 +188,6 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 		assert.Len(t, response.DelegatedOAuth2Tokens, 2)
 	})
 
-	// Test 3: Retrieve grants
-	t.Run("get_grants", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
-		//nolint:staticcheck // Using string key for test simplicity
-		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", testAgentID.String())
-		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
-
-		rr := httptest.NewRecorder()
-		handler.GetGrants(rr, req)
-
-		// Verify response
-		assert.Equal(t, http.StatusOK, rr.Code)
-
-		var envelope map[string][]GrantResponse
-		err := json.NewDecoder(rr.Body).Decode(&envelope)
-		require.NoError(t, err)
-
-		response, ok := envelope["data"]
-		require.True(t, ok, "expected 'data' field in response")
-
-		assert.Len(t, response, 1) // Only one grant (upserted)
-		assert.Equal(t, "alice@example.com", response[0].Principal)
-		assert.Equal(t, testAgentID.String(), response[0].AgentID)
-		assert.Len(t, response[0].DelegatedOAuth2Tokens, 2)
-	})
-
 	// Test 4: Revoke grant via DELETE /grants
 	t.Run("revoke_grant", func(t *testing.T) {
 		revokeHandler := NewRevokeGrantHandler(consentService, nil)
@@ -232,31 +204,6 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 
 		// Verify response
 		assert.Equal(t, http.StatusNoContent, rr.Code)
-	})
-
-	// Test 5: Verify grant is gone
-	t.Run("verify_revoked", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", nil)
-		//nolint:staticcheck // Using string key for test simplicity
-		ctx := principal.WithPrincipal(req.Context(), "alice@example.com")
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", testAgentID.String())
-		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
-
-		rr := httptest.NewRecorder()
-		handler.GetGrants(rr, req)
-
-		// Verify response
-		assert.Equal(t, http.StatusOK, rr.Code)
-
-		var envelope map[string][]GrantResponse
-		err := json.NewDecoder(rr.Body).Decode(&envelope)
-		require.NoError(t, err)
-
-		response, ok := envelope["data"]
-		require.True(t, ok, "expected 'data' field in response")
-
-		assert.Empty(t, response) // No grants after revocation
 	})
 }
 

@@ -32,17 +32,6 @@ func newTestProviderService(repo ports.ThirdpartyOAuth2ProviderRepository) *thir
 	return thirdparty.NewThirdpartyOAuth2ProviderService(repo, newTestEncryption(), nil, false, slog.Default())
 }
 
-// encryptSecretForTest encrypts a plaintext secret using the test encryption adapter.
-// The serviceID is used as the encryption context binding.
-func encryptSecretForTest(serviceID, secret string) []byte {
-	enc := newTestEncryption()
-	ciphertext, err := enc.Encrypt(context.Background(), []byte(secret), map[string]string{"service_id": serviceID})
-	if err != nil {
-		panic("encryptSecretForTest: " + err.Error())
-	}
-	return ciphertext
-}
-
 // mockAgentDetailService is a configurable mock implementation of ConsentService for testing.
 type mockAgentDetailService struct {
 	getAgentWithServiceRequirementsFunc func(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error)

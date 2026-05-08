@@ -66,69 +66,6 @@ type GrantResponse struct {
 	UpdatedAt             string                  `json:"updated_at"`
 }
 
-// GetGrants handles GET /api/consent/agent/:agent-id/grants
-// Returns all active grants for the authenticated principal and specified agent.
-//
-// Response codes:
-// - 200 OK: Returns grants (may be empty array)
-// - 401 Unauthorized: No principal in context
-// - 404 Not Found: Agent doesn't exist
-// - 500 Internal Server Error: Service error
-func (h *GrantsHandler) GetGrants(w http.ResponseWriter, r *http.Request) {
-	agentID := chi.URLParam(r, "agent-id")
-
-	// Extract principal from context
-	principalValue, ok := principal.FromContext(r.Context())
-	if !ok || principalValue == "" {
-		h.logger.Warn("principal not found in context")
-		h.writeError(w, http.StatusUnauthorized, "unauthorized", "")
-		return
-	}
-
-	parsedAgentID, err := id.ParseAgentID(agentID)
-	if err != nil {
-		h.logger.Warn("invalid agent ID format", "agent_id", agentID)
-		h.writeError(w, http.StatusBadRequest, "bad request", "agent ID must be a valid UUID")
-		return
-	}
-
-	ctx := r.Context()
-	grants, err := h.consentService.GetActiveGrants(ctx, id.Principal(principalValue), parsedAgentID)
-	if err != nil {
-		// Check if it's an agent not found error
-		if errors.Is(err, consent.ErrAgentNotFound) {
-			h.logger.Warn("agent not found",
-				"agent_id", agentID,
-				"principal", principalValue)
-			h.writeError(w, http.StatusNotFound, "agent not found", "")
-			return
-		}
-
-		h.logger.Error("failed to get grants",
-			"agent_id", agentID,
-			"principal", principalValue,
-			"error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
-	}
-
-	// Convert to response format
-	response := make([]GrantResponse, len(grants))
-	for i, grant := range grants {
-		response[i] = h.toGrantResponse(grant)
-	}
-
-	h.logger.Info("grants retrieved",
-		"agent_id", agentID,
-		"principal", principalValue,
-		"count", len(response))
-
-	// Wrap in data envelope to match frontend expectations
-	h.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"data": response,
-	})
-}
-
 // CreateGrant handles POST /api/consent/agent/:agent-id/grants
 // Creates or updates a grant (upsert semantics). Empty delegated_oauth2_tokens
 // is valid and creates a grant with no service delegations (e.g. optional-only agents).
