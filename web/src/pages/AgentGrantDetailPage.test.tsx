@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AgentGrantDetailPage } from './AgentGrantDetailPage';
 import { ToastProvider } from '../components/ui/Toast';
 import * as useAgentGrantsModule from '../hooks/useAgentGrants';
@@ -19,6 +19,7 @@ import type {
   AgentDetail,
   ThirdpartyService,
   UserGrant,
+  CIMDMetadata,
 } from '../types/consent';
 
 // Mock the useAgentGrants hook
@@ -46,6 +47,7 @@ const mockAgent: AgentDetail = {
 
 const mockServices: ThirdpartyService[] = [
   {
+    kind: 'scoped',
     serviceId: 'github',
     displayName: 'GitHub',
     logoUrl: 'https://example.com/github.png',
@@ -55,6 +57,7 @@ const mockServices: ThirdpartyService[] = [
     ],
   },
   {
+    kind: 'scoped',
     serviceId: 'google',
     displayName: 'Google Drive',
     logoUrl: 'https://example.com/google.png',
@@ -66,18 +69,18 @@ const mockServices: ThirdpartyService[] = [
 ];
 
 const mockGrant: UserGrant = {
-  grantId: 'grant-1',
-  agentId: 'agent-123',
+  id: 'grant-1',
+  agent_id: 'agent-123',
   principal: 'user@example.com',
-  delegatedTokens: [
+  delegated_oauth2_tokens: [
     {
-      serviceId: 'github',
+      thirdparty_oauth2_service_id: 'github',
       scopes: ['read:user', 'repo'],
     },
   ],
-  validUntil: null,
-  createdAt: '2024-01-01T00:00:00Z',
-  updatedAt: '2024-01-01T00:00:00Z',
+  valid_until: null,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
 };
 
 // Wrapper component for router and provider context
@@ -88,6 +91,23 @@ const RouterWrapper = ({ children }: { children: React.ReactNode }) => (
         <Route path="*" element={children} />
       </Routes>
     </BrowserRouter>
+  </ToastProvider>
+);
+
+// Wrapper that lets the test control the initial URL (for query-param testing).
+const MemoryRouterWrapper = ({
+  children,
+  initialEntry = '/',
+}: {
+  children: React.ReactNode;
+  initialEntry?: string;
+}) => (
+  <ToastProvider>
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route path="*" element={children} />
+      </Routes>
+    </MemoryRouter>
   </ToastProvider>
 );
 
@@ -111,7 +131,8 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: null,
       services: [],
-      grants: [],
+      cimdMeta: null,
+      grants: null,
       loading: true,
       error: null,
       refetch: vi.fn(),
@@ -136,7 +157,8 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: null,
       services: [],
-      grants: [],
+      cimdMeta: null,
+      grants: null,
       loading: false,
       error: 'Failed to load agent details',
       refetch: mockRefetch,
@@ -159,7 +181,8 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: null,
       services: [],
-      grants: [],
+      cimdMeta: null,
+      grants: null,
       loading: false,
       error: 'Agent not found',
       refetch: mockRefetch,
@@ -178,6 +201,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
+      cimdMeta: null,
       grants: mockGrant,
       loading: false,
       error: null,
@@ -209,6 +233,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
+      cimdMeta: null,
       grants: mockGrant,
       loading: false,
       error: null,
@@ -240,6 +265,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
+      cimdMeta: null,
       grants: mockGrant,
       loading: false,
       error: null,
@@ -265,7 +291,8 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: [],
-      grants: [],
+      cimdMeta: null,
+      grants: null,
       loading: false,
       error: null,
       refetch: vi.fn(),
@@ -287,6 +314,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
+      cimdMeta: null,
       grants: mockGrant,
       loading: false,
       error: null,
@@ -312,6 +340,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: agentWithoutLogo,
       services: mockServices,
+      cimdMeta: null,
       grants: mockGrant,
       loading: false,
       error: null,
@@ -332,6 +361,7 @@ describe('AgentGrantDetailPage', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
+      cimdMeta: null,
       grants: mockGrant,
       loading: false,
       error: null,
@@ -361,6 +391,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: mockServices,
+        cimdMeta: null,
         grants: mockGrant,
         loading: false,
         error: null,
@@ -386,6 +417,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: mockServices,
+        cimdMeta: null,
         grants: mockGrant,
         loading: false,
         error: null,
@@ -412,6 +444,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: mockServices,
+        cimdMeta: null,
         grants: mockGrant,
         loading: false,
         error: null,
@@ -445,6 +478,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: servicesWithoutGrant,
+        cimdMeta: null,
         grants: mockGrant, // Only has GitHub grant
         loading: false,
         error: null,
@@ -466,6 +500,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: mockServices,
+        cimdMeta: null,
         grants: mockGrant, // Has grant for GitHub
         loading: false,
         error: null,
@@ -494,6 +529,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: mockServices,
+        cimdMeta: null,
         grants: mockGrant,
         loading: false,
         error: null,
@@ -525,6 +561,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: mockServices,
+        cimdMeta: null,
         grants: mockGrant,
         loading: false,
         error: null,
@@ -550,6 +587,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: mockServices,
+        cimdMeta: null,
         grants: mockGrant,
         loading: false,
         error: null,
@@ -574,6 +612,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
         agent: mockAgent,
         services: mockServices,
+        cimdMeta: null,
         grants: mockGrant,
         loading: false,
         error: null,
@@ -633,6 +672,7 @@ describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
+      cimdMeta: null,
       grants: grantWithTokens,
       loading: false,
       error: null,
@@ -656,6 +696,7 @@ describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
+      cimdMeta: null,
       grants: null,
       loading: false,
       error: null,
@@ -684,6 +725,7 @@ describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
       agent: mockAgent,
       services: mockServices,
+      cimdMeta: null,
       grants: emptyGrant,
       loading: false,
       error: null,
@@ -701,5 +743,75 @@ describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
         name: /revoke all access for research assistant/i,
       }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('AgentGrantDetailPage - CIMD session_token flow', () => {
+  const mockUseConsentReturn = {
+    delegations: [],
+    userInfo: { principal: 'user@example.com', displayName: 'Test User', pictureUrl: '' },
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(useConsentModule, 'useConsent').mockReturnValue(mockUseConsentReturn);
+  });
+
+  it('forwards session_token from URL to useAgentGrants', () => {
+    const useAgentGrantsSpy = vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+      agent: mockAgent,
+      services: mockServices,
+      cimdMeta: null,
+      grants: mockGrant,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_token=test-session-abc">
+        <AgentGrantDetailPage />
+      </MemoryRouterWrapper>,
+    );
+
+    expect(useAgentGrantsSpy).toHaveBeenCalledWith(
+      'agent-123',
+      { sessionToken: 'test-session-abc' },
+    );
+  });
+
+  it('renders CIMDConsentSummary and domain badge when cimdMeta is present', () => {
+    const mockCimdMeta: CIMDMetadata = {
+      client_id_url: 'https://acme.example.com/client',
+      redirect_uri: 'https://acme.example.com/callback',
+      verified_domain: 'acme.example.com',
+      requested_scopes: ['read:user'],
+    };
+
+    vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({
+      agent: mockAgent,
+      services: mockServices,
+      cimdMeta: mockCimdMeta,
+      grants: mockGrant,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <MemoryRouterWrapper initialEntry="/agent/agent-123?session_token=test-session-abc">
+        <AgentGrantDetailPage />
+      </MemoryRouterWrapper>,
+    );
+
+    // CIMDConsentSummary renders the verified domain as primary identifier
+    expect(screen.getByText('acme.example.com')).toBeInTheDocument();
+    // and the "wants to access" sentence that includes the agent name
+    const cimdParagraph = screen.getByText(/wants to access/);
+    expect(cimdParagraph).toBeInTheDocument();
+    expect(cimdParagraph.textContent).toContain('Research Assistant');
   });
 });

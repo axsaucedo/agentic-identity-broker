@@ -659,6 +659,54 @@ app.post('/api/auth/callback', async (req, res) => {
 });
 ```
 
+## URL-Based Client IDs (CIMD)
+
+When `oauth2_authorization_server.cimd.enabled: true`, agents may identify themselves using an HTTPS URL as `client_id`. The broker fetches and validates a Client ID Metadata Document from that URL before processing the authorization request.
+
+### Authorization Request
+
+```
+GET /oauth2/authorize
+  ?response_type=code
+  &client_id=https%3A%2F%2Fagent.example.com%2F.well-known%2Fagent.json
+  &redirect_uri=https%3A%2F%2Fagent.example.com%2Fcallback
+  &scope=openid
+  &code_challenge=...
+  &code_challenge_method=S256
+```
+
+The `client_id` must be registered in the agent's `client_uris` array (see Admin APIs).
+
+### CIMD Document Requirements
+
+The broker fetches `https://agent.example.com/.well-known/agent.json` and requires:
+
+1. `client_id` field in the document must exactly match the URL used as `client_id`
+2. `redirect_uris` array must be non-empty; the requested `redirect_uri` must be same-origin with the document URL
+3. `token_endpoint_auth_method` must not be a client-secret variant (`client_secret_basic`, `client_secret_post`, `client_secret_jwt`)
+4. `client_name` must not match the operator `client_name_blocklist`
+
+### Consent Screen
+
+When the CIMD document is successfully fetched, the consent screen displays:
+- Agent domain badge (the document's host)
+- Localhost warning (if the URL is a loopback address)
+- Advanced details section (auth method, redirect URIs, JWKS URI)
+
+### Authorization Server Metadata
+
+When CIMD is enabled, the `/.well-known/oauth-authorization-server` response includes:
+
+```json
+{
+  "client_id_metadata_document_supported": true
+}
+```
+
+### SSRF Protection
+
+The broker blocks CIMD fetches to private, loopback, and link-local IP ranges (RFC 6890). SSRF protection is enforced at TCP-connect time after DNS resolution, preventing DNS rebinding attacks. This cannot be disabled.
+
 ## Support
 
 For additional help:

@@ -67,7 +67,7 @@ func DefaultOAuth2Config() *ports.Config {
 			Mode:                      "proxy",
 		},
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey:      base64.StdEncoding.EncodeToString([]byte("test-32-byte-key-must-be-exact-")),
+			JWESigningKey:      base64.StdEncoding.EncodeToString([]byte("test-32-byte-key-must-be-exact-x")),
 			StateTokenTTL:      10 * time.Minute,
 			PKCEVerifierLength: 32,
 		},
@@ -445,5 +445,24 @@ func IssueTokenConfig() *ports.Config {
 func IssueTokenConfigWithCEL(celExpr string) *ports.Config {
 	config := IssueTokenConfig()
 	config.OAuth2AuthServer.TokenClaimsExpression = celExpr
+	return config
+}
+
+// OAuth2ConfigWithCIMD returns a config with CIMD support enabled.
+// The CIMD fetcher is wired in the builder; the config only enables the feature gate.
+// All upstream OAuth2 settings match DefaultOAuth2Config().
+func OAuth2ConfigWithCIMD(upstreamURL string) *ports.Config {
+	config := OAuth2ConfigWithUpstream(upstreamURL)
+	config.OAuth2AuthServer.Mode = "issue_token"
+	config.OAuth2AuthServer.CIMD = ports.CIMDConfig{
+		Enabled:          true,
+		FetchTimeout:     5 * time.Second,
+		MaxResponseBytes: 5120,
+		Cache: ports.CIMDCacheConfig{
+			MinTTL:     60 * time.Second,
+			MaxTTL:     1 * time.Hour,
+			MaxEntries: 1000,
+		},
+	}
 	return config
 }

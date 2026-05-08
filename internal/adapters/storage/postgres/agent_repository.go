@@ -40,9 +40,65 @@ func NewAgentRepository(adapter *Adapter) *AgentRepository {
 	}
 }
 
+// fetchClientURIs retrieves all client URIs for an agent from the agent_client_uris table.
+func (r *AgentRepository) fetchClientURIs(ctx context.Context, agentID id.AgentID) ([]string, error) {
+	rows, err := r.adapter.db.QueryContext(
+		ctx,
+		`SELECT client_uri FROM agent_client_uris WHERE agent_id = $1 ORDER BY client_uri`,
+		agentID,
+	)
+	if err != nil {
+		return nil, storage.NewStorageError("fetchClientURIs", storage.ErrorKindConnection, err, "failed to query client URIs")
+	}
+	defer func() { _ = rows.Close() }()
+
+	var uris []string
+	for rows.Next() {
+		var uri string
+		if err := rows.Scan(&uri); err != nil {
+			return nil, storage.NewStorageError("fetchClientURIs", storage.ErrorKindConnection, err, "failed to scan client URI")
+		}
+		uris = append(uris, uri)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError("fetchClientURIs", storage.ErrorKindConnection, err, "error iterating client URI rows")
+	}
+	if uris == nil {
+		uris = []string{}
+	}
+	return uris, nil
+}
+
+// insertClientURIs inserts client URIs into agent_client_uris within an existing transaction.
+// Returns StorageError with Kind=Conflict if a client_uri uniqueness violation occurs.
+func insertClientURIs(ctx context.Context, tx *sql.Tx, agentID id.AgentID, uris []string) error {
+	for _, uri := range uris {
+		_, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO agent_client_uris (agent_id, client_uri) VALUES ($1, $2)`,
+			agentID,
+			uri,
+		)
+		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "23505" {
+				if strings.Contains(pgErr.ConstraintName, "client_uri") {
+					return storage.NewStorageError(
+						"insertClientURIs",
+						storage.ErrorKindConflict,
+						err,
+						"client URI already registered to another agent",
+					)
+				}
+			}
+			return storage.NewStorageError("insertClientURIs", storage.ErrorKindConnection, err, "failed to insert client URI")
+		}
+	}
+	return nil
+}
+
 // Create creates a new agent entity in PostgreSQL.
 // Generates a UUID for the agent if ID is empty.
-// Returns StorageError with Kind=Conflict if agent ID or client_id already exists.
+// Returns StorageError with Kind=Conflict if agent ID, client_id, or a client_uri already exists.
 func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError(
@@ -62,7 +118,6 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
-	// Validate before storing
 	if err := agent.ValidateForCreate(); err != nil {
 		return storage.NewStorageError(
 			"CreateAgent",
@@ -72,7 +127,6 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
-	// Generate ID if not provided
 	if agent.ID.IsZero() {
 		agent.ID = id.NewAgentID()
 	}
@@ -80,7 +134,6 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
-	// Marshal service_requirements to JSON (NULL if empty/nil)
 	var serviceReqsJSON []byte
 	var err error
 	if len(agent.ServiceRequirements) > 0 {
@@ -95,17 +148,20 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		}
 	}
 
-	query := `
-		INSERT INTO agents (
+	tx, err := r.adapter.db.BeginTx(execCtx, nil)
+	if err != nil {
+		return storage.NewStorageError("CreateAgent", storage.ErrorKindConnection, err, "failed to begin transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.ExecContext(
+		execCtx,
+		`INSERT INTO agents (
 			id, client_id, external_id, display_name, description,
 			governance_url, user_documentation_url, agent_interface_url,
-			service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-	`
-
-	_, err = r.adapter.db.ExecContext(
-		execCtx,
-		query,
+			service_requirements, redirect_uris, allowed_scopes,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		agent.ID,
 		agent.ClientID,
 		agent.ExternalID,
@@ -114,50 +170,33 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 		agent.GovernanceURL,
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
-		serviceReqsJSON, // NULL if empty
+		serviceReqsJSON,
 		pq.Array(emptyIfNil(agent.RedirectURIs)),
 		pq.Array(emptyIfNil(agent.AllowedScopes)),
 		agent.CreatedAt,
 		agent.UpdatedAt,
 	)
-
 	if err != nil {
-		// Check for timeout
 		if strings.Contains(err.Error(), "context deadline exceeded") {
-			return storage.NewStorageError(
-				"CreateAgent",
-				storage.ErrorKindTimeout,
-				err,
-				"operation exceeded timeout",
-			)
+			return storage.NewStorageError("CreateAgent", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-
-		// Check for duplicate key violation (PostgreSQL error code 23505)
 		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "23505" {
 			if strings.Contains(pgErr.ConstraintName, "pkey") {
-				return storage.NewStorageError(
-					"CreateAgent",
-					storage.ErrorKindConflict,
-					err,
-					"agent with this ID already exists",
-				)
+				return storage.NewStorageError("CreateAgent", storage.ErrorKindConflict, err, "agent with this ID already exists")
 			}
 			if strings.Contains(pgErr.ConstraintName, "client_id") {
-				return storage.NewStorageError(
-					"CreateAgent",
-					storage.ErrorKindConflict,
-					err,
-					"agent with this client_id already exists",
-				)
+				return storage.NewStorageError("CreateAgent", storage.ErrorKindConflict, err, "agent with this client_id already exists")
 			}
 		}
+		return storage.NewStorageError("CreateAgent", storage.ErrorKindConnection, err, "failed to create agent")
+	}
 
-		return storage.NewStorageError(
-			"CreateAgent",
-			storage.ErrorKindConnection,
-			err,
-			"failed to create agent",
-		)
+	if err := insertClientURIs(execCtx, tx, agent.ID, agent.ClientURIs); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return storage.NewStorageError("CreateAgent", storage.ErrorKindConnection, err, "failed to commit transaction")
 	}
 
 	return nil
@@ -194,20 +233,18 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
-	var (
-		serviceReqsJSON []byte
-	)
-
-	query := `
-		SELECT id, client_id, external_id, display_name, description,
-		       governance_url, user_documentation_url, agent_interface_url,
-		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
-		FROM agents
-		WHERE id = $1
-	`
-
+	var serviceReqsJSON []byte
 	agent := &storage.Agent{}
-	err := r.adapter.db.QueryRowContext(queryCtx, query, agentID).Scan(
+	err := r.adapter.db.QueryRowContext(
+		queryCtx,
+		`SELECT id, client_id, external_id, display_name, description,
+		        governance_url, user_documentation_url, agent_interface_url,
+		        service_requirements, redirect_uris, allowed_scopes,
+		        created_at, updated_at
+		 FROM agents
+		 WHERE id = $1`,
+		agentID,
+	).Scan(
 		&agent.ID,
 		&agent.ClientID,
 		&agent.ExternalID,
@@ -222,50 +259,34 @@ func (r *AgentRepository) Get(ctx context.Context, agentID id.AgentID) (*storage
 		&agent.CreatedAt,
 		&agent.UpdatedAt,
 	)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, storage.NewStorageError(
-				"GetAgent",
-				storage.ErrorKindNotFound,
-				ports.ErrNotFound,
-				"agent not found",
-			)
+			return nil, storage.NewStorageError("GetAgent", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
 		}
 		if strings.Contains(err.Error(), "context deadline exceeded") {
-			return nil, storage.NewStorageError(
-				"GetAgent",
-				storage.ErrorKindTimeout,
-				err,
-				"operation exceeded timeout",
-			)
+			return nil, storage.NewStorageError("GetAgent", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-		return nil, storage.NewStorageError(
-			"GetAgent",
-			storage.ErrorKindConnection,
-			err,
-			"failed to get agent",
-		)
+		return nil, storage.NewStorageError("GetAgent", storage.ErrorKindConnection, err, "failed to get agent")
 	}
 
-	// Unmarshal service_requirements from JSON (if not NULL)
 	if len(serviceReqsJSON) > 0 {
 		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
-			return nil, storage.NewStorageError(
-				"GetAgent",
-				storage.ErrorKindValidation,
-				err,
-				"failed to unmarshal service_requirements from JSON",
-			)
+			return nil, storage.NewStorageError("GetAgent", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
 		}
 	}
 
-	// Return deep copy to prevent external mutation
+	uris, err := r.fetchClientURIs(queryCtx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	agent.ClientURIs = uris
+
 	return agent.Copy(), nil
 }
 
 // Update updates an existing agent entity in PostgreSQL.
 // Returns StorageError with Kind=NotFound if agent ID not found.
+// Returns StorageError with Kind=Conflict if a client_uri uniqueness violation occurs.
 func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError(
@@ -285,7 +306,6 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		)
 	}
 
-	// Validate before updating
 	if err := agent.Validate(); err != nil {
 		return storage.NewStorageError(
 			"UpdateAgent",
@@ -298,7 +318,6 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
-	// Marshal service_requirements to JSON (NULL if empty/nil)
 	var serviceReqsJSON []byte
 	var err error
 	if len(agent.ServiceRequirements) > 0 {
@@ -313,25 +332,27 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		}
 	}
 
-	query := `
-		UPDATE agents
-		SET client_id = $2,
-		    external_id = $3,
-		    display_name = $4,
-		    description = $5,
-		    governance_url = $6,
-		    user_documentation_url = $7,
-		    agent_interface_url = $8,
-		    service_requirements = $9,
-		    redirect_uris = $10,
-		    allowed_scopes = $11,
-		    updated_at = $12
-		WHERE id = $1
-	`
+	tx, err := r.adapter.db.BeginTx(execCtx, nil)
+	if err != nil {
+		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to begin transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
 
-	result, err := r.adapter.db.ExecContext(
+	result, err := tx.ExecContext(
 		execCtx,
-		query,
+		`UPDATE agents
+		 SET client_id = $2,
+		     external_id = $3,
+		     display_name = $4,
+		     description = $5,
+		     governance_url = $6,
+		     user_documentation_url = $7,
+		     agent_interface_url = $8,
+		     service_requirements = $9,
+		     redirect_uris = $10,
+		     allowed_scopes = $11,
+		     updated_at = $12
+		 WHERE id = $1`,
 		agent.ID,
 		agent.ClientID,
 		agent.ExternalID,
@@ -340,60 +361,42 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 		agent.GovernanceURL,
 		agent.UserDocumentationURL,
 		agent.AgentInterfaceURL,
-		serviceReqsJSON, // NULL if empty
+		serviceReqsJSON,
 		pq.Array(emptyIfNil(agent.RedirectURIs)),
 		pq.Array(emptyIfNil(agent.AllowedScopes)),
 		agent.UpdatedAt,
 	)
-
 	if err != nil {
-		// Check for timeout
 		if strings.Contains(err.Error(), "context deadline exceeded") {
-			return storage.NewStorageError(
-				"UpdateAgent",
-				storage.ErrorKindTimeout,
-				err,
-				"operation exceeded timeout",
-			)
+			return storage.NewStorageError("UpdateAgent", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-
-		// Check for duplicate client_id violation
 		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "23505" {
 			if strings.Contains(pgErr.ConstraintName, "client_id") {
-				return storage.NewStorageError(
-					"UpdateAgent",
-					storage.ErrorKindConflict,
-					err,
-					"agent with this client_id already exists",
-				)
+				return storage.NewStorageError("UpdateAgent", storage.ErrorKindConflict, err, "agent with this client_id already exists")
 			}
 		}
-
-		return storage.NewStorageError(
-			"UpdateAgent",
-			storage.ErrorKindConnection,
-			err,
-			"failed to update agent",
-		)
+		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to update agent")
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return storage.NewStorageError(
-			"UpdateAgent",
-			storage.ErrorKindConnection,
-			err,
-			"failed to get affected rows",
-		)
+		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to get affected rows")
+	}
+	if rows == 0 {
+		return storage.NewStorageError("UpdateAgent", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
 	}
 
-	if rows == 0 {
-		return storage.NewStorageError(
-			"UpdateAgent",
-			storage.ErrorKindNotFound,
-			ports.ErrNotFound,
-			"agent not found",
-		)
+	_, err = tx.ExecContext(execCtx, `DELETE FROM agent_client_uris WHERE agent_id = $1`, agent.ID)
+	if err != nil {
+		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to delete existing client URIs")
+	}
+
+	if err := insertClientURIs(execCtx, tx, agent.ID, agent.ClientURIs); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return storage.NewStorageError("UpdateAgent", storage.ErrorKindConnection, err, "failed to commit transaction")
 	}
 
 	return nil
@@ -401,7 +404,7 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 
 // Delete deletes an agent entity by ID from PostgreSQL.
 // Idempotent: returns nil if agent doesn't exist.
-// Associated grants are CASCADE deleted per FR-021.
+// Associated grants and client URIs are CASCADE deleted per FR-021.
 func (r *AgentRepository) Delete(ctx context.Context, agentID id.AgentID) error {
 	if r.adapter.db == nil {
 		return storage.NewStorageError(
@@ -424,24 +427,12 @@ func (r *AgentRepository) Delete(ctx context.Context, agentID id.AgentID) error 
 	execCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
-	query := `DELETE FROM agents WHERE id = $1`
-
-	_, err := r.adapter.db.ExecContext(execCtx, query, agentID)
+	_, err := r.adapter.db.ExecContext(execCtx, `DELETE FROM agents WHERE id = $1`, agentID)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
-			return storage.NewStorageError(
-				"DeleteAgent",
-				storage.ErrorKindTimeout,
-				err,
-				"operation exceeded timeout",
-			)
+			return storage.NewStorageError("DeleteAgent", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-		return storage.NewStorageError(
-			"DeleteAgent",
-			storage.ErrorKindConnection,
-			err,
-			"failed to delete agent",
-		)
+		return storage.NewStorageError("DeleteAgent", storage.ErrorKindConnection, err, "failed to delete agent")
 	}
 
 	return nil
@@ -462,15 +453,15 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
 	defer cancel()
 
-	query := `
-		SELECT id, client_id, external_id, display_name, description,
-		       governance_url, user_documentation_url, agent_interface_url,
-		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
-		FROM agents
-		ORDER BY created_at DESC
-	`
-
-	rows, err := r.adapter.db.QueryContext(queryCtx, query)
+	rows, err := r.adapter.db.QueryContext(
+		queryCtx,
+		`SELECT id, client_id, external_id, display_name, description,
+		        governance_url, user_documentation_url, agent_interface_url,
+		        service_requirements, redirect_uris, allowed_scopes,
+		        created_at, updated_at
+		 FROM agents
+		 ORDER BY created_at DESC`,
+	)
 	if err != nil {
 		if strings.Contains(err.Error(), "context deadline exceeded") {
 			return nil, storage.NewStorageError("ListAgents", storage.ErrorKindTimeout, err, "operation exceeded timeout")
@@ -479,7 +470,7 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var result []*storage.Agent
+	var agents []*storage.Agent
 	for rows.Next() {
 		agent := &storage.Agent{}
 		var serviceReqsJSON []byte
@@ -498,14 +489,64 @@ func (r *AgentRepository) List(ctx context.Context) ([]*storage.Agent, error) {
 				return nil, storage.NewStorageError("ListAgents", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
 			}
 		}
-		result = append(result, agent.Copy())
+		agents = append(agents, agent)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, storage.NewStorageError("ListAgents", storage.ErrorKindConnection, err, "error iterating agent rows")
 	}
 
-	if result == nil {
-		result = []*storage.Agent{}
+	if len(agents) == 0 {
+		return []*storage.Agent{}, nil
+	}
+
+	agentIDs := make([]id.AgentID, len(agents))
+	for i, a := range agents {
+		agentIDs[i] = a.ID
+	}
+	uriMap, err := r.batchFetchClientURIs(queryCtx, agentIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*storage.Agent, len(agents))
+	for i, agent := range agents {
+		agent.ClientURIs = uriMap[agent.ID]
+		if agent.ClientURIs == nil {
+			agent.ClientURIs = []string{}
+		}
+		result[i] = agent.Copy()
+	}
+	return result, nil
+}
+
+// batchFetchClientURIs retrieves client URIs for all given agent IDs in a single query.
+func (r *AgentRepository) batchFetchClientURIs(ctx context.Context, agentIDs []id.AgentID) (map[id.AgentID][]string, error) {
+	uuids := make([]string, len(agentIDs))
+	for i, agentID := range agentIDs {
+		uuids[i] = agentID.String()
+	}
+
+	rows, err := r.adapter.db.QueryContext(
+		ctx,
+		`SELECT agent_id, client_uri FROM agent_client_uris WHERE agent_id = ANY($1::uuid[]) ORDER BY client_uri`,
+		pq.Array(uuids),
+	)
+	if err != nil {
+		return nil, storage.NewStorageError("batchFetchClientURIs", storage.ErrorKindConnection, err, "failed to batch query client URIs")
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make(map[id.AgentID][]string)
+	for rows.Next() {
+		var agentID id.AgentID
+		var uri string
+		if err := rows.Scan(&agentID, &uri); err != nil {
+			return nil, storage.NewStorageError("batchFetchClientURIs", storage.ErrorKindConnection, err, "failed to scan client URI row")
+		}
+		result[agentID] = append(result[agentID], uri)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, storage.NewStorageError("batchFetchClientURIs", storage.ErrorKindConnection, err, "error iterating client URI rows")
 	}
 	return result, nil
 }
@@ -536,15 +577,16 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 
 	var serviceReqsJSON []byte
 	agent := &storage.Agent{}
-	query := `
-		SELECT id, client_id, external_id, display_name, description,
-		       governance_url, user_documentation_url, agent_interface_url,
-		       service_requirements, redirect_uris, allowed_scopes, created_at, updated_at
-		FROM agents
-		WHERE client_id = $1
-	`
-
-	err := r.adapter.db.QueryRowContext(queryCtx, query, clientID).Scan(
+	err := r.adapter.db.QueryRowContext(
+		queryCtx,
+		`SELECT id, client_id, external_id, display_name, description,
+		        governance_url, user_documentation_url, agent_interface_url,
+		        service_requirements, redirect_uris, allowed_scopes,
+		        created_at, updated_at
+		 FROM agents
+		 WHERE client_id = $1`,
+		clientID,
+	).Scan(
 		&agent.ID, &agent.ClientID, &agent.ExternalID,
 		&agent.DisplayName, &agent.Description,
 		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
@@ -554,40 +596,85 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, storage.NewStorageError(
-				"GetAgentByClientID",
-				storage.ErrorKindNotFound,
-				ports.ErrNotFound,
-				"agent not found",
-			)
+			return nil, storage.NewStorageError("GetAgentByClientID", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
 		}
 		if strings.Contains(err.Error(), "context deadline exceeded") {
-			return nil, storage.NewStorageError(
-				"GetAgentByClientID",
-				storage.ErrorKindTimeout,
-				err,
-				"operation exceeded timeout",
-			)
+			return nil, storage.NewStorageError("GetAgentByClientID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
-		return nil, storage.NewStorageError(
-			"GetAgentByClientID",
-			storage.ErrorKindConnection,
-			err,
-			"failed to get agent by client_id",
-		)
+		return nil, storage.NewStorageError("GetAgentByClientID", storage.ErrorKindConnection, err, "failed to get agent by client_id")
 	}
 
 	if len(serviceReqsJSON) > 0 {
 		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
-			return nil, storage.NewStorageError(
-				"GetAgentByClientID",
-				storage.ErrorKindValidation,
-				err,
-				"failed to unmarshal service_requirements from JSON",
-			)
+			return nil, storage.NewStorageError("GetAgentByClientID", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
 		}
 	}
 
-	// Return deep copy to prevent external mutation
+	uris, err := r.fetchClientURIs(queryCtx, agent.ID)
+	if err != nil {
+		return nil, err
+	}
+	agent.ClientURIs = uris
+
+	return agent.Copy(), nil
+}
+
+// GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
+// Returns StorageError with Kind=NotFound if no agent has this URI registered.
+func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	if r.adapter.db == nil {
+		return nil, storage.NewStorageError(
+			"GetAgentByClientURI",
+			storage.ErrorKindConnection,
+			nil,
+			"database not initialized",
+		)
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	var serviceReqsJSON []byte
+	agent := &storage.Agent{}
+	err := r.adapter.db.QueryRowContext(
+		queryCtx,
+		`SELECT a.id, a.client_id, a.external_id, a.display_name, a.description,
+		        a.governance_url, a.user_documentation_url, a.agent_interface_url,
+		        a.service_requirements, a.redirect_uris, a.allowed_scopes,
+		        a.created_at, a.updated_at
+		 FROM agents a
+		 JOIN agent_client_uris acu ON acu.agent_id = a.id
+		 WHERE acu.client_uri = $1`,
+		uri,
+	).Scan(
+		&agent.ID, &agent.ClientID, &agent.ExternalID,
+		&agent.DisplayName, &agent.Description,
+		&agent.GovernanceURL, &agent.UserDocumentationURL, &agent.AgentInterfaceURL,
+		&serviceReqsJSON,
+		pq.Array(&agent.RedirectURIs), pq.Array(&agent.AllowedScopes),
+		&agent.CreatedAt, &agent.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "agent not found")
+		}
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindConnection, err, "failed to get agent by client URI")
+	}
+
+	if len(serviceReqsJSON) > 0 {
+		if err := json.Unmarshal(serviceReqsJSON, &agent.ServiceRequirements); err != nil {
+			return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindValidation, err, "failed to unmarshal service_requirements from JSON")
+		}
+	}
+
+	uris, err := r.fetchClientURIs(queryCtx, agent.ID)
+	if err != nil {
+		return nil, err
+	}
+	agent.ClientURIs = uris
+
 	return agent.Copy(), nil
 }

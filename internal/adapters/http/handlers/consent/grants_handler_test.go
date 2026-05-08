@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,15 +13,63 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// newTestJWETokenService returns a real JWE token service backed by a deterministic test key.
+func newTestJWETokenService() *domjwe.TokenService {
+	keyBytes, err := base64.StdEncoding.DecodeString("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=")
+	if err != nil {
+		panic("grants_handler_test: failed to decode test JWE key: " + err.Error())
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		panic("grants_handler_test: failed to import test JWE key: " + err.Error())
+	}
+	return domjwe.New(jweKey)
+}
+
+// newTestSessionToken creates a valid JWE session token for the given agent and principal.
+func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string, originalURL string) string {
+	claims, err := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
+	if err != nil {
+		panic("newTestSessionToken: invalid claims: " + err.Error())
+	}
+	token, err := ts.Encrypt(claims)
+	if err != nil {
+		panic("newTestSessionToken: failed to encrypt claims: " + err.Error())
+	}
+	return token
+}
+
+// newExpiredTestSessionToken creates a JWE session token whose TTL has already elapsed.
+func newExpiredTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string) string {
+	past := time.Now().Add(-time.Hour)
+	claims := &domotp2.AuthorizationSessionClaims{
+		AgentID:   agentID,
+		Principal: id.Principal(principalVal),
+		IssuedAt:  past,
+		ExpiresAt: past,
+	}
+	token, err := ts.Encrypt(claims)
+	if err != nil {
+		panic("newExpiredTestSessionToken: failed to encrypt claims: " + err.Error())
+	}
+	return token
+}
+
 // Helper to create request with principal context
-func newRequestWithPrincipal(method, path, principalValue string, body interface{}) *http.Request {
+func newRequestWithPrincipal(method, path, principalValue string, body any) *http.Request {
 	var reqBody *bytes.Buffer
 	if body != nil {
 		jsonBody, _ := json.Marshal(body)
@@ -36,7 +85,7 @@ func newRequestWithPrincipal(method, path, principalValue string, body interface
 
 func TestGetGrants_NoPrincipal(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 	testAgentID := id.NewAgentID()
 
 	// Create request without principal
@@ -66,7 +115,7 @@ func TestGetGrants_NoPrincipal(t *testing.T) {
 
 func TestCreateGrant_NoPrincipal(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 	testAgentID := id.NewAgentID()
 
 	reqBody := GrantRequest{
@@ -96,7 +145,7 @@ func TestCreateGrant_NoPrincipal(t *testing.T) {
 
 func TestCreateGrant_InvalidJSON(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 	testAgentID := id.NewAgentID()
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
@@ -127,7 +176,7 @@ func TestCreateGrant_InvalidJSON(t *testing.T) {
 
 func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 	testAgentID := id.NewAgentID()
 
 	pastTime := time.Now().Add(-1 * time.Hour)
@@ -173,7 +222,7 @@ func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 
 func TestToGrantResponse(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 
 	testGrantID := id.NewGrantID()
 	testAgentID := id.NewAgentID()
@@ -281,6 +330,12 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 			expectedError:  "service not found",
 		},
 		{
+			name:           "grant validation failed",
+			serviceError:   consent.ErrGrantValidation,
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "invalid request",
+		},
+		{
 			name:           "generic error",
 			serviceError:   errors.New("database error"),
 			expectedStatus: http.StatusInternalServerError,
@@ -299,7 +354,7 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 					return nil, tt.serviceError
 				},
 			}
-			handler := NewGrantsHandler(mockService, nil)
+			handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 			// Create valid request
 			reqBody := GrantRequest{
@@ -368,7 +423,7 @@ func TestCreateGrant_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	// Create request
 	reqBody := GrantRequest{
@@ -468,7 +523,7 @@ func TestGetGrants_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	req := newRequestWithPrincipal("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
@@ -508,7 +563,7 @@ func TestGetGrants_AgentNotFound(t *testing.T) {
 			return nil, consent.ErrAgentNotFound
 		},
 	}
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	req := newRequestWithPrincipal("GET", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
 	rctx := chi.NewRouteContext()
@@ -720,7 +775,7 @@ func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -746,7 +801,7 @@ func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
 	}
 
 	// Check response body contains redirect_url
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
@@ -788,7 +843,7 @@ func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -814,7 +869,7 @@ func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
 	}
 
 	// Check response body contains redirect_url
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
@@ -833,7 +888,7 @@ func TestCreateGrant_WithRedirectURI_InvalidDomain(t *testing.T) {
 	t.Parallel()
 	// T050: Test case 4 - Approval with invalid redirect_uri (external domain) should return error
 	testAgentID := id.NewAgentID()
-	handler := NewGrantsHandler(nil, nil)
+	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -896,7 +951,7 @@ func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -959,7 +1014,7 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil)
+	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -986,7 +1041,7 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 	}
 
 	// Check response body contains redirect_url
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
@@ -999,4 +1054,139 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 	if redirectUrl != "/callback?session=abc" {
 		t.Errorf("expected redirect_url '/callback?session=abc', got '%s'", redirectUrl)
 	}
+}
+
+// TestCreateGrant_SessionToken_ValidFlow verifies that a valid JWE session token
+// produces a 201 with redirect_url from the token claims.
+func TestCreateGrant_SessionToken_ValidFlow(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+	testGrantID := id.NewGrantID()
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+	principalVal := "user@example.com"
+	originalURL := "https://agent.example.com/authorize"
+
+	ts := newTestJWETokenService()
+	sessionToken := newTestSessionToken(ts, testAgentID, principalVal, originalURL)
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
+			return &storage.UserGrant{
+				ID:                    testGrantID,
+				Principal:             id.Principal(principalVal),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				DelegatedOAuth2Tokens: []storage.DelegatedToken{},
+				CreatedAt:             now,
+				UpdatedAt:             now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil, ts)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token="+sessionToken,
+		principalVal,
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, originalURL, resp["redirect_url"])
+}
+
+// TestCreateGrant_SessionToken_InvalidToken verifies that a tampered or invalid
+// JWE session token produces 400.
+func TestCreateGrant_SessionToken_InvalidToken(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+	principalVal := "user@example.com"
+
+	ts := newTestJWETokenService()
+	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token=notavalidjwetoken",
+		principalVal,
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+}
+
+// TestCreateGrant_SessionToken_AgentMismatch verifies that a session token issued for
+// a different agent produces 400.
+func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
+	t.Parallel()
+
+	agentA := id.NewAgentID()
+	agentB := id.NewAgentID()
+	principalVal := "user@example.com"
+
+	ts := newTestJWETokenService()
+	tokenForAgentA := newTestSessionToken(ts, agentA, principalVal, "/callback")
+
+	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+agentB.String()+"/grants?session_token="+tokenForAgentA,
+		principalVal,
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentB.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+}
+
+// TestCreateGrant_SessionToken_PrincipalMismatch verifies that a session token issued
+// for a different user produces 403.
+func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+
+	ts := newTestJWETokenService()
+	tokenForUserA := newTestSessionToken(ts, testAgentID, "userA@example.com", "/callback")
+
+	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token="+tokenForUserA,
+		"userB@example.com",
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
 }

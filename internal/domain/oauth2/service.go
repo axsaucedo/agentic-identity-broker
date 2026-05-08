@@ -9,23 +9,11 @@ import (
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
-
-// isNotFoundErr returns true if err represents a not-found condition from any storage adapter.
-// Handles both ports.ErrNotFound (used in mocks/tests) and storage.StorageError{Kind: ErrorKindNotFound}
-// (used by production adapters).
-func isNotFoundErr(err error) bool {
-	if errors.Is(err, ports.ErrNotFound) {
-		return true
-	}
-	var storageErr *storage.StorageError
-	if errors.As(err, &storageErr) {
-		return storageErr.Kind == storage.ErrorKindNotFound
-	}
-	return false
-}
 
 // OAuth2Config contains configuration for the OAuth2 service
 type OAuth2Config struct {
@@ -51,23 +39,28 @@ type OAuth2Config struct {
 	// Mode indicates whether the broker operates in "proxy" or "issue_token" mode.
 	// In issue_token mode, JWKS and code_challenge_methods are included in metadata.
 	Mode string
+
+	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
+	// When true, client_id_metadata_document_supported is advertised in metadata.
+	CIMDEnabled bool
 }
 
 // Service implements the OAuth2Service port
 type Service struct {
-	agentRepo   ports.AgentRepository
-	grantRepo   ports.UserGrantRepository
-	sessionRepo ports.UserSessionRepository
-	config      *OAuth2Config
-	logger      *slog.Logger
+	grantRepo       ports.UserGrantRepository
+	sessionRepo     ports.UserSessionRepository
+	clientResolver  ports.ClientResolver
+	jweTokenService *jwe.TokenService
+	config          *OAuth2Config
+	logger          *slog.Logger
 }
 
 // NewService creates a new OAuth2Service implementation
 func NewService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, config *OAuth2Config) ports.OAuth2Service {
 	return &Service{
-		agentRepo: agentRepo,
-		grantRepo: grantRepo,
-		config:    config,
+		grantRepo:      grantRepo,
+		clientResolver: NewOpaqueClientResolver(agentRepo),
+		config:         config,
 	}
 }
 
@@ -81,12 +74,38 @@ func NewServiceWithSessions(
 	logger *slog.Logger,
 ) ports.OAuth2Service {
 	return &Service{
-		agentRepo:   agentRepo,
-		grantRepo:   grantRepo,
-		sessionRepo: sessionRepo,
-		config:      config,
-		logger:      logger,
+		grantRepo:      grantRepo,
+		sessionRepo:    sessionRepo,
+		clientResolver: NewOpaqueClientResolver(agentRepo),
+		config:         config,
+		logger:         logger,
 	}
+}
+
+// NewServiceWithClientResolver creates a new OAuth2Service with an explicit ClientResolver strategy.
+// Used when CIMD support is enabled (cimd.enabled: true) or when a custom resolver is required.
+// Returns *Service so callers can chain WithJWETokenService before assigning to the port interface.
+func NewServiceWithClientResolver(
+	grantRepo ports.UserGrantRepository,
+	sessionRepo ports.UserSessionRepository,
+	clientResolver ports.ClientResolver,
+	config *OAuth2Config,
+	logger *slog.Logger,
+) *Service {
+	return &Service{
+		grantRepo:      grantRepo,
+		sessionRepo:    sessionRepo,
+		clientResolver: clientResolver,
+		config:         config,
+		logger:         logger,
+	}
+}
+
+// WithJWETokenService sets the JWE token service on the service.
+// Required for CIMD consent flows that use stateless JWE session tokens.
+func (s *Service) WithJWETokenService(ts *jwe.TokenService) *Service {
+	s.jweTokenService = ts
+	return s
 }
 
 // HandleAuthorization processes an OAuth2 authorization request
@@ -95,45 +114,55 @@ func NewServiceWithSessions(
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
 func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
-	agentUUID, parseErr := id.ParseAgentID(string(req.ClientID))
-	if parseErr != nil {
-		// client_id is not a valid agent UUID — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)
+	// Resolve the client via the injected strategy (OpaqueClientResolver or CIMDClientResolver).
+	var agent *storage.Agent
+	var cimdMeta *ports.CIMDMetadataDTO
+
+	resolution, resolveErr := s.clientResolver.ResolveClient(ctx, req.ClientID)
+	if resolveErr != nil {
+		code := "invalid_client"
+		desc := "Client not registered"
+		var clientErr *ports.ClientIDError
+		if errors.As(resolveErr, &clientErr) {
+			code = clientErr.Code
+			desc = clientErr.Desc
+		}
 		return &ports.AuthorizationDecision{
 			Action:    "error",
-			ErrorCode: "invalid_client",
-			ErrorDesc: "Client not registered",
+			ErrorCode: code,
+			ErrorDesc: desc,
 		}, nil
 	}
-	agent, err := s.agentRepo.Get(ctx, agentUUID)
-	if err != nil {
-		if isNotFoundErr(err) {
-			// Agent UUID not registered — no redirect (redirect_uri unvalidated, RFC 6749 §4.1.2.1)
-			return &ports.AuthorizationDecision{
-				Action:    "error",
-				ErrorCode: "invalid_client",
-				ErrorDesc: "Client not registered",
-			}, nil
-		}
-		// Other error (connection, timeout)
-		return &ports.AuthorizationDecision{
-			Action:    "error",
-			ErrorCode: "server_error",
-			ErrorDesc: "Failed to validate client",
-		}, nil
+	agent = resolution.Agent
+	cimdMeta = resolution.CIMDMetadata
+
+	// Step 1b: Validate redirect_uri.
+	// For CIMD clients, validate against the document's redirect_uris.
+	// For opaque clients, validate against the agent's registered redirect_uris.
+	// Per RFC 6749 §4.1.2.1, MUST NOT redirect if redirect_uri is unverified.
+	var allowedRedirectURIs []string
+	if cimdMeta != nil {
+		allowedRedirectURIs = cimdMeta.RedirectURIs
+	} else {
+		allowedRedirectURIs = agent.RedirectURIs
 	}
 
-	// Step 1b: Validate redirect_uri against agent's registered URIs.
-	// Per RFC 6749 §4.1.2.1, MUST NOT redirect if redirect_uri is unverified.
-	// Agents with no registered URIs are rejected — fail closed.
-	if len(agent.RedirectURIs) == 0 {
+	// CIMD clients: redirect_uri failures are invalid_request (the CIMD contract specifies this).
+	// Opaque clients: use the standard invalid_redirect_uri error code.
+	redirectURIErrCode := "invalid_redirect_uri"
+	if cimdMeta != nil {
+		redirectURIErrCode = "invalid_request"
+	}
+
+	if len(allowedRedirectURIs) == 0 {
 		return &ports.AuthorizationDecision{
 			Action:    "error",
-			ErrorCode: "invalid_redirect_uri",
+			ErrorCode: redirectURIErrCode,
 			ErrorDesc: "redirect_uri not registered for this client",
 		}, nil
 	}
 	uriAllowed := false
-	for _, allowed := range agent.RedirectURIs {
+	for _, allowed := range allowedRedirectURIs {
 		if req.RedirectURI == allowed {
 			uriAllowed = true
 			break
@@ -142,7 +171,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if !uriAllowed {
 		return &ports.AuthorizationDecision{
 			Action:    "error",
-			ErrorCode: "invalid_redirect_uri",
+			ErrorCode: redirectURIErrCode,
 			ErrorDesc: "redirect_uri not registered for this client",
 		}, nil
 	}
@@ -193,12 +222,16 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 
 	// Step 3: Determine action based on grant status
 	if grant == nil || !grant.IsActive() {
-		// No active grant or expired - redirect to consent UI
-		consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
-			s.config.PublicURL,
-			agent.ID,
-			url.QueryEscape(req.OriginalURL),
-		)
+		consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
+		if buildErr != nil {
+			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			return &ports.AuthorizationDecision{
+				Action:      "error",
+				ErrorCode:   "server_error",
+				ErrorDesc:   "Failed to initiate consent session",
+				RedirectURL: errRedirect,
+			}, nil
+		}
 		return &ports.AuthorizationDecision{
 			Action:      "redirect_to_consent",
 			RedirectURL: consentURL,
@@ -229,11 +262,16 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 					"principal", principal,
 				)
 			}
-			consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
-				s.config.PublicURL,
-				agent.ID,
-				url.QueryEscape(req.OriginalURL),
-			)
+			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
+			if buildErr != nil {
+				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				return &ports.AuthorizationDecision{
+					Action:      "error",
+					ErrorCode:   "server_error",
+					ErrorDesc:   "Failed to initiate consent session",
+					RedirectURL: errRedirect,
+				}, nil
+			}
 			return &ports.AuthorizationDecision{
 				Action:      "redirect_to_consent",
 				RedirectURL: consentURL,
@@ -245,19 +283,40 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if s.sessionRepo != nil && len(agent.ServiceRequirements) > 0 {
 		err := s.validateMandatoryRequirements(ctx, principal.String(), agent)
 		if err != nil {
-			// Mandatory requirement not met - redirect to consent screen
+			var storageErr *storage.StorageError
+			if errors.As(err, &storageErr) {
+				if s.logger != nil {
+					s.logger.Error(
+						"MandatoryRequirementStorageFailure",
+						"agent_id", agent.ID,
+						"error", err.Error(),
+					)
+				}
+				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				return &ports.AuthorizationDecision{
+					Action:      "error",
+					ErrorCode:   "server_error",
+					ErrorDesc:   "Failed to validate service requirements",
+					RedirectURL: errRedirect,
+				}, nil
+			}
 			if s.logger != nil {
 				s.logger.Warn(
-					"MandatoryRequirementValidationFailed",
+					"MandatoryRequirementNotMet",
 					"agent_id", agent.ID,
 					"error", err.Error(),
 				)
 			}
-			consentURL := fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
-				s.config.PublicURL,
-				agent.ID,
-				url.QueryEscape(req.OriginalURL),
-			)
+			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
+			if buildErr != nil {
+				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				return &ports.AuthorizationDecision{
+					Action:      "error",
+					ErrorCode:   "server_error",
+					ErrorDesc:   "Failed to initiate consent session",
+					RedirectURL: errRedirect,
+				}, nil
+			}
 			return &ports.AuthorizationDecision{
 				Action:      "redirect_to_consent",
 				RedirectURL: consentURL,
@@ -270,7 +329,17 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	// In issue_token mode, UpstreamAuthorizeEndpoint is empty — skip URL construction.
 	var upstreamURL string
 	if s.config.UpstreamAuthorizeEndpoint != "" {
-		upstreamURL = s.buildUpstreamAuthorizeURL(req, agent)
+		var urlErr error
+		upstreamURL, urlErr = s.buildUpstreamAuthorizeURL(req, agent)
+		if urlErr != nil {
+			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			return &ports.AuthorizationDecision{
+				Action:      "error",
+				ErrorCode:   "server_error",
+				ErrorDesc:   "Failed to build upstream authorize URL",
+				RedirectURL: errRedirect,
+			}, nil
+		}
 	}
 	return &ports.AuthorizationDecision{
 		Action:      "proceed",
@@ -284,8 +353,11 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 // Feature 021: uses agent.ClientID (upstream OAuth2 client ID) instead of req.ClientID
 // (which is now the broker's internal agent UUID). When MultiAgentClient.Enabled,
 // appends the agent's internal UUID as the configured AgentIDParamName query parameter.
-func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, agent *storage.Agent) string {
-	u, _ := url.Parse(s.config.UpstreamAuthorizeEndpoint)
+func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, agent *storage.Agent) (string, error) {
+	u, err := url.Parse(s.config.UpstreamAuthorizeEndpoint)
+	if err != nil {
+		return "", fmt.Errorf("invalid upstream authorize endpoint URL: %w", err)
+	}
 	q := u.Query()
 
 	// Use agent.ClientID as upstream client_id (NOT the broker's internal agent UUID)
@@ -321,7 +393,40 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 	}
 
 	u.RawQuery = q.Encode()
-	return u.String()
+	return u.String(), nil
+}
+
+// buildConsentURL builds the consent redirect URL for a given agent and request.
+// For CIMD flows (cimdMeta != nil), seals an AuthorizationSessionClaims JWE and returns
+// a URL with ?session_token=<jwe>. For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
+func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
+	if cimdMeta != nil {
+		meta := &cimd.ClientIDMetadataDocument{
+			ClientID:     cimdMeta.ClientID,
+			ClientName:   cimdMeta.ClientName,
+			LogoURI:      cimdMeta.LogoURI,
+			RedirectURIs: cimdMeta.RedirectURIs,
+		}
+		claims, err := NewAuthorizationSessionClaims(
+			agent.ID,
+			principal,
+			req.OriginalURL,
+			meta,
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to create authorization session claims: %w", err)
+		}
+		token, err := s.CreateAuthorizationSessionToken(claims)
+		if err != nil {
+			return "", fmt.Errorf("failed to create authorization session token: %w", err)
+		}
+		return fmt.Sprintf("%s/consent/agent/%s?session_token=%s", s.config.PublicURL, agent.ID, url.QueryEscape(token)), nil
+	}
+	return fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
+		s.config.PublicURL,
+		agent.ID,
+		url.QueryEscape(req.OriginalURL),
+	), nil
 }
 
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.
@@ -343,6 +448,11 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		metadata.TokenEndpointAuthMethodsSupported = []string{"client_secret_post"}
+	}
+
+	if s.config.CIMDEnabled {
+		t := true
+		metadata.ClientIDMetadataDocumentSupported = &t
 	}
 
 	return metadata, nil
@@ -391,15 +501,7 @@ func (s *Service) validateMandatoryRequirements(
 		// not an error condition per the port contract; check nil separately.
 		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, id.Principal(principal), req.ServiceID)
 		if err != nil {
-			if s.logger != nil {
-				s.logger.Warn(
-					"MandatoryRequirementNotMet",
-					"agent_id", agent.ID,
-					"service_id", req.ServiceID,
-					"reason", "session_lookup_error",
-				)
-			}
-			return fmt.Errorf("session_required: user does not have required session for service %s", req.ServiceID)
+			return fmt.Errorf("failed to check session for service %s: %w", req.ServiceID, err)
 		}
 		if session == nil {
 			if s.logger != nil {

@@ -98,18 +98,14 @@ data:
       {{- end }}
     {{- end }}
 
-    {{- if .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
+    {{- if or .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri (eq .Values.broker.oauth2AuthorizationServer.mode "issue_token") }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
-      upstream_issuer_uri: {{ .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
-      upstream_authorize_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamAuthorizeEndpoint }}
-      upstream_token_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamTokenEndpoint }}
+      mode: {{ .Values.broker.oauth2AuthorizationServer.mode }}
       supported_response_types:
         {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedResponseTypes | nindent 8 }}
       supported_grant_types:
         {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedGrantTypes | nindent 8 }}
-      upstream_timeout_seconds: {{ .Values.broker.oauth2AuthorizationServer.upstreamTimeoutSeconds }}
-      mode: {{ .Values.broker.oauth2AuthorizationServer.mode }}
       {{- with .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
       multi_agent_client:
         enabled: {{ .enabled }}
@@ -119,6 +115,26 @@ data:
         {{- if .agentIdClaimName }}
         agent_id_claim_name: {{ .agentIdClaimName | quote }}
         {{- end }}
+      {{- end }}
+      {{- if .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
+      upstream_issuer_uri: {{ .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri }}
+      upstream_authorize_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamAuthorizeEndpoint }}
+      upstream_token_endpoint: {{ .Values.broker.oauth2AuthorizationServer.upstreamTokenEndpoint }}
+      upstream_timeout_seconds: {{ .Values.broker.oauth2AuthorizationServer.upstreamTimeoutSeconds }}
+      {{- end }}
+      {{- if eq .Values.broker.oauth2AuthorizationServer.mode "issue_token" }}
+      {{- with .Values.broker.oauth2AuthorizationServer.cimd }}
+      cimd:
+        enabled: {{ .enabled }}
+        fetch_timeout: {{ .fetchTimeout | quote }}
+        max_response_bytes: {{ .maxResponseBytes }}
+        cache:
+          max_ttl: {{ .cache.maxTtl | quote }}
+          min_ttl: {{ .cache.minTtl | quote }}
+        ssrf:
+          extra_blocked_cidrs: {{ toJson .ssrf.extraBlockedCidrs }}
+        client_name_blocklist: {{ toJson .clientNameBlocklist }}
+      {{- end }}
       {{- end }}
     {{- end }}
 

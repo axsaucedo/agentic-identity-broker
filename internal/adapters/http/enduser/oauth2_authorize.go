@@ -24,6 +24,12 @@ type OAuth2AuthorizeHandler struct {
 // The shared flow handles consent checks and error decisions; the ProceedHandler
 // strategy determines the response when the user has an active grant.
 func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.Service == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = fmt.Fprintf(w, `{"error":"server_error","error_description":"OAuth2 authorization server not configured"}`)
+		return
+	}
 	principalValue := principal.MustFromContext(r.Context())
 
 	query := r.URL.Query()
@@ -65,7 +71,12 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 	decision, err := h.Service.HandleAuthorization(r.Context(), authReq, id.NewPrincipal(principalValue))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("authorization error: %v", err), http.StatusInternalServerError)
+		if h.logger != nil {
+			h.logger.ErrorContext(r.Context(), "authorization_request_failed", "error", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, `{"error":"server_error"}`)
 		return
 	}
 

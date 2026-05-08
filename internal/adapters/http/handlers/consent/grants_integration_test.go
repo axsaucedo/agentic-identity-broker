@@ -97,10 +97,10 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create consent service
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
 
 	// Create handler
-	handler := NewGrantsHandler(consentService, nil)
+	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
 
 	// Test 1: Create initial grant
 	t.Run("create_grant", func(t *testing.T) {
@@ -260,6 +260,88 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	})
 }
 
+func TestGrantsIntegration_SessionToken_CreateGrantWithRedirect(t *testing.T) {
+	agentRepo := memory.NewAgentRepository()
+	serviceRepo := memory.NewInMemoryThirdpartyOAuth2ProviderRepository()
+	grantRepo := memory.NewUserGrantRepository()
+
+	providerService := thirdparty.NewThirdpartyOAuth2ProviderService(serviceRepo, newTestEncryption(), nil, false, slog.Default())
+
+	ctx := context.Background()
+	agentID := id.NewAgentID()
+	serviceID := id.NewServiceID()
+	principalValue := id.Principal("alice@example.com")
+	originalURL := "https://agent.example.com/authorize?response_type=code"
+
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    "client-test",
+		DisplayName: "Test Agent",
+		Description: "Integration test agent",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, agentRepo.Create(ctx, agent))
+
+	service := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          serviceID,
+		DisplayName: "GitHub",
+		ClientID:    "github-client",
+		Secret:      model.NewPlaintextSecret("github-secret"),
+		IssuerURI:   "https://github.com",
+		Endpoints: model.OAuth2Endpoints{
+			TokenEndpoint:     "https://github.com/login/oauth/access_token",
+			AuthorizeEndpoint: "https://github.com/login/oauth/authorize",
+		},
+		Scopes: []model.OAuthScope{
+			{ScopeValue: "repo", Description: "Full control of private repositories"},
+			{ScopeValue: "read:user", Description: "Read user profile data"},
+		},
+	}
+	require.NoError(t, providerService.Create(ctx, service))
+
+	ts := newTestJWETokenService()
+	sessionToken := newTestSessionToken(ts, agentID, principalValue.String(), originalURL)
+
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
+	handler := NewGrantsHandler(consentService, nil, ts)
+
+	validUntil := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+
+	reqBody := GrantRequest{
+		ValidUntil: &validUntil,
+		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
+			{
+				ThirdpartyOAuth2ServiceID: serviceID.String(),
+				Scopes:                    []string{"repo"},
+			},
+		},
+	}
+	jsonBody, marshalErr := json.Marshal(reqBody)
+	require.NoError(t, marshalErr)
+
+	req := httptest.NewRequest("POST", "/api/consent/agent/"+agentID.String()+"/grants?session_token="+sessionToken, bytes.NewBuffer(jsonBody))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), principalValue.String()))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, originalURL, resp["redirect_url"])
+
+	storedGrant, err := grantRepo.FindByPrincipalAndAgent(ctx, principalValue, agentID)
+	require.NoError(t, err)
+	require.NotNil(t, storedGrant)
+	assert.Equal(t, &validUntil, storedGrant.ValidUntil)
+	require.Len(t, storedGrant.DelegatedOAuth2Tokens, 1)
+	assert.Equal(t, []string{"repo"}, storedGrant.DelegatedOAuth2Tokens[0].Scopes)
+}
+
 // TestGrantsIntegration_OptionalOnlyAgent verifies that agents with only optional service
 // requirements accept approval with no delegated tokens. Empty tokens create a grant with
 // no delegations (201 Created) rather than triggering a revoke.
@@ -310,8 +392,8 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 	err = providerService.Create(ctx, optionalService)
 	require.NoError(t, err)
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
-	handler := NewGrantsHandler(consentService, nil)
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
+	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
 
 	// Approval with no selected services creates a grant with empty delegations (201).
 	t.Run("approve_with_no_services_optional_only_agent", func(t *testing.T) {
@@ -406,8 +488,8 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	err = providerService.Create(ctx, service)
 	require.NoError(t, err)
 
-	consentService := consent.NewService(agentRepo, providerService, grantRepo, slog.Default())
-	handler := NewGrantsHandler(consentService, nil)
+	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
+	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
 
 	tests := []struct {
 		name           string

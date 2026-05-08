@@ -31,6 +31,10 @@ type EnduserRouteConfig struct {
 	// CORS configuration for API routes
 	CORS ports.CORSConfig
 
+	// CSRFStore provides CSRF token storage for state-mutating consent endpoints.
+	// When nil, CSRF protection is not applied.
+	CSRFStore *middleware.CSRFStore
+
 	// Telemetry contains observability configuration. When Telemetry.Enabled and
 	// Telemetry.Traces.Enabled are both true, otelchi HTTP tracing middleware is registered.
 	Telemetry ports.TelemetryConfig
@@ -98,6 +102,10 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 			// Register consent routes if handlers are available
 			if h.Agents != nil && h.AgentDetail != nil && h.AgentGrants != nil && h.Grants != nil {
 				authRouter.Route("/consent", func(consentRouter chi.Router) {
+					if cfg.CSRFStore != nil {
+						consentRouter.Use(middleware.CSRFProtection(cfg.CSRFStore))
+					}
+
 					// Agents list endpoint
 					consentRouter.Get("/agents", h.Agents.GetAgentDelegations)
 

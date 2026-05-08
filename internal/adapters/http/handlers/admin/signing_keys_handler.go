@@ -122,7 +122,7 @@ func (h *SigningKeysHandler) SetCurrent(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.signingKeyRepo.SetCurrent(r.Context(), id.NewKeyID(kid)); err != nil {
-		if isNotFoundErr(err) {
+		if ports.IsNotFoundErr(err) {
 			h.writeError(w, http.StatusNotFound, "signing key not found", "")
 			return
 		}
@@ -160,7 +160,7 @@ func (h *SigningKeysHandler) Remove(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.signingKeyService.DeleteKey(r.Context(), id.NewKeyID(kid)); err != nil {
 		switch {
-		case isNotFoundErr(err):
+		case ports.IsNotFoundErr(err):
 			h.writeError(w, http.StatusNotFound, "signing key not found", "")
 		case errors.Is(err, ports.ErrLastActiveKey), errors.Is(err, ports.ErrCurrentKey):
 			h.writeError(w, http.StatusConflict, err.Error(), "")

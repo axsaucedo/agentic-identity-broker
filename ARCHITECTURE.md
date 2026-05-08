@@ -615,6 +615,39 @@ Service Layer (OAuth2SessionService):
 - ADR 009: Envelope Encryption Design (cryptographic approach)
 - ADR 012: Encryption Layer Separation (architectural pattern)
 
+#### 3.1.x. Client ID Metadata Document (CIMD) Subsystem
+
+**Purpose**: Allow AI agents to identify themselves via a publicly resolvable HTTPS URL as `client_id`. The broker fetches a JSON document from that URL, validates it, and presents its metadata on the consent screen. Enabled via `oauth2_authorization_server.cimd.enabled`.
+
+**New Port**: `internal/ports/cimd.go` defines `CIMDFetcher` (outbound, infrastructure-side) and `ClientResolver` (strategy interface injected into `OAuth2AuthorizationService`).
+
+**New Domain Package**: `internal/domain/oauth2server/cimd/` contains `ClientIDMetadataDocumentURL`, `SSRFBlocklist`, `ClientIDMetadataDocument`, `CIMDCache`, `CIMDService`, `CIMDClientResolver`.
+
+**Authorization Flow with URL-based `client_id`**:
+
+```
+OAuth2 /authorize request
+  ↓ ClientResolver.ResolveClient(client_id)
+  ↓  ├─ URL detected → CIMDClientResolver
+  ↓  │    ↓ Validate URL (scheme, path, no credentials, no dot-segments)
+  ↓  │    ↓ AgentRepository.GetByClientURI → resolve Agent
+  ↓  │    ↓ CIMDService.FetchAndValidate(url, agent)
+  ↓  │         ↓ Cache hit? → return cached document
+  ↓  │         ↓ CIMDFetcher.Fetch (SSRF blocklist enforced at dial time)
+  ↓  │         ↓ Validate: client_id match, redirect_uris present, auth_method safe
+  ↓  │         ↓ Cache store with HTTP-header-derived TTL (clamped to operator bounds)
+  ↓  │    ↓ Return ClientResolution{Agent, CIMDDocument}
+  ↓  └─ UUID detected → OpaqueClientResolver (unchanged path)
+  ↓ HandleAuthorization: CIMD metadata present → create AuthorizationSession
+  ↓ Redirect to consent with ?session_id= (no CIMD params in URL)
+  ↓ Consent handler loads AuthorizationSession (trusted server-side state)
+  ↓ User grants → grants endpoint consumes session → authorization code redirect
+```
+
+**Security Properties**: SSRF blocked at TCP-connect time (TOCTOU-safe); CIMD params never relay through browser URL (AuthorizationSession binds context server-side, SR-013/SR-014).
+
+**See Also**: ADR 015 — CIMD Fetcher Architecture (SSRF hardening, caching, strategy pattern)
+
 ### 3.2. Envoy External Processor (ExtProc) Token Exchange Service
 
 **Name**: extproc-token-exchange
@@ -904,6 +937,9 @@ This section lists all architectural decisions made for this project. ADRs docum
 ### Observability
 - [ADR 011: OpenTelemetry Provider Pattern](adrs/011-opentelemetry-provider-pattern.md) - App-layer OTel provider, otelchi middleware choice, context-based span propagation
 
+### Client ID Metadata Document (CIMD)
+- [ADR 015: CIMD Fetcher Architecture](adrs/015-cimd-fetcher-architecture.md) - SSRF-hardened HTTP client, in-process caching, hexagonal port, strategy pattern for opaque vs URL-based client IDs
+
 ## 11. Project Identification
 
 Project Name: Agentic Identity Broker
@@ -968,7 +1004,7 @@ Define any project-specific terms or acronyms.)
 
 ### Domain Model and Consent Management
 
-**Agent**: An AI agent registered in the identity broker system. Each agent has a unique client_id, display name, description, and optional URLs for governance documentation and user interface. Agents request delegated OAuth2 permissions from users through the consent flow. Optionally, agents may specify service requirements (mandatory and optional third-party services with required scopes).
+**Agent**: An AI agent registered in the identity broker system. Each agent has a unique client_id (the `ClientID` field — a short opaque identifier used in existing OAuth2/consent flows via `GetByClientID`), display name, description, and optional URLs for governance documentation and user interface. Agents may additionally register one or more **client_uris** (Client ID Metadata Document URLs per IETF draft-parecki-oauth-client-id-metadata-document) which provide an alternative resolution path via `GetByClientURI` for CIMD-aware clients. The `client_id` remains the canonical primary identifier; client_uris are supplementary discovery handles that resolve to the same Agent entity. Agents request delegated OAuth2 permissions from users through the consent flow. Optionally, agents may specify service requirements (mandatory and optional third-party services with required scopes).
 
 **ServiceRequirement**: A value object representing a single third-party OAuth2 service that an agent requires or can optionally use. Each requirement specifies: (1) service_id - which third-party service (UUID reference), (2) requirement_type - whether "mandatory" or "optional", and (3) required_scopes - which OAuth2 scopes must be granted (string array). Stored as JSONB in the agent's service_requirements column. Validates structure at domain layer and referential integrity at application layer.
 
@@ -1085,6 +1121,24 @@ Define any project-specific terms or acronyms.)
 **TokenClaimsExpression**: CEL expression evaluated at token issuance time to produce custom JWT claims. Has access to `agent`, `principal`, and `request` variables. Return type must be `map[string]dyn`. Base claim keys (iss, sub, iat, exp, jti, kid, agent_id, scope) are silently stripped from the result to prevent override. Compiled at startup — invalid expressions cause startup failure (fail-closed). Located in `internal/domain/oauth2server/token_claims_cel.go`.
 
 **Domain Model Invariants**: (1) One credential per agent — enforced by UNIQUE constraint on `client_credentials.client_id`. (2) Exactly one `is_current` signing key among active keys — enforced by application logic in `SigningKeyService` and transactional `SetCurrent` in PostgreSQL adapter. (3) Authorization codes are single-use with 60-second TTL — enforced by atomic `MarkUsed` (UPDATE WHERE used_at IS NULL) and expiry check before token exchange.
+
+### Client ID Metadata Document (CIMD) Domain
+
+**ClientIDMetadataDocument**: Immutable value object representing a parsed and validated CIMD JSON document fetched from a client's registered HTTPS URL. Validated at construction time: `client_id` field must exactly match the fetch URL, `redirect_uris` must not be empty, `token_endpoint_auth_method` must not be a client-secret variant, and `client_name` must not match the keyword blocklist. Located in `internal/domain/oauth2/cimd/`.
+
+**CIMDCacheEntry**: In-process (non-persisted) cache record keyed by the Client ID Metadata Document URL. Fields: URL (cache key), parsed Document, FetchedAt timestamp, ExpiresAt (computed from HTTP cache headers clamped to operator TTL bounds). Stored in a `sync.RWMutex`-protected map; expired entries are lazily evicted on next access. Located in `internal/domain/oauth2/cimd/`.
+
+**ClientIDMetadataDocumentURL**: Value object representing a validated HTTPS URL used as a `client_id`. Validated at parse time — invalid URLs cannot be constructed. Enforces: HTTPS scheme only, non-empty path component, no `.`/`..` path segments, no fragment (`#`), no userinfo (credentials), and port must be 443 or absent. Located in `internal/domain/oauth2/cimd/`.
+
+**SSRFBlocklist**: Immutable value object holding the set of CIDR ranges blocked for CIMD HTTP fetches. Initialized at startup from RFC 6890 Special-Purpose Address Registry defaults plus operator `extra_blocked_cidrs`. Consulted by the SSRF-hardened fetcher adapter's custom `net.Dialer.Control` callback to reject resolved IP addresses before TCP connect. Located in `internal/domain/oauth2/cimd/`.
+
+**BrandPinMismatchDetected**: Domain audit event emitted as a structured log entry when a CIMD document's `client_name` differs from the registered Agent's `DisplayName`. Non-blocking — authorization proceeds, but the mismatch is recorded. Fields: AgentID, Agent.DisplayName, CIMD client_name.
+
+**ClientResolver**: Strategy interface injected into `OAuth2AuthorizationService` that resolves a `client_id` from an authorization request to an Agent and optional CIMD metadata. Two implementations selected by the builder based on `cimd.enabled`: `OpaqueClientResolver` (rejects URL-format client IDs with `invalid_client`) and `CIMDClientResolver` (routes URL-format client IDs through CIMD fetch/validate/cache, delegates non-URL IDs to UUID lookup). The builder wires the correct strategy — the domain service is mode-agnostic. Located in `internal/ports/cimd.go` (interface), `internal/domain/oauth2/client_resolver.go`, and `internal/domain/oauth2/cimd/client_resolver.go`.
+
+**CIMDFetcher**: Hexagonal port interface (outbound, infrastructure-side) for fetching Client ID Metadata Documents from remote HTTPS endpoints with SSRF protection, configurable timeout, and response size limits. Analogous to `JWKSPort`. Implemented by the SSRF-hardened HTTP fetcher adapter in `internal/adapters/cimd/fetcher.go` which uses a custom `net.Dialer.Control` callback for TOCTOU-safe IP address validation before TCP connect.
+
+**ClientResolution**: DTO returned by `ClientResolver.ResolveClient()`. Contains the resolved `*storage.Agent` and an optional `*cimd.ClientIDMetadataDocument` (nil for opaque UUID client IDs). Used by `OAuth2AuthorizationService` to carry CIMD metadata into the consent session.
 
 ### General Acronyms
 

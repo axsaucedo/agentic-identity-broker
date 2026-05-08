@@ -29,7 +29,6 @@ type mockConsentService struct {
 	revokeConsentFunc             func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
 	revokeConsentForPrincipalFunc func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
 	getAgentDelegationsFunc       func(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error)
-	getAgentDetailFunc            func(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error)
 	getUserGrantsFunc             func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 }
 
@@ -74,19 +73,16 @@ func (m *mockConsentService) RevokeConsentForPrincipal(ctx context.Context, prin
 }
 
 //nolint:unused // Used in tests
+func (m *mockConsentService) GetAgentWithServiceRequirements(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+//nolint:unused // Used in tests
 func (m *mockConsentService) GetAgentDelegations(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error) {
 	if m.getAgentDelegationsFunc != nil {
 		return m.getAgentDelegationsFunc(ctx, principal)
 	}
 	return nil, errors.New("not implemented")
-}
-
-//nolint:unused // Used in tests
-func (m *mockConsentService) GetAgentDetail(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-	if m.getAgentDetailFunc != nil {
-		return m.getAgentDetailFunc(ctx, agentID)
-	}
-	return nil, nil, errors.New("not implemented")
 }
 
 //nolint:unused // Used in tests
@@ -362,7 +358,7 @@ func (m *mockConsentServiceWrapper) asService() *consent.Service {
 	mockServiceRepo := &mockServiceRepo{services: services, err: m.err}
 	mockGrantRepo := &mockGrantRepo{}
 
-	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, slog.Default())
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, nil, slog.Default())
 }
 
 // Mock repository implementations
@@ -403,6 +399,10 @@ func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID)
 		return m.agent, nil
 	}
 	return nil, m.err
+}
+
+func (m *mockAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
 }
 
 type mockServiceRepo struct {

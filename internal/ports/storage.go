@@ -16,6 +16,17 @@ var (
 	ErrNotFound = errors.New("entity not found")
 )
 
+// IsNotFoundErr returns true if err represents a not-found condition from any
+// storage adapter. Handles both ErrNotFound and storage.StorageError with
+// ErrorKindNotFound.
+func IsNotFoundErr(err error) bool {
+	if errors.Is(err, ErrNotFound) {
+		return true
+	}
+	var storageErr *storage.StorageError
+	return errors.As(err, &storageErr) && storageErr.Kind == storage.ErrorKindNotFound
+}
+
 // HealthChecker verifies storage backend health.
 type HealthChecker interface {
 	// HealthCheck verifies storage backend is operational.
@@ -118,6 +129,11 @@ type AgentRepository interface {
 	// Returns StorageError with Kind=NotFound if agent not found.
 	// Returns StorageError for connection/timeout issues.
 	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error)
+
+	// GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
+	// Returns StorageError with Kind=NotFound if no agent has this URI registered.
+	// Returns StorageError for connection/timeout issues.
+	GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error)
 }
 
 // UserGrantRepository defines storage operations for user grant entities.

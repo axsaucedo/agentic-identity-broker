@@ -300,6 +300,43 @@ type MultiAgentClientConfig struct {
 	AgentIDClaimName string `mapstructure:"agent_id_claim_name"`
 }
 
+// CIMDConfig holds Client ID Metadata Document fetch and validation settings.
+// CIMD is disabled by default (Enabled: false); SSRF protection is always active.
+type CIMDConfig struct {
+	Enabled             bool            `mapstructure:"enabled"`
+	FetchTimeout        time.Duration   `mapstructure:"fetch_timeout"`
+	MaxResponseBytes    int             `mapstructure:"max_response_bytes"`
+	Cache               CIMDCacheConfig `mapstructure:"cache"`
+	SSRF                CIMDSSRFConfig  `mapstructure:"ssrf"`
+	ClientNameBlocklist []string        `mapstructure:"client_name_blocklist"`
+}
+
+// CIMDCacheConfig holds operator TTL bounds and entry cap for CIMD response caching.
+type CIMDCacheConfig struct {
+	MaxTTL     time.Duration `mapstructure:"max_ttl"`
+	MinTTL     time.Duration `mapstructure:"min_ttl"`
+	MaxEntries int           `mapstructure:"max_entries"`
+}
+
+// CIMDSSRFConfig holds SSRF protection settings for CIMD fetches.
+type CIMDSSRFConfig struct {
+	ExtraBlockedCIDRs []string `mapstructure:"extra_blocked_cidrs"`
+}
+
+// DefaultCIMDConfig returns safe defaults for CIMD configuration.
+func DefaultCIMDConfig() CIMDConfig {
+	return CIMDConfig{
+		Enabled:          false,
+		FetchTimeout:     1 * time.Second,
+		MaxResponseBytes: 5120,
+		Cache: CIMDCacheConfig{
+			MaxTTL:     1 * time.Hour,
+			MinTTL:     60 * time.Second,
+			MaxEntries: 1000,
+		},
+	}
+}
+
 // OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
 type OAuth2AuthServerConfig struct {
 	UpstreamIssuerURI         string   `mapstructure:"upstream_issuer_uri"`
@@ -316,6 +353,9 @@ type OAuth2AuthServerConfig struct {
 
 	// MultiAgentClient holds optional multi-agent client sharing configuration.
 	MultiAgentClient MultiAgentClientConfig `mapstructure:"multi_agent_client"`
+
+	// CIMD holds Client ID Metadata Document configuration.
+	CIMD CIMDConfig `mapstructure:"cimd"`
 }
 
 // isZero reports whether the config is entirely unset (zero value for every field).
@@ -332,7 +372,8 @@ func (c *OAuth2AuthServerConfig) isZero() bool {
 		c.TokenClaimsExpression == "" &&
 		!c.MultiAgentClient.Enabled &&
 		c.MultiAgentClient.AgentIDParamName == "" &&
-		c.MultiAgentClient.AgentIDClaimName == ""
+		c.MultiAgentClient.AgentIDClaimName == "" &&
+		!c.CIMD.Enabled
 }
 
 // Validate validates the OAuth2AuthServerConfig structure.
@@ -362,6 +403,10 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 
 // validateProxyMode validates configuration for proxy mode (upstream OAuth2 server).
 func (c *OAuth2AuthServerConfig) validateProxyMode() error {
+	if c.CIMD.Enabled {
+		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'issue_token'; CIMD is incompatible with proxy mode")
+	}
+
 	// Check required fields
 	if c.UpstreamIssuerURI == "" {
 		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")
@@ -414,6 +459,11 @@ func (c *OAuth2AuthServerConfig) validateIssueTokenMode() error {
 
 	if len(c.SupportedGrantTypes) == 0 {
 		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
+	}
+
+	// Validate CIMD cache TTL invariant early so wiring fails at config load, not startup.
+	if c.CIMD.Enabled && c.CIMD.Cache.MinTTL > c.CIMD.Cache.MaxTTL {
+		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
 	}
 
 	// Validate multi_agent_client fields when enabled

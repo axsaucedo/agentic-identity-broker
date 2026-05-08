@@ -117,6 +117,10 @@ func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID)
 	return nil, ports.ErrNotFound
 }
 
+func (m *mockAgentRepo) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "not found")
+}
+
 type mockServiceRepo struct {
 	services map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity
 	err      error
@@ -193,14 +197,17 @@ func (m *mockServiceRepo) FindByProtectedResource(ctx context.Context, resourceU
 }
 
 type mockGrantRepo struct {
-	grants map[id.GrantID]*storage.UserGrant
-	err    error
+	grants      map[id.GrantID]*storage.UserGrant
+	err         error
+	createCalls int
+	updateCalls int
 }
 
 func (m *mockGrantRepo) Create(ctx context.Context, grant *storage.UserGrant) error {
 	if m.err != nil {
 		return m.err
 	}
+	m.createCalls++
 	// Generate ID if not set
 	if grant.ID.IsZero() {
 		grant.ID = id.NewGrantID()
@@ -224,6 +231,7 @@ func (m *mockGrantRepo) Update(ctx context.Context, grant *storage.UserGrant) er
 	if m.err != nil {
 		return m.err
 	}
+	m.updateCalls++
 	if _, exists := m.grants[grant.ID]; !exists {
 		return ports.ErrNotFound
 	}
@@ -338,7 +346,188 @@ func (m *mockGrantRepo) DeleteByPrincipalAndAgentID(ctx context.Context, princip
 	return ports.ErrNotFound
 }
 
+type mockSessionRepo struct {
+	findFunc func(ctx context.Context, principal id.Principal, serviceID id.ServiceID) (*storage.UserSession, error)
+}
+
+func (m *mockSessionRepo) FindByPrincipalAndService(ctx context.Context, p id.Principal, svcID id.ServiceID) (*storage.UserSession, error) {
+	if m.findFunc != nil {
+		return m.findFunc(ctx, p, svcID)
+	}
+	return nil, nil
+}
+
+func (m *mockSessionRepo) Create(_ context.Context, _ *storage.UserSession) error { return nil }
+func (m *mockSessionRepo) Get(_ context.Context, _ id.SessionID) (*storage.UserSession, error) {
+	return nil, nil
+}
+func (m *mockSessionRepo) ListByPrincipal(_ context.Context, _ id.Principal) ([]*storage.UserSession, error) {
+	return nil, nil
+}
+func (m *mockSessionRepo) Delete(_ context.Context, _ id.SessionID) error { return nil }
+func (m *mockSessionRepo) DeleteByPrincipalAndService(_ context.Context, _ id.Principal, _ id.ServiceID) error {
+	return nil
+}
+func (m *mockSessionRepo) CountByService(_ context.Context, _ id.ServiceID) (int, error) {
+	return 0, nil
+}
+
 // Test cases
+
+func TestService_GetAgentWithServiceRequirements(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	principal := id.Principal("user@example.com")
+
+	githubID := id.NewServiceID()
+	googleID := id.NewServiceID()
+	agentID := id.NewAgentID()
+
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    id.ClientID("agent-client"),
+		DisplayName: "Test Agent",
+		Description: "desc",
+		ServiceRequirements: []storage.ServiceRequirement{
+			{ServiceID: githubID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"read:user", "repo"}},
+			{ServiceID: googleID, RequirementType: storage.RequirementTypeOptional, RequiredScopes: []string{"email"}},
+		},
+	}
+
+	github := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          githubID,
+		DisplayName: "GitHub",
+		Scopes:      []model.OAuthScope{{ScopeValue: "read:user", Description: "Read user"}, {ScopeValue: "repo", Description: "Repos"}},
+		Secret:      model.NewEncryptedSecret([]byte("cipher")),
+	}
+	google := &model.ThirdpartyOAuth2ProviderEntity{
+		ID:          googleID,
+		DisplayName: "Google",
+		Scopes:      []model.OAuthScope{{ScopeValue: "email", Description: "View email"}},
+		Secret:      model.NewEncryptedSecret([]byte("cipher")),
+	}
+
+	t.Run("agent not found", func(t *testing.T) {
+		t.Parallel()
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			&mockSessionRepo{},
+			slog.Default(),
+		)
+		_, _, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		require.ErrorIs(t, err, ErrAgentNotFound)
+	})
+
+	t.Run("no service requirements returns empty slice", func(t *testing.T) {
+		t.Parallel()
+		agentNoReqs := &storage.Agent{ID: agentID, ClientID: "c", DisplayName: "A"}
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agentNoReqs}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			&mockSessionRepo{},
+			slog.Default(),
+		)
+		a, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		require.NoError(t, err)
+		assert.Equal(t, agentNoReqs.ID, a.ID)
+		assert.Empty(t, reqs)
+	})
+
+	t.Run("connected user shows IsConnected true", func(t *testing.T) {
+		t.Parallel()
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{githubID: github, googleID: google}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			&mockSessionRepo{findFunc: func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+				return &storage.UserSession{ID: id.NewSessionID(), ServiceID: githubID}, nil
+			}},
+			slog.Default(),
+		)
+		_, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		require.NoError(t, err)
+		require.Len(t, reqs, 2)
+		for _, r := range reqs {
+			assert.True(t, r.IsConnected)
+		}
+	})
+
+	t.Run("no session shows IsConnected false", func(t *testing.T) {
+		t.Parallel()
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{githubID: github, googleID: google}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			&mockSessionRepo{},
+			slog.Default(),
+		)
+		_, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		require.NoError(t, err)
+		require.Len(t, reqs, 2)
+		for _, r := range reqs {
+			assert.False(t, r.IsConnected)
+		}
+	})
+
+	t.Run("missing service is skipped", func(t *testing.T) {
+		t.Parallel()
+		// Only github exists; google requirement should be silently skipped
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{githubID: github}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			&mockSessionRepo{},
+			slog.Default(),
+		)
+		_, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		require.NoError(t, err)
+		require.Len(t, reqs, 1)
+		assert.Equal(t, githubID, reqs[0].ServiceID)
+	})
+
+	t.Run("scope descriptions are populated", func(t *testing.T) {
+		t.Parallel()
+		singleReqAgent := &storage.Agent{
+			ID:       agentID,
+			ClientID: "c",
+			ServiceRequirements: []storage.ServiceRequirement{
+				{ServiceID: githubID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"read:user"}},
+			},
+		}
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: singleReqAgent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{githubID: github}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			&mockSessionRepo{},
+			slog.Default(),
+		)
+		_, reqs, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		require.NoError(t, err)
+		require.Len(t, reqs, 1)
+		require.Len(t, reqs[0].RequiredScopes, 1)
+		assert.Equal(t, "read:user", reqs[0].RequiredScopes[0].Name)
+		assert.Equal(t, "Read user", reqs[0].RequiredScopes[0].Description)
+	})
+
+	t.Run("session lookup error propagates", func(t *testing.T) {
+		t.Parallel()
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{githubID: github, googleID: google}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			&mockSessionRepo{findFunc: func(_ context.Context, _ id.Principal, _ id.ServiceID) (*storage.UserSession, error) {
+				return nil, storage.NewStorageError("FindByPrincipalAndService", storage.ErrorKindConnection, nil, "db down")
+			}},
+			slog.Default(),
+		)
+		_, _, err := svc.GetAgentWithServiceRequirements(ctx, principal, agentID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "checking session status")
+	})
+}
 
 func TestService_GetAgentConsentInfo(t *testing.T) {
 	t.Parallel()
@@ -372,6 +561,7 @@ func TestService_GetAgentConsentInfo(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
 			slog.Default(),
 		)
 
@@ -392,6 +582,7 @@ func TestService_GetAgentConsentInfo(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
 			slog.Default(),
 		)
 
@@ -434,6 +625,7 @@ func TestService_GrantConsent(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
 			slog.Default(),
 		)
 
@@ -464,6 +656,7 @@ func TestService_GrantConsent(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
 			slog.Default(),
 		)
 
@@ -490,6 +683,7 @@ func TestService_GrantConsent(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
 			slog.Default(),
 		)
 
@@ -508,6 +702,110 @@ func TestService_GrantConsent(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, grant)
 		assert.ErrorIs(t, err, ErrAgentNotFound)
+	})
+
+	t.Run("empty scopes returns ErrGrantValidation", func(t *testing.T) {
+		t.Parallel()
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
+			slog.Default(),
+		)
+
+		req := &GrantRequest{
+			Principal: id.Principal("user@example.com"),
+			AgentID:   agentID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID1,
+					Scopes:                    []string{}, // empty — fails UserGrant.ValidateForCreate
+				},
+			},
+		}
+
+		_, err := svc.GrantConsent(ctx, req)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrGrantValidation)
+	})
+
+	t.Run("duplicate scopes returns ErrGrantValidation", func(t *testing.T) {
+		t.Parallel()
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
+			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
+			slog.Default(),
+		)
+
+		req := &GrantRequest{
+			Principal: id.Principal("user@example.com"),
+			AgentID:   agentID,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID1,
+					Scopes:                    []string{"repo", "repo"}, // duplicate — fails UserGrant.ValidateForCreate
+				},
+			},
+		}
+
+		_, err := svc.GrantConsent(ctx, req)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrGrantValidation)
+	})
+
+	t.Run("matching existing grant is a no-op", func(t *testing.T) {
+		t.Parallel()
+		existingGrantID := id.NewGrantID()
+		createdAt := time.Now().Add(-2 * time.Hour).UTC().Round(time.Second)
+		updatedAt := createdAt.Add(30 * time.Minute)
+		validUntil := time.Now().Add(24 * time.Hour).UTC().Round(time.Second)
+
+		existingGrant := &storage.UserGrant{
+			ID:         existingGrantID,
+			Principal:  id.Principal("user@example.com"),
+			AgentID:    agentID,
+			ValidUntil: &validUntil,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID1,
+					Scopes:                    []string{"repo", "user:email"},
+				},
+			},
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
+		}
+
+		grantRepo := &mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{existingGrantID: existingGrant}}
+		svc := NewService(
+			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agent}},
+			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{serviceID1: service1}}),
+			grantRepo,
+			nil,
+			slog.Default(),
+		)
+
+		req := &GrantRequest{
+			Principal:  id.Principal("user@example.com"),
+			AgentID:    agentID,
+			ValidUntil: &validUntil,
+			DelegatedOAuth2Tokens: []storage.DelegatedToken{
+				{
+					ThirdpartyOAuth2ServiceID: serviceID1,
+					Scopes:                    []string{"repo", "user:email"},
+				},
+			},
+		}
+
+		grant, err := svc.GrantConsent(ctx, req)
+		require.NoError(t, err)
+		require.NotNil(t, grant)
+		assert.Equal(t, existingGrantID, grant.ID)
+		assert.Equal(t, updatedAt, grant.UpdatedAt)
+		assert.Equal(t, 0, grantRepo.updateCalls)
+		assert.Equal(t, 0, grantRepo.createCalls)
 	})
 }
 
@@ -538,6 +836,7 @@ func TestService_RevokeConsentForPrincipal(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			grantRepo,
+			nil,
 			slog.Default(),
 		)
 
@@ -552,6 +851,7 @@ func TestService_RevokeConsentForPrincipal(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
 			slog.Default(),
 		)
 
@@ -567,6 +867,7 @@ func TestService_RevokeConsentForPrincipal(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			grantRepo,
+			nil,
 			slog.Default(),
 		)
 
@@ -607,6 +908,7 @@ func TestService_RevokeConsent(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			grantRepo,
+			nil,
 			slog.Default(),
 		)
 
@@ -621,6 +923,7 @@ func TestService_RevokeConsent(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
 			slog.Default(),
 		)
 
@@ -683,6 +986,7 @@ func TestService_GetActiveGrants(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			grantRepo,
+			nil,
 			slog.Default(),
 		)
 
@@ -698,6 +1002,7 @@ func TestService_GetActiveGrants(t *testing.T) {
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 			&mockGrantRepo{grants: map[id.GrantID]*storage.UserGrant{}},
+			nil,
 			slog.Default(),
 		)
 
@@ -907,6 +1212,7 @@ func TestService_GetAgentDelegations(t *testing.T) {
 				&mockAgentRepo{agents: tt.agents},
 				newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
 				&mockGrantRepo{grants: tt.grants},
+				nil,
 				slog.Default(),
 			)
 

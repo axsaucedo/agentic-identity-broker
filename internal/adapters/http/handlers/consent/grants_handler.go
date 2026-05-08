@@ -13,6 +13,8 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/go-chi/chi/v5"
@@ -21,18 +23,23 @@ import (
 // GrantsHandler handles HTTP requests for user grants management.
 // Implements FR-011 through FR-014 (grant CRUD operations).
 type GrantsHandler struct {
-	consentService ConsentService
-	logger         *slog.Logger
+	consentService  ConsentService
+	jweTokenService *domjwe.TokenService
+	logger          *slog.Logger
 }
 
 // NewGrantsHandler creates a new grants handler.
-func NewGrantsHandler(consentService ConsentService, logger *slog.Logger) *GrantsHandler {
+func NewGrantsHandler(consentService ConsentService, logger *slog.Logger, jweTokenService *domjwe.TokenService) *GrantsHandler {
+	if jweTokenService == nil {
+		panic("GrantsHandler requires a non-nil JWE token service")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &GrantsHandler{
-		consentService: consentService,
-		logger:         logger,
+		consentService:  consentService,
+		jweTokenService: jweTokenService,
+		logger:          logger,
 	}
 }
 
@@ -161,9 +168,36 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for redirect_uri parameter early - validate before processing grant (T051-T054)
+	// FR-029: When session_token is present (CIMD flow), validate the JWE token.
+	sessionToken := r.URL.Query().Get("session_token")
+	var sessionRedirectURI string
+	if sessionToken != "" {
+		var claims domotp2.AuthorizationSessionClaims
+		if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
+			h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
+			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
+			return
+		}
+		if claims.AgentID != parsedAgentID {
+			h.logger.Warn("authorization session agent mismatch",
+				"expected_agent", parsedAgentID, "session_agent", claims.AgentID,
+				"principal", principalValue)
+			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
+			return
+		}
+		if claims.Principal != id.Principal(principalValue) {
+			h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
+			h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
+			return
+		}
+		sessionRedirectURI = claims.OriginalURL
+	}
+
+	// Check for redirect_uri parameter early - validate before processing grant (T051-T054).
+	// When session_token is present the redirect comes from the JWE claims;
+	// redirect_uri is ignored in that case so we skip validation to avoid spurious 400s.
 	redirectURI := r.URL.Query().Get("redirect_uri")
-	if redirectURI != "" {
+	if redirectURI != "" && sessionToken == "" {
 		// Validate redirect_uri early to prevent unnecessary processing
 		valid, err := validateRedirectURI(redirectURI, r)
 		if err != nil {
@@ -224,9 +258,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		DelegatedOAuth2Tokens: tokens,
 	}
 
-	// Call consent service
-	grant, err := h.consentService.GrantConsent(r.Context(), grantReq)
-	if err != nil {
+	handleGrantError := func(err error) {
 		// Check for specific error types
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found",
@@ -254,11 +286,31 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if errors.Is(err, consent.ErrGrantValidation) {
+			h.logger.Warn("grant validation failed",
+				"agent_id", agentID,
+				"principal", principalValue,
+				"error", err)
+			h.writeError(w, http.StatusBadRequest, "invalid request", err.Error())
+			return
+		}
+
 		h.logger.Error("failed to grant consent",
 			"agent_id", agentID,
 			"principal", principalValue,
 			"error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+	}
+
+	grant, err := h.consentService.GrantConsent(r.Context(), grantReq)
+	if err != nil {
+		handleGrantError(err)
+		return
+	}
+
+	if grant == nil {
+		err := errors.New("grant consent returned nil grant without error")
+		handleGrantError(err)
 		return
 	}
 
@@ -267,6 +319,15 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"principal", principalValue,
 		"agent_id", agentID,
 		"grant_id", grant.ID)
+
+	if sessionToken != "" {
+		response := h.toGrantResponse(grant)
+		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
+			"data":         response,
+			"redirect_url": sessionRedirectURI,
+		})
+		return
+	}
 
 	// If redirect_uri was provided and already validated, return redirect URL in response body
 	// instead of HTTP 303 redirect (T056, T057). This avoids CORS issues when the redirect chain
@@ -354,9 +415,7 @@ func (h *GrantsHandler) toGrantResponse(grant *storage.UserGrant) GrantResponse 
 
 // writeJSON writes a JSON response.
 func (h *GrantsHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
+	if err := writeBufferedJSON(w, statusCode, data); err != nil {
 		h.logger.Error("failed to encode response", "error", err)
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/oauth2_sessions"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -1605,7 +1606,7 @@ func createOAuth2SessionService(
 		agentRepo,
 		encryption,
 		&http.Client{},
-		jweKey,
+		domjwe.New(jweKey),
 		config,
 		slog.Default(),
 	)

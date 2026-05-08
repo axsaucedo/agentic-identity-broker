@@ -68,9 +68,11 @@ func (e *TokenClaimsEvaluator) Evaluate(_ context.Context, requester fosite.Requ
 		"client_id":    "",
 		"display_name": "",
 	}
-	if bc, ok := requester.GetClient().(*brokerClient); ok && bc != nil && bc.agent != nil {
-		agentCtx["client_id"] = string(bc.agent.ClientID)
-		agentCtx["display_name"] = bc.agent.DisplayName
+	if h, ok := requester.GetClient().(agentHolder); ok {
+		if agent := h.getAgent(); agent != nil {
+			agentCtx["client_id"] = string(agent.ClientID)
+			agentCtx["display_name"] = agent.DisplayName
+		}
 	}
 
 	// Build principal context: id=subject (principal string).

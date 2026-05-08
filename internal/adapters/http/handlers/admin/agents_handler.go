@@ -60,6 +60,7 @@ type AgentRequest struct {
 	ServiceRequirements  []ServiceRequirementRequest `json:"service_requirements,omitempty"`
 	RedirectURIs         []string                    `json:"redirect_uris,omitempty"`
 	AllowedScopes        []string                    `json:"allowed_scopes,omitempty"`
+	ClientURIs           []string                    `json:"client_uris,omitempty"`
 }
 
 // ServiceRequirementResponse represents a service requirement in the response.
@@ -83,6 +84,7 @@ type AgentResponse struct {
 	ServiceRequirements  []ServiceRequirementResponse `json:"service_requirements,omitempty"`
 	RedirectURIs         []string                     `json:"redirect_uris,omitempty"`
 	AllowedScopes        []string                     `json:"allowed_scopes,omitempty"`
+	ClientURIs           []string                     `json:"client_uris,omitempty"`
 	CreatedAt            string                       `json:"created_at"`
 	UpdatedAt            string                       `json:"updated_at"`
 }
@@ -127,6 +129,12 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err := storage.ValidateClientURIsForWrite(req.ClientURIs); err != nil {
+		h.logger.Warn("client_uris validation failed", "error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
 	// Create agent entity
 	now := time.Now().UTC()
 	agent := &storage.Agent{
@@ -141,6 +149,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		ServiceRequirements:  serviceReqs,
 		RedirectURIs:         req.RedirectURIs,
 		AllowedScopes:        req.AllowedScopes,
+		ClientURIs:           req.ClientURIs,
 		CreatedAt:            now,
 		UpdatedAt:            now,
 	}
@@ -249,7 +258,15 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Update agent entity
+	// Enforce client URI cardinality on admin writes. Validate() (called by the storage
+	// adapter on Update) skips cardinality to allow CIMD snapshot refreshes — so this
+	// explicit check is required for admin mutations.
+	if err := storage.ValidateClientURIsForWrite(req.ClientURIs); err != nil {
+		h.logger.Warn("client_uris validation failed", "error", err)
+		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
 	agent := &storage.Agent{
 		ID:                   parsedAgentID,
 		ClientID:             id.ClientID(req.ClientID),
@@ -262,6 +279,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		ServiceRequirements:  serviceReqs,
 		RedirectURIs:         req.RedirectURIs,
 		AllowedScopes:        req.AllowedScopes,
+		ClientURIs:           req.ClientURIs,
 		CreatedAt:            existing.CreatedAt,
 		UpdatedAt:            time.Now().UTC(),
 	}
@@ -387,6 +405,7 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 		AgentInterfaceURL:    agent.AgentInterfaceURL,
 		RedirectURIs:         agent.RedirectURIs,
 		AllowedScopes:        agent.AllowedScopes,
+		ClientURIs:           agent.ClientURIs,
 		CreatedAt:            agent.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:            agent.UpdatedAt.Format(time.RFC3339),
 	}

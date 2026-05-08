@@ -49,6 +49,9 @@ func (r *integrationStubAgentRepo) List(_ context.Context) ([]*domainstorage.Age
 func (r *integrationStubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*domainstorage.Agent, error) {
 	return nil, nil
 }
+func (r *integrationStubAgentRepo) GetByClientURI(_ context.Context, _ string) (*domainstorage.Agent, error) {
+	return nil, nil
+}
 
 // TestOAuth2TokenEndpoint_SuccessfulTokenExchange tests complete token exchange flow
 func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {

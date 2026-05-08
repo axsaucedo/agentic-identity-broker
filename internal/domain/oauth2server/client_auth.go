@@ -20,7 +20,7 @@ const clientSecretBytes = 32
 // ClientAuthService handles client authentication and credential management.
 type ClientAuthService struct {
 	credentialRepo ports.ClientCredentialRepository
-	agentRepo      ports.AgentRepository
+	clientResolver ports.ClientResolver
 	hasher         *Argon2Hasher
 	logger         *slog.Logger
 }
@@ -28,12 +28,12 @@ type ClientAuthService struct {
 // NewClientAuthService creates a new ClientAuthService.
 func NewClientAuthService(
 	credentialRepo ports.ClientCredentialRepository,
-	agentRepo ports.AgentRepository,
+	clientResolver ports.ClientResolver,
 	logger *slog.Logger,
 ) *ClientAuthService {
 	return &ClientAuthService{
 		credentialRepo: credentialRepo,
-		agentRepo:      agentRepo,
+		clientResolver: clientResolver,
 		hasher:         &Argon2Hasher{},
 		logger:         logger,
 	}
@@ -49,13 +49,13 @@ type AuthenticatedClient struct {
 func (s *ClientAuthService) Authenticate(ctx context.Context, agentID id.AgentID, secret string) (*AuthenticatedClient, error) {
 	cred, err := s.credentialRepo.GetByAgentID(ctx, agentID)
 	if err != nil {
-		s.logStorageFailure(ctx, err)
+		s.logResolverFailure(ctx, err)
 		return nil, fosite.ErrInvalidClient
 	}
 
-	agent, err := s.agentRepo.Get(ctx, agentID)
+	resolution, err := s.clientResolver.ResolveClient(ctx, id.ClientID(agentID.String()))
 	if err != nil {
-		s.logStorageFailure(ctx, err)
+		s.logResolverFailure(ctx, err)
 		return nil, fosite.ErrInvalidClient
 	}
 
@@ -64,19 +64,28 @@ func (s *ClientAuthService) Authenticate(ctx context.Context, agentID id.AgentID
 	}
 
 	return &AuthenticatedClient{
-		Agent:      agent,
+		Agent:      resolution.Agent,
 		Credential: cred,
 	}, nil
 }
 
-// logStorageFailure logs infrastructure-level storage errors (connection, timeout, unknown)
-// while silently ignoring not-found errors which are expected during authentication.
-func (s *ClientAuthService) logStorageFailure(ctx context.Context, err error) {
+// logResolverFailure logs infrastructure-level errors from credential lookup or
+// client resolution. Not-found storage errors are expected during authentication
+// and silently ignored. ClientIDError with server_error code indicates an
+// infrastructure failure that is logged.
+func (s *ClientAuthService) logResolverFailure(ctx context.Context, err error) {
 	var se *storage.StorageError
 	if errors.As(err, &se) && se.Kind != storage.ErrorKindNotFound {
 		s.logger.ErrorContext(ctx, "storage failure during client authentication",
 			"storage_op", se.Operation,
 			"storage_kind", string(se.Kind),
+		)
+		return
+	}
+	var clientErr *ports.ClientIDError
+	if errors.As(err, &clientErr) && clientErr.Code == "server_error" {
+		s.logger.ErrorContext(ctx, "infrastructure error during client resolution",
+			"error", clientErr.Desc,
 		)
 	}
 }

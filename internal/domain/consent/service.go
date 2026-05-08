@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -28,6 +29,9 @@ var (
 	// ErrGrantNotFound is returned by RevokeConsentForPrincipal when no active grant exists
 	// for the (principal, agent) pair. The handler maps this to HTTP 404.
 	ErrGrantNotFound = errors.New("grant not found")
+	// ErrGrantValidation is returned when a UserGrant fails domain validation (e.g. empty
+	// scope list, duplicate scopes). The handler maps this to HTTP 400.
+	ErrGrantValidation = errors.New("grant validation failed")
 )
 
 // Service provides consent management business logic.
@@ -37,6 +41,7 @@ type Service struct {
 	agentRepo       ports.AgentRepository
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService
 	grantRepo       ports.UserGrantRepository
+	sessionRepo     ports.UserSessionRepository
 	logger          *slog.Logger
 }
 
@@ -45,14 +50,106 @@ func NewService(
 	agentRepo ports.AgentRepository,
 	providerService *thirdparty.ThirdpartyOAuth2ProviderService,
 	grantRepo ports.UserGrantRepository,
+	sessionRepo ports.UserSessionRepository,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		agentRepo:       agentRepo,
 		providerService: providerService,
 		grantRepo:       grantRepo,
+		sessionRepo:     sessionRepo,
 		logger:          logger,
 	}
+}
+
+// ServiceScopeInfo is an OAuth2 scope with its human-readable description.
+type ServiceScopeInfo struct {
+	Name        string
+	Description string
+}
+
+// ServiceRequirementStatus is an agent service requirement enriched with the user's session status.
+type ServiceRequirementStatus struct {
+	ServiceID       id.ServiceID
+	DisplayName     string
+	RequirementType storage.RequirementType
+	RequiredScopes  []ServiceScopeInfo
+	IsConnected     bool
+}
+
+// GetAgentWithServiceRequirements retrieves the agent and its service requirements enriched
+// with the authenticated user's session status for each required service.
+// Returns ErrAgentNotFound if the agent does not exist.
+func (s *Service) GetAgentWithServiceRequirements(
+	ctx context.Context,
+	userPrincipal id.Principal,
+	agentID id.AgentID,
+) (*storage.Agent, []ServiceRequirementStatus, error) {
+	agent, err := s.agentRepo.Get(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil, nil, ErrAgentNotFound
+		}
+		return nil, nil, fmt.Errorf("failed to get agent: %w", err)
+	}
+
+	if len(agent.ServiceRequirements) == 0 {
+		return agent, []ServiceRequirementStatus{}, nil
+	}
+
+	// Deduplicate service IDs before loading to avoid redundant decryptions.
+	serviceIDs := make(map[id.ServiceID]bool, len(agent.ServiceRequirements))
+	for _, req := range agent.ServiceRequirements {
+		serviceIDs[req.ServiceID] = true
+	}
+
+	serviceMap := make(map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity, len(serviceIDs))
+	for serviceID := range serviceIDs {
+		svc, err := s.providerService.Get(ctx, serviceID)
+		if err != nil {
+			if errors.Is(err, ports.ErrNotFound) {
+				s.logger.Warn("service not found for agent requirement",
+					"service_id", serviceID,
+					"agent_id", agentID)
+				continue
+			}
+			return nil, nil, fmt.Errorf("loading service %s: %w", serviceID, err)
+		}
+		serviceMap[serviceID] = svc
+	}
+
+	requirements := make([]ServiceRequirementStatus, 0, len(agent.ServiceRequirements))
+	for _, req := range agent.ServiceRequirements {
+		svc, ok := serviceMap[req.ServiceID]
+		if !ok {
+			continue
+		}
+
+		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, userPrincipal, req.ServiceID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("checking session status for service %s: %w", req.ServiceID, err)
+		}
+
+		scopeDesc := make(map[string]string, len(svc.Scopes))
+		for _, scope := range svc.Scopes {
+			scopeDesc[scope.ScopeValue] = scope.Description
+		}
+
+		scopes := make([]ServiceScopeInfo, len(req.RequiredScopes))
+		for i, name := range req.RequiredScopes {
+			scopes[i] = ServiceScopeInfo{Name: name, Description: scopeDesc[name]}
+		}
+
+		requirements = append(requirements, ServiceRequirementStatus{
+			ServiceID:       req.ServiceID,
+			DisplayName:     svc.DisplayName,
+			RequirementType: req.RequirementType,
+			RequiredScopes:  scopes,
+			IsConnected:     session != nil && !session.IsExpired(),
+		})
+	}
+
+	return agent, requirements, nil
 }
 
 // AgentConsentInfo contains all information needed for a user to make a consent decision.
@@ -100,6 +197,27 @@ type GrantRequest struct {
 	DelegatedOAuth2Tokens []storage.DelegatedToken
 }
 
+func (s *Service) validateGrantRequest(ctx context.Context, req *GrantRequest) error {
+	// Validate agent exists
+	agent, err := s.agentRepo.Get(ctx, req.AgentID)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
+		}
+		return fmt.Errorf("failed to get agent: %w", err)
+	}
+	if agent == nil {
+		return fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
+	}
+
+	// Validate all scopes exist in their respective services (FR-018)
+	if err := s.validateScopes(ctx, req.DelegatedOAuth2Tokens); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GrantConsent creates or updates a user grant (upsert semantics per FR-013, FR-015).
 // Validates that:
 // - Agent exists (FR-020)
@@ -107,20 +225,7 @@ type GrantRequest struct {
 // - ValidUntil is in the future if provided (FR-016)
 // Returns the created/updated grant or an error.
 func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage.UserGrant, error) {
-	// Validate agent exists
-	agent, err := s.agentRepo.Get(ctx, req.AgentID)
-	if err != nil {
-		if errors.Is(err, ports.ErrNotFound) {
-			return nil, fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
-		}
-		return nil, fmt.Errorf("failed to get agent: %w", err)
-	}
-	if agent == nil {
-		return nil, fmt.Errorf("%w: agent_id=%s", ErrAgentNotFound, req.AgentID)
-	}
-
-	// Validate all scopes exist in their respective services (FR-018)
-	if err := s.validateScopes(ctx, req.DelegatedOAuth2Tokens); err != nil {
+	if err := s.validateGrantRequest(ctx, req); err != nil {
 		return nil, err
 	}
 
@@ -132,13 +237,17 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 
 	var grant *storage.UserGrant
 	if existingGrant != nil {
+		if grantMatchesRequest(existingGrant, req) {
+			return existingGrant.Copy(), nil
+		}
+
 		// Update existing grant (FR-013)
 		existingGrant.ValidUntil = req.ValidUntil
 		existingGrant.DelegatedOAuth2Tokens = req.DelegatedOAuth2Tokens
 		existingGrant.UpdatedAt = time.Now()
 
 		if err := existingGrant.Validate(); err != nil {
-			return nil, fmt.Errorf("grant validation failed: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrGrantValidation, err)
 		}
 
 		if err := s.grantRepo.Update(ctx, existingGrant); err != nil {
@@ -158,7 +267,7 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 		}
 
 		if err := grant.ValidateForCreate(); err != nil {
-			return nil, fmt.Errorf("grant validation failed: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrGrantValidation, err)
 		}
 
 		if err := s.grantRepo.Create(ctx, grant); err != nil {
@@ -167,6 +276,33 @@ func (s *Service) GrantConsent(ctx context.Context, req *GrantRequest) (*storage
 	}
 
 	return grant.Copy(), nil
+}
+
+func grantMatchesRequest(grant *storage.UserGrant, req *GrantRequest) bool {
+	if grant == nil || req == nil {
+		return false
+	}
+
+	return validUntilMatches(grant.ValidUntil, req.ValidUntil) &&
+		delegatedTokensMatch(grant.DelegatedOAuth2Tokens, req.DelegatedOAuth2Tokens)
+}
+
+func validUntilMatches(left, right *time.Time) bool {
+	switch {
+	case left == nil && right == nil:
+		return true
+	case left == nil || right == nil:
+		return false
+	default:
+		return left.Equal(*right)
+	}
+}
+
+func delegatedTokensMatch(left, right []storage.DelegatedToken) bool {
+	return slices.EqualFunc(left, right, func(leftToken, rightToken storage.DelegatedToken) bool {
+		return leftToken.ThirdpartyOAuth2ServiceID == rightToken.ThirdpartyOAuth2ServiceID &&
+			slices.Equal(leftToken.Scopes, rightToken.Scopes)
+	})
 }
 
 // RevokeConsent deletes a user grant (FR-014).

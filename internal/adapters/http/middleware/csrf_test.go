@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 )
 
 func TestCSRFProtection_GetRequest(t *testing.T) {
@@ -15,8 +17,7 @@ func TestCSRFProtection_GetRequest(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("GET", "/api/test", nil)
-	// Add principal to context
-	req = req.WithContext(req.Context())
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
 	req.RemoteAddr = "127.0.0.1:12345"
 
 	rr := httptest.NewRecorder()
@@ -41,6 +42,10 @@ func TestCSRFProtection_GetRequest(t *testing.T) {
 	if !found {
 		t.Error("CSRF cookie should be set on GET request")
 	}
+
+	if _, exists := store.Get("user@example.com"); !exists {
+		t.Error("CSRF token should be stored for the authenticated principal")
+	}
 }
 
 func TestCSRFProtection_PostWithoutToken(t *testing.T) {
@@ -51,6 +56,7 @@ func TestCSRFProtection_PostWithoutToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/test", nil)
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
 	req.RemoteAddr = "127.0.0.1:12345"
 
 	rr := httptest.NewRecorder()
@@ -62,9 +68,9 @@ func TestCSRFProtection_PostWithoutToken(t *testing.T) {
 	}
 }
 
-func TestCSRFProtection_PostWithValidToken(t *testing.T) {
+func TestCSRFProtection_PostWithValidTokenForPrincipalIgnoresRemoteAddr(t *testing.T) {
 	store := NewCSRFStore(slog.Default())
-	sessionID := "test-session"
+	sessionID := "user@example.com"
 	token := "test-csrf-token"
 
 	// Pre-store the token
@@ -76,7 +82,8 @@ func TestCSRFProtection_PostWithValidToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/test", nil)
-	req.RemoteAddr = sessionID
+	req = req.WithContext(principal.WithPrincipal(req.Context(), sessionID))
+	req.RemoteAddr = "127.0.0.1:54321"
 	req.Header.Set(CSRFTokenHeader, token)
 
 	rr := httptest.NewRecorder()
@@ -88,14 +95,14 @@ func TestCSRFProtection_PostWithValidToken(t *testing.T) {
 	}
 }
 
-func TestCSRFProtection_PostWithInvalidToken(t *testing.T) {
+func TestCSRFProtection_PostWithDifferentPrincipalFailsEvenWhenRemoteAddrMatches(t *testing.T) {
 	store := NewCSRFStore(slog.Default())
-	sessionID := "test-session"
+	correctPrincipal := "user@example.com"
+	wrongPrincipal := "other@example.com"
 	correctToken := "correct-token"
-	wrongToken := "wrong-token"
 
 	// Pre-store the correct token
-	store.Set(sessionID, correctToken)
+	store.Set(correctPrincipal, correctToken)
 
 	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -103,15 +110,63 @@ func TestCSRFProtection_PostWithInvalidToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/test", nil)
-	req.RemoteAddr = sessionID
-	req.Header.Set(CSRFTokenHeader, wrongToken)
+	req = req.WithContext(principal.WithPrincipal(req.Context(), wrongPrincipal))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set(CSRFTokenHeader, correctToken)
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	// POST with invalid CSRF token should fail
+	// POST with the wrong principal should fail even if the address is unchanged.
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected status %d, got %d", http.StatusForbidden, rr.Code)
+	}
+}
+
+func TestCSRFProtection_PostWithoutPrincipalForbidden(t *testing.T) {
+	store := NewCSRFStore(slog.Default())
+	// Pre-store a token keyed by RemoteAddr to verify it is never consulted.
+	store.Set("127.0.0.1:12345", "test-csrf-token")
+
+	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	req := httptest.NewRequest("POST", "/api/test", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set(CSRFTokenHeader, "test-csrf-token")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	// Must be 403: no principal means no session ID; RemoteAddr must not be used as fallback.
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected status %d, got %d", http.StatusForbidden, rr.Code)
+	}
+}
+
+func TestCSRFProtection_GetWithoutPrincipalPassesWithoutCookie(t *testing.T) {
+	store := NewCSRFStore(slog.Default())
+	handler := CSRFProtection(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+
+	req := httptest.NewRequest("GET", "/api/test", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	// GET passes through even without a principal, but no CSRF cookie is set.
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
+	}
+	for _, cookie := range rr.Result().Cookies() {
+		if cookie.Name == CSRFCookieName {
+			t.Error("CSRF cookie must not be set when no principal is present")
+		}
 	}
 }
 

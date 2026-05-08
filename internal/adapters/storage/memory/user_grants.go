@@ -29,7 +29,6 @@ func NewUserGrantRepository() *UserGrantRepository {
 }
 
 // Create creates a new user grant or updates existing grant for same principal+agent (upsert semantics).
-// Validates the grant before creating/updating.
 // Returns deep copy of the created/updated grant.
 func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGrant) error {
 	r.mu.Lock()
@@ -38,16 +37,6 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 	// Generate ID if not provided
 	if grant.ID.IsZero() {
 		grant.ID = id.NewGrantID()
-	}
-
-	// Validate before storing
-	if err := grant.ValidateForCreate(); err != nil {
-		return storage.NewStorageError(
-			"CreateUserGrant",
-			storage.ErrorKindValidation,
-			err,
-			"user grant validation failed",
-		)
 	}
 
 	// Check if grant already exists for this principal+agent pair (upsert semantics)
@@ -94,7 +83,6 @@ func (r *UserGrantRepository) Get(ctx context.Context, grantID id.GrantID) (*sto
 }
 
 // Update updates an existing user grant.
-// Validates the grant before updating.
 // Returns StorageError with Kind=NotFound if grant not found.
 func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGrant) error {
 	r.mu.Lock()
@@ -108,16 +96,6 @@ func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 			storage.ErrorKindNotFound,
 			ports.ErrNotFound,
 			"user grant not found",
-		)
-	}
-
-	// Validate before updating
-	if err := grant.Validate(); err != nil {
-		return storage.NewStorageError(
-			"UpdateUserGrant",
-			storage.ErrorKindValidation,
-			err,
-			"user grant validation failed",
 		)
 	}
 

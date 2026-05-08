@@ -28,7 +28,7 @@ func TestMigrationLifecycle(t *testing.T) {
 	assert.Greater(t, version, uint(0), "Should have applied at least one migration")
 
 	// Step 2: Verify some tables exist
-	tables := []string{"agents", "thirdparty_oauth2_services", "user_sessions"}
+	tables := []string{"agents", "thirdparty_oauth2_services", "user_sessions", "authorization_sessions"}
 	for _, table := range tables {
 		exists, err := f.TableExists(t, table)
 		require.NoError(t, err)
@@ -148,4 +148,39 @@ func TestMigration007OAuth2Flavor(t *testing.T) {
 	assert.True(t, exists, "oauth2_flavor column should exist after re-apply")
 
 	t.Log("Migration 007 lifecycle test complete")
+}
+
+// TestMigration015AgentCIMDFields verifies migration 015 lifecycle:
+// adds agent_client_uris child table to agents.
+func TestMigration015AgentCIMDFields(t *testing.T) {
+	f := NewMigrationTestFramework(t)
+	defer f.Cleanup(t)
+
+	// Apply migrations up to version 014
+	err := f.Up(t, 14)
+	require.NoError(t, err)
+
+	// Verify agent_client_uris table does NOT exist before migration 015
+	exists, err := f.TableExists(t, "agent_client_uris")
+	require.NoError(t, err)
+	assert.False(t, exists, "agent_client_uris table should NOT exist before migration 015")
+
+	// Apply migration 015
+	err = f.UpAll(t)
+	require.NoError(t, err)
+
+	// Verify agent_client_uris table now exists
+	exists, err = f.TableExists(t, "agent_client_uris")
+	require.NoError(t, err)
+	assert.True(t, exists, "agent_client_uris table should exist after migration 015")
+
+	// Rollback migration 015
+	err = f.Down(t, 14)
+	require.NoError(t, err)
+
+	exists, err = f.TableExists(t, "agent_client_uris")
+	require.NoError(t, err)
+	assert.False(t, exists, "agent_client_uris table should be gone after rollback")
+
+	t.Log("Migration 015 lifecycle test complete")
 }

@@ -42,7 +42,7 @@ Creates a new agent registration.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8081/api/agents \
+curl -X POST http://localhost:14000/api/agents \
   -H "X-Principal: admin@example.com" \
   -H "Content-Type: application/json" \
   -d '{
@@ -78,7 +78,7 @@ Retrieves agent details by ID.
 
 **Example:**
 ```bash
-curl http://localhost:8081/api/agents/550e8400-e29b-41d4-a716-446655440000 \
+curl http://localhost:14000/api/agents/550e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -117,7 +117,7 @@ Updates an existing agent's metadata.
 
 **Example:**
 ```bash
-curl -X PUT http://localhost:8081/api/agents/550e8400-e29b-41d4-a716-446655440000 \
+curl -X PUT http://localhost:14000/api/agents/550e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com" \
   -H "Content-Type: application/json" \
   -d '{
@@ -139,7 +139,7 @@ Deletes an agent and all associated user grants (cascade delete).
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8081/api/agents/550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE http://localhost:14000/api/agents/550e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -168,7 +168,7 @@ Retrieves all registered agents.
 
 **Example:**
 ```bash
-curl http://localhost:8081/api/agents \
+curl http://localhost:14000/api/agents \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -228,7 +228,7 @@ Registers a new third-party OAuth2 service.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8081/api/third-party/oauth2/clients \
+curl -X POST http://localhost:14000/api/third-party/oauth2/clients \
   -H "X-Principal: admin@example.com" \
   -H "Content-Type: application/json" \
   -d '{
@@ -271,7 +271,7 @@ Retrieves service details by ID (client secret redacted).
 
 **Example:**
 ```bash
-curl http://localhost:8081/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
+curl http://localhost:14000/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -305,7 +305,7 @@ Updates service configuration.
 
 **Example:**
 ```bash
-curl -X PUT http://localhost:8081/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
+curl -X PUT http://localhost:14000/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com" \
   -H "Content-Type: application/json" \
   -d '{
@@ -331,7 +331,7 @@ Deletes an OAuth2 service. Returns 409 Conflict if active grants reference this 
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8081/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE http://localhost:14000/api/third-party/oauth2/clients/660e8400-e29b-41d4-a716-446655440000 \
   -H "X-Principal: admin@example.com"
 ```
 
@@ -376,5 +376,56 @@ All endpoints may return these error responses:
 {
   "error": "internal server error",
   "message": ""
+}
+```
+
+---
+
+## CIMD Agent Fields
+
+Agents that use a URL-based `client_id` (Client ID Metadata Document) carry three additional fields populated from the fetched CIMD document.
+
+### Additional Fields on AgentRequest / AgentResponse
+
+| Field | Type | Description |
+|---|---|---|
+| `client_uris` | `[]string` | HTTPS URLs that the agent may use as `client_id`. Each URI must be globally unique across all agents. |
+| `auth_method` | `string` (optional) | Last observed `token_endpoint_auth_method` from a successful CIMD fetch. Read-only after initial registration. |
+| `jwks_uri` | `string` (optional) | Last observed `jwks_uri` from a successful CIMD fetch. Read-only after initial registration. |
+
+### Registering a CIMD-Enabled Agent
+
+```json
+POST /api/agents
+{
+  "client_id": "https://agent.example.com/.well-known/agent.json",
+  "display_name": "Example CIMD Agent",
+  "client_uris": ["https://agent.example.com/.well-known/agent.json"]
+}
+```
+
+The broker resolves `client_id` against `client_uris` at authorization time. The agent entity is identified by `client_id` which may be the URL itself, or a separate opaque UUID — both patterns are supported as long as a matching entry exists in `client_uris`.
+
+### Validation Rules
+
+- Each entry in `client_uris` must be a well-formed HTTPS URL (no HTTP, no credentials, no fragment, no dot-segment path components).
+- `client_uris` is globally unique — attempting to register a URI already used by another agent returns `409 Conflict`.
+- `auth_method` and `jwks_uri` are populated by the broker after a successful CIMD fetch and cannot be set directly via the admin API.
+
+### Error Responses for CIMD Fields
+
+**400 Bad Request** — malformed `client_uris` entry:
+```json
+{
+  "error": "bad_request",
+  "message": "client_uris[0]: must be a valid HTTPS URL"
+}
+```
+
+**409 Conflict** — duplicate `client_uri` across agents:
+```json
+{
+  "error": "conflict",
+  "message": "client_uri 'https://...' is already registered to another agent"
 }
 ```

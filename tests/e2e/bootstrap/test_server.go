@@ -312,6 +312,12 @@ func (ts *TestServer) Close() {
 	}
 }
 
+// App returns the underlying App instance, giving tests access to domain services
+// for building test fixtures (e.g. JWE tokens via OAuth2Service).
+func (ts *TestServer) App() *app.App {
+	return ts.app
+}
+
 // BaseURL returns the server's base URL for requests.
 // Returns: "http://127.0.0.1:PORT" format string
 func (ts *TestServer) BaseURL() string {

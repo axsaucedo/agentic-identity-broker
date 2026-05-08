@@ -214,7 +214,7 @@ func (m *mockAgentsService) asService() *consent.Service {
 		err:         m.err,
 	}
 
-	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, slog.Default())
+	return consent.NewService(mockAgentRepo, newTestProviderService(mockServiceRepo), mockGrantRepo, nil, slog.Default())
 }
 
 // Mock repository implementations for agents handler tests
@@ -256,6 +256,10 @@ func (m *mockAgentRepoForAgents) GetByClientID(ctx context.Context, clientID id.
 		}
 	}
 	return nil, nil
+}
+
+func (m *mockAgentRepoForAgents) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
 }
 
 type mockServiceRepoForAgents struct{}

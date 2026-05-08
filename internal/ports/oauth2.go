@@ -106,6 +106,9 @@ type MetadataResponse struct {
 
 	// OPTIONAL: Supported PKCE code challenge methods (present in issue_token mode)
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
+
+	// OPTIONAL: Whether CIMD-based client_id resolution is supported (RFC draft)
+	ClientIDMetadataDocumentSupported *bool `json:"client_id_metadata_document_supported,omitempty"`
 }
 
 // TokenMintingStrategy abstracts local token grant processing in issue_token mode.
@@ -114,11 +117,11 @@ type MetadataResponse struct {
 type TokenMintingStrategy interface {
 	// HandleClientCredentials processes a client_credentials grant type request.
 	// Returns the token response or an error.
-	HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*TokenResponse, error)
+	HandleClientCredentials(ctx context.Context, clientID id.ClientID, clientSecret, scope string) (*TokenResponse, error)
 
 	// HandleAuthorizationCodeExchange processes an authorization_code grant type request.
 	// Returns the token response or an error.
-	HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
+	HandleAuthorizationCodeExchange(ctx context.Context, clientID id.ClientID, clientSecret, code, redirectURI, codeVerifier string) (*TokenResponse, error)
 }
 
 // TokenResponse represents a successful OAuth2 token response from a minting strategy.

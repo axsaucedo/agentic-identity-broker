@@ -15,6 +15,11 @@ type OAuth2MetadataHandler struct {
 
 // ServeHTTP implements http.Handler for the metadata endpoint
 func (h *OAuth2MetadataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.Service == nil {
+		http.Error(w, "OAuth2 authorization server not configured", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Only allow GET requests
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")

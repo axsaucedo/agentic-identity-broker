@@ -47,30 +47,15 @@ export function ServiceCard({
   onDelegate,
   onRevoke,
 }: ServiceCardProps) {
-  // Get service display name
-  // When service is a requirement, backend uses serviceName field
   const serviceDisplayName =
-    service.displayName || service.serviceName || 'Unknown Service';
+    service.kind === 'scoped'
+      ? (service.displayName ?? 'Unknown Service')
+      : (service.serviceName ?? 'Unknown Service');
 
-  // Normalize scopes to have consistent structure (value, description)
-  // Support both ServiceScope (with 'value') and requiredScopes (with 'name')
-  const normalizeScopes = (): Array<{
-    value: string;
-    description?: string;
-  }> => {
-    if (service.scopes) {
-      return service.scopes;
-    }
-    if (service.requiredScopes) {
-      return service.requiredScopes.map((s) => ({
-        value: s.name,
-        description: s.description,
-      }));
-    }
-    return [];
-  };
-
-  const serviceScopes = normalizeScopes();
+  const serviceScopes =
+    service.kind === 'scoped'
+      ? (service.scopes ?? []).map((s) => ({ value: s.value, description: s.description }))
+      : service.requiredScopes.map((s) => ({ value: s.name, description: s.description }));
 
   // Find the grant for this specific service
   const serviceGrant = grants?.find(
@@ -79,7 +64,8 @@ export function ServiceCard({
   const grantedScopes = serviceGrant?.scopes || [];
 
   // Determine connection status
-  const isConnected = service.connectionStatus === 'connected';
+  const isConnected =
+    service.kind === 'requirement' && service.connectionStatus === 'connected';
 
   return (
     <article
@@ -106,7 +92,7 @@ export function ServiceCard({
                 size="lg"
                 shape="rounded"
               />
-              {service.requirementType && (
+              {service.kind === 'requirement' && (
                 <span
                   className={
                     service.requirementType === 'mandatory'

@@ -45,6 +45,7 @@ func newMockConsentService() *consent.Service {
 				UpdatedAt:  time.Now(),
 			},
 		},
+		nil,
 		slog.Default(),
 	)
 }
@@ -74,6 +75,10 @@ func (m *MockAgentRepository) Delete(ctx context.Context, agentID id.AgentID) er
 
 func (m *MockAgentRepository) List(ctx context.Context) ([]*storagedomain.Agent, error) {
 	return nil, nil
+}
+
+func (m *MockAgentRepository) GetByClientURI(ctx context.Context, uri string) (*storagedomain.Agent, error) {
+	return nil, storagedomain.NewStorageError("GetAgentByClientURI", storagedomain.ErrorKindNotFound, ports.ErrNotFound, "not found")
 }
 
 // MockOAuth2SessionService mocks the OAuth2SessionService for testing
@@ -757,6 +762,10 @@ func (r *trackingAgentRepository) List(_ context.Context) ([]*storagedomain.Agen
 	return nil, nil
 }
 
+func (r *trackingAgentRepository) GetByClientURI(_ context.Context, _ string) (*storagedomain.Agent, error) {
+	return nil, storagedomain.NewStorageError("GetAgentByClientURI", storagedomain.ErrorKindNotFound, ports.ErrNotFound, "not found")
+}
+
 // generateTestRSAKeySet generates an RSA key pair and returns the private key plus a JWKS set
 // containing the corresponding public key. Used to set up JWTValidator in T029 tests.
 func generateTestRSAKeySet(t *testing.T) (*rsa.PrivateKey, jwk.Set) {
@@ -826,6 +835,7 @@ func newServiceForStep9Test(t *testing.T, keySet jwk.Set, agentRepo ports.AgentR
 		&MockAgentRepository{},
 		newTestProviderService(&MockServiceRepository{}),
 		&MockGrantRepository{err: ports.ErrNotFound},
+		nil,
 		slog.Default(),
 	)
 

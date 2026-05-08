@@ -6,14 +6,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -33,47 +33,45 @@ type ScopeWithDescription struct {
 	Description string `json:"description,omitempty"`
 }
 
+// errSessionExpired is returned by resolveCIMDMetadata when the JWE session token
+// cannot be decrypted or has passed its TTL. Callers use errors.Is to distinguish
+// this from other validation errors (agent mismatch, principal mismatch) and return
+// a machine-readable "session_expired" error code so the frontend can redirect the
+// user back through the /oauth2/authorize flow.
+var errSessionExpired = errors.New("authorization session expired")
+
 // AgentDetailHandler handles HTTP requests for retrieving detailed agent information.
 // Implements User Story 2: Review Agent-Specific Grants (GET /api/consent/agent/:agentId).
 // Phase 6 extension: Includes service requirements with user connection status.
 type AgentDetailHandler struct {
-	consentService    ConsentService
-	agentRepository   ports.AgentRepository
-	sessionRepository ports.UserSessionRepository
-	providerService   *thirdparty.ThirdpartyOAuth2ProviderService
-	logger            *slog.Logger
+	consentService  ConsentService
+	jweTokenService *domjwe.TokenService
+	logger          *slog.Logger
 }
 
 // NewAgentDetailHandler creates a new agent detail handler.
-func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger) *AgentDetailHandler {
+func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, jweTokenService *domjwe.TokenService) *AgentDetailHandler {
+	if jweTokenService == nil {
+		panic("AgentDetailHandler requires a non-nil JWE token service")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentDetailHandler{
-		consentService: consentService,
-		logger:         logger,
+		consentService:  consentService,
+		jweTokenService: jweTokenService,
+		logger:          logger,
 	}
 }
 
-// WithAgentRepository sets the agent repository for this handler.
-// Used to lookup the full agent entity including service requirements.
-func (h *AgentDetailHandler) WithAgentRepository(repo ports.AgentRepository) *AgentDetailHandler {
-	h.agentRepository = repo
-	return h
-}
-
-// WithSessionRepository sets the session repository for this handler.
-// Used to lookup user session status with third-party services.
-func (h *AgentDetailHandler) WithSessionRepository(repo ports.UserSessionRepository) *AgentDetailHandler {
-	h.sessionRepository = repo
-	return h
-}
-
-// WithProviderService sets the provider service for this handler.
-// Used to lookup service metadata including display names and scope descriptions.
-func (h *AgentDetailHandler) WithProviderService(svc *thirdparty.ThirdpartyOAuth2ProviderService) *AgentDetailHandler {
-	h.providerService = svc
-	return h
+// CIMDMetadataResponse is included in the agent detail response when the authorization
+// request originated from a CIMD-based client_id.
+type CIMDMetadataResponse struct {
+	ClientIDURL     string   `json:"client_id_url"`
+	RedirectURI     string   `json:"redirect_uri"`
+	VerifiedDomain  string   `json:"verified_domain"`
+	RequestedScopes []string `json:"requested_scopes"`
+	LogoURI         string   `json:"logo_uri,omitempty"`
 }
 
 // GetAgentDetailResponse represents the response for GET /api/consent/agent/:agentId.
@@ -83,8 +81,9 @@ type GetAgentDetailResponse struct {
 
 // AgentDetailData contains the agent detail and associated services.
 type AgentDetailData struct {
-	Agent    consent.AgentDetail         `json:"agent"`
-	Services []ServiceRequirementForUser `json:"services"`
+	Agent        consent.AgentDetail         `json:"agent"`
+	Services     []ServiceRequirementForUser `json:"services"`
+	CIMDMetadata *CIMDMetadataResponse       `json:"cimd_metadata,omitempty"`
 }
 
 // GetAgentDetail handles GET /api/consent/agent/:agentId
@@ -107,7 +106,6 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Extract principal from context (middleware ensures this is present)
 	userID, ok := getPrincipalFromContext(ctx)
 	if !ok {
 		h.logger.Warn("principal not found in context")
@@ -115,7 +113,6 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Call consent service to get agent detail (used for basic agent info)
 	parsedAgentID, parseErr := id.ParseAgentID(agentID)
 	if parseErr != nil {
 		h.logger.Warn("invalid agent ID format", "agent_id", agentID, "error", parseErr)
@@ -123,67 +120,83 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	agentDetail, _, err := h.consentService.GetAgentDetail(ctx, parsedAgentID)
+	agent, serviceRequirements, err := h.consentService.GetAgentWithServiceRequirements(ctx, id.Principal(userID), parsedAgentID)
 	if err != nil {
 		if errors.Is(err, consent.ErrAgentNotFound) {
 			h.logger.Warn("agent not found", "agent_id", agentID)
 			h.writeError(w, http.StatusNotFound, "not found", "agent not found")
 			return
 		}
-
-		h.logger.Error("failed to get agent detail",
-			"agent_id", agentID,
-			"error", err)
+		h.logger.Error("failed to get agent", "agent_id", agentID, "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
 	}
 
-	// Load full agent entity to access service requirements
-	agent, err := h.getAgent(ctx, parsedAgentID)
+	agentDetail := &consent.AgentDetail{
+		AgentID:              agent.ID,
+		DisplayName:          agent.DisplayName,
+		Description:          agent.Description,
+		GovernanceURL:        agent.GovernanceURL,
+		UserDocumentationURL: agent.UserDocumentationURL,
+		AgentInterfaceURL:    agent.AgentInterfaceURL,
+	}
+
+	services := toServiceRequirementForUser(serviceRequirements)
+	sortServiceRequirements(services)
+
+	cimdMeta, err := h.resolveSessionContext(r, parsedAgentID)
 	if err != nil {
-		h.logger.Error("failed to load agent",
-			"agent_id", agentID,
-			"error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+		if errors.Is(err, errSessionExpired) {
+			h.logger.Warn("authorization session expired", "agent_id", agentID)
+			h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
+			return
+		}
+		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
+		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
 		return
 	}
 
-	// Build service requirements enriched with user session status
-	serviceRequirements, err := h.buildServiceRequirementsForUser(ctx, id.Principal(userID), agent)
-	if err != nil {
-		h.logger.Error("failed to build service requirements",
-			"agent_id", agentID,
-			"user_id", userID,
-			"error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-		return
-	}
-
-	// Sort services: mandatory first, then optional
-	sortServiceRequirements(serviceRequirements)
-
-	// Build response
 	response := GetAgentDetailResponse{
 		Data: AgentDetailData{
-			Agent:    *agentDetail,
-			Services: serviceRequirements,
+			Agent:        *agentDetail,
+			Services:     services,
+			CIMDMetadata: cimdMeta,
 		},
 	}
 
 	h.logger.Info("agent detail retrieved",
 		"agent_id", agentID,
 		"user_id", userID,
-		"services_count", len(serviceRequirements))
+		"services_count", len(services))
 
 	h.writeJSON(w, http.StatusOK, response)
 }
 
-// writeJSON writes a JSON response.
-func (h *AgentDetailHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
+func toServiceRequirementForUser(reqs []consent.ServiceRequirementStatus) []ServiceRequirementForUser {
+	result := make([]ServiceRequirementForUser, len(reqs))
+	for i, req := range reqs {
+		scopes := make([]ScopeWithDescription, len(req.RequiredScopes))
+		for j, s := range req.RequiredScopes {
+			scopes[j] = ScopeWithDescription{Name: s.Name, Description: s.Description}
+		}
+		connStatus := "not_connected"
+		if req.IsConnected {
+			connStatus = "connected"
+		}
+		result[i] = ServiceRequirementForUser{
+			ServiceID:        req.ServiceID.String(),
+			ServiceName:      req.DisplayName,
+			RequirementType:  string(req.RequirementType),
+			RequiredScopes:   scopes,
+			ConnectionStatus: connStatus,
+		}
+	}
+	return result
+}
 
-	if err := encodeJSON(w, data); err != nil {
+// writeJSON writes a JSON response.
+func (h *AgentDetailHandler) writeJSON(w http.ResponseWriter, statusCode int, data any) {
+	if err := writeBufferedJSON(w, statusCode, data); err != nil {
 		h.logger.Error("failed to encode response", "error", err)
 	}
 }
@@ -197,118 +210,6 @@ func (h *AgentDetailHandler) writeError(w http.ResponseWriter, statusCode int, e
 	h.writeJSON(w, statusCode, resp)
 }
 
-// buildServiceRequirementsForUser enriches agent service requirements with user-specific session status.
-// Returns a list of ServiceRequirementForUser with connection status for each service.
-// Requirements:
-// - Query agent's ServiceRequirements array
-// - For each requirement, lookup the ThirdPartyOAuth2Service by service_id
-// - Check user's session status with that service (from session repository)
-// - Include connection status: "connected" if session exists and is valid, "not_connected" otherwise
-// - Resolve scope descriptions from service configuration
-// - Return enriched ServiceRequirementForUser model
-// Error handling:
-// - If service not found: Log warning and skip (service may have been removed)
-// - If session lookup fails: Treat as "not_connected"
-// - Return partial results if some services unavailable (fail-open for fetch)
-func (h *AgentDetailHandler) buildServiceRequirementsForUser(ctx context.Context, userID id.Principal, agent *storage.Agent) ([]ServiceRequirementForUser, error) {
-	if len(agent.ServiceRequirements) == 0 {
-		return []ServiceRequirementForUser{}, nil
-	}
-
-	serviceMap := h.batchLoadServices(ctx, agent)
-
-	var results []ServiceRequirementForUser
-
-	for _, req := range agent.ServiceRequirements {
-		svc, ok := serviceMap[req.ServiceID.String()]
-		if !ok {
-			continue
-		}
-
-		// Check user's session status with this service
-		session, err := h.sessionRepository.FindByPrincipalAndService(ctx, userID, req.ServiceID)
-		if err != nil {
-			h.logger.Warn("Error checking session status",
-				"user_id", userID,
-				"service_id", req.ServiceID,
-				"error", err)
-			// Treat error as no session
-			session = nil
-		}
-
-		// Determine connection status
-		connStatus := "not_connected"
-		if session != nil && !session.IsExpired() {
-			connStatus = "connected"
-		}
-
-		// Build scope list with descriptions
-		var scopes []ScopeWithDescription
-		for _, scopeName := range req.RequiredScopes {
-			// Find scope description from service configuration
-			scopeDesc := ""
-			for _, svcScope := range svc.Scopes {
-				if svcScope.ScopeValue == scopeName {
-					scopeDesc = svcScope.Description
-					break
-				}
-			}
-
-			scope := ScopeWithDescription{
-				Name:        scopeName,
-				Description: scopeDesc,
-			}
-			scopes = append(scopes, scope)
-		}
-
-		result := ServiceRequirementForUser{
-			ServiceID:        req.ServiceID.String(),
-			ServiceName:      svc.DisplayName,
-			RequirementType:  string(req.RequirementType),
-			RequiredScopes:   scopes,
-			ConnectionStatus: connStatus,
-		}
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-// batchLoadServices loads all unique services referenced by an agent's service requirements.
-// Returns a map of service_id -> service for efficient lookup, avoiding N KMS decryptions.
-func (h *AgentDetailHandler) batchLoadServices(ctx context.Context, agent *storage.Agent) map[string]*model.ThirdpartyOAuth2ProviderEntity {
-	serviceIDs := make(map[id.ServiceID]bool)
-	for _, sr := range agent.ServiceRequirements {
-		serviceIDs[sr.ServiceID] = true
-	}
-
-	serviceMap := make(map[string]*model.ThirdpartyOAuth2ProviderEntity)
-	for serviceID := range serviceIDs {
-		svc, err := h.providerService.Get(ctx, serviceID)
-		if err != nil {
-			h.logger.Warn("Service not found during requirement building",
-				"service_id", serviceID,
-				"error", err)
-			continue
-		}
-		serviceMap[serviceID.String()] = svc
-	}
-
-	return serviceMap
-}
-
-// getAgent loads a full agent entity from storage.
-// This is used to access service requirements which are not available in AgentDetail DTO.
-func (h *AgentDetailHandler) getAgent(ctx context.Context, agentID id.AgentID) (*storage.Agent, error) {
-	// We need an agent repository. For now, we'll use a workaround by checking if we have access to it
-	// through the consentService. Since we don't have direct access, we need to add it to the handler.
-	// This will be injected via builder or a new method.
-	if h.agentRepository == nil {
-		return nil, errors.New("agent repository not configured")
-	}
-	return h.agentRepository.Get(ctx, agentID)
-}
-
 // getPrincipalFromContext extracts the principal from the request context.
 func getPrincipalFromContext(ctx context.Context) (string, bool) {
 	return principal.FromContext(ctx)
@@ -316,12 +217,63 @@ func getPrincipalFromContext(ctx context.Context) (string, bool) {
 
 // sortServiceRequirements sorts service requirements with mandatory services first, then optional.
 func sortServiceRequirements(services []ServiceRequirementForUser) {
-	// Sort so mandatory services appear first
-	for i := 0; i < len(services); i++ {
+	for i := range len(services) {
 		for j := i + 1; j < len(services); j++ {
 			if services[i].RequirementType == "optional" && services[j].RequirementType == "mandatory" {
 				services[i], services[j] = services[j], services[i]
 			}
 		}
 	}
+}
+
+// resolveSessionContext decodes the session_token (when present) and returns CIMD display
+// metadata extracted from the claims. The session_token itself is passed opaquely to the
+// grants endpoint; authorization-resumption state (original_url, PKCE, state) stays server-side.
+// CIMD agents require session_token — falling back to query params would reopen the
+// metadata-spoofing surface. Non-CIMD/opaque flows do not use session tokens.
+func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.AgentID) (*CIMDMetadataResponse, error) {
+	sessionToken := r.URL.Query().Get("session_token")
+	if sessionToken == "" {
+		return nil, nil
+	}
+
+	var claims domotp2.AuthorizationSessionClaims
+	if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
+		return nil, errSessionExpired
+	}
+	if claims.AgentID != agentID {
+		return nil, errors.New("authorization session does not match requested agent")
+	}
+	userID, _ := getPrincipalFromContext(r.Context())
+	if string(claims.Principal) != userID {
+		return nil, errors.New("authorization session does not belong to this user")
+	}
+
+	if claims.CIMDMetadata == nil {
+		return nil, nil
+	}
+
+	u, err := url.Parse(claims.CIMDMetadata.ClientID)
+	if err != nil {
+		return nil, errors.New("invalid client_id in authorization session")
+	}
+
+	orig, err := url.Parse(claims.OriginalURL)
+	if err != nil {
+		return nil, errors.New("invalid original_url in authorization session")
+	}
+	q := orig.Query()
+
+	requestedScopes := strings.Fields(q.Get("scope"))
+	if len(requestedScopes) == 0 {
+		requestedScopes = []string{}
+	}
+
+	return &CIMDMetadataResponse{
+		ClientIDURL:     claims.CIMDMetadata.ClientID,
+		RedirectURI:     q.Get("redirect_uri"),
+		VerifiedDomain:  u.Hostname(),
+		RequestedScopes: requestedScopes,
+		LogoURI:         claims.CIMDMetadata.LogoURI,
+	}, nil
 }

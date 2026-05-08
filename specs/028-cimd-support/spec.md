@@ -21,6 +21,7 @@ An AI agent identifies itself to the authorization server by using its own HTTPS
 2. **Given** the CIMD document's `client_id` field does not exactly match the request URL, **When** the broker fetches the document, **Then** the authorization request is rejected with an error indicating client metadata mismatch.
 3. **Given** the CIMD document is absent or returns a non-200 HTTP status, **When** the broker attempts to fetch it, **Then** the authorization request is rejected and no redirect is issued.
 4. **Given** the authorization request uses a `redirect_uri` not listed in the CIMD document, **When** the redirect URI is validated after authorization, **Then** the request is rejected.
+5. **Given** CIMD support is disabled (`cimd.enabled: false`), **When** an authorization request arrives with a URL-format `client_id` (e.g. `client_id=https://agent.example.com/client`), **Then** the request is rejected with `invalid_client` error and no CIMD fetch is attempted.
 
 ---
 
@@ -93,15 +94,29 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 
 ---
 
+### User Story 6 - End-to-End CIMD Authorization Flow (Priority: P1)
+
+The individual CIMD components (authorize redirect, consent context decode, grant submission) are each verified in isolation by separate tests. However a regression in JWE token format, embedded URL encoding, or grant-check sequencing could break the full flow without any individual test catching it. The complete round-trip must be exercised as a single connected sequence to close this gap.
+
+**Why this priority**: The full flow is the only thing users and agents actually experience. Component isolation tests are necessary but not sufficient; format drift between the authorize handler and the consent decoder is exactly the kind of defect they cannot catch.
+
+**Independent Test**: Can be fully tested without a real browser by driving the full sequence programmatically: authorize → extract `session_token` from redirect Location → load consent API with token → submit grant → re-authorize → assert authorization code redirect.
+
+**Acceptance Scenarios**:
+
+1. **Given** a CIMD agent is registered and a valid document is served at its `client_id` URL, **When** a user initiates an authorization request (no grant exists), is redirected to the consent page, loads the consent context using the `session_token` extracted from the redirect, approves the grant using that same token, and the `redirect_url` from the grant response is requested again, **Then** the broker issues an authorization code redirect to the agent's registered `redirect_uri` carrying the original `state` value.
+2. **Given** a CIMD agent is registered and a valid document is served at its `client_id` URL, **When** a user's browser navigates to `/oauth2/authorize` with a URL-based `client_id`, follows the redirect to the consent screen, sees the CIMD consent UI components (summary, verified-domain badge), and clicks "Approve & Delegate", **Then** the browser is redirected to the `redirect_uri` carrying a valid authorization code and the original `state` value.
+
+---
+
 ### Edge Cases
 
+- What happens when `cimd.enabled: true` is configured but the broker is in `proxy` mode? (Startup validation error; the broker refuses to start. CIMD requires `issue_token` mode.)
 - What happens when the CIMD URL contains query parameters? (Per spec: discouraged but permitted; query parameters must not alter the document identity check.)
 - What happens when DNS resolution for the CIMD hostname succeeds but returns multiple A records — some safe, some blocked? (All resolved addresses must be checked; any blocked address causes rejection.)
 - What happens when a CIMD document omits `redirect_uris`? (Authorization request is rejected; `redirect_uris` is mandatory for the flow to proceed.)
-- What happens when a CIMD document's `token_endpoint_auth_method` specifies a client-secret-based method (`client_secret_post`, `client_secret_basic`, `client_secret_jwt`)? (Rejected; these methods are incompatible with URL-based client IDs per spec.)
+- What happens when a CIMD document's `token_endpoint_auth_method` is anything other than `none` (e.g. `client_secret_post`, `client_secret_basic`, `private_key_jwt`)? (Rejected; CIMD clients are always public clients and must use `none`. Any other value is rejected, not just secret-bearing methods.)
 - What happens when a brand mismatch is detected (current `client_name` differs from `Agent.DisplayName`)? (Authorization flow continues; mismatch is logged as a structured audit event per FR-023a — blocking is not automatic.)
-- What happens when `redirect_uris` or `token_endpoint_auth_method` change between fetches? (A structured audit event is emitted per SR-011; the authorization flow continues. No blocking occurs.)
-- What happens when `jwks_uri` changes between fetches? (Authorization flow continues; a structured audit event is emitted per SR-012. No blocking occurs for JWKS URI rotation alone.)
 - What happens when a CIMD document's `client_name` matches a blacklisted keyword? (Document is rejected per FR-023b; the authorization request fails with an error, no redirect is issued.)
 - What happens when the broker is configured with an empty SSRF blocklist override? (Default RFC 6890 blocklist is always enforced regardless of operator configuration; it cannot be disabled.)
 - What happens during a CIMD cache eviction under memory pressure? (Document is treated as expired; next request triggers a re-fetch.)
@@ -110,12 +125,16 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 - What happens when a Client ID Metadata Document URL is not pre-registered under any Agent? (Request is rejected per FR-027; clients presenting an unregistered Client ID Metadata Document URL are not permitted.)
 - What happens when a CIMD document declares a `redirect_uri` on a different origin than the `client_id` URL (e.g. a CDN or a partner domain)? (Rejected per FR-004a; cross-origin redirect URIs are not permitted, with the sole exception of localhost/127.0.0.1.)
 - What happens when a CIMD document declares a `redirect_uri` of `http://localhost:3000` but the `client_id` URL is `https://agent.example.com/client`? (Permitted; localhost is an unconditional exception regardless of the client_id origin.)
+- What happens when a consent page is loaded with an expired or invalid `session_token`? (The decode endpoint returns an error indicating the authorization request has expired; the user must re-initiate the flow.)
+- What happens when consent is submitted with a `session_token` that has expired? (Rejected; the consent submission returns an error. The `exp` claim is validated on every submission.)
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
+- **FR-000**: CIMD support MUST only be available when the broker operates in `issue_token` mode (`oauth2_authorization_server.mode: issue_token`). Enabling `cimd.enabled: true` while the broker is in `proxy` mode MUST cause a startup validation error. In proxy mode the broker forwards authorization requests to an upstream OAuth2 server that has no knowledge of CIMD semantics; CIMD resolution, session binding, and local authorization code issuance are fundamentally incompatible with the proxy flow. A future hybrid token issuing mode (combining local issuance with selective upstream proxying) is expected to support CIMD; that mode will be defined in a separate spec.
 - **FR-001**: System MUST accept HTTPS URLs as `client_id` values in authorization requests when CIMD support is enabled.
+- **FR-001a**: System MUST reject HTTPS URL-format `client_id` values with an `invalid_client` error when CIMD support is disabled. No CIMD infrastructure (fetcher, cache, resolver) may be instantiated when CIMD is disabled; the rejection MUST be structural (strategy selection), not a runtime conditional.
 - **FR-002**: System MUST fetch the CIMD document at the `client_id` URL using a hardened HTTP client (SSRF-safe, timeout-bounded, size-limited).
 - **FR-003**: System MUST reject any CIMD document where the `client_id` field does not exactly match the request URL (byte-for-byte string comparison).
 - **FR-004**: System MUST reject authorization requests where the `redirect_uri` is not listed in the CIMD document's `redirect_uris` array.
@@ -138,15 +157,17 @@ When a user arrives at the consent screen for an Agent identified by a Client ID
 - **FR-019**: System MUST cache successfully fetched CIMD documents according to HTTP cache semantics (ETag, Cache-Control, Expires), subject to operator-configured minimum and maximum TTL bounds. `Cache-Control: no-store` and `no-cache` directives MUST be ignored; the operator-configured `min_ttl` always applies and takes precedence over remote cache hints.
 - **FR-020**: System MUST NOT cache CIMD fetch errors or malformed documents.
 - **FR-021**: System MUST include `"client_id_metadata_document_supported": true` in authorization server metadata when CIMD is enabled.
-- **FR-022**: System MUST reject CIMD documents that specify a `token_endpoint_auth_method` of `client_secret_post`, `client_secret_basic`, or `client_secret_jwt`.
+- **FR-022**: System MUST reject CIMD documents that specify any `token_endpoint_auth_method` other than `none`. CIMD clients are always public clients; `none` is the only supported value. A missing `token_endpoint_auth_method` field is treated as `none` per RFC 7591 §2.
 - **FR-023**: System MUST present `client_name` and `logo_uri` from the CIMD document on the consent screen; when `client_name` is absent, the pre-provisioned `Agent.DisplayName` MUST be displayed instead.
 - **FR-023a**: System MUST enforce Brand Pinning on `client_name` only: when a CIMD document is fetched and matched to an Agent, the document's `client_name` MUST be compared to `Agent.DisplayName`. If the values differ, a structured mismatch event MUST be logged including the Agent ID, `Agent.DisplayName`, and the CIMD `client_name`. The authorization flow continues regardless of mismatch. `logo_uri` is displayed as-is without brand-pin validation.
 - **FR-023b**: System MUST validate the CIMD document's `client_name` against a blacklist of reserved and system-level keywords (e.g. "admin", "system", "operator", names of identity providers) before accepting the document. A document whose `client_name` matches a blacklisted term MUST be rejected with an appropriate error.
 - **FR-023c**: The keyword blacklist MUST be operator-configurable (additions); a non-empty default set of reserved terms MUST be enforced regardless of operator configuration.
 - **FR-024**: SSRF protection MUST be enabled by default and MUST NOT be configurable to fully disable; operators may only extend (not replace) the default blocklist.
-- **FR-025**: The `Agent` entity MUST be extended with: (a) a list of pre-registered Client ID Metadata Document URLs; and (b) `authMethod` and `jwksURI` fields storing the last observed values from the CIMD document (the existing `redirectURIs` field serves the same role). These fields act as the change-detection baseline for SR-011 and SR-012: each successful fetch compares incoming values against the stored fields, emits an audit event on any difference, then updates the fields. Both additions require a database migration.
+- **FR-025**: The `Agent` entity MUST be extended with a list of pre-registered Client ID Metadata Document URLs. This addition requires a database migration.
 - **FR-026**: When processing an authorization request whose `client_id` is a Client ID Metadata Document URL, the broker MUST attempt an exact-match lookup of that URL against each Agent's pre-registered Client ID Metadata Document URLs; if a match is found, that Agent record is the pre-registered client used for consent grouping.
 - **FR-027**: If a Client ID Metadata Document URL matches no Agent's pre-registered Client ID Metadata Document URLs, the authorization request MUST be rejected; clients presenting an unregistered Client ID Metadata Document URL are not permitted.
+- **FR-028**: The consent page MUST call the server-side decode endpoint (`GET /api/consent/session?token=<jwe>`) with the opaque `session_token` received via the consent redirect URL, and retrieve all authorization request context (client_id, redirect_uri, scope, CIMD metadata) from the decrypted token. The consent page MUST NOT accept `client_id`, `redirect_uri`, or `scope` as query parameters for CIMD-based flows. For non-CIMD flows, existing behavior is unchanged.
+- **FR-029**: The consent submission body MUST include the `session_token` for CIMD-based flows. On approval, the backend MUST decrypt the token, validate the `exp` claim and `principal` binding, then use the token's trusted `redirect_uri`, `state`, `code_challenge`, and all authorization parameters to issue the authorization code redirect. The frontend MUST NOT supply `redirect_uri` or `state` for CIMD-based consent submissions.
 
 ### Consent Screen Requirements
 
@@ -206,9 +227,11 @@ sequenceDiagram
         CIMDHost-->>Fetcher: 200 OK + JSON (≤5KB)
         Fetcher-->>AuthServer: raw document
         AuthServer->>AuthServer: validate client_id field match
-        AuthServer->>Cache: store with TTL from Cache-Control
+       AuthServer->>Cache: store with TTL from Cache-Control
     end
-    AuthServer->>Agent: render consent screen with client_name / hostname
+    AuthServer->>AuthServer: mint JWE session_token (authorization context + exp + principal)
+    AuthServer->>Agent: redirect to consent page with session_token only
+    Note over Agent,AuthServer: Consent page calls /api/consent/session?token=<jwe> to load context
 ```
 
 **Agent Entity Extension** (from `025-oauth2-server`, extended for CIMD):
@@ -223,14 +246,13 @@ erDiagram
         string displayName
         string[] redirectURIs
         string[] client_uris
-        string authMethod
-        string jwksURI
     }
 ```
 
 **Entities** (things with unique identity):
 - **ClientIDMetadataDocument**: The JSON document served at the agent's `client_id` URL. Identity is the `client_id` field value (the URL itself). Contains display metadata and OAuth2 parameters for a dynamically-registered-style client. Lifecycle: fetched on demand, cached, re-fetched on cache expiry. Key invariant: `client_id` field must match the URL it was fetched from.
 - **CIMDCacheEntry**: A stored fetch result binding a URL to its document and caching metadata (ETag, expiry). Evicted on TTL expiry or memory pressure.
+- **AuthorizationSessionClaims**: The set of claims sealed into the JWE `session_token` at authorization initiation. Contains the full authorization request context (agent_id, client_id, redirect_uri, scope, state, code_challenge, principal, CIMD metadata snapshot, iat, exp). Stateless — no database storage required.
 
 **Value Objects** (things without identity):
 - **ClientIDMetadataDocumentURL**: An `https://` URL used as a `client_id`. Validated at parse time: must be HTTPS, no fragment, no credentials, no dot-segments, and hostname must resolve to a non-blocked address.
@@ -241,12 +263,11 @@ erDiagram
 - **CIMDFetchBlocked**: Emitted when a fetch attempt is rejected by the SSRF guard. Includes URL and the reason (blocked IP range, invalid scheme, etc.).
 - **CIMDFetchFailed**: Emitted when the remote host returns a non-200 response, times out, or returns an oversized body.
 - **BrandPinMismatchDetected**: Emitted when the CIMD document's `client_name` differs from `Agent.DisplayName`. Includes Agent ID, `Agent.DisplayName`, and the CIMD `client_name`. The authorization flow continues.
-- **CIMDSecurityFieldChanged**: Emitted when `redirect_uris`, `token_endpoint_auth_method`, or `jwks_uri` changes between fetches (per SR-011/SR-012). Includes Agent ID, field name, previous value, new value, and timestamp. The authorization flow continues.
 
 ### Configuration Requirements
 
 **Configuration Parameters** (nested under `oauth2_authorization_server`):
-- **`oauth2_authorization_server.cimd.enabled`**: bool, enables CIMD support globally, default `false`
+- **`oauth2_authorization_server.cimd.enabled`**: bool, enables CIMD support globally, default `false`. MUST only be set to `true` when `oauth2_authorization_server.mode` is `issue_token`; startup validation rejects `cimd.enabled: true` in `proxy` mode.
 - **`oauth2_authorization_server.cimd.fetch_timeout`**: duration, total HTTP round-trip timeout, default `1s`
 - **`oauth2_authorization_server.cimd.max_response_bytes`**: int, maximum CIMD document size in bytes, default `5120`
 - **`oauth2_authorization_server.cimd.cache.max_ttl`**: duration, upper bound on document cache TTL, default `1h`
@@ -277,7 +298,7 @@ oauth2_authorization_server:
 - **API-001**: The authorization server metadata endpoint (`GET /.well-known/oauth-authorization-server`) MUST include `"client_id_metadata_document_supported": true` when `cimd.enabled` is `true`.
 - **API-002**: The existing `GET /authorize` and `POST /token` end-user endpoints accept URL-based `client_id` values without schema change; CIMD lookup is transparent.
 - **API-003**: A structured error response using OAuth2 `error` / `error_description` fields MUST be returned for all CIMD validation failures (invalid URL format, SSRF block, fetch failure, document mismatch, blocked auth method). No redirect is issued on these errors.
-- **API-004**: The existing `PATCH /admin/agents/{id}` endpoint MUST accept a `client_uris` field (array of strings) to allow operators to manage the list of pre-registered Client ID Metadata Document URLs on an Agent. Each URL in the array MUST be validated as a well-formed `https://` URL at write time.
+- **API-004**: The existing agent write API (`POST /api/agents` and `PUT /api/agents/{agent-id}`) MUST accept a `client_uris` field (array of strings) to allow operators to create and manage the list of pre-registered Client ID Metadata Document URLs on an Agent. Each URL in the array MUST be validated as a well-formed `https://` URL at write time.
 
 ### Security Requirements
 
@@ -291,8 +312,8 @@ oauth2_authorization_server:
 - **SR-008**: The `client_id` field in the CIMD document MUST be compared to the fetch URL using exact byte-for-byte string comparison; normalization or case folding MUST NOT be applied.
 - **SR-009**: CIMD documents that specify client-secret-based `token_endpoint_auth_method` values MUST be rejected at validation time, not silently ignored.
 - **SR-010**: Any URL field within a fetched CIMD document (`logo_uri`, `jwks_uri`, `policy_uri`, `tos_uri`) that the broker resolves or fetches MUST be validated against the same SSRF blocklist as the `client_id` URL itself before any outbound connection is made. A document containing a blocked URL in any such field MUST be logged but need not be rejected outright; the offending field is silently ignored.
-- **SR-011**: On each successful CIMD document fetch, the broker MUST compare the current values of `redirect_uris` and `token_endpoint_auth_method` against the snapshot persisted on the Agent record from the previous fetch. If either field has changed, the broker MUST emit a structured audit event recording the previous and new values, Agent ID, and timestamp. The authorization flow continues regardless. The first successful fetch for a given Agent populates the snapshot without triggering an audit event.
-- **SR-012**: On each successful CIMD document fetch, the broker MUST compare the current `jwks_uri` value against the snapshot persisted on the Agent record. If it has changed, a structured audit event MUST be emitted (previous URI, new URI, timestamp, Agent ID); the authorization flow is NOT blocked for `jwks_uri` changes alone. The Agent record snapshot is updated on every fetch.
+- **SR-013**: When the authorization server redirects to the consent page for a CIMD-based (URL-format `client_id`) authorization request, the full authorization request context (`client_id`, `redirect_uri`, `scope`, `state`, `code_challenge`, resolved Agent ID, and CIMD metadata) MUST be sealed into a JWE token (`session_token`) using authenticated encryption (A256GCMKW + A256GCM). Only this opaque `session_token` is passed to the consent URL. The consent page and its backend API MUST retrieve all authorization context by decrypting the token — never from caller-supplied query parameters. This requirement applies only to CIMD-based flows; opaque (pre-registered UUID) `client_id` flows are unchanged.
+- **SR-014**: The JWE authorization session token MUST include an `exp` claim encoding a 10-minute TTL; any consent attempt using an expired token MUST be rejected. The token MUST include a `principal` claim that is validated against the authenticated user at consent-submission time, preventing cross-user replay. No database storage is required; the token is self-contained and stateless.
 
 ### Key Entities
 
@@ -304,7 +325,7 @@ oauth2_authorization_server:
 ### Measurable Outcomes
 
 - **SC-001**: An AI agent using a URL-based `client_id` completes an authorization flow (fetch → consent → token) in under 2 seconds total when the CIMD host responds within 500ms, as measured end-to-end in E2E tests.
-- **SC-002**: All 14 SSRF attack categories (loopback, RFC 1918, link-local, cloud metadata IP, non-HTTPS scheme, no path component, dot-segment path, fragment, credentials in URL, non-standard port, oversized response, slow-response timeout, redirect following, non-200 status) are each individually rejected before any TCP connection is established, verified by E2E tests.
+- **SC-002**: All 14 SSRF attack categories (loopback, RFC 1918, link-local, cloud metadata IP, non-HTTPS scheme, no path component, dot-segment path, fragment, credentials in URL, non-standard port, oversized response, slow-response timeout, redirect following, non-200 status) are each individually rejected. For malformed URL categories, rejection is verified in E2E tests by error response with no consent redirect. For blocked-address categories, rejection is verified in E2E tests by error response with no consent redirect and in CIMD fetcher adapter tests by asserting no TCP dial attempt occurs.
 - **SC-003**: A repeated authorization request for the same URL-based `client_id` within the cache TTL window completes without issuing a second outbound HTTP fetch, as verified by mock server request counts in E2E tests.
 - **SC-004**: Zero regression in existing authorization flows using opaque (pre-registered) `client_id` values, verified by the full existing E2E test suite passing without modification.
 - **SC-005**: The authorization server metadata endpoint correctly reflects `client_id_metadata_document_supported` status in all configuration states, verified by E2E tests.
@@ -320,20 +341,26 @@ oauth2_authorization_server:
 - Q: Which authority governs the acceptable `redirect_uri` values for a client identified by a Client ID Metadata Document URL? → A: Same-origin as the `client_id` URL (scheme + host + port); `localhost` and `127.0.0.1` are always permitted regardless of origin to support locally-running tooling and coding agents.
 - Q: Which metadata drives the consent screen when a CIMD document resolves to an Agent? → A: CIMD document metadata (`client_name`, `logo_uri`) is displayed to show current app branding. Brand Pinning is enforced: the CIMD `client_name` is compared against `Agent.DisplayName` (set by the operator at provisioning); a mismatch is logged as an audit event but does not block the flow. The `client_name` is also validated against a blacklist of reserved/system-level keywords to prevent spoofing.
 - Q: Where is the Brand Pin baseline stored, and what is it anchored to? → A: The pin IS `Agent.DisplayName` — already persisted on the Agent record. No new baseline storage is required. Only `client_name` is subject to brand pinning (not `logo_uri`).
-- RFC security gap review applied: (1) Added FR-014a requiring path component in `client_id` URL. (2) Added SR-010 requiring SSRF validation for all URLs embedded within the CIMD document. (3) Documented `logo_uri` prefetching as a known deferred security tradeoff. (4) Q: Scope of metadata change monitoring beyond `client_name` → A: Log-only for all three security-critical fields (`redirect_uris`, `token_endpoint_auth_method`, `jwks_uri`); no blocking on any field change. Authorization flow continues regardless.
-- Q: Where is the previously-observed CIMD snapshot stored for SR-011/SR-012 change detection? → A: The Agent entity's own `redirectURIs`, `authMethod`, and `jwksURI` fields serve as the snapshot — updated on every successful CIMD fetch. No separate snapshot columns are required; the stored Agent state IS the baseline. Persisted in the database; survives restarts and is consistent across replicas.
+- RFC security gap review applied: (1) Added FR-014a requiring path component in `client_id` URL. (2) Added SR-010 requiring SSRF validation for all URLs embedded within the CIMD document. (3) Documented `logo_uri` prefetching as a known deferred security tradeoff.
 
 ### Session 2026-04-23
 
 - Q: The spec referenced CS-005 and "five CIMD-specific UX elements" but only CS-001 through CS-004 were defined — is a fifth consent screen requirement needed? → A: No. Four requirements (CS-001 through CS-004) are sufficient. All references to CS-005 and "five UX elements" have been removed.
-- Q: How does an operator register Client ID Metadata Document URLs on an Agent record? → A: Via the existing `PATCH /admin/agents/{id}` endpoint — `client_uris` is added as a patchable array field. Added as API-004.
+- Q: How does an operator register Client ID Metadata Document URLs on an Agent record? → A: Via the existing agent write API — `POST /api/agents` accepts `client_uris` on create and `PUT /api/agents/{agent-id}` accepts `client_uris` on update. No additional PATCH endpoint is required. Updated API-004.
 - Q: How is the operator-configurable `client_name` keyword blacklist (FR-023b/c) configured? → A: YAML config file under `oauth2_authorization_server.cimd.client_name_blocklist` (string array, case-insensitive exact match, merged with built-in defaults at startup). Added to Configuration Requirements.
 - Q: What does the broker do when a CIMD document is served with `Cache-Control: no-store` or `no-cache`? → A: Ignore the directive — operator-configured `min_ttl` always applies. Remote cache hints never override the floor TTL. Clarified in FR-019.
 - Q: Should concurrent cache-miss requests for the same `client_id` URL be deduplicated (singleflight) or each fetch independently? → A: Each request fetches independently — no singleflight coordination required.
 
+### Session 2026-04-24
+
+- Q: How should the authorization request context be secured between the /authorize redirect and the consent page? → A: JWE token. The authorization request context is sealed into a JWE `session_token` using authenticated encryption (A256GCMKW + A256GCM). Only the opaque token is passed to the consent URL. The consent page calls `GET /api/consent/session?token=<jwe>` to retrieve context — never from caller-supplied query parameters. The token carries a 10-min TTL (`exp` claim) and a `principal` binding. Applies to CIMD-based flows only; opaque client_id flows unchanged. Updated SR-013, SR-014, FR-028, and FR-029.
+- Q: Where should authorization session state be stored? → A: Nowhere — the JWE token is stateless and self-contained. No database migration or storage adapter is required. Updated SR-014.
+- Q: How does the backend bind the consent decision back to the original authorization request for CIMD flows? → A: Token-bound submission. The consent submission body includes the `session_token`; the backend decrypts it, validates `exp` and `principal`, then uses the token's trusted `redirect_uri`, `state`, and `code_challenge` to issue the authorization code redirect. Updated FR-029.
+- Q: How should the broker enforce that URL-format client_id values are only accepted when CIMD is enabled? → A: Via a ClientResolver strategy interface selected at build time. When `cimd.enabled: false`, `OpaqueClientResolver` is wired — it rejects URL-format client IDs with `invalid_client` immediately. When `true`, `CIMDClientResolver` is wired — it handles URL-format client IDs via CIMD resolution and falls back to UUID for non-URL IDs. The gate is structural (strategy selection in builder), not a runtime conditional. No CIMD infrastructure (fetcher, cache, service) is instantiated when disabled. Added FR-001a and US1 Scenario 5.
+
 ## Assumptions
 
-- CIMD support will be implemented as an opt-in capability (`cimd.enabled: false` by default), consistent with the constitution's security-first principle.
+- CIMD support will be implemented as an opt-in capability (`cimd.enabled: false` by default), consistent with the constitution's security-first principle. CIMD is only supported in `issue_token` mode — it cannot operate in `proxy` mode because the broker must control the full authorization code issuance and session binding lifecycle. A future hybrid token issuing mode is anticipated to also support CIMD.
 - The cache layer is in-process memory only (no Redis or DB persistence required); cache is lost on broker restart.
 - Existing Agents with opaque (non-URL) `client_id` values are unaffected; the broker distinguishes a Client ID Metadata Document URL from an opaque `client_id` by the `https://` prefix.
 - The consent screen renders `client_name` and `logo_uri` from the CIMD document; `logo_uri` is displayed as a URL reference (no server-side pre-fetching or proxying in this implementation). **Known security tradeoff**: the RFC recommends server-side prefetching and caching of `logo_uri` to (a) prevent dynamic logo substitution attacks that could confuse users, and (b) prevent cross-domain tracking via logo requests from users' browsers. This is deferred to a follow-on spec. The consent screen includes all four CIMD-specific UX elements defined in CS-001 through CS-004.

@@ -38,6 +38,7 @@ describe('AgentGrantDetailPage - Integration', () => {
 
   const mockServices: ThirdpartyService[] = [
     {
+      kind: 'scoped',
       serviceId: 'github',
       displayName: 'GitHub',
       scopes: [
@@ -129,7 +130,7 @@ describe('AgentGrantDetailPage - Integration', () => {
       ],
     };
 
-    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(updatedGrant);
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue({ kind: 'created', grant: updatedGrant });
 
     renderPage();
 
@@ -177,7 +178,7 @@ describe('AgentGrantDetailPage - Integration', () => {
       ],
     };
 
-    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(updatedGrant);
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue({ kind: 'created', grant: updatedGrant });
 
     renderPage();
 

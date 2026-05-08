@@ -550,13 +550,13 @@ compose-up: compose-env
     @echo "  - Seed data will auto-run once broker is healthy"
     @echo ""
     @echo "Press Ctrl+C to stop"
-    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up
+    IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up
 
 # Start all services in background
 compose-up-detached: compose-env
     @echo "Generating JWE signing key..."
     @echo "Starting docker-compose services in background..."
-    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up -d
+    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up -d
     @sleep 2
     @just compose-health
     @echo ""
@@ -772,7 +772,7 @@ compose-extproc-up:
     @echo "  - agentgateway (4000, 15000)"
     @echo ""
     @echo "Requires identity-broker and upstream-oauth2 to be running."
-    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up extproc-token-exchange mcp-server-mock agentgateway
+    @IDENTITY_BROKER_JWE_SIGNING_KEY=`./scripts/generate-jwe-key.sh` IDENTITY_BROKER_ENCRYPTION_KEY=`./scripts/generate-jwe-key.sh` {{COMPOSE_CMD}} -f docker-compose.yml up extproc-token-exchange mcp-server-mock agentgateway
 
 # Stop ExtProc integration services only
 compose-extproc-down:
@@ -808,7 +808,7 @@ mock-third-party-oauth2-register:
 mock-third-party-oauth2-setup: mock-third-party-oauth2-build
     @echo "Setting up mock third-party OAuth2 testing environment..."
     @echo "1. Starting mock third-party OAuth2 server (background)..."
-    @./bin/mock-oauth2-server &
+    @./bin/mock-oauth2-server mocks/third-party-service &
     @sleep 2
     @echo "2. Checking mock server health..."
     @curl -s -f http://localhost:9000/health || (echo "Mock server failed to start"; exit 1)

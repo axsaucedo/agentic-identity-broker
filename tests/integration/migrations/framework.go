@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -207,7 +208,7 @@ func (f *MigrationTestFramework) DownAll(t *testing.T) error {
 	}
 
 	// Roll back all migrations using Steps
-	for i := 0; i < 10; i++ {
+	for i := 0; ; i++ {
 		currentVersion, _, err := m.Version()
 		if err == migrate.ErrNilVersion {
 			t.Logf("All migrations rolled back, at version 0")
@@ -225,6 +226,10 @@ func (f *MigrationTestFramework) DownAll(t *testing.T) error {
 				break
 			}
 			return fmt.Errorf("rollback step %d failed: %w", i+1, err)
+		}
+
+		if i > 100 {
+			return fmt.Errorf("rollback exceeded 100 steps")
 		}
 
 		nextVersion, _, err := m.Version()
@@ -280,6 +285,7 @@ func (f *MigrationTestFramework) QuerySQL(t *testing.T, query string) (string, e
 		"psql",
 		"-U", "testuser",
 		"-d", "testdb",
+		"-A", // Unaligned output for easier parsing
 		"-t", // Tuples only (no headers)
 		"-c", query,
 	})
@@ -327,7 +333,7 @@ func (f *MigrationTestFramework) ColumnExists(t *testing.T, table, column string
 		return false, err
 	}
 
-	return result != "0", nil
+	return strings.TrimSpace(result) != "0", nil
 }
 
 // IndexExists checks if an index exists
@@ -341,7 +347,7 @@ func (f *MigrationTestFramework) IndexExists(t *testing.T, indexName string) (bo
 		return false, err
 	}
 
-	return result != "0", nil
+	return strings.TrimSpace(result) != "0", nil
 }
 
 // GetColumnType returns the data type of a column
@@ -392,5 +398,5 @@ func (f *MigrationTestFramework) TableExists(t *testing.T, tableName string) (bo
 		return false, err
 	}
 
-	return result != "0", nil
+	return strings.TrimSpace(result) != "0", nil
 }

@@ -21,25 +21,25 @@ import (
 
 // mockTokenMintingStrategy is a configurable test double for ports.TokenMintingStrategy.
 type mockTokenMintingStrategy struct {
-	clientCredentialsFn         func(context.Context, id.AgentID, string, string) (*ports.TokenResponse, error)
-	authorizationCodeExchangeFn func(context.Context, id.AgentID, string, string, string, string) (*ports.TokenResponse, error)
+	clientCredentialsFn         func(context.Context, id.ClientID, string, string) (*ports.TokenResponse, error)
+	authorizationCodeExchangeFn func(context.Context, id.ClientID, string, string, string, string) (*ports.TokenResponse, error)
 }
 
-func (m *mockTokenMintingStrategy) HandleClientCredentials(ctx context.Context, agentID id.AgentID, clientSecret, scope string) (*ports.TokenResponse, error) {
-	return m.clientCredentialsFn(ctx, agentID, clientSecret, scope)
+func (m *mockTokenMintingStrategy) HandleClientCredentials(ctx context.Context, clientID id.ClientID, clientSecret, scope string) (*ports.TokenResponse, error) {
+	return m.clientCredentialsFn(ctx, clientID, clientSecret, scope)
 }
 
-func (m *mockTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, agentID id.AgentID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
-	return m.authorizationCodeExchangeFn(ctx, agentID, clientSecret, code, redirectURI, codeVerifier)
+func (m *mockTokenMintingStrategy) HandleAuthorizationCodeExchange(ctx context.Context, clientID id.ClientID, clientSecret, code, redirectURI, codeVerifier string) (*ports.TokenResponse, error) {
+	return m.authorizationCodeExchangeFn(ctx, clientID, clientSecret, code, redirectURI, codeVerifier)
 }
 
 // fixedMinting returns a mock strategy that always returns the given response/error for both grant types.
 func fixedMinting(resp *ports.TokenResponse, err error) *mockTokenMintingStrategy {
 	return &mockTokenMintingStrategy{
-		clientCredentialsFn: func(_ context.Context, _ id.AgentID, _, _ string) (*ports.TokenResponse, error) {
+		clientCredentialsFn: func(_ context.Context, _ id.ClientID, _, _ string) (*ports.TokenResponse, error) {
 			return resp, err
 		},
-		authorizationCodeExchangeFn: func(_ context.Context, _ id.AgentID, _, _, _, _ string) (*ports.TokenResponse, error) {
+		authorizationCodeExchangeFn: func(_ context.Context, _ id.ClientID, _, _, _, _ string) (*ports.TokenResponse, error) {
 			return resp, err
 		},
 	}
@@ -84,6 +84,10 @@ func (r *stubAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { retu
 func (r *stubAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
 func (r *stubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
 	return nil, nil
+}
+
+func (r *stubAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
+	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
 }
 
 // TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation tests Content-Type validation
@@ -606,6 +610,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 		{
 			name:          "non-UUID client_id returns 401 invalid_client",
 			body:          "grant_type=client_credentials&client_id=broker_abc&client_secret=secret",
+			mintingErr:    oauth2server.NewRFC6749Error("invalid_client", "client authentication failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient),
 			wantStatus:    http.StatusUnauthorized,
 			wantErrorCode: "invalid_client",
 		},
@@ -627,7 +632,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			minting := &mockTokenMintingStrategy{
-				clientCredentialsFn: func(_ context.Context, _ id.AgentID, _, _ string) (*ports.TokenResponse, error) {
+				clientCredentialsFn: func(_ context.Context, _ id.ClientID, _, _ string) (*ports.TokenResponse, error) {
 					if tt.mintingErr != nil {
 						return nil, tt.mintingErr
 					}
@@ -682,14 +687,14 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 		{
 			name:          "non-UUID client_id returns 401 invalid_client",
 			body:          "grant_type=authorization_code&client_id=broker_abc&client_secret=secret&code=abc",
+			mintingErr:    oauth2server.NewRFC6749Error("invalid_client", "client authentication failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient),
 			wantStatus:    http.StatusUnauthorized,
 			wantErrorCode: "invalid_client",
 		},
 		{
-			name:          "missing client_secret returns 400 invalid_request",
-			body:          "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&code=abc",
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "invalid_request",
+			name:       "missing client_secret succeeds for public clients",
+			body:       "grant_type=authorization_code&client_id=550e8400-e29b-41d4-a716-446655440000&code=abc",
+			wantStatus: http.StatusOK,
 		},
 		{
 			name:          "missing code returns 400 invalid_request",
@@ -709,7 +714,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			minting := &mockTokenMintingStrategy{
-				authorizationCodeExchangeFn: func(_ context.Context, _ id.AgentID, _, _, _, _ string) (*ports.TokenResponse, error) {
+				authorizationCodeExchangeFn: func(_ context.Context, _ id.ClientID, _, _, _, _ string) (*ports.TokenResponse, error) {
 					if tt.mintingErr != nil {
 						return nil, tt.mintingErr
 					}

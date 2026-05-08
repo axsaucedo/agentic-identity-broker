@@ -1,7 +1,6 @@
 package consent
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -58,9 +57,7 @@ func (h *RevokeGrantHandler) RevokeGrant(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *RevokeGrantHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(data); err != nil && h.logger != nil {
+	if err := writeBufferedJSON(w, statusCode, data); err != nil && h.logger != nil {
 		h.logger.Error("failed to encode response", "error", err)
 	}
 }

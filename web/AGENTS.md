@@ -86,8 +86,6 @@ src/
                        terminateSession, refreshSession
       cache.ts         In-memory TTL cache (5 min default) for GET responses
       index.ts         Barrel export
-    storage/
-      session.ts       Session token storage (sessionStorage + localStorage fallback)
 
   styles/
     index.css          Global styles + Tailwind directives

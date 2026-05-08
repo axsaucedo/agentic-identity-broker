@@ -40,7 +40,7 @@ func NewProvider(
 	codeRepo ports.AuthorizationCodeRepository,
 	pkceRepo ports.PKCESessionRepository,
 	credRepo ports.ClientCredentialRepository,
-	agentRepo ports.AgentRepository,
+	clientResolver ports.ClientResolver,
 	signingKeyRepo ports.SigningKeyRepository,
 	encryption ports.EncryptionPort,
 	issuerURI string,
@@ -56,7 +56,7 @@ func NewProvider(
 
 	// Build services
 	signingKeyService := NewSigningKeyService(signingKeyRepo, encryption, logger)
-	clientAuth := NewClientAuthService(credRepo, agentRepo, logger)
+	clientAuth := NewClientAuthService(credRepo, clientResolver, logger)
 
 	// Our strategies
 	accessStrategy, err := NewJWXAccessTokenStrategy(signingKeyService, signingKeyRepo, issuerURI, tokenTTL, customClaimsEval, logger)
@@ -66,7 +66,7 @@ func NewProvider(
 	codeStrategy := &RandomCodeStrategy{}
 
 	// Storage adapters
-	storage := NewFositeStorage(codeRepo, pkceRepo, agentRepo, credRepo, logger)
+	storage := NewFositeStorage(codeRepo, pkceRepo, credRepo, clientResolver, logger)
 
 	config := &fosite.Config{
 		AuthorizeCodeLifespan:          60 * time.Second,
@@ -132,19 +132,32 @@ func (p *Provider) SigningKeyService() *SigningKeyService {
 
 // HandleClientCredentials processes a client_credentials grant type request.
 // Scope validation and token generation are fully delegated to fosite's ccHandler.
-func (p *Provider) HandleClientCredentials(ctx context.Context, agentID id.AgentID, secret string, requestedScope string) (resp *ports.TokenResponse, err error) {
+func (p *Provider) HandleClientCredentials(ctx context.Context, clientID string, secret string, requestedScope string) (resp *ports.TokenResponse, err error) {
 	defer func() { err = translateFositeError(err) }()
 
-	authClient, err := p.clientAuth.Authenticate(ctx, agentID, secret)
+	fositeClient, err := p.fositeStorage.GetClient(ctx, clientID)
+	if err != nil {
+		if errors.Is(err, fosite.ErrNotFound) {
+			return nil, fosite.ErrInvalidClient.WithHintf("client %s not found", clientID)
+		}
+		return nil, fosite.ErrServerError.WithDebugf("client lookup failed: %v", err)
+	}
+
+	cc, ok := fositeClient.(*confidentialClient)
+	if !ok {
+		return nil, fosite.ErrInvalidClient.WithHintf("client_credentials grant requires a confidential client")
+	}
+
+	authClient, err := p.clientAuth.Authenticate(ctx, cc.agent.ID, secret)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &brokerClient{agent: authClient.Agent, credential: authClient.Credential}
+	client := &confidentialClient{clientID: clientID, agent: authClient.Agent, credential: authClient.Credential}
 	scopes := splitScope(requestedScope)
 
 	session := &fosite.DefaultSession{
-		Subject: client.GetID(),
+		Subject: authClient.Agent.ID.String(),
 		ExpiresAt: map[fosite.TokenType]time.Time{
 			fosite.AccessToken: time.Now().Add(p.config.AccessTokenLifespan),
 		},
@@ -186,7 +199,7 @@ func (p *Provider) HandleClientCredentials(ctx context.Context, agentID id.Agent
 // handlers can send a direct JSON response per RFC 6749 §4.1.2.1.
 func (p *Provider) HandleAuthorize(
 	ctx context.Context,
-	agentID id.AgentID,
+	clientID string,
 	redirectURI string,
 	responseType string,
 	scope string,
@@ -197,23 +210,24 @@ func (p *Provider) HandleAuthorize(
 ) (code string, err error) {
 	defer func() { err = translateFositeError(err) }()
 
-	fositeClient, err := p.fositeStorage.GetClient(ctx, agentID.String())
+	fositeClient, err := p.fositeStorage.GetClient(ctx, clientID)
 	if err != nil {
 		if errors.Is(err, fosite.ErrNotFound) {
-			return "", fosite.ErrInvalidClient.WithHintf("agent %s not found", agentID)
+			return "", fosite.ErrInvalidClient.WithHintf("client %s not found", clientID)
 		}
 		return "", fosite.ErrServerError.WithDebugf("client lookup failed: %v", err)
 	}
 
-	bc, ok := fositeClient.(*brokerClient)
+	h, ok := fositeClient.(agentHolder)
 	if !ok {
-		return "", fosite.ErrServerError.WithDebugf("internal: expected *brokerClient, got %T", fositeClient)
+		return "", fosite.ErrServerError.WithDebugf("internal: expected broker client, got %T", fositeClient)
 	}
+	agent := h.getAgent()
 
 	// Validate redirect_uri: must be registered and use HTTPS (or loopback HTTP).
-	// Per RFC 6749 §4.1.2.1 the server must never auto-redirect when redirect_uri is invalid.
-	// Callers check ErrInvalidRedirectURI to distinguish this from redirect-safe errors.
-	if !contains(bc.agent.RedirectURIs, redirectURI) {
+	// GetRedirectURIs() returns the agent's registered URIs for confidential clients,
+	// and the CIMD document's redirect_uris for public (CIMD) clients.
+	if !contains(fositeClient.GetRedirectURIs(), redirectURI) {
 		return "", fmt.Errorf("%w: %w", ErrInvalidRedirectURI,
 			fosite.ErrInvalidRequest.WithHintf("redirect_uri %q is not registered for this client", redirectURI))
 	}
@@ -227,16 +241,14 @@ func (p *Provider) HandleAuthorize(
 	}
 
 	scopes := splitScope(scope)
-	if len(bc.agent.AllowedScopes) > 0 && len(scopes) > 0 {
+	if len(agent.AllowedScopes) > 0 && len(scopes) > 0 {
 		for _, s := range scopes {
-			if !contains(bc.agent.AllowedScopes, s) {
+			if !contains(agent.AllowedScopes, s) {
 				return "", fosite.ErrInvalidScope.WithHintf("scope %q is not allowed for this client", s)
 			}
 		}
 	}
 
-	// Build fosite authorize request — credential ClientID stored in form so
-	// CreateAuthorizeCodeSession can persist it for post-rotation binding checks at exchange time.
 	session := &fosite.DefaultSession{
 		Subject: principal.String(),
 		ExpiresAt: map[fosite.TokenType]time.Time{
@@ -244,7 +256,7 @@ func (p *Provider) HandleAuthorize(
 		},
 	}
 
-	parsedRedirectURI, _ := url.Parse(redirectURI) // already validated above; won't fail
+	parsedRedirectURI, _ := url.Parse(redirectURI)
 
 	authReq := fosite.NewAuthorizeRequest()
 	authReq.Client = fositeClient
@@ -259,7 +271,7 @@ func (p *Provider) HandleAuthorize(
 		"code_challenge":        {codeChallenge},
 		"code_challenge_method": {codeChallengeMethod},
 		"response_type":         {responseType},
-		"client_id":             {bc.credential.AgentID.String()},
+		"client_id":             {clientID},
 		"scope":                 {scope},
 		"state":                 {state},
 	}
@@ -277,7 +289,7 @@ func (p *Provider) HandleAuthorize(
 
 func (p *Provider) HandleAuthorizationCodeExchange(
 	ctx context.Context,
-	agentID id.AgentID,
+	clientID string,
 	secret string,
 	code string,
 	redirectURI string,
@@ -285,14 +297,15 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 ) (tokenResp *ports.TokenResponse, err error) {
 	defer func() { err = translateFositeError(err) }()
 
-	authedClient, err := p.clientAuth.Authenticate(ctx, agentID, secret)
+	fositeClient, err := p.fositeStorage.GetClient(ctx, clientID)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, fosite.ErrNotFound) {
+			return nil, fosite.ErrInvalidClient.WithHintf("client %s not found", clientID)
+		}
+		return nil, fosite.ErrServerError.WithDebugf("client lookup failed: %v", err)
 	}
 
-	// Domain-level credential pre-check: fosite verifies agent-level client identity but does
-	// not know about credential rotation. Peek at the stored code to enforce that codes issued
-	// to a previous credential cannot be exchanged by a newly rotated one.
+	// Domain-level credential pre-check: peek at stored code to enforce binding.
 	authCode, err := p.fositeStorage.codeRepo.FindByCodeHash(ctx, p.authCodeHandler.AuthorizeCodeStrategy.AuthorizeCodeSignature(ctx, code))
 	if err != nil {
 		if isStorageNotFound(err) {
@@ -300,8 +313,24 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		}
 		return nil, fosite.ErrServerError.WithDebugf("failed to look up authorization code: %v", err)
 	}
-	if authedClient.Credential.AgentID != authCode.AgentID {
-		return nil, fosite.ErrInvalidGrant.WithHintf("authorization code was issued to a different client credential")
+
+	switch bc := fositeClient.(type) {
+	case *confidentialClient:
+		authedClient, err := p.clientAuth.Authenticate(ctx, bc.agent.ID, secret)
+		if err != nil {
+			return nil, err
+		}
+		if authedClient.Credential.AgentID != authCode.AgentID {
+			return nil, fosite.ErrInvalidGrant.WithHintf("authorization code was issued to a different client credential")
+		}
+		// Rebuild client with authenticated credential
+		fositeClient = &confidentialClient{clientID: clientID, agent: authedClient.Agent, credential: authedClient.Credential}
+	case *publicClient:
+		if bc.agent.ID != authCode.AgentID {
+			return nil, fosite.ErrInvalidGrant.WithHintf("authorization code was issued to a different client")
+		}
+	default:
+		return nil, fosite.ErrServerError.WithDebugf("unexpected client type %T", fositeClient)
 	}
 
 	session := &fosite.DefaultSession{
@@ -310,9 +339,8 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 			fosite.AccessToken: time.Now().Add(p.config.AccessTokenLifespan),
 		},
 	}
-	client := &brokerClient{agent: authedClient.Agent, credential: authedClient.Credential}
 	req := fosite.NewAccessRequest(session)
-	req.Client = client
+	req.Client = fositeClient
 	req.GrantTypes = fosite.Arguments{"authorization_code"}
 	req.Form = url.Values{
 		"code":          {code},
@@ -321,6 +349,9 @@ func (p *Provider) HandleAuthorizationCodeExchange(
 		"grant_type":    {"authorization_code"},
 	}
 
+	// redirect_uri binding: fosite's AuthorizeExplicitGrantHandler.HandleTokenEndpointRequest
+	// compares this redirect_uri against the one stored in the authorization code session,
+	// returning invalid_grant on mismatch (RFC 6749 §4.1.3).
 	if err := p.authCodeHandler.HandleTokenEndpointRequest(ctx, req); err != nil {
 		return nil, err
 	}

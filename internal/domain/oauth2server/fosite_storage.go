@@ -18,27 +18,27 @@ import (
 
 // FositeStorage wraps project repositories to implement fosite storage interfaces.
 type FositeStorage struct {
-	codeRepo  ports.AuthorizationCodeRepository
-	pkceRepo  ports.PKCESessionRepository
-	agentRepo ports.AgentRepository
-	credRepo  ports.ClientCredentialRepository
-	logger    *slog.Logger
+	codeRepo       ports.AuthorizationCodeRepository
+	pkceRepo       ports.PKCESessionRepository
+	credRepo       ports.ClientCredentialRepository
+	clientResolver ports.ClientResolver
+	logger         *slog.Logger
 }
 
 // NewFositeStorage creates a new FositeStorage wrapping our repositories.
 func NewFositeStorage(
 	codeRepo ports.AuthorizationCodeRepository,
 	pkceRepo ports.PKCESessionRepository,
-	agentRepo ports.AgentRepository,
 	credRepo ports.ClientCredentialRepository,
+	clientResolver ports.ClientResolver,
 	logger *slog.Logger,
 ) *FositeStorage {
 	return &FositeStorage{
-		codeRepo:  codeRepo,
-		pkceRepo:  pkceRepo,
-		agentRepo: agentRepo,
-		credRepo:  credRepo,
-		logger:    logger,
+		codeRepo:       codeRepo,
+		pkceRepo:       pkceRepo,
+		credRepo:       credRepo,
+		clientResolver: clientResolver,
+		logger:         logger,
 	}
 }
 
@@ -112,8 +112,11 @@ func (s *FositeStorage) GetAuthorizeCodeSession(ctx context.Context, code string
 		RequestedScope: splitScope(authCode.Scope),
 		GrantedScope:   splitScope(authCode.Scope),
 		Form: map[string][]string{
-			"redirect_uri":          {authCode.RedirectURI},
-			"code_challenge":        {authCode.CodeChallenge},
+			"redirect_uri":   {authCode.RedirectURI},
+			"code_challenge": {authCode.CodeChallenge},
+			// code_challenge_method is hardcoded to S256 because EnablePKCEPlainChallengeMethod
+			// is false in provider config, so only S256 can reach this point. The actual PKCE
+			// verification uses GetPKCERequestSession which stores the method independently.
 			"code_challenge_method": {"S256"},
 		},
 		RequestedAt: authCode.CreatedAt,
@@ -230,28 +233,31 @@ func (s *FositeStorage) DeletePKCERequestSession(ctx context.Context, signature 
 }
 
 // GetClient satisfies the fosite.Storage interface.
-// This broker uses fosite in library mode: Provider pre-resolves the client via buildClient or
-// Authenticate before constructing the fosite request with req.Client already set. fosite's
-// grant handlers (AuthorizeExplicitGrantHandler, pkce.Handler, ClientCredentialsGrantHandler)
-// therefore never call GetClient — they consume the pre-populated req.Client or the client
-// embedded in GetAuthorizeCodeSession's return value. GetClient would only be called in
-// fosite's framework mode (fosite.Provider.NewAuthorizeRequest / NewAccessRequest), which
-// this code does not use.
-// clientID is expected to be the agent UUID, consistent with brokerClient.GetID().
+// Delegates to ClientResolver which handles both UUID-format and URL-format client_id values.
 func (s *FositeStorage) GetClient(ctx context.Context, clientID string) (fosite.Client, error) {
-	agentID, err := id.ParseAgentID(clientID)
+	resolution, err := s.clientResolver.ResolveClient(ctx, id.ClientID(clientID))
 	if err != nil {
-		return nil, fosite.ErrNotFound
+		var clientErr *ports.ClientIDError
+		if errors.As(err, &clientErr) {
+			if clientErr.Code == "server_error" {
+				s.logger.ErrorContext(ctx, "infrastructure error during client resolution",
+					"client_id", clientID, "error", clientErr.Desc)
+				return nil, err
+			}
+			return nil, fosite.ErrNotFound
+		}
+		return nil, err
 	}
-	agent, err := s.agentRepo.Get(ctx, agentID)
+
+	if resolution.CIMDMetadata != nil {
+		return &publicClient{clientID: clientID, agent: resolution.Agent, redirectURIs: resolution.CIMDMetadata.RedirectURIs}, nil
+	}
+
+	cred, err := s.credRepo.GetByAgentID(ctx, resolution.Agent.ID)
 	if err != nil {
 		return nil, s.mapStorageError(ctx, err)
 	}
-	cred, err := s.credRepo.GetByAgentID(ctx, agentID)
-	if err != nil {
-		return nil, s.mapStorageError(ctx, err)
-	}
-	return &brokerClient{agent: agent, credential: cred}, nil
+	return &confidentialClient{clientID: clientID, agent: resolution.Agent, credential: cred}, nil
 }
 
 // ClientAssertionJWTValid rejects all JWT assertions. This broker uses client_secret_basic only;
@@ -265,21 +271,4 @@ func (s *FositeStorage) ClientAssertionJWTValid(_ context.Context, _ string) err
 // ClientAssertionJWTValid always rejects, so JTIs never need to be recorded.
 func (s *FositeStorage) SetClientAssertionJWT(_ context.Context, _ string, _ time.Time) error {
 	return nil
-}
-
-func extractAgentID(client fosite.Client) (id.AgentID, error) {
-	bc, ok := client.(*brokerClient)
-	if !ok {
-		return id.AgentID{}, fmt.Errorf("expected *brokerClient, got %T", client)
-	}
-	if bc == nil {
-		return id.AgentID{}, fmt.Errorf("brokerClient is nil")
-	}
-	if bc.agent == nil {
-		return id.AgentID{}, fmt.Errorf("brokerClient.agent is nil")
-	}
-	if bc.agent.ID.IsZero() {
-		return id.AgentID{}, fmt.Errorf("brokerClient.agent.ID is zero")
-	}
-	return bc.agent.ID, nil
 }

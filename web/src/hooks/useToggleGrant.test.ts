@@ -4,9 +4,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import axios from 'axios';
 import { useToggleGrant } from './useToggleGrant';
 import { consentApi } from '../services/api/consent';
-import type { UserGrant } from '../types/consent';
+import type { UserGrant, GrantResult } from '../types/consent';
 
 // Mock the API
 vi.mock('../services/api/consent', () => ({
@@ -64,7 +65,8 @@ describe('useToggleGrant', () => {
       updated_at: '2024-01-01T00:00:00Z',
     };
 
-    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(mockGrant);
+    const mockResult: GrantResult = { kind: 'created', grant: mockGrant };
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(mockResult);
 
     const { result } = renderHook(() => useToggleGrant(agentId));
 
@@ -74,25 +76,20 @@ describe('useToggleGrant', () => {
     });
 
     // Submit
-    let returnedGrant: UserGrant | null = null;
+    let returnedResult: GrantResult | undefined;
     await act(async () => {
-      returnedGrant = await result.current.submit();
+      returnedResult = await result.current.submit();
     });
 
-    expect(returnedGrant).toEqual(mockGrant);
+    expect(returnedResult).toEqual(mockResult);
     expect(result.current.isSuccess).toBe(true);
     expect(result.current.error).toBeNull();
     expect(result.current.isSubmitting).toBe(false);
   });
 
   it('should handle submission error', async () => {
-    const errorResponse = {
-      response: {
-        data: {
-          message: 'Invalid request',
-        },
-      },
-    };
+    const errorResponse = new axios.AxiosError('Bad Request');
+    errorResponse.response = { status: 400, data: { message: 'Invalid request' } } as never;
 
     vi.mocked(consentApi.createOrUpdateGrant).mockRejectedValue(errorResponse);
 
@@ -108,31 +105,34 @@ describe('useToggleGrant', () => {
       ]);
     });
 
-    // Submit
-    let returnedGrant: UserGrant | null = null;
+    // Submit — expect a throw since submit() now re-throws on API errors.
+    let caughtError: Error | undefined;
     await act(async () => {
-      returnedGrant = await result.current.submit();
+      try {
+        await result.current.submit();
+      } catch (err) {
+        caughtError = err as Error;
+      }
     });
 
-    expect(returnedGrant).toBeNull();
+    expect(caughtError).toBeInstanceOf(Error);
+    expect(caughtError?.message).toBe('Invalid request');
     expect(result.current.isSuccess).toBe(false);
     expect(result.current.error).toBe('Invalid request');
     expect(result.current.isSubmitting).toBe(false);
   });
 
   it('should handle validation errors', async () => {
-    const errorResponse = {
-      response: {
-        data: {
-          message: 'Validation failed',
-          details: {
-            'delegated_oauth2_tokens[0].scopes': [
-              'At least one scope required',
-            ],
-          },
+    const errorResponse = new axios.AxiosError('Unprocessable Entity');
+    errorResponse.response = {
+      status: 422,
+      data: {
+        message: 'Validation failed',
+        details: {
+          'delegated_oauth2_tokens[0].scopes': ['At least one scope required'],
         },
       },
-    };
+    } as never;
 
     vi.mocked(consentApi.createOrUpdateGrant).mockRejectedValue(errorResponse);
 
@@ -148,9 +148,13 @@ describe('useToggleGrant', () => {
       ]);
     });
 
-    // Submit
+    // Submit — expect a throw since submit() now re-throws on API errors.
     await act(async () => {
-      await result.current.submit();
+      try {
+        await result.current.submit();
+      } catch {
+        // error is expected; assertions below check the resulting hook state
+      }
     });
 
     expect(result.current.error).toContain('Validation error');
@@ -217,7 +221,7 @@ describe('useToggleGrant', () => {
       updated_at: '2024-01-01T00:00:00Z',
     };
 
-    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue(mockGrant);
+    vi.mocked(consentApi.createOrUpdateGrant).mockResolvedValue({ kind: 'created', grant: mockGrant });
 
     const { result } = renderHook(() => useToggleGrant(agentId));
 

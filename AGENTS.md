@@ -94,7 +94,7 @@ Read full ADRs in `adrs/` before implementing in their domain.
 
 | Term | Definition |
 |---|---|
-| **Agent** | AI agent with unique `client_id`, display name, optional service requirements (mandatory/optional) |
+| **Agent** | AI agent with unique `client_id` (canonical identifier, used in OAuth2/consent flows via `GetByClientID`) and optional `client_uris` (CIMD URLs, resolved via `GetByClientURI`). Both resolve to the same entity; `client_id` is primary, client_uris are supplementary discovery handles. Has display name, optional service requirements (mandatory/optional) |
 | **ThirdpartyOAuth2Service** | External OAuth2 provider (GitHub, Google, etc.) with client credentials and scopes |
 | **UserGrant** | User (principal) delegating specific OAuth2 scopes to an agent. One grant per user-agent pair (upsert) |
 | **DelegatedToken** | Component of a grant: {service_id, scopes[]} |
@@ -186,3 +186,10 @@ go-migrate wraps migrations in transactions by default. To use `CONCURRENTLY`, t
 **Migration 008 note**: Migration 008 (`008_drop_agent_client_id_unique`) used non-concurrent index recreation (`CREATE INDEX IF NOT EXISTS`) without `CONCURRENTLY` because the `agents` table is small at migration time and the transactional safety outweighed the lock duration concern.
 
 **Future guidance**: Migrations that create or recreate indexes on tables expected to be large in production should use no-transaction migrations with `CREATE INDEX CONCURRENTLY` to avoid downtime.
+
+## Active Technologies
+- Go 1.25.6 (backend), React 19 + TypeScript + Vite 7 (frontend) + chi v5 (router), sqlx (database), Ginkgo/Gomega (E2E), Viper/Cobra (config), Tailwind CSS v4 + CVA (UI) — no new dependencies required (028-cimd-support)
+- PostgreSQL (production) + in-memory (dev/test) — Agent entity extension requires migration 015 (028-cimd-support)
+
+## Recent Changes
+- 028-cimd-support: Added Go 1.25.6 (backend), React 19 + TypeScript + Vite 7 (frontend) + chi v5 (router), sqlx (database), Ginkgo/Gomega (E2E), Viper/Cobra (config), Tailwind CSS v4 + CVA (UI) — no new dependencies required

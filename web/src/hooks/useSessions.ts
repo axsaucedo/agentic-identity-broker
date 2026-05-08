@@ -9,8 +9,10 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { isAxiosError } from 'axios';
 import type { SessionSummary } from '../services/api/sessions';
 import { sessionsApi } from '../services/api/sessions';
+import { extractApiError } from '../utils/api';
 
 interface UseSessionsState {
   /** List of OAuth2 sessions */
@@ -80,28 +82,11 @@ export function useSessions(): UseSessionsReturn {
         error: null,
       });
     } catch (err: unknown) {
-      // Handle errors
-      let errorMessage = 'Failed to load OAuth2 sessions';
-
-      if (err && typeof err === 'object') {
-        if (
-          'response' in err &&
-          err.response &&
-          typeof err.response === 'object'
-        ) {
-          const response = err.response as {
-            status?: number;
-            data?: { message?: string };
-          };
-
-          if (response.status === 404) {
-            errorMessage = 'No sessions found';
-          } else if (response.data?.message) {
-            errorMessage = response.data.message;
-          }
-        } else if ('message' in err && typeof err.message === 'string') {
-          errorMessage = err.message;
-        }
+      let errorMessage: string;
+      if (isAxiosError(err) && err.response?.status === 404) {
+        errorMessage = 'No sessions found';
+      } else {
+        errorMessage = extractApiError(err, 'Failed to load OAuth2 sessions');
       }
 
       setState({

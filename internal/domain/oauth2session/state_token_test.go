@@ -13,6 +13,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -335,7 +336,7 @@ func setupTestService(t *testing.T) (*oauth2session.OAuth2SessionService, id.Ser
 		agentRepo,
 		nil, // encryption not needed for state token tests (uses JWE)
 		&http.Client{},
-		key,
+		domjwe.New(key),
 		config,
 		slog.Default(),
 	)

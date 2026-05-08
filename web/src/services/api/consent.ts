@@ -13,7 +13,11 @@ import type {
   AgentDelegation,
   AgentDetail,
   ThirdpartyService,
+  ServiceWithScopes,
+  ServiceRequirement,
+  CIMDMetadata,
   UserGrant,
+  GrantResult,
   GetUserInfoResponse,
   GetAgentDelegationsResponse,
   GetAgentDetailResponse,
@@ -81,35 +85,55 @@ export class ConsentApiService {
 
   /**
    * Get detailed information about a specific agent and available services.
-   * Results are cached for 5 minutes.
+   * Results are cached for 5 minutes. Pass sessionToken for CIMD authorization flows.
    *
    * @param agentId - Unique agent identifier
-   * @returns Agent details and available services
+   * @param options - Optional: sessionToken for session-based CIMD flows
+   * @returns Agent details, available services, and optional CIMD metadata
    * @throws {ApiError} if request fails or agent not found
    */
-  async getAgentDetail(agentId: string): Promise<{
+  async getAgentDetail(
+    agentId: string,
+    options?: {
+      sessionToken?: string;
+    },
+  ): Promise<{
     agent: AgentDetail;
     services: ThirdpartyService[];
+    cimd_metadata?: CIMDMetadata | null;
   }> {
-    const cacheKey = `/consent/agent/${agentId}`;
+    let url = `/consent/agent/${agentId}`;
+    if (options?.sessionToken) {
+      url += `?session_token=${encodeURIComponent(options.sessionToken)}`;
+    }
 
-    // Check cache first
+    const cacheKey = url;
+
     const cached = apiCache.get<{
       agent: AgentDetail;
       services: ThirdpartyService[];
+      cimd_metadata?: CIMDMetadata | null;
     }>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // Fetch from API
-    const response = await apiClient.get<GetAgentDetailResponse>(
-      `/consent/agent/${agentId}`,
+    const response = await apiClient.get<GetAgentDetailResponse>(url);
+    const raw = response.data.data;
+    const services: ThirdpartyService[] = (raw.services as unknown[]).map(
+      (s) => {
+        const obj = s as Record<string, unknown>;
+        return 'requirementType' in obj && obj.requirementType
+          ? ({ ...obj, kind: 'requirement' } as ServiceRequirement)
+          : ({ ...obj, kind: 'scoped' } as ServiceWithScopes);
+      },
     );
-    const data = response.data.data;
+    const data = { ...raw, services };
 
-    // Cache the result (5 minutes TTL)
-    apiCache.set(cacheKey, data, 5 * 60 * 1000);
+    // Session-scoped requests are single-use; skip caching so expiry is always server-checked.
+    if (!options?.sessionToken) {
+      apiCache.set(cacheKey, data, 5 * 60 * 1000);
+    }
 
     return data;
   }
@@ -156,12 +180,13 @@ export class ConsentApiService {
   async createOrUpdateGrant(
     agentId: string,
     request: CreateOrUpdateGrantRequest,
-    redirectUri?: string,
-  ): Promise<UserGrant | null> {
-    // Build URL with optional redirect_uri query parameter (FR-025, T055)
+    options?: { redirectUri?: string; sessionToken?: string },
+  ): Promise<GrantResult> {
     let url = `/consent/agent/${agentId}/grants`;
-    if (redirectUri) {
-      url += `?redirect_uri=${encodeURIComponent(redirectUri)}`;
+    if (options?.sessionToken) {
+      url += `?session_token=${encodeURIComponent(options.sessionToken)}`;
+    } else if (options?.redirectUri) {
+      url += `?redirect_uri=${encodeURIComponent(options.redirectUri)}`;
     }
 
     const response = await apiClient.post<CreateOrUpdateGrantResponse>(
@@ -175,30 +200,22 @@ export class ConsentApiService {
 
     // Handle 204 No Content response (grant revoked with empty tokens)
     if (response.status === 204) {
-      return null;
+      return { kind: 'noContent' };
     }
 
     // Handle 201 Created response
     if (response.status === 201) {
-      // Check if backend provided a redirect_url in the response body (FR-025, T056)
-      // Backend returns redirect_url instead of HTTP 303 to avoid CORS issues with cross-origin redirects
       const redirectUrl = response.data.redirect_url;
       if (redirectUrl) {
-        // Defense-in-depth: Validate redirect URL is same-origin before following
-        // Backend already validates (SR-003), but frontend validation adds security layer
         if (!isSafeRedirectUrl(redirectUrl)) {
           throw new Error(
             'Redirect URL validation failed: URL must be same-origin',
           );
         }
-
-        // Use window.location.href to navigate (not XHR/fetch)
-        // This allows proper handling of redirect chains including cross-origin redirects
-        window.location.href = redirectUrl;
-        return null; // We're navigating away
+        return { kind: 'redirect', redirectUrl };
       }
 
-      return response.data.data;
+      return { kind: 'created', grant: response.data.data };
     }
 
     // Unexpected status

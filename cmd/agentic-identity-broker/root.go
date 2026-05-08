@@ -14,6 +14,7 @@ import (
 	"time"
 
 	httpAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/routing"
 	storageAdapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
@@ -97,6 +98,7 @@ func run(cmd *cobra.Command, args []string) error {
 			JWTAuthenticator: application.JWTAuthenticator,
 			Logger:           logger,
 			CORS:             cfg.Server.EndUser.CORS,
+			CSRFStore:        middleware.NewCSRFStore(logger),
 			Telemetry:        cfg.Telemetry,
 		})
 	}

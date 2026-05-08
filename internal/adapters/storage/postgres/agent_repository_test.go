@@ -519,6 +519,209 @@ func TestAgentRepository_Delete(t *testing.T) {
 	})
 }
 
+func TestAgentRepository_ClientURIs(t *testing.T) {
+	adapter, cleanup := setupAgentTestDBWithCIMD(t)
+	defer cleanup()
+
+	repo := NewAgentRepository(adapter)
+	ctx := context.Background()
+
+	t.Run("round-trip through Create and Get", func(t *testing.T) {
+		now := time.Now().UTC()
+		agent := &storage.Agent{
+			ClientID:    "cimd-create-get-client",
+			DisplayName: "CIMD Create/Get Agent",
+			Description: "Tests ClientURIs round-trip",
+			ClientURIs:  []string{"https://example.com/client1"},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		require.NoError(t, repo.Create(ctx, agent))
+
+		retrieved, err := repo.Get(ctx, agent.ID)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, agent.ClientURIs, retrieved.ClientURIs)
+	})
+
+	t.Run("round-trip through Create and List", func(t *testing.T) {
+		now := time.Now().UTC()
+		agent := &storage.Agent{
+			ClientID:    "cimd-list-client",
+			DisplayName: "CIMD List Agent",
+			Description: "Tests ClientURIs in List",
+			ClientURIs:  []string{"https://example.com/list-client1"},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		require.NoError(t, repo.Create(ctx, agent))
+
+		agents, err := repo.List(ctx)
+		require.NoError(t, err)
+
+		var found *storage.Agent
+		for _, a := range agents {
+			if a.ID == agent.ID {
+				found = a
+				break
+			}
+		}
+		require.NotNil(t, found)
+		assert.Equal(t, agent.ClientURIs, found.ClientURIs)
+	})
+
+	t.Run("round-trip through Update and Get", func(t *testing.T) {
+		now := time.Now().UTC()
+		agent := &storage.Agent{
+			ClientID:    "cimd-update-client",
+			DisplayName: "CIMD Update Agent",
+			Description: "Tests ClientURIs update",
+			ClientURIs:  []string{"https://example.com/update-original"},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		require.NoError(t, repo.Create(ctx, agent))
+
+		agent.ClientURIs = []string{"https://example.com/update-new"}
+		agent.UpdatedAt = time.Now().UTC()
+		require.NoError(t, repo.Update(ctx, agent))
+
+		retrieved, err := repo.Get(ctx, agent.ID)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"https://example.com/update-new"}, retrieved.ClientURIs)
+	})
+
+	t.Run("GetByClientID returns ClientURIs populated", func(t *testing.T) {
+		now := time.Now().UTC()
+		clientID := id.ClientID("cimd-getclientid-client")
+		agent := &storage.Agent{
+			ClientID:    clientID,
+			DisplayName: "CIMD GetByClientID Agent",
+			Description: "Tests GetByClientID hydrates ClientURIs",
+			ClientURIs:  []string{"https://example.com/getclientid-uri"},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		require.NoError(t, repo.Create(ctx, agent))
+
+		retrieved, err := repo.GetByClientID(ctx, clientID)
+		require.NoError(t, err)
+		assert.Equal(t, agent.ClientURIs, retrieved.ClientURIs)
+	})
+}
+
+func TestAgentRepository_GetByClientURI(t *testing.T) {
+	adapter, cleanup := setupAgentTestDBWithCIMD(t)
+	defer cleanup()
+
+	repo := NewAgentRepository(adapter)
+	ctx := context.Background()
+
+	t.Run("returns agent with ClientURIs populated", func(t *testing.T) {
+		now := time.Now().UTC()
+		agent := &storage.Agent{
+			ClientID:    "cimd-getbyuri-client",
+			DisplayName: "CIMD GetByClientURI Agent",
+			Description: "Tests GetByClientURI",
+			ClientURIs:  []string{"https://example.com/lookup-uri"},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		require.NoError(t, repo.Create(ctx, agent))
+
+		retrieved, err := repo.GetByClientURI(ctx, "https://example.com/lookup-uri")
+		require.NoError(t, err)
+		assert.Equal(t, agent.ID, retrieved.ID)
+		assert.ElementsMatch(t, agent.ClientURIs, retrieved.ClientURIs)
+	})
+
+	t.Run("returns not-found for unregistered URI", func(t *testing.T) {
+		_, err := repo.GetByClientURI(ctx, "https://example.com/not-registered")
+		require.Error(t, err)
+
+		storageErr, ok := err.(*storage.StorageError)
+		require.True(t, ok)
+		assert.Equal(t, storage.ErrorKindNotFound, storageErr.Kind)
+	})
+
+	t.Run("duplicate URI on Create rolls back entire operation", func(t *testing.T) {
+		now := time.Now().UTC()
+		sharedURI := "https://example.com/conflict-uri"
+
+		agent1 := &storage.Agent{
+			ClientID:    "conflict-agent-1",
+			DisplayName: "Conflict Agent 1",
+			Description: "Agent with the URI that will conflict",
+			ClientURIs:  []string{sharedURI},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		require.NoError(t, repo.Create(ctx, agent1))
+
+		agent2 := &storage.Agent{
+			ClientID:    "conflict-agent-2",
+			DisplayName: "Conflict Agent 2",
+			Description: "Agent that conflicts on URI",
+			ClientURIs:  []string{sharedURI},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		err := repo.Create(ctx, agent2)
+		require.Error(t, err)
+
+		storageErr, ok := err.(*storage.StorageError)
+		require.True(t, ok)
+		assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+
+		// Verify agent2 row was rolled back (not persisted)
+		_, getErr := repo.Get(ctx, agent2.ID)
+		require.Error(t, getErr)
+		conflictStorageErr, ok := getErr.(*storage.StorageError)
+		require.True(t, ok)
+		assert.Equal(t, storage.ErrorKindNotFound, conflictStorageErr.Kind)
+	})
+
+	t.Run("duplicate URI on Update rolls back entire operation", func(t *testing.T) {
+		now := time.Now().UTC()
+		uri1 := "https://example.com/update-conflict-uri1"
+		uri2 := "https://example.com/update-conflict-uri2"
+
+		agentA := &storage.Agent{
+			ClientID:    "update-conflict-agent-a",
+			DisplayName: "Update Conflict Agent A",
+			Description: "Holds URI1 permanently",
+			ClientURIs:  []string{uri1},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		require.NoError(t, repo.Create(ctx, agentA))
+
+		agentB := &storage.Agent{
+			ClientID:    "update-conflict-agent-b",
+			DisplayName: "Update Conflict Agent B",
+			Description: "Tries to steal URI1 on update",
+			ClientURIs:  []string{uri2},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		require.NoError(t, repo.Create(ctx, agentB))
+
+		// Try to update agentB to use uri1 (which agentA already holds)
+		agentB.ClientURIs = []string{uri1}
+		agentB.UpdatedAt = time.Now().UTC()
+		err := repo.Update(ctx, agentB)
+		require.Error(t, err)
+
+		storageErr, ok := err.(*storage.StorageError)
+		require.True(t, ok)
+		assert.Equal(t, storage.ErrorKindConflict, storageErr.Kind)
+
+		// Verify agentB still has its original URI (update was rolled back)
+		retrieved, getErr := repo.Get(ctx, agentB.ID)
+		require.NoError(t, getErr)
+		assert.Equal(t, []string{uri2}, retrieved.ClientURIs)
+	})
+}
+
 func TestAgentRepository_List(t *testing.T) {
 	adapter, cleanup := setupAgentTestDB(t)
 	defer cleanup()

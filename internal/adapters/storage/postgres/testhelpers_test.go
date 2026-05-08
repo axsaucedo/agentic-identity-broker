@@ -96,7 +96,7 @@ func setupTestContainer(t *testing.T) (testcontainers.Container, string, func())
 // any issues with passing multi-statement SQL as a command-line argument.
 func applyMigrations(t *testing.T, container testcontainers.Container) {
 	t.Helper()
-	applyMigrationsUpTo(t, container, 13)
+	applyMigrationsUpTo(t, container, 15)
 }
 
 // applyMigrationsUpTo applies migrations sequentially from 001 up to and including
@@ -131,6 +131,8 @@ func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo 
 		{"011_create_signing_keys.up.sql", 11},
 		{"012_create_authorization_codes.up.sql", 12},
 		{"013_add_client_id_to_auth_codes.up.sql", 13},
+		{"014_create_pkce_sessions.up.sql", 14},
+		{"015_add_cimd_support.up.sql", 15},
 	}
 
 	for _, migration := range migrations {
@@ -204,6 +206,40 @@ func findProjectRoot() (string, error) {
 			return "", fmt.Errorf("could not find project root")
 		}
 		dir = parent
+	}
+}
+
+// setupAgentTestDBWithCIMD creates a test database with migrations applied up to and including
+// migration 015 (CIMD fields, agent_client_uris, cimd_redirect_uris, authorization_sessions). Use for tests that exercise ClientURIs.
+func setupAgentTestDBWithCIMD(t *testing.T) (*Adapter, func()) {
+	t.Helper()
+
+	container, connString, cleanup := setupTestContainer(t)
+	t.Cleanup(cleanup)
+
+	applyMigrationsUpTo(t, container, 15)
+
+	config := &ports.StorageConfig{
+		Backend: "postgres",
+		Postgres: ports.PostgresConfig{
+			ConnectionURL: connString,
+		},
+		Timeouts: ports.StorageTimeouts{
+			Read:  5 * time.Second,
+			Write: 10 * time.Second,
+		},
+	}
+
+	adapter, err := NewAdapter(config)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = adapter.Initialize(ctx)
+	require.NoError(t, err)
+
+	return adapter, func() {
+		adapter.Close(ctx)
+		cleanup()
 	}
 }
 

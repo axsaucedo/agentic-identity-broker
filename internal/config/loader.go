@@ -203,6 +203,28 @@ func (l *Loader) setDefaults() {
 	_ = l.v.BindEnv("telemetry.exporter.insecure", "IDENTITY_BROKER_TELEMETRY_EXPORTER_INSECURE")
 	_ = l.v.BindEnv("telemetry.exporter.compression", "IDENTITY_BROKER_TELEMETRY_EXPORTER_COMPRESSION")
 
+	// Bind OAuth2 authorization server env vars
+	_ = l.v.BindEnv("oauth2_authorization_server.mode", "IDENTITY_BROKER_OAUTH2_MODE")
+
+	// Set CIMD configuration defaults
+	cimdDefaults := ports.DefaultCIMDConfig()
+	l.v.SetDefault("oauth2_authorization_server.cimd.enabled", cimdDefaults.Enabled)
+	l.v.SetDefault("oauth2_authorization_server.cimd.fetch_timeout", cimdDefaults.FetchTimeout)
+	l.v.SetDefault("oauth2_authorization_server.cimd.max_response_bytes", cimdDefaults.MaxResponseBytes)
+	l.v.SetDefault("oauth2_authorization_server.cimd.cache.max_ttl", cimdDefaults.Cache.MaxTTL)
+	l.v.SetDefault("oauth2_authorization_server.cimd.cache.min_ttl", cimdDefaults.Cache.MinTTL)
+	l.v.SetDefault("oauth2_authorization_server.cimd.cache.max_entries", cimdDefaults.Cache.MaxEntries)
+
+	// Bind CIMD env vars
+	_ = l.v.BindEnv("oauth2_authorization_server.cimd.enabled", "IDENTITY_BROKER_CIMD_ENABLED")
+	_ = l.v.BindEnv("oauth2_authorization_server.cimd.fetch_timeout", "IDENTITY_BROKER_CIMD_FETCH_TIMEOUT")
+	_ = l.v.BindEnv("oauth2_authorization_server.cimd.max_response_bytes", "IDENTITY_BROKER_CIMD_MAX_RESPONSE_BYTES")
+	_ = l.v.BindEnv("oauth2_authorization_server.cimd.cache.max_ttl", "IDENTITY_BROKER_CIMD_CACHE_MAX_TTL")
+	_ = l.v.BindEnv("oauth2_authorization_server.cimd.cache.min_ttl", "IDENTITY_BROKER_CIMD_CACHE_MIN_TTL")
+	_ = l.v.BindEnv("oauth2_authorization_server.cimd.cache.max_entries", "IDENTITY_BROKER_CIMD_CACHE_MAX_ENTRIES")
+	_ = l.v.BindEnv("oauth2_authorization_server.cimd.ssrf.extra_blocked_cidrs", "IDENTITY_BROKER_CIMD_SSRF_EXTRA_BLOCKED_CIDRS")
+	_ = l.v.BindEnv("oauth2_authorization_server.cimd.client_name_blocklist", "IDENTITY_BROKER_CIMD_CLIENT_NAME_BLOCKLIST")
+
 	// Set token exchange configuration defaults
 	// expected_audience defaults to the well-known "token-exchange-broker" value.
 	// Operators can override it to match whatever audience their JWTs carry.

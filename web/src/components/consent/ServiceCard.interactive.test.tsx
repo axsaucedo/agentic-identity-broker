@@ -9,6 +9,7 @@ import type { ThirdpartyService } from '../../types/consent';
 
 describe('ServiceCard - Interactive Mode', () => {
   const mockService: ThirdpartyService = {
+    kind: 'scoped',
     serviceId: 'github',
     displayName: 'GitHub',
     logoUrl: 'https://example.com/github-logo.png',

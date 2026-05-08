@@ -3,5 +3,7 @@
  */
 
 export * from './useConsent';
-export * from './useRetry';
 export * from './useSessions';
+export * from './useAgentGrants';
+export * from './useToggleGrant';
+export * from './useUpdateValidity';

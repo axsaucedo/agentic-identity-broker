@@ -28,10 +28,6 @@ func (m *mockAgentGrantsService) GetUserGrants(ctx context.Context, principal id
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockAgentGrantsService) GetAgentDetail(ctx context.Context, agentID id.AgentID) (*consent.AgentDetail, []consent.ThirdpartyService, error) {
-	return nil, nil, errors.New("not implemented")
-}
-
 func (m *mockAgentGrantsService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error) {
 	return nil, errors.New("not implemented")
 }
@@ -54,6 +50,10 @@ func (m *mockAgentGrantsService) GetAgentDelegations(ctx context.Context, princi
 
 func (m *mockAgentGrantsService) RevokeConsentForPrincipal(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
 	return nil
+}
+
+func (m *mockAgentGrantsService) GetAgentWithServiceRequirements(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 func TestGetAgentGrants_Success(t *testing.T) {

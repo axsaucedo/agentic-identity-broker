@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 )
 
 // Agent represents an AI agent registered in the identity broker.
@@ -24,8 +25,11 @@ type Agent struct {
 	ServiceRequirements  []ServiceRequirement `json:"service_requirements,omitempty" db:"service_requirements"`
 	RedirectURIs         []string             `json:"redirect_uris" db:"redirect_uris"`
 	AllowedScopes        []string             `json:"allowed_scopes" db:"allowed_scopes"`
-	CreatedAt            time.Time            `json:"created_at" db:"created_at"`
-	UpdatedAt            time.Time            `json:"updated_at" db:"updated_at"`
+	// ClientURIs holds pre-registered Client ID Metadata Document URLs.
+	// Each entry must be a valid HTTPS URL, globally unique across all agents.
+	ClientURIs []string  `json:"client_uris,omitempty" db:"-"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Validate performs validation on the Agent entity.
@@ -69,12 +73,45 @@ func (a *Agent) Validate() error {
 		}
 	}
 
+	if err := validateClientURIFormats(a.ClientURIs); err != nil {
+		return err
+	}
+
 	// Service requirements validation
 	if err := a.ValidateServiceRequirements(); err != nil {
 		return fmt.Errorf("service_requirements validation failed: %w", err)
 	}
 
 	return nil
+}
+
+// ValidateClientURIsForWrite runs the full client URI validation (format and duplicates).
+// Used by admin mutation paths (create and update).
+func ValidateClientURIsForWrite(uris []string) error {
+	return validateClientURIs(uris)
+}
+
+// validateClientURIFormats validates the format and uniqueness of each entry in the list.
+func validateClientURIFormats(uris []string) error {
+	seen := make(map[string]struct{}, len(uris))
+	for i, uriStr := range uris {
+		if _, dup := seen[uriStr]; dup {
+			return fmt.Errorf("client_uris[%d] is a duplicate: %q", i, uriStr)
+		}
+		seen[uriStr] = struct{}{}
+		if err := validateClientURI(uriStr); err != nil {
+			return fmt.Errorf("client_uris[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func validateClientURIs(uris []string) error {
+	return validateClientURIFormats(uris)
+}
+
+func validateClientURI(uriStr string) error {
+	return urivalidation.ValidateCIMDClientURL(uriStr)
 }
 
 // isValidURL validates that a string is a valid HTTP or HTTPS URL.
@@ -170,6 +207,10 @@ func (a *Agent) Copy() *Agent {
 		copy.AllowedScopes = append([]string(nil), a.AllowedScopes...)
 	}
 
+	if a.ClientURIs != nil {
+		copy.ClientURIs = append([]string(nil), a.ClientURIs...)
+	}
+
 	return copy
 }
 
@@ -208,6 +249,10 @@ func (a *Agent) ValidateForCreate() error {
 		if !IsValidRedirectURI(uri) {
 			return fmt.Errorf("redirect_uris[%d] is not a valid absolute HTTP/HTTPS URI without a fragment", i)
 		}
+	}
+
+	if err := validateClientURIs(a.ClientURIs); err != nil {
+		return err
 	}
 
 	// Service requirements validation

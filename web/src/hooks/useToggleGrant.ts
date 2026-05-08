@@ -9,12 +9,14 @@
  */
 
 import { useState, useCallback } from 'react';
+import { isAxiosError } from 'axios';
 import type {
   DelegatedToken,
   CreateOrUpdateGrantRequest,
-  UserGrant,
+  GrantResult,
 } from '../types/consent';
 import { consentApi } from '../services/api/consent';
+import { extractApiError } from '../utils/api';
 
 interface UseToggleGrantState {
   /** Selected delegated tokens */
@@ -33,8 +35,8 @@ interface UseToggleGrantReturn extends UseToggleGrantState {
   /** Submit grant request */
   submit: (
     validUntil?: string | null,
-    redirectUri?: string,
-  ) => Promise<UserGrant | null>;
+    submitOptions?: { redirectUri?: string; sessionToken?: string },
+  ) => Promise<GrantResult | undefined>;
   /** Reset state */
   reset: () => void;
   /** Clear error */
@@ -76,8 +78,8 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
   const submit = useCallback(
     async (
       validUntil?: string | null,
-      redirectUri?: string,
-    ): Promise<UserGrant | null> => {
+      submitOptions?: { redirectUri?: string; sessionToken?: string },
+    ): Promise<GrantResult | undefined> => {
       // Set submitting state
       setState((prev) => ({
         ...prev,
@@ -96,11 +98,10 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
           valid_until: validUntil || undefined,
         };
 
-        // Call API with optional redirectUri (FR-025)
-        const grant = await consentApi.createOrUpdateGrant(
+        const result = await consentApi.createOrUpdateGrant(
           agentId,
           request,
-          redirectUri,
+          submitOptions,
         );
 
         // Update state with success
@@ -111,36 +112,17 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
           error: null,
         }));
 
-        return grant;
+        return result;
       } catch (err: unknown) {
-        // Handle error
-        let errorMessage = 'Failed to update grant';
+        let errorMessage = extractApiError(err, 'Failed to update grant');
 
-        if (err && typeof err === 'object') {
-          if (
-            'response' in err &&
-            err.response &&
-            typeof err.response === 'object'
-          ) {
-            const response = err.response as {
-              status?: number;
-              data?: { message?: string; details?: Record<string, string[]> };
-            };
-
-            if (response.data?.message) {
-              errorMessage = response.data.message;
-            }
-
-            // Handle validation errors
-            if (response.data?.details) {
-              const details = Object.entries(response.data.details)
-                .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
-                .join('; ');
-              errorMessage = `Validation error: ${details}`;
-            }
-          } else if ('message' in err && typeof err.message === 'string') {
-            errorMessage = err.message;
-          }
+        if (isAxiosError(err) && err.response?.data?.details) {
+          const details = Object.entries(
+            err.response.data.details as Record<string, string[]>,
+          )
+            .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+            .join('; ');
+          errorMessage = `Validation error: ${details}`;
         }
 
         // Update state with error
@@ -151,7 +133,7 @@ export function useToggleGrant(agentId: string): UseToggleGrantReturn {
           isSuccess: false,
         }));
 
-        return null;
+        throw new Error(errorMessage);
       }
     },
     [agentId, state.delegatedTokens],

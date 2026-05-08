@@ -369,6 +369,19 @@ paths:
       - Consent
       parameters:
       - $ref: '#/components/parameters/AgentIdParam'
+      - name: session_token
+        in: query
+        required: false
+        description: >-
+          JWE authorization session token for CIMD-based flows. When present, the
+          response includes CIMD metadata (client_id_url, redirect_uri,
+          verified_domain, requested_scopes, logo_uri) extracted from the decrypted token.
+          Required for agents identified by a Client ID Metadata Document URL; omit
+          for pre-registered opaque client_id flows.
+        schema:
+          type: string
+          minLength: 1
+          example: eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0...
       responses:
         '200':
           description: Agent detail retrieved successfully
@@ -390,22 +403,24 @@ paths:
                         userDocumentationUrl: https://docs.example.com/agents/data-assistant
                         agentInterfaceUrl: https://agents.example.com/data-assistant
                       services:
-                      - serviceId: google-drive-service-id
-                        displayName: Google Drive
-                        logoUrl: https://cdn.example.com/services/google-drive.png
-                        scopes:
-                        - value: read:files
+                      - serviceId: 11111111-1111-1111-1111-111111111111
+                        serviceName: Google Drive
+                        requirementType: mandatory
+                        requiredScopes:
+                        - name: read:files
                           description: Read files from your Google Drive
-                        - value: write:files
+                        - name: write:files
                           description: Create and update files in your Google Drive
-                      - serviceId: github-service-id
-                        displayName: GitHub
-                        logoUrl: https://cdn.example.com/services/github.png
-                        scopes:
-                        - value: read:repos
+                        connectionStatus: connected
+                      - serviceId: 22222222-2222-2222-2222-222222222222
+                        serviceName: GitHub
+                        requirementType: optional
+                        requiredScopes:
+                        - name: read:repos
                           description: Read access to repositories
-                        - value: write:repos
+                        - name: write:repos
                           description: Write access to repositories
+                        connectionStatus: not_connected
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -530,6 +545,19 @@ paths:
         - Deletes the grant entirely
 
 
+        **CIMD Session-Based Consent (FR-029)**:
+
+        - Use `session_token` query parameter for CIMD authorization flows
+
+        - Token is a self-contained JWE carrying all authorization session claims (agent, principal, redirect_uri) — no server-side session lookup is performed
+
+        - Returns HTTP 201 with `redirect_url` field containing the original authorization URL
+
+        - Returns `400 Bad Request` if the token is invalid, expired, or the session agent does not match
+
+        - Returns `403 Forbidden` if the session principal does not match the authenticated user
+
+
         **Redirect After Approval (Optional)**:
 
         - Use `redirect_uri` query parameter to continue OAuth2 flow after grant approval
@@ -578,9 +606,15 @@ paths:
       - Consent
       parameters:
       - $ref: '#/components/parameters/AgentIdParam'
+      - name: session_token
+        in: query
+        description: 'JWE authorization session token (FR-029). When present, the grant endpoint decrypts the token to resolve the redirect target. Takes precedence over redirect_uri for the response redirect. Returns 400 if the token is invalid or expired; 400 if the session agent does not match the requested agent; 403 if the session principal does not match the authenticated caller.'
+        required: false
+        schema:
+          type: string
       - name: redirect_uri
         in: query
-        description: 'Optional URL for OAuth2 flow continuation after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). When provided, response includes redirect_url field in body instead of HTTP redirect (avoids CORS issues with cross-origin redirect chains). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected.'
+        description: 'Optional URL for OAuth2 flow continuation after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). When provided, response includes redirect_url field in body instead of HTTP redirect (avoids CORS issues with cross-origin redirect chains). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected. Ignored when session_token is also present.'
         required: false
         schema:
           type: string
@@ -688,6 +722,18 @@ paths:
                     message: 'invalid scopes requested: delegation 0 (service=example-service) has invalid scopes: [invalid:scope]'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - Authorization session belongs to a different principal (session_token mismatch).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                principalMismatch:
+                  summary: Session belongs to a different user
+                  value:
+                    error: forbidden
+                    message: authorization session does not belong to this user
         '404':
           $ref: '#/components/responses/AgentNotFound'
         '500':
@@ -2021,24 +2067,56 @@ components:
             services:
               type: array
               items:
-                $ref: '#/components/schemas/ThirdpartyService'
-              description: 'Array of available third-party services that can be delegated
-
-                to this agent. Empty array if no services are available.
-
-                '
-            serviceRequirements:
-              type: array
-              items:
                 $ref: '#/components/schemas/ServiceRequirementForUser'
-              nullable: true
               description: 'Array of service requirements for this agent with user connection status.
 
-                Includes mandatory and optional third-party services the agent needs.
+                Includes mandatory and optional third-party services the agent needs,
 
-                Null or empty if agent has no service requirements.
+                sorted mandatory-first. Empty array if the agent has no service requirements.
 
                 '
+            cimd_metadata:
+              $ref: '#/components/schemas/CIMDMetadata'
+              nullable: true
+              description: 'CIMD trust metadata present when the authorization request used a URL-format
+                client_id. Null for agents with opaque (UUID) client identifiers.
+
+                '
+    CIMDMetadata:
+      type: object
+      required:
+      - client_id_url
+      - redirect_uri
+      - verified_domain
+      - requested_scopes
+      properties:
+        client_id_url:
+          type: string
+          format: uri
+          description: The HTTPS URL used as the OAuth2 client_id
+          example: https://agent.example.com/client
+        redirect_uri:
+          type: string
+          description: Redirect URI from the authorization request, validated against the CIMD document
+          example: https://agent.example.com/callback
+        verified_domain:
+          type: string
+          description: Hostname extracted from the client_id URL
+          example: agent.example.com
+        requested_scopes:
+          type: array
+          items:
+            type: string
+          description: OAuth2 scopes requested in the authorization request
+          example:
+          - openid
+          - profile
+        logo_uri:
+          type: string
+          format: uri
+          nullable: true
+          description: Logo URL from the CIMD document, if present. Always an absolute HTTPS URL.
+          example: https://agent.example.com/logo.png
     DelegatedToken:
       type: object
       required:
@@ -2413,6 +2491,15 @@ components:
             type: string
           description: Scopes supported by this server
           example: [openid, profile, email]
+
+        client_id_metadata_document_supported:
+          type: boolean
+          description: |
+            Indicates whether this authorization server supports URL-based client_id values
+            via the Client ID Metadata Document specification
+            (draft-ietf-oauth-client-id-metadata-document-01).
+            Present and true when CIMD is enabled; absent when disabled.
+          example: true
 
     JWKSetResponse:
       type: object

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
-	otelslog "go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/contrib/propagators/ot"
@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
+	adaptercmd "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/cimd"
 	awsencryption "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/encryption/aws"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/handlers"
@@ -32,13 +33,15 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
-	tokenexchange "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -91,6 +94,7 @@ type Builder struct {
 	logger                 *slog.Logger
 	staticWebResourcesPath string
 	tracerProvider         *sdktrace.TracerProvider // Optional: custom TracerProvider for testing
+	cimdFetcher            ports.CIMDFetcher        // Optional: overrides auto-created CIMD fetcher for testing
 }
 
 // NewBuilder creates a new application builder.
@@ -128,6 +132,15 @@ func (b *Builder) WithStaticWebResourcesPath(path string) *Builder {
 // the one created by NewProvider(). Mirrors the WithEncryption precedent.
 func (b *Builder) WithTracerProvider(tp *sdktrace.TracerProvider) *Builder {
 	b.tracerProvider = tp
+	return b
+}
+
+// WithCIMDFetcher injects a custom CIMDFetcher, bypassing the production fetcher
+// created from CIMDConfig. Intended for testing — allows injecting an HTTP client
+// that trusts test TLS certificates (e.g., from httptest.NewTLSServer).
+// Only effective when cimd.enabled is true.
+func (b *Builder) WithCIMDFetcher(f ports.CIMDFetcher) *Builder {
+	b.cimdFetcher = f
 	return b
 }
 
@@ -232,6 +245,18 @@ func (b *Builder) Build() (*App, error) {
 		app.BranchKeyManager = branchKeyManager
 	}
 
+	// Decode and import JWE signing key — required for both OAuth2SessionService and OAuth2Service
+	// (CIMD consent flows). Fail fast here before constructing any domain services.
+	keyBytes, err := base64.StdEncoding.DecodeString(b.config.ThirdPartyOAuth2.JWESigningKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWE signing key: %w", err)
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
+	}
+	jweTokenService := domjwe.New(jweKey)
+
 	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
 
@@ -256,6 +281,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.Agents(),
 			app.ProviderService,
 			b.storage.UserGrants(),
+			b.storage.UserSessions(),
 			b.logger,
 		)
 	}
@@ -264,6 +290,7 @@ func (b *Builder) Build() (*App, error) {
 	// T038: Use NewServiceWithSessions (enables mandatory requirement validation + multi-agent
 	// client config) and pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient.
 	// In issue_token mode, also create the service for consent checks and metadata generation.
+	var clientResolver ports.ClientResolver
 	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "issue_token" {
 		oauth2Config := &oauth2service.OAuth2Config{
 			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
@@ -273,6 +300,7 @@ func (b *Builder) Build() (*App, error) {
 			SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
 			MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,
 			Mode:                      b.config.OAuth2AuthServer.Mode,
+			CIMDEnabled:               b.config.OAuth2AuthServer.CIMD.Enabled,
 		}
 		// In issue_token mode, set correct defaults for supported types
 		if b.config.OAuth2AuthServer.Mode == "issue_token" {
@@ -284,13 +312,46 @@ func (b *Builder) Build() (*App, error) {
 			}
 		}
 
-		app.OAuth2Service = oauth2service.NewServiceWithSessions(
-			b.storage.Agents(),
+		cimdCfg := b.config.OAuth2AuthServer.CIMD
+		if cimdCfg.Enabled {
+			activeFetcher := b.cimdFetcher
+			if activeFetcher == nil {
+				concreteFetcher, fetchErr := adaptercmd.NewFetcher(
+					cimdCfg.FetchTimeout,
+					int64(cimdCfg.MaxResponseBytes),
+					cimdCfg.SSRF.ExtraBlockedCIDRs,
+				)
+				if fetchErr != nil {
+					return nil, fmt.Errorf("failed to create CIMD fetcher: %w", fetchErr)
+				}
+				if b.config.Telemetry.Enabled && b.config.Telemetry.Traces.Enabled {
+					concreteFetcher.WrapTransport(func(base http.RoundTripper) http.RoundTripper {
+						return otelhttp.NewTransport(base)
+					})
+				}
+				activeFetcher = concreteFetcher
+			}
+			cimdCache, cacheErr := domaincimd.NewCIMDCache(cimdCfg.Cache.MinTTL, cimdCfg.Cache.MaxTTL, cimdCfg.Cache.MaxEntries)
+			if cacheErr != nil {
+				return nil, fmt.Errorf("failed to create CIMD cache: %w", cacheErr)
+			}
+			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, cimdCfg.ClientNameBlocklist, b.logger)
+			clientResolver = domaincimd.NewCIMDClientResolver(b.storage.Agents(), cimdSvc, b.logger)
+			b.logger.Info("CIMD client resolution enabled",
+				"fetch_timeout", cimdCfg.FetchTimeout,
+				"max_response_bytes", cimdCfg.MaxResponseBytes,
+			)
+		} else {
+			clientResolver = oauth2service.NewOpaqueClientResolver(b.storage.Agents())
+		}
+
+		app.OAuth2Service = oauth2service.NewServiceWithClientResolver(
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
+			clientResolver,
 			oauth2Config,
 			b.logger,
-		)
+		).WithJWETokenService(jweTokenService)
 	}
 
 	// OAuth2SessionService is always created because JWESigningKey is mandatory.
@@ -304,18 +365,6 @@ func (b *Builder) Build() (*App, error) {
 	// If services repository is not available, providerService will be nil and OAuth2SessionService
 	// will fail to fetch services. This is acceptable since the application is non-functional
 	// without the services repository anyway.
-
-	// Decode JWE signing key
-	keyBytes, err := base64.StdEncoding.DecodeString(b.config.ThirdPartyOAuth2.JWESigningKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JWE signing key: %w", err)
-	}
-
-	// Import key as JWK
-	jweKey, err := jwk.Import(keyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
-	}
 
 	// Build service configuration from application config
 	// Constitution Principle VII: Configuration-Driven Design
@@ -346,7 +395,7 @@ func (b *Builder) Build() (*App, error) {
 		b.storage.Agents(),
 		encryptor,
 		upstreamClient,
-		jweKey,
+		jweTokenService,
 		cfg,
 		b.logger,
 	)
@@ -503,11 +552,7 @@ func (b *Builder) Build() (*App, error) {
 		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
-	// Create agent detail handler with repository dependencies for service requirements (Phase 6)
-	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger).
-		WithAgentRepository(b.storage.Agents()).
-		WithSessionRepository(b.storage.UserSessions()).
-		WithProviderService(app.ProviderService)
+	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, jweTokenService)
 
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
 	// Config validation makes this error unreachable in practice, but structural fail-closed
@@ -559,7 +604,7 @@ func (b *Builder) Build() (*App, error) {
 
 	if b.config.OAuth2AuthServer.Mode == "issue_token" {
 		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
-		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), b.storage.Agents(), b.logger)
+		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
 		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
 		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
 
@@ -567,7 +612,7 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.AuthorizationCodes(),
 			b.storage.PKCESessions(),
 			b.storage.BrokerCredentials(),
-			b.storage.Agents(),
+			clientResolver,
 			b.storage.SigningKeys(),
 			encryptor,
 			b.config.Server.EndUser.PublicURL,
@@ -604,7 +649,7 @@ func (b *Builder) Build() (*App, error) {
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:    agentDetailHandler,
 		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger),
+		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, jweTokenService),
 		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{

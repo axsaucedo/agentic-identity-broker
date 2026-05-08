@@ -143,6 +143,34 @@ func (f *ServerFactory) BuildAppWithTracerProvider(storage interface{}, tp *sdkt
 		Build()
 }
 
+// BuildAppWithCIMDFetcher creates a fully-wired application with an injected CIMDFetcher.
+// Used in CIMD E2E tests where the mock CIMD server uses a self-signed TLS certificate
+// (e.g., httptest.NewTLSServer) that the production fetcher's system cert pool would reject.
+func (f *ServerFactory) BuildAppWithCIMDFetcher(storage interface{}, cimdFetcher ports.CIMDFetcher) (*app.App, error) {
+	if storage == nil {
+		return nil, fmt.Errorf("storage adapter is required")
+	}
+	if f.config == nil {
+		return nil, fmt.Errorf("factory config is required")
+	}
+	if f.logger == nil {
+		return nil, fmt.Errorf("factory logger is required")
+	}
+
+	storageAdapter, ok := storage.(*storageadapter.Adapter)
+	if !ok {
+		return nil, fmt.Errorf("storage must be *storageadapter.Adapter")
+	}
+
+	return app.NewBuilder().
+		WithConfig(f.config).
+		WithStorage(storageAdapter).
+		WithLogger(f.logger).
+		WithStaticWebResourcesPath("../../../web/dist").
+		WithCIMDFetcher(cimdFetcher).
+		Build()
+}
+
 // ValidateFactory checks factory is properly initialized.
 // This is useful for early detection of misconfiguration in test setup.
 //

@@ -20,6 +20,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -1058,7 +1059,7 @@ func setupService(t *testing.T) (*oauth2session.OAuth2SessionService, *memory.In
 		agentRepo,
 		encryption,
 		&http.Client{},
-		key,
+		domjwe.New(key),
 		config,
 		slog.Default(),
 	)
@@ -1428,7 +1429,7 @@ func TestHandleCallback_PKCEValidationFailure_EmitsAuditLog(t *testing.T) {
 		agentRepo,
 		encryption,
 		&http.Client{},
-		key,
+		domjwe.New(key),
 		config,
 		logger, // Capture logs
 	)
