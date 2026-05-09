@@ -18,18 +18,3 @@ const (
 	// Characteristics: Durable, connection pooling, schema versioning, TLS support
 	BackendPostgres StorageBackend = "postgres"
 )
-
-// Valid returns true if the backend type is a recognized value.
-func (b StorageBackend) Valid() bool {
-	switch b {
-	case BackendMemory, BackendPostgres:
-		return true
-	default:
-		return false
-	}
-}
-
-// String returns the string representation of the StorageBackend.
-func (b StorageBackend) String() string {
-	return string(b)
-}

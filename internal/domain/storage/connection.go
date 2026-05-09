@@ -2,7 +2,6 @@ package storage
 
 import (
 	"net/url"
-	"regexp"
 	"strings"
 )
 
@@ -78,55 +77,3 @@ var (
 	ErrConnectionURLNoHost        = NewStorageError("ValidateConnection", ErrorKindValidation, nil, "connection URL must include host")
 	ErrConnectionURLNoDatabase    = NewStorageError("ValidateConnection", ErrorKindValidation, nil, "connection URL must include database name")
 )
-
-// ValidatePostgresURL performs PostgreSQL-specific URL format validation.
-// Used by configuration validators.
-func ValidatePostgresURL(s string) bool {
-	if !strings.HasPrefix(s, "postgresql://") && !strings.HasPrefix(s, "postgres://") {
-		return false
-	}
-
-	u, err := url.Parse(s)
-	if err != nil {
-		return false
-	}
-
-	// Host required
-	if u.Host == "" {
-		return false
-	}
-
-	// Database name required (path)
-	if u.Path == "" || u.Path == "/" {
-		return false
-	}
-
-	// Validate known query parameters
-	knownParams := map[string]bool{
-		"sslmode":          true,
-		"connect_timeout":  true,
-		"application_name": true,
-		"password":         true,
-		"user":             true,
-		"dbname":           true,
-		"port":             true,
-	}
-
-	for key := range u.Query() {
-		if !knownParams[key] {
-			// Log warning about unknown parameters, but don't fail
-			continue
-		}
-	}
-
-	return true
-}
-
-// IsValidDuration checks if a string is a valid Go duration format.
-// Used by configuration validators.
-func IsValidDuration(s string) bool {
-	durations := []string{"s", "m", "h"}
-	pattern := `^[0-9]+(` + strings.Join(durations, "|") + `)$`
-	matched, _ := regexp.MatchString(pattern, s)
-	return matched
-}
