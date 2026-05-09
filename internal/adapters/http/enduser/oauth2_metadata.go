@@ -45,10 +45,3 @@ func (h *OAuth2MetadataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 }
-
-// NewOAuth2MetadataHandler creates a new metadata handler
-func NewOAuth2MetadataHandler(service ports.OAuth2Service) *OAuth2MetadataHandler {
-	return &OAuth2MetadataHandler{
-		Service: service,
-	}
-}
