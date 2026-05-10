@@ -423,6 +423,11 @@ func (b *Builder) Build() (*App, error) {
 		if !b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
 			agentRepo := b.storage.Agents()
 			celConfig.ResolveAgentIDByClientID = func(clientID string) (string, error) {
+				// ADR 017: Auto-generated client_ids equal the agent UUID.
+				// Short-circuit the storage lookup when the value is already a valid UUID.
+				if _, err := id.ParseAgentID(clientID); err == nil {
+					return clientID, nil
+				}
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				agent, err := agentRepo.GetByClientID(ctx, id.ClientID(clientID))

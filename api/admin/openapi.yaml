@@ -1270,13 +1270,15 @@ components:
     AgentCreateRequest:
       type: object
       required:
-        - client_id
         - display_name
         - description
       properties:
         client_id:
           type: string
-          description: OAuth2 client_id for this agent (must be unique)
+          description: |
+            OAuth2 client_id for this agent. Must be unique across all agents.
+            Optional — when omitted, defaults to the agent's UUID (ADR 017).
+            Provide explicitly only when the agent proxies to an upstream OAuth2 provider.
           example: agent-research-assistant
           maxLength: 255
         external_id:
@@ -1371,13 +1373,14 @@ components:
     AgentUpdateRequest:
       type: object
       required:
-        - client_id
         - display_name
         - description
       properties:
         client_id:
           type: string
-          description: OAuth2 client_id for this agent
+          description: |
+            OAuth2 client_id for this agent.
+            Optional — when omitted, the existing value is preserved.
           example: agent-research-assistant
           maxLength: 255
         external_id:

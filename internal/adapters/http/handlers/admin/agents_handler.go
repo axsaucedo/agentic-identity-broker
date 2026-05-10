@@ -123,7 +123,8 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// T036: When feature is disabled, enforce client_id uniqueness at the application layer.
 	// (Storage adapters no longer enforce this, per Feature 021 requirement to allow sharing.)
-	if !h.multiAgentEnabled {
+	// Skip when client_id is omitted — auto-generated UUID values are inherently unique (ADR 017).
+	if !h.multiAgentEnabled && req.ClientID != "" {
 		if !h.checkClientIDUniqueness(ctx, w, id.ClientID(req.ClientID), nil) {
 			return
 		}
@@ -137,9 +138,17 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Create agent entity
 	now := time.Now().UTC()
+	agentID := id.NewAgentID()
+
+	// ADR 017: Auto-generate client_id from agent UUID when not provided.
+	clientID := id.ClientID(req.ClientID)
+	if req.ClientID == "" {
+		clientID = id.ClientID(agentID.String())
+	}
+
 	agent := &storage.Agent{
-		ID:                   id.NewAgentID(),
-		ClientID:             id.ClientID(req.ClientID),
+		ID:                   agentID,
+		ClientID:             clientID,
 		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
@@ -252,7 +261,8 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// T037: When feature is disabled, enforce client_id uniqueness at the application layer,
 	// excluding the current agent (self-update must be allowed).
-	if !h.multiAgentEnabled {
+	// Skip when client_id is omitted — existing value will be preserved (ADR 017).
+	if !h.multiAgentEnabled && req.ClientID != "" {
 		if !h.checkClientIDUniqueness(ctx, w, id.ClientID(req.ClientID), &parsedAgentID) {
 			return
 		}
@@ -267,9 +277,15 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ADR 017: Preserve existing client_id when not provided in update request.
+	clientID := id.ClientID(req.ClientID)
+	if req.ClientID == "" {
+		clientID = existing.ClientID
+	}
+
 	agent := &storage.Agent{
 		ID:                   parsedAgentID,
-		ClientID:             id.ClientID(req.ClientID),
+		ClientID:             clientID,
 		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
