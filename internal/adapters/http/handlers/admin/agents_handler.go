@@ -450,7 +450,7 @@ func convertExternalIDToString(eid *id.ExternalID) *string {
 }
 
 func clientIDFromRequest(s *string) *id.ClientID {
-	if s == nil || *s == "" {
+	if s == nil {
 		return nil
 	}
 	c := id.ClientID(*s)

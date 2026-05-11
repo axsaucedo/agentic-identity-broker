@@ -224,6 +224,32 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 		mockRepo.AssertExpectations(t)
 	})
 
+	t.Run("blank client_id returns 400 validation failed", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		emptyClientID := ""
+		reqBody := AgentRequest{
+			ClientID:    &emptyClientID,
+			DisplayName: "Test Agent",
+			Description: "Test description",
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreateAgent(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Equal(t, "validation failed", resp.Error)
+		mockRepo.AssertNotCalled(t, "Create")
+	})
+
 	t.Run("conflict error", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
 		mockServiceRepo := new(MockProviderRepository)
@@ -504,6 +530,49 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		handler.UpdateAgent(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("blank client_id returns 400 validation failed", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		agentID := id.NewAgentID()
+		now := time.Now().UTC()
+		existingAgent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    ptr.To(id.ClientID("existing-client")),
+			DisplayName: "Existing Agent",
+			Description: "Existing description",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		mockRepo.On("Get", mock.Anything, agentID).Return(existingAgent, nil)
+
+		emptyClientID := ""
+		reqBody := AgentRequest{
+			ClientID:    &emptyClientID,
+			DisplayName: "Updated Name",
+			Description: "Updated description",
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		w := httptest.NewRecorder()
+
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Equal(t, "validation failed", resp.Error)
+		mockRepo.AssertNotCalled(t, "Update")
+		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("preserves CIMD snapshot fields on update", func(t *testing.T) {
