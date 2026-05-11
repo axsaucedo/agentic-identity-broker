@@ -6,6 +6,7 @@
 package server_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -44,7 +45,7 @@ func TestTokenExchanger_Cache_ExpiredEntry_TriggersNewExchange(t *testing.T) {
 	const resourceURI = "http://mcp-server:9003/mcp"
 
 	// First call — populates cache
-	token1, err := exchanger.Exchange(subjectToken, resourceURI)
+	token1, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 	callsAfterFirst := mocks.exchangeCalls
 
@@ -55,7 +56,7 @@ func TestTokenExchanger_Cache_ExpiredEntry_TriggersNewExchange(t *testing.T) {
 	mocks.exchangedToken = "refreshed-access-token"
 
 	// Second call after expiry — must re-fetch
-	token2, err := exchanger.Exchange(subjectToken, resourceURI)
+	token2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
 	assert.Equal(t, "exchanged-access-token", token1, "first call must return original token")
@@ -82,13 +83,13 @@ func TestTokenExchanger_Cache_HitBeforeExpiry_ReturnsCachedToken(t *testing.T) {
 	const resourceURI = "http://mcp-server:9003/mcp"
 
 	// First call — populates cache
-	token1, err := exchanger.Exchange(subjectToken, resourceURI)
+	token1, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 	callsAfterFirst := mocks.exchangeCalls
 
 	// Multiple rapid calls — all should hit cache
 	for range 5 {
-		token, err := exchanger.Exchange(subjectToken, resourceURI)
+		token, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 		require.NoError(t, err)
 		assert.Equal(t, token1, token, "cache hit must return same token")
 	}
@@ -117,11 +118,11 @@ func TestTokenExchanger_Cache_MaxTTLCap_AppliedCorrectly(t *testing.T) {
 	const resourceURI = "http://mcp-server:9003/mcp"
 
 	// First call — populates cache with max_ttl cap applied
-	token1, err := exchanger.Exchange(subjectToken, resourceURI)
+	token1, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
 	// The token is cached — another call should hit cache
-	token2, err := exchanger.Exchange(subjectToken, resourceURI)
+	token2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 	assert.Equal(t, token1, token2, "immediate second call must be a cache hit")
 	callsAfterSecond := mocks.exchangeCalls
@@ -131,7 +132,7 @@ func TestTokenExchanger_Cache_MaxTTLCap_AppliedCorrectly(t *testing.T) {
 
 	// After max_ttl, cache must be expired
 	mocks.exchangedToken = "post-maxttl-token"
-	token3, err := exchanger.Exchange(subjectToken, resourceURI)
+	token3, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
 	assert.Equal(t, "post-maxttl-token", token3,
@@ -181,7 +182,7 @@ func TestTokenExchanger_Cache_UniqueKeyPerSubjectAndResource(t *testing.T) {
 
 	tokens := make([]string, len(combinations))
 	for i, c := range combinations {
-		tok, err := exchanger.Exchange(c.subject, c.resource)
+		tok, err := exchanger.Exchange(context.Background(), c.subject, c.resource)
 		require.NoError(t, err)
 		tokens[i] = tok
 	}
@@ -194,7 +195,7 @@ func TestTokenExchanger_Cache_UniqueKeyPerSubjectAndResource(t *testing.T) {
 	// Re-fetch — all should come from cache (no new exchange calls)
 	callsBeforeRefetch := len(exchangeLog)
 	for _, c := range combinations {
-		_, err := exchanger.Exchange(c.subject, c.resource)
+		_, err := exchanger.Exchange(context.Background(), c.subject, c.resource)
 		require.NoError(t, err)
 	}
 	callMu.Lock()
@@ -257,7 +258,7 @@ func TestTokenExchanger_Singleflight_ConcurrentRequests_CallExchangeOnce(t *test
 	// Launch concurrent goroutines requesting the same key
 	for i := range numGoroutines {
 		wg.Go(func() {
-			results[i], errors[i] = exchanger.Exchange(subjectToken, resourceURI)
+			results[i], errors[i] = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 		})
 	}
 
@@ -324,7 +325,7 @@ func TestTokenExchanger_Singleflight_DifferentKeys_ProceedConcurrently(t *testin
 		wg.Add(1)
 		go func(idx int, resource string) {
 			defer wg.Done()
-			tok, err := exchanger.Exchange("user-token", resource)
+			tok, err := exchanger.Exchange(context.Background(), "user-token", resource)
 			require.NoError(t, err)
 			results[idx] = tok
 		}(i, res)
@@ -370,7 +371,7 @@ func TestTokenExchanger_Singleflight_SharedError_OnExchangeFailure(t *testing.T)
 
 	for i := range numGoroutines {
 		wg.Go(func() {
-			_, errs[i] = exchanger.Exchange("user-token", "http://resource.example.com")
+			_, errs[i] = exchanger.Exchange(context.Background(), "user-token", "http://resource.example.com")
 		})
 	}
 	wg.Wait()
@@ -410,7 +411,7 @@ func TestTokenExchanger_Eviction_ExpiredEntries_RemovedFromCache(t *testing.T) {
 	const resourceURI = "http://mcp-server:9003/mcp"
 
 	// Populate cache
-	_, err = exchanger.Exchange(subjectToken, resourceURI)
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 	callsAfterFirst := mocks.exchangeCalls
 
@@ -420,7 +421,7 @@ func TestTokenExchanger_Eviction_ExpiredEntries_RemovedFromCache(t *testing.T) {
 
 	// After eviction, next call must re-fetch
 	mocks.exchangedToken = "token-after-eviction"
-	_, err = exchanger.Exchange(subjectToken, resourceURI)
+	_, err = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
 	assert.Greater(t, mocks.exchangeCalls, callsAfterFirst,
@@ -446,7 +447,7 @@ func TestTokenExchanger_Eviction_ValidEntries_NotEvicted(t *testing.T) {
 	const resourceURI = "http://mcp-server:9003/mcp"
 
 	// Populate cache
-	token1, err := exchanger.Exchange(subjectToken, resourceURI)
+	token1, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 	callsAfterFirst := mocks.exchangeCalls
 
@@ -454,7 +455,7 @@ func TestTokenExchanger_Eviction_ValidEntries_NotEvicted(t *testing.T) {
 	time.Sleep(1200 * time.Millisecond)
 
 	// Entry must still be in cache — no new exchange call
-	token2, err := exchanger.Exchange(subjectToken, resourceURI)
+	token2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
 	assert.Equal(t, token1, token2,
@@ -628,6 +629,7 @@ func TestTokenExchanger_Concurrent_ExchangeAndShutdown_RaceFree(t *testing.T) {
 	for i := range 5 {
 		wg.Go(func() {
 			_, _ = exchanger.Exchange(
+				context.Background(),
 				fmt.Sprintf("token-%d", i),
 				fmt.Sprintf("http://service-%d:9000/api", i),
 			)
@@ -642,4 +644,91 @@ func TestTokenExchanger_Concurrent_ExchangeAndShutdown_RaceFree(t *testing.T) {
 
 	wg.Wait()
 	// Test passes if no race conditions are detected by the Go race detector (-race flag)
+}
+
+// ---------------------------------------------------------------------------
+// Regression: canceled leader does not abort live followers (disabled CB)
+// ---------------------------------------------------------------------------
+
+// Spec: singleflight — when the circuit breaker is disabled, a canceled leader
+// context must not abort the shared exchange for concurrent follower callers.
+func TestTokenExchanger_CbDisabled_CanceledLeader_FollowerSucceeds(t *testing.T) {
+	// started receives a signal when the exchange server receives the first request.
+	// release is closed to unblock the exchange server and let it respond.
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+
+	// slowExchServer blocks until release is closed, simulating a slow broker.
+	// The client-credentials endpoint (mocks) is separate so NewTokenExchanger
+	// startup succeeds without blocking.
+	slowExchServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		expiry := 3600
+		_ = json.NewEncoder(w).Encode(tokenResponse{
+			AccessToken: "shared-token",
+			TokenType:   "Bearer",
+			ExpiresIn:   &expiry,
+		})
+	}))
+	defer slowExchServer.Close()
+
+	// mocks provides the client-credentials (assertion refresh) endpoint.
+	mocks := newMockServers()
+	defer mocks.Close()
+
+	cfg := configForMocks(mocks)
+	cfg.OAuth2.TokenEndpoint = slowExchServer.URL + "/token"
+	cfg.OAuth2.ExchangeTimeout = 10 * time.Second
+	// Circuit breaker deliberately disabled (Enabled: false / zero value).
+	cfg.CircuitBreaker = extprocconfig.CircuitBreakerConfig{}
+
+	exchanger, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer exchanger.Shutdown()
+
+	const subjectToken = "shared-subject"
+	const resourceURI = "http://resource.example.com/api"
+
+	leaderCtx, leaderCancel := context.WithCancel(context.Background())
+
+	var leaderErr error
+	var followerTok string
+	var followerErr error
+	var wg sync.WaitGroup
+
+	// Start leader — its context will be cancelled while the exchange is in flight.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, leaderErr = exchanger.Exchange(leaderCtx, subjectToken, resourceURI)
+	}()
+
+	// Wait for the slow server to receive the request, then cancel the leader.
+	<-started
+	leaderCancel()
+
+	// Small pause to let the leader's DoChan select fire before the follower starts.
+	time.Sleep(10 * time.Millisecond)
+
+	// Follower uses an independent context that is never cancelled.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		followerTok, followerErr = exchanger.Exchange(context.Background(), subjectToken, resourceURI)
+	}()
+
+	// Unblock the slow exchange server — both leader result and follower wait on it.
+	close(release)
+	wg.Wait()
+
+	assert.ErrorIs(t, leaderErr, context.Canceled,
+		"leader must receive context.Canceled after its context was cancelled")
+	require.NoError(t, followerErr, "follower must not inherit the leader's cancellation")
+	assert.Equal(t, "shared-token", followerTok,
+		"follower must receive the shared exchange result")
 }

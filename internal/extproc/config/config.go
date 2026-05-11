@@ -12,6 +12,7 @@ type Config struct {
 	Cache          CacheConfig          `mapstructure:"cache"`
 	Log            LogConfig            `mapstructure:"log"`
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+	Telemetry      TelemetryConfig      `mapstructure:"telemetry"`
 }
 
 // GRPCConfig holds gRPC server settings.
@@ -60,4 +61,45 @@ type CircuitBreakerConfig struct {
 	Enabled      bool          `mapstructure:"enabled"`
 	MaxFailures  int           `mapstructure:"max_failures"`
 	ResetTimeout time.Duration `mapstructure:"reset_timeout"`
+}
+
+// TelemetryConfig contains OpenTelemetry observability configuration.
+// Mirror of ports.TelemetryConfig — structurally identical, defined locally
+// to avoid importing internal/ports in the ExtProc service.
+type TelemetryConfig struct {
+	Enabled            bool               `mapstructure:"enabled"`
+	ServiceName        string             `mapstructure:"service_name"`
+	ResourceAttributes map[string]string  `mapstructure:"resource_attributes"`
+	Traces             TracesConfig       `mapstructure:"traces"`
+	Metrics            MetricsConfig      `mapstructure:"metrics"`
+	Logs               LogsConfig         `mapstructure:"logs"`
+	Exporter           OTLPExporterConfig `mapstructure:"exporter"`
+}
+
+// TracesConfig contains distributed tracing configuration.
+type TracesConfig struct {
+	Enabled      bool     `mapstructure:"enabled"`
+	SamplingRate float64  `mapstructure:"sampling_rate"`
+	Propagators  []string `mapstructure:"propagators"`
+}
+
+// MetricsConfig contains metrics collection and export configuration.
+type MetricsConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	ExportInterval time.Duration `mapstructure:"export_interval"`
+}
+
+// LogsConfig contains OTLP log export configuration.
+type LogsConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+}
+
+// OTLPExporterConfig contains OTLP exporter connection parameters.
+type OTLPExporterConfig struct {
+	Protocol    string            `mapstructure:"protocol"`
+	Endpoint    string            `mapstructure:"endpoint"`
+	Headers     map[string]string `mapstructure:"headers"`
+	Timeout     time.Duration     `mapstructure:"timeout"`
+	Insecure    bool              `mapstructure:"insecure"`
+	Compression string            `mapstructure:"compression"`
 }
