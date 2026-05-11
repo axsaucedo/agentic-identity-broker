@@ -706,22 +706,35 @@ OAuth2 /authorize request
 
 **Config Structure**:
 - **GRPCConfig**: `bind`, `port`, `max_concurrent_streams`
-- **OAuth2Config**: `issuer`, `token_endpoint`, `client_id`, `client_secret`, `client_credentials_endpoint`, `tls`
-- **TLSConfig**: `allow_http` (fail-closed unless true)
+- **OAuth2Config**: `issuer`, `token_endpoint`, `client_id`, `client_secret`, `client_credentials_endpoint`, `client_credentials_scopes`, `client_assertion_type`, `exchange_timeout`, `tls`
+- **TLSConfig**: `allow_http` (fail-closed unless true), `insecure_skip_verify`, `ca_bundle_path`
 - **CacheConfig**: `default_ttl`, `max_ttl`
 - **LogConfig**: `level`, `format`
+- **CircuitBreakerConfig**: `max_failures`, `reset_timeout`
+- **MetricsConfig**: `enabled`, `export_interval`
+- **LogsConfig**: `enabled`
+- **TelemetryConfig**: `enabled`, `service_name`, `resource_attributes`, `traces` (enabled, sampling_rate, propagators), `metrics` (enabled, export_interval), `logs` (enabled), `exporter` (protocol, endpoint, insecure, headers, timeout, compression)
 
-**Validation Rules** (10 rules, fail-fast at startup):
-1. Port in range [1, 65535]
-2. Bind address non-empty
-3. Token endpoint valid URL
-4. Issuer valid URL
-5. Client ID non-empty
-6. Client secret non-empty
-7. Default TTL > 0
-8. Token endpoint and issuer use https:// unless `allow_http: true`
-9. Max TTL > 0
-10. Exchange timeout > 0 (and ≤ 5s)
+**Validation Rules** (19 rules, fail-fast at startup):
+1. grpc.port must be 1–65535
+2. grpc.bind must not be empty
+3. oauth2.token_endpoint must be a valid URL with http/https scheme
+4. oauth2.issuer must be a valid URL with http/https scheme
+5. oauth2.client_id must not be empty
+6. oauth2.client_secret must not be empty after env var expansion
+7. cache.default_ttl must be a positive duration
+8. Token endpoint and issuer must use https:// unless `oauth2.tls.allow_http: true`
+9. cache.max_ttl must be a positive duration
+10. oauth2.exchange_timeout must be a positive duration
+11. log.level must be one of debug, info, warn, error
+12. log.format must be one of text, json
+13. oauth2.client_assertion_type must be one of id_token, access_token
+14. circuit_breaker.max_failures must be >= 1
+15. circuit_breaker.reset_timeout must be a positive duration
+16. telemetry.exporter.endpoint must not be empty when telemetry enabled
+17. telemetry.exporter.protocol must be one of grpc, http, https
+18. telemetry.traces.sampling_rate must be in range [0.0, 1.0]
+19. telemetry.exporter.timeout must be a positive duration when telemetry enabled
 
 **Configuration Loading**:
 - Viper-based loader with EXTPROC_ prefix
@@ -764,11 +777,13 @@ OAuth2 /authorize request
 **Lifecycle**:
 - Load configuration (fail-fast on invalid)
 - Initialize logger
-- Create TokenExchanger (acquires client assertion)
+- Initialize telemetry provider (if enabled; bounded by exporter timeout, interruptible by signal)
+- Wire slog-to-OTel bridge (if telemetry + logs enabled)
+- Create TokenExchanger (acquires client assertion; otelhttp wraps outbound HTTP)
 - Create gRPC server
 - Register ExternalProcessorServer
 - Listen on configured bind/port
-- Handle graceful shutdown on signal
+- Handle graceful shutdown on signal (GracefulStop → telemetry flush with 5s deadline)
 
 #### 3.2.8. Testing
 
@@ -837,6 +852,10 @@ tests/e2e/extproc/
 examples/config/
 └── extproc-token-exchange.yaml # Documented example config
 ```
+
+#### 3.2.11. Telemetry Support
+
+ExtProc leverages the broker's shared OpenTelemetry infrastructure (ADR 011, ADR 027) for distributed tracing, metrics, and log correlation. The `cmd/extproc-token-exchange/` composition layer imports `internal/adapters/telemetry` to initialize and manage the OTel provider lifecycle. The ExtProc domain and gRPC server use the global OTel tracer and meter patterns; no changes to adapter constructors are required. See ADR 027 for the cross-boundary dependency rationale and implementation approach.
 
 ## 4. Data Stores
 

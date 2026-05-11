@@ -1,22 +1,31 @@
-// Package main — root_test.go covers startup logging behaviour (T037).
+// Package main — root_test.go covers startup logging behaviour (T037) and telemetry config mapping.
 //
 // T037: Startup logging summary
 //   - initLogger produces the correct handler format (text vs json)
 //   - Startup log line includes key config fields
 //   - client_secret value is NEVER written to the log (SR-003)
 //   - Log level is correctly translated from config string to slog.Level
+//
+// T020: Telemetry config mapping
+//   - mapTelemetryConfig maps all fields correctly
+//   - Handles both zero and non-zero values
+//   - Field-for-field parity with ports.TelemetryConfig
 package main
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // ---------------------------------------------------------------------------
@@ -190,4 +199,257 @@ func TestStartupLog_RedactedPlaceholder_NotActualSecret(t *testing.T) {
 		"startup log must use [REDACTED] literal for client_secret")
 	assert.NotContains(t, output, "another-very-secret-password-123",
 		"actual client_secret must never appear in log output")
+}
+
+// ---------------------------------------------------------------------------
+// T020: Telemetry config mapping
+// ---------------------------------------------------------------------------
+
+// TestMapTelemetryConfig_AllFieldsMapping tests that all fields from extprocconfig.TelemetryConfig
+// are correctly mapped to ports.TelemetryConfig (field-for-field parity).
+func TestMapTelemetryConfig_AllFieldsMapping(t *testing.T) {
+	cfg := extprocconfig.TelemetryConfig{
+		Enabled:     true,
+		ServiceName: "test-service",
+		ResourceAttributes: map[string]string{
+			"deployment.environment": "test",
+			"service.version":        "1.0.0",
+		},
+		Traces: extprocconfig.TracesConfig{
+			Enabled:      true,
+			SamplingRate: 0.5,
+			Propagators:  []string{"tracecontext", "b3multi"},
+		},
+		Metrics: extprocconfig.MetricsConfig{
+			Enabled:        true,
+			ExportInterval: 45 * time.Second,
+		},
+		Logs: extprocconfig.LogsConfig{
+			Enabled: true,
+		},
+		Exporter: extprocconfig.OTLPExporterConfig{
+			Protocol:    "grpc",
+			Endpoint:    "collector:4317",
+			Headers:     map[string]string{"Authorization": "Bearer token"},
+			Timeout:     5 * time.Second,
+			Insecure:    true,
+			Compression: "gzip",
+		},
+	}
+
+	result := mapTelemetryConfig(cfg)
+
+	assert.Equal(t, true, result.Enabled)
+	assert.Equal(t, "test-service", result.ServiceName)
+	assert.Equal(t, cfg.ResourceAttributes, result.ResourceAttributes)
+
+	assert.Equal(t, true, result.Traces.Enabled)
+	assert.Equal(t, 0.5, result.Traces.SamplingRate)
+	assert.Equal(t, []string{"tracecontext", "b3multi"}, result.Traces.Propagators)
+
+	assert.Equal(t, true, result.Metrics.Enabled)
+	assert.Equal(t, 45*time.Second, result.Metrics.ExportInterval)
+
+	assert.Equal(t, true, result.Logs.Enabled)
+
+	assert.Equal(t, ports.OTLPProtocol("grpc"), result.Exporter.Protocol)
+	assert.Equal(t, "collector:4317", result.Exporter.Endpoint)
+	assert.Equal(t, map[string]string{"Authorization": "Bearer token"}, result.Exporter.Headers)
+	assert.Equal(t, 5*time.Second, result.Exporter.Timeout)
+	assert.Equal(t, true, result.Exporter.Insecure)
+	assert.Equal(t, ports.OTLPCompression("gzip"), result.Exporter.Compression)
+}
+
+// TestMapTelemetryConfig_ZeroValues tests that zero values are correctly mapped.
+func TestMapTelemetryConfig_ZeroValues(t *testing.T) {
+	cfg := extprocconfig.TelemetryConfig{
+		Enabled:            false,
+		ServiceName:        "",
+		ResourceAttributes: nil,
+		Traces: extprocconfig.TracesConfig{
+			Enabled:      false,
+			SamplingRate: 0.0,
+			Propagators:  nil,
+		},
+		Metrics: extprocconfig.MetricsConfig{
+			Enabled:        false,
+			ExportInterval: 0,
+		},
+		Logs: extprocconfig.LogsConfig{
+			Enabled: false,
+		},
+		Exporter: extprocconfig.OTLPExporterConfig{
+			Protocol:    "",
+			Endpoint:    "",
+			Headers:     nil,
+			Timeout:     0,
+			Insecure:    false,
+			Compression: "",
+		},
+	}
+
+	result := mapTelemetryConfig(cfg)
+
+	assert.Equal(t, false, result.Enabled)
+	assert.Equal(t, "", result.ServiceName)
+	assert.Nil(t, result.ResourceAttributes)
+	assert.Equal(t, false, result.Traces.Enabled)
+	assert.Equal(t, 0.0, result.Traces.SamplingRate)
+	assert.Nil(t, result.Traces.Propagators)
+	assert.Equal(t, false, result.Metrics.Enabled)
+	assert.Equal(t, time.Duration(0), result.Metrics.ExportInterval)
+	assert.Equal(t, false, result.Logs.Enabled)
+	assert.Equal(t, ports.OTLPProtocol(""), result.Exporter.Protocol)
+	assert.Equal(t, "", result.Exporter.Endpoint)
+	assert.Nil(t, result.Exporter.Headers)
+	assert.Equal(t, time.Duration(0), result.Exporter.Timeout)
+	assert.Equal(t, false, result.Exporter.Insecure)
+	assert.Equal(t, ports.OTLPCompression(""), result.Exporter.Compression)
+}
+
+// TestMapTelemetryConfig_ValidProtocols tests that different protocol values are correctly mapped.
+func TestMapTelemetryConfig_ValidProtocols(t *testing.T) {
+	protocols := []string{"grpc", "http", "https"}
+	for _, proto := range protocols {
+		t.Run(proto, func(t *testing.T) {
+			cfg := extprocconfig.TelemetryConfig{
+				Exporter: extprocconfig.OTLPExporterConfig{Protocol: proto},
+			}
+			result := mapTelemetryConfig(cfg)
+			assert.Equal(t, ports.OTLPProtocol(proto), result.Exporter.Protocol)
+		})
+	}
+}
+
+// TestMapTelemetryConfig_ValidCompressions tests that different compression values are correctly mapped.
+func TestMapTelemetryConfig_ValidCompressions(t *testing.T) {
+	compressions := []string{"none", "gzip"}
+	for _, comp := range compressions {
+		t.Run(comp, func(t *testing.T) {
+			cfg := extprocconfig.TelemetryConfig{
+				Exporter: extprocconfig.OTLPExporterConfig{Compression: comp},
+			}
+			result := mapTelemetryConfig(cfg)
+			assert.Equal(t, ports.OTLPCompression(comp), result.Exporter.Compression)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// T045: Unit test for slog trace correlation in initLogger (US5)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Signal-interrupted startup regression tests
+// ---------------------------------------------------------------------------
+
+func TestIsSignalCancellation_SignalContextCanceled_ReturnsTrue(t *testing.T) {
+	// Simulate SIGINT/SIGTERM: parent context is already cancelled, and
+	// the init error is context.Canceled.
+	sigCtx, cancel := context.WithCancel(context.Background())
+	cancel() // signal fired
+
+	assert.True(t, isSignalCancellation(sigCtx, context.Canceled),
+		"must recognise context.Canceled after signal as a clean exit")
+}
+
+func TestIsSignalCancellation_SignalContextCanceledWrappedError_ReturnsTrue(t *testing.T) {
+	sigCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	wrapped := fmt.Errorf("OTLP connect: %w", context.Canceled)
+	assert.True(t, isSignalCancellation(sigCtx, wrapped),
+		"must recognise wrapped context.Canceled after signal as a clean exit")
+}
+
+func TestIsSignalCancellation_RealInitFailure_WithSignal_ReturnsFalse(t *testing.T) {
+	// Signal fired, but the init failure is NOT context.Canceled — this is a
+	// real startup error that happened to coincide with a signal.
+	sigCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	realErr := fmt.Errorf("OTLP connect: connection refused")
+	assert.False(t, isSignalCancellation(sigCtx, realErr),
+		"must NOT treat a non-cancellation error as a clean exit, even if signal fired")
+}
+
+func TestIsSignalCancellation_NoSignal_CanceledError_ReturnsFalse(t *testing.T) {
+	// No signal, but the error is context.Canceled (e.g. from a timeout).
+	// Without a signal, this is a real failure.
+	sigCtx := context.Background()
+
+	assert.False(t, isSignalCancellation(sigCtx, context.Canceled),
+		"must NOT treat context.Canceled as clean exit when no signal was received")
+}
+
+func TestIsSignalCancellation_NoSignal_NoError_ReturnsFalse(t *testing.T) {
+	assert.False(t, isSignalCancellation(context.Background(), nil),
+		"nil error must not be treated as signal cancellation")
+}
+
+func TestIsSignalCancellation_DeadlineExceeded_ReturnsFalse(t *testing.T) {
+	// DeadlineExceeded is intentionally not treated as signal cancellation:
+	// accepting it would mask real init timeouts if a signal arrives in the
+	// narrow window between the timeout firing and the check.
+	sigCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	assert.False(t, isSignalCancellation(sigCtx, context.DeadlineExceeded),
+		"DeadlineExceeded must not be treated as signal cancellation")
+}
+
+// TestInitLogger_WithTelemetryConfig verifies that the logger initialization
+// path succeeds under all telemetry config combinations (enabled/disabled,
+// logs enabled/disabled). The actual OTel bridge wiring (MultiHandler,
+// trace_id/span_id injection) requires an active OTel provider and span context
+// and is covered by the E2E telemetry test suite (US5-S1/S2).
+func TestInitLogger_WithTelemetryConfig(t *testing.T) {
+	t.Run("telemetry and logs both enabled", func(t *testing.T) {
+		// Setup: Create a logger with telemetry enabled and logs enabled
+		cfg := testStartupConfig()
+		cfg.Telemetry.Enabled = true
+		cfg.Telemetry.Logs.Enabled = true
+
+		output, logger := captureStartupLog(cfg)
+
+		// Verify: Logger was created successfully
+		require.NotNil(t, logger, "logger must be created")
+		require.NotEmpty(t, output, "startup log must produce output")
+
+		// The logger exists and is ready for use; trace context injection happens at runtime.
+		// This test verifies the initialization path, not the actual trace correlation
+		// (which requires active span context from OTel).
+		assert.Contains(t, output, "ExtProc Token Exchange Service starting",
+			"startup log must work with telemetry+logs enabled")
+	})
+
+	t.Run("telemetry enabled but logs disabled", func(t *testing.T) {
+		cfg := testStartupConfig()
+		cfg.Telemetry.Enabled = true
+		cfg.Telemetry.Logs.Enabled = false
+
+		output, logger := captureStartupLog(cfg)
+
+		require.NotNil(t, logger, "logger must be created")
+		require.NotEmpty(t, output, "startup log must produce output")
+
+		// When logs are disabled, no OTel log pipeline is created, so no trace correlation.
+		// The logger is a standard slog.Logger; this is expected.
+		assert.Contains(t, output, "ExtProc Token Exchange Service starting",
+			"startup log must work with telemetry enabled but logs disabled")
+	})
+
+	t.Run("telemetry disabled", func(t *testing.T) {
+		cfg := testStartupConfig()
+		cfg.Telemetry.Enabled = false
+
+		output, logger := captureStartupLog(cfg)
+
+		require.NotNil(t, logger, "logger must be created")
+		require.NotEmpty(t, output, "startup log must produce output")
+
+		// When telemetry is disabled, no slog bridge is wired.
+		assert.Contains(t, output, "ExtProc Token Exchange Service starting",
+			"startup log must work with telemetry disabled")
+	})
 }

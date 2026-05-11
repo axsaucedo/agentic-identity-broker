@@ -72,6 +72,13 @@ func RegisterFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("circuit_breaker.enabled", true, "enable circuit breaker for token exchange calls (default: true)")
 	cmd.Flags().Int("circuit_breaker.max_failures", 0, "consecutive failures before opening circuit (default: 5)")
 	cmd.Flags().Duration("circuit_breaker.reset_timeout", 0, "duration in open state before probing recovery (default: 30s)")
+	// Telemetry flags
+	cmd.Flags().Bool("telemetry.enabled", false, "enable OpenTelemetry (default: false)")
+	cmd.Flags().String("telemetry.service_name", "", "service name in telemetry data (default: extproc-token-exchange)")
+	cmd.Flags().String("telemetry.traces.sampling_rate", "", "trace sampling rate 0.0-1.0 (default: 1.0)")
+	cmd.Flags().Bool("telemetry.exporter.insecure", false, "disable TLS for exporter (default: false, DEV ONLY)")
+	cmd.Flags().String("telemetry.exporter.protocol", "", "exporter protocol: grpc, http, https (default: grpc)")
+	cmd.Flags().String("telemetry.exporter.endpoint", "", "exporter endpoint (required when enabled)")
 }
 
 // loadFromViperWithCommand is the internal loading pipeline shared by
@@ -210,6 +217,30 @@ func bindFlags(v *viper.Viper, cmd *cobra.Command) {
 			"circuit_breaker.reset_timeout", "circuit_breaker.reset_timeout",
 			func() interface{} { d, _ := cmd.Flags().GetDuration("circuit_breaker.reset_timeout"); return d },
 		},
+		{
+			"telemetry.enabled", "telemetry.enabled",
+			func() interface{} { b, _ := cmd.Flags().GetBool("telemetry.enabled"); return b },
+		},
+		{
+			"telemetry.service_name", "telemetry.service_name",
+			func() interface{} { s, _ := cmd.Flags().GetString("telemetry.service_name"); return s },
+		},
+		{
+			"telemetry.traces.sampling_rate", "telemetry.traces.sampling_rate",
+			func() interface{} { s, _ := cmd.Flags().GetString("telemetry.traces.sampling_rate"); return s },
+		},
+		{
+			"telemetry.exporter.insecure", "telemetry.exporter.insecure",
+			func() interface{} { b, _ := cmd.Flags().GetBool("telemetry.exporter.insecure"); return b },
+		},
+		{
+			"telemetry.exporter.protocol", "telemetry.exporter.protocol",
+			func() interface{} { s, _ := cmd.Flags().GetString("telemetry.exporter.protocol"); return s },
+		},
+		{
+			"telemetry.exporter.endpoint", "telemetry.exporter.endpoint",
+			func() interface{} { s, _ := cmd.Flags().GetString("telemetry.exporter.endpoint"); return s },
+		},
 	}
 
 	for _, b := range bindings {
@@ -247,6 +278,27 @@ func applyDefaults(v *viper.Viper) {
 	v.SetDefault("circuit_breaker.enabled", true)
 	v.SetDefault("circuit_breaker.max_failures", 5)
 	v.SetDefault("circuit_breaker.reset_timeout", "30s")
+	applyTelemetryDefaults(v)
+}
+
+// applyTelemetryDefaults sets OpenTelemetry configuration defaults.
+// Telemetry is disabled by default; other values are production-safe defaults.
+func applyTelemetryDefaults(v *viper.Viper) {
+	v.SetDefault("telemetry.enabled", false)
+	v.SetDefault("telemetry.service_name", "extproc-token-exchange")
+	v.SetDefault("telemetry.resource_attributes", map[string]string{})
+	v.SetDefault("telemetry.traces.enabled", true)
+	v.SetDefault("telemetry.traces.sampling_rate", 1.0)
+	v.SetDefault("telemetry.traces.propagators", []string{"tracecontext", "ottrace", "b3multi", "baggage"})
+	v.SetDefault("telemetry.metrics.enabled", true)
+	v.SetDefault("telemetry.metrics.export_interval", "30s")
+	v.SetDefault("telemetry.logs.enabled", true)
+	v.SetDefault("telemetry.exporter.protocol", "grpc")
+	v.SetDefault("telemetry.exporter.endpoint", "")
+	v.SetDefault("telemetry.exporter.headers", map[string]string{})
+	v.SetDefault("telemetry.exporter.timeout", "10s")
+	v.SetDefault("telemetry.exporter.insecure", false)
+	v.SetDefault("telemetry.exporter.compression", "none")
 }
 
 // expandEnvVars processes ${VAR} notation in string config fields.
@@ -261,4 +313,13 @@ func expandEnvVars(cfg *Config) {
 	cfg.GRPC.Bind = os.ExpandEnv(cfg.GRPC.Bind)
 	cfg.Log.Level = os.ExpandEnv(cfg.Log.Level)
 	cfg.Log.Format = os.ExpandEnv(cfg.Log.Format)
+	// Expand telemetry fields
+	cfg.Telemetry.ServiceName = os.ExpandEnv(cfg.Telemetry.ServiceName)
+	cfg.Telemetry.Exporter.Endpoint = os.ExpandEnv(cfg.Telemetry.Exporter.Endpoint)
+	cfg.Telemetry.Exporter.Protocol = os.ExpandEnv(cfg.Telemetry.Exporter.Protocol)
+	cfg.Telemetry.Exporter.Compression = os.ExpandEnv(cfg.Telemetry.Exporter.Compression)
+	// Expand header values in exporter headers map (SR-002: secret injection via ${VAR})
+	for k, v := range cfg.Telemetry.Exporter.Headers {
+		cfg.Telemetry.Exporter.Headers[k] = os.ExpandEnv(v)
+	}
 }

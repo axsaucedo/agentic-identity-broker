@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +39,11 @@ func validConfig() *config.Config {
 			Enabled:      true,
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
+		},
+		Telemetry: config.TelemetryConfig{
+			Exporter: config.OTLPExporterConfig{
+				Timeout: 10 * time.Second,
+			},
 		},
 	}
 }
@@ -266,6 +272,26 @@ func TestValidate(t *testing.T) {
 			mutate:      func(c *config.Config) { c.CircuitBreaker.ResetTimeout = -1 * time.Second },
 			wantErr:     true,
 			errContains: "circuit_breaker.reset_timeout",
+		},
+		{
+			name: "rule19: zero exporter timeout is invalid",
+			mutate: func(c *config.Config) {
+				c.Telemetry.Enabled = true
+				c.Telemetry.Exporter.Endpoint = "collector:4317"
+				c.Telemetry.Exporter.Timeout = 0
+			},
+			wantErr:     true,
+			errContains: "telemetry.exporter.timeout",
+		},
+		{
+			name: "rule19: negative exporter timeout is invalid",
+			mutate: func(c *config.Config) {
+				c.Telemetry.Enabled = true
+				c.Telemetry.Exporter.Endpoint = "collector:4317"
+				c.Telemetry.Exporter.Timeout = -1 * time.Second
+			},
+			wantErr:     true,
+			errContains: "telemetry.exporter.timeout",
 		},
 		// Disabled circuit breaker: rules 14-15 are skipped
 		{
@@ -527,4 +553,332 @@ func TestLoadWithCommand_LogLevelAndFormatFromCLI(t *testing.T) {
 // Used in tests that set up their own Viper instance with env prefix.
 func replaceDotsWithUnderscores() *strings.Replacer {
 	return strings.NewReplacer(".", "_")
+}
+
+// ---------------------------------------------------------------------------
+// TelemetryConfig: Loading with defaults, env vars, validation
+// ---------------------------------------------------------------------------
+
+func TestLoadFromViper_TelemetryDefaults(t *testing.T) {
+	v := viper.New()
+	v.Set("oauth2.token_endpoint", "https://idp.example.com/oauth2/token")
+	v.Set("oauth2.issuer", "https://idp.example.com")
+	v.Set("oauth2.client_id", "test-client")
+	v.Set("oauth2.client_secret", "test-secret")
+
+	cfg, err := config.LoadFromViper(v)
+	require.NoError(t, err)
+
+	// Verify telemetry defaults
+	assert.False(t, cfg.Telemetry.Enabled, "telemetry should be disabled by default")
+	assert.Equal(t, "extproc-token-exchange", cfg.Telemetry.ServiceName)
+	assert.Empty(t, cfg.Telemetry.ResourceAttributes)
+	assert.True(t, cfg.Telemetry.Traces.Enabled)
+	assert.Equal(t, 1.0, cfg.Telemetry.Traces.SamplingRate)
+	assert.Equal(t, []string{"tracecontext", "ottrace", "b3multi", "baggage"}, cfg.Telemetry.Traces.Propagators)
+	assert.True(t, cfg.Telemetry.Metrics.Enabled)
+	assert.Equal(t, 30*time.Second, cfg.Telemetry.Metrics.ExportInterval)
+	assert.True(t, cfg.Telemetry.Logs.Enabled)
+	assert.Equal(t, "grpc", cfg.Telemetry.Exporter.Protocol)
+	assert.Equal(t, "", cfg.Telemetry.Exporter.Endpoint)
+	assert.Equal(t, 10*time.Second, cfg.Telemetry.Exporter.Timeout)
+	assert.False(t, cfg.Telemetry.Exporter.Insecure)
+	assert.Equal(t, "none", cfg.Telemetry.Exporter.Compression)
+}
+
+func TestLoadFromViper_TelemetryEnabledEnvVar(t *testing.T) {
+	t.Setenv("EXTPROC_TELEMETRY_ENABLED", "true")
+	t.Setenv("EXTPROC_TELEMETRY_EXPORTER_ENDPOINT", "collector:4317")
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://idp.example.com/oauth2/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://idp.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "test-client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "test-secret")
+
+	v := viper.New()
+	v.SetEnvPrefix("EXTPROC")
+	v.SetEnvKeyReplacer(replaceDotsWithUnderscores())
+	v.AutomaticEnv()
+
+	cfg, err := config.LoadFromViper(v)
+	require.NoError(t, err)
+
+	assert.True(t, cfg.Telemetry.Enabled)
+	assert.Equal(t, "collector:4317", cfg.Telemetry.Exporter.Endpoint)
+}
+
+func TestLoadFromViper_TelemetryExporterEndpointEnvVar(t *testing.T) {
+	t.Setenv("EXTPROC_OAUTH2_TOKEN_ENDPOINT", "https://idp.example.com/oauth2/token")
+	t.Setenv("EXTPROC_OAUTH2_ISSUER", "https://idp.example.com")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_ID", "test-client")
+	t.Setenv("EXTPROC_OAUTH2_CLIENT_SECRET", "test-secret")
+	t.Setenv("EXTPROC_TELEMETRY_EXPORTER_ENDPOINT", "otel-collector.monitoring.svc:4317")
+
+	v := viper.New()
+	v.SetEnvPrefix("EXTPROC")
+	v.SetEnvKeyReplacer(replaceDotsWithUnderscores())
+	v.AutomaticEnv()
+
+	cfg, err := config.LoadFromViper(v)
+	require.NoError(t, err)
+
+	assert.Equal(t, "otel-collector.monitoring.svc:4317", cfg.Telemetry.Exporter.Endpoint)
+}
+
+func TestValidate_TelemetryEnabledWithoutEndpoint_Fails(t *testing.T) {
+	cfg := validConfig()
+	cfg.Telemetry.Enabled = true
+	cfg.Telemetry.Exporter.Endpoint = ""
+
+	err := config.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "telemetry.exporter.endpoint")
+}
+
+func TestValidate_TelemetryEnabledWithEndpoint_Passes(t *testing.T) {
+	cfg := validConfig()
+	cfg.Telemetry.Enabled = true
+	cfg.Telemetry.Exporter.Endpoint = "collector:4317"
+
+	err := config.Validate(cfg)
+	assert.NoError(t, err)
+}
+
+func TestValidate_InvalidExporterProtocol_Fails(t *testing.T) {
+	cfg := validConfig()
+	cfg.Telemetry.Enabled = true
+	cfg.Telemetry.Exporter.Endpoint = "collector:4317"
+	cfg.Telemetry.Exporter.Protocol = "ftp"
+
+	err := config.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "telemetry.exporter.protocol")
+}
+
+func TestValidate_ValidExporterProtocols_Pass(t *testing.T) {
+	testCases := []struct {
+		protocol string
+		endpoint string
+	}{
+		{"grpc", "collector:4317"},
+		{"http", "http://localhost:4318"},
+		{"https", "https://localhost:4318"},
+		{"https", "collector.example.com:4318"}, // bare host:port for https
+	}
+	for _, tc := range testCases {
+		t.Run(tc.protocol+":"+tc.endpoint, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Telemetry.Enabled = true
+			cfg.Telemetry.Exporter.Protocol = tc.protocol
+			cfg.Telemetry.Exporter.Endpoint = tc.endpoint
+
+			err := config.Validate(cfg)
+			assert.NoError(t, err, "protocol %s with endpoint %s should be valid", tc.protocol, tc.endpoint)
+		})
+	}
+}
+
+func TestValidate_SamplingRateOutOfRange_Fails(t *testing.T) {
+	tests := []struct {
+		name string
+		rate float64
+	}{
+		{"negative", -0.1},
+		{"above 1.0", 1.5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Telemetry.Enabled = true
+			cfg.Telemetry.Exporter.Endpoint = "collector:4317"
+			cfg.Telemetry.Traces.SamplingRate = tt.rate
+
+			err := config.Validate(cfg)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "sampling_rate")
+		})
+	}
+}
+
+func TestValidate_SamplingRateInRange_Passes(t *testing.T) {
+	validRates := []float64{0.0, 0.5, 1.0}
+	for _, rate := range validRates {
+		t.Run(fmt.Sprintf("%.1f", rate), func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Telemetry.Traces.SamplingRate = rate
+
+			err := config.Validate(cfg)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestValidate_TelemetryDisabledIgnoresInvalidSettings_Passes(t *testing.T) {
+	cfg := validConfig()
+	cfg.Telemetry.Enabled = false
+	cfg.Telemetry.Exporter.Protocol = "invalid" // Should be ignored
+	cfg.Telemetry.Traces.SamplingRate = 1.5     // Should be ignored
+	cfg.Telemetry.Exporter.Endpoint = ""        // Should be ignored
+
+	err := config.Validate(cfg)
+	assert.NoError(t, err, "when telemetry is disabled, other telemetry settings should not cause validation failure")
+}
+
+func TestValidate_MalformedHTTPEndpoint_Fails(t *testing.T) {
+	cfg := validConfig()
+	cfg.Telemetry.Enabled = true
+	cfg.Telemetry.Exporter.Protocol = "http"
+	cfg.Telemetry.Exporter.Endpoint = "not-a-url"
+
+	err := config.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "telemetry.exporter.endpoint")
+}
+
+func TestValidate_ValidHTTPEndpoint_Passes(t *testing.T) {
+	cfg := validConfig()
+	cfg.Telemetry.Enabled = true
+	cfg.Telemetry.Exporter.Protocol = "http"
+	cfg.Telemetry.Exporter.Endpoint = "http://localhost:4318"
+
+	err := config.Validate(cfg)
+	assert.NoError(t, err)
+}
+
+func TestValidate_GRPCEndpointRejectsHTTPURL(t *testing.T) {
+	for _, endpoint := range []string{
+		"http://localhost:4317",
+		"https://localhost:4317",
+		"HTTP://localhost:4317",
+		"Https://collector:4317",
+	} {
+		cfg := validConfig()
+		cfg.Telemetry.Enabled = true
+		cfg.Telemetry.Exporter.Protocol = "grpc"
+		cfg.Telemetry.Exporter.Endpoint = endpoint
+
+		err := config.Validate(cfg)
+		assert.Error(t, err, "gRPC endpoint %q should be rejected", endpoint)
+		assert.Contains(t, err.Error(), "not an HTTP URL")
+	}
+}
+
+func TestValidate_GRPCEndpointAcceptsUnixPath(t *testing.T) {
+	cfg := validConfig()
+	cfg.Telemetry.Enabled = true
+	cfg.Telemetry.Exporter.Protocol = "grpc"
+	cfg.Telemetry.Exporter.Endpoint = "unix:/var/run/otel.sock"
+
+	err := config.Validate(cfg)
+	assert.NoError(t, err, "gRPC endpoint unix:path should be accepted")
+}
+
+func TestValidate_GRPCEndpointRejectsUnixDoubleSlash(t *testing.T) {
+	cfg := validConfig()
+	cfg.Telemetry.Enabled = true
+	cfg.Telemetry.Exporter.Protocol = "grpc"
+	cfg.Telemetry.Exporter.Endpoint = "unix:///var/run/otel.sock"
+
+	err := config.Validate(cfg)
+	assert.Error(t, err, "gRPC endpoint unix://path should be rejected")
+	assert.Contains(t, err.Error(), "unix:path format")
+}
+
+func TestValidate_GRPCEndpointRejectsMixedCaseUnix(t *testing.T) {
+	for _, endpoint := range []string{
+		"UNIX:/var/run/otel.sock",
+		"Unix:/var/run/otel.sock",
+		"uNiX:/var/run/otel.sock",
+	} {
+		cfg := validConfig()
+		cfg.Telemetry.Enabled = true
+		cfg.Telemetry.Exporter.Protocol = "grpc"
+		cfg.Telemetry.Exporter.Endpoint = endpoint
+
+		err := config.Validate(cfg)
+		assert.Error(t, err, "gRPC endpoint %q with mixed-case unix: should be rejected", endpoint)
+		assert.Contains(t, err.Error(), "lowercase")
+	}
+}
+
+func TestValidate_HTTPSEndpointRejectsMixedCaseHTTP(t *testing.T) {
+	for _, endpoint := range []string{
+		"http://collector:4318",
+		"HTTP://collector:4318",
+		"Http://collector:4318",
+		"ftp://collector:4318",
+		"grpc://collector:4318",
+	} {
+		cfg := validConfig()
+		cfg.Telemetry.Enabled = true
+		cfg.Telemetry.Exporter.Protocol = "https"
+		cfg.Telemetry.Exporter.Endpoint = endpoint
+
+		err := config.Validate(cfg)
+		assert.Error(t, err, "HTTPS endpoint %q with non-https scheme should be rejected", endpoint)
+	}
+}
+
+func TestValidate_HTTPSEndpointAcceptsMixedCaseHTTPS(t *testing.T) {
+	for _, endpoint := range []string{
+		"https://collector:4318",
+		"HTTPS://collector:4318",
+		"Https://collector:4318",
+	} {
+		cfg := validConfig()
+		cfg.Telemetry.Enabled = true
+		cfg.Telemetry.Exporter.Protocol = "https"
+		cfg.Telemetry.Exporter.Endpoint = endpoint
+
+		err := config.Validate(cfg)
+		assert.NoError(t, err, "HTTPS endpoint %q should be accepted", endpoint)
+	}
+}
+
+func TestValidate_HTTPSEndpointRejectsEmptyPort(t *testing.T) {
+	for _, endpoint := range []string{
+		"collector:",          // trailing colon, no port
+		":4318",               // no host
+		":",                   // neither host nor port
+		"collector",           // no colon at all
+		"/var/run.sock",       // path, not host:port
+		"collector:4318/path", // path suffix after port
+		"collector:abc",       // non-numeric port
+		"[::1]",               // bracketed IPv6 without port
+		"collector:0",         // port below valid range
+		"collector:65536",     // port above valid range
+		"collector:-1",        // negative port
+	} {
+		cfg := validConfig()
+		cfg.Telemetry.Enabled = true
+		cfg.Telemetry.Exporter.Protocol = "https"
+		cfg.Telemetry.Exporter.Endpoint = endpoint
+
+		err := config.Validate(cfg)
+		assert.Error(t, err, "HTTPS bare endpoint %q should be rejected", endpoint)
+	}
+}
+
+func TestLoadFromViper_TelemetryExporterHeadersStructureSupported(t *testing.T) {
+	// This test verifies that the config structure supports headers and env var expansion
+	// is properly applied via the expandEnvVars() function (SR-002).
+	t.Setenv("TELEMETRY_SECRET", "secret-value-123")
+
+	v := viper.New()
+	v.Set("oauth2.token_endpoint", "https://idp.example.com/oauth2/token")
+	v.Set("oauth2.issuer", "https://idp.example.com")
+	v.Set("oauth2.client_id", "test-client")
+	v.Set("oauth2.client_secret", "test-secret")
+	v.Set("telemetry.enabled", true)
+	v.Set("telemetry.exporter.endpoint", "collector.example.com:4317")
+	v.Set("telemetry.exporter.protocol", "grpc")
+	v.Set("telemetry.exporter.headers.authorization", "${TELEMETRY_SECRET}")
+
+	cfg, err := config.LoadFromViper(v)
+	require.NoError(t, err)
+
+	// Verify headers structure exists and env var was expanded
+	assert.NotNil(t, cfg.Telemetry.Exporter.Headers)
+	assert.Equal(t, "secret-value-123", cfg.Telemetry.Exporter.Headers["authorization"],
+		"telemetry header should have expanded the env var")
 }

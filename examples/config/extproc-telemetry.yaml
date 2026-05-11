@@ -1,0 +1,247 @@
+# ExtProc OpenTelemetry Telemetry Configuration Example
+# Feature: 027-extproc-otel
+# Reference: specs/027-extproc-otel/spec.md
+#
+# This example demonstrates OpenTelemetry configuration for the ExtProc Token Exchange service.
+# Configuration schema mirrors the identity broker's telemetry configuration (ports.TelemetryConfig)
+# with service-specific defaults (service_name, propagators, env var prefix EXTPROC_).
+#
+# Environment variable mapping: EXTPROC_TELEMETRY_<SECTION>_<KEY>
+# Example: telemetry.service_name → EXTPROC_TELEMETRY_SERVICE_NAME
+#          telemetry.traces.enabled → EXTPROC_TELEMETRY_TRACES_ENABLED
+#          telemetry.exporter.endpoint → EXTPROC_TELEMETRY_EXPORTER_ENDPOINT
+#
+# TLS certificate configuration is delegated to the OTel SDK's standard environment variables:
+#   - OTEL_EXPORTER_OTLP_CERTIFICATE      — Custom CA bundle for HTTPS/gRPC
+#   - OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE — Client certificate for mTLS
+#   - OTEL_EXPORTER_OTLP_CLIENT_KEY        — Client private key for mTLS
+
+# Master toggle for all telemetry (traces, metrics, logs)
+# Default: false (telemetry disabled)
+# Env: EXTPROC_TELEMETRY_ENABLED
+telemetry:
+  enabled: true
+
+  # Service name reported in all telemetry data (resource attribute)
+  # Default: "extproc-token-exchange"
+  # Env: EXTPROC_TELEMETRY_SERVICE_NAME
+  service_name: extproc-token-exchange
+
+  # Additional resource attributes to include in all telemetry (optional)
+  # Common attributes: environment, service.version, cloud.region, deployment.environment
+  # Default: empty map
+  # Env: Not directly available; set via YAML or Viper configuration
+  resource_attributes:
+    deployment.environment: development
+    # service.version: "1.0.0"
+    # cloud.region: eu-west-1
+
+  # Distributed tracing configuration
+  traces:
+    # Enable trace collection and export
+    # Default: true (when telemetry.enabled is true)
+    # Env: EXTPROC_TELEMETRY_TRACES_ENABLED
+    enabled: true
+
+    # Trace sampling rate (0.0–1.0)
+    # 0.0  — no traces collected (no-op)
+    # 1.0  — all traces collected (default, suitable for development)
+    # 0.1  — 10% sampling (suitable for production high-volume services)
+    # Default: 1.0
+    # Env: EXTPROC_TELEMETRY_TRACES_SAMPLING_RATE
+    sampling_rate: 1.0
+
+    # Propagation formats for extracting/injecting trace context
+    # ExtProc receives trace context from agentgateway (W3C Trace Context / traceparent headers)
+    # and injects trace context into outbound requests to the identity broker.
+    # Supported: tracecontext (W3C), ottrace (OpenTracing), b3multi (Zipkin B3 multiple headers), b3 (single header), baggage (W3C Baggage)
+    # Default (ExtProc-specific): ["tracecontext", "ottrace", "b3multi", "baggage"]
+    #   - "tracecontext" is added by default for ExtProc to handle agentgateway's W3C traceparent headers
+    #   - Includes "ottrace", "b3multi", "baggage" for broad interoperability
+    # Env: EXTPROC_TELEMETRY_TRACES_PROPAGATORS (comma-separated list)
+    propagators:
+      - tracecontext  # W3C Trace Context (traceparent/tracestate headers) — primary for agentgateway
+      - ottrace       # OpenTracing (ot-tracer-* headers) for OT↔OTel interop
+      - b3multi       # Zipkin B3 multiple headers (X-B3-TraceId, X-B3-SpanId, X-B3-ParentSpanId, X-B3-Sampled)
+      - baggage       # W3C Baggage for arbitrary context propagation
+
+  # Metrics configuration
+  metrics:
+    # Enable metrics collection and export
+    # Default: true (when telemetry.enabled is true)
+    # Env: EXTPROC_TELEMETRY_METRICS_ENABLED
+    enabled: true
+
+    # Metrics export interval — how frequently metrics are flushed to the collector
+    # Format: duration string (e.g., 5s, 30s, 1m)
+    # Default: 30s
+    # Env: EXTPROC_TELEMETRY_METRICS_EXPORT_INTERVAL
+    export_interval: 30s
+
+  # Structured log export configuration
+  logs:
+    # Enable OTLP log export via the slog bridge
+    # When enabled, slog log entries are exported to the OTLP collector with trace context correlation
+    # Default: true (when telemetry.enabled is true)
+    # Set to false if the collector does not support the LogsService gRPC endpoint
+    # Env: EXTPROC_TELEMETRY_LOGS_ENABLED
+    enabled: true
+
+  # OTLP exporter connection configuration
+  exporter:
+    # Transport protocol: grpc, http, or https
+    # grpc  — gRPC transport, endpoint format: host:port (e.g., "collector:4317")
+    # http  — HTTP/protobuf transport, endpoint format: full URL (e.g., "http://collector:4318/v1/traces")
+    # https — HTTPS/protobuf transport, endpoint format: host:port (https:// auto-prefixed)
+    # Default: grpc
+    # Env: EXTPROC_TELEMETRY_EXPORTER_PROTOCOL
+    protocol: grpc
+
+    # OTLP collector endpoint (required when telemetry is enabled)
+    # For gRPC:  host:port (e.g., "localhost:4317")
+    # For HTTP:  full URL with scheme (e.g., "http://localhost:4318")
+    # For HTTPS: host:port (e.g., "collector.monitoring.svc:4318") — https:// auto-prefixed
+    # Env: EXTPROC_TELEMETRY_EXPORTER_ENDPOINT
+    endpoint: "localhost:4317"
+
+    # Additional headers sent with each export request (optional)
+    # Use ${ENV_VAR} notation for secret injection to avoid storing credentials in config
+    # Common headers: Authorization (Bearer token), User-Agent, etc.
+    # Default: empty map
+    # Env: Not directly available; set via YAML or Viper
+    headers:
+      # Example: Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
+      # Example: User-Agent: "extproc-token-exchange/1.0.0"
+
+    # Maximum timeout for each export request
+    # Format: duration string (e.g., 5s, 10s, 30s)
+    # Default: 10s
+    # Env: EXTPROC_TELEMETRY_EXPORTER_TIMEOUT
+    timeout: 10s
+
+    # Disable TLS verification for the exporter connection (gRPC only)
+    # WARNING: Never enable in production. Only for development/testing with self-signed certs.
+    # For HTTPS protocol or system CA bundle, use the OTel SDK environment variables:
+    #   - OTEL_EXPORTER_OTLP_CERTIFICATE — Custom CA bundle file path
+    #   - OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE — Client certificate file path (mTLS)
+    #   - OTEL_EXPORTER_OTLP_CLIENT_KEY — Client private key file path (mTLS)
+    # Default: false (TLS enabled)
+    # Env: EXTPROC_TELEMETRY_EXPORTER_INSECURE
+    insecure: false
+
+    # Payload compression algorithm
+    # none  — no compression (default, recommended for local development)
+    # gzip  — gzip compression (reduces bandwidth in production)
+    # Default: none
+    # Env: EXTPROC_TELEMETRY_EXPORTER_COMPRESSION
+    compression: none
+
+---
+
+# PRODUCTION EXAMPLE (separate by ---)
+# Use this configuration as a template for production deployments
+#
+# Key production practices:
+# 1. Sampling: Set sampling_rate to 0.01–0.1 to reduce collector load for high-volume services
+# 2. Environment variables: All sensitive values (endpoints, auth tokens, certificates) from env
+# 3. TLS: Keep insecure: false (default) and use system CA or OTel SDK env vars for custom CAs
+# 4. Timeouts: Set exporter.timeout to 5s–30s based on network latency
+# 5. Resource attributes: Include deployment.environment, service.version, cloud.region for observability
+
+# telemetry:
+#   enabled: true
+#   service_name: extproc-token-exchange
+#   resource_attributes:
+#     deployment.environment: production
+#     service.version: "${SERVICE_VERSION}"
+#     cloud.region: "${AWS_REGION}"
+#     service.instance.id: "${POD_NAME}"
+#
+#   traces:
+#     enabled: true
+#     sampling_rate: 0.05  # 5% sampling in production
+#     propagators:
+#       - tracecontext
+#       - ottrace
+#       - b3multi
+#       - baggage
+#
+#   metrics:
+#     enabled: true
+#     export_interval: 30s
+#
+#   logs:
+#     enabled: true
+#
+#   exporter:
+#     protocol: grpc
+#     endpoint: "${OTEL_EXPORTER_ENDPOINT}"  # e.g., otel-collector.monitoring.svc:4317
+#     headers:
+#       Authorization: "Bearer ${OTEL_EXPORTER_AUTH_TOKEN}"
+#     timeout: 15s
+#     insecure: false
+#     compression: gzip  # Enable for production to reduce bandwidth
+
+---
+
+# UNREACHABLE COLLECTOR EXAMPLE (for resilience testing)
+# Demonstrates graceful degradation when the collector is unavailable
+# The service continues processing token exchanges normally; export failures are handled by the OTel SDK
+#
+# telemetry:
+#   enabled: true
+#   service_name: extproc-token-exchange
+#
+#   traces:
+#     enabled: true
+#     sampling_rate: 1.0
+#     propagators:
+#       - tracecontext
+#
+#   metrics:
+#     enabled: true
+#
+#   logs:
+#     enabled: true
+#
+#   exporter:
+#     protocol: grpc
+#     endpoint: "unreachable-collector.invalid:4317"  # Intentionally unreachable
+#     timeout: 5s
+#     insecure: false
+#
+# With this configuration, the service starts successfully and all token exchanges proceed normally.
+# No telemetry is exported, but token exchange continues unaffected (FR-008).
+
+---
+
+# TRACES DISABLED, PROPAGATION ENABLED (context forwarding without local spans)
+# This configuration enables context extraction and forwarding but disables local span creation.
+# Useful when only forwarding trace context is desired without the overhead of local instrumentation.
+#
+# telemetry:
+#   enabled: true
+#   service_name: extproc-token-exchange
+#
+#   traces:
+#     enabled: false  # No local spans created or exported
+#     propagators:
+#       - tracecontext
+#       - b3multi
+#
+#   metrics:
+#     enabled: false
+#
+#   logs:
+#     enabled: false
+#
+#   exporter:
+#     protocol: grpc
+#     endpoint: "otel-collector:4317"
+#
+# With this configuration:
+# - Inbound trace context is extracted from agentgateway's traceparent headers
+# - Context is forwarded to the identity broker's outbound HTTP requests
+# - No ExtProc spans are recorded
+# - No metrics or logs are exported
+# This mode is useful for scenarios where the service should remain transparent to tracing without overhead.
