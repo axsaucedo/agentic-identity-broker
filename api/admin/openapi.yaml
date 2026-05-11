@@ -316,7 +316,7 @@ paths:
           `client_id`. No uniqueness validation is performed.
 
         **Validation**:
-        - `client_id`: Optional; when omitted the existing value is preserved; unique across all agents (excluding the current agent) when `multi_agent_client.enabled = false`
+        - `client_id`: Three-state — omitted preserves existing value, explicit `null` clears it, string value updates it (must be non-empty); unique across all agents (excluding the current agent) when `multi_agent_client.enabled = false`
         - Other fields follow the same rules as creation
       operationId: updateAgent
       tags:
@@ -1381,9 +1381,16 @@ components:
       properties:
         client_id:
           type: string
+          nullable: true
           description: |
-            OAuth2 client_id for this agent. Optional — when omitted, the existing
-            value is preserved. When provided, must be non-empty.
+            OAuth2 client_id for this agent.
+
+            **Three-state semantics**:
+            - **Omitted** (key absent from JSON): existing value is preserved
+            - **Explicit null** (`"client_id": null`): clears the client_id (sets to NULL)
+            - **String value** (`"client_id": "foo"`): updates the client_id; must be non-empty
+
+            Agents without a client_id cannot participate in proxy-mode OAuth2 flows.
           example: agent-research-assistant
           maxLength: 255
         external_id:
