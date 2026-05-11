@@ -643,6 +643,9 @@ func (r *AgentRepository) ExistsOtherWithClientID(ctx context.Context, clientID 
 		).Scan(&exists)
 	}
 	if err != nil {
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			return false, storage.NewStorageError("ExistsOtherWithClientID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
 		return false, storage.NewStorageError("ExistsOtherWithClientID", storage.ErrorKindConnection, err, "database query failed")
 	}
 	return exists, nil
