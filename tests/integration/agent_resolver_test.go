@@ -2,36 +2,23 @@ package integration
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"testing"
-	"time"
 
 	memrepo "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage/memory"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// resolveAgentIDByClientID mirrors the closure registered in builder.go when
-// multi_agent_client is disabled. Kept here to test the guard logic directly.
-func buildResolver(repo *memrepo.AgentRepository) func(string) (string, error) {
-	return func(clientID string) (string, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		agent, err := repo.GetByClientID(ctx, id.ClientID(clientID))
-		if err != nil {
-			return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
-		}
-		dup, dupErr := repo.ExistsOtherWithClientID(ctx, id.ClientID(clientID), &agent.ID)
-		if dupErr != nil {
-			return "", fmt.Errorf("resolveAgentIdByClientId: duplicate check failed: %w", dupErr)
-		}
-		if dup {
-			return "", fmt.Errorf("resolveAgentIdByClientId: ambiguous client_id %q matches multiple agents; deduplicate before disabling multi_agent_client", clientID)
-		}
-		return agent.ID.String(), nil
-	}
+// noopServiceReqValidator satisfies agents.ServiceRequirementValidator for tests
+// that don't involve service requirements.
+type noopServiceReqValidator struct{}
+
+func (n *noopServiceReqValidator) ValidateServiceRequirements(_ context.Context, _ []storage.ServiceRequirement) error {
+	return nil
 }
 
 // TestResolveAgentIDByClientID_AmbiguousClientID verifies that the single-agent
@@ -47,9 +34,9 @@ func TestResolveAgentIDByClientID_AmbiguousClientID(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, agent1))
 	require.NoError(t, repo.Create(ctx, agent2))
 
-	resolve := buildResolver(repo)
+	svc := agents.NewService(repo, &noopServiceReqValidator{}, slog.Default(), false)
 
-	_, err := resolve(string(shared))
+	_, err := svc.ResolveUniqueByClientID(ctx, shared)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ambiguous")
 }
@@ -64,9 +51,9 @@ func TestResolveAgentIDByClientID_UnambiguousClientID(t *testing.T) {
 	agent := &storage.Agent{ID: agentID, ClientID: "unique-client", DisplayName: "A", Description: "d"}
 	require.NoError(t, repo.Create(ctx, agent))
 
-	resolve := buildResolver(repo)
+	svc := agents.NewService(repo, &noopServiceReqValidator{}, slog.Default(), false)
 
-	got, err := resolve("unique-client")
+	resolved, err := svc.ResolveUniqueByClientID(ctx, "unique-client")
 	require.NoError(t, err)
-	assert.Equal(t, agentID.String(), got)
+	assert.Equal(t, agentID.String(), resolved.ID.String())
 }

@@ -10,34 +10,30 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
 // AgentsHandler handles HTTP requests for agent CRUD operations.
 type AgentsHandler struct {
-	repo              ports.AgentRepository
-	providerService   *thirdparty.ThirdpartyOAuth2ProviderService
-	logger            *slog.Logger
-	multiAgentEnabled bool // when true, duplicate client_id is allowed (Feature 021)
+	agentService    *agents.Service
+	providerService *thirdparty.ThirdpartyOAuth2ProviderService
+	logger          *slog.Logger
 }
 
 // NewAgentsHandler creates a new agents handler.
-// multiAgentEnabled should match OAuth2AuthServerConfig.MultiAgentClient.Enabled:
-// when false (the default), client_id uniqueness is enforced at the application layer.
-func NewAgentsHandler(repo ports.AgentRepository, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger, multiAgentEnabled bool) *AgentsHandler {
+func NewAgentsHandler(agentService *agents.Service, providerService *thirdparty.ThirdpartyOAuth2ProviderService, logger *slog.Logger) *AgentsHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentsHandler{
-		repo:              repo,
-		providerService:   providerService,
-		logger:            logger,
-		multiAgentEnabled: multiAgentEnabled,
+		agentService:    agentService,
+		providerService: providerService,
+		logger:          logger,
 	}
 }
 
@@ -106,38 +102,11 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert request service requirements to domain model
 	serviceReqs, err := h.convertServiceRequirements(req.ServiceRequirements)
 	if err != nil {
 		h.logger.Warn("invalid service requirements", "error", err)
 		h.writeError(w, http.StatusBadRequest, "invalid service requirements", err.Error())
 		return
-	}
-
-	// Validate service requirements (referential integrity)
-	if err := h.providerService.ValidateServiceRequirements(ctx, serviceReqs); err != nil {
-		h.logger.Warn("service requirements validation failed", "error", err)
-		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
-		return
-	}
-
-	// Create agent entity
-	now := time.Now().UTC()
-	agentID := id.NewAgentID()
-
-	// ADR 017: Auto-generate client_id from agent UUID when not provided.
-	clientID := id.ClientID(agentID.String())
-	if req.ClientID != "" {
-		clientID = id.ClientID(req.ClientID)
-	}
-
-	// T036: When feature is disabled, enforce client_id uniqueness at the application layer.
-	// (Storage adapters no longer enforce this, per Feature 021 requirement to allow sharing.)
-	// Skip for auto-generated UUIDs — they are inherently unique (ADR 017).
-	if !h.multiAgentEnabled && req.ClientID != "" {
-		if !h.checkClientIDUniqueness(ctx, w, clientID, nil) {
-			return
-		}
 	}
 
 	if err := storage.ValidateClientURIsForWrite(req.ClientURIs); err != nil {
@@ -146,9 +115,9 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now().UTC()
 	agent := &storage.Agent{
-		ID:                   agentID,
-		ClientID:             clientID,
+		ClientID:             id.ClientID(req.ClientID),
 		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
@@ -163,15 +132,11 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:            now,
 	}
 
-	// Create in repository
-	if err := h.repo.Create(ctx, agent); err != nil {
-		h.handleStorageError(w, r, "CreateAgent", err)
+	if err := h.agentService.Create(ctx, agent); err != nil {
+		h.handleDomainError(w, r, "CreateAgent", err)
 		return
 	}
 
-	h.logger.Info("agent created", "agent_id", agent.ID, "client_id", agent.ClientID, "service_requirements_count", len(agent.ServiceRequirements))
-
-	// Return created agent
 	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
 	resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 	if err != nil {
@@ -198,9 +163,9 @@ func (h *AgentsHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agent, err := h.repo.Get(ctx, parsedAgentID)
+	agent, err := h.agentService.Get(ctx, parsedAgentID)
 	if err != nil {
-		h.handleStorageError(w, r, "GetAgent", err)
+		h.handleDomainError(w, r, "GetAgent", err)
 		return
 	}
 
@@ -237,14 +202,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get existing agent to preserve created_at
-	existing, err := h.repo.Get(ctx, parsedAgentID)
-	if err != nil {
-		h.handleStorageError(w, r, "UpdateAgent", err)
-		return
-	}
-
-	// Convert request service requirements to domain model
 	serviceReqs, err := h.convertServiceRequirements(req.ServiceRequirements)
 	if err != nil {
 		h.logger.Warn("invalid service requirements", "error", err)
@@ -252,33 +209,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate service requirements (referential integrity)
-	if err := h.providerService.ValidateServiceRequirements(ctx, serviceReqs); err != nil {
-		h.logger.Warn("service requirements validation failed", "error", err)
-		h.writeError(w, http.StatusBadRequest, "service requirements validation failed", err.Error())
-		return
-	}
-
-	// ADR 017: Preserve existing client_id when not provided in update request.
-	clientID := existing.ClientID
-	if req.ClientID != "" {
-		clientID = id.ClientID(req.ClientID)
-	}
-
-	// T037: When feature is disabled, enforce client_id uniqueness at the application layer,
-	// excluding the current agent (self-update must be allowed).
-	// Always check the effective client_id (including the preserved value) so that agents
-	// with duplicate client_ids created under multi_agent_client=true cannot silently retain
-	// them after the feature is disabled.
-	if !h.multiAgentEnabled {
-		if !h.checkClientIDUniqueness(ctx, w, clientID, &parsedAgentID) {
-			return
-		}
-	}
-
-	// Enforce client URI cardinality on admin writes. Validate() (called by the storage
-	// adapter on Update) skips cardinality to allow CIMD snapshot refreshes — so this
-	// explicit check is required for admin mutations.
 	if err := storage.ValidateClientURIsForWrite(req.ClientURIs); err != nil {
 		h.logger.Warn("client_uris validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
@@ -286,8 +216,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agent := &storage.Agent{
-		ID:                   parsedAgentID,
-		ClientID:             clientID,
+		ClientID:             id.ClientID(req.ClientID),
 		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
@@ -298,19 +227,14 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs:         req.RedirectURIs,
 		AllowedScopes:        req.AllowedScopes,
 		ClientURIs:           req.ClientURIs,
-		CreatedAt:            existing.CreatedAt,
 		UpdatedAt:            time.Now().UTC(),
 	}
 
-	// Update in repository
-	if err := h.repo.Update(ctx, agent); err != nil {
-		h.handleStorageError(w, r, "UpdateAgent", err)
+	if err := h.agentService.Update(ctx, parsedAgentID, agent); err != nil {
+		h.handleDomainError(w, r, "UpdateAgent", err)
 		return
 	}
 
-	h.logger.Info("agent updated", "agent_id", agent.ID, "client_id", agent.ClientID, "service_requirements_count", len(agent.ServiceRequirements))
-
-	// Return updated agent
 	serviceMap := h.batchLoadServices(ctx, []*storage.Agent{agent})
 	resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 	if err != nil {
@@ -331,21 +255,18 @@ func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete from repository
 	parsedID, parseErr := id.ParseAgentID(agentID)
 	if parseErr != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid agent ID", parseErr.Error())
 		return
 	}
 
-	if err := h.repo.Delete(ctx, parsedID); err != nil {
-		h.handleStorageError(w, r, "DeleteAgent", err)
+	if err := h.agentService.Delete(ctx, parsedID); err != nil {
+		h.handleDomainError(w, r, "DeleteAgent", err)
 		return
 	}
 
 	h.logger.Info("agent deleted", "agent_id", agentID)
-
-	// Return 204 No Content
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -353,22 +274,19 @@ func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	agents, err := h.repo.List(ctx)
+	agents, err := h.agentService.List(ctx)
 	if err != nil {
-		h.handleStorageError(w, r, "ListAgents", err)
+		h.handleDomainError(w, r, "ListAgents", err)
 		return
 	}
 
-	// Batch lookup all unique service IDs to avoid N+1 queries
 	serviceMap := h.batchLoadServices(ctx, agents)
 
-	// Convert to response format
 	responses := make([]AgentResponse, len(agents))
 	for i, agent := range agents {
 		resp, err := h.toResponseWithServiceMap(agent, serviceMap)
 		if err != nil {
 			h.logger.Error("failed to convert agent to response", "agent_id", agent.ID, "error", err)
-			// Continue with partial response
 			resp = AgentResponse{
 				ID:          agent.ID.String(),
 				ClientID:    agent.ClientID.String(),
@@ -385,9 +303,7 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 // batchLoadServices loads all unique services referenced by agents in a single batch.
-// Returns a map of service_id -> service for efficient lookup.
 func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage.Agent) map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity {
-	// Collect all unique service IDs
 	serviceIDs := make(map[id.ServiceID]bool)
 	for _, agent := range agents {
 		for _, sr := range agent.ServiceRequirements {
@@ -395,7 +311,6 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 		}
 	}
 
-	// Load all services
 	serviceMap := make(map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity)
 	for serviceID := range serviceIDs {
 		service, err := h.providerService.Get(ctx, serviceID)
@@ -410,7 +325,6 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 }
 
 // toResponseWithServiceMap converts an Agent entity to AgentResponse using a pre-loaded service map.
-// This avoids N+1 queries when converting multiple agents.
 func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMap map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
 	resp := AgentResponse{
 		ID:                   agent.ID.String(),
@@ -428,7 +342,6 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 		UpdatedAt:            agent.UpdatedAt.Format(time.RFC3339),
 	}
 
-	// Convert service requirements and resolve service names from map
 	if len(agent.ServiceRequirements) > 0 {
 		resp.ServiceRequirements = make([]ServiceRequirementResponse, len(agent.ServiceRequirements))
 		for i, sr := range agent.ServiceRequirements {
@@ -437,12 +350,9 @@ func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMa
 				RequirementType: sr.RequirementType.String(),
 				RequiredScopes:  sr.RequiredScopes,
 			}
-
-			// Resolve service name from map (best effort)
 			if service, ok := serviceMap[sr.ServiceID]; ok {
 				respSR.ServiceName = service.DisplayName
 			}
-
 			resp.ServiceRequirements[i] = respSR
 		}
 	}
@@ -458,15 +368,14 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 
 	result := make([]storage.ServiceRequirement, len(reqSRs))
 	for i, req := range reqSRs {
-		// Validate and convert requirement type
-		reqType := storage.RequirementType(req.RequirementType)
-		if err := reqType.Validate(); err != nil {
-			return nil, err
+		parsedSvcID, parseErr := id.ParseServiceID(req.ServiceID)
+		if parseErr != nil {
+			return nil, fmt.Errorf("service_requirements[%d]: invalid service_id: %w", i, parseErr)
 		}
 
-		parsedSvcID, err := id.ParseServiceID(req.ServiceID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid service_id %q: %w", req.ServiceID, err)
+		reqType := storage.RequirementType(req.RequirementType)
+		if !reqType.Valid() {
+			return nil, fmt.Errorf("service_requirements[%d]: invalid requirement_type %q (must be 'mandatory' or 'optional')", i, req.RequirementType)
 		}
 
 		result[i] = storage.ServiceRequirement{
@@ -479,50 +388,29 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 	return result, nil
 }
 
-// checkClientIDUniqueness returns true when it is safe to proceed (client_id is not taken
-// by another agent). When excludeID is non-nil, that agent is exempt from the conflict check
-// (used for self-update). Writes an HTTP error and returns false otherwise.
-//
-// NOTE: This is an application-layer check with a TOCTOU race for concurrent creates.
-// The DB-level UNIQUE constraint was dropped in migration 008 to support multi-agent mode.
-// Concurrent admin creates could both pass this check and both succeed. This is acceptable
-// for an infrequent admin operation.
-func (h *AgentsHandler) checkClientIDUniqueness(ctx context.Context, w http.ResponseWriter, clientID id.ClientID, excludeID *id.AgentID) bool {
-	exists, err := h.repo.ExistsOtherWithClientID(ctx, clientID, excludeID)
-	if err != nil {
-		h.logger.Error("failed to check agent client_id uniqueness", "error", err, "client_id", clientID)
-		h.writeError(w, http.StatusInternalServerError, "internal error", "failed to check agent uniqueness")
-		return false
-	}
-	if exists {
-		h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
-		return false
-	}
-	return true
-}
-
-// handleStorageError converts storage errors to HTTP responses.
-func (h *AgentsHandler) handleStorageError(w http.ResponseWriter, r *http.Request, operation string, err error) {
+// handleDomainError converts domain/storage errors to HTTP responses.
+func (h *AgentsHandler) handleDomainError(w http.ResponseWriter, r *http.Request, operation string, err error) {
 	var storageErr *storage.StorageError
-	if !errors.As(err, &storageErr) {
-		h.logger.Error("unexpected error type", "operation", operation, "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+	if errors.As(err, &storageErr) {
+		switch storageErr.Kind {
+		case storage.ErrorKindNotFound:
+			h.writeError(w, http.StatusNotFound, "agent not found", storageErr.Message)
+		case storage.ErrorKindConflict:
+			h.writeError(w, http.StatusConflict, "conflict", storageErr.Message)
+		case storage.ErrorKindValidation:
+			h.writeError(w, http.StatusBadRequest, "validation failed", storageErr.Message)
+		case storage.ErrorKindTimeout:
+			h.writeError(w, http.StatusGatewayTimeout, "operation timed out", storageErr.Message)
+		default:
+			h.logger.Error("storage operation failed", "operation", operation, "kind", storageErr.Kind, "error", storageErr)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+		}
 		return
 	}
 
-	switch storageErr.Kind {
-	case storage.ErrorKindNotFound:
-		h.writeError(w, http.StatusNotFound, "agent not found", storageErr.Message)
-	case storage.ErrorKindConflict:
-		h.writeError(w, http.StatusConflict, "conflict", storageErr.Message)
-	case storage.ErrorKindValidation:
-		h.writeError(w, http.StatusBadRequest, "validation failed", storageErr.Message)
-	case storage.ErrorKindTimeout:
-		h.writeError(w, http.StatusGatewayTimeout, "operation timed out", storageErr.Message)
-	default:
-		h.logger.Error("storage operation failed", "operation", operation, "kind", storageErr.Kind, "error", storageErr)
-		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
-	}
+	// Domain validation errors (fmt.Errorf wrapping validation)
+	h.logger.Error("operation failed", "operation", operation, "error", err)
+	h.writeError(w, http.StatusBadRequest, "invalid request", err.Error())
 }
 
 // writeJSON writes a JSON response.

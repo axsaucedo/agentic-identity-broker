@@ -31,6 +31,7 @@ import (
 	jwtauthadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/jwtauth"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/telemetry"
+	agentsservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	consentservice "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
@@ -400,6 +401,14 @@ func (b *Builder) Build() (*App, error) {
 		b.logger,
 	)
 
+	// Create agent domain service (used by admin handlers and CEL resolver)
+	agentService := agentsservice.NewService(
+		b.storage.Agents(),
+		app.ProviderService,
+		b.logger,
+		b.config.OAuth2AuthServer.MultiAgentClient.Enabled,
+	)
+
 	// Create token exchange service if token exchange configuration is available
 	// Per Constitution Principle VII (Configuration-Driven Design): only create if configured
 	if b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
@@ -421,23 +430,12 @@ func (b *Builder) Build() (*App, error) {
 		// agent_id_expression can look up an agent by its upstream client_id.
 		// When enabled, the expression receives the UUID directly from the token — no lookup needed.
 		if !b.config.OAuth2AuthServer.MultiAgentClient.Enabled {
-			agentRepo := b.storage.Agents()
 			celConfig.ResolveAgentIDByClientID = func(clientID string) (string, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				agent, err := agentRepo.GetByClientID(ctx, id.ClientID(clientID))
+				agent, err := agentService.ResolveUniqueByClientID(ctx, id.ClientID(clientID))
 				if err != nil {
 					return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
-				}
-				// Guard against ambiguous state: if another agent also has this client_id
-				// (possible when multi_agent_client was previously enabled), resolution is
-				// non-deterministic and must fail loudly rather than silently pick one.
-				dup, dupErr := agentRepo.ExistsOtherWithClientID(ctx, id.ClientID(clientID), &agent.ID)
-				if dupErr != nil {
-					return "", fmt.Errorf("resolveAgentIdByClientId: duplicate check failed: %w", dupErr)
-				}
-				if dup {
-					return "", fmt.Errorf("resolveAgentIdByClientId: ambiguous client_id %q matches multiple agents; deduplicate before disabling multi_agent_client", clientID)
 				}
 				return agent.ID.String(), nil
 			}
@@ -558,7 +556,7 @@ func (b *Builder) Build() (*App, error) {
 
 	// Admin handlers
 	app.AdminHandlers = &AdminHandlers{
-		Agents:   admin.NewAgentsHandler(b.storage.Agents(), app.ProviderService, b.logger, b.config.OAuth2AuthServer.MultiAgentClient.Enabled),
+		Agents:   admin.NewAgentsHandler(agentService, app.ProviderService, b.logger),
 		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 

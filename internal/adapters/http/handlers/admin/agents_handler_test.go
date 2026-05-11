@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
@@ -84,16 +85,18 @@ func (m *MockAgentRepository) ExistsOtherWithClientID(ctx context.Context, clien
 // MockProviderRepository and newTestEncryption are defined in services_handler_test.go
 // and are available here because both files share the same package admin.
 func newAgentsHandlerForTest(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger) *AgentsHandler {
-	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
-	// Use multiAgentEnabled=true so existing CRUD tests don't need GetByClientID expectations.
+	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
+	// Use multiAgentEnabled=true so existing CRUD tests don't need ExistsOtherWithClientID expectations.
 	// T033 tests use newAgentsHandlerForTestWithMultiAgent with explicit flags.
-	return NewAgentsHandler(mockRepo, svc, logger, true)
+	agentSvc := agents.NewService(mockRepo, providerSvc, logger, true)
+	return NewAgentsHandler(agentSvc, providerSvc, logger)
 }
 
 // newAgentsHandlerForTestWithMultiAgent creates an AgentsHandler with the given multiAgentEnabled flag.
 func newAgentsHandlerForTestWithMultiAgent(mockRepo *MockAgentRepository, mockServiceRepo *MockProviderRepository, logger *slog.Logger, multiAgentEnabled bool) *AgentsHandler {
-	svc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
-	return NewAgentsHandler(mockRepo, svc, logger, multiAgentEnabled)
+	providerSvc := thirdparty.NewThirdpartyOAuth2ProviderService(mockServiceRepo, newTestEncryption(), nil, false, logger)
+	agentSvc := agents.NewService(mockRepo, providerSvc, logger, multiAgentEnabled)
+	return NewAgentsHandler(agentSvc, providerSvc, logger)
 }
 
 func TestAgentsHandler_CreateAgent(t *testing.T) {
@@ -874,13 +877,6 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		agentID := id.NewAgentID()
-		existing := &storage.Agent{
-			ID:          agentID,
-			ClientID:    "cimd-update-client",
-			DisplayName: "CIMD Agent",
-			Description: "Test description",
-		}
-		mockRepo.On("Get", mock.Anything, agentID).Return(existing, nil)
 
 		reqBody := AgentRequest{
 			ClientID:    "cimd-update-client",
@@ -903,7 +899,7 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		var resp ErrorResponse
 		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 		assert.Equal(t, "validation failed", resp.Error)
-		mockRepo.AssertExpectations(t)
+		mockRepo.AssertNotCalled(t, "Get")
 	})
 
 	t.Run("Update: duplicate client_uri returns 409", func(t *testing.T) {
