@@ -46,7 +46,7 @@ type ServiceRequirementRequest struct {
 
 // AgentRequest represents the request body for creating/updating an agent.
 type AgentRequest struct {
-	ClientID             string                      `json:"client_id,omitempty"`
+	ClientID             *string                     `json:"client_id,omitempty"`
 	ExternalID           *string                     `json:"external_id,omitempty"`
 	DisplayName          string                      `json:"display_name"`
 	Description          string                      `json:"description"`
@@ -70,7 +70,7 @@ type ServiceRequirementResponse struct {
 // AgentResponse represents the response body for agent operations.
 type AgentResponse struct {
 	ID                   string                       `json:"id"`
-	ClientID             string                       `json:"client_id"`
+	ClientID             *string                      `json:"client_id,omitempty"`
 	ExternalID           *string                      `json:"external_id,omitempty"`
 	DisplayName          string                       `json:"display_name"`
 	Description          string                       `json:"description"`
@@ -449,17 +449,18 @@ func convertExternalIDToString(eid *id.ExternalID) *string {
 	return &s
 }
 
-func clientIDFromRequest(s string) *id.ClientID {
-	if s == "" {
+func clientIDFromRequest(s *string) *id.ClientID {
+	if s == nil || *s == "" {
 		return nil
 	}
-	c := id.ClientID(s)
+	c := id.ClientID(*s)
 	return &c
 }
 
-func clientIDToString(c *id.ClientID) string {
+func clientIDToString(c *id.ClientID) *string {
 	if c == nil {
-		return ""
+		return nil
 	}
-	return c.String()
+	s := c.String()
+	return &s
 }

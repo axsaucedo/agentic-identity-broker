@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +38,7 @@ func createTestAgent(t *testing.T, adapter *Adapter) *storage.Agent {
 	repo := NewAgentRepository(adapter)
 	now := time.Now().UTC()
 	agent := &storage.Agent{
-		ClientID:    id.ClientID("cred-test-" + id.NewAgentID().String()[:8]),
+		ClientID:    ptr.To(id.ClientID("cred-test-" + id.NewAgentID().String()[:8])),
 		DisplayName: "Credential Test Agent",
 		Description: "Agent for credential testing",
 		CreatedAt:   now,

@@ -109,7 +109,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
-			ClientID:    "test-client",
+			ClientID:    ptr.To("test-client"),
 			DisplayName: "Test Agent",
 			Description: "Test agent description",
 		}
@@ -132,7 +132,8 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
 		assert.NotEmpty(t, resp.ID)
-		assert.Equal(t, "test-client", resp.ClientID)
+		require.NotNil(t, resp.ClientID)
+		assert.Equal(t, "test-client", *resp.ClientID)
 		assert.Equal(t, "Test Agent", resp.DisplayName)
 
 		mockRepo.AssertExpectations(t)
@@ -146,7 +147,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 		externalID := "ext-123"
 		govURL := "https://example.com/gov"
 		reqBody := AgentRequest{
-			ClientID:      "test-client-2",
+			ClientID:      ptr.To("test-client-2"),
 			ExternalID:    &externalID,
 			DisplayName:   "Test Agent 2",
 			Description:   "Test description",
@@ -218,7 +219,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 		var resp AgentResponse
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
-		assert.Empty(t, resp.ClientID)
+		assert.Nil(t, resp.ClientID)
 
 		mockRepo.AssertExpectations(t)
 	})
@@ -229,7 +230,7 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
-			ClientID:    "duplicate-client",
+			ClientID:    ptr.To("duplicate-client"),
 			DisplayName: "Test Agent",
 			Description: "Test description",
 		}
@@ -292,7 +293,8 @@ func TestAgentsHandler_GetAgent(t *testing.T) {
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
 		assert.Equal(t, agentID.String(), resp.ID)
-		assert.Equal(t, "test-client", resp.ClientID)
+		require.NotNil(t, resp.ClientID)
+		assert.Equal(t, "test-client", *resp.ClientID)
 
 		mockRepo.AssertExpectations(t)
 	})
@@ -369,7 +371,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		}
 
 		reqBody := AgentRequest{
-			ClientID:    "test-client",
+			ClientID:    ptr.To("test-client"),
 			DisplayName: "Updated Name",
 			Description: "Updated description",
 		}
@@ -445,7 +447,8 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		var resp AgentResponse
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
-		assert.Equal(t, "existing-client-id", resp.ClientID)
+		require.NotNil(t, resp.ClientID)
+		assert.Equal(t, "existing-client-id", *resp.ClientID)
 		assert.Equal(t, "Updated Name", resp.DisplayName)
 
 		mockRepo.AssertExpectations(t)
@@ -458,7 +461,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 
 		notFoundID := id.NewAgentID()
 		reqBody := AgentRequest{
-			ClientID:    "test-client",
+			ClientID:    ptr.To("test-client"),
 			DisplayName: "Test Agent",
 			Description: "Test description",
 		}
@@ -520,7 +523,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		}
 
 		reqBody := AgentRequest{
-			ClientID:    "https://agent.example.com/client",
+			ClientID:    ptr.To("https://agent.example.com/client"),
 			DisplayName: "Updated Name",
 			Description: "Updated description",
 		}
@@ -692,7 +695,7 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		mockRepo.On("ExistsOtherWithClientID", mock.Anything, id.ClientID("shared-client"), (*id.AgentID)(nil)).Return(true, nil)
 
 		reqBody := AgentRequest{
-			ClientID:    "shared-client",
+			ClientID:    ptr.To("shared-client"),
 			DisplayName: "New Agent",
 			Description: "Duplicate client_id",
 		}
@@ -717,7 +720,7 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		mockRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
 
 		reqBody := AgentRequest{
-			ClientID:    "shared-client",
+			ClientID:    ptr.To("shared-client"),
 			DisplayName: "New Agent",
 			Description: "Allowed duplicate",
 		}
@@ -752,7 +755,7 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		mockRepo.On("ExistsOtherWithClientID", mock.Anything, id.ClientID("shared-client"), &targetAgentID).Return(true, nil)
 
 		reqBody := AgentRequest{
-			ClientID:    "shared-client",
+			ClientID:    ptr.To("shared-client"),
 			DisplayName: "Target Agent Updated",
 			Description: "Trying to steal client_id",
 		}
@@ -791,7 +794,7 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		mockRepo.On("Update", mock.Anything, mock.Anything).Return(nil)
 
 		reqBody := AgentRequest{
-			ClientID:    "my-client",
+			ClientID:    ptr.To("my-client"),
 			DisplayName: "Target Agent Updated",
 			Description: "Self-update allowed",
 		}
@@ -822,7 +825,7 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
-			ClientID:    "cimd-client",
+			ClientID:    ptr.To("cimd-client"),
 			DisplayName: "CIMD Agent",
 			Description: "Test description",
 			ClientURIs:  []string{"not-a-valid-url"},
@@ -852,7 +855,7 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		)
 
 		reqBody := AgentRequest{
-			ClientID:    "cimd-conflict-client",
+			ClientID:    ptr.To("cimd-conflict-client"),
 			DisplayName: "CIMD Agent",
 			Description: "Test description",
 			ClientURIs:  []string{"https://example.com/taken"},
@@ -880,7 +883,7 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		agentID := id.NewAgentID()
 
 		reqBody := AgentRequest{
-			ClientID:    "cimd-update-client",
+			ClientID:    ptr.To("cimd-update-client"),
 			DisplayName: "CIMD Agent",
 			Description: "Updated description",
 			ClientURIs:  []string{"http://bad-scheme.example.com"},
@@ -921,7 +924,7 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		)
 
 		reqBody := AgentRequest{
-			ClientID:    "cimd-update-conflict-client",
+			ClientID:    ptr.To("cimd-update-conflict-client"),
 			DisplayName: "CIMD Agent",
 			Description: "Updated description",
 			ClientURIs:  []string{"https://example.com/already-taken"},

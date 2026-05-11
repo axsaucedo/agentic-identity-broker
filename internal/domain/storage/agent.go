@@ -39,6 +39,9 @@ func (a *Agent) Validate() error {
 	if a.ID.IsZero() {
 		return errors.New("agent ID cannot be empty")
 	}
+	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
+		return errors.New("client_id cannot be empty when provided")
+	}
 	if a.DisplayName == "" {
 		return errors.New("display_name is required")
 	}
@@ -218,6 +221,9 @@ func (a *Agent) Copy() *Agent {
 // ValidateForCreate validates an agent before creation.
 // ID will be generated, so it may be empty.
 func (a *Agent) ValidateForCreate() error {
+	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
+		return errors.New("client_id cannot be empty when provided")
+	}
 	if a.DisplayName == "" {
 		return errors.New("display_name is required")
 	}

@@ -53,7 +53,7 @@ func (s *Service) Create(ctx context.Context, agent *storage.Agent) error {
 	}
 
 	if err := agent.ValidateForCreate(); err != nil {
-		return fmt.Errorf("agent validation failed: %w", err)
+		return storage.NewStorageError("Create", storage.ErrorKindValidation, err, err.Error())
 	}
 
 	if err := s.providerService.ValidateServiceRequirements(ctx, agent.ServiceRequirements); err != nil {
@@ -91,7 +91,7 @@ func (s *Service) Update(ctx context.Context, agentID id.AgentID, agent *storage
 	}
 
 	if err := agent.Validate(); err != nil {
-		return fmt.Errorf("agent validation failed: %w", err)
+		return storage.NewStorageError("Update", storage.ErrorKindValidation, err, err.Error())
 	}
 
 	if err := s.providerService.ValidateServiceRequirements(ctx, agent.ServiceRequirements); err != nil {

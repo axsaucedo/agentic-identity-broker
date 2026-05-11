@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,7 @@ func TestUserGrantRepository_Create(t *testing.T) {
 
 	// Create test agent first
 	agent := &storage.Agent{
-		ClientID:    "test-agent",
+		ClientID:    ptr.To(id.ClientID("test-agent")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -140,7 +141,7 @@ func TestUserGrantRepository_Get(t *testing.T) {
 
 	// Create test agent
 	agent := &storage.Agent{
-		ClientID:    "test-agent",
+		ClientID:    ptr.To(id.ClientID("test-agent")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -189,7 +190,7 @@ func TestUserGrantRepository_Update(t *testing.T) {
 
 	// Create test agent
 	agent := &storage.Agent{
-		ClientID:    "test-agent",
+		ClientID:    ptr.To(id.ClientID("test-agent")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -268,7 +269,7 @@ func TestUserGrantRepository_Delete(t *testing.T) {
 
 	// Create test agent
 	agent := &storage.Agent{
-		ClientID:    "test-agent",
+		ClientID:    ptr.To(id.ClientID("test-agent")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -317,7 +318,7 @@ func TestUserGrantRepository_ListByPrincipalAndAgent(t *testing.T) {
 
 	// Create test agent
 	agent := &storage.Agent{
-		ClientID:    "test-agent",
+		ClientID:    ptr.To(id.ClientID("test-agent")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -397,7 +398,7 @@ func TestUserGrantRepository_FindByPrincipalAndAgent(t *testing.T) {
 
 	// Create test agent
 	agent := &storage.Agent{
-		ClientID:    "test-agent",
+		ClientID:    ptr.To(id.ClientID("test-agent")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -447,7 +448,7 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 
 	// Create test agents
 	agent1 := &storage.Agent{
-		ClientID:    "test-agent-1",
+		ClientID:    ptr.To(id.ClientID("test-agent-1")),
 		DisplayName: "Test Agent 1",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -457,7 +458,7 @@ func TestUserGrantRepository_DeleteByAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	agent2 := &storage.Agent{
-		ClientID:    "test-agent-2",
+		ClientID:    ptr.To(id.ClientID("test-agent-2")),
 		DisplayName: "Test Agent 2",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -543,7 +544,7 @@ func TestUserGrantRepository_JSONBMarshaling(t *testing.T) {
 
 	// Create test agent
 	agent := &storage.Agent{
-		ClientID:    "test-agent",
+		ClientID:    ptr.To(id.ClientID("test-agent")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -591,7 +592,7 @@ func TestUserGrantRepository_DeepCopy(t *testing.T) {
 
 	// Create test agent
 	agent := &storage.Agent{
-		ClientID:    "test-agent",
+		ClientID:    ptr.To(id.ClientID("test-agent")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now().UTC(),
@@ -637,14 +638,14 @@ func TestUserGrantRepository_DeleteByPrincipalAndAgentID(t *testing.T) {
 
 	// Create two agents
 	agent1 := &storage.Agent{
-		ClientID:    "agent-revoke-1",
+		ClientID:    ptr.To(id.ClientID("agent-revoke-1")),
 		DisplayName: "Revoke Test Agent 1",
 		Description: "Used for DeleteByPrincipalAndAgentID tests",
 		CreatedAt:   time.Now().UTC(),
 		UpdatedAt:   time.Now().UTC(),
 	}
 	agent2 := &storage.Agent{
-		ClientID:    "agent-revoke-2",
+		ClientID:    ptr.To(id.ClientID("agent-revoke-2")),
 		DisplayName: "Revoke Test Agent 2",
 		Description: "Used for DeleteByPrincipalAndAgentID tests",
 		CreatedAt:   time.Now().UTC(),
