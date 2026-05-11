@@ -17,6 +17,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -97,7 +98,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     id.ClientID("test-proxy-agent"),
+				ClientID:     ptr.To(id.ClientID("test-proxy-agent")),
 				DisplayName:  "Proxy Agent",
 				Description:  "Test agent for proxy mode",
 				RedirectURIs: []string{"https://example.com/cb"},
@@ -190,7 +191,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     id.ClientID("local-agent"),
+				ClientID:     ptr.To(id.ClientID("local-agent")),
 				DisplayName:  "Local Agent",
 				Description:  "Test agent for issue_token mode",
 				RedirectURIs: []string{"https://example.com/cb"},
@@ -298,7 +299,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID(clientURL),
+				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "CIMD Agent",
 				Description: "Agent with URL client_id",
@@ -327,7 +328,7 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     id.ClientID("plain-agent"),
+				ClientID:     ptr.To(id.ClientID("plain-agent")),
 				DisplayName:  "Plain Agent",
 				Description:  "Non-URL client_id in CIMD mode",
 				RedirectURIs: []string{"https://example.com/cb"},

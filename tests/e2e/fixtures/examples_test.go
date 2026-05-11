@@ -51,8 +51,8 @@ func TestAgentFixtures(t *testing.T) {
 		if a.ID.IsZero() {
 			t.Error("agent ID is empty")
 		}
-		if a.ClientID != "test-client-valid" {
-			t.Errorf("got ClientID %q, want %q", a.ClientID, "test-client-valid")
+		if a.ClientID == nil || *a.ClientID != id.ClientID("test-client-valid") {
+			t.Errorf("got ClientID %v, want %q", a.ClientID, "test-client-valid")
 		}
 		if a.DisplayName != "Test Agent Valid" {
 			t.Errorf("got DisplayName %q, want %q", a.DisplayName, "Test Agent Valid")
@@ -67,8 +67,8 @@ func TestAgentFixtures(t *testing.T) {
 		if a == nil {
 			t.Fatal("AnotherAgent returned nil")
 		}
-		if a.ClientID != "test-client-another" {
-			t.Errorf("got ClientID %q, want %q", a.ClientID, "test-client-another")
+		if a.ClientID == nil || *a.ClientID != id.ClientID("test-client-another") {
+			t.Errorf("got ClientID %v, want %q", a.ClientID, "test-client-another")
 		}
 		if err := a.Validate(); err != nil {
 			t.Errorf("validation failed: %v", err)
@@ -80,8 +80,8 @@ func TestAgentFixtures(t *testing.T) {
 		if a == nil {
 			t.Fatal("AgentWithClientID returned nil")
 		}
-		if a.ClientID != "custom-client-id" {
-			t.Errorf("got ClientID %q, want %q", a.ClientID, "custom-client-id")
+		if a.ClientID == nil || *a.ClientID != id.ClientID("custom-client-id") {
+			t.Errorf("got ClientID %v, want %q", a.ClientID, "custom-client-id")
 		}
 		if err := a.Validate(); err != nil {
 			t.Errorf("validation failed: %v", err)

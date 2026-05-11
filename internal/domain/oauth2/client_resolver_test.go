@@ -8,6 +8,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,7 +56,7 @@ func TestOpaqueClientResolver_Success(t *testing.T) {
 	repo := NewMockAgentRepository()
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    id.ClientID(agentID.String()),
+		ClientID:    ptr.To(id.ClientID(agentID.String())),
 		DisplayName: "Test Agent",
 	}
 	require.NoError(t, repo.Create(context.Background(), agent))

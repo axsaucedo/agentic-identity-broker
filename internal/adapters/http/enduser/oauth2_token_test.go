@@ -16,6 +16,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -69,7 +70,7 @@ func newStubAgentRepo(agentID id.AgentID, upstreamClientID string) *stubAgentRep
 	return &stubAgentRepo{
 		agent: &storage.Agent{
 			ID:       agentID,
-			ClientID: id.ClientID(upstreamClientID),
+			ClientID: ptr.To(id.ClientID(upstreamClientID)),
 		},
 	}
 }

@@ -251,7 +251,7 @@ func (m *mockAgentRepoForAgents) List(ctx context.Context) ([]*storage.Agent, er
 
 func (m *mockAgentRepoForAgents) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, agent := range m.agents {
-		if string(agent.ClientID) == string(clientID) {
+		if agent.ClientID != nil && *agent.ClientID == clientID {
 			return agent, nil
 		}
 	}

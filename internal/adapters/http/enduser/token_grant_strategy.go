@@ -103,7 +103,11 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 	}
 
 	// Replace the broker-internal UUID with the upstream client_id before forwarding.
-	formData.Set("client_id", string(agent.ClientID))
+	if agent.ClientID == nil {
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_client", "agent has no upstream client_id configured")
+		return
+	}
+	formData.Set("client_id", agent.ClientID.String())
 	body := formData.Encode()
 
 	upstreamReq, err := http.NewRequestWithContext(ctx, "POST", s.upstreamTokenURL, strings.NewReader(body))

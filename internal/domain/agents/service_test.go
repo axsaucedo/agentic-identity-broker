@@ -9,6 +9,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,7 +80,7 @@ func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID)
 		return m.getByClientIDFn(ctx, clientID)
 	}
 	for _, a := range m.agents {
-		if a.ClientID == clientID {
+		if a.ClientID != nil && *a.ClientID == clientID {
 			return a.Copy(), nil
 		}
 	}
@@ -91,7 +92,7 @@ func (m *mockAgentRepo) ExistsOtherWithClientID(ctx context.Context, clientID id
 		return m.existsOtherFn(ctx, clientID, excludeAgentID)
 	}
 	for _, a := range m.agents {
-		if a.ClientID == clientID {
+		if a.ClientID != nil && *a.ClientID == clientID {
 			if excludeAgentID == nil || a.ID != *excludeAgentID {
 				return true, nil
 			}
@@ -121,7 +122,7 @@ func newTestService(repo ports.AgentRepository, multiAgent bool) *Service {
 
 // --- Create tests ---
 
-func TestCreate_AutoGeneratesClientID(t *testing.T) {
+func TestCreate_NilClientIDRemainsNil(t *testing.T) {
 	repo := newMockAgentRepo()
 	svc := newTestService(repo, false)
 
@@ -134,7 +135,7 @@ func TestCreate_AutoGeneratesClientID(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.False(t, agent.ID.IsZero(), "ID should be generated")
-	assert.Equal(t, id.ClientID(agent.ID.String()), agent.ClientID, "client_id should default to agent UUID")
+	assert.Nil(t, agent.ClientID, "client_id should remain nil when not provided")
 }
 
 func TestCreate_UsesProvidedClientID(t *testing.T) {
@@ -142,14 +143,14 @@ func TestCreate_UsesProvidedClientID(t *testing.T) {
 	svc := newTestService(repo, false)
 
 	agent := &storage.Agent{
-		ClientID:    "my-custom-client",
+		ClientID:    ptr.To(id.ClientID("my-custom-client")),
 		DisplayName: "Test Agent",
 		Description: "A test agent",
 	}
 
 	err := svc.Create(context.Background(), agent)
 	require.NoError(t, err)
-	assert.Equal(t, id.ClientID("my-custom-client"), agent.ClientID)
+	assert.Equal(t, ptr.To(id.ClientID("my-custom-client")), agent.ClientID)
 }
 
 func TestCreate_EnforcesUniquenessWhenMultiAgentDisabled(t *testing.T) {
@@ -158,14 +159,14 @@ func TestCreate_EnforcesUniquenessWhenMultiAgentDisabled(t *testing.T) {
 
 	existing := &storage.Agent{
 		ID:          id.NewAgentID(),
-		ClientID:    "taken-client",
+		ClientID:    ptr.To(id.ClientID("taken-client")),
 		DisplayName: "Existing",
 		Description: "Already here",
 	}
 	repo.agents[existing.ID] = existing
 
 	agent := &storage.Agent{
-		ClientID:    "taken-client",
+		ClientID:    ptr.To(id.ClientID("taken-client")),
 		DisplayName: "New Agent",
 		Description: "Wants same client_id",
 	}
@@ -198,14 +199,14 @@ func TestCreate_AllowsDuplicatesWhenMultiAgentEnabled(t *testing.T) {
 
 	existing := &storage.Agent{
 		ID:          id.NewAgentID(),
-		ClientID:    "shared-client",
+		ClientID:    ptr.To(id.ClientID("shared-client")),
 		DisplayName: "Agent A",
 		Description: "First agent",
 	}
 	repo.agents[existing.ID] = existing
 
 	agent := &storage.Agent{
-		ClientID:    "shared-client",
+		ClientID:    ptr.To(id.ClientID("shared-client")),
 		DisplayName: "Agent B",
 		Description: "Second agent, same client_id",
 	}
@@ -223,7 +224,7 @@ func TestUpdate_PreservesExistingClientID(t *testing.T) {
 	agentID := id.NewAgentID()
 	existing := &storage.Agent{
 		ID:          agentID,
-		ClientID:    "original-client",
+		ClientID:    ptr.To(id.ClientID("original-client")),
 		DisplayName: "Original",
 		Description: "Original desc",
 		CreatedAt:   time.Now().UTC(),
@@ -240,7 +241,7 @@ func TestUpdate_PreservesExistingClientID(t *testing.T) {
 
 	err := svc.Update(context.Background(), agentID, update)
 	require.NoError(t, err)
-	assert.Equal(t, id.ClientID("original-client"), update.ClientID)
+	assert.Equal(t, ptr.To(id.ClientID("original-client")), update.ClientID)
 	assert.Equal(t, existing.CreatedAt, update.CreatedAt, "CreatedAt should be preserved")
 }
 
@@ -250,7 +251,7 @@ func TestUpdate_EnforcesUniquenessOnClientIDChange(t *testing.T) {
 
 	agentA := &storage.Agent{
 		ID:          id.NewAgentID(),
-		ClientID:    "client-a",
+		ClientID:    ptr.To(id.ClientID("client-a")),
 		DisplayName: "Agent A",
 		Description: "desc",
 		CreatedAt:   time.Now().UTC(),
@@ -258,7 +259,7 @@ func TestUpdate_EnforcesUniquenessOnClientIDChange(t *testing.T) {
 	}
 	agentB := &storage.Agent{
 		ID:          id.NewAgentID(),
-		ClientID:    "client-b",
+		ClientID:    ptr.To(id.ClientID("client-b")),
 		DisplayName: "Agent B",
 		Description: "desc",
 		CreatedAt:   time.Now().UTC(),
@@ -268,7 +269,7 @@ func TestUpdate_EnforcesUniquenessOnClientIDChange(t *testing.T) {
 	repo.agents[agentB.ID] = agentB
 
 	update := &storage.Agent{
-		ClientID:    "client-a", // conflicts with agentA
+		ClientID:    ptr.To(id.ClientID("client-a")), // conflicts with agentA
 		DisplayName: "Agent B Updated",
 		Description: "desc",
 		UpdatedAt:   time.Now().UTC(),
@@ -291,7 +292,7 @@ func TestResolveUniqueByClientID_Success(t *testing.T) {
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    "unique-client",
+		ClientID:    ptr.To(id.ClientID("unique-client")),
 		DisplayName: "Agent",
 		Description: "desc",
 	}
@@ -306,8 +307,8 @@ func TestResolveUniqueByClientID_Ambiguous(t *testing.T) {
 	repo := newMockAgentRepo()
 	svc := newTestService(repo, false)
 
-	a1 := &storage.Agent{ID: id.NewAgentID(), ClientID: "shared", DisplayName: "A1", Description: "d"}
-	a2 := &storage.Agent{ID: id.NewAgentID(), ClientID: "shared", DisplayName: "A2", Description: "d"}
+	a1 := &storage.Agent{ID: id.NewAgentID(), ClientID: ptr.To(id.ClientID("shared")), DisplayName: "A1", Description: "d"}
+	a2 := &storage.Agent{ID: id.NewAgentID(), ClientID: ptr.To(id.ClientID("shared")), DisplayName: "A2", Description: "d"}
 	repo.agents[a1.ID] = a1
 	repo.agents[a2.ID] = a2
 

@@ -473,7 +473,7 @@ var _ = Describe("Multi-Agent Client Delegation", func() {
 				subjectTokenClaims := map[string]interface{}{
 					"sub":        fixtures.DefaultPrincipal().String(),
 					"x_agent_id": alpha.ID.String(),
-					"azp":        string(alpha.ClientID),
+					"azp":        string(*alpha.ClientID),
 					"iss":        mockUpstream.URL(),
 					"aud":        "token-exchange-broker",
 					"exp":        now.Add(1 * time.Hour).Unix(),
@@ -514,7 +514,7 @@ var _ = Describe("Multi-Agent Client Delegation", func() {
 				now := time.Now()
 				subjectTokenClaims := map[string]interface{}{
 					"sub": fixtures.DefaultPrincipal().String(),
-					"azp": string(alpha.ClientID),
+					"azp": string(*alpha.ClientID),
 					"iss": mockUpstream.URL(),
 					"aud": "token-exchange-broker",
 					"exp": now.Add(1 * time.Hour).Unix(),
@@ -643,7 +643,7 @@ var _ = Describe("Multi-Agent Client Delegation", func() {
 				now := time.Now()
 				claims := map[string]interface{}{
 					"sub": fixtures.DefaultPrincipal().String(),
-					"azp": string(alpha.ClientID),
+					"azp": string(*alpha.ClientID),
 					"iss": mockUpstream.URL(),
 					"aud": "token-exchange-broker",
 					"exp": now.Add(1 * time.Hour).Unix(),

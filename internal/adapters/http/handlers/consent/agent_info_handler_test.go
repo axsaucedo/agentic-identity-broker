@@ -14,6 +14,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -102,7 +103,7 @@ func TestGetAgentConsentInfo_Success(t *testing.T) {
 
 	mockAgent := &storage.Agent{
 		ID:                   agentID,
-		ClientID:             id.ClientID("client-github"),
+		ClientID:             ptr.To(id.ClientID("client-github")),
 		DisplayName:          "GitHub Assistant",
 		Description:          "AI assistant for GitHub",
 		GovernanceURL:        &govURL,
@@ -230,7 +231,7 @@ func TestGetAgentConsentInfo_EmptyServices(t *testing.T) {
 
 	mockAgent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    id.ClientID("client-test"),
+		ClientID:    ptr.To(id.ClientID("client-test")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now(),
@@ -302,7 +303,7 @@ func TestGetAgentConsentInfo_ContentType(t *testing.T) {
 
 	mockAgent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    id.ClientID("client-test"),
+		ClientID:    ptr.To(id.ClientID("client-test")),
 		DisplayName: "Test Agent",
 		Description: "Test description",
 		CreatedAt:   time.Now(),
@@ -395,7 +396,7 @@ func (m *mockAgentRepo) List(ctx context.Context) ([]*storage.Agent, error) {
 }
 
 func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
-	if m.agent != nil && string(m.agent.ClientID) == string(clientID) {
+	if m.agent != nil && m.agent.ClientID != nil && *m.agent.ClientID == clientID {
 		return m.agent, nil
 	}
 	return nil, m.err

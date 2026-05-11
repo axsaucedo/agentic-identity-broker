@@ -14,6 +14,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
 // testEncryption is a non-identity test double for EncryptionPort used in domain-layer
@@ -110,7 +111,7 @@ func (m *mockAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID)
 		return nil, m.err
 	}
 	for _, agent := range m.agents {
-		if agent.ClientID == clientID {
+		if agent.ClientID != nil && *agent.ClientID == clientID {
 			return agent.Copy(), nil
 		}
 	}
@@ -389,7 +390,7 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    id.ClientID("agent-client"),
+		ClientID:    ptr.To(id.ClientID("agent-client")),
 		DisplayName: "Test Agent",
 		Description: "desc",
 		ServiceRequirements: []storage.ServiceRequirement{
@@ -426,7 +427,7 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 
 	t.Run("no service requirements returns empty slice", func(t *testing.T) {
 		t.Parallel()
-		agentNoReqs := &storage.Agent{ID: agentID, ClientID: "c", DisplayName: "A"}
+		agentNoReqs := &storage.Agent{ID: agentID, ClientID: ptr.To(id.ClientID("c")), DisplayName: "A"}
 		svc := NewService(
 			&mockAgentRepo{agents: map[id.AgentID]*storage.Agent{agentID: agentNoReqs}},
 			newTestProviderService(&mockServiceRepo{services: map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity{}}),
@@ -496,7 +497,7 @@ func TestService_GetAgentWithServiceRequirements(t *testing.T) {
 		t.Parallel()
 		singleReqAgent := &storage.Agent{
 			ID:       agentID,
-			ClientID: "c",
+			ClientID: ptr.To(id.ClientID("c")),
 			ServiceRequirements: []storage.ServiceRequirement{
 				{ServiceID: githubID, RequirementType: storage.RequirementTypeMandatory, RequiredScopes: []string{"read:user"}},
 			},
@@ -542,7 +543,7 @@ func TestService_GetAgentConsentInfo(t *testing.T) {
 
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    id.ClientID("test-client"),
+		ClientID:    ptr.To(id.ClientID("test-client")),
 		DisplayName: "Test Agent",
 		Description: "A test agent",
 	}
@@ -605,7 +606,7 @@ func TestService_GrantConsent(t *testing.T) {
 
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    id.ClientID("test-client"),
+		ClientID:    ptr.To(id.ClientID("test-client")),
 		DisplayName: "Test Agent",
 		Description: "A test agent",
 	}
@@ -1028,14 +1029,14 @@ func TestService_GetAgentDelegations(t *testing.T) {
 
 	agent1 := &storage.Agent{
 		ID:          agent1ID,
-		ClientID:    id.ClientID("test-client-1"),
+		ClientID:    ptr.To(id.ClientID("test-client-1")),
 		DisplayName: "Test Agent 1",
 		Description: "First test agent",
 	}
 
 	agent2 := &storage.Agent{
 		ID:          agent2ID,
-		ClientID:    id.ClientID("test-client-2"),
+		ClientID:    ptr.To(id.ClientID("test-client-2")),
 		DisplayName: "Test Agent 2",
 		Description: "Second test agent",
 	}

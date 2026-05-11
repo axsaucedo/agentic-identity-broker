@@ -17,6 +17,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"log/slog"
@@ -141,7 +142,7 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 	// Register agent
 	agent := &storage.Agent{
 		ID:           id.NewAgentID(),
-		ClientID:     id.NewClientID("client-1"),
+		ClientID:     ptr.To(id.NewClientID("client-1")),
 		DisplayName:  "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
@@ -184,7 +185,7 @@ func TestOAuth2AuthorizeEndpoint_ActiveGrantRedirectsToUpstream(t *testing.T) {
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
 		ID:           agentID,
-		ClientID:     id.NewClientID("client-1"),
+		ClientID:     ptr.To(id.NewClientID("client-1")),
 		DisplayName:  "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
@@ -251,7 +252,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
 		ID:           agentID,
-		ClientID:     id.NewClientID("client-1"),
+		ClientID:     ptr.To(id.NewClientID("client-1")),
 		DisplayName:  "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
@@ -310,7 +311,7 @@ func TestOAuth2AuthorizeEndpoint_WithMiddleware(t *testing.T) {
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
 		ID:           agentID,
-		ClientID:     id.NewClientID("client-1"),
+		ClientID:     ptr.To(id.NewClientID("client-1")),
 		DisplayName:  "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
@@ -372,7 +373,7 @@ func TestOAuth2AuthorizeEndpoint_PKCEParametersPreserved(t *testing.T) {
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
 		ID:           agentID,
-		ClientID:     id.NewClientID("client-1"),
+		ClientID:     ptr.To(id.NewClientID("client-1")),
 		DisplayName:  "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
@@ -472,7 +473,7 @@ func (r *inMemoryAgentRepo) List(ctx context.Context) ([]*storage.Agent, error) 
 
 func (r *inMemoryAgentRepo) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, agent := range r.agents {
-		if agent.ClientID == clientID {
+		if agent.ClientID != nil && *agent.ClientID == clientID {
 			return agent, nil
 		}
 	}

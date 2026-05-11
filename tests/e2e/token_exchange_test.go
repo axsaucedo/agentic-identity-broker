@@ -1180,7 +1180,7 @@ var _ = Describe("RFC 8693 Token Exchange E2E Tests", func() {
 			now := time.Now()
 			subjectTokenClaims := map[string]interface{}{
 				"sub": fixtures.DefaultPrincipal().String(),
-				"azp": string(resolveAgent.ClientID), // upstream client_id — resolved by the CEL helper
+				"azp": string(*resolveAgent.ClientID), // upstream client_id — resolved by the CEL helper
 				"iss": mockUpstream.URL(),
 				"aud": "token-exchange-broker",
 				"exp": now.Add(1 * time.Hour).Unix(),

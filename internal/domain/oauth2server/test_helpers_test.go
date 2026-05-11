@@ -6,6 +6,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
 // testAgentID returns a test agent ID for testing.
@@ -17,7 +18,7 @@ func testAgentID() id.AgentID {
 func testAgent() *storage.Agent {
 	return &storage.Agent{
 		ID:          id.NewAgentID(),
-		ClientID:    id.ClientID("test-client"),
+		ClientID:    ptr.To(id.ClientID("test-client")),
 		DisplayName: "Test Agent",
 		Description: "A test agent for unit testing",
 	}

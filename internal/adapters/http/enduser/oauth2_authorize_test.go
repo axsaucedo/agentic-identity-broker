@@ -16,6 +16,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -197,7 +198,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 	agentID := id.NewAgentID()
 	agent := &storage.Agent{
 		ID:           agentID,
-		ClientID:     "client-1",
+		ClientID:     ptr.To(id.ClientID("client-1")),
 		DisplayName:  "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
@@ -239,7 +240,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 	serviceID := id.NewServiceID()
 	agent := &storage.Agent{
 		ID:           agentID,
-		ClientID:     "client-1",
+		ClientID:     ptr.To(id.ClientID("client-1")),
 		DisplayName:  "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
@@ -300,7 +301,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 	serviceID := id.NewServiceID()
 	agent := &storage.Agent{
 		ID:           agentID,
-		ClientID:     "client-1",
+		ClientID:     ptr.To(id.ClientID("client-1")),
 		DisplayName:  "Test Client",
 		RedirectURIs: []string{"https://client.example.com/callback"},
 	}
@@ -533,7 +534,7 @@ func (m *mockAgentRepository) List(ctx context.Context) ([]*storage.Agent, error
 
 func (m *mockAgentRepository) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, agent := range m.agents {
-		if agent.ClientID == clientID {
+		if agent.ClientID != nil && *agent.ClientID == clientID {
 			return agent, nil
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domainstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +29,7 @@ func newIntegrationStubAgentRepo(agentID id.AgentID) *integrationStubAgentRepo {
 	return &integrationStubAgentRepo{
 		agent: &domainstorage.Agent{
 			ID:       agentID,
-			ClientID: id.ClientID("test-upstream-client-id"),
+			ClientID: ptr.To(id.ClientID("test-upstream-client-id")),
 		},
 	}
 }

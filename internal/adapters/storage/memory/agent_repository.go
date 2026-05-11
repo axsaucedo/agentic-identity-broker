@@ -78,7 +78,9 @@ func (r *AgentRepository) Create(ctx context.Context, agent *storage.Agent) erro
 
 	// Store deep copy to prevent external mutation
 	r.agents[agent.ID] = agent.Copy()
-	r.byClientID[agent.ClientID] = append(r.byClientID[agent.ClientID], agent.ID)
+	if agent.ClientID != nil {
+		r.byClientID[*agent.ClientID] = append(r.byClientID[*agent.ClientID], agent.ID)
+	}
 	for _, uri := range agent.ClientURIs {
 		r.byClientURI[uri] = agent.ID
 	}
@@ -146,9 +148,15 @@ func (r *AgentRepository) Update(ctx context.Context, agent *storage.Agent) erro
 	}
 
 	// All checks passed — update indexes and stored entity atomically
-	if existing.ClientID != agent.ClientID {
-		r.removeFromClientIDIndex(existing.ClientID, agent.ID)
-		r.byClientID[agent.ClientID] = append(r.byClientID[agent.ClientID], agent.ID)
+	oldClientID := existing.ClientID
+	newClientID := agent.ClientID
+	if !clientIDPtrEqual(oldClientID, newClientID) {
+		if oldClientID != nil {
+			r.removeFromClientIDIndex(*oldClientID, agent.ID)
+		}
+		if newClientID != nil {
+			r.byClientID[*newClientID] = append(r.byClientID[*newClientID], agent.ID)
+		}
 	}
 
 	// Rebuild client URI index: remove old URIs, add new ones
@@ -173,7 +181,9 @@ func (r *AgentRepository) Delete(ctx context.Context, agentID id.AgentID) error 
 
 	// Get agent to clean up indexes
 	if agent, exists := r.agents[agentID]; exists {
-		r.removeFromClientIDIndex(agent.ClientID, agentID)
+		if agent.ClientID != nil {
+			r.removeFromClientIDIndex(*agent.ClientID, agentID)
+		}
 		for _, uri := range agent.ClientURIs {
 			delete(r.byClientURI, uri)
 		}
@@ -281,4 +291,14 @@ func (r *AgentRepository) removeFromClientIDIndex(clientID id.ClientID, agentID 
 	} else {
 		r.byClientID[clientID] = ids
 	}
+}
+
+func clientIDPtrEqual(a, b *id.ClientID) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }

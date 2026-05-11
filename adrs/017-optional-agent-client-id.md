@@ -1,4 +1,4 @@
-# ADR 017: Optional Agent client_id with UUID Auto-Generation
+# ADR 017: Optional Agent client_id (Nullable)
 
 **Status**: Accepted
 **Date**: 2026-05-10
@@ -16,21 +16,20 @@ Despite this, the Admin API requires operators to supply a `client_id` for every
 
 ## Decision
 
-Make `client_id` optional in the Admin API `AgentCreateRequest`. When omitted, auto-generate it as the agent's UUID string (e.g. `550e8400-e29b-41d4-a716-446655440000`).
+Make `client_id` truly optional — nullable at every layer:
 
-When explicitly provided, use the operator-supplied value unchanged (for upstream proxy scenarios).
+1. **Domain**: `Agent.ClientID` is `*id.ClientID` (nil = absent).
+2. **Database**: The `agents.client_id` column is nullable (migration 016 drops the `NOT NULL` constraint).
+3. **Admin API**: `client_id` is omitted from create/update requests for agents that don't need it. No auto-generation fallback.
+4. **Behavior**: When `client_id` is nil, `GetByClientID` cannot resolve the agent — callers must use `Get` (by agent UUID) or `GetByClientURI` (for CIMD agents).
 
-### Why UUID, not a prefixed format
-
-- The `OpaqueClientResolver` already treats the OAuth2 request `client_id` as the agent's UUID. Setting the stored field to the same value makes the stored and runtime identifiers consistent.
-- The `resolveAgentIdByClientId` CEL helper (used when `multi_agent_client.enabled = false`) calls `GetByClientID` — a UUID-valued `ClientID` makes this a valid (if tautological) lookup.
-- No prefix avoids introducing a new naming convention to document and parse.
+When explicitly provided, the operator-supplied value is stored unchanged (for upstream proxy scenarios).
 
 ## Consequences
 
 - Operators no longer need to supply `client_id` for local or CIMD agents.
-- Auto-generated values are inherently unique (UUID-based), so existing uniqueness checks need no modification.
+- Agents without an upstream client_id carry `NULL`, not a disguised value.
+- `GetByClientID` and `ExistsOtherWithClientID` correctly exclude agents with no client_id.
+- Migration 016 (`ALTER TABLE agents ALTER COLUMN client_id DROP NOT NULL`) makes the column nullable. Existing rows retain their values.
 - Forward-compatible with hybrid setups: operators who need a real upstream `client_id` alongside `client_uris` can still supply one explicitly.
-- No database migration required — the `client_id` column remains NOT NULL; the default is applied at the application layer before domain validation.
-- Existing agents are unaffected; no data migration needed.
 - On update, omitting `client_id` preserves the existing value.

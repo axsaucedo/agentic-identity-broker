@@ -117,7 +117,7 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	agent := &storage.Agent{
-		ClientID:             id.ClientID(req.ClientID),
+		ClientID:             clientIDFromRequest(req.ClientID),
 		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
@@ -216,7 +216,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agent := &storage.Agent{
-		ClientID:             id.ClientID(req.ClientID),
+		ClientID:             clientIDFromRequest(req.ClientID),
 		ExternalID:           convertExternalID(req.ExternalID),
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
@@ -289,7 +289,7 @@ func (h *AgentsHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("failed to convert agent to response", "agent_id", agent.ID, "error", err)
 			resp = AgentResponse{
 				ID:          agent.ID.String(),
-				ClientID:    agent.ClientID.String(),
+				ClientID:    clientIDToString(agent.ClientID),
 				DisplayName: agent.DisplayName,
 				Description: agent.Description,
 				CreatedAt:   agent.CreatedAt.Format(time.RFC3339),
@@ -328,7 +328,7 @@ func (h *AgentsHandler) batchLoadServices(ctx context.Context, agents []*storage
 func (h *AgentsHandler) toResponseWithServiceMap(agent *storage.Agent, serviceMap map[id.ServiceID]*model.ThirdpartyOAuth2ProviderEntity) (AgentResponse, error) {
 	resp := AgentResponse{
 		ID:                   agent.ID.String(),
-		ClientID:             agent.ClientID.String(),
+		ClientID:             clientIDToString(agent.ClientID),
 		ExternalID:           convertExternalIDToString(agent.ExternalID),
 		DisplayName:          agent.DisplayName,
 		Description:          agent.Description,
@@ -447,4 +447,19 @@ func convertExternalIDToString(eid *id.ExternalID) *string {
 	}
 	s := string(*eid)
 	return &s
+}
+
+func clientIDFromRequest(s string) *id.ClientID {
+	if s == "" {
+		return nil
+	}
+	c := id.ClientID(s)
+	return &c
+}
+
+func clientIDToString(c *id.ClientID) string {
+	if c == nil {
+		return ""
+	}
+	return c.String()
 }

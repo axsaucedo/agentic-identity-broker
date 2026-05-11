@@ -9,6 +9,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/agents"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,8 +30,8 @@ func TestResolveAgentIDByClientID_AmbiguousClientID(t *testing.T) {
 	ctx := context.Background()
 
 	shared := id.ClientID("shared-client-id")
-	agent1 := &storage.Agent{ID: id.NewAgentID(), ClientID: shared, DisplayName: "A1", Description: "d"}
-	agent2 := &storage.Agent{ID: id.NewAgentID(), ClientID: shared, DisplayName: "A2", Description: "d"}
+	agent1 := &storage.Agent{ID: id.NewAgentID(), ClientID: ptr.To(shared), DisplayName: "A1", Description: "d"}
+	agent2 := &storage.Agent{ID: id.NewAgentID(), ClientID: ptr.To(shared), DisplayName: "A2", Description: "d"}
 	require.NoError(t, repo.Create(ctx, agent1))
 	require.NoError(t, repo.Create(ctx, agent2))
 
@@ -48,7 +49,7 @@ func TestResolveAgentIDByClientID_UnambiguousClientID(t *testing.T) {
 	ctx := context.Background()
 
 	agentID := id.NewAgentID()
-	agent := &storage.Agent{ID: agentID, ClientID: "unique-client", DisplayName: "A", Description: "d"}
+	agent := &storage.Agent{ID: agentID, ClientID: ptr.To(id.ClientID("unique-client")), DisplayName: "A", Description: "d"}
 	require.NoError(t, repo.Create(ctx, agent))
 
 	svc := agents.NewService(repo, &noopServiceReqValidator{}, slog.Default(), false)
