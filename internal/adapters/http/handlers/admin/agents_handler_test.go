@@ -183,21 +183,20 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 		assert.Equal(t, "invalid request body", resp.Error)
 	})
 
-	t.Run("validation error", func(t *testing.T) {
+	t.Run("auto-generates client_id from agent UUID when omitted", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
 
 		reqBody := AgentRequest{
-			ClientID:    "", // Empty client_id
 			DisplayName: "Test Agent",
 			Description: "Test description",
 		}
 		bodyBytes, _ := json.Marshal(reqBody)
 
-		mockRepo.On("Create", mock.Anything, mock.Anything).Return(
-			storage.NewStorageError("CreateAgent", storage.ErrorKindValidation, nil, "client_id is required"),
-		)
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
+			return string(a.ClientID) == a.ID.String()
+		})).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/agents", bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
@@ -205,12 +204,12 @@ func TestAgentsHandler_CreateAgent(t *testing.T) {
 
 		handler.CreateAgent(w, req)
 
-		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Equal(t, http.StatusCreated, w.Code)
 
-		var resp ErrorResponse
+		var resp AgentResponse
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
-		assert.Equal(t, "validation failed", resp.Error)
+		assert.Equal(t, resp.ID, resp.ClientID)
 
 		mockRepo.AssertExpectations(t)
 	})
@@ -388,6 +387,57 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		err := json.NewDecoder(w.Body).Decode(&resp)
 		require.NoError(t, err)
 		assert.Equal(t, agentID.String(), resp.ID)
+		assert.Equal(t, "Updated Name", resp.DisplayName)
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("omitted client_id preserves existing value and passes uniqueness in single-agent mode", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTestWithMultiAgent(mockRepo, mockServiceRepo, logger, false)
+
+		agentID := id.NewAgentID()
+		now := time.Now().UTC()
+		existingAgent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    "existing-client-id",
+			DisplayName: "Old Name",
+			Description: "Old description",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+
+		reqBody := AgentRequest{
+			// ClientID intentionally omitted — should preserve "existing-client-id"
+			DisplayName: "Updated Name",
+			Description: "Updated description",
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		mockRepo.On("Get", mock.Anything, agentID).Return(existingAgent, nil)
+		// GetByClientID called to check uniqueness of the preserved client_id (excluding self)
+		mockRepo.On("GetByClientID", mock.Anything, id.ClientID("existing-client-id")).Return(existingAgent, nil)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
+			return a.ClientID == "existing-client-id" && a.DisplayName == "Updated Name"
+		})).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		w := httptest.NewRecorder()
+
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var resp AgentResponse
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "existing-client-id", resp.ClientID)
 		assert.Equal(t, "Updated Name", resp.DisplayName)
 
 		mockRepo.AssertExpectations(t)

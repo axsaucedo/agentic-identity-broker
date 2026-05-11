@@ -200,12 +200,12 @@ paths:
           `client_id`. No uniqueness validation is performed.
 
         **Validation Rules**:
-        - `client_id`: Required; unique across all agents when `multi_agent_client.enabled = false`
+        - `client_id`: Optional; defaults to the agent UUID when omitted; unique across all agents when `multi_agent_client.enabled = false`
         - `display_name`: Required, max 255 characters
         - `description`: Required, max 1000 characters
         - URLs: Must be valid HTTP/HTTPS URLs if provided
 
-        **ID Generation**: System generates a UUID for the agent ID
+        **ID Generation**: System generates a UUID for the agent ID; `client_id` defaults to this UUID when not provided
       operationId: createAgent
       tags:
         - Agents
@@ -315,7 +315,9 @@ paths:
         - When `multi_agent_client.enabled = true`: Multiple agents may share the same
           `client_id`. No uniqueness validation is performed.
 
-        **Validation**: Same rules as creation apply
+        **Validation**:
+        - `client_id`: Optional; when omitted the existing value is preserved; unique across all agents (excluding the current agent) when `multi_agent_client.enabled = false`
+        - Other fields follow the same rules as creation
       operationId: updateAgent
       tags:
         - Agents

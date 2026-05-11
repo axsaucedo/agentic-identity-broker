@@ -259,11 +259,19 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ADR 017: Preserve existing client_id when not provided in update request.
+	clientID := id.ClientID(req.ClientID)
+	if req.ClientID == "" {
+		clientID = existing.ClientID
+	}
+
 	// T037: When feature is disabled, enforce client_id uniqueness at the application layer,
 	// excluding the current agent (self-update must be allowed).
-	// Skip when client_id is omitted — existing value will be preserved (ADR 017).
-	if !h.multiAgentEnabled && req.ClientID != "" {
-		if !h.checkClientIDUniqueness(ctx, w, id.ClientID(req.ClientID), &parsedAgentID) {
+	// Always check the effective client_id (including the preserved value) so that agents
+	// with duplicate client_ids created under multi_agent_client=true cannot silently retain
+	// them after the feature is disabled.
+	if !h.multiAgentEnabled {
+		if !h.checkClientIDUniqueness(ctx, w, clientID, &parsedAgentID) {
 			return
 		}
 	}
@@ -275,12 +283,6 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("client_uris validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
-	}
-
-	// ADR 017: Preserve existing client_id when not provided in update request.
-	clientID := id.ClientID(req.ClientID)
-	if req.ClientID == "" {
-		clientID = existing.ClientID
 	}
 
 	agent := &storage.Agent{
