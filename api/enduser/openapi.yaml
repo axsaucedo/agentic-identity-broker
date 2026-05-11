@@ -1283,7 +1283,6 @@ paths:
 
         Direct JSON responses (no redirect — RFC 6749 §4.1.2.1):
         - `invalid_client` (400): `client_id` is not a valid UUID OR no agent with that UUID exists
-        - `invalid_client` (400): Agent exists but has no upstream `client_id` configured (required for proxy-mode OAuth2 flows)
         - `invalid_redirect_uri` (400): `redirect_uri` not registered on the agent
         - `invalid_request` (400): Missing PKCE parameters
         - `unsupported_response_type` (400): `response_type` is not `code`
@@ -1292,6 +1291,7 @@ paths:
         Redirect responses (error appended to `redirect_uri` as query params; redirect_uri has been validated):
         - `invalid_scope`: Requested scope exceeds the agent's `allowed_scopes`
         - `access_denied`: User explicitly denied consent
+        - `server_error`: Proxy mode — agent has no upstream `client_id` configured
       operationId: oauth2Authorize
       tags:
         - OAuth2 Token
@@ -1375,11 +1375,6 @@ paths:
                   value:
                     error: "invalid_client"
                     error_description: "client_id must be a valid agent UUID"
-                missing_upstream_client_id:
-                  summary: Agent has no upstream client_id configured
-                  value:
-                    error: "invalid_client"
-                    error_description: "agent has no upstream client_id configured; proxy-mode OAuth2 flows require client_id"
                 invalid_redirect_uri:
                   summary: Invalid redirect_uri (direct error response, not redirected per RFC 6749 §4.1.2.1)
                   value:

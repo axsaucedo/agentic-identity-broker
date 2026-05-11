@@ -239,7 +239,7 @@ func TestUpdate_PreservesExistingClientID(t *testing.T) {
 		UpdatedAt:   time.Now().UTC(),
 	}
 
-	err := svc.Update(context.Background(), agentID, update)
+	err := svc.Update(context.Background(), agentID, update, false)
 	require.NoError(t, err)
 	assert.Equal(t, ptr.To(id.ClientID("original-client")), update.ClientID)
 	assert.Equal(t, existing.CreatedAt, update.CreatedAt, "CreatedAt should be preserved")
@@ -275,7 +275,7 @@ func TestUpdate_EnforcesUniquenessOnClientIDChange(t *testing.T) {
 		UpdatedAt:   time.Now().UTC(),
 	}
 
-	err := svc.Update(context.Background(), agentB.ID, update)
+	err := svc.Update(context.Background(), agentB.ID, update, false)
 	require.Error(t, err)
 
 	var storageErr *storage.StorageError

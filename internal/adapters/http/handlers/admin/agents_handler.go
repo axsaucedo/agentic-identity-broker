@@ -2,10 +2,12 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -195,12 +197,24 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
 	var req AgentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		h.logger.Warn("failed to decode request body", "error", err)
 		h.writeError(w, http.StatusBadRequest, "invalid request body", err.Error())
 		return
 	}
+
+	// Detect three-state client_id semantics: absent=preserve, null=clear, string=update.
+	var rawFields map[string]json.RawMessage
+	_ = json.Unmarshal(body, &rawFields)
+	rawClientID, clientIDPresent := rawFields["client_id"]
+	clearClientID := clientIDPresent && bytes.Equal(rawClientID, []byte("null"))
 
 	serviceReqs, err := h.convertServiceRequirements(req.ServiceRequirements)
 	if err != nil {
@@ -230,7 +244,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:            time.Now().UTC(),
 	}
 
-	if err := h.agentService.Update(ctx, parsedAgentID, agent); err != nil {
+	if err := h.agentService.Update(ctx, parsedAgentID, agent, clearClientID); err != nil {
 		h.handleDomainError(w, r, "UpdateAgent", err)
 		return
 	}

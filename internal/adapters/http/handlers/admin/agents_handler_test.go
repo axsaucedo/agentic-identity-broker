@@ -480,6 +480,46 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		mockRepo.AssertExpectations(t)
 	})
 
+	t.Run("explicit null client_id clears the stored value", func(t *testing.T) {
+		mockRepo := new(MockAgentRepository)
+		mockServiceRepo := new(MockProviderRepository)
+		handler := newAgentsHandlerForTest(mockRepo, mockServiceRepo, logger)
+
+		agentID := id.NewAgentID()
+		now := time.Now().UTC()
+		existingAgent := &storage.Agent{
+			ID:          agentID,
+			ClientID:    ptr.To(id.ClientID("existing-client")),
+			DisplayName: "Old Name",
+			Description: "Old description",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+
+		bodyBytes := []byte(`{"client_id": null, "display_name": "Updated Name", "description": "Updated description"}`)
+
+		mockRepo.On("Get", mock.Anything, agentID).Return(existingAgent, nil)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
+			return a.ClientID == nil && a.DisplayName == "Updated Name"
+		})).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/agents/"+agentID.String(), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("agent-id", agentID.String())
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		w := httptest.NewRecorder()
+
+		handler.UpdateAgent(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var resp AgentResponse
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+		assert.Nil(t, resp.ClientID)
+		mockRepo.AssertExpectations(t)
+	})
+
 	t.Run("agent not found", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
 		mockServiceRepo := new(MockProviderRepository)

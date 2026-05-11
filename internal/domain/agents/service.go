@@ -74,10 +74,11 @@ func (s *Service) Create(ctx context.Context, agent *storage.Agent) error {
 	return nil
 }
 
-// Update validates and persists changes to an existing agent. When clientID is empty,
-// the existing client_id is preserved (ADR 017). When multiAgentEnabled is false,
-// uniqueness is enforced for the effective client_id.
-func (s *Service) Update(ctx context.Context, agentID id.AgentID, agent *storage.Agent) error {
+// Update validates and persists changes to an existing agent. When clientID is nil
+// and clearClientID is false, the existing client_id is preserved (ADR 017). When
+// clearClientID is true, client_id is set to nil regardless of the existing value.
+// When multiAgentEnabled is false, uniqueness is enforced for the effective client_id.
+func (s *Service) Update(ctx context.Context, agentID id.AgentID, agent *storage.Agent, clearClientID bool) error {
 	existing, err := s.repo.Get(ctx, agentID)
 	if err != nil {
 		return err
@@ -86,7 +87,7 @@ func (s *Service) Update(ctx context.Context, agentID id.AgentID, agent *storage
 	agent.ID = agentID
 	agent.CreatedAt = existing.CreatedAt
 
-	if agent.ClientID == nil {
+	if agent.ClientID == nil && !clearClientID {
 		agent.ClientID = existing.ClientID
 	}
 
