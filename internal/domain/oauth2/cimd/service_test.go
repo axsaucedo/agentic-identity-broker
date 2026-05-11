@@ -84,6 +84,10 @@ func (m *mockAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Ag
 	return nil, ports.ErrNotFound
 }
 
+func (m *mockAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
+}
+
 // --- helpers ---
 
 func cimdFetchResult(t *testing.T, clientID string, authMethod string) *ports.CIMDFetchResult {

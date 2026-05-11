@@ -130,6 +130,11 @@ type AgentRepository interface {
 	// Returns StorageError for connection/timeout issues.
 	GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error)
 
+	// ExistsOtherWithClientID reports whether any agent other than excludeAgentID has the
+	// given client_id. When excludeAgentID is nil all agents are considered (create path).
+	// Returns StorageError for connection/timeout issues.
+	ExistsOtherWithClientID(ctx context.Context, clientID id.ClientID, excludeAgentID *id.AgentID) (bool, error)
+
 	// GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
 	// Returns StorageError with Kind=NotFound if no agent has this URI registered.
 	// Returns StorageError for connection/timeout issues.

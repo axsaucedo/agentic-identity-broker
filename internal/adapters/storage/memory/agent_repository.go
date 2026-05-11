@@ -219,6 +219,24 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 	return agent.Copy(), nil
 }
 
+// ExistsOtherWithClientID reports whether any agent other than excludeAgentID shares the given client_id.
+// When excludeAgentID is nil, all agents with that client_id are considered (create path).
+func (r *AgentRepository) ExistsOtherWithClientID(ctx context.Context, clientID id.ClientID, excludeAgentID *id.AgentID) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	ids, exists := r.byClientID[clientID]
+	if !exists {
+		return false, nil
+	}
+	for _, agentID := range ids {
+		if excludeAgentID == nil || agentID != *excludeAgentID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.
 // Returns StorageError with Kind=NotFound if no agent has this URI registered.
 func (r *AgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {

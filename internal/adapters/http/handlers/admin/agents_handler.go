@@ -50,7 +50,7 @@ type ServiceRequirementRequest struct {
 
 // AgentRequest represents the request body for creating/updating an agent.
 type AgentRequest struct {
-	ClientID             string                      `json:"client_id"`
+	ClientID             string                      `json:"client_id,omitempty"`
 	ExternalID           *string                     `json:"external_id,omitempty"`
 	DisplayName          string                      `json:"display_name"`
 	Description          string                      `json:"description"`
@@ -121,11 +121,21 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create agent entity
+	now := time.Now().UTC()
+	agentID := id.NewAgentID()
+
+	// ADR 017: Auto-generate client_id from agent UUID when not provided.
+	clientID := id.ClientID(agentID.String())
+	if req.ClientID != "" {
+		clientID = id.ClientID(req.ClientID)
+	}
+
 	// T036: When feature is disabled, enforce client_id uniqueness at the application layer.
 	// (Storage adapters no longer enforce this, per Feature 021 requirement to allow sharing.)
-	// Skip when client_id is omitted — auto-generated UUID values are inherently unique (ADR 017).
+	// Skip for auto-generated UUIDs — they are inherently unique (ADR 017).
 	if !h.multiAgentEnabled && req.ClientID != "" {
-		if !h.checkClientIDUniqueness(ctx, w, id.ClientID(req.ClientID), nil) {
+		if !h.checkClientIDUniqueness(ctx, w, clientID, nil) {
 			return
 		}
 	}
@@ -134,16 +144,6 @@ func (h *AgentsHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("client_uris validation failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
-	}
-
-	// Create agent entity
-	now := time.Now().UTC()
-	agentID := id.NewAgentID()
-
-	// ADR 017: Auto-generate client_id from agent UUID when not provided.
-	clientID := id.ClientID(req.ClientID)
-	if req.ClientID == "" {
-		clientID = id.ClientID(agentID.String())
 	}
 
 	agent := &storage.Agent{
@@ -260,9 +260,9 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ADR 017: Preserve existing client_id when not provided in update request.
-	clientID := id.ClientID(req.ClientID)
-	if req.ClientID == "" {
-		clientID = existing.ClientID
+	clientID := existing.ClientID
+	if req.ClientID != "" {
+		clientID = id.ClientID(req.ClientID)
 	}
 
 	// T037: When feature is disabled, enforce client_id uniqueness at the application layer,
@@ -488,21 +488,17 @@ func (h *AgentsHandler) convertServiceRequirements(reqSRs []ServiceRequirementRe
 // Concurrent admin creates could both pass this check and both succeed. This is acceptable
 // for an infrequent admin operation.
 func (h *AgentsHandler) checkClientIDUniqueness(ctx context.Context, w http.ResponseWriter, clientID id.ClientID, excludeID *id.AgentID) bool {
-	other, lookupErr := h.repo.GetByClientID(ctx, clientID)
-	if lookupErr == nil {
-		if excludeID != nil && other.ID == *excludeID {
-			return true // self-update: same agent, safe to proceed
-		}
-		h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
-		return false
-	}
-	var storageErr *storage.StorageError
-	if !errors.As(lookupErr, &storageErr) || storageErr.Kind != storage.ErrorKindNotFound {
-		h.logger.Error("failed to check agent client_id uniqueness", "error", lookupErr, "client_id", clientID)
+	exists, err := h.repo.ExistsOtherWithClientID(ctx, clientID, excludeID)
+	if err != nil {
+		h.logger.Error("failed to check agent client_id uniqueness", "error", err, "client_id", clientID)
 		h.writeError(w, http.StatusInternalServerError, "internal error", "failed to check agent uniqueness")
 		return false
 	}
-	return true // NotFound: safe to proceed
+	if exists {
+		h.writeError(w, http.StatusConflict, "conflict", "agent with this client_id already exists")
+		return false
+	}
+	return true
 }
 
 // handleStorageError converts storage errors to HTTP responses.

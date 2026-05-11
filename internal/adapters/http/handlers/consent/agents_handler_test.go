@@ -262,6 +262,10 @@ func (m *mockAgentRepoForAgents) GetByClientURI(_ context.Context, _ string) (*s
 	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
 }
 
+func (m *mockAgentRepoForAgents) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
+}
+
 type mockServiceRepoForAgents struct{}
 
 func (m *mockServiceRepoForAgents) Create(ctx context.Context, entity *model.ThirdpartyOAuth2ProviderEntity) error {

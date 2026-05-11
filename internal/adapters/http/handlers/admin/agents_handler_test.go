@@ -72,6 +72,11 @@ func (m *MockAgentRepository) GetByClientURI(ctx context.Context, uri string) (*
 	return args.Get(0).(*storage.Agent), args.Error(1)
 }
 
+func (m *MockAgentRepository) ExistsOtherWithClientID(ctx context.Context, clientID id.ClientID, excludeAgentID *id.AgentID) (bool, error) {
+	args := m.Called(ctx, clientID, excludeAgentID)
+	return args.Bool(0), args.Error(1)
+}
+
 // newAgentsHandlerForTest creates an AgentsHandler backed by a real domain service
 // wrapping a mock repository. This ensures the architecture invariant holds in tests:
 // the handler always goes through the domain service, never raw storage.
@@ -416,8 +421,7 @@ func TestAgentsHandler_UpdateAgent(t *testing.T) {
 		bodyBytes, _ := json.Marshal(reqBody)
 
 		mockRepo.On("Get", mock.Anything, agentID).Return(existingAgent, nil)
-		// GetByClientID called to check uniqueness of the preserved client_id (excluding self)
-		mockRepo.On("GetByClientID", mock.Anything, id.ClientID("existing-client-id")).Return(existingAgent, nil)
+		mockRepo.On("ExistsOtherWithClientID", mock.Anything, id.ClientID("existing-client-id"), &agentID).Return(false, nil)
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(a *storage.Agent) bool {
 			return a.ClientID == "existing-client-id" && a.DisplayName == "Updated Name"
 		})).Return(nil)
@@ -676,22 +680,12 @@ func TestAgentsHandler_ListAgents(t *testing.T) {
 func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 	logger := slog.Default()
 
-	existingAgentID := id.NewAgentID()
-
 	t.Run("Create: !multiAgentEnabled + duplicate client_id → 409 Conflict", func(t *testing.T) {
 		mockRepo := new(MockAgentRepository)
 		mockServiceRepo := new(MockProviderRepository)
 		handler := newAgentsHandlerForTestWithMultiAgent(mockRepo, mockServiceRepo, logger, false)
 
-		existingAgent := &storage.Agent{
-			ID:          existingAgentID,
-			ClientID:    id.ClientID("shared-client"),
-			DisplayName: "Existing Agent",
-			Description: "Already registered",
-		}
-
-		// Handler should call GetByClientID before Create; return a conflict
-		mockRepo.On("GetByClientID", mock.Anything, id.ClientID("shared-client")).Return(existingAgent, nil)
+		mockRepo.On("ExistsOtherWithClientID", mock.Anything, id.ClientID("shared-client"), (*id.AgentID)(nil)).Return(true, nil)
 
 		reqBody := AgentRequest{
 			ClientID:    "shared-client",
@@ -732,7 +726,7 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		handler.CreateAgent(w, req)
 
 		assert.Equal(t, http.StatusCreated, w.Code)
-		mockRepo.AssertNotCalled(t, "GetByClientID")
+		mockRepo.AssertNotCalled(t, "ExistsOtherWithClientID")
 		mockRepo.AssertExpectations(t)
 	})
 
@@ -742,7 +736,6 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		handler := newAgentsHandlerForTestWithMultiAgent(mockRepo, mockServiceRepo, logger, false)
 
 		targetAgentID := id.NewAgentID()
-		otherAgentID := id.NewAgentID() // different agent that already owns the client_id
 
 		targetAgent := &storage.Agent{
 			ID:          targetAgentID,
@@ -750,16 +743,9 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 			DisplayName: "Target Agent",
 			Description: "Being updated",
 		}
-		otherAgent := &storage.Agent{
-			ID:          otherAgentID,
-			ClientID:    id.ClientID("shared-client"),
-			DisplayName: "Other Agent",
-			Description: "Already has shared-client",
-		}
 
 		mockRepo.On("Get", mock.Anything, targetAgentID).Return(targetAgent, nil)
-		// GetByClientID for the new client_id returns a DIFFERENT agent — conflict
-		mockRepo.On("GetByClientID", mock.Anything, id.ClientID("shared-client")).Return(otherAgent, nil)
+		mockRepo.On("ExistsOtherWithClientID", mock.Anything, id.ClientID("shared-client"), &targetAgentID).Return(true, nil)
 
 		reqBody := AgentRequest{
 			ClientID:    "shared-client",
@@ -797,8 +783,7 @@ func TestAgentsHandler_ClientIDUniqueness(t *testing.T) {
 		}
 
 		mockRepo.On("Get", mock.Anything, targetAgentID).Return(targetAgent, nil)
-		// GetByClientID returns the SAME agent — no conflict (self-update)
-		mockRepo.On("GetByClientID", mock.Anything, id.ClientID("my-client")).Return(targetAgent, nil)
+		mockRepo.On("ExistsOtherWithClientID", mock.Anything, id.ClientID("my-client"), &targetAgentID).Return(false, nil)
 		mockRepo.On("Update", mock.Anything, mock.Anything).Return(nil)
 
 		reqBody := AgentRequest{
