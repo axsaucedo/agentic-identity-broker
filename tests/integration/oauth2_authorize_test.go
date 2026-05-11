@@ -493,6 +493,10 @@ func (r *inMemoryAgentRepo) GetByClientURI(ctx context.Context, uri string) (*st
 	)
 }
 
+func (r *inMemoryAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
+}
+
 type inMemoryGrantRepo struct {
 	grants map[id.GrantID]*storage.UserGrant
 }

@@ -429,6 +429,16 @@ func (b *Builder) Build() (*App, error) {
 				if err != nil {
 					return "", fmt.Errorf("resolveAgentIdByClientId: %w", err)
 				}
+				// Guard against ambiguous state: if another agent also has this client_id
+				// (possible when multi_agent_client was previously enabled), resolution is
+				// non-deterministic and must fail loudly rather than silently pick one.
+				dup, dupErr := agentRepo.ExistsOtherWithClientID(ctx, id.ClientID(clientID), &agent.ID)
+				if dupErr != nil {
+					return "", fmt.Errorf("resolveAgentIdByClientId: duplicate check failed: %w", dupErr)
+				}
+				if dup {
+					return "", fmt.Errorf("resolveAgentIdByClientId: ambiguous client_id %q matches multiple agents; deduplicate before disabling multi_agent_client", clientID)
+				}
 				return agent.ID.String(), nil
 			}
 		}

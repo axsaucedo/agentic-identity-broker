@@ -53,6 +53,10 @@ func (r *integrationStubAgentRepo) GetByClientURI(_ context.Context, _ string) (
 	return nil, nil
 }
 
+func (r *integrationStubAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
+}
+
 // TestOAuth2TokenEndpoint_SuccessfulTokenExchange tests complete token exchange flow
 func TestOAuth2TokenEndpoint_SuccessfulTokenExchange(t *testing.T) {
 	agentID := id.NewAgentID()
