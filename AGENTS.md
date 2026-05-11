@@ -94,7 +94,7 @@ Read full ADRs in `adrs/` before implementing in their domain.
 
 | Term | Definition |
 |---|---|
-| **Agent** | AI agent with unique `client_id` (canonical identifier, used in OAuth2/consent flows via `GetByClientID`; optional in Admin API, defaults to agent UUID per ADR 017) and optional `client_uris` (CIMD URLs, resolved via `GetByClientURI`). Both resolve to the same entity; `client_id` is primary, client_uris are supplementary discovery handles. Has display name, optional service requirements (mandatory/optional) |
+| **Agent** | AI agent with unique `client_id` when set (canonical identifier, used in OAuth2/consent flows via `GetByClientID`; optional/nullable in the Admin API, and omitted values remain `NULL` per ADR 017) and optional `client_uris` (CIMD URLs, resolved via `GetByClientURI`). Both resolve to the same entity; `client_id` is primary, client_uris are supplementary discovery handles. Has display name, optional service requirements (mandatory/optional) |
 | **ThirdpartyOAuth2Service** | External OAuth2 provider (GitHub, Google, etc.) with client credentials and scopes |
 | **UserGrant** | User (principal) delegating specific OAuth2 scopes to an agent. One grant per user-agent pair (upsert) |
 | **DelegatedToken** | Component of a grant: {service_id, scopes[]} |
