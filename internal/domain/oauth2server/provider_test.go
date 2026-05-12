@@ -15,6 +15,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	dstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
 // newTestProvider creates a Provider with in-memory storage and test encryption
@@ -58,7 +59,7 @@ func setupTestCredentials(t *testing.T, provider *Provider, agentRepo ports.Agen
 	// Create agent
 	agent := &dstorage.Agent{
 		ID:          id.NewAgentID(),
-		ClientID:    id.ClientID("test-oauth2-client"),
+		ClientID:    ptr.To(id.ClientID("test-oauth2-client")),
 		DisplayName: "Test OAuth2 Agent",
 		Description: "Agent for provider test",
 	}

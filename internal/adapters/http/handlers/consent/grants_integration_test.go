@@ -17,6 +17,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,7 +48,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	// Create agent
 	agent := &storage.Agent{
 		ID:          testAgentID,
-		ClientID:    "client-test",
+		ClientID:    ptr.To(id.ClientID("client-test")),
 		DisplayName: "Test Agent",
 		Description: "Integration test agent",
 		CreatedAt:   time.Now(),
@@ -275,7 +276,7 @@ func TestGrantsIntegration_SessionToken_CreateGrantWithRedirect(t *testing.T) {
 
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    "client-test",
+		ClientID:    ptr.To(id.ClientID("client-test")),
 		DisplayName: "Test Agent",
 		Description: "Integration test agent",
 		CreatedAt:   time.Now(),
@@ -359,7 +360,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 
 	optionalAgent := &storage.Agent{
 		ID:          optionalAgentID,
-		ClientID:    "client-optional",
+		ClientID:    ptr.To(id.ClientID("client-optional")),
 		DisplayName: "Optional-Only Agent",
 		Description: "Agent with only optional service requirements",
 		ServiceRequirements: []storage.ServiceRequirement{
@@ -460,7 +461,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	// Create agent
 	agent := &storage.Agent{
 		ID:          testAgentID,
-		ClientID:    "client-validate",
+		ClientID:    ptr.To(id.ClientID("client-validate")),
 		DisplayName: "Validation Test Agent",
 		Description: "Test validation",
 		CreatedAt:   time.Now(),
