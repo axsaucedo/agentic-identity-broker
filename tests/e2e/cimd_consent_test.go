@@ -19,6 +19,7 @@ import (
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	domcimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -110,7 +111,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID("https://agent.example.com/client"),
+				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Example CIMD Agent",
 				Description: "E2E test agent for CIMD consent scenario",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -154,7 +155,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID("https://agent.example.com/client"),
+				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Localhost Redirect Agent",
 				Description: "E2E test agent for localhost redirect CIMD scenario",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -198,7 +199,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID("https://agent.example.com/client"),
+				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Advanced Detail Agent",
 				Description: "E2E test agent for CIMD advanced detail scenario",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -257,7 +258,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			agentID := id.NewAgentID()
 			agent := &domstorage.Agent{
 				ID:          agentID,
-				ClientID:    id.ClientID(agentID.String()),
+				ClientID:    ptr.To(id.ClientID(agentID.String())),
 				DisplayName: "Opaque Client Agent",
 				Description: "E2E test agent for opaque client_id scenario",
 				CreatedAt:   now,
@@ -291,7 +292,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID("https://agent.example.com/client"),
+				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Expired Session Agent",
 				Description: "E2E test for expired session rejection",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -324,7 +325,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID("https://agent.example.com/client"),
+				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Invalid Token Agent",
 				Description: "E2E test for invalid token rejection",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -348,7 +349,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID("https://agent.example.com/client"),
+				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Agent Mismatch Agent",
 				Description: "E2E test for agent mismatch rejection",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -384,7 +385,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID("https://agent.example.com/client"),
+				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Principal Isolation Agent",
 				Description: "E2E test for principal mismatch on GET consent",
 				ClientURIs:  []string{"https://agent.example.com/client"},

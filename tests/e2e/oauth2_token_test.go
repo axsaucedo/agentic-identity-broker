@@ -171,7 +171,7 @@ var _ = Describe("OAuth2 Token Endpoint E2E (User Story 2)", func() {
 			Expect(lastRequest.FormValue("code")).To(Equal("special-auth-code-xyz"))
 			Expect(lastRequest.FormValue("redirect_uri")).To(Equal("https://example.com/callback?with=params"))
 			// The broker replaces the broker-internal agent UUID with the agent's upstream client_id.
-			Expect(lastRequest.FormValue("client_id")).To(Equal(string(testAgent.ClientID)))
+			Expect(lastRequest.FormValue("client_id")).To(Equal(string(*testAgent.ClientID)))
 			Expect(lastRequest.FormValue("client_secret")).To(Equal("my-secret-key"))
 			Expect(lastRequest.FormValue("scope")).To(Equal("openid profile email"))
 			Expect(lastRequest.FormValue("code_verifier")).To(Equal("pkce-verifier-value"))

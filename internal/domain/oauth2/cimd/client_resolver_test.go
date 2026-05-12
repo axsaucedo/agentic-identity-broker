@@ -11,6 +11,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +54,7 @@ func TestCIMDClientResolver_OpaqueUUID_Success(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    id.ClientID(agentID.String()),
+		ClientID:    ptr.To(id.ClientID(agentID.String())),
 		DisplayName: "Test Agent",
 	}
 	repo := newMockAgentRepoForCR(agent)
@@ -110,7 +111,7 @@ func TestCIMDClientResolver_CIMDFetchFails(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    "https://agent.example.com/client",
+		ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 		DisplayName: "Test Agent",
 	}
 	repo := newMockAgentRepoForCR(agent)
@@ -131,7 +132,7 @@ func TestCIMDClientResolver_URLFormat_Success(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    clientURL,
+		ClientID:    ptr.To(id.ClientID(clientURL)),
 		DisplayName: "Test Agent",
 	}
 	repo := newMockAgentRepoForCR(agent)
@@ -162,7 +163,7 @@ func TestCIMDClientResolver_ResolvesViaCIMDURINotClientID(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000099")
 	agent := &storage.Agent{
 		ID:          agentID,
-		ClientID:    id.ClientID(agentID.String()), // UUID-form ClientID, not the CIMD URL
+		ClientID:    ptr.To(id.ClientID(agentID.String())), // UUID-form ClientID, not the CIMD URL
 		DisplayName: "URI-Only Agent",
 	}
 	repo := newMockAgentRepoForCR(agent)

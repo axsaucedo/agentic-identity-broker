@@ -11,6 +11,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domainstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +29,7 @@ func newIntegrationStubAgentRepo(agentID id.AgentID) *integrationStubAgentRepo {
 	return &integrationStubAgentRepo{
 		agent: &domainstorage.Agent{
 			ID:       agentID,
-			ClientID: id.ClientID("test-upstream-client-id"),
+			ClientID: ptr.To(id.ClientID("test-upstream-client-id")),
 		},
 	}
 }
@@ -51,6 +52,10 @@ func (r *integrationStubAgentRepo) GetByClientID(_ context.Context, _ id.ClientI
 }
 func (r *integrationStubAgentRepo) GetByClientURI(_ context.Context, _ string) (*domainstorage.Agent, error) {
 	return nil, nil
+}
+
+func (r *integrationStubAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
 }
 
 // TestOAuth2TokenEndpoint_SuccessfulTokenExchange tests complete token exchange flow

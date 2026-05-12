@@ -361,6 +361,9 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 	q := u.Query()
 
 	// Use agent.ClientID as upstream client_id (NOT the broker's internal agent UUID)
+	if agent.ClientID == nil {
+		return "", fmt.Errorf("agent %s has no upstream client_id configured", agent.ID)
+	}
 	q.Set("client_id", agent.ClientID.String())
 	q.Set("redirect_uri", req.RedirectURI)
 	q.Set("response_type", req.ResponseType)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
 func TestNewTokenClaimsEvaluator(t *testing.T) {
@@ -70,7 +71,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 			Client: &confidentialClient{clientID: agentID.String(),
 				agent: &storage.Agent{
 					ID:       agentID,
-					ClientID: id.ClientID("upstream-client-id"),
+					ClientID: ptr.To(id.ClientID("upstream-client-id")),
 				},
 				credential: &storage.ClientCredential{},
 			},
@@ -104,7 +105,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 
 		req := &fosite.Request{
 			Client: &confidentialClient{clientID: "test",
-				agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c", DisplayName: "My Agent"},
+				agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: ptr.To(id.ClientID("c")), DisplayName: "My Agent"},
 				credential: &storage.ClientCredential{},
 			},
 			Session: &fosite.DefaultSession{
@@ -128,7 +129,7 @@ func TestTokenClaimsEvaluator_Evaluate(t *testing.T) {
 		}
 		ar := fosite.NewAccessRequest(session)
 		ar.Client = &confidentialClient{clientID: "test",
-			agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: "c"},
+			agent:      &storage.Agent{ID: id.NewAgentID(), ClientID: ptr.To(id.ClientID("c"))},
 			credential: &storage.ClientCredential{},
 		}
 		ar.GrantTypes = fosite.Arguments{"client_credentials"}
@@ -151,7 +152,7 @@ func buildTestRequest(clientID, subject string, scopes []string) fosite.Requeste
 	}
 	agent := &storage.Agent{
 		ID:       id.NewAgentID(),
-		ClientID: id.ClientID(clientID),
+		ClientID: ptr.To(id.ClientID(clientID)),
 	}
 	return &fosite.Request{
 		Client:       &confidentialClient{clientID: agent.ID.String(), agent: agent, credential: &storage.ClientCredential{}},

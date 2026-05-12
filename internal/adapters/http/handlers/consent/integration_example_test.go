@@ -19,6 +19,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/go-chi/chi/v5"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -78,7 +79,7 @@ func TestIntegration_GetAgentDetail(t *testing.T) {
 	docsURL := "https://example.com/docs"
 	agent := &storage.Agent{
 		ID:                   testAgentID,
-		ClientID:             "client-123",
+		ClientID:             ptr.To(id.ClientID("client-123")),
 		DisplayName:          "Example AI Agent",
 		Description:          "An example AI agent for demonstrations",
 		GovernanceURL:        &govURL,
@@ -146,7 +147,7 @@ func TestIntegration_GetAgentGrants(t *testing.T) {
 
 	agent := &storage.Agent{
 		ID:          testAgentID,
-		ClientID:    "client-456",
+		ClientID:    ptr.To(id.ClientID("client-456")),
 		DisplayName: "Example Agent",
 		Description: "An example agent",
 		CreatedAt:   time.Now(),
@@ -233,7 +234,7 @@ func TestIntegration_AgentDetailFlow(t *testing.T) {
 	interfaceURL := "https://chat.myagent.ai"
 	agent := &storage.Agent{
 		ID:                   testAgentID,
-		ClientID:             "client-789",
+		ClientID:             ptr.To(id.ClientID("client-789")),
 		DisplayName:          "MyAgent AI Assistant",
 		Description:          "A helpful AI assistant that can access your data",
 		GovernanceURL:        &govURL,

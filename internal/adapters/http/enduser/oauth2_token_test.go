@@ -16,6 +16,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -69,7 +70,7 @@ func newStubAgentRepo(agentID id.AgentID, upstreamClientID string) *stubAgentRep
 	return &stubAgentRepo{
 		agent: &storage.Agent{
 			ID:       agentID,
-			ClientID: id.ClientID(upstreamClientID),
+			ClientID: ptr.To(id.ClientID(upstreamClientID)),
 		},
 	}
 }
@@ -88,6 +89,10 @@ func (r *stubAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storag
 
 func (r *stubAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
 	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
+}
+
+func (r *stubAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
 }
 
 // TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation tests Content-Type validation

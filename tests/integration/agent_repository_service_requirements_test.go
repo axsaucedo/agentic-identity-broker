@@ -12,6 +12,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domainStorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +43,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 
 		agent := &domainStorage.Agent{
 			ID:          agentID,
-			ClientID:    "client-sr-1",
+			ClientID:    ptr.To(id.ClientID("client-sr-1")),
 			DisplayName: "Service Requirements Agent",
 			Description: "Agent with service requirements",
 			CreatedAt:   time.Now().UTC(),
@@ -81,7 +82,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		// Create initial agent with one requirement
 		agent := &domainStorage.Agent{
 			ID:          agentID,
-			ClientID:    "client-sr-2",
+			ClientID:    ptr.To(id.ClientID("client-sr-2")),
 			DisplayName: "Update Test Agent",
 			Description: "Agent for update testing",
 			CreatedAt:   time.Now().UTC(),
@@ -126,7 +127,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 		// Create agent without service requirements
 		agent := &domainStorage.Agent{
 			ID:          id.MustParseAgentID("a1234567-0003-0003-0003-000000000003"),
-			ClientID:    "client-sr-3",
+			ClientID:    ptr.To(id.ClientID("client-sr-3")),
 			DisplayName: "Legacy Agent",
 			Description: "Agent without service requirements",
 			CreatedAt:   time.Now().UTC(),
@@ -149,7 +150,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 
 		agent := &domainStorage.Agent{
 			ID:                  id.MustParseAgentID("a1234567-0004-0004-0004-000000000004"),
-			ClientID:            "client-sr-4",
+			ClientID:            ptr.To(id.ClientID("client-sr-4")),
 			DisplayName:         "Empty Requirements Agent",
 			Description:         "Agent with empty requirements array",
 			CreatedAt:           time.Now().UTC(),
@@ -176,7 +177,7 @@ func TestAgentRepositoryServiceRequirements_Memory(t *testing.T) {
 
 		agent := &domainStorage.Agent{
 			ID:          id.MustParseAgentID("a1234567-0005-0005-0005-000000000005"),
-			ClientID:    "client-sr-5",
+			ClientID:    ptr.To(id.ClientID("client-sr-5")),
 			DisplayName: "Multi Service Agent",
 			Description: "Agent with multiple service requirements",
 			CreatedAt:   time.Now().UTC(),
