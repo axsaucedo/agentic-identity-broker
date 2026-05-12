@@ -2,6 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-05-11
+**Updated**: 2026-05-12
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -31,4 +32,11 @@
 
 ## Notes
 
-- All items pass. Spec is ready for `/speckit.clarify` or `/speckit.plan`.
+- All items pass. Classification is property-based (not format-based):
+  - `Agent.ClientID` set → proxy-class
+  - `client_uris` set (no `ClientID`) → local CIMD-class
+  - Neither → local plain-class
+- Three-step resolution (URL → UUID → GetByClientID) handles UUID-format upstream client_ids.
+- CIMD agents rejected when accessed by UUID (must use URL).
+- Depends on separate workstream making `Agent.ClientID` optional.
+- Spec is ready for `/speckit.clarify` or `/speckit.plan`.

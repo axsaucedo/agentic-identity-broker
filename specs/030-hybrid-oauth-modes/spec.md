@@ -3,7 +3,7 @@
 **Feature Branch**: `030-hybrid-oauth-modes`  
 **Created**: 2026-05-11  
 **Status**: Draft  
-**Input**: Overhaul OAuth server mode management: rename modes symmetrically (proxy, local, hybrid), introduce hybrid mode allowing proxy and local clients to coexist, make modes first-class architectural citizens with dedicated configuration and strategy-based wiring.
+**Input**: Overhaul OAuth server mode management: rename modes symmetrically (proxy, local, hybrid), introduce hybrid mode allowing proxy and local clients to coexist. Agent class (proxy or local) is derived implicitly from agent properties after resolution — `Agent.ClientID` set → proxy, `client_uris` set → local CIMD, neither → local plain. Resolution uses ordered precedence (URL → UUID → GetByClientID) to handle UUID-format upstream client_ids. Classification is universal across all modes; each mode strategy accepts or rejects agent classes. No explicit routing field. Proxy agent tokens follow the established proxy token approach (no re-signing). Hybrid mode coexists with local clients with and without CIMD support.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -26,28 +26,58 @@ An operator configures the broker's OAuth server mode using one of three clearly
 
 ---
 
-### User Story 2 - Hybrid Mode: Proxy and Local Clients Coexist (Priority: P1)
+### User Story 2 - Universal Agent Resolution, Classification, and Mode Enforcement (Priority: P1)
 
-An operator runs the broker in `hybrid` mode, where some agents are served by proxying to an upstream OAuth2 server and others are served by the broker's local token issuance. The routing decision is per-agent via an explicit `routing_mode` field: each registered agent declares whether it uses the proxy path or the local path (defaulting to `proxy` for backward compatibility). All clients belonging to a given agent inherit its routing.
+**Terminology**: This spec distinguishes between two uses of "client_id":
+- **Request `client_id`**: The `client_id` parameter sent by the caller in an OAuth2 `/authorize` or `/token` request. Its format varies — it may be a UUID, a URL, or an opaque string.
+- **`Agent.ClientID`**: The optional stored field on the Agent entity representing the agent's registered upstream/external OAuth2 client identifier (e.g., `github-app-abc123`). Only set for proxy-class agents. Used to resolve agents in the proxy path via `GetByClientID`.
 
-**Why this priority**: This is the core new capability. It enables deployments where some clients need upstream integration while others use locally issued tokens — both within a single broker instance.
+These are distinct concepts. The request `client_id` is used for agent resolution; the resolved agent's properties determine its class.
 
-**Independent Test**: Can be tested by registering two agents — one proxy-routed and one locally-routed — and verifying each follows its correct authorization flow.
+Every incoming OAuth2 request goes through a **resolution step** followed by **agent-property-based classification**. This is universal — it runs in every mode. The active mode strategy then determines whether the classified agent is permitted or rejected.
+
+**Resolution** (ordered, first match wins):
+1. If the request `client_id` is a URL → resolve via `GetByClientURI` (CIMD path)
+2. If the request `client_id` is a valid UUID → resolve via `Agent.ID` (primary key lookup)
+3. Otherwise → resolve via `GetByClientID` (upstream client_id lookup, also handles UUID-format upstream client_ids)
+
+If step 2 finds no match and the request `client_id` is a valid UUID, resolution falls through to step 3 — this handles proxy agents whose upstream `Agent.ClientID` happens to be a UUID.
+
+**Agent classification** (based on resolved agent's properties):
+- **Proxy-class**: Agent has `Agent.ClientID` set (has upstream OAuth2 registration). The request is forwarded to the upstream OAuth2 server. Tokens are returned as-is (no re-signing).
+- **Local CIMD-class**: Agent has `client_uris` but no `Agent.ClientID`. The broker issues tokens locally. Must be resolved via URL (step 1); resolution via UUID (step 2) for a CIMD agent MUST be rejected — CIMD agents must be discovered via their URL, not by internal ID.
+- **Local plain-class**: Agent has neither `Agent.ClientID` nor `client_uris`. The broker issues tokens locally. Resolved via UUID (step 2).
+
+**Mode enforcement**:
+- **`proxy` mode**: Only proxy-class agents are permitted. Local-class agents (CIMD or plain) are rejected with an error explaining that local clients are not supported in proxy mode.
+- **`local` mode**: Only local-class agents (CIMD and plain) are permitted. Proxy-class agents are rejected with an error explaining that proxy clients are not supported in local mode.
+- **`hybrid` mode**: All agent classes are permitted. Both proxy and local paths coexist.
+
+This design makes mode a true strategy boundary — the resolution and classification logic is shared, and each mode strategy acts as a filter that accepts or rejects agent classes. Classification is derived from existing agent properties (`Agent.ClientID` and `client_uris`), not from the format of the request `client_id`. No new entity field is introduced.
+
+**Why this priority**: This is the core new capability. Universal resolution and classification with mode-based enforcement makes modes first-class architectural strategies rather than ad-hoc config switches, and naturally enables hybrid mode as the union of proxy and local.
+
+**Independent Test**: Can be tested per mode by registering agents of each class (proxy with `ClientID`, local CIMD with `client_uris`, local plain with neither) and sending requests — verifying each mode accepts the correct agent classes and rejects the others with clear errors.
 
 **Acceptance Scenarios**:
 
-1. **Given** the broker runs in `hybrid` mode with a proxy-routed agent and a local-routed agent, **When** the proxy-routed agent initiates an authorization flow, **Then** the request is forwarded to the upstream OAuth2 server.
-2. **Given** the broker runs in `hybrid` mode, **When** the local-routed agent initiates an authorization flow, **Then** the broker issues tokens locally (authorization code, access token).
-3. **Given** the broker runs in `hybrid` mode, **When** a request arrives for an unknown client, **Then** the broker rejects the request with an appropriate error.
-4. **Given** the broker runs in `hybrid` mode with a local-routed agent, **When** the agent requests client credentials, **Then** the broker issues tokens via the client credentials grant (local behavior).
-5. **Given** the broker runs in `hybrid` mode, **When** the JWKS endpoint is requested, **Then** the broker serves its local signing keys (needed for local-routed clients).
-6. **Given** the broker runs in `hybrid` mode, **When** the OAuth2 metadata endpoint is requested, **Then** the response reflects the capabilities of the hybrid mode (JWKS URI present, supported grant types from both paths).
+1. **Given** the broker runs in `hybrid` mode and a proxy-class agent (has `Agent.ClientID`) is registered, **When** an authorization request arrives with that agent's `Agent.ClientID` as request `client_id`, **Then** the agent is resolved via `GetByClientID`, the request is forwarded to the upstream OAuth2 server, and the upstream token is returned as-is (no re-signing).
+2. **Given** the broker runs in `hybrid` mode and a proxy-class agent has a UUID-format `Agent.ClientID`, **When** an authorization request arrives with that UUID as request `client_id`, **Then** the resolution first tries `Agent.ID` (no match), then falls through to `GetByClientID` (match), and the request is forwarded to upstream.
+3. **Given** the broker runs in `hybrid` mode and a plain local agent (no `Agent.ClientID`, no `client_uris`) is registered, **When** an authorization request arrives with the agent's UUID as request `client_id`, **Then** the broker resolves the agent by primary key and issues tokens locally.
+4. **Given** the broker runs in `hybrid` mode with CIMD enabled and a CIMD agent (has `client_uris`, no `Agent.ClientID`) is registered, **When** an authorization request arrives with a URL-format request `client_id` matching one of the agent's `client_uris`, **Then** the broker resolves the agent via `GetByClientURI` and issues tokens locally.
+5. **Given** a CIMD agent (has `client_uris`) is registered, **When** an authorization request arrives with the agent's UUID as request `client_id`, **Then** the broker rejects the request — CIMD agents must be addressed via their URL, not by internal ID.
+6. **Given** the broker runs in any mode, **When** a request arrives with a request `client_id` that cannot be resolved by any resolution path, **Then** the broker rejects the request with an appropriate error.
+7. **Given** the broker runs in `proxy` mode, **When** an authorization request resolves to a local-class agent (CIMD or plain), **Then** the broker rejects the request with an error explaining that local clients are not supported in proxy mode.
+8. **Given** the broker runs in `local` mode, **When** an authorization request resolves to a proxy-class agent, **Then** the broker rejects the request with an error explaining that proxy clients are not supported in local mode.
+9. **Given** the broker runs in `hybrid` mode, **When** a local plain agent requests client credentials (UUID-format request `client_id`), **Then** the broker issues tokens via the client credentials grant (local behavior).
+10. **Given** the broker runs in `hybrid` mode, **When** the JWKS endpoint is requested, **Then** the broker serves its local signing keys (needed for local-class clients).
+11. **Given** the broker runs in `hybrid` mode, **When** the OAuth2 metadata endpoint is requested, **Then** the response reflects the capabilities of the hybrid mode (JWKS URI present, supported grant types from both paths).
 
 ---
 
 ### User Story 3 - Mode-Specific Feature Gating (Priority: P2)
 
-Certain features are only available in specific modes. For example, CIMD (Client Identity Metadata Discovery) is only available for local-routed clients — meaning it works in `local` mode and in `hybrid` mode (for non-proxy agents), but never in `proxy` mode. The configuration validates and enforces these constraints.
+Certain features are only available in specific modes. CIMD (Client Identity Metadata Discovery) is only available for local-class agents — meaning it works in `local` mode and in `hybrid` mode (for local-class agents), but never in `proxy` mode. The configuration validates and enforces these constraints.
 
 **Why this priority**: Feature gating ensures operators cannot enable incompatible combinations, preventing runtime errors and security misconfigurations.
 
@@ -57,14 +87,14 @@ Certain features are only available in specific modes. For example, CIMD (Client
 
 1. **Given** a configuration with `mode: proxy` and CIMD enabled, **When** the broker starts, **Then** it rejects the configuration with a clear error explaining CIMD is not available in proxy mode.
 2. **Given** a configuration with `mode: local` and CIMD enabled, **When** the broker starts, **Then** it accepts the configuration and CIMD is operational.
-3. **Given** a configuration with `mode: hybrid` and CIMD enabled, **When** the broker starts, **Then** it accepts the configuration and CIMD is operational for local-routed clients only.
-4. **Given** a configuration with `mode: hybrid` and CIMD enabled, **When** a proxy-routed client attempts a CIMD flow, **Then** the broker does not apply CIMD behavior for that client.
+3. **Given** a configuration with `mode: hybrid` and CIMD enabled, **When** the broker starts, **Then** it accepts the configuration and CIMD is operational for local-class agents only.
+4. **Given** a configuration with `mode: hybrid` and CIMD enabled, **When** a proxy-class agent is resolved (agent has `Agent.ClientID`), **Then** the broker does not apply CIMD behavior and forwards to upstream.
 
 ---
 
 ### User Story 4 - Mode as First-Class Architectural Strategy (Priority: P2)
 
-The mode selection drives the entire wiring of the system at startup. Rather than sprinkling mode checks throughout handlers and services, the builder selects a mode strategy that assembles the correct set of components. Code branching on mode happens once at the top level (builder/wiring), not scattered across handlers.
+The mode selection drives the entire wiring of the system at startup. The universal resolution and agent-property-based classification runs for every request, and the mode strategy acts as an accept/reject filter on the classified agent. Rather than sprinkling mode checks throughout handlers and services, the builder selects a mode strategy that assembles the correct set of components. Code branching on mode happens once at the top level (builder/wiring), not scattered across handlers.
 
 **Why this priority**: Architectural cleanliness prevents subtle bugs from inconsistent mode branching and makes adding future modes straightforward.
 
@@ -80,9 +110,14 @@ The mode selection drives the entire wiring of the system at startup. Rather tha
 ### Edge Cases
 
 - What happens when hybrid mode is configured but no upstream endpoints are provided? The system rejects the configuration — hybrid mode requires both proxy config (upstream endpoints) and local config (signing keys, etc.).
-- What happens when an agent registered in hybrid mode has no explicit routing designation? The agent defaults to `proxy` routing (backward-compatible default for pre-existing agent configurations). This default is applied at validation time and persisted explicitly.
 - What happens when an operator migrates from `issue_token` to `local`? The system provides a clear deprecation error pointing to the new name. No silent fallback.
 - How does the OAuth2 metadata endpoint behave in hybrid mode? It exposes the union of capabilities (JWKS URI, all supported grant types) so agents on both routing paths can discover the server's features.
+- What happens when a plain local agent (no `ClientID`, no `client_uris`) is resolved in hybrid mode? The agent works — clients use the agent's UUID as the request `client_id`, resolution finds it by `Agent.ID`, classification sees no `ClientID` → local-class.
+- What happens when a UUID-format request `client_id` resolves to a CIMD agent (agent has `client_uris`)? The request is rejected. CIMD agents must be discovered and addressed via their URL-format `client_id`, not by internal UUID. This prevents bypassing CIMD validation.
+- What happens when a proxy agent's `Agent.ClientID` is a UUID? Resolution tries `Agent.ID` first (no match, since the UUID belongs to the proxy agent's upstream registration, not its primary key), then falls through to `GetByClientID` which finds the agent. The agent has `ClientID` set → proxy-class, forwarded to upstream.
+- What happens in `proxy` mode if a local-class agent is resolved? The proxy mode strategy rejects it with a clear error. This prevents accidental local agent usage in a proxy-only deployment.
+- What happens in `local` mode if a proxy-class agent is resolved? The local mode strategy rejects it with a clear error. This prevents accidental proxy usage in a local-only deployment.
+- What happens if a UUID-format request `client_id` matches both an `Agent.ID` (local) and a different agent's `Agent.ClientID` (proxy)? Resolution uses ordered precedence — `Agent.ID` match wins (step 2 before step 3). The resolved agent's properties then determine classification.
 
 ## Requirements *(mandatory)*
 
@@ -90,17 +125,22 @@ The mode selection drives the entire wiring of the system at startup. Rather tha
 
 - **FR-001**: System MUST support exactly three mutually exclusive OAuth server modes: `proxy`, `local`, and `hybrid`.
 - **FR-002**: The mode name `issue_token` MUST be rejected at configuration time with a deprecation message directing the operator to use `local`.
-- **FR-003**: In `proxy` mode, all OAuth2 authorization and token requests MUST be forwarded to the configured upstream OAuth2 server.
-- **FR-004**: In `local` mode, the broker MUST issue authorization codes and tokens directly, fully replacing the former `issue_token` behavior.
-- **FR-005**: In `hybrid` mode, the broker MUST support both proxy-routed and locally-routed agents within the same instance.
-- **FR-006**: In `hybrid` mode, the routing decision (proxy vs. local) MUST be determined per-agent via an explicit `routing_mode` field on the Agent entity. This field MUST be a strongly typed value (`proxy` or `local`). For agents without an explicit value, the system MUST default to `proxy` (backward-compatible with pre-existing configurations).
-- **FR-007**: Configuration validation MUST reject mode-incompatible parameter combinations (e.g., upstream endpoints in `local` mode, CIMD in `proxy` mode) with clear, actionable error messages.
-- **FR-008**: Mode-specific features (e.g., CIMD, client credentials grant) MUST be gated by mode — available only in modes where they are meaningful.
-- **FR-009**: The JWKS endpoint MUST be served in `local` and `hybrid` modes, and MUST NOT be served in `proxy` mode.
-- **FR-010**: The OAuth2 metadata endpoint MUST reflect the actual capabilities of the active mode.
-- **FR-011**: Mode selection MUST drive strategy wiring at startup (builder) — runtime mode branching in handlers and services is not permitted.
-- **FR-012**: Each mode MUST have a dedicated configuration section that contains only parameters relevant to that mode, eliminating cross-mode field ambiguity.
-- **FR-013**: `hybrid` mode configuration MUST require both proxy-related parameters (upstream endpoints) and local-related parameters (signing key config, token TTL).
+- **FR-003**: The system MUST resolve every incoming OAuth2 request's `client_id` using an ordered resolution strategy: (1) URL → `GetByClientURI`, (2) UUID → `Agent.ID` primary key lookup, (3) fallback → `GetByClientID`. If step 2 finds no match and the value is a valid UUID, resolution MUST fall through to step 3. This resolution MUST be universal across all modes.
+- **FR-004**: After resolution, agent classification MUST be derived from the resolved agent's properties: agent has `Agent.ClientID` set → proxy-class; agent has `client_uris` (no `Agent.ClientID`) → local CIMD-class; agent has neither → local plain-class.
+- **FR-005**: When a UUID-format request `client_id` resolves to an agent via `Agent.ID` (step 2) and that agent has `client_uris` (CIMD agent), the request MUST be rejected with an error. CIMD agents MUST only be addressed via their URL-format `client_id`.
+- **FR-006**: In `proxy` mode, the mode strategy MUST accept proxy-class agents and MUST reject local-class agents (CIMD or plain) with an actionable error.
+- **FR-007**: In `local` mode, the mode strategy MUST accept local-class agents and MUST reject proxy-class agents with an actionable error. This fully replaces the former `issue_token` behavior.
+- **FR-008**: In `hybrid` mode, the mode strategy MUST accept both proxy-class and local-class agents within the same instance.
+- **FR-008**: Proxy-class request tokens MUST follow the established proxy token approach — tokens from the upstream OAuth2 server are passed through as-is without re-signing or transformation.
+- **FR-009**: Local-class requests MUST receive locally issued tokens from the broker, whether resolved by UUID (plain local agent) or by CIMD URL (CIMD-enabled agent).
+- **FR-010**: Configuration validation MUST reject mode-incompatible parameter combinations (e.g., upstream endpoints in `local` mode, CIMD in `proxy` mode) with clear, actionable error messages.
+- **FR-011**: Mode-specific features (e.g., CIMD, client credentials grant) MUST be gated by mode — available only in modes where they are meaningful.
+- **FR-012**: The JWKS endpoint MUST be served in `local` and `hybrid` modes, and MUST NOT be served in `proxy` mode.
+- **FR-013**: The OAuth2 metadata endpoint MUST reflect the actual capabilities of the active mode.
+- **FR-014**: Mode selection MUST drive strategy wiring at startup (builder) — runtime mode branching in handlers and services is not permitted.
+- **FR-015**: Each mode MUST have a dedicated configuration section that contains only parameters relevant to that mode, eliminating cross-mode field ambiguity.
+- **FR-016**: `hybrid` mode configuration MUST require both proxy-related parameters (upstream endpoints) and local-related parameters (signing key config, token TTL).
+- **FR-017**: No new field MUST be introduced on the Agent entity. Agent classification is derived from existing properties (`Agent.ClientID` presence and `client_uris` presence).
 
 ### Domain Model
 
@@ -112,9 +152,9 @@ erDiagram
         string name "proxy | local | hybrid"
     }
     Agent {
-        uuid id PK
-        string client_id
-        string routing_mode "proxy | local (hybrid only)"
+        uuid id PK "used as request client_id for local plain agents"
+        string client_id "optional - upstream OAuth2 client_id, set = proxy-class"
+        string[] client_uris "optional - CIMD URLs, set = local CIMD-class"
     }
     ModeStrategy {
         string type "interface"
@@ -123,26 +163,36 @@ erDiagram
     ModeStrategy ||--o{ Agent : "serves"
 ```
 
-**Activity / Flow Diagram**:
+**Activity / Flow Diagram (Universal Resolution, Classification + Mode Enforcement)**:
 
 ```mermaid
 flowchart TD
-    A["Broker starts"] --> B["Read config mode"]
-    B --> C{"Mode?"}
-    C -->|proxy| D["Wire ProxyModeStrategy"]
-    C -->|local| E["Wire LocalModeStrategy"]
-    C -->|hybrid| F["Wire HybridModeStrategy"]
-    D --> G["Inject proxy strategies into handlers"]
-    E --> H["Inject local strategies into handlers"]
-    F --> I["Inject hybrid router that delegates per-agent"]
-    G --> J["Ready to serve"]
-    H --> J
-    I --> J
+    A["Request arrives with request client_id"] --> B{"request client_id format?"}
+    B -->|URL| C["Resolve via GetByClientURI"]
+    B -->|UUID| D["Resolve via Agent.ID"]
+    B -->|Other| E["Resolve via GetByClientID"]
+    D --> D1{"Agent found?"}
+    D1 -->|No| E
+    D1 -->|Yes| D2{"Agent has client_uris?"}
+    D2 -->|Yes| D3["Reject: CIMD agents must use URL"]
+    D2 -->|No| F["Agent resolved"]
+    C --> F
+    E --> F
+    F --> G{"Agent.ClientID set?"}
+    G -->|Yes| H["Classified: proxy-class"]
+    G -->|No, has client_uris| I["Classified: local CIMD-class"]
+    G -->|No, no client_uris| J["Classified: local plain-class"]
+    H --> K{"Mode accepts proxy?"}
+    I --> L{"Mode accepts local?"}
+    J --> L
+    K -->|"proxy / hybrid"| M["Forward to upstream, return token as-is"]
+    K -->|"local"| N["Reject: proxy not supported"]
+    L -->|"local / hybrid"| O["Issue token locally"]
+    L -->|"proxy"| P["Reject: local not supported"]
 ```
 
 **Value Objects**:
 - **OAuthServerMode**: Enumeration of `proxy`, `local`, `hybrid`. Immutable once validated. Determines the entire wiring strategy.
-- **AgentRoutingMode**: Explicit field on Agent entity with values `proxy` or `local`. Defaults to `proxy` when not set (backward-compatible). The field is always accepted and persisted regardless of server mode, enabling operators to pre-configure agents before switching to hybrid mode. In `proxy`-only or `local`-only server modes, the field has no runtime effect (all agents follow the server mode). In `hybrid` mode, it drives per-agent routing decisions. Strongly typed in code to enable compile-time safety and mode-specific validation.
 
 ### Configuration Requirements
 
@@ -175,6 +225,7 @@ oauth2_authorization_server:
     enabled: true
 
 # Hybrid mode — both proxy and local clients
+# Agent class derived from agent properties: Agent.ClientID set → proxy, client_uris → local CIMD, neither → local plain
 oauth2_authorization_server:
   mode: hybrid
   proxy:
@@ -196,23 +247,31 @@ oauth2_authorization_server:
 ### Security Requirements
 
 - **SR-001**: Mode configuration MUST be validated before any server component starts — invalid mode config MUST prevent startup entirely (fail closed).
-- **SR-002**: In hybrid mode, a proxy-routed client MUST NOT be able to obtain locally-issued tokens, and a locally-routed client MUST NOT trigger upstream proxy flows.
+- **SR-002**: Each mode strategy MUST enforce strict class boundaries — proxy-class requests MUST NOT reach local token issuance, and local-class requests MUST NOT reach the upstream proxy path. Violations MUST result in an explicit error, not silent routing.
 - **SR-003**: The deprecated `issue_token` mode name MUST NOT silently fall back to `local` — it MUST produce an explicit error requiring operator action.
+- **SR-004**: Proxy-class agent tokens MUST NOT be re-signed or transformed — they are returned from the upstream server as-is, preserving the upstream token's integrity and signature.
 
 ## Assumptions
 
 - The existing strategy pattern (AuthorizationProceedStrategy, TokenGrantStrategy) is the correct architectural foundation and will be extended, not replaced.
-- In hybrid mode, per-agent routing designation will use an existing or new field on the Agent entity to indicate `proxy` or `local` routing.
+- Agent classification is based on agent properties after resolution, not on the format of the request `client_id`. The three-step resolution (URL → UUID → `GetByClientID`) handles all request `client_id` formats including UUID-format upstream client_ids. Each mode strategy then accepts or rejects the classified agent.
+- `Agent.ClientID` is becoming optional (separate workstream). Only proxy-class agents have a value set. Local agents (both CIMD and plain) do not.
 - The OAuth2 metadata endpoint in hybrid mode will advertise the union of capabilities from both proxy and local paths.
 - Migration from `issue_token` to `local` is a configuration-only change — no data migration is needed.
 - The `supported_grant_types` field in the config may differ between the proxy and local sections in hybrid mode.
+- Proxy-class tokens use the same pass-through mechanism as current proxy mode — no re-signing, no local token wrapping.
+- Local plain agents are addressed by their UUID (`Agent.ID` used as request `client_id`) — this is the existing behavior in `issue_token`/`local` mode.
+- CIMD agents are addressed via their URL (`client_uris`) — UUID-based access is explicitly rejected.
+- Proxy agents are addressed by their `Agent.ClientID` (the upstream OAuth2 client identifier, which may itself be a UUID) used as the request `client_id`.
+- No new fields on the Agent entity are required. Classification relies on the existing `Agent.ClientID` (becoming optional) and `client_uris` properties.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
 - **SC-001**: Operators can configure any of the three modes (proxy, local, hybrid) and the system starts successfully with valid configuration within the same startup time as current single-mode operation.
-- **SC-002**: In hybrid mode, proxy-routed and locally-routed clients complete their respective OAuth2 flows without cross-contamination — 100% of requests are routed to the correct path.
+- **SC-002**: Agents are classified correctly based on their properties — agents with `Agent.ClientID` take the proxy path, agents with `client_uris` take the local CIMD path, agents with neither take the local plain path. Unsupported classes in limited modes are rejected with actionable errors.
 - **SC-003**: Invalid mode configurations are rejected at startup with actionable error messages — operators can resolve configuration errors on first attempt in 100% of cases.
 - **SC-004**: Adding a future mode-specific feature requires extending a strategy interface, not modifying existing handler code — verified by the absence of runtime mode checks in handler and service layers.
 - **SC-005**: All existing proxy-mode and local-mode (formerly issue_token) deployments continue to work with only a mode name change in configuration — zero behavioral regression.
+- **SC-006**: Hybrid mode requires no new fields on the Agent entity — classification is derived from existing `Agent.ClientID` and `client_uris` properties.
