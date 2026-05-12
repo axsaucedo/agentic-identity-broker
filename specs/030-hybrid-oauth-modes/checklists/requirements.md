@@ -32,11 +32,12 @@
 
 ## Notes
 
-- All items pass. Classification is property-based (not format-based):
+- All items pass. Classification is property-based:
   - `Agent.ClientID` set → proxy-class
   - `client_uris` set (no `ClientID`) → local CIMD-class
   - Neither → local plain-class
-- Three-step resolution (URL → UUID → GetByClientID) handles UUID-format upstream client_ids.
+- Resolution: URL → `GetByClientURI`, UUID → `Agent.ID`. No `GetByClientID` fallback.
+- All agents addressed by `Agent.ID` (UUID) on `/authorize` — upstream `Agent.ClientID` never exposed.
 - CIMD agents rejected when accessed by UUID (must use URL).
 - `Agent.ClientID` is already optional (migration 016 done). No dependency on other workstreams.
 - Spec is ready for `/speckit.clarify` or `/speckit.plan`.
