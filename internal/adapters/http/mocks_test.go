@@ -3,13 +3,10 @@ package http
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -154,16 +151,4 @@ func (h *TestServerLifecycle) SimulateShutdown(serverIdx int, timeout time.Durat
 // HealthStatus returns the current health state for server i.
 func (h *TestServerLifecycle) HealthStatus(serverIdx int) ports.HealthState {
 	return ports.HealthState(atomic.LoadInt32(&h.healthState[serverIdx]))
-}
-
-// NewTestServer creates an HTTP server with a simple no-op route setup for testing.
-// This is a convenience function for tests that just need to verify server lifecycle
-// without registering actual routes.
-func NewTestServer(config ServerConfig, logger *slog.Logger) *Server {
-	// Simple route setup function that does nothing
-	routeSetup := func(r chi.Router) {
-		// No-op - health endpoint is already registered by Server.setupRoutes()
-	}
-
-	return NewServer(config, routeSetup, logger)
 }
