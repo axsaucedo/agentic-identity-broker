@@ -38,5 +38,5 @@
   - Neither → local plain-class
 - Three-step resolution (URL → UUID → GetByClientID) handles UUID-format upstream client_ids.
 - CIMD agents rejected when accessed by UUID (must use URL).
-- Depends on separate workstream making `Agent.ClientID` optional.
+- `Agent.ClientID` is already optional (migration 016 done). No dependency on other workstreams.
 - Spec is ready for `/speckit.clarify` or `/speckit.plan`.

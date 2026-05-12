@@ -255,7 +255,7 @@ oauth2_authorization_server:
 
 - The existing strategy pattern (AuthorizationProceedStrategy, TokenGrantStrategy) is the correct architectural foundation and will be extended, not replaced.
 - Agent classification is based on agent properties after resolution, not on the format of the request `client_id`. The three-step resolution (URL → UUID → `GetByClientID`) handles all request `client_id` formats including UUID-format upstream client_ids. Each mode strategy then accepts or rejects the classified agent.
-- `Agent.ClientID` is becoming optional (separate workstream). Only proxy-class agents have a value set. Local agents (both CIMD and plain) do not.
+- `Agent.ClientID` is already optional (nullable pointer, migration 016). Only proxy-class agents have a value set. Local agents (both CIMD and plain) have `nil`.
 - The OAuth2 metadata endpoint in hybrid mode will advertise the union of capabilities from both proxy and local paths.
 - Migration from `issue_token` to `local` is a configuration-only change — no data migration is needed.
 - The `supported_grant_types` field in the config may differ between the proxy and local sections in hybrid mode.
