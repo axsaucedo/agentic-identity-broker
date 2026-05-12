@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +24,7 @@ func TestAgent_Validate(t *testing.T) {
 			name: "valid agent with all fields",
 			agent: &Agent{
 				ID:                   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:             id.ClientID("test-client"),
+				ClientID:             ptr.To(id.ClientID("test-client")),
 				DisplayName:          "Test Agent",
 				Description:          "A test agent for validation",
 				GovernanceURL:        &validGovernanceURL,
@@ -36,7 +37,7 @@ func TestAgent_Validate(t *testing.T) {
 			name: "valid agent with minimal fields",
 			agent: &Agent{
 				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:    id.ClientID("test-client"),
+				ClientID:    ptr.To(id.ClientID("test-client")),
 				DisplayName: "Test Agent",
 				Description: "A test agent",
 			},
@@ -45,26 +46,26 @@ func TestAgent_Validate(t *testing.T) {
 		{
 			name: "missing ID",
 			agent: &Agent{
-				ClientID:    id.ClientID("test-client"),
+				ClientID:    ptr.To(id.ClientID("test-client")),
 				DisplayName: "Test Agent",
 				Description: "A test agent",
 			},
 			wantErr: "agent ID cannot be empty",
 		},
 		{
-			name: "missing client_id",
+			name: "nil client_id is valid",
 			agent: &Agent{
 				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
 				DisplayName: "Test Agent",
 				Description: "A test agent",
 			},
-			wantErr: "client_id is required",
+			wantErr: "",
 		},
 		{
 			name: "missing display_name",
 			agent: &Agent{
 				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:    id.ClientID("test-client"),
+				ClientID:    ptr.To(id.ClientID("test-client")),
 				Description: "A test agent",
 			},
 			wantErr: "display_name is required",
@@ -73,7 +74,7 @@ func TestAgent_Validate(t *testing.T) {
 			name: "display_name too long",
 			agent: &Agent{
 				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:    id.ClientID("test-client"),
+				ClientID:    ptr.To(id.ClientID("test-client")),
 				DisplayName: strings.Repeat("a", 256),
 				Description: "A test agent",
 			},
@@ -83,7 +84,7 @@ func TestAgent_Validate(t *testing.T) {
 			name: "missing description",
 			agent: &Agent{
 				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:    id.ClientID("test-client"),
+				ClientID:    ptr.To(id.ClientID("test-client")),
 				DisplayName: "Test Agent",
 			},
 			wantErr: "description is required",
@@ -92,7 +93,7 @@ func TestAgent_Validate(t *testing.T) {
 			name: "description too long",
 			agent: &Agent{
 				ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:    id.ClientID("test-client"),
+				ClientID:    ptr.To(id.ClientID("test-client")),
 				DisplayName: "Test Agent",
 				Description: strings.Repeat("a", 1001),
 			},
@@ -102,7 +103,7 @@ func TestAgent_Validate(t *testing.T) {
 			name: "invalid governance_url",
 			agent: &Agent{
 				ID:            id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:      id.ClientID("test-client"),
+				ClientID:      ptr.To(id.ClientID("test-client")),
 				DisplayName:   "Test Agent",
 				Description:   "A test agent",
 				GovernanceURL: stringPtr("not-a-url"),
@@ -113,7 +114,7 @@ func TestAgent_Validate(t *testing.T) {
 			name: "invalid user_documentation_url",
 			agent: &Agent{
 				ID:                   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:             id.ClientID("test-client"),
+				ClientID:             ptr.To(id.ClientID("test-client")),
 				DisplayName:          "Test Agent",
 				Description:          "A test agent",
 				UserDocumentationURL: stringPtr("ftp://invalid.com"),
@@ -124,7 +125,7 @@ func TestAgent_Validate(t *testing.T) {
 			name: "invalid agent_interface_url",
 			agent: &Agent{
 				ID:                id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-				ClientID:          id.ClientID("test-client"),
+				ClientID:          ptr.To(id.ClientID("test-client")),
 				DisplayName:       "Test Agent",
 				Description:       "A test agent",
 				AgentInterfaceURL: stringPtr("javascript:alert(1)"),
@@ -157,7 +158,7 @@ func TestAgent_ValidateForCreate(t *testing.T) {
 		{
 			name: "valid agent for creation",
 			agent: &Agent{
-				ClientID:      id.ClientID("test-client"),
+				ClientID:      ptr.To(id.ClientID("test-client")),
 				DisplayName:   "Test Agent",
 				Description:   "A test agent",
 				GovernanceURL: &validGovernanceURL,
@@ -165,17 +166,17 @@ func TestAgent_ValidateForCreate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "missing client_id",
+			name: "nil client_id is valid for create",
 			agent: &Agent{
 				DisplayName: "Test Agent",
 				Description: "A test agent",
 			},
-			wantErr: "client_id is required",
+			wantErr: "",
 		},
 		{
 			name: "display_name exceeds limit with character count",
 			agent: &Agent{
-				ClientID:    id.ClientID("test-client"),
+				ClientID:    ptr.To(id.ClientID("test-client")),
 				DisplayName: strings.Repeat("a", 256),
 				Description: "A test agent",
 			},
@@ -204,7 +205,7 @@ func TestAgent_Copy(t *testing.T) {
 
 	original := &Agent{
 		ID:                   id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-		ClientID:             id.ClientID("test-client"),
+		ClientID:             ptr.To(id.ClientID("test-client")),
 		ExternalID:           &externalID,
 		DisplayName:          "Test Agent",
 		Description:          "A test agent",
@@ -398,7 +399,7 @@ func TestAgent_ValidateServiceRequirements_IntegrationWithValidate(t *testing.T)
 	t.Run("Validate() calls ValidateServiceRequirements()", func(t *testing.T) {
 		agent := &Agent{
 			ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-			ClientID:    id.ClientID("test-client"),
+			ClientID:    ptr.To(id.ClientID("test-client")),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 			ServiceRequirements: []ServiceRequirement{
@@ -418,7 +419,7 @@ func TestAgent_ValidateServiceRequirements_IntegrationWithValidate(t *testing.T)
 
 	t.Run("ValidateForCreate() calls ValidateServiceRequirements()", func(t *testing.T) {
 		agent := &Agent{
-			ClientID:    id.ClientID("test-client"),
+			ClientID:    ptr.To(id.ClientID("test-client")),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 			ServiceRequirements: []ServiceRequirement{
@@ -441,7 +442,7 @@ func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
 	t.Run("copies service requirements with deep copy", func(t *testing.T) {
 		original := &Agent{
 			ID:          id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-			ClientID:    id.ClientID("test-client"),
+			ClientID:    ptr.To(id.ClientID("test-client")),
 			DisplayName: "Test Agent",
 			Description: "A test agent",
 			ServiceRequirements: []ServiceRequirement{
@@ -484,7 +485,7 @@ func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
 	t.Run("handles nil service requirements", func(t *testing.T) {
 		original := &Agent{
 			ID:                  id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-			ClientID:            id.ClientID("test-client"),
+			ClientID:            ptr.To(id.ClientID("test-client")),
 			DisplayName:         "Test Agent",
 			Description:         "A test agent",
 			ServiceRequirements: nil,
@@ -497,7 +498,7 @@ func TestAgent_Copy_WithServiceRequirements(t *testing.T) {
 	t.Run("handles empty service requirements", func(t *testing.T) {
 		original := &Agent{
 			ID:                  id.MustParseAgentID("550e8400-e29b-41d4-a716-446655440000"),
-			ClientID:            id.ClientID("test-client"),
+			ClientID:            ptr.To(id.ClientID("test-client")),
 			DisplayName:         "Test Agent",
 			Description:         "A test agent",
 			ServiceRequirements: []ServiceRequirement{},

@@ -1291,6 +1291,7 @@ paths:
         Redirect responses (error appended to `redirect_uri` as query params; redirect_uri has been validated):
         - `invalid_scope`: Requested scope exceeds the agent's `allowed_scopes`
         - `access_denied`: User explicitly denied consent
+        - `server_error`: Proxy mode — agent has no upstream `client_id` configured
       operationId: oauth2Authorize
       tags:
         - OAuth2 Token
@@ -1519,6 +1520,11 @@ paths:
                   value:
                     error: "invalid_grant"
                     error_description: "User has no active session with the requested service"
+                missing_upstream_client_id:
+                  summary: Agent has no upstream client_id (proxy mode)
+                  value:
+                    error: "invalid_client"
+                    error_description: "agent has no upstream client_id configured; proxy-mode OAuth2 flows require client_id"
         '401':
           description: Unauthorized - Invalid client authentication (client_assertion or client credentials)
           content:

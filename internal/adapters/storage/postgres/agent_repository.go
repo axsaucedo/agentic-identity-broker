@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/lib/pq"
@@ -617,6 +618,38 @@ func (r *AgentRepository) GetByClientID(ctx context.Context, clientID id.ClientI
 	agent.ClientURIs = uris
 
 	return agent.Copy(), nil
+}
+
+// ExistsOtherWithClientID reports whether any agent other than excludeAgentID shares the given client_id.
+// When excludeAgentID is nil, all agents with that client_id are considered (create path).
+func (r *AgentRepository) ExistsOtherWithClientID(ctx context.Context, clientID id.ClientID, excludeAgentID *id.AgentID) (bool, error) {
+	if r.adapter.db == nil {
+		return false, storage.NewStorageError("ExistsOtherWithClientID", storage.ErrorKindConnection, nil, "database not initialized")
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	var exists bool
+	var err error
+	if excludeAgentID == nil {
+		err = r.adapter.db.QueryRowContext(queryCtx,
+			`SELECT EXISTS(SELECT 1 FROM agents WHERE client_id = $1)`,
+			clientID,
+		).Scan(&exists)
+	} else {
+		err = r.adapter.db.QueryRowContext(queryCtx,
+			`SELECT EXISTS(SELECT 1 FROM agents WHERE client_id = $1 AND id <> $2)`,
+			clientID, *excludeAgentID,
+		).Scan(&exists)
+	}
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return false, storage.NewStorageError("ExistsOtherWithClientID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
+		}
+		return false, storage.NewStorageError("ExistsOtherWithClientID", storage.ErrorKindConnection, err, "database query failed")
+	}
+	return exists, nil
 }
 
 // GetByClientURI retrieves an agent entity by a pre-registered Client ID Metadata Document URL.

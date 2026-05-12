@@ -251,7 +251,7 @@ func (m *mockAgentRepoForAgents) List(ctx context.Context) ([]*storage.Agent, er
 
 func (m *mockAgentRepoForAgents) GetByClientID(ctx context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, agent := range m.agents {
-		if string(agent.ClientID) == string(clientID) {
+		if agent.ClientID != nil && *agent.ClientID == clientID {
 			return agent, nil
 		}
 	}
@@ -260,6 +260,10 @@ func (m *mockAgentRepoForAgents) GetByClientID(ctx context.Context, clientID id.
 
 func (m *mockAgentRepoForAgents) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
 	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, nil, "not found")
+}
+
+func (m *mockAgentRepoForAgents) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
 }
 
 type mockServiceRepoForAgents struct{}

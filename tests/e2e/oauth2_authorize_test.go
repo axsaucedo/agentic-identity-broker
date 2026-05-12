@@ -213,7 +213,7 @@ var _ = Describe("OAuth2 Authorization Endpoint", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Check key parameters are preserved
-			Expect(redirectURL.Query().Get("client_id")).To(Equal(string(agent.ClientID)))
+			Expect(redirectURL.Query().Get("client_id")).To(Equal(string(*agent.ClientID)))
 			Expect(redirectURL.Query().Get("redirect_uri")).To(Equal("https://client.example.com/cb"))
 			Expect(redirectURL.Query().Get("response_type")).To(Equal("code"))
 			Expect(redirectURL.Query().Get("state")).To(Equal("xyz"))

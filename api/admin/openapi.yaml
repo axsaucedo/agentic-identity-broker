@@ -200,12 +200,12 @@ paths:
           `client_id`. No uniqueness validation is performed.
 
         **Validation Rules**:
-        - `client_id`: Required; unique across all agents when `multi_agent_client.enabled = false`
+        - `client_id`: Optional; when provided must be non-empty; unique across all agents when `multi_agent_client.enabled = false`
         - `display_name`: Required, max 255 characters
         - `description`: Required, max 1000 characters
         - URLs: Must be valid HTTP/HTTPS URLs if provided
 
-        **ID Generation**: System generates a UUID for the agent ID
+        **ID Generation**: System generates a UUID for the agent ID. `client_id` is not auto-generated — omit it for agents that do not need one.
       operationId: createAgent
       tags:
         - Agents
@@ -315,7 +315,9 @@ paths:
         - When `multi_agent_client.enabled = true`: Multiple agents may share the same
           `client_id`. No uniqueness validation is performed.
 
-        **Validation**: Same rules as creation apply
+        **Validation**:
+        - `client_id`: Three-state — omitted preserves existing value, explicit `null` clears it, string value updates it (must be non-empty); unique across all agents (excluding the current agent) when `multi_agent_client.enabled = false`
+        - Other fields follow the same rules as creation
       operationId: updateAgent
       tags:
         - Agents
@@ -1139,7 +1141,6 @@ components:
       type: object
       required:
         - id
-        - client_id
         - display_name
         - description
         - created_at
@@ -1153,9 +1154,11 @@ components:
           readOnly: true
         client_id:
           type: string
+          nullable: true
           description: |
-            OAuth2 client_id for this agent. Must be unique across all agents.
-            Used to identify the agent in OAuth2 flows.
+            OAuth2 client_id for this agent. Absent when the agent has no upstream
+            client_id (e.g. CIMD agents resolved via client_uris). When present,
+            used to identify the agent in OAuth2 flows.
           example: agent-research-assistant
           maxLength: 255
         external_id:
@@ -1270,13 +1273,15 @@ components:
     AgentCreateRequest:
       type: object
       required:
-        - client_id
         - display_name
         - description
       properties:
         client_id:
           type: string
-          description: OAuth2 client_id for this agent (must be unique)
+          description: |
+            OAuth2 client_id for this agent. Optional — omit for agents resolved
+            via client_uris (CIMD) or agents that do not need an upstream client_id.
+            When provided, must be non-empty.
           example: agent-research-assistant
           maxLength: 255
         external_id:
@@ -1371,13 +1376,21 @@ components:
     AgentUpdateRequest:
       type: object
       required:
-        - client_id
         - display_name
         - description
       properties:
         client_id:
           type: string
-          description: OAuth2 client_id for this agent
+          nullable: true
+          description: |
+            OAuth2 client_id for this agent.
+
+            **Three-state semantics**:
+            - **Omitted** (key absent from JSON): existing value is preserved
+            - **Explicit null** (`"client_id": null`): clears the client_id (sets to NULL)
+            - **String value** (`"client_id": "foo"`): updates the client_id; must be non-empty
+
+            Agents without a client_id cannot participate in proxy-mode OAuth2 flows.
           example: agent-research-assistant
           maxLength: 255
         external_id:

@@ -70,7 +70,9 @@ func (e *TokenClaimsEvaluator) Evaluate(_ context.Context, requester fosite.Requ
 	}
 	if h, ok := requester.GetClient().(agentHolder); ok {
 		if agent := h.getAgent(); agent != nil {
-			agentCtx["client_id"] = string(agent.ClientID)
+			if agent.ClientID != nil {
+				agentCtx["client_id"] = agent.ClientID.String()
+			}
 			agentCtx["display_name"] = agent.DisplayName
 		}
 	}

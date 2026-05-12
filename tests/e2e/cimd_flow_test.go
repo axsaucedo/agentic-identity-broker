@@ -18,6 +18,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -60,7 +61,7 @@ var _ = Describe("CIMD Full Authorization Flow", func() {
 		now := time.Now()
 		agent = &storage.Agent{
 			ID:          id.NewAgentID(),
-			ClientID:    id.ClientID(clientURL),
+			ClientID:    ptr.To(id.ClientID(clientURL)),
 			ClientURIs:  []string{clientURL},
 			DisplayName: "Flow Test Agent",
 			Description: "E2E test agent for full CIMD authorization flow",

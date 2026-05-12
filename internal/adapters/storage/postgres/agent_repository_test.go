@@ -11,6 +11,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -44,7 +45,7 @@ func TestAgentRepository_Get_EmitsSpan(t *testing.T) {
 	// Create an agent so Get can find it
 	now := time.Now().UTC()
 	agent := &storage.Agent{
-		ClientID:    "span-test-client",
+		ClientID:    ptr.To(id.ClientID("span-test-client")),
 		DisplayName: "Span Test Agent",
 		Description: "Agent for span testing",
 		CreatedAt:   now,
@@ -128,7 +129,7 @@ func TestAgentRepository_Create(t *testing.T) {
 	t.Run("successful creation", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "test-client-1",
+			ClientID:    ptr.To(id.ClientID("test-client-1")),
 			DisplayName: "Test Agent",
 			Description: "Test agent description",
 			CreatedAt:   now,
@@ -155,7 +156,7 @@ func TestAgentRepository_Create(t *testing.T) {
 		agentURL := "https://example.com/agent"
 
 		agent := &storage.Agent{
-			ClientID:             "test-client-2",
+			ClientID:             ptr.To(id.ClientID("test-client-2")),
 			ExternalID:           &externalID,
 			DisplayName:          "Test Agent 2",
 			Description:          "Test agent with optional fields",
@@ -180,7 +181,7 @@ func TestAgentRepository_Create(t *testing.T) {
 	t.Run("duplicate client_id", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent1 := &storage.Agent{
-			ClientID:    "duplicate-client",
+			ClientID:    ptr.To(id.ClientID("duplicate-client")),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 			CreatedAt:   now,
@@ -191,7 +192,7 @@ func TestAgentRepository_Create(t *testing.T) {
 		require.NoError(t, err)
 
 		agent2 := &storage.Agent{
-			ClientID:    "duplicate-client",
+			ClientID:    ptr.To(id.ClientID("duplicate-client")),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 			CreatedAt:   now,
@@ -204,10 +205,10 @@ func TestAgentRepository_Create(t *testing.T) {
 		assert.NotEqual(t, agent1.ID, agent2.ID, "both agents must have distinct IDs")
 	})
 
-	t.Run("validation failure - empty client_id", func(t *testing.T) {
+	t.Run("validation failure - blank client_id", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "",
+			ClientID:    ptr.To(id.ClientID("")),
 			DisplayName: "Test Agent",
 			Description: "Test description",
 			CreatedAt:   now,
@@ -225,7 +226,7 @@ func TestAgentRepository_Create(t *testing.T) {
 	t.Run("validation failure - empty display_name", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "test-client-3",
+			ClientID:    ptr.To(id.ClientID("test-client-3")),
 			DisplayName: "",
 			Description: "Test description",
 			CreatedAt:   now,
@@ -244,7 +245,7 @@ func TestAgentRepository_Create(t *testing.T) {
 		now := time.Now().UTC()
 		invalidURL := "not-a-url"
 		agent := &storage.Agent{
-			ClientID:      "test-client-4",
+			ClientID:      ptr.To(id.ClientID("test-client-4")),
 			DisplayName:   "Test Agent",
 			Description:   "Test description",
 			GovernanceURL: &invalidURL,
@@ -271,7 +272,7 @@ func TestAgentRepository_Get(t *testing.T) {
 	t.Run("existing agent", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "get-test-client",
+			ClientID:    ptr.To(id.ClientID("get-test-client")),
 			DisplayName: "Get Test Agent",
 			Description: "Agent for get testing",
 			CreatedAt:   now,
@@ -311,7 +312,7 @@ func TestAgentRepository_Get(t *testing.T) {
 	t.Run("returns copy prevents mutation", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "mutation-test-client",
+			ClientID:    ptr.To(id.ClientID("mutation-test-client")),
 			DisplayName: "Mutation Test",
 			Description: "Test mutation protection",
 			CreatedAt:   now,
@@ -345,7 +346,7 @@ func TestAgentRepository_Update(t *testing.T) {
 	t.Run("successful update", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "update-test-client",
+			ClientID:    ptr.To(id.ClientID("update-test-client")),
 			DisplayName: "Original Name",
 			Description: "Original description",
 			CreatedAt:   now,
@@ -373,7 +374,7 @@ func TestAgentRepository_Update(t *testing.T) {
 	t.Run("update with client_id change", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "original-client-id",
+			ClientID:    ptr.To(id.ClientID("original-client-id")),
 			DisplayName: "Test Agent",
 			Description: "Test description",
 			CreatedAt:   now,
@@ -384,7 +385,7 @@ func TestAgentRepository_Update(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update client_id
-		agent.ClientID = "new-client-id"
+		agent.ClientID = ptr.To(id.ClientID("new-client-id"))
 		agent.UpdatedAt = time.Now().UTC()
 
 		err = repo.Update(ctx, agent)
@@ -392,14 +393,14 @@ func TestAgentRepository_Update(t *testing.T) {
 
 		retrieved, err := repo.Get(ctx, agent.ID)
 		require.NoError(t, err)
-		assert.Equal(t, id.ClientID("new-client-id"), retrieved.ClientID)
+		assert.Equal(t, ptr.To(id.ClientID("new-client-id")), retrieved.ClientID)
 	})
 
 	t.Run("update non-existent agent", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
 			ID:          id.MustParseAgentID("00000000-0000-0000-0000-000000000002"),
-			ClientID:    "test-client",
+			ClientID:    ptr.To(id.ClientID("test-client")),
 			DisplayName: "Test Agent",
 			Description: "Test description",
 			CreatedAt:   now,
@@ -417,7 +418,7 @@ func TestAgentRepository_Update(t *testing.T) {
 	t.Run("update with duplicate client_id", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent1 := &storage.Agent{
-			ClientID:    "client-1",
+			ClientID:    ptr.To(id.ClientID("client-1")),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 			CreatedAt:   now,
@@ -427,7 +428,7 @@ func TestAgentRepository_Update(t *testing.T) {
 		require.NoError(t, err)
 
 		agent2 := &storage.Agent{
-			ClientID:    "client-2",
+			ClientID:    ptr.To(id.ClientID("client-2")),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 			CreatedAt:   now,
@@ -437,19 +438,19 @@ func TestAgentRepository_Update(t *testing.T) {
 		require.NoError(t, err)
 
 		// Feature 021: duplicate client_id is allowed — update must succeed
-		agent2.ClientID = "client-1"
+		agent2.ClientID = ptr.To(id.ClientID("client-1"))
 		err = repo.Update(ctx, agent2)
 		require.NoError(t, err)
 
 		retrieved, err := repo.Get(ctx, agent2.ID)
 		require.NoError(t, err)
-		assert.Equal(t, id.ClientID("client-1"), retrieved.ClientID)
+		assert.Equal(t, ptr.To(id.ClientID("client-1")), retrieved.ClientID)
 	})
 
 	t.Run("validation failure on update", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "validation-test-client",
+			ClientID:    ptr.To(id.ClientID("validation-test-client")),
 			DisplayName: "Test Agent",
 			Description: "Test description",
 			CreatedAt:   now,
@@ -480,7 +481,7 @@ func TestAgentRepository_Delete(t *testing.T) {
 	t.Run("successful deletion", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "delete-test-client",
+			ClientID:    ptr.To(id.ClientID("delete-test-client")),
 			DisplayName: "Delete Test Agent",
 			Description: "Agent for delete testing",
 			CreatedAt:   now,
@@ -529,7 +530,7 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 	t.Run("round-trip through Create and Get", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "cimd-create-get-client",
+			ClientID:    ptr.To(id.ClientID("cimd-create-get-client")),
 			DisplayName: "CIMD Create/Get Agent",
 			Description: "Tests ClientURIs round-trip",
 			ClientURIs:  []string{"https://example.com/client1"},
@@ -546,7 +547,7 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 	t.Run("round-trip through Create and List", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "cimd-list-client",
+			ClientID:    ptr.To(id.ClientID("cimd-list-client")),
 			DisplayName: "CIMD List Agent",
 			Description: "Tests ClientURIs in List",
 			ClientURIs:  []string{"https://example.com/list-client1"},
@@ -572,7 +573,7 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 	t.Run("round-trip through Update and Get", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "cimd-update-client",
+			ClientID:    ptr.To(id.ClientID("cimd-update-client")),
 			DisplayName: "CIMD Update Agent",
 			Description: "Tests ClientURIs update",
 			ClientURIs:  []string{"https://example.com/update-original"},
@@ -594,7 +595,7 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 		now := time.Now().UTC()
 		clientID := id.ClientID("cimd-getclientid-client")
 		agent := &storage.Agent{
-			ClientID:    clientID,
+			ClientID:    &clientID,
 			DisplayName: "CIMD GetByClientID Agent",
 			Description: "Tests GetByClientID hydrates ClientURIs",
 			ClientURIs:  []string{"https://example.com/getclientid-uri"},
@@ -619,7 +620,7 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 	t.Run("returns agent with ClientURIs populated", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "cimd-getbyuri-client",
+			ClientID:    ptr.To(id.ClientID("cimd-getbyuri-client")),
 			DisplayName: "CIMD GetByClientURI Agent",
 			Description: "Tests GetByClientURI",
 			ClientURIs:  []string{"https://example.com/lookup-uri"},
@@ -648,7 +649,7 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 		sharedURI := "https://example.com/conflict-uri"
 
 		agent1 := &storage.Agent{
-			ClientID:    "conflict-agent-1",
+			ClientID:    ptr.To(id.ClientID("conflict-agent-1")),
 			DisplayName: "Conflict Agent 1",
 			Description: "Agent with the URI that will conflict",
 			ClientURIs:  []string{sharedURI},
@@ -658,7 +659,7 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, agent1))
 
 		agent2 := &storage.Agent{
-			ClientID:    "conflict-agent-2",
+			ClientID:    ptr.To(id.ClientID("conflict-agent-2")),
 			DisplayName: "Conflict Agent 2",
 			Description: "Agent that conflicts on URI",
 			ClientURIs:  []string{sharedURI},
@@ -686,7 +687,7 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 		uri2 := "https://example.com/update-conflict-uri2"
 
 		agentA := &storage.Agent{
-			ClientID:    "update-conflict-agent-a",
+			ClientID:    ptr.To(id.ClientID("update-conflict-agent-a")),
 			DisplayName: "Update Conflict Agent A",
 			Description: "Holds URI1 permanently",
 			ClientURIs:  []string{uri1},
@@ -696,7 +697,7 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, agentA))
 
 		agentB := &storage.Agent{
-			ClientID:    "update-conflict-agent-b",
+			ClientID:    ptr.To(id.ClientID("update-conflict-agent-b")),
 			DisplayName: "Update Conflict Agent B",
 			Description: "Tries to steal URI1 on update",
 			ClientURIs:  []string{uri2},
@@ -740,7 +741,7 @@ func TestAgentRepository_List(t *testing.T) {
 
 		// Create multiple agents
 		agent1 := &storage.Agent{
-			ClientID:    "list-client-1",
+			ClientID:    ptr.To(id.ClientID("list-client-1")),
 			DisplayName: "Agent 1",
 			Description: "First agent",
 			CreatedAt:   now,
@@ -750,7 +751,7 @@ func TestAgentRepository_List(t *testing.T) {
 		require.NoError(t, err)
 
 		agent2 := &storage.Agent{
-			ClientID:    "list-client-2",
+			ClientID:    ptr.To(id.ClientID("list-client-2")),
 			DisplayName: "Agent 2",
 			Description: "Second agent",
 			CreatedAt:   now.Add(1 * time.Second),
@@ -760,7 +761,7 @@ func TestAgentRepository_List(t *testing.T) {
 		require.NoError(t, err)
 
 		agent3 := &storage.Agent{
-			ClientID:    "list-client-3",
+			ClientID:    ptr.To(id.ClientID("list-client-3")),
 			DisplayName: "Agent 3",
 			Description: "Third agent",
 			CreatedAt:   now.Add(2 * time.Second),
@@ -783,7 +784,7 @@ func TestAgentRepository_List(t *testing.T) {
 	t.Run("returns copies prevent mutation", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    "list-mutation-client",
+			ClientID:    ptr.To(id.ClientID("list-mutation-client")),
 			DisplayName: "Mutation Test",
 			Description: "Test mutation protection",
 			CreatedAt:   now,
