@@ -213,7 +213,7 @@ func (h *AgentsHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Detect three-state client_id semantics: absent=preserve, null=clear, string=update.
 	var rawFields map[string]json.RawMessage
-	_ = json.Unmarshal(body, &rawFields)
+	_ = json.Unmarshal(body, &rawFields) // cannot fail: same bytes already parsed above
 	rawClientID, clientIDPresent := rawFields["client_id"]
 	clearClientID := clientIDPresent && bytes.Equal(rawClientID, []byte("null"))
 
