@@ -129,3 +129,37 @@ log:
   # Default: "text"
   # Env: EXTPROC_LOG_FORMAT
   format: "text"
+
+# OpenTelemetry observability configuration (OPTIONAL)
+# Telemetry is disabled by default. Enable distributed tracing, metrics, and log correlation
+# by adding a telemetry block (see examples/config/extproc-telemetry.yaml for comprehensive examples).
+# Features:
+#   - End-to-end distributed tracing from agentgateway through ExtProc to the Identity Broker
+#   - Request throughput and latency metrics (counter + histogram) broken down by outcome
+#   - Structured log correlation with active trace context (trace_id, span_id)
+#   - Graceful degradation when the telemetry collector is unavailable
+# The schema is identical to the identity broker's telemetry configuration for operational parity.
+# See specs/027-extproc-otel/spec.md and examples/config/extproc-telemetry.yaml for details.
+#
+# Uncomment and configure to enable:
+# telemetry:
+#   enabled: true
+#   service_name: extproc-token-exchange
+#   traces:
+#     enabled: true
+#     sampling_rate: 1.0
+#     propagators:
+#       - tracecontext  # W3C Trace Context (handles agentgateway's traceparent headers)
+#       - ottrace
+#       - b3multi
+#       - baggage
+#   metrics:
+#     enabled: true
+#     export_interval: 30s
+#   logs:
+#     enabled: true
+#   exporter:
+#     protocol: grpc
+#     endpoint: otel-collector.monitoring.svc:4317
+#     timeout: 10s
+#     insecure: false

@@ -5,7 +5,9 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -29,6 +31,10 @@ import (
 //  13. oauth2.client_assertion_type must be one of id_token, access_token
 //  14. circuit_breaker.max_failures must be >= 1 (only when enabled)
 //  15. circuit_breaker.reset_timeout must be a positive duration (only when enabled)
+//  16. telemetry.exporter.endpoint must not be empty if telemetry.enabled is true
+//  17. telemetry.exporter.protocol must be one of: grpc, http, https
+//  18. telemetry.traces.sampling_rate must be in range [0.0, 1.0]
+//  19. telemetry.exporter.timeout must be a positive duration
 func Validate(cfg *Config) error {
 	var errs []string
 
@@ -121,6 +127,48 @@ func Validate(cfg *Config) error {
 		errs = append(errs, "circuit_breaker.reset_timeout must be a positive duration")
 	}
 
+	// Telemetry validation only runs when telemetry.enabled is true
+	if cfg.Telemetry.Enabled {
+		// Rule 16: endpoint must not be empty
+		if strings.TrimSpace(cfg.Telemetry.Exporter.Endpoint) == "" {
+			errs = append(errs, "telemetry.exporter.endpoint must not be empty when telemetry.enabled is true")
+		} else {
+			// Validate endpoint format based on protocol
+			protocol := cfg.Telemetry.Exporter.Protocol
+			if protocol == "" {
+				protocol = "grpc" // default protocol
+			}
+			if err := validateTelemetryEndpoint(cfg.Telemetry.Exporter.Endpoint, protocol); err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
+
+		// Rule 17: if protocol is set, it must be one of: grpc, http, https
+		if cfg.Telemetry.Exporter.Protocol != "" {
+			switch cfg.Telemetry.Exporter.Protocol {
+			case "grpc", "http", "https":
+				// valid
+			default:
+				errs = append(errs, fmt.Sprintf("telemetry.exporter.protocol must be one of grpc, http, https; got %q", cfg.Telemetry.Exporter.Protocol))
+			}
+		}
+
+		// Rule 18: sampling_rate must be in range [0.0, 1.0]
+		if cfg.Telemetry.Traces.SamplingRate < 0.0 || cfg.Telemetry.Traces.SamplingRate > 1.0 {
+			errs = append(errs, fmt.Sprintf("telemetry.traces.sampling_rate must be between 0.0 and 1.0; got %f", cfg.Telemetry.Traces.SamplingRate))
+		}
+
+		// Rule 19: exporter.timeout must be a positive duration
+		if cfg.Telemetry.Exporter.Timeout <= 0 {
+			errs = append(errs, "telemetry.exporter.timeout must be a positive duration")
+		}
+	}
+
+	// Note: unrecognized propagators are not validated here. At runtime,
+	// registerPropagators() in internal/adapters/telemetry logs unrecognized
+	// propagators as warnings and skips them gracefully.
+	_ = cfg.Telemetry.Traces.Propagators // Use propagators to avoid unused var warning
+
 	if len(errs) > 0 {
 		return fmt.Errorf("configuration validation failed: %s", strings.Join(errs, "; "))
 	}
@@ -143,5 +191,85 @@ func validateURL(field, s string, requireHTTPScheme bool) error {
 	if u.Host == "" {
 		return fmt.Errorf("%s must be a valid URL with a host", field)
 	}
+	return nil
+}
+
+// validateTelemetryEndpoint checks that the telemetry endpoint is valid for the given protocol.
+// For HTTP, requires http:// URL. For HTTPS, requires https:// URL or bare host:port.
+// For gRPC, requires a host:port format or unix: socket.
+func validateTelemetryEndpoint(endpoint, protocol string) error {
+	if strings.TrimSpace(endpoint) == "" {
+		return fmt.Errorf("telemetry.exporter.endpoint must not be empty")
+	}
+
+	switch protocol {
+	case "http":
+		// HTTP requires http:// URL (not https://)
+		u, err := url.ParseRequestURI(endpoint)
+		if err != nil {
+			return fmt.Errorf("telemetry.exporter.endpoint must be a valid URL for protocol %s: %w", protocol, err)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("telemetry.exporter.endpoint must be a valid URL with a host for protocol %s", protocol)
+		}
+		if u.Scheme != "http" {
+			return fmt.Errorf("telemetry.exporter.endpoint for protocol http must use http:// scheme, not %s://", u.Scheme)
+		}
+	case "https":
+		// HTTPS requires https:// URL or bare host:port (which auto-upgrades to https://).
+		// Reject any non-https URI scheme (case-insensitive per RFC 3986 §3.1).
+		lowered := strings.ToLower(endpoint)
+		if strings.Contains(lowered, "://") {
+			if !strings.HasPrefix(lowered, "https://") {
+				return fmt.Errorf("telemetry.exporter.endpoint for protocol https must use https:// scheme or bare host:port, not %s",
+					endpoint[:strings.Index(endpoint, "://")+3])
+			}
+			// Valid https:// URL — parse and validate host
+			u, err := url.ParseRequestURI(endpoint)
+			if err != nil {
+				return fmt.Errorf("telemetry.exporter.endpoint must be a valid URL for protocol %s: %w", protocol, err)
+			}
+			if u.Host == "" {
+				return fmt.Errorf("telemetry.exporter.endpoint must be a valid URL with a host for protocol %s", protocol)
+			}
+		} else if strings.HasPrefix(endpoint, "/") {
+			// Absolute path — not a valid host:port
+			return fmt.Errorf("telemetry.exporter.endpoint for protocol https must be https://... or host:port")
+		} else {
+			// Bare host:port fallback (no scheme). Use net.SplitHostPort for
+			// strict parsing, then validate host is non-empty and port is numeric.
+			host, port, err := net.SplitHostPort(endpoint)
+			if err != nil || host == "" || port == "" {
+				return fmt.Errorf("telemetry.exporter.endpoint for protocol https must be https://... or host:port")
+			}
+			if portNum, err := strconv.Atoi(port); err != nil || portNum < 1 || portNum > 65535 {
+				return fmt.Errorf("telemetry.exporter.endpoint for protocol https must be https://... or host:port")
+			}
+		}
+	case "grpc":
+		// gRPC endpoints should be host:port or unix:path socket — not HTTP URLs.
+		// Reject any URI-scheme prefix (case-insensitive) to catch http://, HTTP://, etc.
+		// Only bare unix:path is supported; unix://path (double-slash) is rejected because
+		// gRPC-Go interprets it differently from unix:path.
+		// Note: gRPC bare host:port validation is intentionally looser than HTTPS
+		// (no net.SplitHostPort or port-range check). gRPC-Go validates the address
+		// at dial time, and we only reject clearly wrong formats here (HTTP URLs,
+		// unix:// double-slash, mixed-case unix:).
+		lowered := strings.ToLower(endpoint)
+		if strings.HasPrefix(lowered, "unix://") {
+			return fmt.Errorf("telemetry.exporter.endpoint for gRPC must use unix:path format, not unix://path")
+		}
+		// Reject mixed-case unix: (e.g. UNIX:/tmp/sock) — the gRPC resolver expects lowercase.
+		if strings.HasPrefix(lowered, "unix:") && !strings.HasPrefix(endpoint, "unix:") {
+			return fmt.Errorf("telemetry.exporter.endpoint for gRPC unix: prefix must be lowercase")
+		}
+		if strings.Contains(endpoint, "://") && !strings.HasPrefix(endpoint, "unix:") {
+			return fmt.Errorf("telemetry.exporter.endpoint for gRPC must be host:port, not an HTTP URL")
+		}
+		if !strings.Contains(endpoint, ":") && !strings.HasPrefix(endpoint, "unix:") {
+			return fmt.Errorf("telemetry.exporter.endpoint for gRPC should be in host:port format")
+		}
+	}
+
 	return nil
 }

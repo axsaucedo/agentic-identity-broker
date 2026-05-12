@@ -12,6 +12,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -55,14 +61,25 @@ func testConfig() *extprocconfig.Config {
 	}
 }
 
+// testConfigWithTelemetry returns a config with full telemetry enabled for observability tests.
+func testConfigWithTelemetry() *extprocconfig.Config {
+	cfg := testConfig()
+	cfg.Telemetry = extprocconfig.TelemetryConfig{
+		Enabled: true,
+		Traces:  extprocconfig.TracesConfig{Enabled: true},
+		Metrics: extprocconfig.MetricsConfig{Enabled: true},
+	}
+	return cfg
+}
+
 // mockExchanger is a controllable Exchanger for unit tests.
 type mockExchanger struct {
-	exchangeFunc   func(subjectToken, resourceURI string) (string, error)
+	exchangeFunc   func(ctx context.Context, subjectToken, resourceURI string) (string, error)
 	shutdownCalled bool
 }
 
-func (m *mockExchanger) Exchange(subjectToken, resourceURI string) (string, error) {
-	return m.exchangeFunc(subjectToken, resourceURI)
+func (m *mockExchanger) Exchange(ctx context.Context, subjectToken, resourceURI string) (string, error) {
+	return m.exchangeFunc(ctx, subjectToken, resourceURI)
 }
 
 func (m *mockExchanger) Shutdown() {
@@ -73,8 +90,14 @@ func (m *mockExchanger) Shutdown() {
 // a connected client + cleanup function.
 func startTestServer(t *testing.T, exchanger server.Exchanger) (extprocv3.ExternalProcessorClient, func()) {
 	t.Helper()
+	return startTestServerWithConfig(t, testConfig(), exchanger)
+}
 
-	cfg := testConfig()
+// startTestServerWithConfig registers the Server with the given config on a random in-process
+// port and returns a connected client + cleanup function.
+func startTestServerWithConfig(t *testing.T, cfg *extprocconfig.Config, exchanger server.Exchanger) (extprocv3.ExternalProcessorClient, func()) {
+	t.Helper()
+
 	svc := server.NewServer(cfg, exchanger, testLogger())
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -136,7 +159,7 @@ func sendRequestHeaders(t *testing.T, client extprocv3.ExternalProcessorClient, 
 // Spec: FR-009 — No Bearer token → pass through unchanged
 func TestServer_Process_NoBearerToken_PassThrough(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			t.Fatal("Exchange should not be called when no Bearer token is present")
 			return "", nil
 		},
@@ -165,7 +188,7 @@ func TestServer_Process_NoBearerToken_PassThrough(t *testing.T) {
 // Spec: FR-009 — Non-Bearer authorization header → pass through unchanged
 func TestServer_Process_NonBearerAuth_PassThrough(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			t.Fatal("Exchange should not be called for non-Bearer auth")
 			return "", nil
 		},
@@ -190,7 +213,7 @@ func TestServer_Process_BearerToken_ReplacesAuthorizationHeader(t *testing.T) {
 	const resourceURI = "http://mcp-server:9003/mcp"
 
 	exchanger := &mockExchanger{
-		exchangeFunc: func(st, ru string) (string, error) {
+		exchangeFunc: func(_ context.Context, st, ru string) (string, error) {
 			assert.Equal(t, subjectToken, st, "Exchange must receive the incoming Bearer token")
 			assert.Equal(t, resourceURI, ru, "Exchange must receive the :path as resource URI")
 			return exchangedToken, nil
@@ -227,7 +250,7 @@ func TestServer_Process_BearerToken_ReplacesAuthorizationHeader(t *testing.T) {
 // Spec: FR-008, FR-010 — Token exchange failure → 500 ImmediateResponse
 func TestServer_Process_ExchangeFailure_Returns500(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			return "", errors.New("exchange endpoint returned 403")
 		},
 	}
@@ -252,7 +275,7 @@ func TestServer_Process_ExchangeFailure_Returns500(t *testing.T) {
 // Spec: FR-013 — Empty :path → 503 ImmediateResponse
 func TestServer_Process_EmptyPath_Returns503(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			t.Fatal("Exchange should not be called with empty :path")
 			return "", nil
 		},
@@ -278,7 +301,7 @@ func TestServer_Process_EmptyPath_Returns503(t *testing.T) {
 // Spec: FR-013 — Relative :path (not absolute URI) → 503 ImmediateResponse (SSRF mitigation)
 func TestServer_Process_RelativePath_Returns503(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			t.Fatal("Exchange should not be called with relative :path")
 			return "", nil
 		},
@@ -302,7 +325,7 @@ func TestServer_Process_RelativePath_Returns503(t *testing.T) {
 // Spec: FR-013 — Non-http(s) :path → 503 ImmediateResponse (SSRF mitigation)
 func TestServer_Process_NonHTTPPath_Returns503(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			t.Fatal("Exchange should not be called with non-http :path")
 			return "", nil
 		},
@@ -322,11 +345,35 @@ func TestServer_Process_NonHTTPPath_Returns503(t *testing.T) {
 		int32(immResp.ImmediateResponse.Status.Code))
 }
 
+// SR-001 — Malformed :path with sensitive query params must return 503 without leaking secrets.
+// The actual query-string-in-error regression test is in security_test.go (white-box).
+func TestServer_Process_MalformedPathWithSecrets_Returns503(t *testing.T) {
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
+			t.Fatal("Exchange should not be called with malformed :path")
+			return "", nil
+		},
+	}
+	client, cleanup := startTestServer(t, exchanger)
+	defer cleanup()
+
+	resp, err := sendRequestHeaders(t, client, map[string]string{
+		":path":         "https://example.com/%zz?access_token=secret123",
+		"authorization": "Bearer some-token",
+	})
+	require.NoError(t, err)
+
+	immResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+	require.True(t, ok, "malformed :path must produce an ImmediateResponse")
+	assert.Equal(t, int32(httpv3.StatusCode_ServiceUnavailable),
+		int32(immResp.ImmediateResponse.Status.Code))
+}
+
 // SR-003 — Exchanged token details must not appear in error responses (information disclosure)
 func TestServer_Process_ErrorResponse_DoesNotLeakTokenDetails(t *testing.T) {
 	const internalError = "upstream returned 403: access_denied for client xyz"
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			return "", errors.New(internalError)
 		},
 	}
@@ -350,7 +397,7 @@ func TestServer_Process_ErrorResponse_DoesNotLeakTokenDetails(t *testing.T) {
 // Spec: FR-006 — expired client assertion → 503 ImmediateResponse
 func TestServer_Process_ExpiredAssertion_Returns503(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			return "", server.ErrAssertionExpired
 		},
 	}
@@ -376,7 +423,7 @@ func TestServer_Process_ExpiredAssertion_Returns503(t *testing.T) {
 func TestServer_ImplementsExternalProcessorServer(t *testing.T) {
 	cfg := testConfig()
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) { return "", nil },
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) { return "", nil },
 	}
 	svc := server.NewServer(cfg, exchanger, testLogger())
 
@@ -387,7 +434,7 @@ func TestServer_ImplementsExternalProcessorServer(t *testing.T) {
 // Spec: Process must handle stream correctly — CloseSend triggers clean completion
 func TestServer_Process_StreamHandledCleanly(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) { return "tok", nil },
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) { return "tok", nil },
 	}
 	client, cleanup := startTestServer(t, exchanger)
 	defer cleanup()
@@ -421,7 +468,7 @@ func TestServer_Process_BrokerErrorWithURI_ReturnsElicitationFromHeadersPhase(t 
 	reAuthURL := "https://broker.example.com/api/third-party/svc-123/oauth2/authorize"
 	const description = "User session has expired. Please re-authenticate."
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			return "", &server.BrokerExchangeError{
 				StatusCode:  401,
 				Code:        "invalid_grant",
@@ -475,7 +522,7 @@ func TestServer_Process_BrokerErrorWithURI_ReturnsElicitationFromHeadersPhase(t 
 // Spec: BrokerExchangeError without ErrorURI still returns 500 (no elicitation).
 func TestServer_Process_BrokerErrorWithoutURI_Returns500(t *testing.T) {
 	exchanger := &mockExchanger{
-		exchangeFunc: func(_, _ string) (string, error) {
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
 			return "", &server.BrokerExchangeError{
 				StatusCode:  403,
 				Code:        "access_denied",
@@ -497,4 +544,256 @@ func TestServer_Process_BrokerErrorWithoutURI_Returns500(t *testing.T) {
 	require.True(t, ok, "broker error without ErrorURI must produce an ImmediateResponse directly")
 	assert.Equal(t, int32(httpv3.StatusCode_InternalServerError),
 		int32(immResp.ImmediateResponse.Status.Code))
+}
+
+// ---------------------------------------------------------------------------
+// T021: Span creation in processRequestHeaders
+// ---------------------------------------------------------------------------
+
+// Spec: US1 S2 — When traces are enabled, processRequestHeaders creates a span
+// with resource.uri and outcome attributes set correctly
+func TestServer_ProcessRequestHeaders_CreatesSpanWithAttributes(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	prevTP := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() { otel.SetTracerProvider(prevTP) })
+
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
+			return "exchanged-token", nil
+		},
+	}
+	client, cleanup := startTestServerWithConfig(t, testConfigWithTelemetry(), exchanger)
+	defer cleanup()
+
+	_, err := sendRequestHeaders(t, client, map[string]string{
+		":path":         "/api/resource",
+		":scheme":       "https",
+		":authority":    "example.com",
+		"authorization": "Bearer test-token",
+	})
+	require.NoError(t, err)
+
+	tp.ForceFlush(context.Background()) //nolint:errcheck
+	spans := spanRecorder.Ended()
+	require.NotEmpty(t, spans, "at least one span must be recorded")
+
+	var found bool
+	for _, s := range spans {
+		if s.Name() == "extproc.token_exchange" {
+			found = true
+			attrs := attributeMap(s.Attributes())
+			assert.Equal(t, "https://example.com/api/resource", attrs["resource.uri"], "resource.uri must be set")
+			assert.Equal(t, "success", attrs["outcome"], "outcome must be 'success'")
+			break
+		}
+	}
+	assert.True(t, found, "span 'extproc.token_exchange' must exist")
+}
+
+// Spec: US1 S2 — Span outcome attribute must be set based on exchange result
+func TestServer_ProcessRequestHeaders_SpanOutcomeOnSuccess(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	prevTP := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() { otel.SetTracerProvider(prevTP) })
+
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
+			return "success-token", nil
+		},
+	}
+	client, cleanup := startTestServerWithConfig(t, testConfigWithTelemetry(), exchanger)
+	defer cleanup()
+
+	_, err := sendRequestHeaders(t, client, map[string]string{
+		":path":         "http://example.com/api",
+		"authorization": "Bearer test-token",
+	})
+	require.NoError(t, err)
+
+	tp.ForceFlush(context.Background()) //nolint:errcheck
+	spans := spanRecorder.Ended()
+
+	var outcomeAttr string
+	for _, s := range spans {
+		if s.Name() == "extproc.token_exchange" {
+			outcomeAttr = attributeMap(s.Attributes())["outcome"]
+		}
+	}
+	assert.Equal(t, "success", outcomeAttr, "span outcome must be 'success' on successful exchange")
+}
+
+// Spec: US1 S2 — Span outcome attribute must be set on exchange_failure
+func TestServer_ProcessRequestHeaders_SpanOutcomeOnFailure(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	prevTP := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() { otel.SetTracerProvider(prevTP) })
+
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
+			return "", errors.New("token exchange failed")
+		},
+	}
+	client, cleanup := startTestServerWithConfig(t, testConfigWithTelemetry(), exchanger)
+	defer cleanup()
+
+	_, err := sendRequestHeaders(t, client, map[string]string{
+		":path":         "http://example.com/api",
+		"authorization": "Bearer test-token",
+	})
+	require.NoError(t, err)
+
+	tp.ForceFlush(context.Background()) //nolint:errcheck
+	spans := spanRecorder.Ended()
+
+	var outcomeAttr string
+	for _, s := range spans {
+		if s.Name() == "extproc.token_exchange" {
+			outcomeAttr = attributeMap(s.Attributes())["outcome"]
+		}
+	}
+	assert.Equal(t, "exchange_failure", outcomeAttr, "span outcome must be 'exchange_failure' on error")
+}
+
+// Spec: US3 S1 — Metrics are recorded with outcome attribute
+func TestServer_ProcessRequestHeaders_MetricsRecordOutcome(t *testing.T) {
+	metricReader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(metricReader))
+	prevMP := otel.GetMeterProvider()
+	otel.SetMeterProvider(mp)
+	t.Cleanup(func() { otel.SetMeterProvider(prevMP) })
+
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
+			return "exchanged-token", nil
+		},
+	}
+	client, cleanup := startTestServerWithConfig(t, testConfigWithTelemetry(), exchanger)
+	defer cleanup()
+
+	_, err := sendRequestHeaders(t, client, map[string]string{
+		":path":         "http://example.com/api",
+		"authorization": "Bearer test-token",
+	})
+	require.NoError(t, err)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, metricReader.Collect(context.Background(), &rm))
+
+	var foundCounterWithOutcome, foundHistogramWithOutcome bool
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			switch m.Name {
+			case "extproc.token_exchange.requests":
+				if sum, ok := m.Data.(metricdata.Sum[int64]); ok {
+					for _, dp := range sum.DataPoints {
+						for _, attr := range dp.Attributes.ToSlice() {
+							if string(attr.Key) == "outcome" && attr.Value.AsString() == "success" {
+								foundCounterWithOutcome = true
+							}
+						}
+					}
+				}
+			case "extproc.token_exchange.duration":
+				if hist, ok := m.Data.(metricdata.Histogram[float64]); ok {
+					for _, dp := range hist.DataPoints {
+						for _, attr := range dp.Attributes.ToSlice() {
+							if string(attr.Key) == "outcome" && attr.Value.AsString() == "success" {
+								foundHistogramWithOutcome = true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	assert.True(t, foundCounterWithOutcome, "counter must have outcome=success attribute")
+	assert.True(t, foundHistogramWithOutcome, "histogram must have outcome=success attribute")
+}
+
+// Regression test: metrics must still be recorded when the gRPC stream context
+// is cancelled (client disconnect) because the deferred closure uses
+// context.WithoutCancel. Without that guard, the OTel SDK receives a cancelled
+// context which could silently drop metric data points.
+func TestServer_ProcessRequestHeaders_MetricsRecordedWhenStreamCancelled(t *testing.T) {
+	metricReader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(metricReader))
+	prevMP := otel.GetMeterProvider()
+	otel.SetMeterProvider(mp)
+	t.Cleanup(func() { otel.SetMeterProvider(prevMP) })
+
+	exchangeStarted := make(chan struct{})
+	exchangeContinue := make(chan struct{})
+
+	exchanger := &mockExchanger{
+		exchangeFunc: func(_ context.Context, _, _ string) (string, error) {
+			close(exchangeStarted)
+			<-exchangeContinue
+			return "exchanged-token", nil
+		},
+	}
+	client, cleanup := startTestServerWithConfig(t, testConfigWithTelemetry(), exchanger)
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := client.Process(ctx)
+	require.NoError(t, err)
+
+	err = stream.Send(&extprocv3.ProcessingRequest{
+		Request: &extprocv3.ProcessingRequest_RequestHeaders{
+			RequestHeaders: &extprocv3.HttpHeaders{
+				Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+					{Key: ":path", RawValue: []byte("http://example.com/api")},
+					{Key: "authorization", RawValue: []byte("Bearer test-token")},
+				}},
+			},
+		},
+	})
+	require.NoError(t, err)
+	_ = stream.CloseSend()
+
+	// Wait for exchange to start, cancel stream context (simulate client disconnect),
+	// then let the exchange complete.
+	<-exchangeStarted
+	cancel()
+	close(exchangeContinue)
+
+	// Poll until metrics appear — avoids flaky time.Sleep on slow CI runners.
+	var foundCounter, foundHistogram bool
+	require.Eventually(t, func() bool {
+		var rm metricdata.ResourceMetrics
+		if err := metricReader.Collect(context.Background(), &rm); err != nil {
+			return false
+		}
+		for _, sm := range rm.ScopeMetrics {
+			for _, m := range sm.Metrics {
+				switch m.Name {
+				case "extproc.token_exchange.requests":
+					if sum, ok := m.Data.(metricdata.Sum[int64]); ok && len(sum.DataPoints) > 0 {
+						foundCounter = true
+					}
+				case "extproc.token_exchange.duration":
+					if hist, ok := m.Data.(metricdata.Histogram[float64]); ok && len(hist.DataPoints) > 0 {
+						foundHistogram = true
+					}
+				}
+			}
+		}
+		return foundCounter && foundHistogram
+	}, 2*time.Second, 10*time.Millisecond,
+		"counter and histogram must be recorded even when stream context is cancelled")
+}
+
+// attributeMap converts a slice of key-value attributes to a map for easy assertions.
+func attributeMap(attrs []attribute.KeyValue) map[string]string {
+	m := make(map[string]string, len(attrs))
+	for _, a := range attrs {
+		m[string(a.Key)] = a.Value.Emit()
+	}
+	return m
 }

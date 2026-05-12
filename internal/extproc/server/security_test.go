@@ -1,0 +1,124 @@
+package server
+
+import (
+	"strings"
+	"testing"
+
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// SR-001 regression: validateResourceURI must not echo raw URI (including
+// sensitive query parameters) in its error message.
+func TestValidateResourceURI_DoesNotLeakQueryParams(t *testing.T) {
+	err := validateResourceURI("https://example.com/%zz?access_token=secret123")
+	require.Error(t, err, "malformed URI must fail validation")
+	assert.NotContains(t, err.Error(), "secret123",
+		"SR-001: parse error must not echo raw URI with sensitive query parameters")
+	assert.Contains(t, err.Error(), "URI parse error",
+		"error should use the generic sanitized message")
+}
+
+// SR-001 regression: validateResourceURI must not echo the parsed URI scheme
+// for unexpected scheme types (e.g. data:, javascript:, ftp:).
+func TestValidateResourceURI_DoesNotLeakScheme(t *testing.T) {
+	tests := []struct {
+		uri    string
+		scheme string // the scheme that must NOT appear in the error
+	}{
+		{"data:text/plain,hello", "data"},
+		{"javascript:alert(1)", "javascript"},
+		{"ftp://files.example.com/secret.txt", "ftp"},
+	}
+	for _, tc := range tests {
+		err := validateResourceURI(tc.uri)
+		require.Error(t, err, "non-http(s) scheme URI %q must fail validation", tc.uri)
+		assert.Contains(t, err.Error(), "http or https scheme",
+			"error should use generic scheme message")
+		// Check the error does not contain the scheme in any case form.
+		errLower := strings.ToLower(err.Error())
+		assert.NotContains(t, errLower, tc.scheme,
+			"SR-001: error must not contain the parsed scheme %q in any form", tc.scheme)
+	}
+}
+
+func TestHeaderCarrier_Get_DuplicateTraceparent_ReturnsFirst(t *testing.T) {
+	// traceparent is single-valued; duplicate headers must not be concatenated.
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: "traceparent", Value: "00-aaaa-bbbb-01"},
+				{Key: "traceparent", Value: "00-cccc-dddd-01"},
+			},
+		},
+	}
+	carrier := (*headerCarrier)(headers)
+	got := carrier.Get("traceparent")
+	assert.Equal(t, "00-aaaa-bbbb-01", got, "single-valued header must return first match only")
+}
+
+func TestHeaderCarrier_Get_DuplicateBaggage_ConcatenatesAll(t *testing.T) {
+	// baggage is list-valued; duplicate headers must be comma-joined per RFC 9110.
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: "baggage", Value: "key1=val1"},
+				{Key: "baggage", Value: "key2=val2"},
+			},
+		},
+	}
+	carrier := (*headerCarrier)(headers)
+	got := carrier.Get("baggage")
+	assert.Equal(t, "key1=val1,key2=val2", got, "list-valued header must concatenate all values")
+}
+
+func TestHeaderCarrier_Get_DuplicateTracestate_ConcatenatesAll(t *testing.T) {
+	// tracestate is list-valued; duplicate headers must be comma-joined.
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: "tracestate", Value: "vendor1=abc"},
+				{Key: "tracestate", Value: "vendor2=def"},
+			},
+		},
+	}
+	carrier := (*headerCarrier)(headers)
+	got := carrier.Get("tracestate")
+	assert.Equal(t, "vendor1=abc,vendor2=def", got, "tracestate must concatenate all values")
+}
+
+func TestHeaderCarrier_Keys_DeduplicatesDuplicateHeaders(t *testing.T) {
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: "traceparent", Value: "00-aaaa-bbbb-01"},
+				{Key: "baggage", Value: "key1=val1"},
+				{Key: "baggage", Value: "key2=val2"},
+				{Key: "traceparent", Value: "00-cccc-dddd-01"},
+				{Key: "authorization", Value: "Bearer token"},
+			},
+		},
+	}
+	carrier := (*headerCarrier)(headers)
+	keys := carrier.Keys()
+	assert.Equal(t, []string{"traceparent", "baggage", "authorization"}, keys,
+		"Keys must return each header name exactly once, in first-seen order")
+}
+
+func TestHeaderCarrier_Keys_DeduplicatesMixedCaseHeaders(t *testing.T) {
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: "Baggage", Value: "key1=val1"},
+				{Key: "baggage", Value: "key2=val2"},
+				{Key: "BAGGAGE", Value: "key3=val3"},
+			},
+		},
+	}
+	carrier := (*headerCarrier)(headers)
+	keys := carrier.Keys()
+	assert.Equal(t, []string{"Baggage"}, keys,
+		"Keys must deduplicate case-insensitively, keeping first-seen spelling")
+}

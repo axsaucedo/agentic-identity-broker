@@ -206,9 +206,44 @@ token_exchange:
 
 > **Breaking change (Feature 021)**: `agent_id_expression: "subject_token.azp"` is no longer valid. Update to `resolveAgentIdByClientId(subject_token.azp)`. See [docs/changelog.md](../../docs/changelog.md).
 
+### `extproc-telemetry.yaml`
+
+OpenTelemetry configuration example for the **ExtProc Token Exchange service**. Demonstrates:
+- Configuration schema identical to the identity broker's `telemetry.yaml` (feature parity)
+- Service-specific defaults: `service_name: extproc-token-exchange`, propagators: `["tracecontext", "ottrace", "b3multi", "baggage"]`
+- Environment variable prefix: `EXTPROC_TELEMETRY_*` (for ExtProc gRPC service)
+- Four deployment scenarios: development (full tracing), production (5% sampling), unreachable collector (graceful degradation), propagation-only (context forwarding without local spans)
+- TLS certificate delegation to OTel SDK standard environment variables
+- Distributed tracing through the token exchange chain: agentgateway → ExtProc → Identity Broker
+
+**Usage:**
+
+```bash
+# Enable ExtProc telemetry with local collector
+# Note: extproc-telemetry.yaml is a telemetry-focused overlay; it must be
+# combined with a complete base config that includes all required fields
+# (grpc, oauth2, cache, circuit_breaker). Use config merging or copy the
+# telemetry block into your full config file.
+EXTPROC_CONFIG_PATH=./path/to/full-config-with-telemetry.yaml \
+  ./extproc-token-exchange
+
+# Override endpoint via environment variable (overrides YAML)
+EXTPROC_CONFIG_PATH=./path/to/full-config-with-telemetry.yaml \
+EXTPROC_TELEMETRY_EXPORTER_ENDPOINT=collector.monitoring.svc:4317 \
+  ./extproc-token-exchange
+```
+
+**Key Features:**
+- Reuses the same telemetry configuration schema as the identity broker for operational parity
+- Adds W3C Trace Context (`tracecontext`) to default propagators to handle agentgateway's traceparent headers
+- End-to-end trace visibility: each token exchange request creates a child span linked to the upstream trace
+- Graceful degradation when collector is unavailable (FR-008 — service continues operating normally)
+
+See [`extproc-telemetry.yaml`](extproc-telemetry.yaml) for inline documentation covering all telemetry options.
+
 ### `telemetry.yaml`
 
-OpenTelemetry observability configuration. Demonstrates:
+OpenTelemetry observability configuration for the **Identity Broker** service. Demonstrates:
 - Enabling distributed tracing, metrics, and log correlation
 - Service name and resource attribute configuration
 - Trace sampling rate and propagator selection

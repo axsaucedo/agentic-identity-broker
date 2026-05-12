@@ -8,6 +8,7 @@
 package server_test
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -59,7 +60,7 @@ func TestTokenExchanger_TLS_ExchangeTimeout_SetOnHTTPClient(t *testing.T) {
 	defer exchanger2.Shutdown()
 
 	start := time.Now()
-	_, err = exchanger2.Exchange("token", "http://resource.example.com/api")
+	_, err = exchanger2.Exchange(context.Background(), "token", "http://resource.example.com/api")
 	elapsed := time.Since(start)
 
 	assert.Error(t, err, "timeout must produce an error")
@@ -123,7 +124,7 @@ func TestTokenExchanger_TLS_InsecureSkipVerify_ConnectsToSelfSignedServer(t *tes
 	require.NoError(t, err, "InsecureSkipVerify must allow connecting to self-signed TLS server")
 	defer exchanger.Shutdown()
 
-	token, err := exchanger.Exchange("user-token", "https://resource.example.com/api")
+	token, err := exchanger.Exchange(context.Background(), "user-token", "https://resource.example.com/api")
 	require.NoError(t, err, "exchange must succeed with InsecureSkipVerify=true")
 	assert.Equal(t, "tls-exchanged-token", token)
 }
@@ -242,7 +243,7 @@ func TestTokenExchanger_TLS_CaBundlePath_AllowsCustomCA(t *testing.T) {
 	require.NoError(t, err, "CaBundlePath with matching CA must allow connection")
 	defer exchanger.Shutdown()
 
-	token, err := exchanger.Exchange("user-token", "https://resource.example.com/api")
+	token, err := exchanger.Exchange(context.Background(), "user-token", "https://resource.example.com/api")
 	require.NoError(t, err, "exchange must succeed when CA bundle matches server cert")
 	assert.Equal(t, "ca-bundle-exchanged-token", token)
 }

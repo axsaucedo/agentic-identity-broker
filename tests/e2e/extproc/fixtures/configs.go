@@ -43,6 +43,11 @@ func DefaultConfig() *extprocconfig.Config {
 			MaxFailures:  5,
 			ResetTimeout: 30 * time.Second,
 		},
+		Telemetry: extprocconfig.TelemetryConfig{
+			Exporter: extprocconfig.OTLPExporterConfig{
+				Timeout: 10 * time.Second,
+			},
+		},
 	}
 }
 
