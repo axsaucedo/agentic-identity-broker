@@ -37,7 +37,7 @@
   - `client_uris` set (no `ClientID`) → local CIMD-class
   - Neither → local plain-class
 - Resolution: URL → `GetByClientURI`, UUID → `Agent.ID`. No `GetByClientID` fallback.
-- All agents addressed by `Agent.ID` (UUID) on `/authorize` — upstream `Agent.ClientID` never exposed.
+- Non-CIMD agents addressed by `Agent.ID` (UUID); CIMD agents addressed by URL-format `client_id` — upstream `Agent.ClientID` never exposed to relying parties.
 - CIMD agents rejected when accessed by UUID (must use URL).
 - `Agent.ClientID` is already optional (migration 016 done). No dependency on other workstreams.
 - Spec is ready for `/speckit.clarify` or `/speckit.plan`.
