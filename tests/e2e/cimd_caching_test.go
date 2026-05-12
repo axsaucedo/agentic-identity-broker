@@ -16,6 +16,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -75,7 +76,7 @@ var _ = Describe("CIMD Response Caching", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID(clientURL),
+				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Caching Test Agent",
 				Description: "E2E test agent for CIMD caching scenario",
@@ -136,7 +137,7 @@ var _ = Describe("CIMD Response Caching", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID(clientURL),
+				ClientID:    ptr.To(id.ClientID(clientURL)),
 				DisplayName: "No-Error-Cache Agent",
 				Description: "E2E test agent for CIMD no-error-cache scenario",
 				ClientURIs:  []string{clientURL},
@@ -204,7 +205,7 @@ var _ = Describe("CIMD Response Caching", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID(clientURL),
+				ClientID:    ptr.To(id.ClientID(clientURL)),
 				DisplayName: "TTL Clamp Test Agent",
 				Description: "E2E test agent for CIMD TTL clamping scenario",
 				ClientURIs:  []string{clientURL},
@@ -272,7 +273,7 @@ var _ = Describe("CIMD Response Caching", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    id.ClientID(clientURL),
+				ClientID:    ptr.To(id.ClientID(clientURL)),
 				DisplayName: "TTL Expiry Agent",
 				Description: "E2E test agent for CIMD TTL expiry scenario",
 				ClientURIs:  []string{clientURL},

@@ -6,6 +6,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
 // SharedUpstreamClientID is the upstream OAuth2 client_id shared by multi-agent test agents.
@@ -19,7 +20,7 @@ func MultiAgentAlpha() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
 		ID:           id.NewAgentID(),
-		ClientID:     id.ClientID(SharedUpstreamClientID),
+		ClientID:     ptr.To(id.ClientID(SharedUpstreamClientID)),
 		DisplayName:  "Multi-Agent Alpha",
 		Description:  "First agent sharing an upstream OAuth2 client_id (feature 021 testing)",
 		RedirectURIs: []string{"https://client.example.com/cb"},
@@ -35,7 +36,7 @@ func MultiAgentBeta() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
 		ID:           id.NewAgentID(),
-		ClientID:     id.ClientID(SharedUpstreamClientID),
+		ClientID:     ptr.To(id.ClientID(SharedUpstreamClientID)),
 		DisplayName:  "Multi-Agent Beta",
 		Description:  "Second agent sharing an upstream OAuth2 client_id (feature 021 testing)",
 		RedirectURIs: []string{"https://client.example.com/cb"},

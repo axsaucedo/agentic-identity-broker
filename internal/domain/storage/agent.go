@@ -15,7 +15,7 @@ import (
 // An agent can request delegated permissions from users to access third-party services.
 type Agent struct {
 	ID                   id.AgentID           `json:"id" db:"id"`
-	ClientID             id.ClientID          `json:"client_id" db:"client_id"`
+	ClientID             *id.ClientID         `json:"client_id,omitempty" db:"client_id"`
 	ExternalID           *id.ExternalID       `json:"external_id,omitempty" db:"external_id"`
 	DisplayName          string               `json:"display_name" db:"display_name"`
 	Description          string               `json:"description" db:"description"`
@@ -39,8 +39,8 @@ func (a *Agent) Validate() error {
 	if a.ID.IsZero() {
 		return errors.New("agent ID cannot be empty")
 	}
-	if a.ClientID.IsZero() {
-		return errors.New("client_id is required")
+	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
+		return errors.New("client_id cannot be empty when provided")
 	}
 	if a.DisplayName == "" {
 		return errors.New("display_name is required")
@@ -163,11 +163,15 @@ func (a *Agent) Copy() *Agent {
 
 	copy := &Agent{
 		ID:          a.ID,
-		ClientID:    a.ClientID,
 		DisplayName: a.DisplayName,
 		Description: a.Description,
 		CreatedAt:   a.CreatedAt,
 		UpdatedAt:   a.UpdatedAt,
+	}
+
+	if a.ClientID != nil {
+		clientID := *a.ClientID
+		copy.ClientID = &clientID
 	}
 
 	if a.ExternalID != nil {
@@ -217,8 +221,8 @@ func (a *Agent) Copy() *Agent {
 // ValidateForCreate validates an agent before creation.
 // ID will be generated, so it may be empty.
 func (a *Agent) ValidateForCreate() error {
-	if a.ClientID.IsZero() {
-		return errors.New("client_id is required")
+	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
+		return errors.New("client_id cannot be empty when provided")
 	}
 	if a.DisplayName == "" {
 		return errors.New("display_name is required")

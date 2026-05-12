@@ -247,14 +247,15 @@ func (m *MockOAuth2Server) handleToken(w http.ResponseWriter, r *http.Request) {
 // MockTokenExchangeServer is a controllable mock for the identity broker token exchange endpoint.
 // Used to simulate the RFC 8693 token exchange endpoint (POST /oauth2/token).
 type MockTokenExchangeServer struct {
-	server         *httptest.Server
-	mu             sync.RWMutex
-	callCount      int
-	exchangedToken string
-	expiresIn      *int
-	statusCode     int
-	errorCode      string
-	lastBody       string
+	server             *httptest.Server
+	mu                 sync.RWMutex
+	callCount          int
+	exchangedToken     string
+	expiresIn          *int
+	statusCode         int
+	errorCode          string
+	lastBody           string
+	lastRequestHeaders http.Header
 }
 
 // NewMockTokenExchangeServer creates a mock token exchange server with default responses.
@@ -303,6 +304,21 @@ func (m *MockTokenExchangeServer) LastBody() string {
 	return m.lastBody
 }
 
+// LastRequestHeaders returns a copy of the HTTP headers from the last received request (thread-safe).
+// Use this to assert on trace context headers (e.g., traceparent) injected by otelhttp.NewTransport.
+func (m *MockTokenExchangeServer) LastRequestHeaders() http.Header {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.lastRequestHeaders == nil {
+		return nil
+	}
+	headers := make(http.Header, len(m.lastRequestHeaders))
+	for k, v := range m.lastRequestHeaders {
+		headers[k] = append([]string{}, v...)
+	}
+	return headers
+}
+
 // WithExchangedToken configures the access_token in successful exchange responses.
 func (m *MockTokenExchangeServer) WithExchangedToken(token string) *MockTokenExchangeServer {
 	m.mu.Lock()
@@ -339,6 +355,9 @@ func (m *MockTokenExchangeServer) Reset() {
 
 // handleExchange handles POST /oauth2/token token exchange requests.
 func (m *MockTokenExchangeServer) handleExchange(w http.ResponseWriter, r *http.Request) {
+	// Capture headers before ParseForm since form parsing does not affect headers.
+	capturedHeaders := r.Header.Clone()
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -350,8 +369,9 @@ func (m *MockTokenExchangeServer) handleExchange(w http.ResponseWriter, r *http.
 	exchangedToken := m.exchangedToken
 	expiresIn := m.expiresIn
 	errorCode := m.errorCode
-	// Capture raw form-encoded body for assertion in tests
+	// Capture raw form-encoded body and request headers for assertion in tests
 	m.lastBody = r.Form.Encode()
+	m.lastRequestHeaders = capturedHeaders
 	m.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")

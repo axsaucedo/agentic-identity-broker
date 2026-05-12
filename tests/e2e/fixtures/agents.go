@@ -5,6 +5,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
 // ValidAgent returns a valid test agent with all required fields.
@@ -16,7 +17,7 @@ func ValidAgent() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
 		ID:           id.NewAgentID(),
-		ClientID:     id.ClientID("test-client-valid"),
+		ClientID:     ptr.To(id.ClientID("test-client-valid")),
 		DisplayName:  "Test Agent Valid",
 		Description:  "A valid test agent for E2E testing with all required fields",
 		RedirectURIs: []string{"https://client.example.com/cb"},
@@ -34,7 +35,7 @@ func AnotherAgent() *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
 		ID:           id.NewAgentID(),
-		ClientID:     id.ClientID("test-client-another"),
+		ClientID:     ptr.To(id.ClientID("test-client-another")),
 		DisplayName:  "Test Agent Another",
 		Description:  "Another valid test agent for E2E testing with different client ID",
 		RedirectURIs: []string{"https://client.example.com/cb"},
@@ -49,7 +50,7 @@ func AgentWithClientID(clientID string) *storage.Agent {
 	now := time.Now()
 	return &storage.Agent{
 		ID:          id.NewAgentID(),
-		ClientID:    id.ClientID(clientID),
+		ClientID:    ptr.To(id.ClientID(clientID)),
 		DisplayName: "Test Agent " + clientID,
 		Description: "Test agent with custom client ID: " + clientID,
 		CreatedAt:   now,
@@ -67,7 +68,7 @@ func AgentWithURLs() *storage.Agent {
 
 	return &storage.Agent{
 		ID:                   id.NewAgentID(),
-		ClientID:             id.ClientID("test-client-with-urls"),
+		ClientID:             ptr.To(id.ClientID("test-client-with-urls")),
 		DisplayName:          "Agent With URLs",
 		Description:          "Test agent with all URL fields populated for documentation and governance",
 		GovernanceURL:        &governanceURL,

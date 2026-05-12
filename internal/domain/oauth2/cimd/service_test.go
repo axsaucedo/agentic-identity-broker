@@ -11,6 +11,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -74,7 +75,7 @@ func (m *mockAgentRepo) List(_ context.Context) ([]*storage.Agent, error) {
 }
 func (m *mockAgentRepo) GetByClientID(_ context.Context, clientID id.ClientID) (*storage.Agent, error) {
 	for _, a := range m.agents {
-		if a.ClientID == clientID {
+		if a.ClientID != nil && *a.ClientID == clientID {
 			return a, nil
 		}
 	}
@@ -82,6 +83,10 @@ func (m *mockAgentRepo) GetByClientID(_ context.Context, clientID id.ClientID) (
 }
 func (m *mockAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
 	return nil, ports.ErrNotFound
+}
+
+func (m *mockAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
 }
 
 // --- helpers ---
@@ -98,10 +103,10 @@ func cimdFetchResult(t *testing.T, clientID string, authMethod string) *ports.CI
 	}
 }
 
-func testAgent(id id.AgentID) *storage.Agent {
+func testAgent(agentID id.AgentID) *storage.Agent {
 	return &storage.Agent{
-		ID:          id,
-		ClientID:    "https://agent.example.com/client",
+		ID:          agentID,
+		ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 		DisplayName: "Test Agent",
 	}
 }

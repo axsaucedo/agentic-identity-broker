@@ -14,6 +14,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	dstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 )
 
 // testClientResolver wraps an AgentRepository into a ClientResolver for tests.
@@ -466,7 +467,7 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 	t.Run("GetClient agent-exists-but-no-credential returns ErrNotFound", func(t *testing.T) {
 		agentRepo := memory.NewAgentRepository()
 		agentID := id.NewAgentID()
-		agent := &dstorage.Agent{ID: agentID, ClientID: "upstream-client", DisplayName: "Test Agent", Description: "Test agent for infrastructure error tests"}
+		agent := &dstorage.Agent{ID: agentID, ClientID: ptr.To(id.ClientID("upstream-client")), DisplayName: "Test Agent", Description: "Test agent for infrastructure error tests"}
 		require.NoError(t, agentRepo.Create(context.Background(), agent))
 		// No credential created — credential repo is empty
 		store := NewFositeStorage(memory.NewAuthorizationCodeStore(), memory.NewPKCESessionStore(), memory.NewClientCredentialStore(), &testClientResolver{agentRepo: agentRepo}, testSlogger())
@@ -543,7 +544,7 @@ func TestFositeStorage_InfrastructureErrors(t *testing.T) {
 	t.Run("GetClient round-trips client.GetID() to agent UUID", func(t *testing.T) {
 		_, _, agentRepo, credRepo := newTestFositeStorage()
 		agentID := id.NewAgentID()
-		agent := &dstorage.Agent{ID: agentID, ClientID: "upstream-client", DisplayName: "Test Agent", Description: "Test agent for round-trip tests"}
+		agent := &dstorage.Agent{ID: agentID, ClientID: ptr.To(id.ClientID("upstream-client")), DisplayName: "Test Agent", Description: "Test agent for round-trip tests"}
 		require.NoError(t, agentRepo.Create(context.Background(), agent))
 		cred := &dstorage.ClientCredential{
 			ID:         id.NewCredentialID(),

@@ -25,6 +25,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/sony/gobreaker/v2"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
 )
@@ -161,8 +162,9 @@ func NewTokenExchanger(cfg *extprocconfig.Config, logger *slog.Logger) (*TokenEx
 }
 
 // Exchange exchanges subjectToken for a downstream token scoped to resourceURI.
+// ctx is used for trace propagation and deadline enforcement.
 // Results are cached; concurrent requests for the same key are deduplicated via singleflight.
-func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, error) {
+func (te *TokenExchanger) Exchange(ctx context.Context, subjectToken, resourceURI string) (string, error) {
 	key := tokenCacheKey{subjectToken: subjectToken, resourceURI: resourceURI}
 
 	// Fast path: cache hit.
@@ -174,8 +176,10 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 	te.cacheMu.RUnlock()
 
 	// Slow path: singleflight-deduplicated exchange.
+	// Use DoChan to allow each caller to respect their own cancellation,
+	// not just block on the first caller's context.
 	sfKey := subjectToken + "\x00" + resourceURI
-	result, err, _ := te.sfGroup.Do(sfKey, func() (any, error) {
+	resChan := te.sfGroup.DoChan(sfKey, func() (any, error) {
 		// Re-check cache inside singleflight to handle races.
 		te.cacheMu.RLock()
 		if entry, ok := te.cache[key]; ok && !entry.isExpired() {
@@ -184,9 +188,30 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 		}
 		te.cacheMu.RUnlock()
 
-		// doExchangeAndCache performs the exchange and caches the result.
-		doExchangeAndCache := func() (string, error) {
-			tok, ttl, err := te.doExchange(subjectToken, resourceURI)
+		// Detach from the leader's cancellation so a cancelled leader does not abort
+		// the shared exchange for concurrent followers. Per-caller cancellation is
+		// handled by awaitResult's select. http.Client.Timeout provides a hard upper bound.
+		exchangeCtx := context.WithoutCancel(ctx)
+
+		// When the circuit breaker is disabled (cb == nil), call doExchange directly.
+		if te.cb == nil {
+			tok, ttl, err := te.doExchange(exchangeCtx, subjectToken, resourceURI)
+			if err != nil {
+				return "", err
+			}
+			te.cacheMu.Lock()
+			te.cache[key] = &cachedToken{
+				accessToken: tok,
+				expiresAt:   time.Now().Add(ttl),
+			}
+			te.cacheMu.Unlock()
+			return tok, nil
+		}
+
+		// Circuit breaker enabled: wrap in gobreaker.Execute so it tracks real backend
+		// failures, not caller cancellations.
+		token, err := te.cb.Execute(func() (string, error) {
+			tok, ttl, err := te.doExchange(exchangeCtx, subjectToken, resourceURI)
 			if err != nil {
 				return "", err
 			}
@@ -199,19 +224,7 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 			te.cacheMu.Unlock()
 
 			return tok, nil
-		}
-
-		// When the circuit breaker is disabled (cb == nil), call doExchange directly.
-		// When enabled, wrap in gobreaker.Execute so that gobreaker tracks
-		// successes/failures and opens/closes automatically.
-		// gobreaker returns ErrOpenState when the circuit is open, or
-		// ErrTooManyRequests when the half-open probe slot is taken.
-		// Both are mapped to ErrCircuitOpen for callers.
-		if te.cb == nil {
-			return doExchangeAndCache()
-		}
-
-		token, err := te.cb.Execute(doExchangeAndCache)
+		})
 		if err != nil {
 			if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
 				return "", ErrCircuitOpen
@@ -220,14 +233,37 @@ func (te *TokenExchanger) Exchange(subjectToken, resourceURI string) (string, er
 		}
 		return token, nil
 	})
+
+	// Wait for result while respecting this caller's context cancellation.
+	// This allows each caller to abandon long-running singleflight groups
+	// if their own deadline is exceeded, even if other callers are still waiting.
+	res, err := awaitResult(ctx, resChan)
 	if err != nil {
 		return "", err
 	}
-	tok, ok := result.(string)
-	if !ok {
-		return "", fmt.Errorf("singleflight: unexpected result type %T", result)
+	if res.Shared {
+		te.logger.DebugContext(ctx, "singleflight: exchange result shared across concurrent callers",
+			"resource", resourceURI)
 	}
-	return tok, nil
+	if res.Err != nil {
+		return "", res.Err
+	}
+	return res.Val.(string), nil
+}
+
+// awaitResult waits for the singleflight result while respecting ctx cancellation.
+// When both ctx.Done() and resChan fire simultaneously, the post-receive ctx.Err()
+// check ensures cancellation wins deterministically.
+func awaitResult(ctx context.Context, resChan <-chan singleflight.Result) (singleflight.Result, error) {
+	select {
+	case <-ctx.Done():
+		return singleflight.Result{}, ctx.Err()
+	case res := <-resChan:
+		if err := ctx.Err(); err != nil {
+			return singleflight.Result{}, err
+		}
+		return res, nil
+	}
 }
 
 // Shutdown signals the background goroutine to stop and releases resources.
@@ -236,23 +272,24 @@ func (te *TokenExchanger) Shutdown() {
 }
 
 // doExchange performs the RFC 8693 token exchange HTTP call.
+// ctx is used for trace propagation and deadline enforcement.
 // Returns the exchanged access token and the TTL to cache it for.
 // Fails fast with ErrAssertionExpired if the stored assertion has expired.
-func (te *TokenExchanger) doExchange(subjectToken, resourceURI string) (string, time.Duration, error) {
+func (te *TokenExchanger) doExchange(ctx context.Context, subjectToken, resourceURI string) (string, time.Duration, error) {
 	s := te.assertion.Load()
 	if s == nil || s.value == "" {
-		te.logger.Error("client assertion unavailable: no assertion stored")
+		te.logger.ErrorContext(ctx, "client assertion unavailable: no assertion stored")
 		return "", 0, ErrAssertionExpired
 	}
 	if !s.expiresAt.IsZero() && time.Now().After(s.expiresAt) {
-		te.logger.Error("client assertion expired: background refresh did not complete in time",
+		te.logger.ErrorContext(ctx, "client assertion expired: background refresh did not complete in time",
 			"expired_at", s.expiresAt.Format(time.RFC3339))
 		return "", 0, ErrAssertionExpired
 	}
 	assertion := s.value
 
 	// Log the full exchange request parameters for observability.
-	te.logger.Debug("extproc: token exchange request",
+	te.logger.DebugContext(ctx, "extproc: token exchange request",
 		"token_endpoint", te.cfg.OAuth2.TokenEndpoint,
 		"grant_type", "urn:ietf:params:oauth:grant-type:token-exchange",
 		"subject_token_type", "urn:ietf:params:oauth:token-type:access_token",
@@ -260,7 +297,7 @@ func (te *TokenExchanger) doExchange(subjectToken, resourceURI string) (string, 
 		"client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), te.cfg.OAuth2.ExchangeTimeout)
+	exchangeCtx, cancel := context.WithTimeout(ctx, te.cfg.OAuth2.ExchangeTimeout)
 	defer cancel()
 
 	form := url.Values{
@@ -272,7 +309,7 @@ func (te *TokenExchanger) doExchange(subjectToken, resourceURI string) (string, 
 		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+	req, err := http.NewRequestWithContext(exchangeCtx, http.MethodPost,
 		te.cfg.OAuth2.TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", 0, fmt.Errorf("building token exchange request: %w", err)
@@ -294,7 +331,7 @@ func (te *TokenExchanger) doExchange(subjectToken, resourceURI string) (string, 
 		var errBody brokerErrorBody
 		_ = json.Unmarshal(body, &errBody)
 		if errBody.Code != "" {
-			te.logger.Warn("token exchange returned broker error",
+			te.logger.WarnContext(ctx, "token exchange returned broker error",
 				"status", resp.StatusCode,
 				"code", errBody.Code,
 				"resource", resourceURI,
@@ -309,10 +346,10 @@ func (te *TokenExchanger) doExchange(subjectToken, resourceURI string) (string, 
 		// Body is absent or not an RFC 8693 error — still return a typed error
 		// carrying the HTTP status code so isServerError can correctly classify
 		// 4xx responses without a parseable error body as client errors.
-		te.logger.Debug("token exchange non-200 response body is not RFC 8693 JSON",
+		te.logger.DebugContext(ctx, "token exchange non-200 response body is not RFC 8693 JSON",
 			"status", resp.StatusCode,
 			"resource", resourceURI)
-		te.logger.Warn("token exchange returned non-200",
+		te.logger.WarnContext(ctx, "token exchange returned non-200",
 			"status", resp.StatusCode,
 			"resource", resourceURI)
 		return "", 0, &BrokerExchangeError{
@@ -501,8 +538,16 @@ func buildHTTPClient(cfg *extprocconfig.Config) (*http.Client, error) {
 		TLSClientConfig: tlsCfg,
 	}
 
+	// Wrap with otelhttp for automatic span creation on outbound requests.
+	// otelhttp resolves the TracerProvider lazily (from otel.GetTracerProvider() at
+	// request time, not construction time), so this transport correctly picks up
+	// provider changes made after construction — including E2E test global swaps.
+	tracedTransport := otelhttp.NewTransport(transport)
+
+	// http.Client.Timeout is the hard deadline for the entire request lifecycle.
+	// doExchange also applies context.WithTimeout per call; both use ExchangeTimeout.
 	return &http.Client{
 		Timeout:   cfg.OAuth2.ExchangeTimeout,
-		Transport: transport,
+		Transport: tracedTransport,
 	}, nil
 }

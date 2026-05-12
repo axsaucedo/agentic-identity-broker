@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	extprocconfig "github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/config"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/extproc/server"
@@ -155,7 +160,7 @@ func TestTokenExchanger_Exchange_SendsCorrectRFC8693Request(t *testing.T) {
 	const subjectToken = "incoming-user-bearer-token"
 	const resourceURI = "http://mcp-server:9003/mcp"
 
-	token, err := exchanger.Exchange(subjectToken, resourceURI)
+	token, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 	assert.Equal(t, mocks.exchangedToken, token)
 
@@ -186,7 +191,7 @@ func TestTokenExchanger_Exchange_UsesIDTokenAsClientAssertion(t *testing.T) {
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	_, err = exchanger.Exchange("some-token", "http://resource.example.com/api")
+	_, err = exchanger.Exchange(context.Background(), "some-token", "http://resource.example.com/api")
 	require.NoError(t, err)
 
 	assert.Equal(t, "specific-id-token-for-assertion",
@@ -218,7 +223,7 @@ func TestTokenExchanger_Exchange_Non200Response_ReturnsError(t *testing.T) {
 			require.NoError(t, err)
 			defer exchanger.Shutdown()
 
-			token, err := exchanger.Exchange("subject-token", "http://resource.example.com")
+			token, err := exchanger.Exchange(context.Background(), "subject-token", "http://resource.example.com")
 			assert.Error(t, err, "non-200 exchange response must return error")
 			assert.Empty(t, token, "no token should be returned on failure")
 		})
@@ -245,7 +250,7 @@ func TestTokenExchanger_Exchange_Timeout_ReturnsError(t *testing.T) {
 	defer exchanger.Shutdown()
 
 	start := time.Now()
-	_, err = exchanger.Exchange("token", "http://resource.example.com")
+	_, err = exchanger.Exchange(context.Background(), "token", "http://resource.example.com")
 	elapsed := time.Since(start)
 
 	assert.Error(t, err, "timeout must return error")
@@ -263,7 +268,7 @@ func TestTokenExchanger_Exchange_NoExpiresIn_SucceedsWithDefaultTTL(t *testing.T
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	token, err := exchanger.Exchange("token", "http://resource.example.com/api")
+	token, err := exchanger.Exchange(context.Background(), "token", "http://resource.example.com/api")
 	require.NoError(t, err, "missing expires_in should not cause error")
 	assert.Equal(t, mocks.exchangedToken, token)
 }
@@ -282,12 +287,12 @@ func TestTokenExchanger_Exchange_CacheHit_DoesNotCallExchangeAgain(t *testing.T)
 	const resourceURI = "http://mcp-server:9003/mcp"
 
 	// First call — populates cache
-	token1, err := exchanger.Exchange(subjectToken, resourceURI)
+	token1, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 	firstCallCount := mocks.exchangeCalls
 
 	// Second call with same key — must use cache
-	token2, err := exchanger.Exchange(subjectToken, resourceURI)
+	token2, err := exchanger.Exchange(context.Background(), subjectToken, resourceURI)
 	require.NoError(t, err)
 
 	assert.Equal(t, token1, token2, "cached token must equal first exchanged token")
@@ -321,10 +326,10 @@ func TestTokenExchanger_Exchange_DifferentKeys_IndependentCacheEntries(t *testin
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	token1, err := exchanger.Exchange("user-token", "http://service-a:9000/api")
+	token1, err := exchanger.Exchange(context.Background(), "user-token", "http://service-a:9000/api")
 	require.NoError(t, err)
 
-	token2, err := exchanger.Exchange("user-token", "http://service-b:9001/api")
+	token2, err := exchanger.Exchange(context.Background(), "user-token", "http://service-b:9001/api")
 	require.NoError(t, err)
 
 	assert.NotEqual(t, token1, token2, "different resources must produce different cached tokens")
@@ -347,7 +352,7 @@ func TestTokenExchanger_Exchange_ExpiresIn_CappedAtMaxTTL(t *testing.T) {
 	defer exchanger.Shutdown()
 
 	// This test verifies the TTL cap is applied — the exchange still succeeds
-	token, err := exchanger.Exchange("token", "http://resource.example.com")
+	token, err := exchanger.Exchange(context.Background(), "token", "http://resource.example.com")
 	require.NoError(t, err)
 	assert.NotEmpty(t, token)
 	// The actual TTL cap behavior is verified via cache expiry tests
@@ -417,7 +422,7 @@ func TestTokenExchanger_ClientAssertion_SendsCorrectGrantRequest(t *testing.T) {
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	_, err = exchanger.Exchange("user-token", "http://resource.example.com")
+	_, err = exchanger.Exchange(context.Background(), "user-token", "http://resource.example.com")
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -488,7 +493,7 @@ func TestTokenExchanger_ClientAssertion_UsesConfiguredScopes(t *testing.T) {
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	_, err = exchanger.Exchange("user-token", "http://resource.example.com")
+	_, err = exchanger.Exchange(context.Background(), "user-token", "http://resource.example.com")
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -558,7 +563,7 @@ func TestTokenExchanger_ClientAssertion_BlankScopesFallBackToOpenID(t *testing.T
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	_, err = exchanger.Exchange("user-token", "http://resource.example.com")
+	_, err = exchanger.Exchange(context.Background(), "user-token", "http://resource.example.com")
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -626,7 +631,7 @@ func TestTokenExchanger_ClientAssertion_DefaultsIssuerOAuthToken(t *testing.T) {
 	require.NoError(t, err)
 	defer exchanger.Shutdown()
 
-	_, err = exchanger.Exchange("token", "http://resource.example.com")
+	_, err = exchanger.Exchange(context.Background(), "token", "http://resource.example.com")
 	require.NoError(t, err)
 	assert.True(t, called, "client_credentials must be called at {issuer}/oauth/token by default")
 }
@@ -714,4 +719,188 @@ func TestTokenExchanger_ClientSecret_NotExposedInErrors(t *testing.T) {
 func TestTokenExchanger_New_NilConfig_ReturnsError(t *testing.T) {
 	_, err := server.NewTokenExchanger(nil, testLogger())
 	assert.Error(t, err, "nil config must return error")
+}
+
+// ---------------------------------------------------------------------------
+// T022: HTTP client trace propagation
+// ---------------------------------------------------------------------------
+
+// Spec: US1 S2 — When traces are enabled, outbound HTTP request receives traceparent header
+func TestTokenExchanger_Exchange_PropagatesTraceContext(t *testing.T) {
+	// Install a real tracer provider + W3C propagator so outbound otelhttp transport injects traceparent.
+	spanRecorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
+	prevTP := otel.GetTracerProvider()
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevTP)
+		otel.SetTextMapPropagator(prevProp)
+	})
+
+	var mu sync.Mutex
+	var capturedTraceparent string
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		capturedTraceparent = r.Header.Get("traceparent")
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := map[string]interface{}{
+			"access_token": "new-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+			"id_token":     "id-token-jwt",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer tokenServer.Close()
+
+	cfg := &extprocconfig.Config{
+		GRPC: extprocconfig.GRPCConfig{Bind: "127.0.0.1", Port: 50051},
+		OAuth2: extprocconfig.OAuth2Config{
+			TokenEndpoint:           tokenServer.URL + "/token",
+			Issuer:                  tokenServer.URL,
+			ClientID:                "test-client",
+			ClientSecret:            "test-secret",
+			ExchangeTimeout:         5 * time.Second,
+			ClientAssertionType:     "id_token",
+			ClientCredentialsScopes: []string{"openid"},
+			TLS:                     extprocconfig.TLSConfig{AllowHTTP: true},
+		},
+		Cache: extprocconfig.CacheConfig{
+			DefaultTTL: 5 * time.Minute,
+			MaxTTL:     1 * time.Hour,
+		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
+	}
+
+	te, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer te.Shutdown()
+
+	// Clear any spans from constructor's startup HTTP traffic.
+	tp.ForceFlush(context.Background()) //nolint:errcheck
+	spanRecorder.Ended()                // drain
+
+	// Start a parent span and pass its context to Exchange.
+	ctx, parentSpan := tp.Tracer("test").Start(context.Background(), "test-parent")
+	expectedTraceID := parentSpan.SpanContext().TraceID().String()
+
+	// Reset captured header before the exchange call.
+	mu.Lock()
+	capturedTraceparent = ""
+	mu.Unlock()
+
+	token, err := te.Exchange(ctx, "test-subject-token", "https://example.com/api")
+	parentSpan.End()
+	require.NoError(t, err)
+	assert.NotEmpty(t, token, "exchange should return a token")
+
+	// The outbound request must carry a traceparent with the same trace ID.
+	mu.Lock()
+	tp2 := capturedTraceparent
+	mu.Unlock()
+	assert.NotEmpty(t, tp2, "outbound request must have traceparent header")
+	assert.Contains(t, tp2, expectedTraceID,
+		"traceparent must contain the parent span's trace ID")
+}
+
+// ---------------------------------------------------------------------------
+// T023: Propagation-only mode when traces disabled
+// ---------------------------------------------------------------------------
+
+// Spec: US1 S6 — When telemetry.enabled=true but traces.enabled=false,
+// trace context is still forwarded without creating client spans
+func TestTokenExchanger_Exchange_PropagatesWithoutLocalSpans(t *testing.T) {
+	// Install a NeverSample tracer provider so no local spans are created,
+	// but propagation still injects traceparent from the incoming context.
+	spanRecorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSpanProcessor(spanRecorder),
+		sdktrace.WithSampler(sdktrace.NeverSample()),
+	)
+	prevTP := otel.GetTracerProvider()
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevTP)
+		otel.SetTextMapPropagator(prevProp)
+	})
+
+	var mu sync.Mutex
+	var capturedTraceparent string
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		capturedTraceparent = r.Header.Get("traceparent")
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := map[string]interface{}{
+			"access_token": "token-data",
+			"token_type":   "Bearer",
+			"expires_in":   1800,
+			"id_token":     "id-token-jwt",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer tokenServer.Close()
+
+	cfg := &extprocconfig.Config{
+		GRPC: extprocconfig.GRPCConfig{Bind: "127.0.0.1", Port: 50051},
+		OAuth2: extprocconfig.OAuth2Config{
+			TokenEndpoint:           tokenServer.URL + "/token",
+			Issuer:                  tokenServer.URL,
+			ClientID:                "test-client",
+			ClientSecret:            "test-secret",
+			ExchangeTimeout:         5 * time.Second,
+			ClientAssertionType:     "id_token",
+			ClientCredentialsScopes: []string{"openid"},
+			TLS:                     extprocconfig.TLSConfig{AllowHTTP: true},
+		},
+		Cache: extprocconfig.CacheConfig{
+			DefaultTTL: 5 * time.Minute,
+			MaxTTL:     1 * time.Hour,
+		},
+		CircuitBreaker: extprocconfig.CircuitBreakerConfig{
+			MaxFailures:  5,
+			ResetTimeout: 30 * time.Second,
+		},
+	}
+
+	te, err := server.NewTokenExchanger(cfg, testLogger())
+	require.NoError(t, err)
+	defer te.Shutdown()
+
+	// Clear constructor spans and reset captured header.
+	tp.ForceFlush(context.Background()) //nolint:errcheck
+	spanRecorder.Ended()                // drain
+	mu.Lock()
+	capturedTraceparent = ""
+	mu.Unlock()
+
+	// Create a sampled-out parent span context — propagation should still forward it.
+	ctx, parentSpan := tp.Tracer("test").Start(context.Background(), "test-parent")
+	expectedTraceID := parentSpan.SpanContext().TraceID().String()
+
+	token, err := te.Exchange(ctx, "propagation-test-token", "https://example.com/resource")
+	parentSpan.End()
+	require.NoError(t, err)
+	assert.Equal(t, "token-data", token, "exchange should return the access token regardless of trace collection state")
+
+	// Verify propagation occurred (traceparent forwarded) but no local spans were recorded.
+	tp.ForceFlush(context.Background()) //nolint:errcheck
+	localSpans := spanRecorder.Ended()
+	assert.Empty(t, localSpans, "no local spans should be recorded when sampler is NeverSample")
+	mu.Lock()
+	tp2 := capturedTraceparent
+	mu.Unlock()
+	assert.NotEmpty(t, tp2, "traceparent must still be propagated even without local spans")
+	assert.Contains(t, tp2, expectedTraceID,
+		"propagated traceparent must carry the original trace ID")
 }

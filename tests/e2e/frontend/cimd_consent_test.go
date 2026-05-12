@@ -10,6 +10,7 @@ import (
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/pages"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -49,7 +50,7 @@ var _ = Describe("CIMD Consent UI", func() {
 		now := time.Now()
 		cimdAgent = &storage.Agent{
 			ID:           id.NewAgentID(),
-			ClientID:     id.ClientID("cimd-test-client"),
+			ClientID:     ptr.To(id.ClientID("cimd-test-client")),
 			DisplayName:  "CIMD Test Agent",
 			Description:  "Test agent for CIMD consent UI scenarios",
 			ClientURIs:   []string{"https://cimd-example.com/client_metadata.json"},

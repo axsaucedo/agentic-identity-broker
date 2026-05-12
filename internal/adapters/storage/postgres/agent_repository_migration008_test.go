@@ -101,7 +101,7 @@ func TestMigration008_AgentClientIDUniqueConstraint(t *testing.T) {
 		sharedClientID := id.ClientID("shared-upstream-client-008")
 
 		agent1 := &storage.Agent{
-			ClientID:    sharedClientID,
+			ClientID:    &sharedClientID,
 			DisplayName: "Agent One",
 			Description: "First agent",
 			CreatedAt:   now,
@@ -111,7 +111,7 @@ func TestMigration008_AgentClientIDUniqueConstraint(t *testing.T) {
 		require.NoError(t, err, "first agent with shared client_id should be created")
 
 		agent2 := &storage.Agent{
-			ClientID:    sharedClientID,
+			ClientID:    &sharedClientID,
 			DisplayName: "Agent Two",
 			Description: "Second agent",
 			CreatedAt:   now,
@@ -132,7 +132,7 @@ func TestMigration008_AgentClientIDUniqueConstraint(t *testing.T) {
 		sharedClientID := id.ClientID("unique-client-pre-008")
 
 		agent1 := &storage.Agent{
-			ClientID:    sharedClientID,
+			ClientID:    &sharedClientID,
 			DisplayName: "Agent One",
 			Description: "First agent",
 			CreatedAt:   now,
@@ -142,7 +142,7 @@ func TestMigration008_AgentClientIDUniqueConstraint(t *testing.T) {
 		require.NoError(t, err, "first agent should be created")
 
 		agent2 := &storage.Agent{
-			ClientID:    sharedClientID,
+			ClientID:    &sharedClientID,
 			DisplayName: "Agent Two",
 			Description: "Duplicate",
 			CreatedAt:   now,

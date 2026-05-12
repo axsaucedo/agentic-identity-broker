@@ -115,7 +115,7 @@ func (h *AgentInfoHandler) toResponse(info *consent.AgentConsentInfo) AgentConse
 	// Convert agent metadata
 	agentMeta := AgentMetadata{
 		ID:                   info.Agent.ID.String(),
-		ClientID:             info.Agent.ClientID.String(),
+		ClientID:             clientIDToString(info.Agent.ClientID),
 		DisplayName:          info.Agent.DisplayName,
 		Description:          info.Agent.Description,
 		GovernanceURL:        info.Agent.GovernanceURL,
@@ -163,4 +163,11 @@ func (h *AgentInfoHandler) writeError(w http.ResponseWriter, statusCode int, err
 		Message: message,
 	}
 	h.writeJSON(w, statusCode, resp)
+}
+
+func clientIDToString(c *id.ClientID) string {
+	if c == nil {
+		return ""
+	}
+	return c.String()
 }
