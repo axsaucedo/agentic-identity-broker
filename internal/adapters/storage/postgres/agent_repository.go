@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/lib/pq"
@@ -643,7 +644,7 @@ func (r *AgentRepository) ExistsOtherWithClientID(ctx context.Context, clientID 
 		).Scan(&exists)
 	}
 	if err != nil {
-		if strings.Contains(err.Error(), "context deadline exceeded") {
+		if errors.Is(err, context.DeadlineExceeded) {
 			return false, storage.NewStorageError("ExistsOtherWithClientID", storage.ErrorKindTimeout, err, "operation exceeded timeout")
 		}
 		return false, storage.NewStorageError("ExistsOtherWithClientID", storage.ErrorKindConnection, err, "database query failed")
