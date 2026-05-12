@@ -56,10 +56,6 @@ func (m *mockAgentDetailService) RevokeConsent(ctx context.Context, p id.Princip
 	return errors.New("not implemented")
 }
 
-func (m *mockAgentDetailService) GetActiveGrants(ctx context.Context, p id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (m *mockAgentDetailService) GetAgentDelegations(ctx context.Context, p id.Principal) ([]consent.AgentDelegation, error) {
 	return nil, errors.New("not implemented")
 }

@@ -10,11 +10,8 @@ import (
 )
 
 // mockConsentService implements a mock consent service for testing.
-//
-//nolint:unused // Used in tests
 type mockConsentService struct {
 	getAgentConsentInfoFunc       func(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error)
-	getActiveGrantsFunc           func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 	grantConsentFunc              func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
 	revokeConsentFunc             func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
 	revokeConsentForPrincipalFunc func(ctx context.Context, principal id.Principal, agentID id.AgentID) error
@@ -22,7 +19,8 @@ type mockConsentService struct {
 	getUserGrantsFunc             func(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 }
 
-//nolint:unused // Used in tests
+var _ ConsentService = (*mockConsentService)(nil)
+
 func (m *mockConsentService) GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error) {
 	if m.getAgentConsentInfoFunc != nil {
 		return m.getAgentConsentInfoFunc(ctx, agentID)
@@ -30,15 +28,6 @@ func (m *mockConsentService) GetAgentConsentInfo(ctx context.Context, agentID id
 	return nil, errors.New("not implemented")
 }
 
-//nolint:unused // Used in tests
-func (m *mockConsentService) GetActiveGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
-	if m.getActiveGrantsFunc != nil {
-		return m.getActiveGrantsFunc(ctx, principal, agentID)
-	}
-	return nil, errors.New("not implemented")
-}
-
-//nolint:unused // Used in tests
 func (m *mockConsentService) GrantConsent(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
 	if m.grantConsentFunc != nil {
 		return m.grantConsentFunc(ctx, req)
@@ -46,7 +35,6 @@ func (m *mockConsentService) GrantConsent(ctx context.Context, req *consent.Gran
 	return nil, errors.New("not implemented")
 }
 
-//nolint:unused // Used in tests
 func (m *mockConsentService) RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
 	if m.revokeConsentFunc != nil {
 		return m.revokeConsentFunc(ctx, principal, agentID)
@@ -54,7 +42,6 @@ func (m *mockConsentService) RevokeConsent(ctx context.Context, principal id.Pri
 	return errors.New("not implemented")
 }
 
-//nolint:unused // Used in tests
 func (m *mockConsentService) RevokeConsentForPrincipal(ctx context.Context, principal id.Principal, agentID id.AgentID) error {
 	if m.revokeConsentForPrincipalFunc != nil {
 		return m.revokeConsentForPrincipalFunc(ctx, principal, agentID)
@@ -62,12 +49,10 @@ func (m *mockConsentService) RevokeConsentForPrincipal(ctx context.Context, prin
 	return errors.New("not implemented")
 }
 
-//nolint:unused // Used in tests
 func (m *mockConsentService) GetAgentWithServiceRequirements(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
 	return nil, nil, errors.New("not implemented")
 }
 
-//nolint:unused // Used in tests
 func (m *mockConsentService) GetAgentDelegations(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error) {
 	if m.getAgentDelegationsFunc != nil {
 		return m.getAgentDelegationsFunc(ctx, principal)
@@ -75,7 +60,6 @@ func (m *mockConsentService) GetAgentDelegations(ctx context.Context, principal 
 	return nil, errors.New("not implemented")
 }
 
-//nolint:unused // Used in tests
 func (m *mockConsentService) GetUserGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error) {
 	if m.getUserGrantsFunc != nil {
 		return m.getUserGrantsFunc(ctx, principal, agentID)

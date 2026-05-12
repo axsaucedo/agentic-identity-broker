@@ -18,7 +18,6 @@ type ConsentService interface {
 	// RevokeConsentForPrincipal is the user-facing revocation entry point for FR-014.
 	// Maps storage ErrNotFound → consent.ErrGrantNotFound so the handler can return 404.
 	RevokeConsentForPrincipal(ctx context.Context, principal id.Principal, agentID id.AgentID) error
-	GetActiveGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 	GetAgentDelegations(ctx context.Context, principal id.Principal) ([]consent.AgentDelegation, error)
 	GetUserGrants(ctx context.Context, principal id.Principal, agentID id.AgentID) ([]*storage.UserGrant, error)
 }
