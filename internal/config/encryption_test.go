@@ -126,7 +126,7 @@ func TestEncryptionConfigFieldTypes(t *testing.T) {
 
 	// Test Memory backend assignment
 	memoryConfig := &ports.MemoryConfig{
-		RawKey: generateBase64EncodedString(32),
+		RawKey: generateBase64EncodedString(t, 32),
 	}
 	config.Memory = memoryConfig
 	if config.Memory != memoryConfig {
@@ -145,7 +145,7 @@ func TestEncryptionConfigBackend_AWSKMSBackend(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: &ports.AWSKMSConfig{
@@ -181,12 +181,12 @@ func TestEncryptionConfigBackend_MemoryBackend(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: nil, // Only Memory backend should be set
 			Memory: &ports.MemoryConfig{
-				RawKey: generateBase64EncodedString(32),
+				RawKey: generateBase64EncodedString(t, 32),
 			},
 		},
 	}
@@ -212,14 +212,14 @@ func TestEncryptionConfigBackend_BothBackends(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: &ports.AWSKMSConfig{
 				KeyARN: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
 			},
 			Memory: &ports.MemoryConfig{
-				RawKey: generateBase64EncodedString(32),
+				RawKey: generateBase64EncodedString(t, 32),
 			},
 		},
 	}
@@ -246,7 +246,7 @@ func TestEncryptionConfigBackend_NoBackends(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: nil,
@@ -326,7 +326,7 @@ func TestEncryptionConfigValidation_AWSKMSValidation(t *testing.T) {
 				Server:  createValidServerConfig(),
 				Storage: createValidStorageConfig(),
 				ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-					JWESigningKey: generateBase64EncodedString(32),
+					JWESigningKey: generateBase64EncodedString(t, 32),
 				},
 				Encryption: ports.EncryptionConfig{
 					AWSKMS: tt.awsKMSConfig,
@@ -366,7 +366,7 @@ func TestEncryptionConfigValidation_MemoryValidation(t *testing.T) {
 		{
 			name: "valid_base64_key",
 			memoryConfig: &ports.MemoryConfig{
-				RawKey: generateBase64EncodedString(32),
+				RawKey: generateBase64EncodedString(t, 32),
 			},
 			shouldFail: false,
 		},
@@ -389,7 +389,7 @@ func TestEncryptionConfigValidation_MemoryValidation(t *testing.T) {
 		{
 			name: "wrong_key_length",
 			memoryConfig: &ports.MemoryConfig{
-				RawKey: generateBase64EncodedString(16), // Wrong length (16 bytes, not 32)
+				RawKey: generateBase64EncodedString(t, 16), // Wrong length (16 bytes, not 32)
 			},
 			shouldFail:    true,
 			expectedField: "encryption.memory.raw_key",
@@ -403,7 +403,7 @@ func TestEncryptionConfigValidation_MemoryValidation(t *testing.T) {
 				Server:  createValidServerConfig(),
 				Storage: createValidStorageConfig(),
 				ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-					JWESigningKey: generateBase64EncodedString(32),
+					JWESigningKey: generateBase64EncodedString(t, 32),
 				},
 				Encryption: ports.EncryptionConfig{
 					AWSKMS: nil,
@@ -506,7 +506,7 @@ func TestEncryptionConfigFactory_AdapterFactory(t *testing.T) {
 			config: &ports.EncryptionConfig{
 				AWSKMS: nil,
 				Memory: &ports.MemoryConfig{
-					RawKey: generateBase64EncodedString(32),
+					RawKey: generateBase64EncodedString(t, 32),
 				},
 			},
 			shouldFail: false,
@@ -527,7 +527,7 @@ func TestEncryptionConfigFactory_AdapterFactory(t *testing.T) {
 					KeyARN: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
 				},
 				Memory: &ports.MemoryConfig{
-					RawKey: generateBase64EncodedString(32),
+					RawKey: generateBase64EncodedString(t, 32),
 				},
 			},
 			shouldFail:    true,
@@ -581,7 +581,7 @@ func TestValidateEncryptionConfigMissingBackend(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: nil, // No backend configured
@@ -607,7 +607,7 @@ func TestValidateEncryptionConfigValidAWSKMSARN(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: &ports.AWSKMSConfig{
@@ -630,12 +630,12 @@ func TestValidateEncryptionConfigValidMemoryBackend(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: nil,
 			Memory: &ports.MemoryConfig{
-				RawKey: generateBase64EncodedString(32),
+				RawKey: generateBase64EncodedString(t, 32),
 			},
 		},
 	}
@@ -653,7 +653,7 @@ func TestValidateEncryptionConfigInvalidMemoryKey(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: nil,
@@ -672,14 +672,14 @@ func TestValidateEncryptionConfigInvalidMemoryKey(t *testing.T) {
 // TestValidateEncryptionConfigWrongMemoryKeyLength verifies validation fails for non-32-byte Memory key
 func TestValidateEncryptionConfigWrongMemoryKeyLength(t *testing.T) {
 	// Create a 16-byte key (not 32-byte)
-	invalidKey := generateBase64EncodedString(16)
+	invalidKey := generateBase64EncodedString(t, 16)
 
 	cfg := &ports.Config{
 		Log:     ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: nil,
@@ -702,7 +702,7 @@ func TestValidateEncryptionConfigInvalidAWSKMSARN(t *testing.T) {
 		Server:  createValidServerConfig(),
 		Storage: createValidStorageConfig(),
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
-			JWESigningKey: generateBase64EncodedString(32),
+			JWESigningKey: generateBase64EncodedString(t, 32),
 		},
 		Encryption: ports.EncryptionConfig{
 			AWSKMS: &ports.AWSKMSConfig{
