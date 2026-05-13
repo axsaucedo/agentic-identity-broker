@@ -94,7 +94,7 @@ Certain features are only available in specific modes. CIMD (Client Identity Met
 
 ### User Story 4 - Mode as First-Class Architectural Strategy (Priority: P2)
 
-The mode selection drives the entire wiring of the system at startup. The universal resolution and agent-property-based classification runs for every request, and the mode strategy acts as an accept/reject filter on the classified agent. Rather than sprinkling mode checks throughout handlers and services, the builder selects a mode strategy that assembles the correct set of components. Code branching on mode happens once at the top level (builder/wiring), not scattered across handlers.
+The mode selection drives the entire wiring of the system at startup. The universal resolution and agent-property-based classification runs for every request, and the mode strategy acts as an accept/reject filter on the classified agent. Rather than sprinkling mode checks throughout handlers and services, the builder selects the appropriate components based on mode: domain-level class acceptance (ModeStrategy) and adapter-level HTTP dispatch strategies (proceed/grant). Code branching on mode happens once at the top level (builder/wiring), not scattered across handlers.
 
 **Why this priority**: Architectural cleanliness prevents subtle bugs from inconsistent mode branching and makes adding future modes straightforward.
 
@@ -103,7 +103,7 @@ The mode selection drives the entire wiring of the system at startup. The univer
 **Acceptance Scenarios**:
 
 1. **Given** the broker is configured in any mode, **When** the builder wires the system, **Then** mode-specific behavior is fully determined by the injected strategies — no runtime `if mode ==` checks exist in handler or service code.
-2. **Given** a developer adds a new mode-specific feature, **When** they implement it, **Then** they extend the mode strategy interface rather than adding conditional branches.
+2. **Given** a developer adds a new mode-specific feature, **When** they implement it, **Then** they extend the domain ModeStrategy (for class acceptance rules) or add adapter-level dispatch strategies (for HTTP-path behavior), rather than adding conditional branches in handlers.
 
 ---
 

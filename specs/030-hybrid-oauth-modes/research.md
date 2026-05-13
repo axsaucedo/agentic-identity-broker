@@ -12,7 +12,7 @@
 
 **Rationale**: Accept/reject is domain logic — it depends only on agent class, not HTTP. Dispatching between proxy and local HTTP strategies is adapter code — it selects which HTTP handler path to follow. Keeping these separate ensures domain never references HTTP adapters, satisfying hexagonal architecture rules.
 
-The builder uses the domain `ModeStrategy` to validate config at startup and wires the appropriate adapter strategies:
+Config validation happens in the configuration layer (`OAuth2AuthServerConfig.Validate()`). After validation, the builder selects the domain `ModeStrategy` and wires the appropriate adapter strategies:
 - `proxy` mode → proxy proceed + proxy grant strategies (existing)
 - `local` mode → local proceed + local grant strategies (existing, renamed from issueToken)
 - `hybrid` mode → dispatching proceed + dispatching grant strategies (new, delegate based on `agent.Class()`)
