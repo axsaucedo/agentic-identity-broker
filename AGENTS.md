@@ -190,6 +190,8 @@ go-migrate wraps migrations in transactions by default. To use `CONCURRENTLY`, t
 ## Active Technologies
 - Go 1.25.6 (backend), React 19 + TypeScript + Vite 7 (frontend) + chi v5 (router), sqlx (database), Ginkgo/Gomega (E2E), Viper/Cobra (config), Tailwind CSS v4 + CVA (UI) — no new dependencies required (028-cimd-support)
 - PostgreSQL (production) + in-memory (dev/test) — Agent entity extension requires migration 015 (028-cimd-support)
+- Go 1.25.6 + chi v5 (router), ory/fosite (local token issuance per ADR 014), lestrrat-go/jwx (JWT/JWKS), Viper/Cobra (config) (030-hybrid-oauth-modes)
+- PostgreSQL (sqlx) + in-memory — no schema changes needed (FR-017) (030-hybrid-oauth-modes)
 
 ## Recent Changes
 - 028-cimd-support: Added Go 1.25.6 (backend), React 19 + TypeScript + Vite 7 (frontend) + chi v5 (router), sqlx (database), Ginkgo/Gomega (E2E), Viper/Cobra (config), Tailwind CSS v4 + CVA (UI) — no new dependencies required
