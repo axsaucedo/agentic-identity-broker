@@ -42,7 +42,7 @@ Derived classification of a resolved agent based on its properties.
 
 ### ModeStrategy
 
-Determines whether a classified agent is permitted in the active mode.
+Domain logic that determines whether a classified agent is permitted in the active mode. Not a port — all implementations are internal domain logic.
 
 ```go
 type ModeStrategy interface {
@@ -51,12 +51,18 @@ type ModeStrategy interface {
 }
 ```
 
-**Implementations**:
+**Implementations** (all in `internal/domain/oauth2/`):
 - `proxyModeStrategy` — accepts `ProxyClass` only
 - `localModeStrategy` — accepts `LocalCIMDClass` and `LocalPlainClass`
 - `hybridModeStrategy` — accepts all classes
 
 **Location**: `internal/domain/oauth2/mode_strategy.go`
+
+### Dispatching Strategies (adapter layer)
+
+For hybrid mode, the builder wires dispatching proceed/grant strategies that wrap both proxy and local strategies and delegate based on `agent.Class()`.
+
+**Location**: `internal/adapters/http/enduser/` (alongside existing proceed/grant strategies)
 
 ## Config Structure Changes
 

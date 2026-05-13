@@ -35,7 +35,9 @@ oauth2_authorization_server:
 | `hybrid` | Required | Required | Optional |
 | `issue_token` | Error: "renamed to 'local'" | — | — |
 
-## Mode Strategy Interface Contract
+## Mode Strategy (Domain Layer)
+
+Domain logic determining whether a classified agent is permitted. Not a port — all implementations are internal domain code in `internal/domain/oauth2/`.
 
 ```go
 type AgentClass int
@@ -59,6 +61,10 @@ type ModeStrategy interface {
 | `proxy` | Accept | Reject | Reject |
 | `local` | Reject | Accept | Accept |
 | `hybrid` | Accept | Accept | Accept |
+
+## Dispatching Strategies (Adapter Layer)
+
+For hybrid mode, the builder wires dispatching `AuthorizationProceedStrategy` and `TokenGrantStrategy` implementations in `internal/adapters/http/enduser/`. These wrap both proxy and local strategies and delegate based on `agent.Class()`. Domain code is not involved in dispatch.
 
 ## Agent Resolution Contract
 

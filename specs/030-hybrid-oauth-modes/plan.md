@@ -50,7 +50,7 @@ Overhaul OAuth server mode management: rename `issue_token` → `local`, add `hy
 - [x] **Zalando Guidelines**: No new endpoints; existing endpoints follow guidelines.
 - [x] **End-User Docs**: `docs/configuration.md` updated with new mode names and hybrid mode docs.
 - [x] **Migration Testing**: N/A — no migrations.
-- [x] **Hexagonal Architecture**: Mode strategy is a port interface; proxy/local/hybrid are adapter implementations wired by builder.
+- [x] **Hexagonal Architecture**: Mode acceptance logic (`AcceptsClass`) is domain code in `internal/domain/oauth2/`. Dispatching between proxy/local proceed and grant strategies is adapter code in `internal/adapters/http/enduser/`, wired by the builder. Domain never references HTTP adapters.
 - [x] **Persistence Patterns**: N/A — no persistence changes.
 
 ## Project Structure

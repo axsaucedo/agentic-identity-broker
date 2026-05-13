@@ -2,17 +2,25 @@
 
 **Feature**: 030-hybrid-oauth-modes | **Date**: 2026-05-12
 
-## R1: Mode Strategy Pattern — Interface vs Composite
+## R1: Mode Strategy — Domain vs Adapter Boundary
 
-**Decision**: Use a `ModeStrategy` interface with three implementations (proxy, local, hybrid) where hybrid delegates to proxy or local based on agent classification.
+**Decision**: Split mode concerns into two layers:
 
-**Rationale**: The spec requires mode to drive wiring at startup (FR-014). A strategy interface aligns with the existing `AuthorizationProceedStrategy` and `TokenGrantStrategy` patterns (ADR 014). The hybrid strategy composes proxy and local strategies rather than being a third independent implementation — this avoids duplicating logic.
+1. **Domain layer** (`internal/domain/oauth2/`): `ModeStrategy` with `AcceptsClass(AgentClass) bool`. Three implementations (proxy, local, hybrid) — all pure domain logic. This determines whether a classified agent is permitted in the active mode.
+
+2. **Adapter layer** (`internal/adapters/http/enduser/`): Dispatching proceed/grant strategies for hybrid mode. These wrap both proxy and local proceed/grant strategies and delegate based on agent class. This is HTTP adapter code, wired by the builder.
+
+**Rationale**: Accept/reject is domain logic — it depends only on agent class, not HTTP. Dispatching between proxy and local HTTP strategies is adapter code — it selects which HTTP handler path to follow. Keeping these separate ensures domain never references HTTP adapters, satisfying hexagonal architecture rules.
+
+The builder uses the domain `ModeStrategy` to validate config at startup and wires the appropriate adapter strategies:
+- `proxy` mode → proxy proceed + proxy grant strategies (existing)
+- `local` mode → local proceed + local grant strategies (existing, renamed from issueToken)
+- `hybrid` mode → dispatching proceed + dispatching grant strategies (new, delegate based on `agent.Class()`)
 
 **Alternatives considered**:
-- Single strategy with mode field + runtime branching — rejected per FR-014 (no runtime `if mode ==` checks in handlers)
-- Separate handler sets per mode wired by builder — rejected because hybrid needs both sets coexisting, and agent classification determines which path to take per-request
-
-**Implementation approach**: The `ModeStrategy` acts at a higher level than `ProceedStrategy`/`TokenGrantStrategy`. It sits in the resolution/classification layer and selects which proceed/grant strategy to invoke. In hybrid mode, the builder wires both strategy sets, and the mode strategy dispatches based on agent class.
+- Single `ModeStrategy` interface spanning both accept/reject and dispatch — rejected because it forces domain code to know about HTTP proceed/grant strategies
+- Port interface in `internal/ports/` — rejected because nothing external implements it; all implementations are internal domain logic
+- Single strategy with mode field + runtime branching in handlers — rejected per FR-014
 
 ## R2: Agent Classification Location
 
@@ -38,13 +46,13 @@
 
 ## R4: Hybrid Mode Builder Wiring
 
-**Decision**: In hybrid mode, the builder creates both `issueTokenProceedStrategy` (renamed `localProceedStrategy`) and `proxyProceedStrategy`, both `localTokenGrantStrategy` and `proxyTokenGrantStrategy`. A dispatching strategy wraps both and selects based on agent classification at request time.
+**Decision**: In hybrid mode, the builder creates both local and proxy proceed/grant strategies, then wraps each pair in a dispatching strategy. The dispatching strategies live in `internal/adapters/http/enduser/` (adapter code) and use `agent.Class()` to delegate to the correct inner strategy per request.
 
-**Rationale**: The builder already creates one set or the other based on mode (`internal/app/builder.go:609-653`). For hybrid, both sets are created. The dispatch happens in a thin wrapper that classifies the agent and delegates — this is not a runtime mode check (it's agent-class dispatch), satisfying FR-014.
+**Rationale**: The builder already creates one strategy set or the other based on mode (`internal/app/builder.go:609-653`). For hybrid, both sets are created and wrapped. The dispatching strategies are adapter code because they select between HTTP handler paths — domain code is not involved in dispatch. Agent classification (`agent.Class()`) is the only domain call, and it returns a value object.
 
 **Alternatives considered**:
 - Two separate routers/mux for proxy and local paths — overengineered, requires URL path splitting that doesn't exist in the spec
-- Middleware-based classification — moves domain logic into HTTP middleware, violating hexagonal architecture
+- Domain-level dispatch — violates hexagonal architecture by making domain code aware of HTTP strategies
 
 ## R5: CIMD Agent UUID Rejection (FR-005)
 

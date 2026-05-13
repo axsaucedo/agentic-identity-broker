@@ -35,7 +35,8 @@ Pure refactor. Rename all references: config values, strategy types, builder bra
 |------|-------|
 | Mode enum + config | `internal/ports/config.go` |
 | Agent classification | `internal/domain/storage/agent.go` (method on Agent entity) |
-| Mode strategy interface | `internal/domain/oauth2/mode_strategy.go` |
+| Mode strategy (domain) | `internal/domain/oauth2/mode_strategy.go` |
+| Dispatching strategies (hybrid adapter) | `internal/adapters/http/enduser/` |
 | Client resolver (UUID rejection for CIMD) | `internal/domain/oauth2/client_resolver.go` |
 | Proceed strategies (renamed) | `internal/adapters/http/enduser/proceed_strategy.go` |
 | Token grant strategies (renamed) | `internal/adapters/http/enduser/token_grant_strategy.go` |
