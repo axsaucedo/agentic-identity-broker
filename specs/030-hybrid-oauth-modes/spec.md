@@ -131,7 +131,7 @@ The mode selection drives the entire wiring of the system at startup. The univer
 - **FR-006**: In `proxy` mode, the mode strategy MUST accept proxy-class agents and MUST reject local-class agents (CIMD or plain) with an actionable error.
 - **FR-007**: In `local` mode, the mode strategy MUST accept local-class agents and MUST reject proxy-class agents with an actionable error. This fully replaces the former `issue_token` behavior.
 - **FR-008**: In `hybrid` mode, the mode strategy MUST accept both proxy-class and local-class agents within the same instance.
-- **FR-008**: Proxy-class request tokens MUST follow the established proxy token approach — tokens from the upstream OAuth2 server are passed through as-is without re-signing or transformation.
+- **FR-008b**: Tokens obtained from the upstream OAuth2 server for proxy-class agents MUST be passed through as-is without re-signing or transformation.
 - **FR-009**: Local-class requests MUST receive locally issued tokens from the broker, whether resolved by UUID (plain local agent) or by CIMD URL (CIMD-enabled agent).
 - **FR-010**: Configuration validation MUST reject mode-incompatible parameter combinations (e.g., upstream endpoints in `local` mode, CIMD in `proxy` mode) with clear, actionable error messages.
 - **FR-011**: Mode-specific features (e.g., CIMD, client credentials grant) MUST be gated by mode — available only in modes where they are meaningful.
