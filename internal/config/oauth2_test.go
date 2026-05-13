@@ -159,28 +159,28 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 	}
 }
 
-// TestOAuth2AuthServerConfig_IssueTokenMode tests issue_token mode validation (T003).
-func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
-	t.Run("issue_token mode succeeds without upstream fields", func(t *testing.T) {
+// TestOAuth2AuthServerConfig_LocalMode tests local mode validation (T003).
+func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
+	t.Run("local mode succeeds without upstream fields", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode: "issue_token",
+			Mode: "local",
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
 	})
 
-	t.Run("issue_token mode defaults token_ttl to 1h", func(t *testing.T) {
+	t.Run("local mode defaults token_ttl to 1h", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode: "issue_token",
+			Mode: "local",
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
 		assert.Equal(t, time.Hour, cfg.TokenTTL, "TokenTTL should default to 1 hour")
 	})
 
-	t.Run("issue_token mode preserves custom token_ttl", func(t *testing.T) {
+	t.Run("local mode preserves custom token_ttl", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode:     "issue_token",
+			Mode:     "local",
 			TokenTTL: 30 * time.Minute,
 		}
 		err := cfg.Validate()
@@ -188,17 +188,17 @@ func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
 		assert.Equal(t, 30*time.Minute, cfg.TokenTTL, "custom TokenTTL should be preserved")
 	})
 
-	t.Run("issue_token mode does not require upstream fields", func(t *testing.T) {
+	t.Run("local mode does not require upstream fields", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode: "issue_token",
+			Mode: "local",
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
 	})
 
-	t.Run("issue_token mode sets default response types and grant types", func(t *testing.T) {
+	t.Run("local mode sets default response types and grant types", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode: "issue_token",
+			Mode: "local",
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
@@ -227,7 +227,7 @@ func TestOAuth2AuthServerConfig_IssueTokenMode(t *testing.T) {
 		}
 		err := cfg.Validate()
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cimd.enabled requires mode 'issue_token'")
+		assert.Contains(t, err.Error(), "cimd.enabled requires mode 'local'")
 	})
 
 	t.Run("default mode is proxy", func(t *testing.T) {

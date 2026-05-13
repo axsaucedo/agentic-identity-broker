@@ -418,9 +418,9 @@ func (s *proceedOAuth2Service) GenerateMetadata(_ context.Context) (*ports.Metad
 	return &ports.MetadataResponse{}, nil
 }
 
-// TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors tests that IssueAuthorizationCode
+// TestOAuth2AuthorizeHandler_LocalMode_CodeIssuerErrors tests that IssueAuthorizationCode
 // domain errors produce correct HTTP status codes and JSON bodies.
-func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
+func TestOAuth2AuthorizeHandler_LocalMode_CodeIssuerErrors(t *testing.T) {
 	cases := []struct {
 		name        string
 		err         error
@@ -450,7 +450,7 @@ func TestOAuth2AuthorizeHandler_IssueTokenMode_CodeIssuerErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := &OAuth2AuthorizeHandler{
 				Service:        &proceedOAuth2Service{},
-				ProceedHandler: NewIssueTokenProceedStrategy(&errCodeIssuer{err: tc.err}, nil),
+				ProceedHandler: NewLocalProceedStrategy(&errCodeIssuer{err: tc.err}, nil),
 			}
 
 			req := httptest.NewRequest(

@@ -19,7 +19,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
-var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", func() {
+var _ = Describe("US4: Authorization Code Flow with PKCE (local mode)", func() {
 	var (
 		adminServer    *bootstrap.TestServer
 		enduserServer  *bootstrap.TestServer
@@ -32,7 +32,7 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 
 	BeforeEach(func() {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-		config := fixtures.IssueTokenConfig()
+		config := fixtures.LocalConfig()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error
 		testStorage, err = storageFactory.NewTestStorage()

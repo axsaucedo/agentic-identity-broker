@@ -19,7 +19,7 @@ import (
 )
 
 // TokenGrantStrategy handles OAuth2 token grant requests at the HTTP transport layer.
-// Parallel to AuthorizationProceedStrategy: proxy mode and issue_token mode differ only
+// Parallel to AuthorizationProceedStrategy: proxy mode and local mode differ only
 // in how they handle non-token-exchange grants.
 type TokenGrantStrategy interface {
 	HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values)
@@ -204,19 +204,19 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 	}
 }
 
-// issueTokenGrantStrategy handles token grants locally using a TokenMintingStrategy.
-type issueTokenGrantStrategy struct {
+// localGrantStrategy handles token grants locally using a TokenMintingStrategy.
+type localGrantStrategy struct {
 	minting ports.TokenMintingStrategy
 	logger  *slog.Logger
 }
 
-// NewIssueTokenGrantStrategy returns a strategy that mints tokens locally.
-func NewIssueTokenGrantStrategy(minting ports.TokenMintingStrategy, logger *slog.Logger) *issueTokenGrantStrategy {
-	return &issueTokenGrantStrategy{minting: minting, logger: logger}
+// NewLocalGrantStrategy returns a strategy that mints tokens locally.
+func NewLocalGrantStrategy(minting ports.TokenMintingStrategy, logger *slog.Logger) *localGrantStrategy {
+	return &localGrantStrategy{minting: minting, logger: logger}
 }
 
 // HandleTokenGrant dispatches client_credentials and authorization_code grants to the local minting strategy.
-func (s *issueTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values) {
+func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values) {
 	switch grantType {
 	case "client_credentials":
 		rawClientID := formData.Get("client_id")
@@ -289,7 +289,7 @@ func (s *issueTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 	}
 }
 
-func (s *issueTokenGrantStrategy) handleMintingError(w http.ResponseWriter, err error, grantType, clientID string) {
+func (s *localGrantStrategy) handleMintingError(w http.ResponseWriter, err error, grantType, clientID string) {
 	var errorCode, errorDesc string
 	var statusCode int
 
@@ -317,7 +317,7 @@ func (s *issueTokenGrantStrategy) handleMintingError(w http.ResponseWriter, err 
 	}
 }
 
-func (s *issueTokenGrantStrategy) writeTokenResponse(w http.ResponseWriter, resp *ports.TokenResponse) {
+func (s *localGrantStrategy) writeTokenResponse(w http.ResponseWriter, resp *ports.TokenResponse) {
 	tokenResp := map[string]interface{}{
 		"access_token": resp.AccessToken,
 		"token_type":   resp.TokenType,

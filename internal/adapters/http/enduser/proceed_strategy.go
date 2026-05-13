@@ -13,7 +13,7 @@ import (
 )
 
 // AuthorizationProceedStrategy handles the "proceed" action from an AuthorizationDecision.
-// This is the only part that differs between proxy mode and issue_token mode; all other
+// This is the only part that differs between proxy mode and local mode; all other
 // decision actions (redirect_to_consent, error) are handled by the shared ServeHTTP flow.
 type AuthorizationProceedStrategy interface {
 	HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal)
@@ -31,18 +31,18 @@ func (s *proxyProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Requ
 	http.Redirect(w, r, decision.RedirectURL, http.StatusFound)
 }
 
-// issueTokenProceedStrategy issues a local authorization code and redirects back to the client.
-type issueTokenProceedStrategy struct {
+// localProceedStrategy issues a local authorization code and redirects back to the client.
+type localProceedStrategy struct {
 	issuer ports.AuthorizationCodeIssuer
 	logger *slog.Logger
 }
 
-// NewIssueTokenProceedStrategy returns a ProceedStrategy that issues authorization codes locally.
-func NewIssueTokenProceedStrategy(issuer ports.AuthorizationCodeIssuer, logger *slog.Logger) AuthorizationProceedStrategy {
-	return &issueTokenProceedStrategy{issuer: issuer, logger: logger}
+// NewLocalProceedStrategy returns a ProceedStrategy that issues authorization codes locally.
+func NewLocalProceedStrategy(issuer ports.AuthorizationCodeIssuer, logger *slog.Logger) AuthorizationProceedStrategy {
+	return &localProceedStrategy{issuer: issuer, logger: logger}
 }
 
-func (s *issueTokenProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, _ *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
+func (s *localProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, _ *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
 	code, err := s.issuer.IssueAuthorizationCode(r.Context(), req, principal)
 	if err != nil {
 		// Per RFC 6749 §4.1.2.1: never redirect when the client or redirect_uri is invalid/unverified.

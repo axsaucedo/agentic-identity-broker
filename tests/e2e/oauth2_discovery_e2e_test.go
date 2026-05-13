@@ -14,7 +14,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 )
 
-var _ = Describe("US6: Discovery and JWKS (issue_token mode)", func() {
+var _ = Describe("US6: Discovery and JWKS (local mode)", func() {
 	var (
 		enduserServer  *bootstrap.TestServer
 		storageFactory *bootstrap.StorageFactory
@@ -24,7 +24,7 @@ var _ = Describe("US6: Discovery and JWKS (issue_token mode)", func() {
 
 	BeforeEach(func() {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-		config := fixtures.IssueTokenConfig()
+		config := fixtures.LocalConfig()
 		storageFactory = bootstrap.NewStorageFactory(logger)
 		var err error
 		testStorage, err = storageFactory.NewTestStorage()
@@ -46,7 +46,7 @@ var _ = Describe("US6: Discovery and JWKS (issue_token mode)", func() {
 		}
 	})
 
-	It("discovery endpoint returns metadata in issue_token mode", func() {
+	It("discovery endpoint returns metadata in local mode", func() {
 		resp, err := http.Get(enduserServer.BaseURL() + "/.well-known/oauth-authorization-server")
 		Expect(err).ToNot(HaveOccurred())
 		defer func() { _ = resp.Body.Close() }()

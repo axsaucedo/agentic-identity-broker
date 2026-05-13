@@ -19,14 +19,14 @@
 
 **Purpose**: Rename all references from `issue_token` to `local` across config values, strategy types, builder branches, tests, docs, and examples. No behavior change.
 
-- [ ] T001 Rename `issue_token` mode value to `local` in internal/ports/config.go (config enum, validation functions)
-- [ ] T002 [P] Rename issueToken strategy types to local in internal/adapters/http/enduser/proceed_strategy.go
-- [ ] T003 [P] Rename issueToken strategy types to local in internal/adapters/http/enduser/token_grant_strategy.go
-- [ ] T004 Rename issueToken builder branch to local in internal/app/builder.go
-- [ ] T005 [P] Update config examples in examples/config/ to use `mode: local` instead of `mode: issue_token`
-- [ ] T006 [P] Update tests referencing `issue_token` in tests/e2e/mode_configuration_e2e_test.go
-- [ ] T007 [P] Update any other test files referencing `issue_token` mode name
-- [ ] T008 Verify all existing tests pass after renaming (zero behavior changes)
+- [x] T001 Rename `issue_token` mode value to `local` in internal/ports/config.go (config enum, validation functions)
+- [x] T002 [P] Rename issueToken strategy types to local in internal/adapters/http/enduser/proceed_strategy.go
+- [x] T003 [P] Rename issueToken strategy types to local in internal/adapters/http/enduser/token_grant_strategy.go
+- [x] T004 Rename issueToken builder branch to local in internal/app/builder.go
+- [x] T005 [P] Update config examples in examples/config/ to use `mode: local` instead of `mode: issue_token`
+- [x] T006 [P] Update tests referencing `issue_token` in tests/e2e/mode_configuration_e2e_test.go
+- [x] T007 [P] Update any other test files referencing `issue_token` mode name
+- [x] T008 Verify all existing tests pass after renaming (zero behavior changes)
 
 **Checkpoint**: Refactoring complete, all existing tests pass, no behavior changes introduced
 

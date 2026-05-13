@@ -36,8 +36,8 @@ type OAuth2Config struct {
 	// When Enabled, multiple agents may share a single upstream OAuth2 client ID.
 	MultiAgentClient ports.MultiAgentClientConfig
 
-	// Mode indicates whether the broker operates in "proxy" or "issue_token" mode.
-	// In issue_token mode, JWKS and code_challenge_methods are included in metadata.
+	// Mode indicates whether the broker operates in "proxy" or "local" mode.
+	// In local mode, JWKS and code_challenge_methods are included in metadata.
 	Mode string
 
 	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
@@ -326,7 +326,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 
 	// Active grant exists and all mandatory requirements satisfied — proceed.
 	// In proxy mode, the handler redirects to the upstream OAuth2 server.
-	// In issue_token mode, UpstreamAuthorizeEndpoint is empty — skip URL construction.
+	// In local mode, UpstreamAuthorizeEndpoint is empty — skip URL construction.
 	var upstreamURL string
 	if s.config.UpstreamAuthorizeEndpoint != "" {
 		var urlErr error
@@ -433,7 +433,7 @@ func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationReq
 }
 
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.
-// In issue_token mode, includes JWKS URI and code_challenge_methods.
+// In local mode, includes JWKS URI and code_challenge_methods.
 func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
 	issuer := s.config.PublicURL
 
@@ -446,8 +446,8 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 	}
 
-	// In issue_token mode, include JWKS URI and code challenge methods
-	if s.config.Mode == "issue_token" {
+	// In local mode, include JWKS URI and code challenge methods
+	if s.config.Mode == "local" {
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		metadata.TokenEndpointAuthMethodsSupported = []string{"client_secret_post"}

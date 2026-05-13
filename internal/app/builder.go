@@ -290,9 +290,9 @@ func (b *Builder) Build() (*App, error) {
 	// Create OAuth2 service if configuration available.
 	// T038: Use NewServiceWithSessions (enables mandatory requirement validation + multi-agent
 	// client config) and pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient.
-	// In issue_token mode, also create the service for consent checks and metadata generation.
+	// In local mode, also create the service for consent checks and metadata generation.
 	var clientResolver ports.ClientResolver
-	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "issue_token" {
+	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "local" {
 		oauth2Config := &oauth2service.OAuth2Config{
 			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
 			UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
@@ -303,8 +303,8 @@ func (b *Builder) Build() (*App, error) {
 			Mode:                      b.config.OAuth2AuthServer.Mode,
 			CIMDEnabled:               b.config.OAuth2AuthServer.CIMD.Enabled,
 		}
-		// In issue_token mode, set correct defaults for supported types
-		if b.config.OAuth2AuthServer.Mode == "issue_token" {
+		// In local mode, set correct defaults for supported types
+		if b.config.OAuth2AuthServer.Mode == "local" {
 			if len(oauth2Config.SupportedResponseTypes) == 0 {
 				oauth2Config.SupportedResponseTypes = []string{"code"}
 			}
@@ -610,7 +610,7 @@ func (b *Builder) Build() (*App, error) {
 	var proceedHandler enduser.AuthorizationProceedStrategy
 	var jwksHandler *enduserHandlers.JWKSHandler
 
-	if b.config.OAuth2AuthServer.Mode == "issue_token" {
+	if b.config.OAuth2AuthServer.Mode == "local" {
 		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
 		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
 		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
@@ -631,13 +631,13 @@ func (b *Builder) Build() (*App, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
 		}
-		grantHandler = enduser.NewIssueTokenGrantStrategy(newIssueTokenMintingStrategy(provider), b.logger)
-		proceedHandler = enduser.NewIssueTokenProceedStrategy(newIssueTokenCodeIssuer(provider), b.logger)
+		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+		proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
 		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
 		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
 			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
 		}
-		b.logger.Info("OAuth2 server mode: issue_token — local token minting enabled",
+		b.logger.Info("OAuth2 server mode: local — local token minting enabled",
 			"issuer_uri", b.config.Server.EndUser.PublicURL,
 			"token_ttl", b.config.OAuth2AuthServer.TokenTTL,
 		)

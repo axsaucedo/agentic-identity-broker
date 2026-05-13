@@ -19,11 +19,11 @@ import (
 
 // OAuth2TokenHandler handles OAuth2 token endpoint requests.
 // Routes RFC 8693 token exchange to handleTokenExchange; all other grants are
-// delegated to GrantHandler (proxy mode or issue_token mode).
+// delegated to GrantHandler (proxy mode or local mode).
 type OAuth2TokenHandler struct {
 	TokenExchange *tokenexchange.TokenExchangeService
 	Logger        *slog.Logger
-	GrantHandler  TokenGrantStrategy // always non-nil: proxy or issue_token
+	GrantHandler  TokenGrantStrategy // always non-nil: proxy or local
 }
 
 // ServeHTTP implements http.Handler for the token endpoint.

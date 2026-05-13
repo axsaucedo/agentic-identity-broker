@@ -443,19 +443,19 @@ Admin Server (Port 14000):
 - Validate API implementation compliance against documented spec
 - Reference for integration testing and contract validation
 
-#### 3.1.4.1. OAuth2 Server Mode (`issue_token`)
+#### 3.1.4.1. OAuth2 Server Mode (`local`)
 
 **Mode Selection**: The broker operates in one of two mutually exclusive modes, configured via `oauth2.auth_server.mode`:
 
 | Mode | Value | Behavior |
 |------|-------|----------|
 | Proxy (default) | `proxy` | Forwards OAuth2 requests to an upstream authorization server. The broker acts as a mediating proxy and does not mint tokens. |
-| Issue Token | `issue_token` | The broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. |
+| Local | `local` | The broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. |
 
 **Strategy Pattern**: Handler behavior switches at startup based on mode:
 
-- `OAuth2AuthorizeHandler` uses an `AuthorizationCodeIssuer` strategy — **nil** in proxy mode, non-nil in `issue_token` mode. When nil, authorization requests are forwarded upstream; when non-nil, the broker generates authorization codes locally.
-- `OAuth2TokenHandler` uses a `TokenMintingStrategy` — **nil** in proxy mode, non-nil in `issue_token` mode. When nil, token requests are proxied upstream; when non-nil, the broker mints JWT access tokens.
+- `OAuth2AuthorizeHandler` uses an `AuthorizationCodeIssuer` strategy — **nil** in proxy mode, non-nil in `local` mode. When nil, authorization requests are forwarded upstream; when non-nil, the broker generates authorization codes locally.
+- `OAuth2TokenHandler` uses a `TokenMintingStrategy` — **nil** in proxy mode, non-nil in `local` mode. When nil, token requests are proxied upstream; when non-nil, the broker mints JWT access tokens.
 
 **Type Containment**: All [fosite](https://github.com/ory/fosite) OAuth2 server types are contained in `internal/domain/oauth2server/`. This package encapsulates the OAuth2 authorization server domain logic (authorization code storage, client authentication, token signing) and **never leaks fosite types** into ports, adapters/http, or app packages.
 
@@ -464,7 +464,7 @@ Admin Server (Port 14000):
 - `internal/domain/oauth2server/` must **never** import adapter packages or `internal/app/`.
 - No other package in the codebase may import fosite types directly — all interaction flows through `oauth2server` domain interfaces.
 
-**Endpoints added in `issue_token` mode**:
+**Endpoints added in `local` mode**:
 ```
 End-User Server (Port 8000):
   ├── GET  /.well-known/oauth-authorization-server   (RFC 8414 discovery)

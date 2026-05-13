@@ -124,8 +124,8 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 	})
 
 	// Register OAuth2 authorization server endpoints (optional, public routes).
-	// Single authorize handler serves both proxy and issue_token mode.
-	// In issue_token mode, the handler's CodeIssuer strategy issues local codes.
+	// Single authorize handler serves both proxy and local mode.
+	// In local mode, the handler's CodeIssuer strategy issues local codes.
 	if h.OAuth2Authorize != nil {
 		r.With(
 			middleware.OAuth2AuditMiddleware(cfg.Logger),
@@ -133,19 +133,19 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 		).Get("/oauth2/authorize", h.OAuth2Authorize.ServeHTTP)
 	}
 
-	// Single token handler serves both proxy and issue_token mode.
-	// In issue_token mode, the handler's TokenMinting strategy mints local tokens.
+	// Single token handler serves both proxy and local mode.
+	// In local mode, the handler's TokenMinting strategy mints local tokens.
 	if h.OAuth2Token != nil {
 		r.Post("/oauth2/token", h.OAuth2Token.ServeHTTP)
 	}
 
 	// RFC 8414 discovery endpoint — single handler serves both modes.
-	// The OAuth2Service.GenerateMetadata() includes JWKS URI in issue_token mode.
+	// The OAuth2Service.GenerateMetadata() includes JWKS URI in local mode.
 	if h.OAuth2Metadata != nil {
 		r.Get("/.well-known/oauth-authorization-server", h.OAuth2Metadata.ServeHTTP)
 	}
 
-	// JWKS endpoint (issue_token mode only — serves signing key public material)
+	// JWKS endpoint (local mode only — serves signing key public material)
 	if h.JWKS != nil {
 		r.Get("/oauth2/jwks.json", h.JWKS.ServeJWKS)
 	}

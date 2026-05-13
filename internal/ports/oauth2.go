@@ -61,7 +61,7 @@ type AuthorizationDecision struct {
 	// Action determines the response: "proceed", "redirect_to_consent", or "error".
 	// "proceed" means the user has an active grant and the request can continue.
 	// In proxy mode the handler redirects to the upstream OAuth2 server;
-	// in issue_token mode the handler issues a local authorization code.
+	// in local mode the handler issues a local authorization code.
 	Action string
 
 	// RedirectURL is the target URL for HTTP 302 redirect
@@ -101,17 +101,17 @@ type MetadataResponse struct {
 	// OPTIONAL: Claim types supported
 	ClaimTypesSupported []string `json:"claim_types_supported,omitempty"`
 
-	// OPTIONAL: JWKS URI for public key discovery (present in issue_token mode)
+	// OPTIONAL: JWKS URI for public key discovery (present in local mode)
 	JWKSURI string `json:"jwks_uri,omitempty"`
 
-	// OPTIONAL: Supported PKCE code challenge methods (present in issue_token mode)
+	// OPTIONAL: Supported PKCE code challenge methods (present in local mode)
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
 
 	// OPTIONAL: Whether CIMD-based client_id resolution is supported (RFC draft)
 	ClientIDMetadataDocumentSupported *bool `json:"client_id_metadata_document_supported,omitempty"`
 }
 
-// TokenMintingStrategy abstracts local token grant processing in issue_token mode.
+// TokenMintingStrategy abstracts local token grant processing in local mode.
 // Grants are processed locally by the oauth2server.Provider.
 // In proxy mode, grants are handled at the HTTP layer by proxyTokenGrantStrategy.
 type TokenMintingStrategy interface {
@@ -134,7 +134,7 @@ type TokenResponse struct {
 
 // AuthorizationCodeIssuer abstracts how the authorize endpoint issues authorization codes.
 // In proxy mode, this is nil and the handler redirects to an upstream OAuth2 server.
-// In issue_token mode, the endpoint issues authorization codes locally.
+// In local mode, the endpoint issues authorization codes locally.
 type AuthorizationCodeIssuer interface {
 	// IssueAuthorizationCode processes a validated authorization request and returns
 	// an authorization code. The handler is responsible for redirect_uri validation

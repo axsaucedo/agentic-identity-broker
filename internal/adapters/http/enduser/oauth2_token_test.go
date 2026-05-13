@@ -550,7 +550,7 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 
 func TestWriteTokenResponse(t *testing.T) {
 	t.Run("success returns 200 with complete JSON body", func(t *testing.T) {
-		s := &issueTokenGrantStrategy{}
+		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
 		s.writeTokenResponse(w, &ports.TokenResponse{
@@ -572,7 +572,7 @@ func TestWriteTokenResponse(t *testing.T) {
 	})
 
 	t.Run("scope included when non-empty", func(t *testing.T) {
-		s := &issueTokenGrantStrategy{}
+		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
 		s.writeTokenResponse(w, &ports.TokenResponse{
@@ -644,7 +644,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(minting, nil)}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil)}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -726,7 +726,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(minting, nil)}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil)}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -751,7 +751,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 // 400 unsupported_grant_type for any grant type other than client_credentials or
 // authorization_code (e.g. password, implicit, device_code).
 func TestHandleLocalMinting_UnsupportedGrantType(t *testing.T) {
-	handler := &OAuth2TokenHandler{GrantHandler: NewIssueTokenGrantStrategy(fixedMinting(nil, nil), nil)}
+	handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil)}
 	req := httptest.NewRequest("POST", "/oauth2/token",
 		strings.NewReader("grant_type=password&username=user&password=secret"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -782,7 +782,7 @@ func TestHandleMintingError_RFC6749StatusCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &issueTokenGrantStrategy{}
+			s := &localGrantStrategy{}
 			w := httptest.NewRecorder()
 
 			s.handleMintingError(w, tt.err, "client_credentials", "broker_test")
@@ -800,7 +800,7 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 	internalDetail := "scope \"read:admin\" not allowed for this agent"
 
 	t.Run("invalid_scope does not leak internal detail", func(t *testing.T) {
-		s := &issueTokenGrantStrategy{}
+		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
 		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_scope", "scope not allowed", http.StatusBadRequest, oauth2server.ErrInvalidScope)), "client_credentials", "broker_test")
@@ -813,7 +813,7 @@ func TestHandleMintingError_OpaqueDescriptions(t *testing.T) {
 	})
 
 	t.Run("invalid_grant does not leak internal detail", func(t *testing.T) {
-		s := &issueTokenGrantStrategy{}
+		s := &localGrantStrategy{}
 		w := httptest.NewRecorder()
 
 		s.handleMintingError(w, fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_grant", "invalid grant", http.StatusBadRequest, oauth2server.ErrInvalidGrant)), "authorization_code", "broker_test")
@@ -832,7 +832,7 @@ func TestHandleMintingError_LogDoesNotLeakErrorChain(t *testing.T) {
 	var buf strings.Builder
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
-	s := &issueTokenGrantStrategy{logger: logger}
+	s := &localGrantStrategy{logger: logger}
 	w := httptest.NewRecorder()
 
 	wrapped := fmt.Errorf("%s: %w", internalDetail, oauth2server.NewRFC6749Error("invalid_client", "client auth failed", http.StatusUnauthorized, oauth2server.ErrInvalidClient))

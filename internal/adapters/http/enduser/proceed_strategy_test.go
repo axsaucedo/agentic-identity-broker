@@ -40,8 +40,8 @@ func TestProxyProceedStrategy_RedirectsToDecisionURL(t *testing.T) {
 	assert.Equal(t, decision.RedirectURL, w.Header().Get("Location"))
 }
 
-func TestIssueTokenProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
-	strategy := NewIssueTokenProceedStrategy(&mockCodeIssuer{}, nil)
+func TestLocalProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
+	strategy := NewLocalProceedStrategy(&mockCodeIssuer{}, nil)
 	w := httptest.NewRecorder()
 	r := newProceedRequest(t)
 
@@ -60,8 +60,8 @@ func TestIssueTokenProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
 	assert.Equal(t, "xyz123", parsed.Query().Get("state"))
 }
 
-func TestIssueTokenProceedStrategy_Success_OmitsStateWhenEmpty(t *testing.T) {
-	strategy := NewIssueTokenProceedStrategy(&mockCodeIssuer{}, nil)
+func TestLocalProceedStrategy_Success_OmitsStateWhenEmpty(t *testing.T) {
+	strategy := NewLocalProceedStrategy(&mockCodeIssuer{}, nil)
 	w := httptest.NewRecorder()
 	r := newProceedRequest(t)
 
@@ -80,7 +80,7 @@ func TestIssueTokenProceedStrategy_Success_OmitsStateWhenEmpty(t *testing.T) {
 	assert.Empty(t, parsed.Query().Get("state"))
 }
 
-func TestIssueTokenProceedStrategy_Errors(t *testing.T) {
+func TestLocalProceedStrategy_Errors(t *testing.T) {
 	agentID := id.NewAgentID()
 	cases := []struct {
 		name        string
@@ -107,7 +107,7 @@ func TestIssueTokenProceedStrategy_Errors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			strategy := NewIssueTokenProceedStrategy(&errCodeIssuer{err: tc.err}, nil)
+			strategy := NewLocalProceedStrategy(&errCodeIssuer{err: tc.err}, nil)
 			w := httptest.NewRecorder()
 			r := newProceedRequest(t)
 

@@ -347,7 +347,7 @@ type OAuth2AuthServerConfig struct {
 	UpstreamTimeoutSeconds    int      `mapstructure:"upstream_timeout_seconds"`
 	Mode                      string   `mapstructure:"mode"`
 
-	// issue_token mode fields (ignored when mode=proxy)
+	// local mode fields (ignored when mode=proxy)
 	TokenTTL              time.Duration `mapstructure:"token_ttl"`               // Default: 1h
 	TokenClaimsExpression string        `mapstructure:"token_claims_expression"` // Optional CEL expression for custom claims
 
@@ -378,7 +378,7 @@ func (c *OAuth2AuthServerConfig) isZero() bool {
 
 // Validate validates the OAuth2AuthServerConfig structure.
 // Sets defaults for empty fields and returns an error for missing required fields.
-// Validation is mode-conditional: proxy mode requires upstream fields, issue_token
+// Validation is mode-conditional: proxy mode requires upstream fields, local
 // mode requires issuer_uri and has its own defaults.
 // Returns nil immediately when every field is at its zero value (unconfigured block).
 func (c *OAuth2AuthServerConfig) Validate() error {
@@ -392,19 +392,19 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 	}
 
 	switch c.Mode {
-	case "issue_token":
-		return c.validateIssueTokenMode()
+	case "local":
+		return c.validateLocalMode()
 	case "proxy":
 		return c.validateProxyMode()
 	default:
-		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy' or 'issue_token'")
+		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy' or 'local'")
 	}
 }
 
 // validateProxyMode validates configuration for proxy mode (upstream OAuth2 server).
 func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 	if c.CIMD.Enabled {
-		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'issue_token'; CIMD is incompatible with proxy mode")
+		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'local'; CIMD is incompatible with proxy mode")
 	}
 
 	// Check required fields
@@ -446,13 +446,13 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 	return nil
 }
 
-// validateIssueTokenMode validates configuration for issue_token mode (local token minting).
-func (c *OAuth2AuthServerConfig) validateIssueTokenMode() error {
+// validateLocalMode validates configuration for local mode (local token minting).
+func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 	if c.TokenTTL == 0 {
 		c.TokenTTL = time.Hour
 	}
 
-	// Set defaults for supported types in issue_token mode
+	// Set defaults for supported types in local mode
 	if len(c.SupportedResponseTypes) == 0 {
 		c.SupportedResponseTypes = []string{"code"}
 	}

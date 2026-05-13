@@ -42,12 +42,12 @@ type EnduserHandlers struct {
 	// OAuth2 sessions handler for /api/third-party routes
 	OAuth2Sessions *oauth2_sessions.Handler
 
-	// OAuth2 authorization server handlers (serve both proxy and issue_token mode)
+	// OAuth2 authorization server handlers (serve both proxy and local mode)
 	OAuth2Authorize *enduser.OAuth2AuthorizeHandler
 	OAuth2Token     *enduser.OAuth2TokenHandler
 	OAuth2Metadata  *enduser.OAuth2MetadataHandler
 
-	// JWKS handler (issue_token mode only — serves signing key public material)
+	// JWKS handler (local mode only — serves signing key public material)
 	JWKS *enduserHandlers.JWKSHandler
 
 	// SPA handler for serving static files (must be last)

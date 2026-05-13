@@ -25,9 +25,9 @@ func TestGenerateMetadata_ProxyMode(t *testing.T) {
 	assert.Empty(t, metadata.CodeChallengeMethodsSupported, "code challenge methods should be empty in proxy mode")
 }
 
-func TestGenerateMetadata_IssueTokenMode(t *testing.T) {
+func TestGenerateMetadata_LocalMode(t *testing.T) {
 	svc := NewService(nil, nil, &OAuth2Config{
-		Mode:                   "issue_token",
+		Mode:                   "local",
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code", "client_credentials"},

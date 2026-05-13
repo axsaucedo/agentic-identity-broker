@@ -13,7 +13,7 @@ import (
 
 // OAuth2AuthorizeHandler handles OAuth2 authorization endpoint requests.
 // The ProceedHandler strategy determines the response for an active grant: proxy mode
-// redirects to the upstream OAuth2 server, issue_token mode issues a local authorization code.
+// redirects to the upstream OAuth2 server, local mode issues a local authorization code.
 type OAuth2AuthorizeHandler struct {
 	Service        ports.OAuth2Service
 	logger         *slog.Logger

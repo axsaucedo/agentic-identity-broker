@@ -3,13 +3,13 @@
 # Configures the identity broker to operate as a standalone OAuth2 authorization
 # server, issuing its own JWT access tokens signed with managed keys.
 #
-# In this mode ("issue_token"), the broker:
+# In this mode ("local"), the broker:
 #   - Issues JWT access tokens directly (no upstream OAuth2 server needed)
 #   - Supports client_credentials and authorization_code (with PKCE) grant types
 #   - Manages ES256 signing keys with encrypted private material
 #   - Exposes RFC 8414 discovery and JWKS endpoints
 #
-# Upstream OAuth2 URI fields are not required in issue_token mode.
+# Upstream OAuth2 URI fields are not required in local mode.
 
 # Dual-server architecture: end-user and admin on separate ports
 servers:
@@ -26,12 +26,12 @@ servers:
 # OAuth2 authorization server configuration
 oauth2:
   auth_server:
-    # Mode: "proxy" (default) or "issue_token"
-    # In "issue_token" mode, the broker mints its own tokens.
+    # Mode: "proxy" (default) or "local"
+    # In "local" mode, the broker mints its own tokens.
     # In "proxy" mode (default), the broker forwards to an upstream OAuth2 server.
-    mode: "issue_token"
+    mode: "local"
 
-    # REQUIRED in issue_token mode: The issuer identifier for issued tokens.
+    # REQUIRED in local mode: The issuer identifier for issued tokens.
     # Must match the base URL where clients reach the broker.
     # This value appears in the "iss" claim of issued JWTs and in the
     # /.well-known/oauth-authorization-server discovery document.
