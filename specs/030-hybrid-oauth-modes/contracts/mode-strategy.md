@@ -40,23 +40,23 @@ oauth2_authorization_server:
 Domain logic determining whether a classified agent is permitted. Not a port — all implementations are internal domain code in `internal/domain/oauth2/`.
 
 ```go
-type AgentClass int
+type ClientMode int
 
 const (
-    ProxyClass     AgentClass = iota  // Agent.ClientID set
-    LocalCIMDClass                     // client_uris set, no ClientID
-    LocalPlainClass                    // neither set
+    UpstreamClient ClientMode = iota  // Agent.ClientID set
+    CIMDClient                         // client_uris set, no ClientID
+    LocalClient                        // neither set
 )
 
 type ModeStrategy interface {
-    AcceptsClass(class AgentClass) bool
+    AcceptsClientMode(mode ClientMode) bool
     Name() OAuthServerMode
 }
 ```
 
 ### Mode Strategy Behavior
 
-| Mode | ProxyClass | LocalCIMDClass | LocalPlainClass |
+| Mode | UpstreamClient | CIMDClient | LocalClient |
 |------|-----------|----------------|-----------------|
 | `proxy` | Accept | Reject | Reject |
 | `local` | Reject | Accept | Accept |
@@ -64,7 +64,7 @@ type ModeStrategy interface {
 
 ## Dispatching Strategies (Adapter Layer)
 
-For hybrid mode, the builder wires dispatching `AuthorizationProceedStrategy` and `TokenGrantStrategy` implementations in `internal/adapters/http/enduser/`. These wrap both proxy and local strategies and delegate based on `agent.Class()`. Domain code is not involved in dispatch.
+For hybrid mode, the builder wires dispatching `AuthorizationProceedStrategy` and `TokenGrantStrategy` implementations in `internal/adapters/http/enduser/`. These wrap both proxy and local strategies and delegate based on `agent.ClientMode()`. Domain code is not involved in dispatch.
 
 ## Agent Resolution Contract
 

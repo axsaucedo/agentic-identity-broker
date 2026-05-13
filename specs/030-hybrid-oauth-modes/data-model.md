@@ -24,19 +24,19 @@ Enumeration replacing the current string-based mode field.
 
 **Validation**: Must be one of the three values. `issue_token` produces a deprecation error.
 
-### AgentClass
+### ClientMode
 
 Derived classification of a resolved agent based on its properties.
 
-| Class | Condition | Behavior |
+| Value | Condition | Behavior |
 |-------|-----------|----------|
-| `ProxyClass` | `Agent.ClientID != nil` | Forward to upstream using `Agent.ClientID` |
-| `LocalCIMDClass` | `Agent.ClientID == nil && len(Agent.ClientURIs) > 0` | Issue tokens locally |
-| `LocalPlainClass` | `Agent.ClientID == nil && len(Agent.ClientURIs) == 0` | Issue tokens locally |
+| `UpstreamClient` | `Agent.ClientID != nil` | Forward to upstream using `Agent.ClientID` |
+| `CIMDClient` | `Agent.ClientID == nil && len(Agent.ClientURIs) > 0` | Issue tokens locally |
+| `LocalClient` | `Agent.ClientID == nil && len(Agent.ClientURIs) == 0` | Issue tokens locally |
 
 **Location**: `internal/domain/storage/agent.go` (alongside the Agent entity)
 
-**Method**: `func (a Agent) Class() AgentClass` — derived from the agent's own fields, no side effects.
+**Method**: `func (a Agent) ClientMode() ClientMode` — derived from the agent's own fields, no side effects.
 
 ## New Interfaces
 
@@ -46,21 +46,21 @@ Domain logic that determines whether a classified agent is permitted in the acti
 
 ```go
 type ModeStrategy interface {
-    AcceptsClass(class AgentClass) bool
+    AcceptsClientMode(mode ClientMode) bool
     Name() OAuthServerMode
 }
 ```
 
 **Implementations** (all in `internal/domain/oauth2/`):
-- `proxyModeStrategy` — accepts `ProxyClass` only
-- `localModeStrategy` — accepts `LocalCIMDClass` and `LocalPlainClass`
-- `hybridModeStrategy` — accepts all classes
+- `proxyModeStrategy` — accepts `UpstreamClient` only
+- `localModeStrategy` — accepts `CIMDClient` and `LocalClient`
+- `hybridModeStrategy` — accepts all client modes
 
 **Location**: `internal/domain/oauth2/mode_strategy.go`
 
 ### Dispatching Strategies (adapter layer)
 
-For hybrid mode, the builder wires dispatching proceed/grant strategies that wrap both proxy and local strategies and delegate based on `agent.Class()`.
+For hybrid mode, the builder wires dispatching proceed/grant strategies that wrap both proxy and local strategies and delegate based on `agent.ClientMode()`.
 
 **Location**: `internal/adapters/http/enduser/` (alongside existing proceed/grant strategies)
 
@@ -130,17 +130,17 @@ erDiagram
         string name "proxy or local or hybrid"
     }
     ModeStrategy {
-        string type "interface - accepts or rejects agent classes"
+        string type "interface - accepts or rejects client modes"
     }
-    AgentClass {
-        string type "ProxyClass or LocalCIMDClass or LocalPlainClass"
+    ClientMode {
+        string type "UpstreamClient or CIMDClient or LocalClient"
     }
     Agent {
         uuid id PK "resolution target for UUID client_id"
-        string client_id "optional - set means proxy-class"
-        string_array client_uris "optional - set means local CIMD-class"
+        string client_id "optional - set means upstream client"
+        string_array client_uris "optional - set means CIMD client"
     }
     OAuthServerMode ||--|| ModeStrategy : "selects at startup"
-    ModeStrategy ||--o{ AgentClass : "accepts or rejects"
-    Agent ||--|| AgentClass : "classified by properties"
+    ModeStrategy ||--o{ ClientMode : "accepts or rejects"
+    Agent ||--|| ClientMode : "classified by properties"
 ```

@@ -46,7 +46,7 @@
 
 ### Phase 2a: Domain Model & Glossary
 
-- [ ] T009 Add `OAuthServerMode`, `AgentClass`, `ModeStrategy` domain terms to ARCHITECTURE.md Glossary section
+- [ ] T009 Add `OAuthServerMode`, `ClientMode`, `ModeStrategy` domain terms to ARCHITECTURE.md Glossary section
 - [ ] T010 [P] Document mode strategy pattern (proxy/local/hybrid acceptance rules) in ARCHITECTURE.md
 
 **Checkpoint**: Domain model documented
@@ -93,11 +93,11 @@
 
 **Purpose**: Core domain types and interfaces that ALL user stories depend on
 
-- [ ] T024 Define `AgentClass` type and constants (ProxyClass, LocalCIMDClass, LocalPlainClass) in internal/domain/storage/agent.go
-- [ ] T025 Implement `Agent.Class() AgentClass` method on Agent entity in internal/domain/storage/agent.go
-- [ ] T026 [P] Write unit tests for Agent.Class() classification logic in internal/domain/storage/agent_test.go
+- [ ] T024 Define `ClientMode` type and constants (UpstreamClient, LocalClient, CIMDClient) in internal/domain/storage/agent.go
+- [ ] T025 Implement `Agent.ClientMode() ClientMode` method on Agent entity in internal/domain/storage/agent.go
+- [ ] T026 [P] Write unit tests for Agent.ClientMode() classification logic in internal/domain/storage/agent_test.go
 - [ ] T027 Define `OAuthServerMode` type (proxy, local, hybrid) in internal/ports/config.go
-- [ ] T028 Define `ModeStrategy` interface in internal/domain/oauth2/mode_strategy.go
+- [ ] T028 Define `ModeStrategy` interface (AcceptsClientMode(ClientMode) bool) in internal/domain/oauth2/mode_strategy.go
 - [ ] T029 [P] Implement proxyModeStrategy in internal/domain/oauth2/mode_strategy.go
 - [ ] T030 [P] Implement localModeStrategy in internal/domain/oauth2/mode_strategy.go
 - [ ] T031 [P] Implement hybridModeStrategy in internal/domain/oauth2/mode_strategy.go
@@ -151,9 +151,9 @@
 
 - [ ] T046 [US2] Implement universal client resolver with format detection (URL/UUID/invalid) in internal/domain/oauth2/client_resolver.go
 - [ ] T047 [US2] Add CIMD agent UUID rejection: after resolving by UUID, reject if agent has client_uris in internal/domain/oauth2/client_resolver.go
-- [ ] T048 [US2] Integrate ModeStrategy.AcceptsClass() check after resolution and classification in the authorization flow (/authorize path)
-- [ ] T048a [US2] Integrate ModeStrategy.AcceptsClass() check in the token flow (/token path): client credentials grant and authorization code exchange
-- [ ] T048b [P] [US2] Write unit tests for mode enforcement on /token path: proxy-class client credentials rejected in local mode, local-class rejected in proxy mode
+- [ ] T048 [US2] Integrate ModeStrategy.AcceptsClientMode() check after resolution and classification in the authorization flow (/authorize path)
+- [ ] T048a [US2] Integrate ModeStrategy.AcceptsClientMode() check in the token flow (/token path): client credentials grant and authorization code exchange
+- [ ] T048b [P] [US2] Write unit tests for mode enforcement on /token path: client credentials and authorization code exchange rejected in wrong mode, accepted in correct mode
 - [ ] T049 [US2] Return actionable error messages for mode rejection (local not supported in proxy, proxy not supported in local)
 - [ ] T050 [US2] Ensure JWKS endpoint served in local and hybrid modes, not in proxy mode
 - [ ] T051 [US2] Ensure OAuth2 metadata endpoint reflects active mode capabilities (hybrid = union)
@@ -227,9 +227,9 @@
 - [ ] T071 [P] Verify configuration uses unified config port (not custom loading)
 - [ ] T072 [P] Verify Helm chart updated with new config structure
 - [ ] T073 Verify security: mode enforcement is strict, fail closed, no bypasses (Principle I)
-- [ ] T074 Verify domain logic uses ports/interfaces — ModeStrategy is domain, dispatching is adapter (Principle VI)
+- [ ] T074 Verify domain logic uses ports/interfaces — ModeStrategy is domain (AcceptsClientMode), dispatching is adapter (Principle VI)
 - [ ] T075 Verify unit tests written first and failed before implementation (Principle VIII)
-- [ ] T076 Verify E2E tests map 1:1 to spec scenarios (Principle XIII)
+- [ ] T076 Verify E2E tests map 1:1 to the 21 behavioral spec scenarios (US1-US3); US4's 2 structural scenarios verified via unit tests in builder_test.go (Principle XIII)
 - [ ] T077 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
 - [ ] T078 Run full unit test suite: `just test` (all tests must pass)
 

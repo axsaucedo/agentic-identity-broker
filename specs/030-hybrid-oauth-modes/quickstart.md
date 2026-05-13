@@ -9,8 +9,8 @@ Replaces the binary `proxy`/`issue_token` mode selection with three symmetric mo
 ## Key Concepts
 
 1. **Mode naming**: `issue_token` → `local`. Three modes: `proxy`, `local`, `hybrid`.
-2. **Agent classification**: Derived from agent properties, not config. `Agent.ClientID` set → proxy-class. `client_uris` set → local CIMD-class. Neither → local plain-class.
-3. **Mode as strategy**: Each mode accepts/rejects agent classes. Hybrid accepts all.
+2. **Agent classification**: Derived from agent properties, not config. `Agent.ClientID` set → upstream client. `client_uris` set → CIMD client. Neither → local client.
+3. **Mode as strategy**: Each mode accepts/rejects client modes. Hybrid accepts all.
 4. **No new entity fields**: Classification uses existing `ClientID` and `ClientURIs`.
 
 ## Implementation Order
@@ -20,7 +20,7 @@ Pure refactor. Rename all references: config values, strategy types, builder bra
 
 ### Phase 2: Design Preconditions
 - Config restructuring (nested `proxy`/`local` sections)
-- `ModeStrategy` interface + `AgentClass` value object
+- `ModeStrategy` interface + `ClientMode` value object
 - E2E test design (21 scenarios)
 
 ### Phase 3-6: User Stories

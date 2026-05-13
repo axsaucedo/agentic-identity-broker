@@ -6,7 +6,7 @@
 
 **Decision**: Split mode concerns into two layers:
 
-1. **Domain layer** (`internal/domain/oauth2/`): `ModeStrategy` with `AcceptsClass(AgentClass) bool`. Three implementations (proxy, local, hybrid) — all pure domain logic. This determines whether a classified agent is permitted in the active mode.
+1. **Domain layer** (`internal/domain/oauth2/`): `ModeStrategy` with `AcceptsClientMode(ClientMode) bool`. Three implementations (proxy, local, hybrid) — all pure domain logic. This determines whether a classified agent is permitted in the active mode.
 
 2. **Adapter layer** (`internal/adapters/http/enduser/`): Dispatching proceed/grant strategies for hybrid mode. These wrap both proxy and local proceed/grant strategies and delegate based on agent class. This is HTTP adapter code, wired by the builder.
 
@@ -24,9 +24,9 @@ Config validation happens in the configuration layer (`OAuth2AuthServerConfig.Va
 
 ## R2: Agent Classification Location
 
-**Decision**: Classification is a method on the Agent entity: `agent.Class() AgentClass`. The `AgentClass` type is defined in `internal/domain/storage/` alongside the Agent entity.
+**Decision**: Classification is a method on the Agent entity: `agent.ClientMode() ClientMode`. The `ClientMode` type is defined in `internal/domain/storage/` alongside the Agent entity.
 
-**Rationale**: Classification derives entirely from Agent's own fields (`ClientID`, `ClientURIs`). It's natural to ask an agent "what class are you?" rather than passing the agent to an external classifier. The Agent entity already lives in domain code (`internal/domain/storage/`), so this keeps the logic co-located with the data it inspects.
+**Rationale**: Classification derives entirely from Agent's own fields (`ClientID`, `ClientURIs`). It's natural to ask an agent "what client mode are you?" rather than passing the agent to an external classifier. The Agent entity already lives in domain code (`internal/domain/storage/`), so this keeps the logic co-located with the data it inspects.
 
 **Alternatives considered**:
 - Free function `ClassifyAgent(agent)` in `internal/domain/oauth2/` — rejected because it separates logic from the data it operates on; classification is intrinsic to the entity
@@ -46,9 +46,9 @@ Config validation happens in the configuration layer (`OAuth2AuthServerConfig.Va
 
 ## R4: Hybrid Mode Builder Wiring
 
-**Decision**: In hybrid mode, the builder creates both local and proxy proceed/grant strategies, then wraps each pair in a dispatching strategy. The dispatching strategies live in `internal/adapters/http/enduser/` (adapter code) and use `agent.Class()` to delegate to the correct inner strategy per request.
+**Decision**: In hybrid mode, the builder creates both local and proxy proceed/grant strategies, then wraps each pair in a dispatching strategy. The dispatching strategies live in `internal/adapters/http/enduser/` (adapter code) and use `agent.ClientMode()` to delegate to the correct inner strategy per request.
 
-**Rationale**: The builder already creates one strategy set or the other based on mode (`internal/app/builder.go:609-653`). For hybrid, both sets are created and wrapped. The dispatching strategies are adapter code because they select between HTTP handler paths — domain code is not involved in dispatch. Agent classification (`agent.Class()`) is the only domain call, and it returns a value object.
+**Rationale**: The builder already creates one strategy set or the other based on mode (`internal/app/builder.go:609-653`). For hybrid, both sets are created and wrapped. The dispatching strategies are adapter code because they select between HTTP handler paths — domain code is not involved in dispatch. Agent classification (`agent.ClientMode()`) is the only domain call, and it returns a value object.
 
 **Alternatives considered**:
 - Two separate routers/mux for proxy and local paths — overengineered, requires URL path splitting that doesn't exist in the spec
