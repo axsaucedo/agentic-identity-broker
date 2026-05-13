@@ -57,6 +57,9 @@
 - [ ] T012 [P] Update examples/config/oauth2-server-mode.yaml to use `mode: local` with nested sections
 - [ ] T013 [P] Update examples/config/README.md to reference new hybrid mode configuration
 - [ ] T014 [P] Update charts/agentic-identity-broker/values.yaml with nested proxy/local/cimd config structure
+- [ ] T014a [P] Update charts/agentic-identity-broker/templates/configmap.yaml to render nested mode config
+- [ ] T014b [P] Update charts/agentic-identity-broker/values.schema.json to validate new mode structure (if exists)
+- [ ] T014c [P] Update charts/agentic-identity-broker/README.md with new config parameter documentation
 
 **Checkpoint**: Configuration designed with YAML examples and Helm chart updated
 
@@ -78,7 +81,7 @@
 - [ ] T018 Write E2E acceptance tests for US1 (6 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
 - [ ] T019 [P] Write E2E acceptance tests for US2 (11 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
 - [ ] T020 [P] Write E2E acceptance tests for US3 (4 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
-- [ ] T021 [P] Write E2E acceptance tests for US4 (2 scenarios — structural verification) in tests/e2e/hybrid_oauth_modes_e2e_test.go
+- [ ] T021 [P] Write unit/architecture tests for US4 (2 scenarios — structural verification: no runtime mode checks) in internal/app/builder_test.go
 - [ ] T022 Create test fixtures: proxy-class agent, local plain agent, CIMD agent, hybrid mode config in tests/e2e/fixtures/
 - [ ] T023 Verify E2E tests FAIL semantically (red phase): detailed expectations present and failing
 
@@ -148,7 +151,9 @@
 
 - [ ] T046 [US2] Implement universal client resolver with format detection (URL/UUID/invalid) in internal/domain/oauth2/client_resolver.go
 - [ ] T047 [US2] Add CIMD agent UUID rejection: after resolving by UUID, reject if agent has client_uris in internal/domain/oauth2/client_resolver.go
-- [ ] T048 [US2] Integrate ModeStrategy.AcceptsClass() check after resolution and classification in the authorization flow
+- [ ] T048 [US2] Integrate ModeStrategy.AcceptsClass() check after resolution and classification in the authorization flow (/authorize path)
+- [ ] T048a [US2] Integrate ModeStrategy.AcceptsClass() check in the token flow (/token path): client credentials grant and authorization code exchange
+- [ ] T048b [P] [US2] Write unit tests for mode enforcement on /token path: proxy-class client credentials rejected in local mode, local-class rejected in proxy mode
 - [ ] T049 [US2] Return actionable error messages for mode rejection (local not supported in proxy, proxy not supported in local)
 - [ ] T050 [US2] Ensure JWKS endpoint served in local and hybrid modes, not in proxy mode
 - [ ] T051 [US2] Ensure OAuth2 metadata endpoint reflects active mode capabilities (hybrid = union)
@@ -212,7 +217,7 @@
 - [ ] T064 Verify API designs documented in /api/enduser/openapi.yaml (Principles IV, X)
 - [ ] T065 Verify user/stakeholder confirmed API behavioral changes (Principle X)
 - [ ] T066 Verify no DB changes needed confirmed (Principle IX)
-- [ ] T067 Verify E2E acceptance tests in tests/e2e/ for all 23 spec scenarios (Principle XIII)
+- [ ] T067 Verify E2E acceptance tests in tests/e2e/ for all 21 behavioral spec scenarios (Principle XIII — US4 structural scenarios verified via unit/review, not E2E)
 - [ ] T068 Verify E2E tests failed semantically before implementation (Principle XIII)
 
 #### Implementation Phase Verification
