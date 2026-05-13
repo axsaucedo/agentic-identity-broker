@@ -246,9 +246,9 @@ oauth2_authorization_server:
 ### Security Requirements
 
 - **SR-001**: Mode configuration MUST be validated before any server component starts — invalid mode config MUST prevent startup entirely (fail closed).
-- **SR-002**: Each mode strategy MUST enforce strict client mode boundaries — proxy-mode requests MUST NOT reach local token issuance, and local/CIMD requests MUST NOT reach the upstream proxy path. Violations MUST result in an explicit error, not silent routing.
+- **SR-002**: Each mode strategy MUST enforce strict client mode boundaries — ProxyClient agent requests MUST NOT reach local token issuance, and LocalClient/CIMDClient agent requests MUST NOT reach the upstream proxy path. Violations MUST result in an explicit error, not silent routing.
 - **SR-003**: The deprecated `issue_token` mode name MUST NOT silently fall back to `local` — it MUST produce an explicit error requiring operator action.
-- **SR-004**: Proxy-mode agent tokens MUST NOT be re-signed or transformed — they are returned from the upstream server as-is, preserving the upstream token's integrity and signature.
+- **SR-004**: ProxyClient agent tokens MUST NOT be re-signed or transformed — they are returned from the upstream server as-is, preserving the upstream token's integrity and signature.
 
 ## Assumptions
 
@@ -258,7 +258,7 @@ oauth2_authorization_server:
 - The OAuth2 metadata endpoint in hybrid mode will advertise the union of capabilities from both proxy and local paths.
 - Migration from `issue_token` to `local` is a configuration-only change — no data migration is needed.
 - The `supported_grant_types` field in the config may differ between the proxy and local sections in hybrid mode.
-- Proxy-mode tokens use the same pass-through mechanism as current proxy mode — no re-signing, no local token wrapping.
+- ProxyClient agent tokens use the same pass-through mechanism as current proxy mode — no re-signing, no local token wrapping.
 - All agents — including proxy agents — are addressed by `Agent.ID` (UUID) on `/authorize`. This is the existing behavior after the recent change to hide upstream client_ids from relying parties.
 - CIMD agents are addressed via their URL (`client_uris`) — UUID-based access is explicitly rejected.
 - `Agent.ClientID` is an internal credential used by the broker's proxy path to communicate with the upstream OAuth2 server. It is never used for agent resolution from incoming requests.

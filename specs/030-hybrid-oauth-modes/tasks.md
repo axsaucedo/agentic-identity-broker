@@ -93,7 +93,7 @@
 
 **Purpose**: Core domain types and interfaces that ALL user stories depend on
 
-- [ ] T024 Define `ClientMode` type and constants (ProxyClient, LocalClient, CIMDClient) in internal/domain/storage/agent.go
+- [ ] T024 Define `ClientMode` type and constants (ProxyClient, CIMDClient, LocalClient) in internal/domain/storage/agent.go
 - [ ] T025 Implement `Agent.ClientMode() ClientMode` method on Agent entity in internal/domain/storage/agent.go
 - [ ] T026 [P] Write unit tests for Agent.ClientMode() classification logic in internal/domain/storage/agent_test.go
 - [ ] T027 Define `OAuthServerMode` type (proxy, local, hybrid) in internal/ports/config.go
