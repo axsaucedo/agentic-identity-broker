@@ -5,7 +5,7 @@
 
 ## Summary
 
-Overhaul OAuth server mode management: rename `issue_token` → `local`, add `hybrid` mode allowing proxy and local clients to coexist, introduce universal agent resolution and property-based classification (proxy-class, local CIMD-class, local plain-class), and enforce mode strategies as accept/reject filters. No new Agent entity fields — classification derives from existing `Agent.ClientID` and `client_uris` properties.
+Overhaul OAuth server mode management: rename `issue_token` → `local`, add `hybrid` mode allowing proxy and local clients to coexist, introduce universal agent resolution and property-based classification (`ProxyClient`, `CIMDClient`, `LocalClient`), and enforce mode strategies as accept/reject filters. No new Agent entity fields — classification derives from existing `Agent.ClientID` and `client_uris` properties.
 
 ## Technical Context
 
@@ -25,15 +25,15 @@ Overhaul OAuth server mode management: rename `issue_token` → `local`, add `hy
 
 **Design Preconditions (BLOCKING)**:
 
-- [x] **Domain Model**: No new entities. Existing Agent entity unchanged (FR-017). New value object: `OAuthServerMode` enum (`proxy`, `local`, `hybrid`). New domain concept: agent classification (proxy-class, local CIMD-class, local plain-class). New interface: `ModeStrategy`.
-- [x] **Domain Concepts**: Yes — `OAuthServerMode`, agent classification, `ModeStrategy` will be added to ARCHITECTURE.md Glossary.
+- [x] **Domain Model**: No new entities. Existing Agent entity unchanged (FR-017). New value object: `OAuthServerMode` enum (`proxy`, `local`, `hybrid`). New domain concept: agent classification (`ProxyClient`, `CIMDClient`, `LocalClient`). New interface: `ModeStrategy`.
+- [x] **Domain Concepts**: Yes — `OAuthServerMode`, `ClientMode`, `ModeStrategy` will be added to ARCHITECTURE.md Glossary.
 - [x] **Entity IDs**: N/A — no new entities with UUID PKs.
 - [x] **Configuration Design**: Yes — mode config restructured into `proxy`, `local`, `cimd` subsections. `issue_token` rejected with deprecation message. `hybrid` requires both proxy and local sections.
 - [x] **Config Examples**: Yes — `examples/config/oauth2-server-mode.yaml` and `examples/config/oauth2-authorization-server.yaml` will be updated; new hybrid example added.
 - [x] **Helm Chart**: Yes — `charts/agentic-identity-broker/values.yaml` mode value and structure updated.
 - [x] **API Design First**: Behavioral change only (mode-based routing). No new API endpoints. OpenAPI descriptions updated to reflect three modes. User confirmation required before implementation.
 - [x] **API Documentation**: OpenAPI specs updated to document mode-specific behavior (JWKS availability, metadata differences).
-- [x] **API Changes**: Mode naming is config-only; API behavior changes (hybrid mode accepting both agent classes) require user confirmation.
+- [x] **API Changes**: Mode naming is config-only; API behavior changes (hybrid mode accepting all client modes) require user confirmation.
 - [x] **Database Design**: N/A — no schema changes.
 - [x] **E2E Acceptance Tests**: Yes — 20+ scenarios across 4 user stories will have E2E tests in `tests/e2e/hybrid_oauth_modes_e2e_test.go`.
 - [x] **E2E Test Mapping**: Yes — 1:1 mapping from spec acceptance scenarios to It() blocks.
@@ -43,14 +43,14 @@ Overhaul OAuth server mode management: rename `issue_token` → `local`, add `hy
 
 **Implementation Considerations**:
 
-- [x] **Security-First**: Mode enforcement is strict — proxy-class cannot reach local issuance, local-class cannot reach upstream proxy (SR-002). `issue_token` fails closed with error (SR-003). CIMD rejected in proxy mode (SR-001).
-- [x] **Architecture Docs**: Yes — ARCHITECTURE.md updated with mode strategy pattern, agent classification, glossary terms.
+- [x] **Security-First**: Mode enforcement is strict — proxy agents cannot reach local issuance, local/CIMD agents cannot reach upstream proxy (SR-002). `issue_token` fails closed with error (SR-003). CIMD rejected in proxy mode (SR-001).
+- [x] **Architecture Docs**: Yes — ARCHITECTURE.md updated with mode strategy pattern, client mode classification, glossary terms.
 - [x] **ADRs**: No new ADR needed — the spec, plan, and research documents capture all architectural decisions. ADR 014 (fosite for local token issuance) remains the binding ADR; this feature extends its patterns without changing the foundation.
 - [x] **Library-First Security**: No new crypto — fosite/jwx remain unchanged. Proxy tokens pass through as-is (SR-004).
 - [x] **Zalando Guidelines**: No new endpoints; existing endpoints follow guidelines.
 - [x] **End-User Docs**: `docs/configuration.md` updated with new mode names and hybrid mode docs.
 - [x] **Migration Testing**: N/A — no migrations.
-- [x] **Hexagonal Architecture**: Mode acceptance logic (`AcceptsClass`) is domain code in `internal/domain/oauth2/`. Dispatching between proxy/local proceed and grant strategies is adapter code in `internal/adapters/http/enduser/`, wired by the builder. Domain never references HTTP adapters.
+- [x] **Hexagonal Architecture**: Mode acceptance logic (`AcceptsClientMode`) is domain code in `internal/domain/oauth2/`. Dispatching between proxy/local proceed and grant strategies is adapter code in `internal/adapters/http/enduser/`, wired by the builder. Domain never references HTTP adapters.
 - [x] **Persistence Patterns**: N/A — no persistence changes.
 
 ## Project Structure
@@ -75,7 +75,7 @@ internal/
 │   └── config.go                          # Mode enum, restructured OAuth2AuthServerConfig
 ├── domain/
 │   └── oauth2/
-│       ├── mode_strategy.go               # ModeStrategy interface + agent classification
+│       ├── mode_strategy.go               # ModeStrategy interface + ClientMode
 │       ├── client_resolver.go             # Updated: CIMD agent UUID rejection (FR-005)
 │       └── cimd/
 │           └── client_resolver.go         # Unchanged
@@ -97,7 +97,7 @@ tests/e2e/
 └── mode_configuration_e2e_test.go         # Updated: rename issue_token references
 ```
 
-**Structure Decision**: Existing hexagonal architecture. Changes span config (ports), domain (mode strategy + classification), adapters (strategy renaming), app (builder wiring), and config examples. No new packages — `ModeStrategy` lives in `internal/domain/oauth2/`.
+**Structure Decision**: Existing hexagonal architecture. Changes span config (ports), domain (mode strategy + classification), adapters (strategy renaming), app (builder wiring), and config examples. No new packages — `ModeStrategy` lives in `internal/domain/oauth2/`, `ClientMode` lives in `internal/domain/storage/`.
 
 ## Implementation Phase Overview
 
@@ -106,7 +106,7 @@ tests/e2e/
 | **Phase 0** | Rename `issue_token` → `local` across codebase (config, strategies, tests, docs) | **Include** |
 | **Phase 1** | Setup — no new deps needed | Skip |
 | **Phase 2** | Design Preconditions (domain model, config, API, E2E tests) | **MANDATORY** |
-| **Phase 2.5** | Mode strategy interface + agent classification + universal resolver | Customizable |
+| **Phase 2.5** | Mode strategy interface + ClientMode + universal resolver | Customizable |
 | **Phase 3** | User Story 1 — Symmetric mode naming and config restructuring | P1 |
 | **Phase 4** | User Story 2 — Universal resolution, classification, mode enforcement | P1 |
 | **Phase 5** | User Story 3 — Mode-specific feature gating (CIMD in hybrid) | P2 |
@@ -141,31 +141,31 @@ tests/e2e/
 | US1-S4 | `It("rejects issue_token mode with deprecation message suggesting local")` |
 | US1-S5 | `It("rejects proxy mode with local-only fields like token_ttl")` |
 | US1-S6 | `It("rejects local mode with proxy-only fields like upstream_issuer_uri")` |
-| US2-S1 | `It("hybrid mode: proxy-class agent resolved by UUID, forwarded to upstream")` |
+| US2-S1 | `It("hybrid mode: proxy agent resolved by UUID, forwarded to upstream")` |
 | US2-S2 | `It("hybrid mode: plain local agent resolved by UUID, tokens issued locally")` |
 | US2-S3 | `It("hybrid mode with CIMD: CIMD agent resolved by URL, tokens issued locally")` |
 | US2-S4 | `It("rejects UUID access to CIMD agent that has client_uris")` |
 | US2-S5 | `It("rejects client_id that is neither UUID nor URL")` |
 | US2-S6 | `It("rejects UUID that does not match any agent")` |
-| US2-S7 | `It("proxy mode rejects local-class agent")` |
-| US2-S8 | `It("local mode rejects proxy-class agent")` |
+| US2-S7 | `It("proxy mode rejects local/CIMD agent")` |
+| US2-S8 | `It("local mode rejects proxy agent")` |
 | US2-S9 | `It("hybrid mode: local plain agent uses client credentials grant")` |
 | US2-S10 | `It("hybrid mode serves JWKS endpoint")` |
 | US2-S11 | `It("hybrid mode metadata reflects hybrid capabilities")` |
 | US3-S1 | `It("rejects CIMD in proxy mode")` |
 | US3-S2 | `It("accepts CIMD in local mode")` |
 | US3-S3 | `It("accepts CIMD in hybrid mode")` |
-| US3-S4 | `It("hybrid mode: proxy-class agent unaffected by CIMD")` |
+| US3-S4 | `It("hybrid mode: proxy agent unaffected by CIMD")` |
 
 **Test Data Strategy**:
 - Use fixtures from `tests/e2e/fixtures/` for stable, reusable test data
-- Required fixtures: proxy-class agent (has ClientID), local plain agent (no ClientID, no client_uris), CIMD agent (has client_uris, no ClientID), config fixtures for each mode
-- New fixture creation: hybrid mode config fixture, proxy-class agent fixture (if not existing)
+- Required fixtures: proxy agent (has ClientID), local agent (no ClientID, no client_uris), CIMD agent (has client_uris, no ClientID), config fixtures for each mode
+- New fixture creation: hybrid mode config fixture, proxy agent fixture (if not existing)
 
 **Bootstrap Strategy**:
 - Tests use production bootstrap code via `tests/e2e/bootstrap/`
 - Fresh server and storage for each test (BeforeEach/AfterEach isolation)
-- Hybrid mode tests need mock upstream OAuth2 server for proxy-class agent forwarding
+- Hybrid mode tests need mock upstream OAuth2 server for proxy agent forwarding
 
 **Helper Utilities**:
 - Mock upstream OAuth2 server (may already exist for proxy mode tests)
@@ -174,7 +174,7 @@ tests/e2e/
 ### Unit & Integration Tests
 
 **Unit Tests**:
-- `internal/domain/oauth2/mode_strategy_test.go` — agent classification logic, mode acceptance/rejection
+- `internal/domain/oauth2/mode_strategy_test.go` — client mode classification logic, mode acceptance/rejection
 - `internal/ports/config_test.go` — mode validation, cross-mode field rejection, deprecation error
 - `internal/domain/oauth2/client_resolver_test.go` — CIMD agent UUID rejection (FR-005)
 

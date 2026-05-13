@@ -8,9 +8,9 @@
 
 1. **Domain layer** (`internal/domain/oauth2/`): `ModeStrategy` with `AcceptsClientMode(ClientMode) bool`. Three implementations (proxy, local, hybrid) — all pure domain logic. This determines whether a classified agent is permitted in the active mode.
 
-2. **Adapter layer** (`internal/adapters/http/enduser/`): Dispatching proceed/grant strategies for hybrid mode. These wrap both proxy and local proceed/grant strategies and delegate based on agent class. This is HTTP adapter code, wired by the builder.
+2. **Adapter layer** (`internal/adapters/http/enduser/`): Dispatching proceed/grant strategies for hybrid mode. These wrap both proxy and local proceed/grant strategies and delegate based on client mode. This is HTTP adapter code, wired by the builder.
 
-**Rationale**: Accept/reject is domain logic — it depends only on agent class, not HTTP. Dispatching between proxy and local HTTP strategies is adapter code — it selects which HTTP handler path to follow. Keeping these separate ensures domain never references HTTP adapters, satisfying hexagonal architecture rules.
+**Rationale**: Accept/reject is domain logic — it depends only on client mode, not HTTP. Dispatching between proxy and local HTTP strategies is adapter code — it selects which HTTP handler path to follow. Keeping these separate ensures domain never references HTTP adapters, satisfying hexagonal architecture rules.
 
 Config validation happens in the configuration layer (`OAuth2AuthServerConfig.Validate()`). After validation, the builder selects the domain `ModeStrategy` and wires the appropriate adapter strategies:
 - `proxy` mode → proxy proceed + proxy grant strategies (existing)
@@ -72,6 +72,6 @@ Config validation happens in the configuration layer (`OAuth2AuthServerConfig.Va
 
 ## R7: ADR Decision
 
-**Decision**: No new ADR. The spec, plan, and research documents already capture all architectural decisions (mode strategy pattern, agent classification, config restructuring, mode renaming). ADR 014 remains the binding ADR for local token issuance via fosite; this feature extends its patterns without changing the architectural foundation.
+**Decision**: No new ADR. The spec, plan, and research documents already capture all architectural decisions (mode strategy pattern, client mode classification, config restructuring, mode renaming). ADR 014 remains the binding ADR for local token issuance via fosite; this feature extends its patterns without changing the architectural foundation.
 
 **Rationale**: An ADR would duplicate content already present in the spec artifacts. The spec + plan serve the same purpose — documenting decisions, rationale, and alternatives considered.

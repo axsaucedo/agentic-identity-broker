@@ -18,7 +18,7 @@ Enumeration replacing the current string-based mode field.
 |-------|-------------|
 | `proxy` | Forward all requests to upstream OAuth2 server |
 | `local` | Issue tokens locally (replaces `issue_token`) |
-| `hybrid` | Accept both proxy-class and local-class agents |
+| `hybrid` | Accept all client modes (proxy, CIMD, local) |
 
 **Location**: `internal/ports/config.go` (or `internal/domain/oauth2/mode.go` if separated from config)
 
@@ -30,7 +30,7 @@ Derived classification of a resolved agent based on its properties.
 
 | Value | Condition | Behavior |
 |-------|-----------|----------|
-| `UpstreamClient` | `Agent.ClientID != nil` | Forward to upstream using `Agent.ClientID` |
+| `ProxyClient` | `Agent.ClientID != nil` | Forward to upstream using `Agent.ClientID` |
 | `CIMDClient` | `Agent.ClientID == nil && len(Agent.ClientURIs) > 0` | Issue tokens locally |
 | `LocalClient` | `Agent.ClientID == nil && len(Agent.ClientURIs) == 0` | Issue tokens locally |
 
@@ -52,7 +52,7 @@ type ModeStrategy interface {
 ```
 
 **Implementations** (all in `internal/domain/oauth2/`):
-- `proxyModeStrategy` — accepts `UpstreamClient` only
+- `proxyModeStrategy` — accepts `ProxyClient` only
 - `localModeStrategy` — accepts `CIMDClient` and `LocalClient`
 - `hybridModeStrategy` — accepts all client modes
 
@@ -119,7 +119,7 @@ type LocalModeConfig struct {
 | Field | Type | Classification Role |
 |-------|------|---------------------|
 | `ID` | `id.AgentID` (UUID) | Resolution: UUID-format `client_id` → `Agent.ID` lookup |
-| `ClientID` | `*id.ClientID` | Classification: set → proxy-class |
+| `ClientID` | `*id.ClientID` | Classification: set → ProxyClient |
 | `ClientURIs` | `[]string` | Classification: set (without ClientID) → local CIMD-class; Resolution: URL-format `client_id` → `GetByClientURI` |
 
 ## Relationship Diagram
@@ -133,11 +133,11 @@ erDiagram
         string type "interface - accepts or rejects client modes"
     }
     ClientMode {
-        string type "UpstreamClient or CIMDClient or LocalClient"
+        string type "ProxyClient or CIMDClient or LocalClient"
     }
     Agent {
         uuid id PK "resolution target for UUID client_id"
-        string client_id "optional - set means upstream client"
+        string client_id "optional - set means proxy agent"
         string_array client_uris "optional - set means CIMD client"
     }
     OAuthServerMode ||--|| ModeStrategy : "selects at startup"

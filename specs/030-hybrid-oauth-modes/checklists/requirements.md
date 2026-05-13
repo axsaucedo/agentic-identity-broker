@@ -33,9 +33,9 @@
 ## Notes
 
 - All items pass. Classification is property-based:
-  - `Agent.ClientID` set → proxy-class
-  - `client_uris` set (no `ClientID`) → local CIMD-class
-  - Neither → local plain-class
+  - `Agent.ClientID` set → `ProxyClient`
+  - `client_uris` set (no `ClientID`) → `CIMDClient`
+  - Neither → `LocalClient`
 - Resolution: URL → `GetByClientURI`, UUID → `Agent.ID`. No `GetByClientID` fallback.
 - Non-CIMD agents addressed by `Agent.ID` (UUID); CIMD agents addressed by URL-format `client_id` — upstream `Agent.ClientID` never exposed to relying parties.
 - CIMD agents rejected when accessed by UUID (must use URL).

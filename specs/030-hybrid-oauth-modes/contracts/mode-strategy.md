@@ -43,7 +43,7 @@ Domain logic determining whether a classified agent is permitted. Not a port —
 type ClientMode int
 
 const (
-    UpstreamClient ClientMode = iota  // Agent.ClientID set
+    ProxyClient ClientMode = iota  // Agent.ClientID set
     CIMDClient                         // client_uris set, no ClientID
     LocalClient                        // neither set
 )
@@ -56,7 +56,7 @@ type ModeStrategy interface {
 
 ### Mode Strategy Behavior
 
-| Mode | UpstreamClient | CIMDClient | LocalClient |
+| Mode | ProxyClient | CIMDClient | LocalClient |
 |------|-----------|----------------|-----------------|
 | `proxy` | Accept | Reject | Reject |
 | `local` | Reject | Accept | Accept |

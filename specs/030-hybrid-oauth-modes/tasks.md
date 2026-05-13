@@ -66,7 +66,7 @@
 ### Phase 2c: API Design
 
 - [ ] T015 Update /api/enduser/openapi.yaml to document mode-specific behavior (JWKS availability, metadata differences per mode)
-- [ ] T016 [P] Get user/stakeholder confirmation for API behavioral changes (hybrid mode accepting both agent classes)
+- [ ] T016 [P] Get user/stakeholder confirmation for API behavioral changes (hybrid mode accepting all client modes)
 
 **Checkpoint**: APIs designed and confirmed
 
@@ -82,7 +82,7 @@
 - [ ] T019 [P] Write E2E acceptance tests for US2 (11 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
 - [ ] T020 [P] Write E2E acceptance tests for US3 (4 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
 - [ ] T021 [P] Write unit/architecture tests for US4 (2 scenarios — structural verification: no runtime mode checks) in internal/app/builder_test.go
-- [ ] T022 Create test fixtures: proxy-class agent, local plain agent, CIMD agent, hybrid mode config in tests/e2e/fixtures/
+- [ ] T022 Create test fixtures: proxy agent, local agent, CIMD agent, hybrid mode config in tests/e2e/fixtures/
 - [ ] T023 Verify E2E tests FAIL semantically (red phase): detailed expectations present and failing
 
 **Checkpoint**: E2E acceptance tests written and verified to fail semantically before implementation
@@ -93,7 +93,7 @@
 
 **Purpose**: Core domain types and interfaces that ALL user stories depend on
 
-- [ ] T024 Define `ClientMode` type and constants (UpstreamClient, LocalClient, CIMDClient) in internal/domain/storage/agent.go
+- [ ] T024 Define `ClientMode` type and constants (ProxyClient, LocalClient, CIMDClient) in internal/domain/storage/agent.go
 - [ ] T025 Implement `Agent.ClientMode() ClientMode` method on Agent entity in internal/domain/storage/agent.go
 - [ ] T026 [P] Write unit tests for Agent.ClientMode() classification logic in internal/domain/storage/agent_test.go
 - [ ] T027 Define `OAuthServerMode` type (proxy, local, hybrid) in internal/ports/config.go
@@ -135,15 +135,15 @@
 
 ## Phase 4: User Story 2 — Universal Agent Resolution, Classification, and Mode Enforcement (Priority: P1)
 
-**Goal**: Every incoming request goes through universal resolution → classification → mode enforcement. Each mode accepts/rejects agent classes.
+**Goal**: Every incoming request goes through universal resolution → classification → mode enforcement. Each mode accepts/rejects client modes.
 
-**Independent Test**: Register agents of each class, send requests per mode, verify correct acceptance/rejection.
+**Independent Test**: Register agents of each client mode, send requests per mode, verify correct acceptance/rejection.
 
 ### Tests for User Story 2
 
 - [ ] T043 [P] [US2] Write unit tests for universal client resolver: URL → GetByClientURI, UUID → Agent.ID, other → reject in internal/domain/oauth2/client_resolver_test.go
 - [ ] T044 [P] [US2] Write unit test for CIMD agent UUID rejection (FR-005) in internal/domain/oauth2/client_resolver_test.go
-- [ ] T045 [P] [US2] Write unit tests for mode enforcement: proxy rejects local-class, local rejects proxy-class in internal/domain/oauth2/mode_strategy_test.go
+- [ ] T045 [P] [US2] Write unit tests for mode enforcement: proxy rejects local/CIMD, local rejects proxy agents in internal/domain/oauth2/mode_strategy_test.go
 - [ ] T045a [P] [US2] Write unit test for JWKS endpoint availability: served in local/hybrid, not served in proxy mode
 - [ ] T045b [P] [US2] Write unit test for metadata endpoint: hybrid mode reflects union of capabilities
 
@@ -176,7 +176,7 @@
 ### Implementation for User Story 3
 
 - [ ] T054 [US3] Add CIMD-in-proxy-mode rejection to config validation in internal/ports/config.go
-- [ ] T055 [US3] Verify hybrid mode with CIMD: proxy-class agents unaffected by CIMD (no behavioral change needed — classification handles this)
+- [ ] T055 [US3] Verify hybrid mode with CIMD: proxy agents unaffected by CIMD (no behavioral change needed — classification handles this)
 
 **Checkpoint**: US3 fully functional — CIMD gated by mode
 
@@ -223,7 +223,7 @@
 #### Implementation Phase Verification
 
 - [ ] T069 [P] Verify API implementation matches confirmed OpenAPI specification
-- [ ] T070 Update ARCHITECTURE.md with mode strategy pattern and agent classification
+- [ ] T070 Update ARCHITECTURE.md with mode strategy pattern and ClientMode classification
 - [ ] T071 [P] Verify configuration uses unified config port (not custom loading)
 - [ ] T072 [P] Verify Helm chart updated with new config structure
 - [ ] T073 Verify security: mode enforcement is strict, fail closed, no bypasses (Principle I)
@@ -292,7 +292,7 @@ Task: "Implement validation rules in internal/ports/config.go"
 
 1. Complete Phase 0: Rename `issue_token` → `local` (separate PR)
 2. Complete Phase 2: Design Preconditions (all areas)
-3. Complete Phase 2.5: Foundational Infrastructure (AgentClass, ModeStrategy)
+3. Complete Phase 2.5: Foundational Infrastructure (ClientMode, ModeStrategy)
 4. Complete Phase 3: User Story 1 — config validation
 5. Complete Phase 4: User Story 2 — universal resolution + mode enforcement
 6. **STOP and VALIDATE**: Test US1 + US2 independently
