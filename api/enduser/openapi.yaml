@@ -1260,14 +1260,14 @@ paths:
       description: |
         Initiates an OAuth2 authorization code flow. The broker validates the agent,
         checks consent, and either redirects to the upstream OAuth2 authorization server
-        or issues an authorization code directly (issue_token mode).
+        or issues an authorization code directly (local/hybrid mode).
 
-        **client_id semantics (Breaking Change — Feature 021)**:
-        The `client_id` parameter MUST be the agent's internal UUID (`agent.id`), NOT the
-        upstream OAuth2 `client_id`. This change enables multiple agents to share a single
-        upstream OAuth2 client credential.
+        **client_id semantics**:
+        In proxy mode the `client_id` MUST be the agent's internal UUID (`agent.id`).
+        In local/hybrid mode the `client_id` may also be an HTTPS URL identifying a
+        Client ID Metadata Document (CIMD) when CIMD is enabled.
 
-        **Issue Token Mode**:
+        **Local/Hybrid Mode**:
         When the broker acts as its own OAuth2 authorization server:
         - Validates the agent's registered `redirect_uris`
         - If user has an active grant, redirects to `redirect_uri` with `code` and `state`
@@ -1358,8 +1358,8 @@ paths:
               description: |
                 Destination URL:
                 - Upstream authorization URL with PKCE and agent ID parameters (proxy mode)
-                - Consent UI URL if user has no active grant (issue_token mode)
-                - redirect_uri with `code` and `state` query parameters (issue_token mode, active grant)
+                - Consent UI URL if user has no active grant (local/hybrid mode)
+                - redirect_uri with `code` and `state` query parameters (local/hybrid mode, active grant)
               schema:
                 type: string
                 format: uri
@@ -2731,21 +2731,21 @@ components:
           description: |
             The OAuth2 grant type:
             - `urn:ietf:params:oauth:grant-type:token-exchange` for RFC 8693 token exchange
-            - `authorization_code` for standard OAuth2 authorization code flow (proxied or issue_token)
-            - `client_credentials` for broker-issued client credentials (issue_token mode)
+            - `authorization_code` for standard OAuth2 authorization code flow (proxied or local/hybrid)
+            - `client_credentials` for broker-issued client credentials (local/hybrid mode)
           example: "urn:ietf:params:oauth:grant-type:token-exchange"
         client_id:
           type: string
           description: |
-            The agent's internal UUID (`agent.id`) in all modes. The broker resolves
-            the upstream OAuth2 client ID internally from the agent record — callers
-            never send the upstream client ID directly.
+            In proxy mode: the agent's internal UUID (`agent.id`). In local/hybrid mode
+            with CIMD enabled: may also be an HTTPS URL identifying the agent's Client ID
+            Metadata Document. The broker resolves the upstream OAuth2 client ID internally.
           example: "550e8400-e29b-41d4-a716-446655440000"
         client_secret:
           type: string
           description: |
             Broker-issued client secret (for client_credentials and authorization_code
-            grant types in issue_token mode) or upstream OAuth2 client secret (proxy mode).
+            grant types in local/hybrid mode) or upstream OAuth2 client secret (proxy mode).
           example: "brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
         code:
           type: string

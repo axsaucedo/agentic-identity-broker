@@ -721,7 +721,7 @@
             "cimd": {
               "type": "object",
               "additionalProperties": false,
-              "description": "Client ID Metadata Document (CIMD) configuration. Only valid when mode is issue_token.",
+              "description": "Client ID Metadata Document (CIMD) configuration. Only valid when mode is 'local' or 'hybrid'.",
               "properties": {
                 "enabled": {
                   "type": "boolean",
@@ -782,7 +782,7 @@
           },
           "then": {
             "properties": {
-              "mode": { "const": "issue_token" }
+              "mode": { "enum": ["local", "hybrid"] }
             },
             "required": ["mode"]
           }
