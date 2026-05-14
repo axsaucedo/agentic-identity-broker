@@ -95,7 +95,9 @@
 
 - [ ] T024 Define `ClientMode` type and constants (ProxyClient, CIMDClient, LocalClient) in internal/domain/storage/agent.go
 - [ ] T025 Implement `Agent.ClientMode() ClientMode` method on Agent entity in internal/domain/storage/agent.go
-- [ ] T026 [P] Write unit tests for Agent.ClientMode() classification logic in internal/domain/storage/agent_test.go
+- [ ] T026 [P] Write unit tests for Agent.ClientMode() classification logic including error/panic when both ClientID and client_uris are set (defense-in-depth) in internal/domain/storage/agent_test.go
+- [ ] T026a [P] Add storage-layer validation: reject Agent create/update when both ClientID and client_uris are set in internal/adapters/storage/memory/ and internal/adapters/storage/postgres/ (FR-004 defense-in-depth)
+- [ ] T026b [P] Write unit tests for storage-layer mutual exclusivity rejection in internal/adapters/storage/memory/ agent tests
 - [ ] T027 Define `OAuthServerMode` type (proxy, local, hybrid) in internal/ports/config.go
 - [ ] T028 Define `ModeStrategy` interface (AcceptsClientMode(ClientMode) bool) in internal/domain/oauth2/mode_strategy.go
 - [ ] T029 [P] Implement proxyModeStrategy in internal/domain/oauth2/mode_strategy.go

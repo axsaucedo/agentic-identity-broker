@@ -117,6 +117,7 @@ The mode selection drives the entire wiring of the system at startup. The univer
 - What happens when a request `client_id` is neither a UUID nor a URL? The request is rejected with an invalid format error. The upstream `Agent.ClientID` is never exposed to relying parties and cannot be used for resolution.
 - What happens in `proxy` mode if a local or CIMD agent is resolved? The proxy mode strategy rejects it with a clear error. This prevents accidental local agent usage in a proxy-only deployment.
 - What happens in `local` mode if a proxy agent is resolved? The local mode strategy rejects it with a clear error. This prevents accidental proxy usage in a local-only deployment.
+- What happens if an agent has both `Agent.ClientID` and `client_uris` set? The storage layer rejects this on create/update (invariant violation). If encountered at classification time (e.g., direct DB manipulation), the classifier fails closed with an internal error — no request is served.
 - How does the broker use `Agent.ClientID` for proxy agents? After resolving the agent by `Agent.ID` and classifying it as `ProxyClient`, the broker uses the stored `Agent.ClientID` internally when communicating with the upstream OAuth2 server. The relying party never sees or uses this value.
 
 ## Requirements *(mandatory)*
@@ -126,7 +127,7 @@ The mode selection drives the entire wiring of the system at startup. The univer
 - **FR-001**: System MUST support exactly three mutually exclusive OAuth server modes: `proxy`, `local`, and `hybrid`.
 - **FR-002**: The mode name `issue_token` MUST be rejected at configuration time with a deprecation message directing the operator to use `local`.
 - **FR-003**: The system MUST resolve every incoming OAuth2 request's `client_id` using the following strategy: URL-format → `GetByClientURI`, UUID-format → `Agent.ID` primary key lookup, otherwise → reject as invalid format. The upstream `Agent.ClientID` MUST NOT be used for agent resolution and MUST NOT be exposed to relying parties. This resolution MUST be universal across all modes.
-- **FR-004**: After resolution, agent classification MUST be derived from the resolved agent's properties: agent has `Agent.ClientID` set → `ProxyClient`; agent has `client_uris` (no `Agent.ClientID`) → `CIMDClient`; agent has neither → `LocalClient`.
+- **FR-004**: After resolution, agent classification MUST be derived from the resolved agent's properties: agent has `Agent.ClientID` set → `ProxyClient`; agent has `client_uris` (no `Agent.ClientID`) → `CIMDClient`; agent has neither → `LocalClient`. An agent MUST NOT have both `Agent.ClientID` and `client_uris` set simultaneously. This invariant MUST be enforced at both the storage layer (reject on create/update) and the classification layer (fail closed with an error if encountered at request time, as defense-in-depth).
 - **FR-005**: When a UUID-format request `client_id` resolves to an agent that has `client_uris` (CIMD agent), the request MUST be rejected with an error. CIMD agents MUST only be addressed via their URL-format `client_id`.
 - **FR-006**: In `proxy` mode, the mode strategy MUST accept proxy agents (`ProxyClient`) and MUST reject local and CIMD agents with an actionable error.
 - **FR-007**: In `local` mode, the mode strategy MUST accept local and CIMD agents and MUST reject proxy agents (`ProxyClient`) with an actionable error. This fully replaces the former `issue_token` behavior.
@@ -274,3 +275,9 @@ oauth2_authorization_server:
 - **SC-004**: Adding a future mode-specific feature requires extending a strategy interface, not modifying existing handler code — verified by the absence of runtime mode checks in handler and service layers.
 - **SC-005**: All existing proxy-mode and local-mode (formerly issue_token) deployments continue to work with only a mode name change in configuration — zero behavioral regression.
 - **SC-006**: Hybrid mode requires no new fields on the Agent entity — classification is derived from existing `Agent.ClientID` and `client_uris` properties.
+
+## Clarifications
+
+### Session 2026-05-14
+
+- Q: Where is the mutual exclusivity constraint (agent cannot have both client_id and client_uris) enforced? → A: Storage layer + classification — reject on write AND error if both found at classification time (defense-in-depth).
