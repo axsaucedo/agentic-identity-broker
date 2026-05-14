@@ -460,8 +460,8 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
 	}
 
-	// In local mode, include JWKS URI and code challenge methods
-	if s.config.Mode == "local" {
+	// In local and hybrid modes, include JWKS URI and code challenge methods (both serve the JWKS endpoint).
+	if s.config.Mode == "local" || s.config.Mode == "hybrid" {
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		metadata.TokenEndpointAuthMethodsSupported = []string{"client_secret_post"}

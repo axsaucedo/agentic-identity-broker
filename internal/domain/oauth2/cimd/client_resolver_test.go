@@ -67,6 +67,25 @@ func TestCIMDClientResolver_OpaqueUUID_Success(t *testing.T) {
 	assert.Nil(t, resolution.CIMDMetadata)
 }
 
+func TestCIMDClientResolver_OpaqueUUID_CIMDAgentRejected(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000002")
+	agent := &storage.Agent{
+		ID:          agentID,
+		DisplayName: "CIMD Agent",
+		ClientURIs:  []string{"https://agent.example.com/cimd"},
+	}
+	repo := newMockAgentRepoForCR(agent)
+	svc := cimdServiceForTest(nil, nil)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
+
+	_, err := resolver.ResolveClient(context.Background(), id.ClientID(agentID.String()))
+	require.Error(t, err)
+
+	var clientErr *ports.ClientIDError
+	require.True(t, errors.As(err, &clientErr))
+	assert.Equal(t, "invalid_client", clientErr.Code)
+}
+
 func TestCIMDClientResolver_OpaqueUUID_NotFound(t *testing.T) {
 	repo := newMockAgentRepoForCR()
 	svc := cimdServiceForTest(nil, nil)

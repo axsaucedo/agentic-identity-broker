@@ -207,13 +207,36 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 
 // localGrantStrategy handles token grants locally using a TokenMintingStrategy.
 type localGrantStrategy struct {
-	minting ports.TokenMintingStrategy
-	logger  *slog.Logger
+	minting         ports.TokenMintingStrategy
+	agentRepository ports.AgentRepository
+	logger          *slog.Logger
 }
 
 // NewLocalGrantStrategy returns a strategy that mints tokens locally.
-func NewLocalGrantStrategy(minting ports.TokenMintingStrategy, logger *slog.Logger) *localGrantStrategy {
-	return &localGrantStrategy{minting: minting, logger: logger}
+// agentRepository is used to enforce that ProxyClient agents cannot receive locally minted tokens.
+func NewLocalGrantStrategy(minting ports.TokenMintingStrategy, agentRepository ports.AgentRepository, logger *slog.Logger) *localGrantStrategy {
+	return &localGrantStrategy{minting: minting, agentRepository: agentRepository, logger: logger}
+}
+
+// rejectIfProxyClient returns true and writes an error response when the given raw client_id
+// resolves to a ProxyClient agent. Non-UUID client_ids (e.g. CIMD URLs) are allowed through.
+func (s *localGrantStrategy) rejectIfProxyClient(w http.ResponseWriter, r *http.Request, rawClientID string) bool {
+	if s.agentRepository == nil {
+		return false
+	}
+	agentID, err := id.ParseAgentID(rawClientID)
+	if err != nil {
+		return false
+	}
+	agent, err := s.agentRepository.Get(r.Context(), agentID)
+	if err != nil {
+		return false
+	}
+	if agent.ClientMode() == storage.ProxyClient {
+		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client is not eligible for local token issuance")
+		return true
+	}
+	return false
 }
 
 // HandleTokenGrant dispatches client_credentials and authorization_code grants to the local minting strategy.
@@ -226,6 +249,10 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 
 		if rawClientID == "" || clientSecret == "" {
 			writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required")
+			return
+		}
+
+		if s.rejectIfProxyClient(w, r, rawClientID) {
 			return
 		}
 
@@ -262,6 +289,10 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 		}
 		if code == "" {
 			writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "code is required")
+			return
+		}
+
+		if s.rejectIfProxyClient(w, r, rawClientID) {
 			return
 		}
 

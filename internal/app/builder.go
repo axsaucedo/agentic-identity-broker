@@ -644,7 +644,7 @@ func (b *Builder) Build() (*App, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
 		}
-		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.storage.Agents(), b.logger)
 		proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
 		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
 		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
@@ -683,7 +683,7 @@ func (b *Builder) Build() (*App, error) {
 			multiAgentVerifier,
 			b.logger,
 		)
-		localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+		localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.storage.Agents(), b.logger)
 		grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant, b.storage.Agents(), b.logger)
 
 		proxyProceed := enduser.NewProxyProceedStrategy()

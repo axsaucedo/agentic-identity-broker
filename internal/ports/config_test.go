@@ -2,6 +2,7 @@ package ports
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,66 @@ func validBaseOAuth2Config() OAuth2AuthServerConfig {
 			UpstreamTokenEndpoint:     "https://issuer.example.com/token",
 		},
 	}
+}
+
+func validLocalOAuth2Config() OAuth2AuthServerConfig {
+	return OAuth2AuthServerConfig{
+		Mode: "local",
+		Local: LocalModeConfig{
+			TokenTTL: time.Hour,
+		},
+	}
+}
+
+// TestOAuth2AuthServerConfig_Validate_OppositeModeRejection verifies that proxy mode rejects
+// local.* settings and local mode rejects proxy.* settings.
+func TestOAuth2AuthServerConfig_Validate_OppositeModeRejection(t *testing.T) {
+	t.Run("proxy mode with local.token_ttl set returns error", func(t *testing.T) {
+		cfg := validBaseOAuth2Config()
+		cfg.Local.TokenTTL = time.Hour
+		err := cfg.Validate()
+		require.Error(t, err)
+	})
+
+	t.Run("proxy mode with local.token_claims_expression set returns error", func(t *testing.T) {
+		cfg := validBaseOAuth2Config()
+		cfg.Local.TokenClaimsExpression = `{"sub": claims.sub}`
+		err := cfg.Validate()
+		require.Error(t, err)
+	})
+
+	t.Run("proxy mode with no local settings — no error", func(t *testing.T) {
+		cfg := validBaseOAuth2Config()
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
+
+	t.Run("local mode with proxy.upstream_issuer_uri set returns error", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		cfg.Proxy.UpstreamIssuerURI = "https://issuer.example.com"
+		err := cfg.Validate()
+		require.Error(t, err)
+	})
+
+	t.Run("local mode with proxy.upstream_authorize_endpoint set returns error", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		cfg.Proxy.UpstreamAuthorizeEndpoint = "https://issuer.example.com/authorize"
+		err := cfg.Validate()
+		require.Error(t, err)
+	})
+
+	t.Run("local mode with proxy.upstream_token_endpoint set returns error", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		cfg.Proxy.UpstreamTokenEndpoint = "https://issuer.example.com/token"
+		err := cfg.Validate()
+		require.Error(t, err)
+	})
+
+	t.Run("local mode with no proxy settings — no error", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
 }
 
 // T032: Unit tests for OAuth2AuthServerConfig.Validate() — multi-agent client fields.

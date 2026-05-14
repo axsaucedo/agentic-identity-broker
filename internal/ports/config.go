@@ -420,6 +420,10 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'local' or 'hybrid'; CIMD is incompatible with proxy mode")
 	}
 
+	if c.Local.TokenTTL != 0 || c.Local.TokenClaimsExpression != "" {
+		return c.newValidationError("oauth2_authorization_server.local must be empty in proxy mode")
+	}
+
 	if c.Proxy.UpstreamIssuerURI == "" {
 		return c.newValidationError("oauth2_authorization_server.proxy.upstream_issuer_uri")
 	}
@@ -458,6 +462,10 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 
 // validateLocalMode validates configuration for local mode (local token minting).
 func (c *OAuth2AuthServerConfig) validateLocalMode() error {
+	if c.Proxy.UpstreamIssuerURI != "" || c.Proxy.UpstreamAuthorizeEndpoint != "" || c.Proxy.UpstreamTokenEndpoint != "" {
+		return c.newValidationError("oauth2_authorization_server.proxy must be empty in local mode")
+	}
+
 	if c.Local.TokenTTL == 0 {
 		c.Local.TokenTTL = time.Hour
 	}
