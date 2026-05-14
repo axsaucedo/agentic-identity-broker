@@ -22,9 +22,12 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 		{
 			name: "valid config with all required fields",
 			config: &ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         "https://auth.example.com",
-				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-				UpstreamTokenEndpoint:     "https://auth.example.com/token",
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         "https://auth.example.com",
+					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+					UpstreamTokenEndpoint:     "https://auth.example.com/token",
+				},
 			},
 			wantErr:      false,
 			wantDefaults: true, // Defaults should be set
@@ -32,13 +35,15 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 		{
 			name: "valid config with all fields including optional",
 			config: &ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         "https://auth.example.com",
-				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-				UpstreamTokenEndpoint:     "https://auth.example.com/token",
-				SupportedResponseTypes:    []string{"code"},
-				SupportedGrantTypes:       []string{"authorization_code"},
-				UpstreamTimeoutSeconds:    60,
-				Mode:                      "proxy",
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         "https://auth.example.com",
+					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+					UpstreamTokenEndpoint:     "https://auth.example.com/token",
+					UpstreamTimeoutSeconds:    60,
+				},
+				SupportedResponseTypes: []string{"code"},
+				SupportedGrantTypes:    []string{"authorization_code"},
 			},
 			wantErr:      false,
 			wantDefaults: false, // No defaults should be set
@@ -46,41 +51,53 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 		{
 			name: "missing upstream_issuer_uri",
 			config: &ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         "", // missing
-				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-				UpstreamTokenEndpoint:     "https://auth.example.com/token",
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         "", // missing
+					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+					UpstreamTokenEndpoint:     "https://auth.example.com/token",
+				},
 			},
 			wantErr:  true,
-			errField: "oauth2_authorization_server.upstream_issuer_uri",
+			errField: "oauth2_authorization_server.proxy.upstream_issuer_uri",
 		},
 		{
 			name: "missing upstream_authorize_endpoint",
 			config: &ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         "https://auth.example.com",
-				UpstreamAuthorizeEndpoint: "", // missing
-				UpstreamTokenEndpoint:     "https://auth.example.com/token",
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         "https://auth.example.com",
+					UpstreamAuthorizeEndpoint: "", // missing
+					UpstreamTokenEndpoint:     "https://auth.example.com/token",
+				},
 			},
 			wantErr:  true,
-			errField: "oauth2_authorization_server.upstream_authorize_endpoint",
+			errField: "oauth2_authorization_server.proxy.upstream_authorize_endpoint",
 		},
 		{
 			name: "missing upstream_token_endpoint",
 			config: &ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         "https://auth.example.com",
-				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-				UpstreamTokenEndpoint:     "", // missing
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         "https://auth.example.com",
+					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+					UpstreamTokenEndpoint:     "", // missing
+				},
 			},
 			wantErr:  true,
-			errField: "oauth2_authorization_server.upstream_token_endpoint",
+			errField: "oauth2_authorization_server.proxy.upstream_token_endpoint",
 		},
 		{
 			name: "empty slices should be replaced with defaults",
 			config: &ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         "https://auth.example.com",
-				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-				UpstreamTokenEndpoint:     "https://auth.example.com/token",
-				SupportedResponseTypes:    []string{}, // empty, should be set to default
-				SupportedGrantTypes:       []string{}, // empty, should be set to default
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         "https://auth.example.com",
+					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+					UpstreamTokenEndpoint:     "https://auth.example.com/token",
+				},
+				SupportedResponseTypes: []string{}, // empty, should be set to default
+				SupportedGrantTypes:    []string{}, // empty, should be set to default
 			},
 			wantErr:      false,
 			wantDefaults: true,
@@ -88,10 +105,13 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 		{
 			name: "zero timeout should be set to default",
 			config: &ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         "https://auth.example.com",
-				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-				UpstreamTokenEndpoint:     "https://auth.example.com/token",
-				UpstreamTimeoutSeconds:    0, // zero, should be set to default 30
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         "https://auth.example.com",
+					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+					UpstreamTokenEndpoint:     "https://auth.example.com/token",
+					UpstreamTimeoutSeconds:    0, // zero, should be set to default 30
+				},
 			},
 			wantErr:      false,
 			wantDefaults: true,
@@ -99,10 +119,12 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 		{
 			name: "empty mode should be set to default",
 			config: &ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         "https://auth.example.com",
-				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-				UpstreamTokenEndpoint:     "https://auth.example.com/token",
-				Mode:                      "", // empty, should be set to default "proxy"
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         "https://auth.example.com",
+					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+					UpstreamTokenEndpoint:     "https://auth.example.com/token",
+				},
+				Mode: "", // empty, should be set to default "proxy"
 			},
 			wantErr:      false,
 			wantDefaults: true,
@@ -140,7 +162,7 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 				if len(tt.config.SupportedGrantTypes) == 0 {
 					t.Error("SupportedGrantTypes should have default values")
 				}
-				if tt.config.UpstreamTimeoutSeconds == 0 {
+				if tt.config.Proxy.UpstreamTimeoutSeconds == 0 {
 					t.Error("UpstreamTimeoutSeconds should have default value")
 				}
 				if tt.config.Mode == "" {
@@ -152,7 +174,7 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 			if !tt.wantErr && tt.wantDefaults {
 				assert.True(t, slices.Contains(tt.config.SupportedResponseTypes, "code"), "SupportedResponseTypes should contain 'code'")
 				assert.True(t, slices.Contains(tt.config.SupportedGrantTypes, "authorization_code"), "SupportedGrantTypes should contain 'authorization_code'")
-				assert.Equal(t, 30, tt.config.UpstreamTimeoutSeconds, "UpstreamTimeoutSeconds should be 30")
+				assert.Equal(t, 30, tt.config.Proxy.UpstreamTimeoutSeconds, "UpstreamTimeoutSeconds should be 30")
 				assert.Equal(t, "proxy", tt.config.Mode, "Mode should be 'proxy'")
 			}
 		})
@@ -175,17 +197,17 @@ func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
-		assert.Equal(t, time.Hour, cfg.TokenTTL, "TokenTTL should default to 1 hour")
+		assert.Equal(t, time.Hour, cfg.Local.TokenTTL, "TokenTTL should default to 1 hour")
 	})
 
 	t.Run("local mode preserves custom token_ttl", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode:     "local",
-			TokenTTL: 30 * time.Minute,
+			Mode:  "local",
+			Local: ports.LocalModeConfig{TokenTTL: 30 * time.Minute},
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
-		assert.Equal(t, 30*time.Minute, cfg.TokenTTL, "custom TokenTTL should be preserved")
+		assert.Equal(t, 30*time.Minute, cfg.Local.TokenTTL, "custom TokenTTL should be preserved")
 	})
 
 	t.Run("local mode does not require upstream fields", func(t *testing.T) {
@@ -219,11 +241,13 @@ func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
 
 	t.Run("cimd enabled in proxy mode rejected", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			Mode:                      "proxy",
-			UpstreamIssuerURI:         "https://auth.example.com",
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			UpstreamTokenEndpoint:     "https://auth.example.com/token",
-			CIMD:                      ports.CIMDConfig{Enabled: true},
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://auth.example.com",
+				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://auth.example.com/token",
+			},
+			CIMD: ports.CIMDConfig{Enabled: true},
 		}
 		err := cfg.Validate()
 		assert.Error(t, err)
@@ -232,9 +256,11 @@ func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
 
 	t.Run("default mode is proxy", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			UpstreamIssuerURI:         "https://auth.example.com",
-			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
-			UpstreamTokenEndpoint:     "https://auth.example.com/token",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://auth.example.com",
+				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://auth.example.com/token",
+			},
 		}
 		err := cfg.Validate()
 		assert.NoError(t, err)
@@ -257,7 +283,7 @@ func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
 func TestOAuth2AuthServerConfig_PartialConfigFails(t *testing.T) {
 	t.Run("only token_ttl set fails validation", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			TokenTTL: 30 * time.Minute,
+			Local: ports.LocalModeConfig{TokenTTL: 30 * time.Minute},
 		}
 		err := cfg.Validate()
 		assert.Error(t, err, "partial config with only token_ttl must fail, not be silently skipped")
@@ -265,7 +291,7 @@ func TestOAuth2AuthServerConfig_PartialConfigFails(t *testing.T) {
 
 	t.Run("only token_claims_expression set fails validation", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			TokenClaimsExpression: `{"sub": subject_token.sub}`,
+			Local: ports.LocalModeConfig{TokenClaimsExpression: `{"sub": subject_token.sub}`},
 		}
 		err := cfg.Validate()
 		assert.Error(t, err, "partial config with only token_claims_expression must fail")
@@ -273,7 +299,7 @@ func TestOAuth2AuthServerConfig_PartialConfigFails(t *testing.T) {
 
 	t.Run("only upstream_timeout_seconds set fails validation", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
-			UpstreamTimeoutSeconds: 60,
+			Proxy: ports.ProxyModeConfig{UpstreamTimeoutSeconds: 60},
 		}
 		err := cfg.Validate()
 		assert.Error(t, err, "partial config with only upstream_timeout_seconds must fail")

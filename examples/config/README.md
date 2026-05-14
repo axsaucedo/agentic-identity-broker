@@ -291,9 +291,11 @@ OAuth2 Authorization Server proxy configuration. Demonstrates:
 
 # Where config.yaml references oauth2-authorization-server section:
 # oauth2_authorization_server:
-#   upstream_issuer_uri: "https://auth.example.com"
-#   upstream_authorize_endpoint: "https://auth.example.com/authorize"
-#   upstream_token_endpoint: "https://auth.example.com/token"
+#   mode: "proxy"
+#   proxy:
+#     upstream_issuer_uri: "https://auth.example.com"
+#     upstream_authorize_endpoint: "https://auth.example.com/authorize"
+#     upstream_token_endpoint: "https://auth.example.com/token"
 #
 # The broker's public URL (used as the OAuth2 issuer) is set separately:
 # server:
@@ -341,8 +343,8 @@ Annotated configuration example for the CIMD feature (Feature 028). Demonstrates
 ```yaml
 # Merge into your existing oauth2_authorization_server configuration:
 oauth2_authorization_server:
-  mode: "issue_token"  # required: CIMD is only supported in issue_token mode
-  # ... issuer_uri, token_ttl, etc. ...
+  mode: "local"  # required: CIMD is only supported in local/hybrid mode
+  # ... token_ttl, etc. (under the local: section) ...
   cimd:
     enabled: true
     fetch_timeout: 1s
@@ -356,13 +358,12 @@ See [cimd.yaml](cimd.yaml) for the full annotated example with all available opt
 
 ### OAuth2 Server Mode (`oauth2-server-mode.yaml`)
 
-Configures the broker as a standalone OAuth2 authorization server using `issue_token` mode. The broker mints its own JWT access tokens signed with managed ES256 keys, supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
+Configures the broker as a standalone OAuth2 authorization server using `local` mode. The broker mints its own JWT access tokens signed with managed ES256 keys, supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
 
 Key settings:
-- `mode: "issue_token"` — switches from proxy mode to local token minting
-- `issuer_uri` — the issuer identifier for JWTs and discovery (required in issue_token mode)
-- `token_ttl` — access token validity period (default: 1h)
-- `token_claims_expression` — optional CEL expression for custom JWT claims
+- `mode: "local"` — switches from proxy mode to local token minting
+- `local.token_ttl` — access token validity period (default: 1h)
+- `local.token_claims_expression` — optional CEL expression for custom JWT claims
 
 **Usage:**
 ```bash

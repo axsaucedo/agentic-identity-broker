@@ -10,9 +10,12 @@ import (
 // validBaseOAuth2Config returns a minimally valid OAuth2AuthServerConfig for test setup.
 func validBaseOAuth2Config() OAuth2AuthServerConfig {
 	return OAuth2AuthServerConfig{
-		UpstreamIssuerURI:         "https://issuer.example.com",
-		UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
-		UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+		Mode: "proxy",
+		Proxy: ProxyModeConfig{
+			UpstreamIssuerURI:         "https://issuer.example.com",
+			UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+			UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+		},
 	}
 }
 

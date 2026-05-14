@@ -337,19 +337,29 @@ func DefaultCIMDConfig() CIMDConfig {
 	}
 }
 
+// ProxyModeConfig holds upstream OAuth2 server configuration for proxy mode.
+type ProxyModeConfig struct {
+	UpstreamIssuerURI         string `mapstructure:"upstream_issuer_uri"`
+	UpstreamAuthorizeEndpoint string `mapstructure:"upstream_authorize_endpoint"`
+	UpstreamTokenEndpoint     string `mapstructure:"upstream_token_endpoint"`
+	UpstreamTimeoutSeconds    int    `mapstructure:"upstream_timeout_seconds"`
+}
+
+// LocalModeConfig holds local token issuance configuration for local/hybrid mode.
+type LocalModeConfig struct {
+	TokenTTL              time.Duration `mapstructure:"token_ttl"`
+	TokenClaimsExpression string        `mapstructure:"token_claims_expression"`
+}
+
 // OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
 type OAuth2AuthServerConfig struct {
-	UpstreamIssuerURI         string   `mapstructure:"upstream_issuer_uri"`
-	UpstreamAuthorizeEndpoint string   `mapstructure:"upstream_authorize_endpoint"`
-	UpstreamTokenEndpoint     string   `mapstructure:"upstream_token_endpoint"`
-	SupportedResponseTypes    []string `mapstructure:"supported_response_types"`
-	SupportedGrantTypes       []string `mapstructure:"supported_grant_types"`
-	UpstreamTimeoutSeconds    int      `mapstructure:"upstream_timeout_seconds"`
-	Mode                      string   `mapstructure:"mode"`
+	Mode  string          `mapstructure:"mode"`
+	Proxy ProxyModeConfig `mapstructure:"proxy"`
+	Local LocalModeConfig `mapstructure:"local"`
 
-	// local mode fields (ignored when mode=proxy)
-	TokenTTL              time.Duration `mapstructure:"token_ttl"`               // Default: 1h
-	TokenClaimsExpression string        `mapstructure:"token_claims_expression"` // Optional CEL expression for custom claims
+	// SupportedResponseTypes and SupportedGrantTypes are shared; defaults differ by mode.
+	SupportedResponseTypes []string `mapstructure:"supported_response_types"`
+	SupportedGrantTypes    []string `mapstructure:"supported_grant_types"`
 
 	// MultiAgentClient holds optional multi-agent client sharing configuration.
 	MultiAgentClient MultiAgentClientConfig `mapstructure:"multi_agent_client"`
@@ -362,14 +372,14 @@ type OAuth2AuthServerConfig struct {
 // Only a truly zero config is skipped; any partial population must be validated.
 func (c *OAuth2AuthServerConfig) isZero() bool {
 	return c.Mode == "" &&
-		c.UpstreamIssuerURI == "" &&
-		c.UpstreamAuthorizeEndpoint == "" &&
-		c.UpstreamTokenEndpoint == "" &&
+		c.Proxy.UpstreamIssuerURI == "" &&
+		c.Proxy.UpstreamAuthorizeEndpoint == "" &&
+		c.Proxy.UpstreamTokenEndpoint == "" &&
+		c.Proxy.UpstreamTimeoutSeconds == 0 &&
+		c.Local.TokenTTL == 0 &&
+		c.Local.TokenClaimsExpression == "" &&
 		c.SupportedResponseTypes == nil &&
 		c.SupportedGrantTypes == nil &&
-		c.UpstreamTimeoutSeconds == 0 &&
-		c.TokenTTL == 0 &&
-		c.TokenClaimsExpression == "" &&
 		!c.MultiAgentClient.Enabled &&
 		c.MultiAgentClient.AgentIDParamName == "" &&
 		c.MultiAgentClient.AgentIDClaimName == "" &&
@@ -378,15 +388,16 @@ func (c *OAuth2AuthServerConfig) isZero() bool {
 
 // Validate validates the OAuth2AuthServerConfig structure.
 // Sets defaults for empty fields and returns an error for missing required fields.
-// Validation is mode-conditional: proxy mode requires upstream fields, local
-// mode requires issuer_uri and has its own defaults.
 // Returns nil immediately when every field is at its zero value (unconfigured block).
 func (c *OAuth2AuthServerConfig) Validate() error {
 	if c.isZero() {
 		return nil
 	}
 
-	// Default mode to proxy if not set
+	if c.Mode == "issue_token" {
+		return c.newValidationError("oauth2_authorization_server.mode 'issue_token' has been renamed to 'local' — please update your configuration")
+	}
+
 	if c.Mode == "" {
 		c.Mode = "proxy"
 	}
@@ -396,31 +407,31 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 		return c.validateLocalMode()
 	case "proxy":
 		return c.validateProxyMode()
+	case "hybrid":
+		return c.validateHybridMode()
 	default:
-		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy' or 'local'")
+		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy', 'local', or 'hybrid'")
 	}
 }
 
 // validateProxyMode validates configuration for proxy mode (upstream OAuth2 server).
 func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 	if c.CIMD.Enabled {
-		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'local'; CIMD is incompatible with proxy mode")
+		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'local' or 'hybrid'; CIMD is incompatible with proxy mode")
 	}
 
-	// Check required fields
-	if c.UpstreamIssuerURI == "" {
-		return c.newValidationError("oauth2_authorization_server.upstream_issuer_uri")
+	if c.Proxy.UpstreamIssuerURI == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_issuer_uri")
 	}
 
-	if c.UpstreamAuthorizeEndpoint == "" {
-		return c.newValidationError("oauth2_authorization_server.upstream_authorize_endpoint")
+	if c.Proxy.UpstreamAuthorizeEndpoint == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_authorize_endpoint")
 	}
 
-	if c.UpstreamTokenEndpoint == "" {
-		return c.newValidationError("oauth2_authorization_server.upstream_token_endpoint")
+	if c.Proxy.UpstreamTokenEndpoint == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_token_endpoint")
 	}
 
-	// Set defaults for optional fields
 	if len(c.SupportedResponseTypes) == 0 {
 		c.SupportedResponseTypes = []string{"code"}
 	}
@@ -429,11 +440,10 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 		c.SupportedGrantTypes = []string{"authorization_code"}
 	}
 
-	if c.UpstreamTimeoutSeconds == 0 {
-		c.UpstreamTimeoutSeconds = 30
+	if c.Proxy.UpstreamTimeoutSeconds == 0 {
+		c.Proxy.UpstreamTimeoutSeconds = 30
 	}
 
-	// Validate multi_agent_client fields when enabled
 	if c.MultiAgentClient.Enabled {
 		if c.MultiAgentClient.AgentIDParamName == "" {
 			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
@@ -448,11 +458,10 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 
 // validateLocalMode validates configuration for local mode (local token minting).
 func (c *OAuth2AuthServerConfig) validateLocalMode() error {
-	if c.TokenTTL == 0 {
-		c.TokenTTL = time.Hour
+	if c.Local.TokenTTL == 0 {
+		c.Local.TokenTTL = time.Hour
 	}
 
-	// Set defaults for supported types in local mode
 	if len(c.SupportedResponseTypes) == 0 {
 		c.SupportedResponseTypes = []string{"code"}
 	}
@@ -461,12 +470,56 @@ func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
 	}
 
-	// Validate CIMD cache TTL invariant early so wiring fails at config load, not startup.
 	if c.CIMD.Enabled && c.CIMD.Cache.MinTTL > c.CIMD.Cache.MaxTTL {
 		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
 	}
 
-	// Validate multi_agent_client fields when enabled
+	if c.MultiAgentClient.Enabled {
+		if c.MultiAgentClient.AgentIDParamName == "" {
+			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
+		}
+		if c.MultiAgentClient.AgentIDClaimName == "" {
+			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
+		}
+	}
+
+	return nil
+}
+
+// validateHybridMode validates configuration for hybrid mode (proxy + local token minting).
+func (c *OAuth2AuthServerConfig) validateHybridMode() error {
+	if c.Proxy.UpstreamIssuerURI == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_issuer_uri is required in hybrid mode")
+	}
+
+	if c.Proxy.UpstreamAuthorizeEndpoint == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_authorize_endpoint is required in hybrid mode")
+	}
+
+	if c.Proxy.UpstreamTokenEndpoint == "" {
+		return c.newValidationError("oauth2_authorization_server.proxy.upstream_token_endpoint is required in hybrid mode")
+	}
+
+	if c.Local.TokenTTL == 0 {
+		c.Local.TokenTTL = time.Hour
+	}
+
+	if len(c.SupportedResponseTypes) == 0 {
+		c.SupportedResponseTypes = []string{"code"}
+	}
+
+	if len(c.SupportedGrantTypes) == 0 {
+		c.SupportedGrantTypes = []string{"authorization_code", "client_credentials"}
+	}
+
+	if c.Proxy.UpstreamTimeoutSeconds == 0 {
+		c.Proxy.UpstreamTimeoutSeconds = 30
+	}
+
+	if c.CIMD.Enabled && c.CIMD.Cache.MinTTL > c.CIMD.Cache.MaxTTL {
+		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
+	}
+
 	if c.MultiAgentClient.Enabled {
 		if c.MultiAgentClient.AgentIDParamName == "" {
 			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")

@@ -292,10 +292,10 @@ func (b *Builder) Build() (*App, error) {
 	// client config) and pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient.
 	// In local mode, also create the service for consent checks and metadata generation.
 	var clientResolver ports.ClientResolver
-	if b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "local" {
+	if b.config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "local" {
 		oauth2Config := &oauth2service.OAuth2Config{
-			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.UpstreamAuthorizeEndpoint,
-			UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint,
+			UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint,
 			PublicURL:                 b.config.Server.EndUser.PublicURL,
 			SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
 			SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
@@ -374,7 +374,7 @@ func (b *Builder) Build() (*App, error) {
 	// Create HTTP client for token endpoint with configured timeout
 	// Created early to support both OAuth2SessionService and TokenExchangeService
 	upstreamClient := &http.Client{
-		Timeout: time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds) * time.Second,
+		Timeout: time.Duration(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds) * time.Second,
 	}
 
 	// Wrap the HTTP transport with OTel instrumentation when tracing is enabled.
@@ -449,11 +449,11 @@ func (b *Builder) Build() (*App, error) {
 		// Create JWKS adapter for JWT validation
 		// Per spec FR-039: JWKS URI discovered from upstream OAuth2 server metadata (RFC 8414)
 		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(),
-			time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds)*time.Second)
+			time.Duration(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds)*time.Second)
 
 		discovered, err := domstorage.DiscoverOAuth2Endpoints(
 			discoveryCtx,
-			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			b.config.OAuth2AuthServer.Proxy.UpstreamIssuerURI,
 			nil, // use standard /.well-known/oauth-authorization-server path
 			b.config.Security.SkipThirdpartyHTTPSValidation,
 		)
@@ -483,7 +483,7 @@ func (b *Builder) Build() (*App, error) {
 		}
 		jwtValidator, err := tokenexchange.NewJWTValidator(
 			jwksAdapter,
-			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			b.config.OAuth2AuthServer.Proxy.UpstreamIssuerURI,
 			brokerAudience,
 			tokenexchange.DefaultClockSkewTolerance, // Per spec FR-042: 60 second clock skew tolerance
 		)
@@ -571,11 +571,11 @@ func (b *Builder) Build() (*App, error) {
 		// The broker is the relying party and must verify that the upstream token has not been tampered with.
 		multiAgentDiscoveryCtx, multiAgentDiscoveryCancel := context.WithTimeout(
 			context.Background(),
-			time.Duration(b.config.OAuth2AuthServer.UpstreamTimeoutSeconds)*time.Second,
+			time.Duration(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds)*time.Second,
 		)
 		multiAgentDiscovered, err := domstorage.DiscoverOAuth2Endpoints(
 			multiAgentDiscoveryCtx,
-			b.config.OAuth2AuthServer.UpstreamIssuerURI,
+			b.config.OAuth2AuthServer.Proxy.UpstreamIssuerURI,
 			nil, // use standard /.well-known/oauth-authorization-server path
 			b.config.Security.SkipThirdpartyHTTPSValidation,
 		)
@@ -624,8 +624,8 @@ func (b *Builder) Build() (*App, error) {
 			b.storage.SigningKeys(),
 			encryptor,
 			b.config.Server.EndUser.PublicURL,
-			b.config.OAuth2AuthServer.TokenTTL,
-			b.config.OAuth2AuthServer.TokenClaimsExpression,
+			b.config.OAuth2AuthServer.Local.TokenTTL,
+			b.config.OAuth2AuthServer.Local.TokenClaimsExpression,
 			b.logger,
 		)
 		if err != nil {
@@ -639,11 +639,11 @@ func (b *Builder) Build() (*App, error) {
 		}
 		b.logger.Info("OAuth2 server mode: local — local token minting enabled",
 			"issuer_uri", b.config.Server.EndUser.PublicURL,
-			"token_ttl", b.config.OAuth2AuthServer.TokenTTL,
+			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
 		)
 	} else {
 		grantHandler = enduser.NewProxyTokenGrantStrategy(
-			b.config.OAuth2AuthServer.UpstreamTokenEndpoint,
+			b.config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint,
 			upstreamClient,
 			b.storage.Agents(),
 			multiAgentVerifier,

@@ -11,6 +11,19 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 )
 
+// ClientMode classifies an Agent based on its registered properties.
+// Classification is derived at runtime from Agent.ClientID and Agent.ClientURIs.
+type ClientMode int
+
+const (
+	// ProxyClient: agent has a ClientID — requests are forwarded to an upstream OAuth2 server.
+	ProxyClient ClientMode = iota
+	// CIMDClient: agent has ClientURIs but no ClientID — tokens are issued locally via CIMD.
+	CIMDClient
+	// LocalClient: agent has neither ClientID nor ClientURIs — tokens are issued locally.
+	LocalClient
+)
+
 // Agent represents an AI agent registered in the identity broker.
 // An agent can request delegated permissions from users to access third-party services.
 type Agent struct {
@@ -83,6 +96,18 @@ func (a *Agent) Validate() error {
 	}
 
 	return nil
+}
+
+// ClientMode returns the classification of this agent based on its registered properties.
+// ProxyClient when ClientID is set, CIMDClient when ClientURIs are set, LocalClient otherwise.
+func (a Agent) ClientMode() ClientMode {
+	if a.ClientID != nil {
+		return ProxyClient
+	}
+	if len(a.ClientURIs) > 0 {
+		return CIMDClient
+	}
+	return LocalClient
 }
 
 // ValidateClientURIsForWrite runs the full client URI validation (format and duplicates).

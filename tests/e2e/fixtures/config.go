@@ -58,13 +58,15 @@ func DefaultOAuth2Config() *ports.Config {
 			},
 		},
 		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
-			UpstreamIssuerURI:         "http://localhost:19000",
-			UpstreamAuthorizeEndpoint: "http://localhost:19000/authorize",
-			UpstreamTokenEndpoint:     "http://localhost:19000/token",
-			SupportedResponseTypes:    []string{"code"},
-			SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
-			UpstreamTimeoutSeconds:    30,
-			Mode:                      "proxy",
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "http://localhost:19000",
+				UpstreamAuthorizeEndpoint: "http://localhost:19000/authorize",
+				UpstreamTokenEndpoint:     "http://localhost:19000/token",
+				UpstreamTimeoutSeconds:    30,
+			},
+			SupportedResponseTypes: []string{"code"},
+			SupportedGrantTypes:    []string{"authorization_code", "refresh_token"},
 		},
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{
 			JWESigningKey:      base64.StdEncoding.EncodeToString([]byte("test-32-byte-key-must-be-exact-x")),
@@ -84,9 +86,9 @@ func DefaultOAuth2Config() *ports.Config {
 // All other settings match DefaultOAuth2Config().
 func OAuth2ConfigWithUpstream(upstreamURL string) *ports.Config {
 	config := DefaultOAuth2Config()
-	config.OAuth2AuthServer.UpstreamIssuerURI = upstreamURL
-	config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
-	config.OAuth2AuthServer.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
+	config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = upstreamURL
+	config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
+	config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
 	return config
 }
 
@@ -119,7 +121,7 @@ func OAuth2ConfigWithTokenExchange(upstreamURL string) *ports.Config {
 // All other settings match DefaultOAuth2Config().
 func OAuth2ConfigWithTimeout(timeoutSeconds int) *ports.Config {
 	config := DefaultOAuth2Config()
-	config.OAuth2AuthServer.UpstreamTimeoutSeconds = timeoutSeconds
+	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = timeoutSeconds
 	return config
 }
 
@@ -432,19 +434,16 @@ func SignedJWTConfigWithIssuer(jwksURL, issuer string) *ports.Config {
 func LocalConfig() *ports.Config {
 	config := DefaultOAuth2Config()
 	config.OAuth2AuthServer.Mode = "local"
-	config.OAuth2AuthServer.TokenTTL = time.Hour
-	config.OAuth2AuthServer.TokenClaimsExpression = ""
-	// Clear upstream fields (not needed in local mode)
-	config.OAuth2AuthServer.UpstreamIssuerURI = ""
-	config.OAuth2AuthServer.UpstreamAuthorizeEndpoint = ""
-	config.OAuth2AuthServer.UpstreamTokenEndpoint = ""
+	config.OAuth2AuthServer.Local.TokenTTL = time.Hour
+	config.OAuth2AuthServer.Local.TokenClaimsExpression = ""
+	config.OAuth2AuthServer.Proxy = ports.ProxyModeConfig{}
 	return config
 }
 
 // LocalConfigWithCEL returns a config for local mode with custom JWT claims.
 func LocalConfigWithCEL(celExpr string) *ports.Config {
 	config := LocalConfig()
-	config.OAuth2AuthServer.TokenClaimsExpression = celExpr
+	config.OAuth2AuthServer.Local.TokenClaimsExpression = celExpr
 	return config
 }
 

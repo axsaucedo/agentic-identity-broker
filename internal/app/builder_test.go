@@ -286,11 +286,13 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
 			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
 			OAuth2AuthServer: ports.OAuth2AuthServerConfig{
-				UpstreamIssuerURI:         upstream.URL,
-				UpstreamAuthorizeEndpoint: upstream.URL + "/oauth/authorize",
-				UpstreamTokenEndpoint:     upstream.URL + "/oauth/token",
-				UpstreamTimeoutSeconds:    5,
-				Mode:                      "proxy",
+				Mode: "proxy",
+				Proxy: ports.ProxyModeConfig{
+					UpstreamIssuerURI:         upstream.URL,
+					UpstreamAuthorizeEndpoint: upstream.URL + "/oauth/authorize",
+					UpstreamTokenEndpoint:     upstream.URL + "/oauth/token",
+					UpstreamTimeoutSeconds:    5,
+				},
 			},
 			TokenExchange: ports.TokenExchangeConfig{
 				ClaimExtraction: ports.ClaimExtractionConfig{

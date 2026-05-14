@@ -186,9 +186,9 @@ func TestConfigFixtures(t *testing.T) {
 		if c == nil {
 			t.Fatal("OAuth2ConfigWithUpstream returned nil")
 		}
-		if c.OAuth2AuthServer.UpstreamIssuerURI != "http://custom-upstream:8080" {
+		if c.OAuth2AuthServer.Proxy.UpstreamIssuerURI != "http://custom-upstream:8080" {
 			t.Errorf("got UpstreamIssuerURI %q, want %q",
-				c.OAuth2AuthServer.UpstreamIssuerURI,
+				c.OAuth2AuthServer.Proxy.UpstreamIssuerURI,
 				"http://custom-upstream:8080")
 		}
 		if err := c.OAuth2AuthServer.Validate(); err != nil {
@@ -201,9 +201,9 @@ func TestConfigFixtures(t *testing.T) {
 		if c == nil {
 			t.Fatal("OAuth2ConfigWithTimeout returned nil")
 		}
-		if c.OAuth2AuthServer.UpstreamTimeoutSeconds != 60 {
+		if c.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds != 60 {
 			t.Errorf("got UpstreamTimeoutSeconds %d, want %d",
-				c.OAuth2AuthServer.UpstreamTimeoutSeconds, 60)
+				c.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds, 60)
 		}
 		if err := c.OAuth2AuthServer.Validate(); err != nil {
 			t.Errorf("validation failed: %v", err)

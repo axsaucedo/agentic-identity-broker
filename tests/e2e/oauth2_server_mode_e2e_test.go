@@ -38,8 +38,8 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 
 	It("no upstream URI needed in local mode", func() {
 		config := fixtures.LocalConfig()
-		Expect(config.OAuth2AuthServer.UpstreamIssuerURI).To(BeEmpty())
-		Expect(config.OAuth2AuthServer.UpstreamTokenEndpoint).To(BeEmpty())
+		Expect(config.OAuth2AuthServer.Proxy.UpstreamIssuerURI).To(BeEmpty())
+		Expect(config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint).To(BeEmpty())
 
 		testStorage, err := storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
