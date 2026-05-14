@@ -644,7 +644,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil)}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil, nil)}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -726,7 +726,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil)}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil, nil)}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -751,7 +751,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 // 400 unsupported_grant_type for any grant type other than client_credentials or
 // authorization_code (e.g. password, implicit, device_code).
 func TestHandleLocalMinting_UnsupportedGrantType(t *testing.T) {
-	handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil)}
+	handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil, nil)}
 	req := httptest.NewRequest("POST", "/oauth2/token",
 		strings.NewReader("grant_type=password&username=user&password=secret"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

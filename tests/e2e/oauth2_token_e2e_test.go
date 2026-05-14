@@ -37,7 +37,7 @@ var _ = Describe("US3: Client Credentials Grant (local mode)", func() {
 		testStorage, err = storageFactory.NewTestStorage()
 		Expect(err).ToNot(HaveOccurred())
 
-		agent = fixtures.ValidAgent()
+		agent = fixtures.LocalAgent()
 		Expect(testStorage.Agents().Create(context.Background(), agent)).ToNot(HaveOccurred())
 
 		serverFactory := bootstrap.NewServerFactory(config, logger)

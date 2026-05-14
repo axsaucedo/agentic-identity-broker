@@ -2716,7 +2716,7 @@ components:
         Required fields vary by grant_type:
 
         **client_credentials**: requires client_id, client_secret. Optional: scope.
-        **authorization_code** (issue_token): requires client_id, client_secret, code, redirect_uri. Optional: code_verifier.
+        **authorization_code** (local/hybrid): requires client_id, code, redirect_uri. client_secret required for confidential clients, optional for public clients. Optional: code_verifier.
         **authorization_code** (proxy): requires client_id, client_secret, code, redirect_uri.
         **token-exchange** (RFC 8693): requires subject_token, subject_token_type, resource, client_assertion_type, client_assertion.
       required:
@@ -2744,8 +2744,9 @@ components:
         client_secret:
           type: string
           description: |
-            Broker-issued client secret (for client_credentials and authorization_code
-            grant types in local/hybrid mode) or upstream OAuth2 client secret (proxy mode).
+            Broker-issued client secret (for client_credentials in local/hybrid mode, and
+            for confidential-client authorization_code exchanges) or upstream OAuth2 client
+            secret (proxy mode). Optional for public authorization_code clients in local/hybrid mode.
           example: "brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
         code:
           type: string
