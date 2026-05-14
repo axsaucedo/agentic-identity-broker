@@ -99,7 +99,7 @@ data:
     {{- end }}
 
     {{- $oauth2Mode := .Values.broker.oauth2AuthorizationServer.mode }}
-    {{- if or .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri (eq $oauth2Mode "local") (eq $oauth2Mode "hybrid") (eq $oauth2Mode "proxy") }}
+    {{- if or .Values.broker.oauth2AuthorizationServer.upstreamIssuerUri (eq $oauth2Mode "local") (eq $oauth2Mode "hybrid") }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
       mode: {{ $oauth2Mode }}

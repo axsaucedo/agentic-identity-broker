@@ -464,7 +464,11 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	if s.config.Mode == "local" || s.config.Mode == "hybrid" {
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
-		metadata.TokenEndpointAuthMethodsSupported = []string{"client_secret_post"}
+		// Advertise all auth methods that clients in this mode may use:
+		// - none: public clients (CIMD agents have no pre-registered secret)
+		// - client_secret_post: confidential clients presenting credentials in the request body
+		// - client_secret_basic: retained for proxy clients in hybrid mode that forward Basic auth
+		metadata.TokenEndpointAuthMethodsSupported = []string{"none", "client_secret_post", "client_secret_basic"}
 	}
 
 	if s.config.CIMDEnabled {

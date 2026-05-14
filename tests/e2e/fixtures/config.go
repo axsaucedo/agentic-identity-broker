@@ -447,12 +447,11 @@ func LocalConfigWithCEL(celExpr string) *ports.Config {
 	return config
 }
 
-// OAuth2ConfigWithCIMD returns a config with CIMD support enabled.
+// OAuth2ConfigWithCIMD returns a config for local mode with CIMD support enabled.
 // The CIMD fetcher is wired in the builder; the config only enables the feature gate.
-// All upstream OAuth2 settings match DefaultOAuth2Config().
-func OAuth2ConfigWithCIMD(upstreamURL string) *ports.Config {
-	config := OAuth2ConfigWithUpstream(upstreamURL)
-	config.OAuth2AuthServer.Mode = "local"
+// The upstreamURL parameter is accepted for compatibility but not used (CIMD is local mode only).
+func OAuth2ConfigWithCIMD(_ string) *ports.Config {
+	config := LocalConfig()
 	config.OAuth2AuthServer.CIMD = ports.CIMDConfig{
 		Enabled:          true,
 		FetchTimeout:     5 * time.Second,

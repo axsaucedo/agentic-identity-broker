@@ -41,5 +41,5 @@ func TestGenerateMetadata_LocalMode(t *testing.T) {
 	assert.Equal(t, "https://broker.example.com/oauth2/token", metadata.TokenEndpoint)
 	assert.Equal(t, "https://broker.example.com/oauth2/jwks.json", metadata.JWKSURI)
 	assert.Equal(t, []string{"S256"}, metadata.CodeChallengeMethodsSupported)
-	assert.Equal(t, []string{"client_secret_post"}, metadata.TokenEndpointAuthMethodsSupported)
+	assert.Equal(t, []string{"none", "client_secret_post", "client_secret_basic"}, metadata.TokenEndpointAuthMethodsSupported)
 }
