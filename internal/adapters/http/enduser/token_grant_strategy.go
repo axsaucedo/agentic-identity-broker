@@ -15,6 +15,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -341,6 +342,58 @@ func (s *localGrantStrategy) writeTokenResponse(w http.ResponseWriter, resp *por
 	w.Header().Set("Pragma", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// hybridTokenGrantStrategy dispatches token grants to proxy or local based on the agent's ClientMode.
+// ProxyClient agents (with upstream ClientID) are forwarded; CIMDClient and LocalClient are minted locally.
+type hybridTokenGrantStrategy struct {
+	proxy           TokenGrantStrategy
+	local           TokenGrantStrategy
+	agentRepository ports.AgentRepository
+	logger          *slog.Logger
+}
+
+// NewHybridTokenGrantStrategy returns a TokenGrantStrategy that dispatches based on client mode.
+func NewHybridTokenGrantStrategy(
+	proxy, local TokenGrantStrategy,
+	agentRepository ports.AgentRepository,
+	logger *slog.Logger,
+) TokenGrantStrategy {
+	return &hybridTokenGrantStrategy{
+		proxy:           proxy,
+		local:           local,
+		agentRepository: agentRepository,
+		logger:          logger,
+	}
+}
+
+func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values) {
+	rawClientID := formData.Get("client_id")
+
+	agentID, parseErr := id.ParseAgentID(rawClientID)
+	if parseErr != nil {
+		// Non-UUID client_id — route to local (e.g. CIMD opaque ID).
+		s.local.HandleTokenGrant(w, r, grantType, formData)
+		return
+	}
+
+	agent, lookupErr := s.agentRepository.Get(r.Context(), agentID)
+	if lookupErr != nil {
+		if s.logger != nil {
+			s.logger.Error("HybridTokenGrant: agent lookup failed",
+				"client_id", rawClientID,
+				"error", lookupErr,
+			)
+		}
+		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "agent not found")
+		return
+	}
+
+	if agent.ClientMode() == storage.ProxyClient {
+		s.proxy.HandleTokenGrant(w, r, grantType, formData)
+	} else {
+		s.local.HandleTokenGrant(w, r, grantType, formData)
+	}
 }
 
 // hopByHopHeaders is the set of hop-by-hop headers per RFC 7230 that must not be forwarded.

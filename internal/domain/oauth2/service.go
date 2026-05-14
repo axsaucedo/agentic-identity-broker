@@ -43,6 +43,10 @@ type OAuth2Config struct {
 	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
 	// When true, client_id_metadata_document_supported is advertised in metadata.
 	CIMDEnabled bool
+
+	// ModeStrategy enforces which agent client modes are permitted in this server mode.
+	// When non-nil, every authorization request is checked against the strategy.
+	ModeStrategy ModeStrategy
 }
 
 // Service implements the OAuth2Service port
@@ -135,6 +139,15 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	}
 	agent = resolution.Agent
 	cimdMeta = resolution.CIMDMetadata
+
+	// Mode enforcement: reject agents whose ClientMode is not permitted in this server mode.
+	if s.config.ModeStrategy != nil && !s.config.ModeStrategy.AcceptsClientMode(agent.ClientMode()) {
+		return &ports.AuthorizationDecision{
+			Action:    "error",
+			ErrorCode: "unauthorized_client",
+			ErrorDesc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Name()),
+		}, nil
+	}
 
 	// Step 1b: Validate redirect_uri.
 	// For CIMD clients, validate against the document's redirect_uris.
@@ -325,10 +338,11 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	}
 
 	// Active grant exists and all mandatory requirements satisfied — proceed.
-	// In proxy mode, the handler redirects to the upstream OAuth2 server.
-	// In local mode, UpstreamAuthorizeEndpoint is empty — skip URL construction.
+	// For ProxyClient agents with an upstream endpoint, build the redirect URL.
+	// For CIMDClient/LocalClient agents (or when no upstream is configured), leave empty
+	// so the proceed strategy issues a local authorization code.
 	var upstreamURL string
-	if s.config.UpstreamAuthorizeEndpoint != "" {
+	if s.config.UpstreamAuthorizeEndpoint != "" && agent.ClientID != nil {
 		var urlErr error
 		upstreamURL, urlErr = s.buildUpstreamAuthorizeURL(req, agent)
 		if urlErr != nil {

@@ -105,6 +105,26 @@ func writeDirectOAuth2Error(w http.ResponseWriter, err error) {
 	}
 }
 
+// hybridProceedStrategy dispatches to proxy or local based on whether the domain service
+// set a redirect URL. ProxyClient agents get a non-empty RedirectURL (upstream); all others get empty.
+type hybridProceedStrategy struct {
+	proxy AuthorizationProceedStrategy
+	local AuthorizationProceedStrategy
+}
+
+// NewHybridProceedStrategy returns a ProceedStrategy that dispatches by client mode.
+func NewHybridProceedStrategy(proxy, local AuthorizationProceedStrategy) AuthorizationProceedStrategy {
+	return &hybridProceedStrategy{proxy: proxy, local: local}
+}
+
+func (s *hybridProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
+	if decision.RedirectURL != "" {
+		s.proxy.HandleProceed(w, r, decision, req, principal)
+	} else {
+		s.local.HandleProceed(w, r, decision, req, principal)
+	}
+}
+
 func writeOAuth2ErrorJSON(w http.ResponseWriter, status int, errorCode, errorDescription string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
