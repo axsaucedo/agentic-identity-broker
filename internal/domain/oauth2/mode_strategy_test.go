@@ -55,11 +55,6 @@ func TestAgent_ClientMode(t *testing.T) {
 			agent: storage.Agent{},
 			want:  storage.LocalClient,
 		},
-		{
-			name:  "ClientID takes precedence over ClientURIs",
-			agent: storage.Agent{ClientID: &clientID, ClientURIs: []string{"https://example.com/.well-known/openid-configuration"}},
-			want:  storage.ProxyClient,
-		},
 	}
 
 	for _, tc := range cases {

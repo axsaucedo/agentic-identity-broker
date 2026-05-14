@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -843,3 +844,63 @@ func TestHandleMintingError_LogDoesNotLeakErrorChain(t *testing.T) {
 	assert.Contains(t, logLine, "invalid_client")
 	assert.Contains(t, logLine, "client auth failed")
 }
+
+// mockTokenGrantStrategy captures HandleTokenGrant arguments for dispatch assertion.
+type mockTokenGrantStrategy struct {
+	capturedFormData url.Values
+}
+
+func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http.Request, _ string, formData url.Values) {
+	m.capturedFormData = formData
+	w.WriteHeader(http.StatusOK)
+}
+
+// flexibleAgentRepo is a configurable stub for hybrid dispatch tests.
+type flexibleAgentRepo struct {
+	getAgent        *storage.Agent
+	getErr          error
+	byClientURIAgent *storage.Agent
+	byClientURIErr   error
+}
+
+func (r *flexibleAgentRepo) Get(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
+	return r.getAgent, r.getErr
+}
+func (r *flexibleAgentRepo) Create(_ context.Context, _ *storage.Agent) error { return nil }
+func (r *flexibleAgentRepo) Update(_ context.Context, _ *storage.Agent) error { return nil }
+func (r *flexibleAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { return nil }
+func (r *flexibleAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
+func (r *flexibleAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
+	return nil, nil
+}
+func (r *flexibleAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
+	return r.byClientURIAgent, r.byClientURIErr
+}
+func (r *flexibleAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
+	return false, nil
+}
+
+// TestHybridTokenGrant_EmptyClientIDReturns400 ensures missing client_id is rejected with
+// 400 invalid_request before any agent lookup, matching RFC 6749 §5.2.
+func TestHybridTokenGrant_EmptyClientIDReturns400(t *testing.T) {
+	strategy := NewHybridTokenGrantStrategy(
+		&mockTokenGrantStrategy{},
+		&mockTokenGrantStrategy{},
+		&flexibleAgentRepo{},
+		nil,
+	)
+	handler := &OAuth2TokenHandler{GrantHandler: strategy}
+
+	req := httptest.NewRequest("POST", "/oauth2/token",
+		strings.NewReader("grant_type=client_credentials&client_secret=secret"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "invalid_request", body["error"])
+}
+

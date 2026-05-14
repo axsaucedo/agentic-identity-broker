@@ -460,6 +460,13 @@ broker:
       # -- Keyword blocklist for CIMD client_name values (case-insensitive). Default: [].
       clientNameBlocklist: []
 
+    # Local token issuance configuration (local/hybrid mode)
+    local:
+      # -- Access token TTL (e.g. "1h", "30m"). Defaults to 1h if empty.
+      tokenTtl: ""
+      # -- CEL expression for custom token claims. Empty means no extra claims.
+      tokenClaimsExpression: ""
+
     # Multi-agent client sharing (Feature 021)
     # When enabled, multiple agents may share the same upstream OAuth2 client_id.
     # Requires both agentIdParamName and agentIdClaimName when enabled.

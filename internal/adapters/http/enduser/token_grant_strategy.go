@@ -402,6 +402,11 @@ func NewHybridTokenGrantStrategy(
 func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values) {
 	rawClientID := formData.Get("client_id")
 
+	if rawClientID == "" {
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id is required")
+		return
+	}
+
 	var agent *storage.Agent
 	var lookupErr error
 
@@ -409,11 +414,8 @@ func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *ht
 	if parseErr == nil {
 		agent, lookupErr = s.agentRepository.Get(r.Context(), agentID)
 	} else {
-		// Non-UUID client_id: resolve via ClientURI (CIMD URL) first, then opaque ClientID.
+		// Non-UUID client_id must be a CIMD URL (FR-003: URL → GetByClientURI only).
 		agent, lookupErr = s.agentRepository.GetByClientURI(r.Context(), rawClientID)
-		if lookupErr != nil && ports.IsNotFoundErr(lookupErr) {
-			agent, lookupErr = s.agentRepository.GetByClientID(r.Context(), id.ClientID(rawClientID))
-		}
 	}
 
 	if lookupErr != nil {

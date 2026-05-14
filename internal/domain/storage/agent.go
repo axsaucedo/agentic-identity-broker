@@ -55,6 +55,9 @@ func (a *Agent) Validate() error {
 	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
 		return errors.New("client_id cannot be empty when provided")
 	}
+	if a.ClientID != nil && len(a.ClientURIs) > 0 {
+		return errors.New("agent cannot have both client_id and client_uris set: client mode must be unambiguous")
+	}
 	if a.DisplayName == "" {
 		return errors.New("display_name is required")
 	}
@@ -248,6 +251,9 @@ func (a *Agent) Copy() *Agent {
 func (a *Agent) ValidateForCreate() error {
 	if a.ClientID != nil && strings.TrimSpace(string(*a.ClientID)) == "" {
 		return errors.New("client_id cannot be empty when provided")
+	}
+	if a.ClientID != nil && len(a.ClientURIs) > 0 {
+		return errors.New("agent cannot have both client_id and client_uris set: client mode must be unambiguous")
 	}
 	if a.DisplayName == "" {
 		return errors.New("display_name is required")

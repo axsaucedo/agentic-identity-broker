@@ -125,6 +125,17 @@ data:
         upstream_timeout_seconds: {{ .Values.broker.oauth2AuthorizationServer.upstreamTimeoutSeconds }}
       {{- end }}
       {{- if or (eq $oauth2Mode "local") (eq $oauth2Mode "hybrid") }}
+      {{- with .Values.broker.oauth2AuthorizationServer.local }}
+      {{- if or .tokenTtl .tokenClaimsExpression }}
+      local:
+        {{- if .tokenTtl }}
+        token_ttl: {{ .tokenTtl | quote }}
+        {{- end }}
+        {{- if .tokenClaimsExpression }}
+        token_claims_expression: {{ .tokenClaimsExpression | quote }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.cimd }}
       cimd:
         enabled: {{ .enabled }}

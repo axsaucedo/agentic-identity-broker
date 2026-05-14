@@ -964,7 +964,6 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		)
 
 		reqBody := AgentRequest{
-			ClientID:    ptr.To("cimd-conflict-client"),
 			DisplayName: "CIMD Agent",
 			Description: "Test description",
 			ClientURIs:  []string{"https://example.com/taken"},
@@ -1023,7 +1022,6 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		agentID := id.NewAgentID()
 		existing := &storage.Agent{
 			ID:          agentID,
-			ClientID:    ptr.To(id.ClientID("cimd-update-conflict-client")),
 			DisplayName: "CIMD Agent",
 			Description: "Test description",
 		}
@@ -1033,7 +1031,6 @@ func TestAgentsHandler_ClientURIsValidation(t *testing.T) {
 		)
 
 		reqBody := AgentRequest{
-			ClientID:    ptr.To("cimd-update-conflict-client"),
 			DisplayName: "CIMD Agent",
 			Description: "Updated description",
 			ClientURIs:  []string{"https://example.com/already-taken"},

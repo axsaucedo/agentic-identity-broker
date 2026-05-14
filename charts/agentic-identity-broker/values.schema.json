@@ -688,6 +688,21 @@
               "type": "string",
               "description": "Operation mode (proxy, authorization_server)"
             },
+            "local": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Local token issuance configuration (local/hybrid mode)",
+              "properties": {
+                "tokenTtl": {
+                  "type": "string",
+                  "description": "Access token TTL (e.g. '1h', '30m'). Defaults to 1h if empty."
+                },
+                "tokenClaimsExpression": {
+                  "type": "string",
+                  "description": "CEL expression for custom token claims"
+                }
+              }
+            },
             "multiAgentClient": {
               "type": "object",
               "additionalProperties": false,
