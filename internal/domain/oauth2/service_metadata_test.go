@@ -41,5 +41,23 @@ func TestGenerateMetadata_LocalMode(t *testing.T) {
 	assert.Equal(t, "https://broker.example.com/oauth2/token", metadata.TokenEndpoint)
 	assert.Equal(t, "https://broker.example.com/oauth2/jwks.json", metadata.JWKSURI)
 	assert.Equal(t, []string{"S256"}, metadata.CodeChallengeMethodsSupported)
-	assert.Equal(t, []string{"none", "client_secret_post", "client_secret_basic"}, metadata.TokenEndpointAuthMethodsSupported)
+	assert.Equal(t, []string{"client_secret_post"}, metadata.TokenEndpointAuthMethodsSupported)
+}
+
+func TestGenerateMetadata_LocalModeWithCIMD(t *testing.T) {
+	svc := NewService(nil, nil, &OAuth2Config{
+		Mode:                   "local",
+		PublicURL:              "https://broker.example.com",
+		SupportedResponseTypes: []string{"code"},
+		SupportedGrantTypes:    []string{"authorization_code", "client_credentials"},
+		CIMDEnabled:            true,
+	})
+
+	metadata, err := svc.GenerateMetadata(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"none", "client_secret_post"}, metadata.TokenEndpointAuthMethodsSupported)
+	cimdEnabled := metadata.ClientIDMetadataDocumentSupported
+	require.NotNil(t, cimdEnabled)
+	assert.True(t, *cimdEnabled)
 }

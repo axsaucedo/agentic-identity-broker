@@ -438,8 +438,8 @@ broker:
       - refresh_token
     # -- Upstream request timeout (seconds)
     upstreamTimeoutSeconds: 10
-    # -- Operation mode (proxy or authorization_server)
-    mode: proxy
+    # -- Operation mode: "proxy", "local", or "hybrid". Leave empty to disable OAuth2 server.
+    mode: ""
     # Client ID Metadata Document (CIMD) support
     # Enables AI agents to identify using HTTPS URLs as client_id.
     cimd:
