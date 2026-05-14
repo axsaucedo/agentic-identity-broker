@@ -462,7 +462,8 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 
 // validateLocalMode validates configuration for local mode (local token minting).
 func (c *OAuth2AuthServerConfig) validateLocalMode() error {
-	if c.Proxy.UpstreamIssuerURI != "" || c.Proxy.UpstreamAuthorizeEndpoint != "" || c.Proxy.UpstreamTokenEndpoint != "" {
+	if c.Proxy.UpstreamIssuerURI != "" || c.Proxy.UpstreamAuthorizeEndpoint != "" ||
+		c.Proxy.UpstreamTokenEndpoint != "" || c.Proxy.UpstreamTimeoutSeconds != 0 {
 		return c.newValidationError("oauth2_authorization_server.proxy must be empty in local mode")
 	}
 

@@ -67,6 +67,27 @@ func TestCIMDClientResolver_OpaqueUUID_Success(t *testing.T) {
 	assert.Nil(t, resolution.CIMDMetadata)
 }
 
+// TestCIMDClientResolver_OpaqueUUID_ProxyAgentWithClientURIsAllowed verifies that an agent
+// with both a ClientID (ProxyClient) and ClientURIs can still be resolved by UUID.
+func TestCIMDClientResolver_OpaqueUUID_ProxyAgentWithClientURIsAllowed(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000003")
+	upstreamClientID := id.ClientID("upstream-client-123")
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    ptr.To(upstreamClientID),
+		DisplayName: "Proxy Agent",
+		ClientURIs:  []string{"https://agent.example.com/cimd"},
+	}
+	repo := newMockAgentRepoForCR(agent)
+	svc := cimdServiceForTest(nil, nil)
+	resolver := NewCIMDClientResolver(repo, svc, slog.Default())
+
+	resolution, err := resolver.ResolveClient(context.Background(), id.ClientID(agentID.String()))
+	require.NoError(t, err)
+	assert.Equal(t, agent.ID, resolution.Agent.ID)
+	assert.Nil(t, resolution.CIMDMetadata)
+}
+
 func TestCIMDClientResolver_OpaqueUUID_CIMDAgentRejected(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000002")
 	agent := &storage.Agent{

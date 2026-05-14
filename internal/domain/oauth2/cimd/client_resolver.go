@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -92,7 +93,7 @@ func (r *CIMDClientResolver) resolveOpaque(ctx context.Context, clientID id.Clie
 	}
 
 	// CIMD agents must be addressed by URL, not UUID.
-	if len(agent.ClientURIs) > 0 {
+	if agent.ClientMode() == storage.CIMDClient {
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 	}
 

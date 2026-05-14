@@ -73,6 +73,13 @@ func TestOAuth2AuthServerConfig_Validate_OppositeModeRejection(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("local mode with proxy.upstream_timeout_seconds set returns error", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		cfg.Proxy.UpstreamTimeoutSeconds = 30
+		err := cfg.Validate()
+		require.Error(t, err)
+	})
+
 	t.Run("local mode with no proxy settings — no error", func(t *testing.T) {
 		cfg := validLocalOAuth2Config()
 		err := cfg.Validate()
