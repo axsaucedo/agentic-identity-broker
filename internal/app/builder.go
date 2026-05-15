@@ -666,60 +666,69 @@ func (b *Builder) Build() (*App, error) {
 		return grant, proceed
 	}
 
-	switch b.config.OAuth2AuthServer.Mode {
-	case "local":
-		provider, err := buildLocalProvider()
-		if err != nil {
-			return nil, err
-		}
-		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
-		proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
-		b.logger.Info("OAuth2 server mode: local — local token minting enabled",
-			"issuer_uri", b.config.Server.EndUser.PublicURL,
-			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
-		)
-	case "hybrid":
-		provider, err := buildLocalProvider()
-		if err != nil {
-			return nil, err
-		}
-		proxyGrant, proxyProceed := buildProxyStrategies()
-		localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
-		localProceed := enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
+	if b.config.OAuth2AuthServer.Mode != "" {
+		switch b.config.OAuth2AuthServer.Mode {
+		case "local":
+			provider, err := buildLocalProvider()
+			if err != nil {
+				return nil, err
+			}
+			grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+			proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
+			b.logger.Info("OAuth2 server mode: local — local token minting enabled",
+				"issuer_uri", b.config.Server.EndUser.PublicURL,
+				"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
+			)
+		case "hybrid":
+			provider, err := buildLocalProvider()
+			if err != nil {
+				return nil, err
+			}
+			proxyGrant, proxyProceed := buildProxyStrategies()
+			localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+			localProceed := enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
 
-		grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant)
-		proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed)
-		b.logger.Info("OAuth2 server mode: hybrid — proxy and local token minting enabled",
-			"issuer_uri", b.config.Server.EndUser.PublicURL,
-			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
-		)
-	default: // "proxy"
-		grantHandler, proceedHandler = buildProxyStrategies()
+			grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant)
+			proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed)
+			b.logger.Info("OAuth2 server mode: hybrid — proxy and local token minting enabled",
+				"issuer_uri", b.config.Server.EndUser.PublicURL,
+				"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
+			)
+		default: // "proxy"
+			grantHandler, proceedHandler = buildProxyStrategies()
+		}
+	}
+
+	var oauth2AuthorizeHandler *enduser.OAuth2AuthorizeHandler
+	var oauth2MetadataHandler *enduser.OAuth2MetadataHandler
+	if b.config.OAuth2AuthServer.Mode != "" {
+		oauth2AuthorizeHandler = &enduser.OAuth2AuthorizeHandler{
+			Service:        app.OAuth2Service,
+			ProceedHandler: proceedHandler,
+		}
+		oauth2MetadataHandler = &enduser.OAuth2MetadataHandler{
+			Service: app.OAuth2Service,
+		}
 	}
 
 	app.EnduserHandlers = &EnduserHandlers{
-		UserInfo:       consent.NewUserInfoHandler(b.logger),
-		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
-		AgentDetail:    agentDetailHandler,
-		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, jweTokenService),
-		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
-		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
-		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{
-			Service:        app.OAuth2Service,
-			ProceedHandler: proceedHandler,
-		},
+		UserInfo:        consent.NewUserInfoHandler(b.logger),
+		Agents:          consent.NewAgentsHandler(app.ConsentService, b.logger),
+		AgentDetail:     agentDetailHandler,
+		AgentGrants:     consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
+		Grants:          consent.NewGrantsHandler(app.ConsentService, b.logger, jweTokenService),
+		RevokeGrant:     consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
+		OAuth2Sessions:  oauth2_sessions.NewHandler(app.OAuth2SessionService),
+		OAuth2Authorize: oauth2AuthorizeHandler,
 		OAuth2Token: &enduser.OAuth2TokenHandler{
 			TokenExchange: app.TokenExchangeService,
 			OAuth2Service: app.OAuth2Service,
 			Logger:        b.logger,
 			GrantHandler:  grantHandler,
 		},
-		OAuth2Metadata: &enduser.OAuth2MetadataHandler{
-			Service: app.OAuth2Service,
-		},
-		JWKS: jwksHandler,
-		SPA:  handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
+		OAuth2Metadata: oauth2MetadataHandler,
+		JWKS:           jwksHandler,
+		SPA:            handlers.NewSPAHandler(b.staticWebResourcesPath, b.logger),
 	}
 
 	return app, nil

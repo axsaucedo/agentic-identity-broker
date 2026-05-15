@@ -82,7 +82,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.OAuth2Service == nil {
+	if h.OAuth2Service == nil || h.GrantHandler == nil {
 		writeOAuth2ErrorJSON(w, http.StatusServiceUnavailable, "server_error", "OAuth2 authorization server not configured")
 		return
 	}
@@ -91,10 +91,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if resolveErr != nil {
 		var clientErr *ports.ClientIDError
 		if errors.As(resolveErr, &clientErr) {
-			status := http.StatusUnauthorized
-			if clientErr.Code == "server_error" {
-				status = http.StatusInternalServerError
-			}
+			status := tokenEndpointStatus(clientErr.Code)
 			writeOAuth2ErrorJSON(w, status, clientErr.Code, clientErr.Desc)
 		} else {
 			writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "client resolution failed")
@@ -241,6 +238,19 @@ func (h *OAuth2TokenHandler) handleTokenExchangeError(w http.ResponseWriter, err
 		if h.Logger != nil {
 			h.Logger.Error("failed to encode generic error response", "error", err)
 		}
+	}
+}
+
+// tokenEndpointStatus maps an OAuth2 error code to the appropriate HTTP status for the token endpoint.
+// RFC 6749 §5.2: invalid_client → 401, unauthorized_client → 400, server_error → 500.
+func tokenEndpointStatus(code string) int {
+	switch code {
+	case "unauthorized_client":
+		return http.StatusBadRequest
+	case "server_error":
+		return http.StatusInternalServerError
+	default:
+		return http.StatusUnauthorized
 	}
 }
 

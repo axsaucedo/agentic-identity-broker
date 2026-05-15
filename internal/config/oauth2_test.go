@@ -117,17 +117,16 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 			wantDefaults: true,
 		},
 		{
-			name: "empty mode should be set to default",
+			name: "empty mode with proxy fields returns validation error",
 			config: &ports.OAuth2AuthServerConfig{
 				Proxy: ports.ProxyModeConfig{
 					UpstreamIssuerURI:         "https://auth.example.com",
 					UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 					UpstreamTokenEndpoint:     "https://auth.example.com/token",
 				},
-				Mode: "", // empty, should be set to default "proxy"
+				Mode: "",
 			},
-			wantErr:      false,
-			wantDefaults: true,
+			wantErr: true,
 		},
 	}
 
@@ -254,7 +253,7 @@ func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
 		assert.Contains(t, err.Error(), "cimd.enabled requires mode 'local'")
 	})
 
-	t.Run("default mode is proxy", func(t *testing.T) {
+	t.Run("empty mode with proxy fields returns validation error", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
 			Proxy: ports.ProxyModeConfig{
 				UpstreamIssuerURI:         "https://auth.example.com",
@@ -263,8 +262,8 @@ func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
 			},
 		}
 		err := cfg.Validate()
-		assert.NoError(t, err)
-		assert.Equal(t, "proxy", cfg.Mode)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "mode is required")
 	})
 
 	t.Run("invalid mode rejected", func(t *testing.T) {

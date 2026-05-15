@@ -12,19 +12,18 @@ Set `mode: local` in the OAuth2 authorization server configuration:
 oauth2:
   auth_server:
     mode: "local"
-    issuer_uri: "https://broker.example.com"
-    token_ttl: "1h"
-    token_claims_expression: '{"team": agent.display_name}'
+    local:
+      token_ttl: "1h"
+      token_claims_expression: '{"team": agent.display_name}'
 ```
 
 ### Configuration Parameters
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `mode` | No | `proxy` | Operating mode: `proxy` or `local` |
-| `issuer_uri` | Yes (local) | — | Issuer identifier for JWTs and discovery |
-| `token_ttl` | No | `1h` | Access token validity period |
-| `token_claims_expression` | No | `""` | CEL expression for custom JWT claims |
+| `mode` | Yes (if any field set) | — | Operating mode: `proxy`, `local`, or `hybrid`. Disabled when absent. |
+| `local.token_ttl` | No | `1h` | Access token validity period |
+| `local.token_claims_expression` | No | `""` | CEL expression for custom JWT claims |
 
 ## Admin API
 
