@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
 // MultiAgentVerifier verifies agent ID claims in proxied upstream token responses.
@@ -23,8 +24,19 @@ type OAuth2Service interface {
 	// client validity and user consent status, returning a decision (redirect URL or error).
 	HandleAuthorization(ctx context.Context, req *AuthorizationRequest, principal id.Principal) (*AuthorizationDecision, error)
 
+	// ResolveForTokenGrant resolves the client_id, classifies the agent, and
+	// enforces mode boundaries for the token endpoint. Returns the resolved agent
+	// and an OAuth2 error if resolution or mode enforcement fails.
+	ResolveForTokenGrant(ctx context.Context, rawClientID string) (*TokenGrantResolution, error)
+
 	// GenerateMetadata returns RFC 8414 OAuth2 metadata for auto-discovery.
 	GenerateMetadata(ctx context.Context) (*MetadataResponse, error)
+}
+
+// TokenGrantResolution is the result of client resolution for the token endpoint.
+type TokenGrantResolution struct {
+	Agent      *storage.Agent
+	ClientMode storage.ClientMode
 }
 
 // AuthorizationRequest represents an OAuth2 authorization request (RFC 6749 Section 4.1.1).

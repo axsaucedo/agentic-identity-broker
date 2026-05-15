@@ -20,17 +20,16 @@ import (
 )
 
 // TokenGrantStrategy handles OAuth2 token grant requests at the HTTP transport layer.
-// Parallel to AuthorizationProceedStrategy: proxy mode and local mode differ only
-// in how they handle non-token-exchange grants.
+// The resolved agent is provided by the caller (OAuth2TokenHandler) after domain-level
+// resolution and mode enforcement via OAuth2Service.ResolveForTokenGrant.
 type TokenGrantStrategy interface {
-	HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values)
+	HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, agent *storage.Agent)
 }
 
 // proxyTokenGrantStrategy forwards token grant requests to an upstream OAuth2 server.
 type proxyTokenGrantStrategy struct {
 	upstreamTokenURL   string
 	client             *http.Client
-	agentRepository    ports.AgentRepository
 	multiAgentVerifier ports.MultiAgentVerifier
 	logger             *slog.Logger
 }
@@ -39,71 +38,26 @@ type proxyTokenGrantStrategy struct {
 func NewProxyTokenGrantStrategy(
 	upstreamTokenURL string,
 	client *http.Client,
-	agentRepository ports.AgentRepository,
 	multiAgentVerifier ports.MultiAgentVerifier,
 	logger *slog.Logger,
 ) *proxyTokenGrantStrategy {
 	return &proxyTokenGrantStrategy{
 		upstreamTokenURL:   upstreamTokenURL,
 		client:             client,
-		agentRepository:    agentRepository,
 		multiAgentVerifier: multiAgentVerifier,
 		logger:             logger,
 	}
 }
 
 // HandleTokenGrant proxies the token request to the upstream OAuth2 server.
-// The client_id is always the broker-internal agent UUID and is validated before
-// forwarding (fail-closed per SR-001). When MultiAgentVerifier is set the upstream
-// response body is buffered and the agent ID claim is verified before forwarding.
-func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, _ string, formData url.Values) {
+// The agent is pre-resolved by the domain layer; this method replaces the broker-internal
+// UUID with the upstream client_id before forwarding. When MultiAgentVerifier is set,
+// the upstream response body is buffered and the agent ID claim is verified before forwarding.
+func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, _ string, formData url.Values, agent *storage.Agent) {
 	ctx, span := otel.Tracer("upstream").Start(r.Context(), "oauth2.token_proxy")
 	defer span.End()
 	span.SetAttributes(attribute.String("http.method", "POST"))
 
-	rawClientID := formData.Get("client_id")
-	if rawClientID == "" {
-		if s.logger != nil {
-			s.logger.Error("MissingClientIDInTokenRequest")
-		}
-		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client_id is required")
-		return
-	}
-
-	agentID, parseErr := id.ParseAgentID(rawClientID)
-	if parseErr != nil {
-		if s.logger != nil {
-			s.logger.Error("AgentIDParseError",
-				"received_client_id", rawClientID,
-				"error", parseErr,
-			)
-		}
-		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client_id is not a valid agent UUID")
-		return
-	}
-
-	// Defensive: builder.go always wires agentRepository, but direct construction in tests may omit it.
-	if s.agentRepository == nil {
-		if s.logger != nil {
-			s.logger.Error("AgentRepositoryNotConfigured")
-		}
-		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "agent repository not configured")
-		return
-	}
-
-	agent, agentErr := s.agentRepository.Get(ctx, agentID)
-	if agentErr != nil {
-		if s.logger != nil {
-			s.logger.Error("AgentLookupFailed",
-				"agent_id", agentID.String(),
-				"error", agentErr,
-			)
-		}
-		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "agent not found")
-		return
-	}
-
-	// Replace the broker-internal UUID with the upstream client_id before forwarding.
 	if agent.ClientID == nil {
 		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_client", "agent has no upstream client_id configured")
 		return
@@ -149,6 +103,7 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 		}
 	}
 
+	agentID := agent.ID
 	if s.multiAgentVerifier != nil && upstreamResp.StatusCode == http.StatusOK {
 		responseBody, readErr := io.ReadAll(upstreamResp.Body)
 		if readErr != nil {
@@ -207,41 +162,17 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 
 // localGrantStrategy handles token grants locally using a TokenMintingStrategy.
 type localGrantStrategy struct {
-	minting         ports.TokenMintingStrategy
-	agentRepository ports.AgentRepository
-	logger          *slog.Logger
+	minting ports.TokenMintingStrategy
+	logger  *slog.Logger
 }
 
 // NewLocalGrantStrategy returns a strategy that mints tokens locally.
-// agentRepository is used to reject ProxyClient agents (those with an upstream client_id)
-// from receiving locally minted tokens — ProxyClients must use the proxy path instead.
-func NewLocalGrantStrategy(minting ports.TokenMintingStrategy, agentRepository ports.AgentRepository, logger *slog.Logger) *localGrantStrategy {
-	return &localGrantStrategy{minting: minting, agentRepository: agentRepository, logger: logger}
-}
-
-// rejectIfProxyClient returns true (and writes an error) when the UUID client_id resolves
-// to a ProxyClient agent. Non-UUID client_ids skip the check (CIMD URLs, opaque IDs).
-func (s *localGrantStrategy) rejectIfProxyClient(w http.ResponseWriter, r *http.Request, rawClientID string) bool {
-	if s.agentRepository == nil {
-		return false
-	}
-	agentID, err := id.ParseAgentID(rawClientID)
-	if err != nil {
-		return false
-	}
-	agent, err := s.agentRepository.Get(r.Context(), agentID)
-	if err != nil {
-		return false
-	}
-	if agent.ClientMode() == storage.ProxyClient {
-		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "client is not eligible for local token issuance")
-		return true
-	}
-	return false
+func NewLocalGrantStrategy(minting ports.TokenMintingStrategy, logger *slog.Logger) *localGrantStrategy {
+	return &localGrantStrategy{minting: minting, logger: logger}
 }
 
 // HandleTokenGrant dispatches client_credentials and authorization_code grants to the local minting strategy.
-func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values) {
+func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, _ *storage.Agent) {
 	switch grantType {
 	case "client_credentials":
 		rawClientID := formData.Get("client_id")
@@ -250,10 +181,6 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 
 		if rawClientID == "" || clientSecret == "" {
 			writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required")
-			return
-		}
-
-		if s.rejectIfProxyClient(w, r, rawClientID) {
 			return
 		}
 
@@ -290,10 +217,6 @@ func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Req
 		}
 		if code == "" {
 			writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "code is required")
-			return
-		}
-
-		if s.rejectIfProxyClient(w, r, rawClientID) {
 			return
 		}
 
@@ -377,62 +300,22 @@ func (s *localGrantStrategy) writeTokenResponse(w http.ResponseWriter, resp *por
 }
 
 // hybridTokenGrantStrategy dispatches token grants to proxy or local based on the agent's ClientMode.
-// ProxyClient agents (with upstream ClientID) are forwarded; CIMDClient and LocalClient are minted locally.
+// The agent is pre-resolved by the domain layer — this strategy only routes.
 type hybridTokenGrantStrategy struct {
-	proxy           TokenGrantStrategy
-	local           TokenGrantStrategy
-	agentRepository ports.AgentRepository
-	logger          *slog.Logger
+	proxy TokenGrantStrategy
+	local TokenGrantStrategy
 }
 
 // NewHybridTokenGrantStrategy returns a TokenGrantStrategy that dispatches based on client mode.
-func NewHybridTokenGrantStrategy(
-	proxy, local TokenGrantStrategy,
-	agentRepository ports.AgentRepository,
-	logger *slog.Logger,
-) TokenGrantStrategy {
-	return &hybridTokenGrantStrategy{
-		proxy:           proxy,
-		local:           local,
-		agentRepository: agentRepository,
-		logger:          logger,
-	}
+func NewHybridTokenGrantStrategy(proxy, local TokenGrantStrategy) TokenGrantStrategy {
+	return &hybridTokenGrantStrategy{proxy: proxy, local: local}
 }
 
-func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values) {
-	rawClientID := formData.Get("client_id")
-
-	if rawClientID == "" {
-		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id is required")
-		return
-	}
-
-	var agent *storage.Agent
-	var lookupErr error
-
-	agentID, parseErr := id.ParseAgentID(rawClientID)
-	if parseErr == nil {
-		agent, lookupErr = s.agentRepository.Get(r.Context(), agentID)
-	} else {
-		// Non-UUID client_id must be a CIMD URL (FR-003: URL → GetByClientURI only).
-		agent, lookupErr = s.agentRepository.GetByClientURI(r.Context(), rawClientID)
-	}
-
-	if lookupErr != nil {
-		if s.logger != nil {
-			s.logger.Error("HybridTokenGrant: agent lookup failed",
-				"client_id", rawClientID,
-				"error", lookupErr,
-			)
-		}
-		writeOAuth2ErrorJSON(w, http.StatusUnauthorized, "invalid_client", "agent not found")
-		return
-	}
-
+func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, agent *storage.Agent) {
 	if agent.ClientMode() == storage.ProxyClient {
-		s.proxy.HandleTokenGrant(w, r, grantType, formData)
+		s.proxy.HandleTokenGrant(w, r, grantType, formData, agent)
 	} else {
-		s.local.HandleTokenGrant(w, r, grantType, formData)
+		s.local.HandleTokenGrant(w, r, grantType, formData, agent)
 	}
 }
 

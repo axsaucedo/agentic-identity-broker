@@ -418,6 +418,10 @@ func (s *proceedOAuth2Service) GenerateMetadata(_ context.Context) (*ports.Metad
 	return &ports.MetadataResponse{}, nil
 }
 
+func (s *proceedOAuth2Service) ResolveForTokenGrant(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
+	return nil, errors.New("not implemented")
+}
+
 // TestOAuth2AuthorizeHandler_LocalMode_CodeIssuerErrors tests that IssueAuthorizationCode
 // domain errors produce correct HTTP status codes and JSON bodies.
 func TestOAuth2AuthorizeHandler_LocalMode_CodeIssuerErrors(t *testing.T) {

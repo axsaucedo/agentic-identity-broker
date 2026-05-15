@@ -460,15 +460,20 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 		c.Proxy.UpstreamTimeoutSeconds = 30
 	}
 
-	if c.MultiAgentClient.Enabled {
-		if c.MultiAgentClient.AgentIDParamName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
-		}
-		if c.MultiAgentClient.AgentIDClaimName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
-		}
-	}
+	return c.validateMultiAgentClient()
+}
 
+// validateMultiAgentClient validates multi-agent client config if enabled.
+func (c *OAuth2AuthServerConfig) validateMultiAgentClient() error {
+	if !c.MultiAgentClient.Enabled {
+		return nil
+	}
+	if c.MultiAgentClient.AgentIDParamName == "" {
+		return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
+	}
+	if c.MultiAgentClient.AgentIDClaimName == "" {
+		return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
+	}
 	return nil
 }
 
@@ -495,16 +500,7 @@ func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
 	}
 
-	if c.MultiAgentClient.Enabled {
-		if c.MultiAgentClient.AgentIDParamName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
-		}
-		if c.MultiAgentClient.AgentIDClaimName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
-		}
-	}
-
-	return nil
+	return c.validateMultiAgentClient()
 }
 
 // validateHybridMode validates configuration for hybrid mode (proxy + local token minting).
@@ -541,16 +537,7 @@ func (c *OAuth2AuthServerConfig) validateHybridMode() error {
 		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
 	}
 
-	if c.MultiAgentClient.Enabled {
-		if c.MultiAgentClient.AgentIDParamName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_param_name is required")
-		}
-		if c.MultiAgentClient.AgentIDClaimName == "" {
-			return c.newValidationError("oauth2_authorization_server.multi_agent_client.agent_id_claim_name is required")
-		}
-	}
-
-	return nil
+	return c.validateMultiAgentClient()
 }
 
 // newValidationError creates a validation error for the given field.

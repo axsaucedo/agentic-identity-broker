@@ -112,6 +112,33 @@ func (s *Service) WithJWETokenService(ts *jwe.TokenService) *Service {
 	return s
 }
 
+// ResolveForTokenGrant resolves the client_id, classifies the agent, and enforces
+// mode boundaries for the token endpoint. Follows the same universal resolution as
+// HandleAuthorization (FR-003, FR-004, FR-005) but without authorization-specific
+// logic (redirect URI, scopes, consent).
+func (s *Service) ResolveForTokenGrant(ctx context.Context, rawClientID string) (*ports.TokenGrantResolution, error) {
+	resolution, resolveErr := s.clientResolver.ResolveClient(ctx, id.ClientID(rawClientID))
+	if resolveErr != nil {
+		var clientErr *ports.ClientIDError
+		if errors.As(resolveErr, &clientErr) {
+			return nil, clientErr
+		}
+		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
+	}
+
+	agent := resolution.Agent
+	mode := agent.ClientMode()
+
+	if s.config.ModeStrategy != nil && !s.config.ModeStrategy.AcceptsClientMode(mode) {
+		return nil, &ports.ClientIDError{
+			Code: "unauthorized_client",
+			Desc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Name()),
+		}
+	}
+
+	return &ports.TokenGrantResolution{Agent: agent, ClientMode: mode}, nil
+}
+
 // HandleAuthorization processes an OAuth2 authorization request
 // Returns an AuthorizationDecision with either:
 // - proceed: Valid client with active grant — handler decides next step

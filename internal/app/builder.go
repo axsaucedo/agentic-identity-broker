@@ -622,8 +622,9 @@ func (b *Builder) Build() (*App, error) {
 	var proceedHandler enduser.AuthorizationProceedStrategy
 	var jwksHandler *enduserHandlers.JWKSHandler
 
-	switch b.config.OAuth2AuthServer.Mode {
-	case "local":
+	// buildLocalProvider constructs the local token issuance infrastructure.
+	// Used in both "local" and "hybrid" modes.
+	buildLocalProvider := func() (*oauth2server.Provider, error) {
 		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
 		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
 		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
@@ -644,69 +645,56 @@ func (b *Builder) Build() (*App, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
 		}
-		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.storage.Agents(), b.logger)
-		proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
+
 		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
 		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
 			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
 		}
+		return provider, nil
+	}
+
+	// buildProxyStrategies constructs the proxy path strategies.
+	// Used in both "proxy" and "hybrid" modes.
+	buildProxyStrategies := func() (enduser.TokenGrantStrategy, enduser.AuthorizationProceedStrategy) {
+		grant := enduser.NewProxyTokenGrantStrategy(
+			b.config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint,
+			upstreamClient,
+			multiAgentVerifier,
+			b.logger,
+		)
+		proceed := enduser.NewProxyProceedStrategy()
+		return grant, proceed
+	}
+
+	switch b.config.OAuth2AuthServer.Mode {
+	case "local":
+		provider, err := buildLocalProvider()
+		if err != nil {
+			return nil, err
+		}
+		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+		proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
 		b.logger.Info("OAuth2 server mode: local — local token minting enabled",
 			"issuer_uri", b.config.Server.EndUser.PublicURL,
 			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
 		)
 	case "hybrid":
-		signingKeyService := oauth2server.NewSigningKeyService(b.storage.SigningKeys(), encryptor, b.logger)
-		clientAuthService := oauth2server.NewClientAuthService(b.storage.BrokerCredentials(), clientResolver, b.logger)
-		app.AdminHandlers.ClientCredentials = admin.NewClientCredentialsHandler(b.storage.BrokerCredentials(), b.storage.Agents(), clientAuthService, b.logger)
-		app.AdminHandlers.SigningKeys = admin.NewSigningKeysHandler(b.storage.SigningKeys(), signingKeyService, b.logger)
-
-		provider, err := oauth2server.NewProvider(
-			b.storage.AuthorizationCodes(),
-			b.storage.PKCESessions(),
-			b.storage.BrokerCredentials(),
-			clientResolver,
-			b.storage.SigningKeys(),
-			encryptor,
-			b.config.Server.EndUser.PublicURL,
-			b.config.OAuth2AuthServer.Local.TokenTTL,
-			b.config.OAuth2AuthServer.Local.TokenClaimsExpression,
-			b.logger,
-		)
+		provider, err := buildLocalProvider()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create OAuth2 server provider: %w", err)
+			return nil, err
 		}
-
-		proxyGrant := enduser.NewProxyTokenGrantStrategy(
-			b.config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint,
-			upstreamClient,
-			b.storage.Agents(),
-			multiAgentVerifier,
-			b.logger,
-		)
-		localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.storage.Agents(), b.logger)
-		grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant, b.storage.Agents(), b.logger)
-
-		proxyProceed := enduser.NewProxyProceedStrategy()
+		proxyGrant, proxyProceed := buildProxyStrategies()
+		localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
 		localProceed := enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
-		proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed)
 
-		jwksHandler = enduserHandlers.NewJWKSHandler(signingKeyService, b.logger)
-		if err := signingKeyService.EnsureKeyExists(context.Background()); err != nil {
-			return nil, fmt.Errorf("failed to ensure signing key exists: %w", err)
-		}
+		grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant)
+		proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed)
 		b.logger.Info("OAuth2 server mode: hybrid — proxy and local token minting enabled",
 			"issuer_uri", b.config.Server.EndUser.PublicURL,
 			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
 		)
 	default: // "proxy"
-		grantHandler = enduser.NewProxyTokenGrantStrategy(
-			b.config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint,
-			upstreamClient,
-			b.storage.Agents(),
-			multiAgentVerifier,
-			b.logger,
-		)
-		proceedHandler = enduser.NewProxyProceedStrategy()
+		grantHandler, proceedHandler = buildProxyStrategies()
 	}
 
 	app.EnduserHandlers = &EnduserHandlers{
@@ -723,6 +711,7 @@ func (b *Builder) Build() (*App, error) {
 		},
 		OAuth2Token: &enduser.OAuth2TokenHandler{
 			TokenExchange: app.TokenExchangeService,
+			OAuth2Service: app.OAuth2Service,
 			Logger:        b.logger,
 			GrantHandler:  grantHandler,
 		},

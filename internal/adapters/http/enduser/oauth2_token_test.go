@@ -96,6 +96,56 @@ func (r *stubAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID
 	return false, nil
 }
 
+// mockOAuth2ServiceForToken implements ports.OAuth2Service with configurable ResolveForTokenGrant.
+type mockOAuth2ServiceForToken struct {
+	resolveFn func(ctx context.Context, rawClientID string) (*ports.TokenGrantResolution, error)
+}
+
+func (m *mockOAuth2ServiceForToken) HandleAuthorization(_ context.Context, _ *ports.AuthorizationRequest, _ id.Principal) (*ports.AuthorizationDecision, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockOAuth2ServiceForToken) GenerateMetadata(_ context.Context) (*ports.MetadataResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockOAuth2ServiceForToken) ResolveForTokenGrant(ctx context.Context, rawClientID string) (*ports.TokenGrantResolution, error) {
+	return m.resolveFn(ctx, rawClientID)
+}
+
+func newResolvingOAuth2Service(agent *storage.Agent) *mockOAuth2ServiceForToken {
+	return &mockOAuth2ServiceForToken{
+		resolveFn: func(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
+			return &ports.TokenGrantResolution{Agent: agent}, nil
+		},
+	}
+}
+
+func newFailingOAuth2Service(err error) *mockOAuth2ServiceForToken {
+	return &mockOAuth2ServiceForToken{
+		resolveFn: func(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
+			return nil, err
+		},
+	}
+}
+
+// newLocalModeOAuth2Service returns an OAuth2Service mock that resolves valid UUIDs to a
+// dummy local agent (no ClientID) and rejects non-UUIDs with invalid_client.
+func newLocalModeOAuth2Service() *mockOAuth2ServiceForToken {
+	return &mockOAuth2ServiceForToken{
+		resolveFn: func(_ context.Context, rawClientID string) (*ports.TokenGrantResolution, error) {
+			_, err := id.ParseAgentID(rawClientID)
+			if err != nil {
+				return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "client authentication failed"}
+			}
+			return &ports.TokenGrantResolution{
+				Agent:      &storage.Agent{ID: id.NewAgentID()},
+				ClientMode: storage.LocalClient,
+			}, nil
+		},
+	}
+}
+
 // TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation tests Content-Type validation
 func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	agentID := id.NewAgentID()
@@ -110,7 +160,8 @@ func TestOAuth2TokenHandler_ServeHTTP_ContentTypeValidation(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	tests := []struct {
@@ -172,7 +223,8 @@ func TestOAuth2TokenHandler_ServeHTTP_HeaderFiltering(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -209,7 +261,8 @@ func TestOAuth2TokenHandler_ServeHTTP_SuccessfulProxy(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String() + "&redirect_uri=https://client.example.com/callback")
@@ -242,7 +295,8 @@ func TestOAuth2TokenHandler_ServeHTTP_UpstreamError(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=expired&client_id=" + agentID.String())
@@ -358,7 +412,8 @@ func TestOAuth2TokenHandler_ProxyToUpstream_MultiAgentVerifier(t *testing.T) {
 			defer mockUpstream.Close()
 
 			handler := &OAuth2TokenHandler{
-				GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, tt.verifier, nil),
+				GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, tt.verifier, nil),
+				OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 			}
 
 			body := "grant_type=authorization_code&code=abc123&client_id=" + tt.clientID
@@ -390,7 +445,8 @@ func TestOAuth2TokenHandler_ServeHTTP_ResponseStreaming(t *testing.T) {
 	defer mockUpstream.Close()
 
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	reqBody := strings.NewReader("grant_type=authorization_code&code=abc123&client_id=" + agentID.String())
@@ -434,10 +490,10 @@ func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
 		wantError      string
 	}{
 		{
-			name:           "missing client_id returns 401 invalid_client",
+			name:           "missing client_id returns 400 invalid_request",
 			body:           "grant_type=authorization_code&code=abc123",
-			wantStatusCode: http.StatusUnauthorized,
-			wantError:      "invalid_client",
+			wantStatusCode: http.StatusBadRequest,
+			wantError:      "invalid_request",
 		},
 		{
 			name:           "non-UUID client_id returns 401 invalid_client",
@@ -459,7 +515,8 @@ func TestOAuth2TokenHandler_ClientIDValidation(t *testing.T) {
 			for _, v := range verifiers {
 				t.Run(v.name, func(t *testing.T) {
 					handler := &OAuth2TokenHandler{
-						GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, v.verifier, nil),
+						GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, v.verifier, nil),
+						OAuth2Service: newFailingOAuth2Service(&ports.ClientIDError{Code: "invalid_client", Desc: "client authentication failed"}),
 					}
 
 					req := httptest.NewRequest("POST", "https://broker.example.com/oauth2/token", strings.NewReader(tt.body))
@@ -498,7 +555,8 @@ func TestOAuth2TokenHandler_ProxyToUpstream_ClientIDReplacement(t *testing.T) {
 
 	agentRepo := newStubAgentRepo(agentID, upstreamClientID)
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newResolvingOAuth2Service(agentRepo.agent),
 	}
 
 	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
@@ -527,13 +585,10 @@ func TestOAuth2TokenHandler_ProxyToUpstream_AgentNotFound(t *testing.T) {
 	}))
 	defer mockUpstream.Close()
 
-	// Repo returns an error for any agent lookup (agent not found)
-	agentRepo := &stubAgentRepo{
-		agent: nil,
-		err:   errors.New("agent not found"),
-	}
+	// OAuth2Service returns an error for agent not found
 	handler := &OAuth2TokenHandler{
-		GrantHandler: NewProxyTokenGrantStrategy(mockUpstream.URL, nil, agentRepo, nil, nil),
+		GrantHandler:  NewProxyTokenGrantStrategy(mockUpstream.URL, nil, nil, nil),
+		OAuth2Service: newFailingOAuth2Service(&ports.ClientIDError{Code: "invalid_client", Desc: "agent not found"}),
 	}
 
 	body := "grant_type=authorization_code&code=abc&client_id=" + agentID.String()
@@ -645,7 +700,7 @@ func TestHandleLocalMinting_ClientCredentials(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil, nil)}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil), OAuth2Service: newLocalModeOAuth2Service()}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -727,7 +782,7 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 					return successResp, nil
 				},
 			}
-			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil, nil)}
+			handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(minting, nil), OAuth2Service: newLocalModeOAuth2Service()}
 			req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -752,9 +807,9 @@ func TestHandleLocalMinting_AuthorizationCode(t *testing.T) {
 // 400 unsupported_grant_type for any grant type other than client_credentials or
 // authorization_code (e.g. password, implicit, device_code).
 func TestHandleLocalMinting_UnsupportedGrantType(t *testing.T) {
-	handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil, nil)}
+	handler := &OAuth2TokenHandler{GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil), OAuth2Service: newLocalModeOAuth2Service()}
 	req := httptest.NewRequest("POST", "/oauth2/token",
-		strings.NewReader("grant_type=password&username=user&password=secret"))
+		strings.NewReader("grant_type=password&client_id=550e8400-e29b-41d4-a716-446655440000&username=user&password=secret"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
@@ -850,78 +905,9 @@ type mockTokenGrantStrategy struct {
 	capturedFormData url.Values
 }
 
-func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http.Request, _ string, formData url.Values) {
+func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http.Request, _ string, formData url.Values, _ *storage.Agent) {
 	m.capturedFormData = formData
 	w.WriteHeader(http.StatusOK)
-}
-
-// flexibleAgentRepo is a configurable stub for hybrid dispatch tests.
-type flexibleAgentRepo struct {
-	getAgent         *storage.Agent
-	getErr           error
-	byClientURIAgent *storage.Agent
-	byClientURIErr   error
-}
-
-func (r *flexibleAgentRepo) Get(_ context.Context, _ id.AgentID) (*storage.Agent, error) {
-	return r.getAgent, r.getErr
-}
-func (r *flexibleAgentRepo) Create(_ context.Context, _ *storage.Agent) error { return nil }
-func (r *flexibleAgentRepo) Update(_ context.Context, _ *storage.Agent) error { return nil }
-func (r *flexibleAgentRepo) Delete(_ context.Context, _ id.AgentID) error     { return nil }
-func (r *flexibleAgentRepo) List(_ context.Context) ([]*storage.Agent, error) { return nil, nil }
-func (r *flexibleAgentRepo) GetByClientID(_ context.Context, _ id.ClientID) (*storage.Agent, error) {
-	return nil, nil
-}
-func (r *flexibleAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
-	return r.byClientURIAgent, r.byClientURIErr
-}
-func (r *flexibleAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
-	return false, nil
-}
-
-// T048b: localGrantStrategy rejects ProxyClient agents (those with an upstream ClientID).
-// Applies to both client_credentials and authorization_code grants.
-func TestLocalGrantStrategy_RejectsProxyClient(t *testing.T) {
-	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000011")
-
-	// Agent with ClientID set → ProxyClient mode.
-	proxyRepo := &stubAgentRepo{
-		agent: &storage.Agent{
-			ID:       agentID,
-			ClientID: ptr.To(id.ClientID("upstream-client-id")),
-		},
-	}
-	minting := fixedMinting(&ports.TokenResponse{AccessToken: "tok", TokenType: "Bearer", ExpiresIn: 3600}, nil)
-	strategy := NewLocalGrantStrategy(minting, proxyRepo, nil)
-
-	t.Run("client_credentials rejected for ProxyClient", func(t *testing.T) {
-		body := strings.NewReader("grant_type=client_credentials&client_id=" + agentID.String() + "&client_secret=secret")
-		req := httptest.NewRequest("POST", "/oauth2/token", body)
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-
-		strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req))
-
-		assert.Equal(t, http.StatusUnauthorized, w.Code)
-		var resp map[string]interface{}
-		_ = json.NewDecoder(w.Body).Decode(&resp)
-		assert.Equal(t, "invalid_client", resp["error"])
-	})
-
-	t.Run("authorization_code rejected for ProxyClient", func(t *testing.T) {
-		body := strings.NewReader("grant_type=authorization_code&client_id=" + agentID.String() + "&code=abc123")
-		req := httptest.NewRequest("POST", "/oauth2/token", body)
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-
-		strategy.HandleTokenGrant(w, req, "authorization_code", parseForm(req))
-
-		assert.Equal(t, http.StatusUnauthorized, w.Code)
-		var resp map[string]interface{}
-		_ = json.NewDecoder(w.Body).Decode(&resp)
-		assert.Equal(t, "invalid_client", resp["error"])
-	})
 }
 
 // T048b: localGrantStrategy accepts LocalClient agents (no upstream ClientID, no ClientURIs).
@@ -937,14 +923,14 @@ func TestLocalGrantStrategy_AcceptsLocalClient(t *testing.T) {
 		},
 	}
 	expected := &ports.TokenResponse{AccessToken: "local-tok", TokenType: "Bearer", ExpiresIn: 3600}
-	strategy := NewLocalGrantStrategy(fixedMinting(expected, nil), localRepo, nil)
+	strategy := NewLocalGrantStrategy(fixedMinting(expected, nil), nil)
 
 	body := strings.NewReader("grant_type=client_credentials&client_id=" + agentID.String() + "&client_secret=secret")
 	req := httptest.NewRequest("POST", "/oauth2/token", body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req))
+	strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req), localRepo.agent)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
@@ -964,8 +950,6 @@ func TestHybridTokenGrant_EmptyClientIDReturns400(t *testing.T) {
 	strategy := NewHybridTokenGrantStrategy(
 		&mockTokenGrantStrategy{},
 		&mockTokenGrantStrategy{},
-		&flexibleAgentRepo{},
-		nil,
 	)
 	handler := &OAuth2TokenHandler{GrantHandler: strategy}
 

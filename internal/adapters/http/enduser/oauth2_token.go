@@ -15,15 +15,17 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
 // OAuth2TokenHandler handles OAuth2 token endpoint requests.
 // Routes RFC 8693 token exchange to handleTokenExchange; all other grants are
-// delegated to GrantHandler (proxy mode or local mode).
+// resolved via OAuth2Service.ResolveForTokenGrant then delegated to GrantHandler.
 type OAuth2TokenHandler struct {
 	TokenExchange *tokenexchange.TokenExchangeService
+	OAuth2Service ports.OAuth2Service
 	Logger        *slog.Logger
-	GrantHandler  TokenGrantStrategy // always non-nil: proxy or local
+	GrantHandler  TokenGrantStrategy // always non-nil: proxy, local, or hybrid
 }
 
 // ServeHTTP implements http.Handler for the token endpoint.
@@ -74,7 +76,24 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.GrantHandler.HandleTokenGrant(w, r, grantType, formData)
+	rawClientID := formData.Get("client_id")
+	if rawClientID == "" {
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "client_id is required")
+		return
+	}
+
+	resolution, resolveErr := h.OAuth2Service.ResolveForTokenGrant(r.Context(), rawClientID)
+	if resolveErr != nil {
+		var clientErr *ports.ClientIDError
+		if errors.As(resolveErr, &clientErr) {
+			writeOAuth2ErrorJSON(w, http.StatusUnauthorized, clientErr.Code, clientErr.Desc)
+		} else {
+			writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "client resolution failed")
+		}
+		return
+	}
+
+	h.GrantHandler.HandleTokenGrant(w, r, grantType, formData, resolution.Agent)
 }
 
 // handleTokenExchange processes RFC 8693 token exchange requests.
