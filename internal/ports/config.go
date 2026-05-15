@@ -380,38 +380,16 @@ type OAuth2AuthServerConfig struct {
 	CIMD CIMDConfig `mapstructure:"cimd"`
 }
 
-// isZero reports whether the config is entirely unset (zero value for every field).
-// Only a truly zero config is skipped; any partial population must be validated.
-func (c *OAuth2AuthServerConfig) isZero() bool {
-	return c.Mode == "" &&
-		c.Proxy.UpstreamIssuerURI == "" &&
-		c.Proxy.UpstreamAuthorizeEndpoint == "" &&
-		c.Proxy.UpstreamTokenEndpoint == "" &&
-		c.Proxy.UpstreamTimeoutSeconds == 0 &&
-		c.Local.TokenTTL == 0 &&
-		c.Local.TokenClaimsExpression == "" &&
-		c.SupportedResponseTypes == nil &&
-		c.SupportedGrantTypes == nil &&
-		!c.MultiAgentClient.Enabled &&
-		c.MultiAgentClient.AgentIDParamName == "" &&
-		c.MultiAgentClient.AgentIDClaimName == "" &&
-		!c.CIMD.Enabled
-}
-
 // Validate validates the OAuth2AuthServerConfig structure.
 // Sets defaults for empty fields and returns an error for missing required fields.
-// Returns nil immediately when every field is at its zero value (unconfigured block).
+// oauth2_authorization_server is mandatory — an absent or zero-value block fails validation.
 func (c *OAuth2AuthServerConfig) Validate() error {
-	if c.isZero() {
-		return nil
-	}
-
 	if c.Mode == "issue_token" {
 		return c.newValidationError("oauth2_authorization_server.mode 'issue_token' has been renamed to 'local' — please update your configuration")
 	}
 
 	if c.Mode == "" {
-		return c.newValidationError("oauth2_authorization_server.mode is required when any auth server field is set (use 'proxy', 'local', or 'hybrid')")
+		return c.newValidationError("oauth2_authorization_server.mode is required (use 'proxy', 'local', or 'hybrid')")
 	}
 
 	switch c.Mode {

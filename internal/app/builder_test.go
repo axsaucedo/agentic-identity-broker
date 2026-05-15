@@ -76,6 +76,14 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 				RawKey: testutil.TestKEKBase64,
 			},
 		},
+		OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://auth.example.com",
+				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://auth.example.com/token",
+			},
+		},
 	}
 
 	// Create logger
@@ -133,8 +141,6 @@ func TestBuilderMinimalConfiguration(t *testing.T) {
 		t.Error("expected EnduserHandlers to be set")
 	}
 
-	// Verify basic handler structure in minimal config
-	// (Optional services like OAuth2 and OAuth2Sessions are not configured)
 	if app.EnduserHandlers.UserInfo == nil {
 		t.Error("expected UserInfo handler to be created")
 	}
@@ -194,7 +200,16 @@ func TestBuilderMissingRequiredDependency(t *testing.T) {
 		}
 
 		_, err = NewBuilder().
-			WithConfig(&ports.Config{}).
+			WithConfig(&ports.Config{
+				OAuth2AuthServer: ports.OAuth2AuthServerConfig{
+					Mode: "proxy",
+					Proxy: ports.ProxyModeConfig{
+						UpstreamIssuerURI:         "https://auth.example.com",
+						UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+						UpstreamTokenEndpoint:     "https://auth.example.com/token",
+					},
+				},
+			}).
 			WithStorage(storageAdapter).
 			WithLogger(logger).
 			Build()
@@ -445,12 +460,9 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 	})
 }
 
-// TestBuilder_EmptyOAuth2AuthServerConfig is a regression test ensuring that
-// Build() succeeds when OAuth2AuthServerConfig is the zero value (no oauth2_authorization_server
-// block in config). Previously a refactor moved the unconfigured-skip guard out of Validate(),
-// causing the builder's direct Validate() call to error with "missing upstream_issuer_uri".
-func TestBuilder_EmptyOAuth2AuthServerConfig(t *testing.T) {
-	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+// TestBuilder_MissingOAuth2AuthServerConfig verifies that Build() fails when the
+// oauth2_authorization_server block is absent. Mode is mandatory — no default exists.
+func TestBuilder_MissingOAuth2AuthServerConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	adapter, err := storage.NewAdapter(&ports.StorageConfig{
@@ -461,6 +473,7 @@ func TestBuilder_EmptyOAuth2AuthServerConfig(t *testing.T) {
 		t.Fatalf("failed to create storage adapter: %v", err)
 	}
 
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 	cfg := &ports.Config{
 		Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
 		Server: ports.ServerConfig{
@@ -484,14 +497,14 @@ func TestBuilder_EmptyOAuth2AuthServerConfig(t *testing.T) {
 		},
 		ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
 		Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
-		// OAuth2AuthServer intentionally omitted — zero value must be accepted
+		// OAuth2AuthServer intentionally absent — must cause startup failure
 	}
 
-	app, err := NewBuilder().WithConfig(cfg).WithStorage(adapter).WithLogger(logger).Build()
-	if err != nil {
-		t.Fatalf("Build() with empty OAuth2AuthServerConfig must succeed, got: %v", err)
+	_, err = NewBuilder().WithConfig(cfg).WithStorage(adapter).WithLogger(logger).Build()
+	if err == nil {
+		t.Fatal("Build() with absent OAuth2AuthServerConfig must fail")
 	}
-	if app == nil {
-		t.Fatal("expected non-nil app")
+	if !strings.Contains(err.Error(), "mode") {
+		t.Errorf("expected error to mention 'mode', got: %v", err)
 	}
 }

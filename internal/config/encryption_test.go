@@ -158,6 +158,7 @@ func TestEncryptionConfigBackend_AWSKMSBackend(t *testing.T) {
 			},
 			Memory: nil, // Only AWS KMS backend should be set
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -189,6 +190,7 @@ func TestEncryptionConfigBackend_MemoryBackend(t *testing.T) {
 				RawKey: generateBase64EncodedString(t, 32),
 			},
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -222,6 +224,7 @@ func TestEncryptionConfigBackend_BothBackends(t *testing.T) {
 				RawKey: generateBase64EncodedString(t, 32),
 			},
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -252,6 +255,7 @@ func TestEncryptionConfigBackend_NoBackends(t *testing.T) {
 			AWSKMS: nil,
 			Memory: nil,
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -332,6 +336,7 @@ func TestEncryptionConfigValidation_AWSKMSValidation(t *testing.T) {
 					AWSKMS: tt.awsKMSConfig,
 					Memory: nil,
 				},
+				OAuth2AuthServer: createValidOAuth2Config(),
 			}
 
 			err := Validate(cfg)
@@ -409,6 +414,7 @@ func TestEncryptionConfigValidation_MemoryValidation(t *testing.T) {
 					AWSKMS: nil,
 					Memory: tt.memoryConfig,
 				},
+				OAuth2AuthServer: createValidOAuth2Config(),
 			}
 
 			err := Validate(cfg)
@@ -587,6 +593,7 @@ func TestValidateEncryptionConfigMissingBackend(t *testing.T) {
 			AWSKMS: nil, // No backend configured
 			Memory: nil,
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -615,6 +622,7 @@ func TestValidateEncryptionConfigValidAWSKMSARN(t *testing.T) {
 			},
 			Memory: nil,
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -638,6 +646,7 @@ func TestValidateEncryptionConfigValidMemoryBackend(t *testing.T) {
 				RawKey: generateBase64EncodedString(t, 32),
 			},
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -661,6 +670,7 @@ func TestValidateEncryptionConfigInvalidMemoryKey(t *testing.T) {
 				RawKey: "not-valid-base64-!!!@#$", // Invalid base64
 			},
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -687,6 +697,7 @@ func TestValidateEncryptionConfigWrongMemoryKeyLength(t *testing.T) {
 				RawKey: invalidKey,
 			},
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -710,6 +721,7 @@ func TestValidateEncryptionConfigInvalidAWSKMSARN(t *testing.T) {
 			},
 			Memory: nil,
 		},
+		OAuth2AuthServer: createValidOAuth2Config(),
 	}
 
 	err := Validate(cfg)
@@ -754,6 +766,18 @@ func createValidStorageConfig() ports.StorageConfig {
 		Timeouts: ports.StorageTimeouts{
 			Read:  5 * time.Duration(1e9),
 			Write: 10 * time.Duration(1e9),
+		},
+	}
+}
+
+// Helper function to create valid OAuth2AuthServerConfig (proxy mode).
+func createValidOAuth2Config() ports.OAuth2AuthServerConfig {
+	return ports.OAuth2AuthServerConfig{
+		Mode: "proxy",
+		Proxy: ports.ProxyModeConfig{
+			UpstreamIssuerURI:         "https://auth.example.com",
+			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
+			UpstreamTokenEndpoint:     "https://auth.example.com/token",
 		},
 	}
 }

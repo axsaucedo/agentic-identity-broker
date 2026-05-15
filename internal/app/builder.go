@@ -176,7 +176,6 @@ func (b *Builder) Build() (*App, error) {
 		return nil, fmt.Errorf("logger is required")
 	}
 
-	// Validate OAuth2AuthServer config (handles the empty-config case internally).
 	if err := b.config.OAuth2AuthServer.Validate(); err != nil {
 		return nil, fmt.Errorf("oauth2_authorization_server configuration invalid: %w", err)
 	}
@@ -666,49 +665,43 @@ func (b *Builder) Build() (*App, error) {
 		return grant, proceed
 	}
 
-	if b.config.OAuth2AuthServer.Mode != "" {
-		switch b.config.OAuth2AuthServer.Mode {
-		case "local":
-			provider, err := buildLocalProvider()
-			if err != nil {
-				return nil, err
-			}
-			grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
-			proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
-			b.logger.Info("OAuth2 server mode: local — local token minting enabled",
-				"issuer_uri", b.config.Server.EndUser.PublicURL,
-				"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
-			)
-		case "hybrid":
-			provider, err := buildLocalProvider()
-			if err != nil {
-				return nil, err
-			}
-			proxyGrant, proxyProceed := buildProxyStrategies()
-			localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
-			localProceed := enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
-
-			grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant)
-			proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed)
-			b.logger.Info("OAuth2 server mode: hybrid — proxy and local token minting enabled",
-				"issuer_uri", b.config.Server.EndUser.PublicURL,
-				"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
-			)
-		default: // "proxy"
-			grantHandler, proceedHandler = buildProxyStrategies()
+	switch b.config.OAuth2AuthServer.Mode {
+	case "local":
+		provider, err := buildLocalProvider()
+		if err != nil {
+			return nil, err
 		}
+		grantHandler = enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+		proceedHandler = enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
+		b.logger.Info("OAuth2 server mode: local — local token minting enabled",
+			"issuer_uri", b.config.Server.EndUser.PublicURL,
+			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
+		)
+	case "hybrid":
+		provider, err := buildLocalProvider()
+		if err != nil {
+			return nil, err
+		}
+		proxyGrant, proxyProceed := buildProxyStrategies()
+		localGrant := enduser.NewLocalGrantStrategy(newLocalMintingStrategy(provider), b.logger)
+		localProceed := enduser.NewLocalProceedStrategy(newLocalCodeIssuer(provider), b.logger)
+
+		grantHandler = enduser.NewHybridTokenGrantStrategy(proxyGrant, localGrant)
+		proceedHandler = enduser.NewHybridProceedStrategy(proxyProceed, localProceed)
+		b.logger.Info("OAuth2 server mode: hybrid — proxy and local token minting enabled",
+			"issuer_uri", b.config.Server.EndUser.PublicURL,
+			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
+		)
+	default: // "proxy"
+		grantHandler, proceedHandler = buildProxyStrategies()
 	}
 
-	var oauth2AuthorizeHandler *enduser.OAuth2AuthorizeHandler
-	var oauth2MetadataHandler *enduser.OAuth2MetadataHandler
-	if b.config.OAuth2AuthServer.Mode != "" {
-		oauth2AuthorizeHandler = &enduser.OAuth2AuthorizeHandler{
-			Service:        app.OAuth2Service,
-			ProceedHandler: proceedHandler,
-		}
-		oauth2MetadataHandler = &enduser.OAuth2MetadataHandler{
-			Service: app.OAuth2Service,
-		}
+	oauth2AuthorizeHandler := &enduser.OAuth2AuthorizeHandler{
+		Service:        app.OAuth2Service,
+		ProceedHandler: proceedHandler,
+	}
+	oauth2MetadataHandler := &enduser.OAuth2MetadataHandler{
+		Service: app.OAuth2Service,
 	}
 
 	app.EnduserHandlers = &EnduserHandlers{

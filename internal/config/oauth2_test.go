@@ -339,4 +339,11 @@ func TestOAuth2AuthServerConfig_PartialConfigFails(t *testing.T) {
 		err := cfg.Validate()
 		assert.Error(t, err, "explicitly empty supported_grant_types must not be skipped as unconfigured")
 	})
+
+	t.Run("zero value config fails validation — oauth2_authorization_server is mandatory", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{}
+		err := cfg.Validate()
+		assert.Error(t, err, "zero-value OAuth2AuthServerConfig must fail — mode is required")
+		assert.Contains(t, err.Error(), "mode")
+	})
 }
