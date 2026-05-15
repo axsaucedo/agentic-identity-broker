@@ -44,6 +44,24 @@ func TestGenerateMetadata_LocalMode(t *testing.T) {
 	assert.Equal(t, []string{"client_secret_post"}, metadata.TokenEndpointAuthMethodsSupported)
 }
 
+// T045b: hybrid mode metadata reflects union of proxy + local capabilities.
+func TestGenerateMetadata_HybridMode(t *testing.T) {
+	svc := NewService(nil, nil, &OAuth2Config{
+		Mode:                   "hybrid",
+		PublicURL:              "https://broker.example.com",
+		SupportedResponseTypes: []string{"code"},
+		SupportedGrantTypes:    []string{"authorization_code", "client_credentials"},
+	})
+
+	metadata, err := svc.GenerateMetadata(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://broker.example.com", metadata.Issuer)
+	assert.Equal(t, "https://broker.example.com/oauth2/jwks.json", metadata.JWKSURI, "hybrid mode must include JWKS URI")
+	assert.Equal(t, []string{"S256"}, metadata.CodeChallengeMethodsSupported, "hybrid mode must include PKCE methods")
+	assert.Contains(t, metadata.TokenEndpointAuthMethodsSupported, "client_secret_post")
+}
+
 func TestGenerateMetadata_LocalModeWithCIMD(t *testing.T) {
 	svc := NewService(nil, nil, &OAuth2Config{
 		Mode:                   "local",

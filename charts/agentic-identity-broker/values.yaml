@@ -423,12 +423,23 @@ broker:
 
   # OAuth2 Authorization Server configuration
   oauth2AuthorizationServer:
-    # -- Upstream OAuth2 issuer URI
-    upstreamIssuerUri: ""
-    # -- Upstream authorize endpoint
-    upstreamAuthorizeEndpoint: ""
-    # -- Upstream token endpoint
-    upstreamTokenEndpoint: ""
+    # -- Operation mode: "proxy", "local", or "hybrid". Leave empty to disable OAuth2 server.
+    # proxy: forward all requests to an upstream OAuth2 server (proxy.* required)
+    # local: issue tokens locally (local.* required)
+    # hybrid: serve both proxy and local agents (both proxy.* and local.* required)
+    mode: ""
+
+    # -- Upstream OAuth2 server configuration (required in proxy/hybrid mode)
+    proxy:
+      # -- Upstream OAuth2 issuer URI
+      upstreamIssuerUri: ""
+      # -- Upstream authorize endpoint
+      upstreamAuthorizeEndpoint: ""
+      # -- Upstream token endpoint
+      upstreamTokenEndpoint: ""
+      # -- Upstream request timeout (seconds)
+      upstreamTimeoutSeconds: 10
+
     # -- Supported OAuth2 response types
     supportedResponseTypes:
       - code
@@ -436,10 +447,6 @@ broker:
     supportedGrantTypes:
       - authorization_code
       - refresh_token
-    # -- Upstream request timeout (seconds)
-    upstreamTimeoutSeconds: 10
-    # -- Operation mode: "proxy", "local", or "hybrid". Leave empty to disable OAuth2 server.
-    mode: ""
     # Client ID Metadata Document (CIMD) support
     # Enables AI agents to identify using HTTPS URLs as client_id.
     cimd:

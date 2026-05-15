@@ -370,6 +370,23 @@ Key settings:
 ./agentic-identity-broker --config ./examples/config/oauth2-server-mode.yaml
 ```
 
+### Hybrid Mode (`oauth2-hybrid-mode.yaml`)
+
+Configures the broker to serve both proxy agents (forwarded to an upstream OAuth2 server) and local agents (tokens issued locally) in a single deployment. Agent classification is property-based: agents with `ClientID` set are ProxyClients; agents with `ClientURIs` set are CIMDClients; agents with neither are LocalClients.
+
+Both the `proxy` and `local` sections are required in hybrid mode.
+
+Key settings:
+- `mode: "hybrid"` — enables all three client modes
+- `proxy.*` — upstream OAuth2 server configuration (required)
+- `local.*` — local token issuance configuration (required)
+- `cimd.enabled` — optional CIMD support for URL-addressed agents
+
+**Usage:**
+```bash
+./agentic-identity-broker --config ./examples/config/oauth2-hybrid-mode.yaml
+```
+
 ## Configuration Sources and Precedence
 
 The application loads configuration from multiple sources with this precedence (highest to lowest):

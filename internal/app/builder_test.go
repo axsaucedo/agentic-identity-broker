@@ -345,6 +345,106 @@ func TestBuilderTokenExchangeExpectedAudience(t *testing.T) {
 	})
 }
 
+// T056: Builder produces the correct strategy set for each OAuth2 server mode.
+// Proxy → JWKS handler nil; Local/Hybrid → JWKS handler non-nil (signing keys served).
+func TestBuilder_ModeStrategyWiring(t *testing.T) {
+	baseConfig := func(jweKey string) *ports.Config {
+		return &ports.Config{
+			Log: ports.LogConfig{Level: ports.LogLevelInfo, Format: ports.LogFormatText},
+			Server: ports.ServerConfig{
+				EndUser: ports.ServerInstanceConfig{
+					Port: 8000, Bind: "::1", PublicURL: "http://localhost:8000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Admin: ports.ServerInstanceConfig{
+					Port: 14000, Bind: "::1", PublicURL: "http://localhost:14000",
+					Authentication: ports.AuthenticationConfig{
+						Preauth: ports.PreauthConfig{PrincipalHeaderName: "X-Remote-User"},
+					},
+				},
+				Shutdown: ports.ShutdownConfig{Timeout: 5 * time.Second},
+			},
+			Storage: ports.StorageConfig{
+				Backend:  "memory",
+				Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+			},
+			ThirdPartyOAuth2: ports.ThirdPartyOAuth2Config{JWESigningKey: jweKey},
+			Encryption:       ports.EncryptionConfig{Memory: &ports.MemoryConfig{RawKey: testutil.TestKEKBase64}},
+		}
+	}
+
+	newStorage := func(t *testing.T) *storage.Adapter {
+		t.Helper()
+		a, err := storage.NewAdapter(&ports.StorageConfig{
+			Backend:  "memory",
+			Timeouts: ports.StorageTimeouts{Read: 5 * time.Second, Write: 5 * time.Second},
+		})
+		if err != nil {
+			t.Fatalf("storage.NewAdapter: %v", err)
+		}
+		return a
+	}
+
+	jweKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	t.Run("proxy mode — JWKS handler is nil", func(t *testing.T) {
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode: "proxy",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			},
+		}
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in proxy mode failed: %v", err)
+		}
+		if app.EnduserHandlers.JWKS != nil {
+			t.Error("proxy mode must not wire a JWKS handler")
+		}
+	})
+
+	t.Run("local mode — JWKS handler is non-nil", func(t *testing.T) {
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode:  "local",
+			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+		}
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in local mode failed: %v", err)
+		}
+		if app.EnduserHandlers.JWKS == nil {
+			t.Error("local mode must wire a JWKS handler")
+		}
+	})
+
+	t.Run("hybrid mode — JWKS handler is non-nil", func(t *testing.T) {
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode: "hybrid",
+			Proxy: ports.ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			},
+			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+		}
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in hybrid mode failed: %v", err)
+		}
+		if app.EnduserHandlers.JWKS == nil {
+			t.Error("hybrid mode must wire a JWKS handler")
+		}
+	})
+}
+
 // TestBuilder_EmptyOAuth2AuthServerConfig is a regression test ensuring that
 // Build() succeeds when OAuth2AuthServerConfig is the zero value (no oauth2_authorization_server
 // block in config). Previously a refactor moved the unconfigured-skip guard out of Validate(),

@@ -45,7 +45,7 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (local mode)", func() {
 		Expect(testStorage.Services().Create(ctx, githubService)).ToNot(HaveOccurred())
 
 		// Create agent with redirect_uris
-		agent = fixtures.ValidAgent()
+		agent = fixtures.LocalAgent()
 		agent.RedirectURIs = []string{"http://localhost:9999/callback"}
 		Expect(testStorage.Agents().Create(ctx, agent)).ToNot(HaveOccurred())
 

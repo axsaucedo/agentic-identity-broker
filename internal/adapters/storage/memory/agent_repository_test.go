@@ -422,3 +422,47 @@ func TestAgentRepository_List(t *testing.T) {
 		assert.Equal(t, "Original Name", original.DisplayName)
 	})
 }
+
+// T026b: Storage-layer mutual exclusivity — agent cannot have both ClientID and ClientURIs set.
+func TestAgentRepository_Create_MutualExclusivity(t *testing.T) {
+	ctx := context.Background()
+	repo := NewAgentRepository()
+	clientID := id.ClientID("upstream-client-id")
+
+	agent := &storage.Agent{
+		ClientID:    &clientID,
+		ClientURIs:  []string{"https://agent.example.com/.well-known/openid-configuration"},
+		DisplayName: "Ambiguous Agent",
+		Description: "Both ClientID and ClientURIs set — must be rejected",
+	}
+
+	err := repo.Create(ctx, agent)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "agent validation failed")
+	var storageErr *storage.StorageError
+	require.ErrorAs(t, err, &storageErr)
+	assert.Equal(t, storage.ErrorKindValidation, storageErr.Kind)
+}
+
+func TestAgentRepository_Update_MutualExclusivity(t *testing.T) {
+	ctx := context.Background()
+	repo := NewAgentRepository()
+	clientID := id.ClientID("upstream-client-id")
+
+	// Create a valid proxy agent first
+	agent := &storage.Agent{
+		ClientID:    &clientID,
+		DisplayName: "Proxy Agent",
+		Description: "Valid proxy agent",
+	}
+	require.NoError(t, repo.Create(ctx, agent))
+
+	// Update to add ClientURIs alongside existing ClientID — must be rejected
+	agent.ClientURIs = []string{"https://agent.example.com/.well-known/openid-configuration"}
+	err := repo.Update(ctx, agent)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "agent validation failed")
+	var storageErr *storage.StorageError
+	require.ErrorAs(t, err, &storageErr)
+	assert.Equal(t, storage.ErrorKindValidation, storageErr.Kind)
+}

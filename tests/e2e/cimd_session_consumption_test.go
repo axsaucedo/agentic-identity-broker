@@ -19,7 +19,6 @@ import (
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	domcimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -111,7 +110,6 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		now := time.Now()
 		agent := &domstorage.Agent{
 			ID:          id.NewAgentID(),
-			ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 			DisplayName: "Session Consumption Agent",
 			Description: "E2E test agent for session consumption",
 			ClientURIs:  []string{"https://agent.example.com/client"},

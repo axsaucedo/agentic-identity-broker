@@ -111,7 +111,6 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Example CIMD Agent",
 				Description: "E2E test agent for CIMD consent scenario",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -155,7 +154,6 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Localhost Redirect Agent",
 				Description: "E2E test agent for localhost redirect CIMD scenario",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -199,7 +197,6 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Advanced Detail Agent",
 				Description: "E2E test agent for CIMD advanced detail scenario",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -292,7 +289,6 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Expired Session Agent",
 				Description: "E2E test for expired session rejection",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -325,7 +321,6 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Invalid Token Agent",
 				Description: "E2E test for invalid token rejection",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -349,7 +344,6 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Agent Mismatch Agent",
 				Description: "E2E test for agent mismatch rejection",
 				ClientURIs:  []string{"https://agent.example.com/client"},
@@ -385,7 +379,6 @@ var _ = Describe("CIMD Consent Screen", func() {
 			now := time.Now()
 			agent := &domstorage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://agent.example.com/client")),
 				DisplayName: "Principal Isolation Agent",
 				Description: "E2E test for principal mismatch on GET consent",
 				ClientURIs:  []string{"https://agent.example.com/client"},

@@ -653,17 +653,34 @@
           "additionalProperties": false,
           "description": "OAuth2 Authorization Server configuration",
           "properties": {
-            "upstreamIssuerUri": {
+            "mode": {
               "type": "string",
-              "description": "Upstream OAuth2 issuer URI"
+              "enum": ["", "proxy", "local", "hybrid"],
+              "description": "Operation mode: proxy, local, or hybrid. Leave empty to disable."
             },
-            "upstreamAuthorizeEndpoint": {
-              "type": "string",
-              "description": "Upstream authorize endpoint"
-            },
-            "upstreamTokenEndpoint": {
-              "type": "string",
-              "description": "Upstream token endpoint"
+            "proxy": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Upstream OAuth2 server configuration (required in proxy/hybrid mode)",
+              "properties": {
+                "upstreamIssuerUri": {
+                  "type": "string",
+                  "description": "Upstream OAuth2 issuer URI"
+                },
+                "upstreamAuthorizeEndpoint": {
+                  "type": "string",
+                  "description": "Upstream authorize endpoint"
+                },
+                "upstreamTokenEndpoint": {
+                  "type": "string",
+                  "description": "Upstream token endpoint"
+                },
+                "upstreamTimeoutSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Upstream request timeout (seconds)"
+                }
+              }
             },
             "supportedResponseTypes": {
               "type": "array",
@@ -678,15 +695,6 @@
                 "type": "string"
               },
               "description": "Supported OAuth2 grant types"
-            },
-            "upstreamTimeoutSeconds": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Upstream request timeout (seconds)"
-            },
-            "mode": {
-              "type": "string",
-              "description": "Operation mode (proxy, authorization_server)"
             },
             "local": {
               "type": "object",

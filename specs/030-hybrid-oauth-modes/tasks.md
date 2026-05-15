@@ -78,12 +78,12 @@
 
 ### Phase 2f: E2E Acceptance Test Design
 
-- [ ] T018 Write E2E acceptance tests for US1 (6 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
-- [ ] T019 [P] Write E2E acceptance tests for US2 (11 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
-- [ ] T020 [P] Write E2E acceptance tests for US3 (4 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
-- [ ] T021 [P] Write unit/architecture tests for US4 (2 scenarios — structural verification: no runtime mode checks) in internal/app/builder_test.go
-- [ ] T022 Create test fixtures: proxy agent, local agent, CIMD agent, hybrid mode config in tests/e2e/fixtures/
-- [ ] T023 Verify E2E tests FAIL semantically (red phase): detailed expectations present and failing
+- [x] T018 Write E2E acceptance tests for US1 (6 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
+- [x] T019 [P] Write E2E acceptance tests for US2 (11 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
+- [x] T020 [P] Write E2E acceptance tests for US3 (4 scenarios) in tests/e2e/hybrid_oauth_modes_e2e_test.go
+- [x] T021 [P] Write unit/architecture tests for US4 (2 scenarios — structural verification: no runtime mode checks) in internal/app/builder_test.go
+- [x] T022 Create test fixtures: proxy agent, local agent, CIMD agent, hybrid mode config in tests/e2e/fixtures/
+- [x] T023 Verify E2E tests FAIL semantically (red phase): detailed expectations present and failing
 
 **Checkpoint**: E2E acceptance tests written and verified to fail semantically before implementation
 
@@ -143,22 +143,22 @@
 
 ### Tests for User Story 2
 
-- [ ] T043 [P] [US2] Write unit tests for universal client resolver: URL → GetByClientURI, UUID → Agent.ID, other → reject in internal/domain/oauth2/client_resolver_test.go
-- [ ] T044 [P] [US2] Write unit test for CIMD agent UUID rejection (FR-005) in internal/domain/oauth2/client_resolver_test.go
-- [ ] T045 [P] [US2] Write unit tests for mode enforcement: proxy rejects local/CIMD, local rejects proxy agents in internal/domain/oauth2/mode_strategy_test.go
-- [ ] T045a [P] [US2] Write unit test for JWKS endpoint availability: served in local/hybrid, not served in proxy mode
-- [ ] T045b [P] [US2] Write unit test for metadata endpoint: hybrid mode reflects union of capabilities
+- [x] T043 [P] [US2] Write unit tests for universal client resolver: URL → GetByClientURI, UUID → Agent.ID, other → reject in internal/domain/oauth2/client_resolver_test.go
+- [x] T044 [P] [US2] Write unit test for CIMD agent UUID rejection (FR-005) in internal/domain/oauth2/client_resolver_test.go
+- [x] T045 [P] [US2] Write unit tests for mode enforcement: proxy rejects local/CIMD, local rejects proxy agents in internal/domain/oauth2/mode_strategy_test.go
+- [x] T045a [P] [US2] Write unit test for JWKS endpoint availability: served in local/hybrid, not served in proxy mode
+- [x] T045b [P] [US2] Write unit test for metadata endpoint: hybrid mode reflects union of capabilities
 
 ### Implementation for User Story 2
 
-- [ ] T046 [US2] Implement universal client resolver with format detection (URL/UUID/invalid) in internal/domain/oauth2/client_resolver.go
-- [ ] T047 [US2] Add CIMD agent UUID rejection: after resolving by UUID, reject if agent has client_uris in internal/domain/oauth2/client_resolver.go
-- [ ] T048 [US2] Integrate ModeStrategy.AcceptsClientMode() check after resolution and classification in the authorization flow (/authorize path)
-- [ ] T048a [US2] Integrate ModeStrategy.AcceptsClientMode() check in the token flow (/token path): client credentials grant and authorization code exchange
-- [ ] T048b [P] [US2] Write unit tests for mode enforcement on /token path: client credentials and authorization code exchange rejected in wrong mode, accepted in correct mode
-- [ ] T049 [US2] Return actionable error messages for mode rejection (local not supported in proxy, proxy not supported in local)
-- [ ] T050 [US2] Ensure JWKS endpoint served in local and hybrid modes, not in proxy mode
-- [ ] T051 [US2] Ensure OAuth2 metadata endpoint reflects active mode capabilities (hybrid = union)
+- [x] T046 [US2] Implement universal client resolver with format detection (URL/UUID/invalid) in internal/domain/oauth2/client_resolver.go
+- [x] T047 [US2] Add CIMD agent UUID rejection: after resolving by UUID, reject if agent has client_uris in internal/domain/oauth2/client_resolver.go
+- [x] T048 [US2] Integrate ModeStrategy.AcceptsClientMode() check after resolution and classification in the authorization flow (/authorize path)
+- [x] T048a [US2] Integrate ModeStrategy.AcceptsClientMode() check in the token flow (/token path): client credentials grant and authorization code exchange
+- [x] T048b [P] [US2] Write unit tests for mode enforcement on /token path: client credentials and authorization code exchange rejected in wrong mode, accepted in correct mode
+- [x] T049 [US2] Return actionable error messages for mode rejection (local not supported in proxy, proxy not supported in local)
+- [x] T050 [US2] Ensure JWKS endpoint served in local and hybrid modes, not in proxy mode
+- [x] T051 [US2] Ensure OAuth2 metadata endpoint reflects active mode capabilities (hybrid = union)
 
 **Checkpoint**: US2 fully functional — universal resolution, classification, mode enforcement working
 
@@ -192,14 +192,14 @@
 
 ### Tests for User Story 4
 
-- [ ] T056 [P] [US4] Write unit test verifying builder produces correct strategy set for each mode in internal/app/builder_test.go
+- [x] T056 [P] [US4] Write unit test verifying builder produces correct strategy set for each mode in internal/app/builder_test.go
 
 ### Implementation for User Story 4
 
-- [ ] T057 [US4] Implement dispatching AuthorizationProceedStrategy for hybrid mode in internal/adapters/http/enduser/proceed_strategy.go
-- [ ] T058 [US4] Implement dispatching TokenGrantStrategy for hybrid mode in internal/adapters/http/enduser/token_grant_strategy.go
-- [ ] T059 [US4] Update builder to wire hybrid mode: create both proxy+local strategies, wrap in dispatching strategies in internal/app/builder.go
-- [ ] T060 [US4] Verify no runtime `if mode ==` checks exist in handler or service code (structural review)
+- [x] T057 [US4] Implement dispatching AuthorizationProceedStrategy for hybrid mode in internal/adapters/http/enduser/proceed_strategy.go
+- [x] T058 [US4] Implement dispatching TokenGrantStrategy for hybrid mode in internal/adapters/http/enduser/token_grant_strategy.go
+- [x] T059 [US4] Update builder to wire hybrid mode: create both proxy+local strategies, wrap in dispatching strategies in internal/app/builder.go
+- [x] T060 [US4] Verify no runtime `if mode ==` checks exist in handler or service code (structural review)
 
 **Checkpoint**: US4 fully functional — mode wiring is pure strategy pattern
 
@@ -213,32 +213,32 @@
 
 #### Design Phase Verification
 
-- [ ] T061 Verify domain model design documented in ARCHITECTURE.md Glossary (Principle V)
-- [ ] T062 Verify configuration design YAML examples exist in examples/config/ (Principle VII)
-- [ ] T063 Verify examples/config/README.md references new config (Principle VII)
-- [ ] T064 Verify API designs documented in /api/enduser/openapi.yaml (Principles IV, X)
-- [ ] T065 Verify user/stakeholder confirmed API behavioral changes (Principle X)
-- [ ] T066 Verify no DB changes needed confirmed (Principle IX)
-- [ ] T067 Verify E2E acceptance tests in tests/e2e/ for all 21 behavioral spec scenarios (Principle XIII — US4 structural scenarios verified via unit/review, not E2E)
-- [ ] T068 Verify E2E tests failed semantically before implementation (Principle XIII)
+- [x] T061 Verify domain model design documented in ARCHITECTURE.md Glossary (Principle V)
+- [x] T062 Verify configuration design YAML examples exist in examples/config/ (Principle VII)
+- [x] T063 Verify examples/config/README.md references new config (Principle VII)
+- [x] T064 Verify API designs documented in /api/enduser/openapi.yaml (Principles IV, X)
+- [x] T065 Verify user/stakeholder confirmed API behavioral changes (Principle X)
+- [x] T066 Verify no DB changes needed confirmed (Principle IX)
+- [x] T067 Verify E2E acceptance tests in tests/e2e/ for all 21 behavioral spec scenarios (Principle XIII — US4 structural scenarios verified via unit/review, not E2E)
+- [x] T068 Verify E2E tests failed semantically before implementation (Principle XIII)
 
 #### Implementation Phase Verification
 
-- [ ] T069 [P] Verify API implementation matches confirmed OpenAPI specification
-- [ ] T070 Update ARCHITECTURE.md with mode strategy pattern and ClientMode classification
-- [ ] T071 [P] Verify configuration uses unified config port (not custom loading)
-- [ ] T072 [P] Verify Helm chart updated with new config structure
-- [ ] T073 Verify security: mode enforcement is strict, fail closed, no bypasses (Principle I)
-- [ ] T074 Verify domain logic uses ports/interfaces — ModeStrategy is domain (AcceptsClientMode), dispatching is adapter (Principle VI)
-- [ ] T075 Verify unit tests written first and failed before implementation (Principle VIII)
-- [ ] T076 Verify E2E tests map 1:1 to the 21 behavioral spec scenarios (US1-US3); US4's 2 structural scenarios verified via unit tests in builder_test.go (Principle XIII)
-- [ ] T077 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
-- [ ] T078 Run full unit test suite: `just test` (all tests must pass)
+- [x] T069 [P] Verify API implementation matches confirmed OpenAPI specification
+- [x] T070 Update ARCHITECTURE.md with mode strategy pattern and ClientMode classification
+- [x] T071 [P] Verify configuration uses unified config port (not custom loading)
+- [x] T072 [P] Verify Helm chart updated with new config structure
+- [x] T073 Verify security: mode enforcement is strict, fail closed, no bypasses (Principle I)
+- [x] T074 Verify domain logic uses ports/interfaces — ModeStrategy is domain (AcceptsClientMode), dispatching is adapter (Principle VI)
+- [x] T075 Verify unit tests written first and failed before implementation (Principle VIII)
+- [x] T076 Verify E2E tests map 1:1 to the 21 behavioral spec scenarios (US1-US3); US4's 2 structural scenarios verified via unit tests in builder_test.go (Principle XIII)
+- [x] T077 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
+- [x] T078 Run full unit test suite: `just test` (all tests must pass)
 
 ### Additional Polish
 
-- [ ] T079 Update docs/configuration.md with new mode names and hybrid mode documentation
-- [ ] T080 Remove any remaining references to `issue_token` in documentation
+- [x] T079 Update docs/configuration.md with new mode names and hybrid mode documentation
+- [x] T080 Remove any remaining references to `issue_token` in documentation
 
 ---
 

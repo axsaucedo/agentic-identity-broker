@@ -191,7 +191,6 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     ptr.To(id.ClientID("local-agent")),
 				DisplayName:  "Local Agent",
 				Description:  "Test agent for local mode",
 				RedirectURIs: []string{"https://example.com/cb"},
@@ -299,7 +298,6 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "CIMD Agent",
 				Description: "Agent with URL client_id",
@@ -328,9 +326,8 @@ var _ = Describe("Mode Configuration: Proxy vs Local vs Local+CIMD", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:           id.NewAgentID(),
-				ClientID:     ptr.To(id.ClientID("plain-agent")),
 				DisplayName:  "Plain Agent",
-				Description:  "Non-URL client_id in CIMD mode",
+				Description:  "Local-mode agent in CIMD mode, resolved by UUID",
 				RedirectURIs: []string{"https://example.com/cb"},
 				CreatedAt:    now,
 				UpdatedAt:    now,

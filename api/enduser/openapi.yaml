@@ -1575,6 +1575,10 @@ paths:
         Clients use these keys to verify the signatures of tokens issued by the broker.
         Only public key material is included — private keys are never exposed.
 
+        **Mode availability**: This endpoint is served in `local` and `hybrid` modes only.
+        In `proxy` mode, the upstream OAuth2 server is the issuer, so its JWKS is used.
+        Requests to this endpoint in proxy mode return 404.
+
         **Caching**: Responses include `Cache-Control: public, max-age=300` to allow
         clients to cache the key set for 5 minutes. Clients should respect this header
         and implement key rotation by periodically refreshing the JWKS.
@@ -1620,6 +1624,13 @@ paths:
         Returns the broker's OAuth2 authorization server metadata as defined
         in RFC 8414. This enables dynamic client discovery of the broker's
         OAuth2 capabilities and endpoints.
+
+        **Mode-specific behavior**:
+        - `proxy` mode: `issuer` reflects the upstream OAuth2 server. `jwks_uri` is absent.
+        - `local` mode: `issuer` is the broker's own public URL. `jwks_uri` is present.
+        - `hybrid` mode: `issuer` is the broker's public URL. `jwks_uri` is present (both
+          proxy agents forwarded upstream and local/CIMD agents served locally). The metadata
+          reflects the union of capabilities for both proxy and local grant types.
 
         **Caching**: Responses include `Cache-Control: public, max-age=3600` to allow
         clients to cache metadata for 1 hour.

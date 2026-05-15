@@ -857,8 +857,8 @@ func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http
 
 // flexibleAgentRepo is a configurable stub for hybrid dispatch tests.
 type flexibleAgentRepo struct {
-	getAgent        *storage.Agent
-	getErr          error
+	getAgent         *storage.Agent
+	getErr           error
 	byClientURIAgent *storage.Agent
 	byClientURIErr   error
 }
@@ -878,6 +878,84 @@ func (r *flexibleAgentRepo) GetByClientURI(_ context.Context, _ string) (*storag
 }
 func (r *flexibleAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
 	return false, nil
+}
+
+// T048b: localGrantStrategy rejects ProxyClient agents (those with an upstream ClientID).
+// Applies to both client_credentials and authorization_code grants.
+func TestLocalGrantStrategy_RejectsProxyClient(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000011")
+
+	// Agent with ClientID set → ProxyClient mode.
+	proxyRepo := &stubAgentRepo{
+		agent: &storage.Agent{
+			ID:       agentID,
+			ClientID: ptr.To(id.ClientID("upstream-client-id")),
+		},
+	}
+	minting := fixedMinting(&ports.TokenResponse{AccessToken: "tok", TokenType: "Bearer", ExpiresIn: 3600}, nil)
+	strategy := NewLocalGrantStrategy(minting, proxyRepo, nil)
+
+	t.Run("client_credentials rejected for ProxyClient", func(t *testing.T) {
+		body := strings.NewReader("grant_type=client_credentials&client_id=" + agentID.String() + "&client_secret=secret")
+		req := httptest.NewRequest("POST", "/oauth2/token", body)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req))
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		var resp map[string]interface{}
+		_ = json.NewDecoder(w.Body).Decode(&resp)
+		assert.Equal(t, "invalid_client", resp["error"])
+	})
+
+	t.Run("authorization_code rejected for ProxyClient", func(t *testing.T) {
+		body := strings.NewReader("grant_type=authorization_code&client_id=" + agentID.String() + "&code=abc123")
+		req := httptest.NewRequest("POST", "/oauth2/token", body)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		strategy.HandleTokenGrant(w, req, "authorization_code", parseForm(req))
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		var resp map[string]interface{}
+		_ = json.NewDecoder(w.Body).Decode(&resp)
+		assert.Equal(t, "invalid_client", resp["error"])
+	})
+}
+
+// T048b: localGrantStrategy accepts LocalClient agents (no upstream ClientID, no ClientURIs).
+// The minting strategy is reached and returns a token response.
+func TestLocalGrantStrategy_AcceptsLocalClient(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000012")
+
+	// Agent with neither ClientID nor ClientURIs → LocalClient mode.
+	localRepo := &stubAgentRepo{
+		agent: &storage.Agent{
+			ID:          agentID,
+			DisplayName: "Local Agent",
+		},
+	}
+	expected := &ports.TokenResponse{AccessToken: "local-tok", TokenType: "Bearer", ExpiresIn: 3600}
+	strategy := NewLocalGrantStrategy(fixedMinting(expected, nil), localRepo, nil)
+
+	body := strings.NewReader("grant_type=client_credentials&client_id=" + agentID.String() + "&client_secret=secret")
+	req := httptest.NewRequest("POST", "/oauth2/token", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	assert.Equal(t, "local-tok", resp["access_token"])
+}
+
+// parseForm parses the form body from a request (re-reads body, for test helpers only).
+func parseForm(r *http.Request) url.Values {
+	_ = r.ParseForm()
+	return r.Form
 }
 
 // TestHybridTokenGrant_EmptyClientIDReturns400 ensures missing client_id is rejected with
@@ -903,4 +981,3 @@ func TestHybridTokenGrant_EmptyClientIDReturns400(t *testing.T) {
 	_ = json.NewDecoder(w.Body).Decode(&body)
 	assert.Equal(t, "invalid_request", body["error"])
 }
-

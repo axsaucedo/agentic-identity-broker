@@ -13,7 +13,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -55,7 +54,6 @@ var _ = Describe("CIMD Full Browser Authorization Flow", func() {
 		now := time.Now()
 		cimdAgent := &storage.Agent{
 			ID:          id.NewAgentID(),
-			ClientID:    ptr.To(id.ClientID(cimdClientURL)),
 			ClientURIs:  []string{cimdClientURL},
 			DisplayName: "CIMD Browser Flow Agent",
 			Description: "Agent for full browser CIMD authorization flow test",

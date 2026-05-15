@@ -58,6 +58,19 @@ func TestSetupEnduserRoutes_ConsentCSRFTokenRejectsDifferentPrincipalEvenWithSam
 	require.Equal(t, http.StatusForbidden, postResp.Code)
 }
 
+// T045a: JWKS route is absent (404) when JWKS handler is nil (proxy mode).
+// When h.JWKS != nil the route is registered — verified by local/hybrid E2E tests.
+func TestSetupEnduserRoutes_JWKSRouteAbsentWhenHandlerNil(t *testing.T) {
+	router := chi.NewRouter()
+	routing.SetupEnduserRoutes(router, &app.EnduserHandlers{}, routing.EnduserRouteConfig{})
+
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/jwks.json", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func newEnduserConsentRouter(t *testing.T) (http.Handler, string) {
 	t.Helper()
 

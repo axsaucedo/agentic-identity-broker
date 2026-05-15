@@ -16,7 +16,6 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
@@ -65,7 +64,6 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://10.0.0.1/client")),
 				DisplayName: "RFC1918 Agent",
 				Description: "E2E test agent for private-IP SSRF scenario",
 				ClientURIs:  []string{"https://10.0.0.1/client"},
@@ -103,7 +101,6 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://127.0.0.1/client")),
 				DisplayName: "Loopback Agent",
 				Description: "E2E test agent for loopback SSRF scenario",
 				ClientURIs:  []string{"https://127.0.0.1/client"},
@@ -141,7 +138,6 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID("https://169.254.169.254/metadata")),
 				DisplayName: "Link-Local Agent",
 				Description: "E2E test agent for link-local SSRF scenario",
 				ClientURIs:  []string{"https://169.254.169.254/metadata"},
@@ -239,7 +235,6 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Oversized CIMD Agent",
 				Description: "E2E test agent for oversized CIMD response scenario",
@@ -308,7 +303,6 @@ var _ = Describe("CIMD SSRF Protection", func() {
 			now := time.Now()
 			agent := &storage.Agent{
 				ID:          id.NewAgentID(),
-				ClientID:    ptr.To(id.ClientID(clientURL)),
 				ClientURIs:  []string{clientURL},
 				DisplayName: "Timeout CIMD Agent",
 				Description: "E2E test agent for CIMD timeout scenario",

@@ -351,6 +351,18 @@ type LocalModeConfig struct {
 	TokenClaimsExpression string        `mapstructure:"token_claims_expression"`
 }
 
+// OAuthServerMode is the enumeration of valid OAuth2 server operating modes.
+type OAuthServerMode string
+
+const (
+	// OAuthServerModeProxy forwards all requests to an upstream OAuth2 server.
+	OAuthServerModeProxy OAuthServerMode = "proxy"
+	// OAuthServerModeLocal issues tokens locally (replaces deprecated "issue_token").
+	OAuthServerModeLocal OAuthServerMode = "local"
+	// OAuthServerModeHybrid accepts proxy, CIMD, and local clients in a single deployment.
+	OAuthServerModeHybrid OAuthServerMode = "hybrid"
+)
+
 // OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
 type OAuth2AuthServerConfig struct {
 	Mode  string          `mapstructure:"mode"`

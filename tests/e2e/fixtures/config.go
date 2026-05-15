@@ -428,6 +428,35 @@ func SignedJWTConfigWithIssuer(jwksURL, issuer string) *ports.Config {
 	return config
 }
 
+// HybridConfig returns a config for hybrid mode E2E testing.
+// Both proxy and local sections are required by hybrid mode validation.
+func HybridConfig(upstreamURL string) *ports.Config {
+	config := DefaultOAuth2Config()
+	config.OAuth2AuthServer.Mode = "hybrid"
+	config.OAuth2AuthServer.Proxy.UpstreamIssuerURI = upstreamURL
+	config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint = upstreamURL + "/oauth/authorize"
+	config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint = upstreamURL + "/oauth/token"
+	config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds = 30
+	config.OAuth2AuthServer.Local.TokenTTL = time.Hour
+	return config
+}
+
+// HybridConfigWithCIMD returns a hybrid mode config with CIMD support enabled.
+func HybridConfigWithCIMD(upstreamURL string) *ports.Config {
+	config := HybridConfig(upstreamURL)
+	config.OAuth2AuthServer.CIMD = ports.CIMDConfig{
+		Enabled:          true,
+		FetchTimeout:     5 * time.Second,
+		MaxResponseBytes: 5120,
+		Cache: ports.CIMDCacheConfig{
+			MinTTL:     60 * time.Second,
+			MaxTTL:     1 * time.Hour,
+			MaxEntries: 1000,
+		},
+	}
+	return config
+}
+
 // LocalConfig returns a config for local mode E2E testing.
 // Uses in-memory storage and encryption, with a test issuer URI.
 // Upstream OAuth2 fields are cleared (not needed in local mode).
