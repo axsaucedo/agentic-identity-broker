@@ -102,14 +102,19 @@ data:
     {{- $proxyVals := .Values.broker.oauth2AuthorizationServer.proxy }}
     {{- $localVals := .Values.broker.oauth2AuthorizationServer.local }}
     {{- $macVals := .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
-    {{- if or $oauth2Mode $proxyVals.upstreamIssuerUri $proxyVals.upstreamAuthorizeEndpoint $proxyVals.upstreamTokenEndpoint $proxyVals.upstreamTimeoutSeconds $localVals.tokenTtl $localVals.tokenClaimsExpression $macVals.enabled }}
+    {{- /* upstreamTimeoutSeconds is excluded from the guard: its default (10) would always trigger. */}}
+    {{- if or $oauth2Mode $proxyVals.upstreamIssuerUri $proxyVals.upstreamAuthorizeEndpoint $proxyVals.upstreamTokenEndpoint $localVals.tokenTtl $localVals.tokenClaimsExpression $macVals.enabled $macVals.agentIdParamName $macVals.agentIdClaimName }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
       mode: {{ $oauth2Mode }}
+      {{- with .Values.broker.oauth2AuthorizationServer.supportedResponseTypes }}
       supported_response_types:
-        {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedResponseTypes | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.broker.oauth2AuthorizationServer.supportedGrantTypes }}
       supported_grant_types:
-        {{- toYaml .Values.broker.oauth2AuthorizationServer.supportedGrantTypes | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
       multi_agent_client:
         enabled: {{ .enabled }}

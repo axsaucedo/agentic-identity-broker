@@ -791,7 +791,7 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 
 | Option | Type | Default | Valid Values | Required? | Environment Variable | CLI Flag | Description |
 |--------|------|---------|--------------|-----------|----------------------|----------|-------------|
-| `oauth2.auth_server.mode` | enum | `proxy` | `proxy`, `local`, `hybrid` | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE` | `--oauth2.auth-server.mode` | Operating mode. `proxy` forwards to upstream; `local` mints tokens locally; `hybrid` supports both. |
+| `oauth2.auth_server.mode` | enum | — | `proxy`, `local`, `hybrid` | Yes (if any auth server field is set) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE` | — | Operating mode. `proxy` forwards to upstream; `local` mints tokens locally; `hybrid` supports both. |
 | `oauth2.auth_server.proxy.upstream_issuer_uri` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI` | — | Upstream OAuth2 issuer URI. Used for proxy path routing. |
 | `oauth2.auth_server.proxy.upstream_authorize_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT` | — | Upstream authorization endpoint. |
 | `oauth2.auth_server.proxy.upstream_token_endpoint` | string | — | Valid HTTPS URI | Yes (if `proxy` or `hybrid`) | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT` | — | Upstream token endpoint. |

@@ -440,13 +440,10 @@ broker:
       # -- Upstream request timeout (seconds)
       upstreamTimeoutSeconds: 10
 
-    # -- Supported OAuth2 response types
-    supportedResponseTypes:
-      - code
-    # -- Supported OAuth2 grant types
-    supportedGrantTypes:
-      - authorization_code
-      - refresh_token
+    # -- Supported OAuth2 response types (empty = use mode-specific defaults: ["code"])
+    supportedResponseTypes: []
+    # -- Supported OAuth2 grant types (empty = use mode-specific defaults per mode)
+    supportedGrantTypes: []
     # Client ID Metadata Document (CIMD) support
     # Enables AI agents to identify using HTTPS URLs as client_id.
     cimd:
