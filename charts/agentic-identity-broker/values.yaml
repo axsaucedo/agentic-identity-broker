@@ -437,8 +437,8 @@ broker:
       upstreamAuthorizeEndpoint: ""
       # -- Upstream token endpoint
       upstreamTokenEndpoint: ""
-      # -- Upstream request timeout (seconds)
-      upstreamTimeoutSeconds: 10
+      # -- Upstream request timeout (seconds, 0 = use default of 30s)
+      upstreamTimeoutSeconds: 0
 
     # -- Supported OAuth2 response types (empty = use mode-specific defaults: ["code"])
     supportedResponseTypes: []

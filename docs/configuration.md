@@ -781,7 +781,7 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 
 **Description**: Controls the broker's OAuth2 operating mode. Three symmetric modes are supported:
 
-- **`proxy`** (default): OAuth2 requests are forwarded to an upstream authorization server. The broker acts as a transparent proxy — it handles consent and delegation, then routes the final authorization to the upstream. No local token issuance; no JWKS endpoint.
+- **`proxy`**: OAuth2 requests are forwarded to an upstream authorization server. The broker acts as a transparent proxy — it handles consent and delegation, then routes the final authorization to the upstream. No local token issuance; no JWKS endpoint.
 - **`local`**: The broker acts as a standalone OAuth2 authorization server, minting its own JWT access tokens signed with managed asymmetric keys. Supports `client_credentials` and `authorization_code` (with PKCE) grant types, and exposes RFC 8414 discovery and JWKS endpoints.
 - **`hybrid`**: Both proxy and local paths coexist. Agents are classified by their properties: agents with an upstream `ClientID` are routed to the proxy path; local agents (no `ClientID`, no `client_uris`) and CIMD agents (`client_uris` set) are issued local tokens. Requires both `proxy` and `local` configuration sections.
 
@@ -798,9 +798,11 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 | `oauth2.auth_server.local.token_ttl` | duration | `1h` | Go duration (e.g. `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_TTL` | — | Validity period for locally issued JWT access tokens. |
 | `oauth2.auth_server.local.token_claims_expression` | string | `""` | CEL expression | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_CLAIMS_EXPRESSION` | — | CEL expression to inject custom claims into issued JWTs. |
 
+**Default**: The OAuth2 authorization server is **disabled** when `mode` is not set. All three modes must be enabled explicitly. The broker will reject startup if any auth server field is set without a valid `mode`.
+
 **Startup validation**: The broker validates configuration at startup and rejects incompatible combinations — proxy-only fields in local mode, local-only fields in proxy mode, or missing sections in hybrid mode.
 
-**Proxy mode (default)**:
+**Proxy mode**:
 ```yaml
 oauth2:
   auth_server:

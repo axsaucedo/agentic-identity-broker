@@ -102,8 +102,8 @@ data:
     {{- $proxyVals := .Values.broker.oauth2AuthorizationServer.proxy }}
     {{- $localVals := .Values.broker.oauth2AuthorizationServer.local }}
     {{- $macVals := .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
-    {{- /* upstreamTimeoutSeconds is excluded from the guard: its default (10) would always trigger. */}}
-    {{- if or $oauth2Mode $proxyVals.upstreamIssuerUri $proxyVals.upstreamAuthorizeEndpoint $proxyVals.upstreamTokenEndpoint $localVals.tokenTtl $localVals.tokenClaimsExpression $macVals.enabled $macVals.agentIdParamName $macVals.agentIdClaimName }}
+    {{- $oauth2Srv := .Values.broker.oauth2AuthorizationServer }}
+    {{- if or $oauth2Mode $proxyVals.upstreamIssuerUri $proxyVals.upstreamAuthorizeEndpoint $proxyVals.upstreamTokenEndpoint $proxyVals.upstreamTimeoutSeconds $localVals.tokenTtl $localVals.tokenClaimsExpression $macVals.enabled $macVals.agentIdParamName $macVals.agentIdClaimName $oauth2Srv.supportedResponseTypes $oauth2Srv.supportedGrantTypes }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
       mode: {{ $oauth2Mode }}
