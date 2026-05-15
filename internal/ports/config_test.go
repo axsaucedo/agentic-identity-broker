@@ -271,6 +271,23 @@ func TestOAuth2AuthServerConfig_Validate_IssueTokenDeprecation(t *testing.T) {
 	})
 }
 
+// T036a: empty mode defaults to proxy when other proxy fields are provided.
+func TestOAuth2AuthServerConfig_Validate_EmptyModeDefaultsToProxy(t *testing.T) {
+	t.Run("empty mode with proxy fields defaults to proxy — no error", func(t *testing.T) {
+		cfg := OAuth2AuthServerConfig{
+			Mode: "",
+			Proxy: ProxyModeConfig{
+				UpstreamIssuerURI:         "https://issuer.example.com",
+				UpstreamAuthorizeEndpoint: "https://issuer.example.com/authorize",
+				UpstreamTokenEndpoint:     "https://issuer.example.com/token",
+			},
+		}
+		err := cfg.Validate()
+		assert.NoError(t, err)
+		assert.Equal(t, "proxy", cfg.Mode)
+	})
+}
+
 // T052-T053: CIMD gating by mode.
 func TestOAuth2AuthServerConfig_Validate_CIMDGating(t *testing.T) {
 	t.Run("CIMD enabled in proxy mode — error", func(t *testing.T) {

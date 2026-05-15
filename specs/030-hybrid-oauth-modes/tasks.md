@@ -46,33 +46,33 @@
 
 ### Phase 2a: Domain Model & Glossary
 
-- [ ] T009 Add `OAuthServerMode`, `ClientMode`, `ModeStrategy` domain terms to ARCHITECTURE.md Glossary section
-- [ ] T010 [P] Document mode strategy pattern (proxy/local/hybrid acceptance rules) in ARCHITECTURE.md
+- [x] T009 Add `OAuthServerMode`, `ClientMode`, `ModeStrategy` domain terms to ARCHITECTURE.md Glossary section
+- [x] T010 [P] Document mode strategy pattern (proxy/local/hybrid acceptance rules) in ARCHITECTURE.md
 
 **Checkpoint**: Domain model documented
 
 ### Phase 2b: Configuration Design
 
-- [ ] T011 Create example YAML for hybrid mode in examples/config/oauth2-hybrid-mode.yaml
-- [ ] T012 [P] Update examples/config/oauth2-server-mode.yaml to use `mode: local` with nested sections
-- [ ] T013 [P] Update examples/config/README.md to reference new hybrid mode configuration
-- [ ] T014 [P] Update charts/agentic-identity-broker/values.yaml with nested proxy/local/cimd config structure
-- [ ] T014a [P] Update charts/agentic-identity-broker/templates/configmap.yaml to render nested mode config
-- [ ] T014b [P] Update charts/agentic-identity-broker/values.schema.json to validate new mode structure (if exists)
-- [ ] T014c [P] Update charts/agentic-identity-broker/README.md with new config parameter documentation
+- [x] T011 Create example YAML for hybrid mode in examples/config/oauth2-hybrid-mode.yaml
+- [x] T012 [P] Update examples/config/oauth2-server-mode.yaml to use `mode: local` with nested sections
+- [x] T013 [P] Update examples/config/README.md to reference new hybrid mode configuration
+- [x] T014 [P] Update charts/agentic-identity-broker/values.yaml with nested proxy/local/cimd config structure
+- [x] T014a [P] Update charts/agentic-identity-broker/templates/configmap.yaml to render nested mode config
+- [x] T014b [P] Update charts/agentic-identity-broker/values.schema.json to validate new mode structure (if exists)
+- [x] T014c [P] Update charts/agentic-identity-broker/README.md with new config parameter documentation
 
 **Checkpoint**: Configuration designed with YAML examples and Helm chart updated
 
 ### Phase 2c: API Design
 
-- [ ] T015 Update /api/enduser/openapi.yaml to document mode-specific behavior (JWKS availability, metadata differences per mode)
-- [ ] T016 [P] Get user/stakeholder confirmation for API behavioral changes (hybrid mode accepting all client modes)
+- [x] T015 Update /api/enduser/openapi.yaml to document mode-specific behavior (JWKS availability, metadata differences per mode)
+- [x] T016 [P] Get user/stakeholder confirmation for API behavioral changes (hybrid mode accepting all client modes)
 
 **Checkpoint**: APIs designed and confirmed
 
 ### Phase 2d: Database Design
 
-- [ ] T017 Confirm no database changes needed (FR-017 — no new entity fields, classification from existing properties)
+- [x] T017 Confirm no database changes needed (FR-017 — no new entity fields, classification from existing properties)
 
 **Checkpoint**: No migrations required — confirmed
 
@@ -93,17 +93,17 @@
 
 **Purpose**: Core domain types and interfaces that ALL user stories depend on
 
-- [ ] T024 Define `ClientMode` type and constants (ProxyClient, CIMDClient, LocalClient) in internal/domain/storage/agent.go
-- [ ] T025 Implement `Agent.ClientMode() ClientMode` method on Agent entity in internal/domain/storage/agent.go
-- [ ] T026 [P] Write unit tests for Agent.ClientMode() classification logic including error/panic when both ClientID and client_uris are set (defense-in-depth) in internal/domain/storage/agent_test.go
-- [ ] T026a [P] Add storage-layer validation: reject Agent create/update when both ClientID and client_uris are set in internal/adapters/storage/memory/ and internal/adapters/storage/postgres/ (FR-004 defense-in-depth)
-- [ ] T026b [P] Write unit tests for storage-layer mutual exclusivity rejection in internal/adapters/storage/memory/ agent tests
-- [ ] T027 Define `OAuthServerMode` type (proxy, local, hybrid) in internal/ports/config.go
-- [ ] T028 Define `ModeStrategy` interface (AcceptsClientMode(ClientMode) bool) in internal/domain/oauth2/mode_strategy.go
-- [ ] T029 [P] Implement proxyModeStrategy in internal/domain/oauth2/mode_strategy.go
-- [ ] T030 [P] Implement localModeStrategy in internal/domain/oauth2/mode_strategy.go
-- [ ] T031 [P] Implement hybridModeStrategy in internal/domain/oauth2/mode_strategy.go
-- [ ] T032 Write unit tests for all three ModeStrategy implementations in internal/domain/oauth2/mode_strategy_test.go
+- [x] T024 Define `ClientMode` type and constants (ProxyClient, CIMDClient, LocalClient) in internal/domain/storage/agent.go (co-located with Agent entity since classification is an Agent property-derived concept)
+- [x] T025 Implement `Agent.ClientMode() ClientMode` method on Agent entity in internal/domain/storage/agent.go
+- [x] T026 [P] Write unit tests for Agent.ClientMode() classification logic including error/panic when both ClientID and client_uris are set (defense-in-depth) in internal/domain/storage/agent_test.go
+- [x] T026a [P] Add storage-layer validation: reject Agent create/update when both ClientID and client_uris are set in internal/adapters/storage/memory/ and internal/adapters/storage/postgres/ (FR-004 defense-in-depth)
+- [x] T026b [P] Write unit tests for storage-layer mutual exclusivity rejection in internal/adapters/storage/memory/ agent tests
+- [x] T027 Define `OAuthServerMode` type (proxy, local, hybrid) in internal/ports/config.go
+- [x] T028 Define `ModeStrategy` interface (AcceptsClientMode(ClientMode) bool) in internal/domain/oauth2/mode_strategy.go
+- [x] T029 [P] Implement proxyModeStrategy in internal/domain/oauth2/mode_strategy.go
+- [x] T030 [P] Implement localModeStrategy in internal/domain/oauth2/mode_strategy.go
+- [x] T031 [P] Implement hybridModeStrategy in internal/domain/oauth2/mode_strategy.go
+- [x] T032 Write unit tests for all three ModeStrategy implementations in internal/domain/oauth2/mode_strategy_test.go
 
 **Checkpoint**: Foundation ready — agent classification and mode strategies available for all user stories
 
@@ -117,19 +117,20 @@
 
 ### Tests for User Story 1
 
-- [ ] T033 [P] [US1] Write unit tests for config validation: proxy mode accepts proxy section, rejects local section in internal/ports/config_test.go
-- [ ] T034 [P] [US1] Write unit tests for config validation: local mode accepts local section, rejects proxy section in internal/ports/config_test.go
-- [ ] T035 [P] [US1] Write unit tests for config validation: hybrid mode requires both sections in internal/ports/config_test.go
-- [ ] T036 [P] [US1] Write unit test for `issue_token` deprecation error in internal/ports/config_test.go
+- [x] T033 [P] [US1] Write unit tests for config validation: proxy mode accepts proxy section, rejects local section in internal/ports/config_test.go
+- [x] T034 [P] [US1] Write unit tests for config validation: local mode accepts local section, rejects proxy section in internal/ports/config_test.go
+- [x] T035 [P] [US1] Write unit tests for config validation: hybrid mode requires both sections in internal/ports/config_test.go
+- [x] T036 [P] [US1] Write unit test for `issue_token` deprecation error in internal/ports/config_test.go
+- [x] T036a [P] [US1] Write unit test for missing mode field → clear error requiring explicit mode selection in internal/ports/config_test.go
 
 ### Implementation for User Story 1
 
-- [ ] T037 [US1] Restructure OAuth2AuthServerConfig with nested Proxy, Local, CIMD sections in internal/ports/config.go
-- [ ] T038 [US1] Implement mode validation: proxy requires Proxy section, forbids Local/CIMD in internal/ports/config.go
-- [ ] T039 [US1] Implement mode validation: local requires Local section, forbids Proxy in internal/ports/config.go
-- [ ] T040 [US1] Implement mode validation: hybrid requires both Proxy and Local sections in internal/ports/config.go
-- [ ] T041 [US1] Implement `issue_token` deprecation error with clear message in internal/ports/config.go
-- [ ] T042 [US1] Implement cross-mode field rejection with actionable error messages in internal/ports/config.go
+- [x] T037 [US1] Restructure OAuth2AuthServerConfig with nested Proxy, Local, CIMD sections in internal/ports/config.go
+- [x] T038 [US1] Implement mode validation: proxy requires Proxy section, forbids Local/CIMD in internal/ports/config.go
+- [x] T039 [US1] Implement mode validation: local requires Local section, forbids Proxy in internal/ports/config.go
+- [x] T040 [US1] Implement mode validation: hybrid requires both Proxy and Local sections in internal/ports/config.go
+- [x] T041 [US1] Implement `issue_token` deprecation error with clear message in internal/ports/config.go
+- [x] T042 [US1] Implement cross-mode field rejection with actionable error messages in internal/ports/config.go
 
 **Checkpoint**: US1 fully functional — three modes configurable, invalid configs rejected with clear errors
 
@@ -148,6 +149,7 @@
 - [x] T045 [P] [US2] Write unit tests for mode enforcement: proxy rejects local/CIMD, local rejects proxy agents in internal/domain/oauth2/mode_strategy_test.go
 - [x] T045a [P] [US2] Write unit test for JWKS endpoint availability: served in local/hybrid, not served in proxy mode
 - [x] T045b [P] [US2] Write unit test for metadata endpoint: hybrid mode reflects union of capabilities
+- [x] T045c [P] [US2] Write unit test verifying proxy agent tokens are returned as-is without re-signing (FR-008b, SR-004) in internal/adapters/http/enduser/proceed_strategy_test.go
 
 ### Implementation for User Story 2
 
@@ -172,13 +174,13 @@
 
 ### Tests for User Story 3
 
-- [ ] T052 [P] [US3] Write unit test: CIMD enabled in proxy mode → config rejection in internal/ports/config_test.go
-- [ ] T053 [P] [US3] Write unit test: CIMD enabled in local/hybrid mode → config accepted in internal/ports/config_test.go
+- [x] T052 [P] [US3] Write unit test: CIMD enabled in proxy mode → config rejection in internal/ports/config_test.go
+- [x] T053 [P] [US3] Write unit test: CIMD enabled in local/hybrid mode → config accepted in internal/ports/config_test.go
 
 ### Implementation for User Story 3
 
-- [ ] T054 [US3] Add CIMD-in-proxy-mode rejection to config validation in internal/ports/config.go
-- [ ] T055 [US3] Verify hybrid mode with CIMD: proxy agents unaffected by CIMD (no behavioral change needed — classification handles this)
+- [x] T054 [US3] Add CIMD-in-proxy-mode rejection to config validation in internal/ports/config.go
+- [x] T055 [US3] Verify hybrid mode with CIMD: proxy agents unaffected by CIMD (no behavioral change needed — classification handles this)
 
 **Checkpoint**: US3 fully functional — CIMD gated by mode
 

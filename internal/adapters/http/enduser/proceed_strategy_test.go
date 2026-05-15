@@ -40,6 +40,26 @@ func TestProxyProceedStrategy_RedirectsToDecisionURL(t *testing.T) {
 	assert.Equal(t, decision.RedirectURL, w.Header().Get("Location"))
 }
 
+// T045c: FR-008b / SR-004 — proxy proceed strategy passes the upstream authorize URL through as-is,
+// without modification or re-signing. The broker never alters the upstream redirect target.
+func TestProxyProceedStrategy_PassesThroughUpstreamURL(t *testing.T) {
+	strategy := NewProxyProceedStrategy()
+	w := httptest.NewRecorder()
+	r := newProceedRequest(t)
+
+	upstreamURL := "https://auth.upstream.example.com/authorize?client_id=upstream-abc&response_type=code&state=xyz&nonce=abc123&code_challenge=ABCDEF&code_challenge_method=S256"
+	decision := &ports.AuthorizationDecision{
+		Action:      "proceed",
+		RedirectURL: upstreamURL,
+	}
+	req := &ports.AuthorizationRequest{RedirectURI: "https://client.example.com/callback"}
+
+	strategy.HandleProceed(w, r, decision, req, id.NewPrincipal("user@example.com"))
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, upstreamURL, w.Header().Get("Location"), "proxy strategy must forward upstream URL verbatim without any transformation")
+}
+
 func TestLocalProceedStrategy_Success_RedirectsWithCode(t *testing.T) {
 	strategy := NewLocalProceedStrategy(&mockCodeIssuer{}, nil)
 	w := httptest.NewRecorder()
