@@ -22,6 +22,8 @@ const (
 	CIMDClient
 	// LocalClient: agent has neither ClientID nor ClientURIs — tokens are issued locally.
 	LocalClient
+	// AmbiguousClient: agent has both ClientID and ClientURIs set — invalid, must not proceed.
+	AmbiguousClient
 )
 
 // Agent represents an AI agent registered in the identity broker.
@@ -102,8 +104,11 @@ func (a *Agent) Validate() error {
 }
 
 // ClientMode returns the classification of this agent based on its registered properties.
-// ProxyClient when ClientID is set, CIMDClient when ClientURIs are set, LocalClient otherwise.
+// Returns AmbiguousClient when both ClientID and ClientURIs are set — callers must reject this.
 func (a Agent) ClientMode() ClientMode {
+	if a.ClientID != nil && len(a.ClientURIs) > 0 {
+		return AmbiguousClient
+	}
 	if a.ClientID != nil {
 		return ProxyClient
 	}

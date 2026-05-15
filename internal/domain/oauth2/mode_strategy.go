@@ -33,9 +33,11 @@ func (s *localModeStrategy) Name() string { return "local" }
 
 type hybridModeStrategy struct{}
 
-// NewHybridModeStrategy returns a ModeStrategy that accepts all client modes.
+// NewHybridModeStrategy returns a ModeStrategy that accepts all unambiguous client modes.
 func NewHybridModeStrategy() ModeStrategy { return &hybridModeStrategy{} }
 
-func (s *hybridModeStrategy) AcceptsClientMode(_ storage.ClientMode) bool { return true }
+func (s *hybridModeStrategy) AcceptsClientMode(mode storage.ClientMode) bool {
+	return mode != storage.AmbiguousClient
+}
 
 func (s *hybridModeStrategy) Name() string { return "hybrid" }

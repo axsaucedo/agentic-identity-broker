@@ -92,8 +92,9 @@ func (r *CIMDClientResolver) resolveOpaque(ctx context.Context, clientID id.Clie
 		return nil, &ports.ClientIDError{Code: "server_error", Desc: "Failed to validate client"}
 	}
 
-	// CIMD agents must be addressed by URL, not UUID.
-	if agent.ClientMode() == storage.CIMDClient {
+	// CIMD agents must be addressed by URL, not UUID. Ambiguous agents (both fields set) are invalid.
+	mode := agent.ClientMode()
+	if mode == storage.CIMDClient || mode == storage.AmbiguousClient {
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
 	}
 

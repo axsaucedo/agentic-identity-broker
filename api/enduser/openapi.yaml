@@ -1626,7 +1626,7 @@ paths:
         OAuth2 capabilities and endpoints.
 
         **Mode-specific behavior**:
-        - `proxy` mode: `issuer` reflects the upstream OAuth2 server. `jwks_uri` is absent.
+        - `proxy` mode: `issuer` is the broker's own public URL. `jwks_uri` is absent (tokens are signed by the upstream server).
         - `local` mode: `issuer` is the broker's own public URL. `jwks_uri` is present.
         - `hybrid` mode: `issuer` is the broker's public URL. `jwks_uri` is present (both
           proxy agents forwarded upstream and local/CIMD agents served locally). The metadata
