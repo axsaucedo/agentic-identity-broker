@@ -136,11 +136,11 @@ See [values.yaml](values.yaml) for the complete list of configuration options.
 | `broker.encryption.awsKms.dynamodbTableName` | DynamoDB table for branch keys | `IdentityBrokerEncryptionBranchKeys` |
 | `broker.encryption.awsKms.branchKeyTtl` | Branch key TTL | `1h` |
 | `broker.telemetry.enabled` | Enable OpenTelemetry tracing and metrics | `false` |
-| `broker.oauth2AuthorizationServer.mode` | Operation mode: `proxy`, `local`, or `hybrid`. Leave empty to disable. | `""` |
+| `broker.oauth2AuthorizationServer.mode` | Operation mode: `proxy`, `local`, or `hybrid`. Required. | `""` |
 | `broker.oauth2AuthorizationServer.proxy.upstreamIssuerUri` | Upstream OAuth2 issuer URI (required in proxy/hybrid mode) | `""` |
 | `broker.oauth2AuthorizationServer.proxy.upstreamAuthorizeEndpoint` | Upstream authorize endpoint | `""` |
 | `broker.oauth2AuthorizationServer.proxy.upstreamTokenEndpoint` | Upstream token endpoint | `""` |
-| `broker.oauth2AuthorizationServer.proxy.upstreamTimeoutSeconds` | Upstream request timeout (seconds) | `10` |
+| `broker.oauth2AuthorizationServer.proxy.upstreamTimeoutSeconds` | Upstream request timeout in seconds (0 = use application default of 30s) | `0` |
 | `broker.oauth2AuthorizationServer.local.tokenTtl` | Access token validity period (required in local/hybrid mode) | `""` |
 | `broker.oauth2AuthorizationServer.local.tokenClaimsExpression` | CEL expression for custom JWT claims | `""` |
 | `broker.telemetry.serviceName` | Service name reported in every telemetry signal | `agentic-identity-broker` |

@@ -103,10 +103,9 @@ data:
     {{- $localVals := .Values.broker.oauth2AuthorizationServer.local }}
     {{- $macVals := .Values.broker.oauth2AuthorizationServer.multiAgentClient }}
     {{- $oauth2Srv := .Values.broker.oauth2AuthorizationServer }}
-    {{- if or $oauth2Mode $proxyVals.upstreamIssuerUri $proxyVals.upstreamAuthorizeEndpoint $proxyVals.upstreamTokenEndpoint $proxyVals.upstreamTimeoutSeconds $localVals.tokenTtl $localVals.tokenClaimsExpression $macVals.enabled $macVals.agentIdParamName $macVals.agentIdClaimName $oauth2Srv.supportedResponseTypes $oauth2Srv.supportedGrantTypes }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
-      mode: {{ $oauth2Mode }}
+      mode: {{ required "broker.oauth2AuthorizationServer.mode is required (use 'proxy', 'local', or 'hybrid')" $oauth2Mode }}
       {{- with .Values.broker.oauth2AuthorizationServer.supportedResponseTypes }}
       supported_response_types:
         {{- toYaml . | nindent 8 }}
@@ -157,7 +156,6 @@ data:
         client_name_blocklist: {{ toJson .clientNameBlocklist }}
       {{- end }}
       {{- end }}
-    {{- end }}
 
     {{- with .Values.broker.tokenExchange }}
     # Token exchange configuration (RFC 8693)

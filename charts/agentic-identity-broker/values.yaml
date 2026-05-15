@@ -423,7 +423,7 @@ broker:
 
   # OAuth2 Authorization Server configuration
   oauth2AuthorizationServer:
-    # -- Operation mode: "proxy", "local", or "hybrid". Leave empty to disable OAuth2 server.
+    # -- Operation mode: "proxy", "local", or "hybrid". Required — the broker rejects an absent or empty value.
     # proxy: forward all requests to an upstream OAuth2 server (proxy.* required)
     # local: issue tokens locally (local.* required)
     # hybrid: serve both proxy and local agents (both proxy.* and local.* required)
@@ -437,7 +437,7 @@ broker:
       upstreamAuthorizeEndpoint: ""
       # -- Upstream token endpoint
       upstreamTokenEndpoint: ""
-      # -- Upstream request timeout (seconds, 0 = use default of 30s)
+      # -- Upstream request timeout in seconds (0 = use application default of 30s)
       upstreamTimeoutSeconds: 0
 
     # -- Supported OAuth2 response types (empty = use mode-specific defaults: ["code"])

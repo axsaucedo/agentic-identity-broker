@@ -126,7 +126,8 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 				},
 				Mode: "",
 			},
-			wantErr: true,
+			wantErr:  true,
+			errField: "oauth2_authorization_server.mode is required (use 'proxy', 'local', or 'hybrid')",
 		},
 	}
 

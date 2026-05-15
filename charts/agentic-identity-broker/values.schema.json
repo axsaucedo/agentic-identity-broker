@@ -655,8 +655,8 @@
           "properties": {
             "mode": {
               "type": "string",
-              "enum": ["", "proxy", "local", "hybrid"],
-              "description": "Operation mode: proxy, local, or hybrid. Leave empty to disable."
+              "enum": ["proxy", "local", "hybrid"],
+              "description": "Operation mode: proxy, local, or hybrid. Required."
             },
             "proxy": {
               "type": "object",
@@ -677,8 +677,8 @@
                 },
                 "upstreamTimeoutSeconds": {
                   "type": "integer",
-                  "minimum": 1,
-                  "description": "Upstream request timeout (seconds)"
+                  "minimum": 0,
+                  "description": "Upstream request timeout in seconds (0 = use application default of 30s)"
                 }
               }
             },
