@@ -273,7 +273,7 @@ func TestOAuth2AuthServerConfig_Validate_IssueTokenDeprecation(t *testing.T) {
 
 // T036a: empty mode defaults to proxy when other proxy fields are provided.
 func TestOAuth2AuthServerConfig_Validate_EmptyModeDefaultsToProxy(t *testing.T) {
-	t.Run("empty mode with proxy fields defaults to proxy — no error", func(t *testing.T) {
+	t.Run("empty mode with proxy fields returns error — mode is required", func(t *testing.T) {
 		cfg := OAuth2AuthServerConfig{
 			Mode: "",
 			Proxy: ProxyModeConfig{
@@ -283,8 +283,8 @@ func TestOAuth2AuthServerConfig_Validate_EmptyModeDefaultsToProxy(t *testing.T) 
 			},
 		}
 		err := cfg.Validate()
-		assert.NoError(t, err)
-		assert.Equal(t, "proxy", cfg.Mode)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mode is required")
 	})
 }
 

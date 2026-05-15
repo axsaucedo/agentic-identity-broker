@@ -49,6 +49,10 @@ func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*p
 		return nil, &ports.ClientIDError{Code: "server_error", Desc: "Failed to validate client"}
 	}
 
+	if agent.ClientMode() == storage.AmbiguousClient {
+		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
+	}
+
 	// Fetch and validate CIMD document
 	doc, err := r.cimdService.Resolve(ctx, rawURL, agent)
 	if err != nil {

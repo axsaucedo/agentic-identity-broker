@@ -411,7 +411,7 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 	}
 
 	if c.Mode == "" {
-		c.Mode = "proxy"
+		return c.newValidationError("oauth2_authorization_server.mode is required when any auth server field is set (use 'proxy', 'local', or 'hybrid')")
 	}
 
 	switch c.Mode {
