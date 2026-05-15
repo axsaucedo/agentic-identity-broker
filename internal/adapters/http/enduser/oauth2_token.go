@@ -82,11 +82,20 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.OAuth2Service == nil {
+		writeOAuth2ErrorJSON(w, http.StatusServiceUnavailable, "server_error", "OAuth2 authorization server not configured")
+		return
+	}
+
 	resolution, resolveErr := h.OAuth2Service.ResolveForTokenGrant(r.Context(), rawClientID)
 	if resolveErr != nil {
 		var clientErr *ports.ClientIDError
 		if errors.As(resolveErr, &clientErr) {
-			writeOAuth2ErrorJSON(w, http.StatusUnauthorized, clientErr.Code, clientErr.Desc)
+			status := http.StatusUnauthorized
+			if clientErr.Code == "server_error" {
+				status = http.StatusInternalServerError
+			}
+			writeOAuth2ErrorJSON(w, status, clientErr.Code, clientErr.Desc)
 		} else {
 			writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "client resolution failed")
 		}

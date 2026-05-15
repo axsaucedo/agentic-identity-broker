@@ -484,7 +484,7 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", issuer),
 		ResponseTypesSupported:            s.config.SupportedResponseTypes,
 		GrantTypesSupported:               s.config.SupportedGrantTypes,
-		TokenEndpointAuthMethodsSupported: []string{"client_secret_post", "client_secret_basic"},
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_post"},
 	}
 
 	// In local and hybrid modes, include JWKS URI and code challenge methods (both serve the JWKS endpoint).
