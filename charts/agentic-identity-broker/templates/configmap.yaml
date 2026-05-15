@@ -100,7 +100,8 @@ data:
 
     {{- $oauth2Mode := .Values.broker.oauth2AuthorizationServer.mode }}
     {{- $proxyVals := .Values.broker.oauth2AuthorizationServer.proxy }}
-    {{- if or $oauth2Mode $proxyVals.upstreamIssuerUri $proxyVals.upstreamAuthorizeEndpoint $proxyVals.upstreamTokenEndpoint }}
+    {{- $localVals := .Values.broker.oauth2AuthorizationServer.local }}
+    {{- if or $oauth2Mode $proxyVals.upstreamIssuerUri $proxyVals.upstreamAuthorizeEndpoint $proxyVals.upstreamTokenEndpoint $localVals.tokenTtl $localVals.tokenClaimsExpression }}
     # OAuth2 Authorization Server configuration
     oauth2_authorization_server:
       mode: {{ $oauth2Mode }}
