@@ -439,6 +439,30 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		}
 	})
 
+	t.Run("local mode with token-exchange defaults — Build() succeeds without upstream discovery", func(t *testing.T) {
+		// Mirrors the chart's packaged defaults: local mode + non-empty token exchange CEL expressions
+		// but no proxy config. The builder must not attempt OAuth2 endpoint discovery in this case.
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode:  "local",
+			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+		}
+		cfg.TokenExchange = ports.TokenExchangeConfig{
+			ClaimExtraction: ports.ClaimExtractionConfig{
+				PrincipalExpression: "subject_token.sub",
+				AgentIDExpression:   "resolveAgentIdByClientId(subject_token.azp)",
+			},
+			Authorization: ports.AuthorizationConfig{
+				Type: "cel",
+				CEL:  ports.CELAuthorizationConfig{Expression: "true"},
+			},
+		}
+		_, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in local mode with token-exchange defaults failed: %v", err)
+		}
+	})
+
 
 	t.Run("hybrid mode — JWKS handler is non-nil", func(t *testing.T) {
 		cfg := baseConfig(jweKey)

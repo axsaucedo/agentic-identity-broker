@@ -428,9 +428,10 @@ func (b *Builder) Build() (*App, error) {
 		b.config.OAuth2AuthServer.MultiAgentClient.Enabled,
 	)
 
-	// Create token exchange service if token exchange configuration is available
-	// Per Constitution Principle VII (Configuration-Driven Design): only create if configured
-	if b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
+	// Token exchange (RFC 8693) requires an upstream JWT issuer for JWKS validation.
+	// Skip initialization in local mode where proxy.upstream_issuer_uri is always empty.
+	if b.config.OAuth2AuthServer.Proxy.UpstreamIssuerURI != "" &&
+		b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
 		b.config.TokenExchange.Authorization.CEL.Expression != "" {
 		// Validate required dependencies
 		if app.ConsentService == nil {
