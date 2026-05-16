@@ -145,6 +145,16 @@ func (b *Builder) WithCIMDFetcher(f ports.CIMDFetcher) *Builder {
 	return b
 }
 
+// resolveUpstreamTimeout returns the effective timeout for the outbound HTTP client.
+// UpstreamTimeoutSeconds is 0 in local mode (validateLocalMode rejects any non-zero value),
+// so 0 maps to the application default of 30s to avoid unbounded deadlines.
+func resolveUpstreamTimeout(configuredSecs int) time.Duration {
+	if configuredSecs == 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(configuredSecs) * time.Second
+}
+
 func modeStrategyFor(mode string) oauth2service.ModeStrategy {
 	switch mode {
 	case "local":
@@ -382,15 +392,8 @@ func (b *Builder) Build() (*App, error) {
 	// Constitution Principle VII: Configuration-Driven Design
 	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
 
-	// Create HTTP client for token endpoint with configured timeout.
-	// UpstreamTimeoutSeconds is 0 in local mode (proxy block is rejected there),
-	// so fall back to the application default to avoid an unbounded deadline.
-	upstreamTimeoutSecs := b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds
-	if upstreamTimeoutSecs == 0 {
-		upstreamTimeoutSecs = 30
-	}
 	upstreamClient := &http.Client{
-		Timeout: time.Duration(upstreamTimeoutSecs) * time.Second,
+		Timeout: resolveUpstreamTimeout(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds),
 	}
 
 	// Wrap the HTTP transport with OTel instrumentation when tracing is enabled.

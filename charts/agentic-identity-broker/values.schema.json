@@ -655,7 +655,8 @@
           "properties": {
             "mode": {
               "type": "string",
-              "description": "Operation mode: 'proxy', 'local', or 'hybrid'. Required — rejected by the runtime when absent or empty."
+              "enum": ["proxy", "local", "hybrid"],
+              "description": "Operation mode: proxy, local, or hybrid. Required."
             },
             "proxy": {
               "type": "object",

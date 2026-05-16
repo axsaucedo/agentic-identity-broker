@@ -423,11 +423,11 @@ broker:
 
   # OAuth2 Authorization Server configuration
   oauth2AuthorizationServer:
-    # -- Operation mode: "proxy", "local", or "hybrid". Required — the broker rejects an absent or empty value.
+    # -- Operation mode: "proxy", "local", or "hybrid". Required.
     # proxy: forward all requests to an upstream OAuth2 server (proxy.* required)
-    # local: issue tokens locally (local.* required)
+    # local: issue tokens locally (no proxy config required; token TTL defaults to 1h)
     # hybrid: serve both proxy and local agents (both proxy.* and local.* required)
-    mode: ""
+    mode: "local"
 
     # -- Upstream OAuth2 server configuration (required in proxy/hybrid mode)
     proxy:
