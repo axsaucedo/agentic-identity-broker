@@ -382,10 +382,15 @@ func (b *Builder) Build() (*App, error) {
 	// Constitution Principle VII: Configuration-Driven Design
 	cfg := oauth2session.NewConfigFromPorts(b.config.ThirdPartyOAuth2, b.config.Server.EndUser.PublicURL)
 
-	// Create HTTP client for token endpoint with configured timeout
-	// Created early to support both OAuth2SessionService and TokenExchangeService
+	// Create HTTP client for token endpoint with configured timeout.
+	// UpstreamTimeoutSeconds is 0 in local mode (proxy block is rejected there),
+	// so fall back to the application default to avoid an unbounded deadline.
+	upstreamTimeoutSecs := b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds
+	if upstreamTimeoutSecs == 0 {
+		upstreamTimeoutSecs = 30
+	}
 	upstreamClient := &http.Client{
-		Timeout: time.Duration(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds) * time.Second,
+		Timeout: time.Duration(upstreamTimeoutSecs) * time.Second,
 	}
 
 	// Wrap the HTTP transport with OTel instrumentation when tracing is enabled.

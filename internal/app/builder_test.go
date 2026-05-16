@@ -439,6 +439,22 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		}
 	})
 
+	t.Run("local mode — OAuth2SessionService is non-nil with no proxy config", func(t *testing.T) {
+		cfg := baseConfig(jweKey)
+		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
+			Mode:  "local",
+			Local: ports.LocalModeConfig{TokenTTL: time.Hour},
+			// No Proxy fields — UpstreamTimeoutSeconds is 0; builder must apply a default timeout.
+		}
+		app, err := NewBuilder().WithConfig(cfg).WithStorage(newStorage(t)).WithLogger(logger).Build()
+		if err != nil {
+			t.Fatalf("Build() in local mode (no proxy config) failed: %v", err)
+		}
+		if app.OAuth2SessionService == nil {
+			t.Error("local mode must wire an OAuth2SessionService")
+		}
+	})
+
 	t.Run("hybrid mode — JWKS handler is non-nil", func(t *testing.T) {
 		cfg := baseConfig(jweKey)
 		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
