@@ -38,6 +38,7 @@ import (
 	domjwtauth "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwtauth"
 	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -155,11 +156,11 @@ func resolveUpstreamTimeout(configuredSecs int) time.Duration {
 	return time.Duration(configuredSecs) * time.Second
 }
 
-func modeStrategyFor(mode ports.OAuthServerMode) oauth2service.ModeStrategy {
+func modeStrategyFor(mode servermode.Mode) oauth2service.ModeStrategy {
 	switch mode {
-	case ports.OAuthServerModeLocal:
+	case servermode.Local:
 		return oauth2service.NewLocalModeStrategy()
-	case ports.OAuthServerModeHybrid:
+	case servermode.Hybrid:
 		return oauth2service.NewHybridModeStrategy()
 	default: // proxy
 		return oauth2service.NewProxyModeStrategy()
@@ -330,7 +331,7 @@ func (b *Builder) Build() (*App, error) {
 			TokenExchangeEnabled:      tokenExchangeEnabled,
 		}
 		// In local mode, set correct defaults for supported types
-		if b.config.OAuth2AuthServer.Mode == ports.OAuthServerModeLocal {
+		if b.config.OAuth2AuthServer.Mode == servermode.Local {
 			if len(oauth2Config.SupportedResponseTypes) == 0 {
 				oauth2Config.SupportedResponseTypes = []string{"code"}
 			}
@@ -680,7 +681,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	switch b.config.OAuth2AuthServer.Mode {
-	case ports.OAuthServerModeLocal:
+	case servermode.Local:
 		provider, err := buildLocalProvider()
 		if err != nil {
 			return nil, err
@@ -691,7 +692,7 @@ func (b *Builder) Build() (*App, error) {
 			"issuer_uri", b.config.Server.EndUser.PublicURL,
 			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
 		)
-	case ports.OAuthServerModeHybrid:
+	case servermode.Hybrid:
 		provider, err := buildLocalProvider()
 		if err != nil {
 			return nil, err

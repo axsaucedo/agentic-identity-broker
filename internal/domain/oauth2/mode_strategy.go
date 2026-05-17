@@ -1,12 +1,15 @@
 package oauth2
 
-import "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+import (
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+)
 
 // ModeStrategy determines whether a classified agent is permitted in the active OAuth server mode.
 // Implementations are selected at startup by the builder — no runtime mode checks in handlers.
 type ModeStrategy interface {
 	AcceptsClientMode(mode storage.ClientMode) bool
-	Name() string
+	Mode() servermode.Mode
 }
 
 type proxyModeStrategy struct{}
@@ -18,7 +21,7 @@ func (s *proxyModeStrategy) AcceptsClientMode(mode storage.ClientMode) bool {
 	return mode == storage.ProxyClient
 }
 
-func (s *proxyModeStrategy) Name() string { return "proxy" }
+func (s *proxyModeStrategy) Mode() servermode.Mode { return servermode.Proxy }
 
 type localModeStrategy struct{}
 
@@ -29,7 +32,7 @@ func (s *localModeStrategy) AcceptsClientMode(mode storage.ClientMode) bool {
 	return mode == storage.CIMDClient || mode == storage.LocalClient
 }
 
-func (s *localModeStrategy) Name() string { return "local" }
+func (s *localModeStrategy) Mode() servermode.Mode { return servermode.Local }
 
 type hybridModeStrategy struct{}
 
@@ -40,4 +43,4 @@ func (s *hybridModeStrategy) AcceptsClientMode(mode storage.ClientMode) bool {
 	return mode != storage.AmbiguousClient
 }
 
-func (s *hybridModeStrategy) Name() string { return "hybrid" }
+func (s *hybridModeStrategy) Mode() servermode.Mode { return servermode.Hybrid }

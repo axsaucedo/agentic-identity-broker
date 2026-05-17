@@ -12,6 +12,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -39,7 +40,7 @@ type OAuth2Config struct {
 
 	// Mode indicates whether the broker operates in "proxy", "local", or "hybrid" mode.
 	// In local mode, JWKS and code_challenge_methods are included in metadata.
-	Mode ports.OAuthServerMode
+	Mode servermode.Mode
 
 	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
 	// When true, client_id_metadata_document_supported is advertised in metadata.
@@ -137,7 +138,7 @@ func (s *Service) ResolveForTokenGrant(ctx context.Context, rawClientID string) 
 	if s.config.ModeStrategy != nil && !s.config.ModeStrategy.AcceptsClientMode(mode) {
 		return nil, &ports.ClientIDError{
 			Code: "unauthorized_client",
-			Desc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Name()),
+			Desc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Mode()),
 		}
 	}
 
@@ -177,7 +178,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		return &ports.AuthorizationDecision{
 			Action:    "error",
 			ErrorCode: "unauthorized_client",
-			ErrorDesc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Name()),
+			ErrorDesc: fmt.Sprintf("client mode not supported in %s mode", s.config.ModeStrategy.Mode()),
 		}, nil
 	}
 
@@ -498,7 +499,7 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		})
 		if len(grantTypes) == 0 {
 			switch s.config.Mode {
-			case ports.OAuthServerModeLocal, ports.OAuthServerModeHybrid:
+			case servermode.Local, servermode.Hybrid:
 				grantTypes = []string{"authorization_code", "client_credentials"}
 			default:
 				grantTypes = []string{"authorization_code"}
@@ -516,7 +517,7 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	}
 
 	// In local and hybrid modes, include JWKS URI and code challenge methods (both serve the JWKS endpoint).
-	if s.config.Mode == ports.OAuthServerModeLocal || s.config.Mode == ports.OAuthServerModeHybrid {
+	if s.config.Mode == servermode.Local || s.config.Mode == servermode.Hybrid {
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		// client_secret_post is always supported for confidential clients.

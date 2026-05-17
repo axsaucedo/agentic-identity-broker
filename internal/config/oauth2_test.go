@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/config"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/stretchr/testify/assert"
 )
@@ -175,7 +176,7 @@ func TestOAuth2AuthServerConfig_Validate(t *testing.T) {
 				assert.True(t, slices.Contains(tt.config.SupportedResponseTypes, "code"), "SupportedResponseTypes should contain 'code'")
 				assert.True(t, slices.Contains(tt.config.SupportedGrantTypes, "authorization_code"), "SupportedGrantTypes should contain 'authorization_code'")
 				assert.Equal(t, 30, tt.config.Proxy.UpstreamTimeoutSeconds, "UpstreamTimeoutSeconds should be 30")
-				assert.Equal(t, ports.OAuthServerModeProxy, tt.config.Mode, "Mode should be 'proxy'")
+				assert.Equal(t, servermode.Proxy, tt.config.Mode, "Mode should be 'proxy'")
 			}
 		})
 	}

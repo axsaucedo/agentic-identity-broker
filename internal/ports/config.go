@@ -5,6 +5,8 @@ package ports
 import (
 	"context"
 	"time"
+
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 )
 
 // ConfigPort defines the interface for accessing application configuration.
@@ -351,21 +353,9 @@ type LocalModeConfig struct {
 	TokenClaimsExpression string        `mapstructure:"token_claims_expression"`
 }
 
-// OAuthServerMode is the enumeration of valid OAuth2 server operating modes.
-type OAuthServerMode string
-
-const (
-	// OAuthServerModeProxy forwards all requests to an upstream OAuth2 server.
-	OAuthServerModeProxy OAuthServerMode = "proxy"
-	// OAuthServerModeLocal issues tokens locally (replaces deprecated "issue_token").
-	OAuthServerModeLocal OAuthServerMode = "local"
-	// OAuthServerModeHybrid accepts proxy, CIMD, and local clients in a single deployment.
-	OAuthServerModeHybrid OAuthServerMode = "hybrid"
-)
-
 // OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
 type OAuth2AuthServerConfig struct {
-	Mode  OAuthServerMode `mapstructure:"mode"`
+	Mode  servermode.Mode `mapstructure:"mode"`
 	Proxy ProxyModeConfig `mapstructure:"proxy"`
 	Local LocalModeConfig `mapstructure:"local"`
 
@@ -393,11 +383,11 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 	}
 
 	switch c.Mode {
-	case OAuthServerModeLocal:
+	case servermode.Local:
 		return c.validateLocalMode()
-	case OAuthServerModeProxy:
+	case servermode.Proxy:
 		return c.validateProxyMode()
-	case OAuthServerModeHybrid:
+	case servermode.Hybrid:
 		return c.validateHybridMode()
 	default:
 		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy', 'local', or 'hybrid'")

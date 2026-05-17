@@ -4,13 +4,14 @@ import (
 	"testing"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestModeStrategy_Proxy(t *testing.T) {
 	s := NewProxyModeStrategy()
-	assert.Equal(t, "proxy", s.Name())
+	assert.Equal(t, servermode.Proxy, s.Mode())
 	assert.True(t, s.AcceptsClientMode(storage.ProxyClient))
 	assert.False(t, s.AcceptsClientMode(storage.CIMDClient))
 	assert.False(t, s.AcceptsClientMode(storage.LocalClient))
@@ -18,7 +19,7 @@ func TestModeStrategy_Proxy(t *testing.T) {
 
 func TestModeStrategy_Local(t *testing.T) {
 	s := NewLocalModeStrategy()
-	assert.Equal(t, "local", s.Name())
+	assert.Equal(t, servermode.Local, s.Mode())
 	assert.False(t, s.AcceptsClientMode(storage.ProxyClient))
 	assert.True(t, s.AcceptsClientMode(storage.CIMDClient))
 	assert.True(t, s.AcceptsClientMode(storage.LocalClient))
@@ -26,7 +27,7 @@ func TestModeStrategy_Local(t *testing.T) {
 
 func TestModeStrategy_Hybrid(t *testing.T) {
 	s := NewHybridModeStrategy()
-	assert.Equal(t, "hybrid", s.Name())
+	assert.Equal(t, servermode.Hybrid, s.Mode())
 	assert.True(t, s.AcceptsClientMode(storage.ProxyClient))
 	assert.True(t, s.AcceptsClientMode(storage.CIMDClient))
 	assert.True(t, s.AcceptsClientMode(storage.LocalClient))
