@@ -1043,6 +1043,28 @@ func TestHandleTokenExchange_NilService(t *testing.T) {
 	assert.Equal(t, "unsupported_grant_type", body["error"])
 }
 
+// TestOAuth2TokenHandler_UnauthorizedClient_Returns400 verifies that an unauthorized_client
+// error code maps to HTTP 400, not 401 (RFC 6749 §5.2 + tokenEndpointStatus mapping).
+func TestOAuth2TokenHandler_UnauthorizedClient_Returns400(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler: NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newFailingOAuth2Service(
+			&ports.ClientIDError{Code: "unauthorized_client", Desc: "client mode not permitted"},
+		),
+	}
+	form := "grant_type=client_credentials&client_id=" + id.NewAgentID().String()
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code, "unauthorized_client must return 400, not 401")
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "unauthorized_client", body["error"])
+}
+
 // TestOAuth2TokenHandler_MissingGrantType verifies that an absent grant_type returns
 // 400 invalid_request without performing client resolution (RFC 6749 §5.2).
 func TestOAuth2TokenHandler_MissingGrantType(t *testing.T) {
