@@ -965,3 +965,26 @@ func TestHybridTokenGrant_EmptyClientIDReturns400(t *testing.T) {
 	_ = json.NewDecoder(w.Body).Decode(&body)
 	assert.Equal(t, "invalid_request", body["error"])
 }
+
+// TestHandleTokenExchange_NilService verifies that a token-exchange request returns
+// 400 unsupported_grant_type (not 500 server_error) when TokenExchangeService is nil.
+// This covers the local-mode deployment where token exchange is not wired.
+func TestHandleTokenExchange_NilService(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newLocalModeOAuth2Service(),
+		TokenExchange: nil,
+	}
+	form := "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange" +
+		"&subject_token=sometoken&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token"
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "unsupported_grant_type", body["error"])
+}
