@@ -310,9 +310,9 @@ func (b *Builder) Build() (*App, error) {
 	// Create OAuth2 service if configuration available.
 	// T038: Use NewServiceWithSessions (enables mandatory requirement validation + multi-agent
 	// client config) and pass MultiAgentClientConfig from cfg.OAuth2AuthServer.MultiAgentClient.
-	// In local mode, also create the service for consent checks and metadata generation.
+	// Create the service for all configured modes (proxy, local, hybrid).
 	var clientResolver ports.ClientResolver
-	if b.config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "local" {
+	if b.config.OAuth2AuthServer.Mode != "" {
 		tokenExchangeEnabled := b.config.OAuth2AuthServer.Proxy.UpstreamIssuerURI != "" &&
 			b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
 			b.config.TokenExchange.Authorization.CEL.Expression != ""
@@ -474,7 +474,7 @@ func (b *Builder) Build() (*App, error) {
 		// Create JWKS adapter for JWT validation
 		// Per spec FR-039: JWKS URI discovered from upstream OAuth2 server metadata (RFC 8414)
 		discoveryCtx, discoveryCancel := context.WithTimeout(context.Background(),
-			time.Duration(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds)*time.Second)
+			resolveUpstreamTimeout(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds))
 
 		discovered, err := domstorage.DiscoverOAuth2Endpoints(
 			discoveryCtx,
@@ -596,7 +596,7 @@ func (b *Builder) Build() (*App, error) {
 		// The broker is the relying party and must verify that the upstream token has not been tampered with.
 		multiAgentDiscoveryCtx, multiAgentDiscoveryCancel := context.WithTimeout(
 			context.Background(),
-			time.Duration(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds)*time.Second,
+			resolveUpstreamTimeout(b.config.OAuth2AuthServer.Proxy.UpstreamTimeoutSeconds),
 		)
 		multiAgentDiscovered, err := domstorage.DiscoverOAuth2Endpoints(
 			multiAgentDiscoveryCtx,
