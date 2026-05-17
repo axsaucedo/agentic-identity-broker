@@ -155,13 +155,13 @@ func resolveUpstreamTimeout(configuredSecs int) time.Duration {
 	return time.Duration(configuredSecs) * time.Second
 }
 
-func modeStrategyFor(mode string) oauth2service.ModeStrategy {
+func modeStrategyFor(mode ports.OAuthServerMode) oauth2service.ModeStrategy {
 	switch mode {
-	case "local":
+	case ports.OAuthServerModeLocal:
 		return oauth2service.NewLocalModeStrategy()
-	case "hybrid":
+	case ports.OAuthServerModeHybrid:
 		return oauth2service.NewHybridModeStrategy()
-	default: // "proxy"
+	default: // proxy
 		return oauth2service.NewProxyModeStrategy()
 	}
 }
@@ -330,7 +330,7 @@ func (b *Builder) Build() (*App, error) {
 			TokenExchangeEnabled:      tokenExchangeEnabled,
 		}
 		// In local mode, set correct defaults for supported types
-		if b.config.OAuth2AuthServer.Mode == "local" {
+		if b.config.OAuth2AuthServer.Mode == ports.OAuthServerModeLocal {
 			if len(oauth2Config.SupportedResponseTypes) == 0 {
 				oauth2Config.SupportedResponseTypes = []string{"code"}
 			}
@@ -680,7 +680,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	switch b.config.OAuth2AuthServer.Mode {
-	case "local":
+	case ports.OAuthServerModeLocal:
 		provider, err := buildLocalProvider()
 		if err != nil {
 			return nil, err
@@ -691,7 +691,7 @@ func (b *Builder) Build() (*App, error) {
 			"issuer_uri", b.config.Server.EndUser.PublicURL,
 			"token_ttl", b.config.OAuth2AuthServer.Local.TokenTTL,
 		)
-	case "hybrid":
+	case ports.OAuthServerModeHybrid:
 		provider, err := buildLocalProvider()
 		if err != nil {
 			return nil, err

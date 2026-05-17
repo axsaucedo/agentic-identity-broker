@@ -365,7 +365,7 @@ const (
 
 // OAuth2AuthServerConfig represents configuration for OAuth2 authorization server functionality.
 type OAuth2AuthServerConfig struct {
-	Mode  string          `mapstructure:"mode"`
+	Mode  OAuthServerMode `mapstructure:"mode"`
 	Proxy ProxyModeConfig `mapstructure:"proxy"`
 	Local LocalModeConfig `mapstructure:"local"`
 
@@ -393,11 +393,11 @@ func (c *OAuth2AuthServerConfig) Validate() error {
 	}
 
 	switch c.Mode {
-	case "local":
+	case OAuthServerModeLocal:
 		return c.validateLocalMode()
-	case "proxy":
+	case OAuthServerModeProxy:
 		return c.validateProxyMode()
-	case "hybrid":
+	case OAuthServerModeHybrid:
 		return c.validateHybridMode()
 	default:
 		return c.newValidationError("oauth2_authorization_server.mode must be 'proxy', 'local', or 'hybrid'")

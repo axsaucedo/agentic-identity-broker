@@ -37,9 +37,9 @@ type OAuth2Config struct {
 	// When Enabled, multiple agents may share a single upstream OAuth2 client ID.
 	MultiAgentClient ports.MultiAgentClientConfig
 
-	// Mode indicates whether the broker operates in "proxy" or "local" mode.
+	// Mode indicates whether the broker operates in "proxy", "local", or "hybrid" mode.
 	// In local mode, JWKS and code_challenge_methods are included in metadata.
-	Mode string
+	Mode ports.OAuthServerMode
 
 	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
 	// When true, client_id_metadata_document_supported is advertised in metadata.
@@ -498,7 +498,7 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		})
 		if len(grantTypes) == 0 {
 			switch s.config.Mode {
-			case "local", "hybrid":
+			case ports.OAuthServerModeLocal, ports.OAuthServerModeHybrid:
 				grantTypes = []string{"authorization_code", "client_credentials"}
 			default:
 				grantTypes = []string{"authorization_code"}
@@ -516,7 +516,7 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 	}
 
 	// In local and hybrid modes, include JWKS URI and code challenge methods (both serve the JWKS endpoint).
-	if s.config.Mode == "local" || s.config.Mode == "hybrid" {
+	if s.config.Mode == ports.OAuthServerModeLocal || s.config.Mode == ports.OAuthServerModeHybrid {
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		// client_secret_post is always supported for confidential clients.
