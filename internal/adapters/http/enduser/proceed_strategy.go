@@ -9,6 +9,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -105,8 +106,7 @@ func writeDirectOAuth2Error(w http.ResponseWriter, err error) {
 	}
 }
 
-// hybridProceedStrategy dispatches to proxy or local based on whether the domain service
-// set a redirect URL. ProxyClient agents get a non-empty RedirectURL (upstream); all others get empty.
+// hybridProceedStrategy dispatches to proxy or local based on the resolved ClientMode.
 type hybridProceedStrategy struct {
 	proxy AuthorizationProceedStrategy
 	local AuthorizationProceedStrategy
@@ -118,7 +118,7 @@ func NewHybridProceedStrategy(proxy, local AuthorizationProceedStrategy) Authori
 }
 
 func (s *hybridProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
-	if decision.RedirectURL != "" {
+	if decision.ClientMode == storage.ProxyClient {
 		s.proxy.HandleProceed(w, r, decision, req, principal)
 	} else {
 		s.local.HandleProceed(w, r, decision, req, principal)

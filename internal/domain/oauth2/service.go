@@ -390,6 +390,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	return &ports.AuthorizationDecision{
 		Action:      "proceed",
 		RedirectURL: upstreamURL,
+		ClientMode:  agent.ClientMode(),
 	}, nil
 }
 

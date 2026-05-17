@@ -79,6 +79,10 @@ type AuthorizationDecision struct {
 	// RedirectURL is the target URL for HTTP 302 redirect
 	RedirectURL string
 
+	// ClientMode is the resolved agent classification (set on "proceed" actions only).
+	// Used by hybrid proceed strategy to dispatch to proxy or local sub-strategy explicitly.
+	ClientMode storage.ClientMode
+
 	// ErrorCode is the OAuth2 error code (if Action == "error")
 	ErrorCode string
 

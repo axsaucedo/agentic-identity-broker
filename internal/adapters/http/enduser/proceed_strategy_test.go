@@ -13,8 +13,15 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
+
+type captureProceedStrategy struct{ called bool }
+
+func (s *captureProceedStrategy) HandleProceed(_ http.ResponseWriter, _ *http.Request, _ *ports.AuthorizationDecision, _ *ports.AuthorizationRequest, _ id.Principal) {
+	s.called = true
+}
 
 func newProceedRequest(t *testing.T) *http.Request {
 	t.Helper()
@@ -151,6 +158,31 @@ func TestLocalProceedStrategy_Errors(t *testing.T) {
 				assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 				assert.Contains(t, w.Body.String(), tc.wantErrCode)
 			}
+		})
+	}
+}
+
+func TestHybridProceedStrategy_DispatchesByClientMode(t *testing.T) {
+	cases := []struct {
+		name         string
+		clientMode   storage.ClientMode
+		expectsProxy bool
+	}{
+		{"ProxyClient routes to proxy sub-strategy", storage.ProxyClient, true},
+		{"LocalClient routes to local sub-strategy", storage.LocalClient, false},
+		{"CIMDClient routes to local sub-strategy", storage.CIMDClient, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			proxyMock := &captureProceedStrategy{}
+			localMock := &captureProceedStrategy{}
+			strategy := NewHybridProceedStrategy(proxyMock, localMock)
+
+			decision := &ports.AuthorizationDecision{Action: "proceed", ClientMode: tc.clientMode}
+			strategy.HandleProceed(httptest.NewRecorder(), newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
+
+			assert.Equal(t, tc.expectsProxy, proxyMock.called, "proxy strategy called")
+			assert.Equal(t, !tc.expectsProxy, localMock.called, "local strategy called")
 		})
 	}
 }
