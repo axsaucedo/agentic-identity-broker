@@ -1433,12 +1433,20 @@ func TestService_HandleAuthorization_ModeBoundary(t *testing.T) {
 		RedirectURIs: []string{"https://app.example.com/callback"},
 	}
 
+	principal := id.NewPrincipal("user@example.com")
+
 	buildSvc := func(strategy ModeStrategy, agents ...*storage.Agent) ports.OAuth2Service {
 		repo := NewMockAgentRepository()
+		grantRepo := NewMockGrantRepository()
 		for _, a := range agents {
 			_ = repo.Create(ctx, a)
+			_ = grantRepo.Create(ctx, &storage.UserGrant{
+				ID:        id.NewGrantID(),
+				Principal: principal,
+				AgentID:   a.ID,
+			})
 		}
-		return NewService(repo, NewMockGrantRepository(), &OAuth2Config{ModeStrategy: strategy})
+		return NewService(repo, grantRepo, &OAuth2Config{ModeStrategy: strategy})
 	}
 
 	authReq := func(agentID id.AgentID) *ports.AuthorizationRequest {
@@ -1448,7 +1456,6 @@ func TestService_HandleAuthorization_ModeBoundary(t *testing.T) {
 			ResponseType: "code",
 		}
 	}
-	principal := id.NewPrincipal("user@example.com")
 
 	cases := []struct {
 		name        string

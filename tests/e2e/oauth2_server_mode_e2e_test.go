@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
 )
@@ -53,7 +54,7 @@ var _ = Describe("US2: Server Mode Configuration (local mode)", func() {
 
 	It("default is proxy mode", func() {
 		config := fixtures.DefaultOAuth2Config()
-		Expect(config.OAuth2AuthServer.Mode).To(Equal("proxy"))
+		Expect(config.OAuth2AuthServer.Mode).To(Equal(servermode.Proxy))
 	})
 
 	It("auto-generates signing key on startup", func() {

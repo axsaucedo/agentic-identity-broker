@@ -530,7 +530,6 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 	t.Run("round-trip through Create and Get", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    ptr.To(id.ClientID("cimd-create-get-client")),
 			DisplayName: "CIMD Create/Get Agent",
 			Description: "Tests ClientURIs round-trip",
 			ClientURIs:  []string{"https://example.com/client1"},
@@ -547,7 +546,6 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 	t.Run("round-trip through Create and List", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    ptr.To(id.ClientID("cimd-list-client")),
 			DisplayName: "CIMD List Agent",
 			Description: "Tests ClientURIs in List",
 			ClientURIs:  []string{"https://example.com/list-client1"},
@@ -573,7 +571,6 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 	t.Run("round-trip through Update and Get", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    ptr.To(id.ClientID("cimd-update-client")),
 			DisplayName: "CIMD Update Agent",
 			Description: "Tests ClientURIs update",
 			ClientURIs:  []string{"https://example.com/update-original"},
@@ -591,14 +588,13 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 		assert.Equal(t, []string{"https://example.com/update-new"}, retrieved.ClientURIs)
 	})
 
-	t.Run("GetByClientID returns ClientURIs populated", func(t *testing.T) {
+	t.Run("GetByClientID returns empty ClientURIs for proxy agent", func(t *testing.T) {
 		now := time.Now().UTC()
-		clientID := id.ClientID("cimd-getclientid-client")
+		clientID := id.ClientID("proxy-getclientid-client")
 		agent := &storage.Agent{
 			ClientID:    &clientID,
-			DisplayName: "CIMD GetByClientID Agent",
-			Description: "Tests GetByClientID hydrates ClientURIs",
-			ClientURIs:  []string{"https://example.com/getclientid-uri"},
+			DisplayName: "Proxy GetByClientID Agent",
+			Description: "Tests GetByClientID returns empty ClientURIs for proxy agents",
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
@@ -606,7 +602,7 @@ func TestAgentRepository_ClientURIs(t *testing.T) {
 
 		retrieved, err := repo.GetByClientID(ctx, clientID)
 		require.NoError(t, err)
-		assert.Equal(t, agent.ClientURIs, retrieved.ClientURIs)
+		assert.Empty(t, retrieved.ClientURIs)
 	})
 }
 
@@ -620,7 +616,6 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 	t.Run("returns agent with ClientURIs populated", func(t *testing.T) {
 		now := time.Now().UTC()
 		agent := &storage.Agent{
-			ClientID:    ptr.To(id.ClientID("cimd-getbyuri-client")),
 			DisplayName: "CIMD GetByClientURI Agent",
 			Description: "Tests GetByClientURI",
 			ClientURIs:  []string{"https://example.com/lookup-uri"},
@@ -649,7 +644,6 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 		sharedURI := "https://example.com/conflict-uri"
 
 		agent1 := &storage.Agent{
-			ClientID:    ptr.To(id.ClientID("conflict-agent-1")),
 			DisplayName: "Conflict Agent 1",
 			Description: "Agent with the URI that will conflict",
 			ClientURIs:  []string{sharedURI},
@@ -659,7 +653,6 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, agent1))
 
 		agent2 := &storage.Agent{
-			ClientID:    ptr.To(id.ClientID("conflict-agent-2")),
 			DisplayName: "Conflict Agent 2",
 			Description: "Agent that conflicts on URI",
 			ClientURIs:  []string{sharedURI},
@@ -687,7 +680,6 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 		uri2 := "https://example.com/update-conflict-uri2"
 
 		agentA := &storage.Agent{
-			ClientID:    ptr.To(id.ClientID("update-conflict-agent-a")),
 			DisplayName: "Update Conflict Agent A",
 			Description: "Holds URI1 permanently",
 			ClientURIs:  []string{uri1},
@@ -697,7 +689,6 @@ func TestAgentRepository_GetByClientURI(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, agentA))
 
 		agentB := &storage.Agent{
-			ClientID:    ptr.To(id.ClientID("update-conflict-agent-b")),
 			DisplayName: "Update Conflict Agent B",
 			Description: "Tries to steal URI1 on update",
 			ClientURIs:  []string{uri2},
