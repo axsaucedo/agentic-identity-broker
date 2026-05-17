@@ -158,12 +158,14 @@ func resolveUpstreamTimeout(configuredSecs int) time.Duration {
 
 func modeStrategyFor(mode servermode.Mode) oauth2service.ModeStrategy {
 	switch mode {
+	case servermode.Proxy:
+		return oauth2service.NewProxyModeStrategy()
 	case servermode.Local:
 		return oauth2service.NewLocalModeStrategy()
 	case servermode.Hybrid:
 		return oauth2service.NewHybridModeStrategy()
-	default: // proxy
-		return oauth2service.NewProxyModeStrategy()
+	default:
+		panic(fmt.Sprintf("BUG: unhandled servermode.Mode %q — update modeStrategyFor", mode))
 	}
 }
 
