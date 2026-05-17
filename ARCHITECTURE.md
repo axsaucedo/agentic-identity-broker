@@ -621,7 +621,7 @@ Service Layer (OAuth2SessionService):
 
 **New Port**: `internal/ports/cimd.go` defines `CIMDFetcher` (outbound, infrastructure-side) and `ClientResolver` (strategy interface injected into `OAuth2AuthorizationService`).
 
-**New Domain Package**: `internal/domain/oauth2server/cimd/` contains `ClientIDMetadataDocumentURL`, `SSRFBlocklist`, `ClientIDMetadataDocument`, `CIMDCache`, `CIMDService`.
+**New Domain Package**: `internal/domain/oauth2/cimd/` contains `ClientIDMetadataDocumentURL`, `SSRFBlocklist`, `ClientIDMetadataDocument`, `CIMDCache`, `CIMDService`.
 
 **Authorization Flow with URL-based `client_id`**:
 
