@@ -514,8 +514,11 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post"},
 	}
 
-	// In local and hybrid modes, include JWKS URI and code challenge methods (both serve the JWKS endpoint).
-	if s.config.Mode == "local" || s.config.Mode == "hybrid" {
+	// In local mode only, include JWKS URI and code challenge methods.
+	// Hybrid mode is excluded: proxy-routed tokens are issued by the upstream and carry a different
+	// issuer/JWKS, so advertising the broker's JWKS globally would mislead resource servers that
+	// use discovery to validate proxy-path tokens.
+	if s.config.Mode == "local" {
 		metadata.JWKSURI = fmt.Sprintf("%s/oauth2/jwks.json", issuer)
 		metadata.CodeChallengeMethodsSupported = []string{"S256"}
 		// client_secret_post is always supported for confidential clients.

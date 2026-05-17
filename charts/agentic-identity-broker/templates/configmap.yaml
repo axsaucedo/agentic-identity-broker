@@ -125,14 +125,15 @@ data:
         agent_id_claim_name: {{ .agentIdClaimName | quote }}
         {{- end }}
       {{- end }}
-      {{- if .Values.broker.oauth2AuthorizationServer.proxy.upstreamIssuerUri }}
+      {{- with .Values.broker.oauth2AuthorizationServer.proxy }}
+      {{- if or .upstreamIssuerUri .upstreamAuthorizeEndpoint .upstreamTokenEndpoint .upstreamTimeoutSeconds }}
       proxy:
-        upstream_issuer_uri: {{ .Values.broker.oauth2AuthorizationServer.proxy.upstreamIssuerUri }}
-        upstream_authorize_endpoint: {{ .Values.broker.oauth2AuthorizationServer.proxy.upstreamAuthorizeEndpoint }}
-        upstream_token_endpoint: {{ .Values.broker.oauth2AuthorizationServer.proxy.upstreamTokenEndpoint }}
-        upstream_timeout_seconds: {{ .Values.broker.oauth2AuthorizationServer.proxy.upstreamTimeoutSeconds }}
+        upstream_issuer_uri: {{ .upstreamIssuerUri }}
+        upstream_authorize_endpoint: {{ .upstreamAuthorizeEndpoint }}
+        upstream_token_endpoint: {{ .upstreamTokenEndpoint }}
+        upstream_timeout_seconds: {{ .upstreamTimeoutSeconds }}
       {{- end }}
-      {{- if or (eq $oauth2Mode "local") (eq $oauth2Mode "hybrid") }}
+      {{- end }}
       {{- with .Values.broker.oauth2AuthorizationServer.local }}
       {{- if or .tokenTtl .tokenClaimsExpression }}
       local:
@@ -155,7 +156,6 @@ data:
         ssrf:
           extra_blocked_cidrs: {{ toJson .ssrf.extraBlockedCidrs }}
         client_name_blocklist: {{ toJson .clientNameBlocklist }}
-      {{- end }}
       {{- end }}
     {{- end }}
 

@@ -44,7 +44,9 @@ func TestGenerateMetadata_LocalMode(t *testing.T) {
 	assert.Equal(t, []string{"client_secret_post"}, metadata.TokenEndpointAuthMethodsSupported)
 }
 
-// T045b: hybrid mode metadata reflects union of proxy + local capabilities.
+// T045b: hybrid mode metadata does NOT advertise broker JWKS URI or PKCE methods.
+// Proxy-routed tokens carry a different issuer; advertising the broker's JWKS globally
+// would mislead resource servers that validate proxy-path tokens via discovery.
 func TestGenerateMetadata_HybridMode(t *testing.T) {
 	svc := NewService(nil, nil, &OAuth2Config{
 		Mode:                   "hybrid",
@@ -57,8 +59,8 @@ func TestGenerateMetadata_HybridMode(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "https://broker.example.com", metadata.Issuer)
-	assert.Equal(t, "https://broker.example.com/oauth2/jwks.json", metadata.JWKSURI, "hybrid mode must include JWKS URI")
-	assert.Equal(t, []string{"S256"}, metadata.CodeChallengeMethodsSupported, "hybrid mode must include PKCE methods")
+	assert.Empty(t, metadata.JWKSURI, "hybrid mode must not advertise broker JWKS URI in global discovery")
+	assert.Empty(t, metadata.CodeChallengeMethodsSupported, "hybrid mode must not advertise PKCE methods")
 	assert.Contains(t, metadata.TokenEndpointAuthMethodsSupported, "client_secret_post")
 }
 
