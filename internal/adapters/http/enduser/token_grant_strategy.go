@@ -271,13 +271,18 @@ func (s *localGrantStrategy) handleMintingError(w http.ResponseWriter, err error
 	writeOAuth2ErrorJSON(w, statusCode, errorCode, errorDesc)
 
 	if s.logger != nil {
-		s.logger.Warn("TokenRequestFailed",
+		attrs := []any{
 			"event", "TokenRequestFailed",
 			"grant_type", grantType,
 			"error_code", errorCode,
 			"error_description", errorDesc,
 			"client_id", clientID,
-		)
+		}
+		if statusCode >= http.StatusInternalServerError {
+			s.logger.Error("TokenRequestFailed", attrs...)
+		} else {
+			s.logger.Warn("TokenRequestFailed", attrs...)
+		}
 	}
 }
 
