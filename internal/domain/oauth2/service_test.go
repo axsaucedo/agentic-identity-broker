@@ -1301,4 +1301,18 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 		assert.NotContains(t, metadata.GrantTypesSupported, tokenExchangeGrant,
 			"token-exchange grant must not appear in discovery when service is not wired")
 	})
+
+	t.Run("disabled — fallback to mode baseline when token-exchange is the only configured grant", func(t *testing.T) {
+		svc := NewService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+			PublicURL:            "https://broker.example.com",
+			Mode:                 "local",
+			SupportedGrantTypes:  []string{tokenExchangeGrant},
+			TokenExchangeEnabled: false,
+		})
+		metadata, err := svc.GenerateMetadata(context.Background())
+		require.NoError(t, err)
+		assert.NotEmpty(t, metadata.GrantTypesSupported, "discovery must never return an empty grant list")
+		assert.NotContains(t, metadata.GrantTypesSupported, tokenExchangeGrant)
+		assert.Contains(t, metadata.GrantTypesSupported, "authorization_code")
+	})
 }

@@ -495,6 +495,14 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 		grantTypes = slices.DeleteFunc(slices.Clone(s.config.SupportedGrantTypes), func(g string) bool {
 			return g == tokenExchangeGrant
 		})
+		if len(grantTypes) == 0 {
+			switch s.config.Mode {
+			case "local", "hybrid":
+				grantTypes = []string{"authorization_code", "client_credentials"}
+			default:
+				grantTypes = []string{"authorization_code"}
+			}
+		}
 	}
 
 	metadata := &ports.MetadataResponse{
