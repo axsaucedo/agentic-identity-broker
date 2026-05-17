@@ -1032,3 +1032,23 @@ func TestHandleTokenExchange_NilService(t *testing.T) {
 	_ = json.NewDecoder(w.Body).Decode(&body)
 	assert.Equal(t, "unsupported_grant_type", body["error"])
 }
+
+// TestOAuth2TokenHandler_MissingGrantType verifies that an absent grant_type returns
+// 400 invalid_request without performing client resolution (RFC 6749 §5.2).
+func TestOAuth2TokenHandler_MissingGrantType(t *testing.T) {
+	handler := &OAuth2TokenHandler{
+		GrantHandler:  NewLocalGrantStrategy(fixedMinting(nil, nil), nil),
+		OAuth2Service: newLocalModeOAuth2Service(),
+	}
+	form := "client_id=" + id.NewAgentID().String()
+	req := httptest.NewRequest("POST", "/oauth2/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "invalid_request", body["error"])
+}

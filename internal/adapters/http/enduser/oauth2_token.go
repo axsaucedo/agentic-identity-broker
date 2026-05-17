@@ -61,6 +61,11 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	grantType := formData.Get("grant_type")
+	if grantType == "" {
+		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_request", "grant_type is required")
+		return
+	}
+
 	if h.Logger != nil {
 		h.Logger.Info("Token endpoint request received",
 			"grant_type", grantType,
