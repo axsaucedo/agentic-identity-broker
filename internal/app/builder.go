@@ -313,6 +313,10 @@ func (b *Builder) Build() (*App, error) {
 	// In local mode, also create the service for consent checks and metadata generation.
 	var clientResolver ports.ClientResolver
 	if b.config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint != "" || b.config.OAuth2AuthServer.Mode == "local" {
+		tokenExchangeEnabled := b.config.OAuth2AuthServer.Proxy.UpstreamIssuerURI != "" &&
+			b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
+			b.config.TokenExchange.Authorization.CEL.Expression != ""
+
 		oauth2Config := &oauth2service.OAuth2Config{
 			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint,
 			UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint,
@@ -323,6 +327,7 @@ func (b *Builder) Build() (*App, error) {
 			Mode:                      b.config.OAuth2AuthServer.Mode,
 			CIMDEnabled:               b.config.OAuth2AuthServer.CIMD.Enabled,
 			ModeStrategy:              modeStrategyFor(b.config.OAuth2AuthServer.Mode),
+			TokenExchangeEnabled:      tokenExchangeEnabled,
 		}
 		// In local mode, set correct defaults for supported types
 		if b.config.OAuth2AuthServer.Mode == "local" {

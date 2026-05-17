@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -43,6 +44,10 @@ type OAuth2Config struct {
 	// CIMDEnabled indicates whether CIMD-based client_id resolution is enabled.
 	// When true, client_id_metadata_document_supported is advertised in metadata.
 	CIMDEnabled bool
+
+	// TokenExchangeEnabled indicates whether the RFC 8693 token exchange service is wired.
+	// When true, the token-exchange grant type is appended to GrantTypesSupported in metadata.
+	TokenExchangeEnabled bool
 
 	// ModeStrategy enforces which agent client modes are permitted in this server mode.
 	// When non-nil, every authorization request is checked against the strategy.
@@ -478,12 +483,18 @@ func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationReq
 func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
 	issuer := s.config.PublicURL
 
+	grantTypes := s.config.SupportedGrantTypes
+	const tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
+	if s.config.TokenExchangeEnabled && !slices.Contains(grantTypes, tokenExchangeGrant) {
+		grantTypes = append(slices.Clone(grantTypes), tokenExchangeGrant)
+	}
+
 	metadata := &ports.MetadataResponse{
 		Issuer:                            issuer,
 		AuthorizationEndpoint:             fmt.Sprintf("%s/oauth2/authorize", issuer),
 		TokenEndpoint:                     fmt.Sprintf("%s/oauth2/token", issuer),
 		ResponseTypesSupported:            s.config.SupportedResponseTypes,
-		GrantTypesSupported:               s.config.SupportedGrantTypes,
+		GrantTypesSupported:               grantTypes,
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_post"},
 	}
 

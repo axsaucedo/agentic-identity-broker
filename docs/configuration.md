@@ -798,7 +798,7 @@ See `examples/config/oauth2-authorization-server.yaml` for a complete configurat
 | `oauth2.auth_server.local.token_ttl` | duration | `1h` | Go duration (e.g. `30m`, `2h`) | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_TTL` | — | Validity period for locally issued JWT access tokens. |
 | `oauth2.auth_server.local.token_claims_expression` | string | `""` | CEL expression | No | `IDENTITY_BROKER_OAUTH2_AUTH_SERVER_LOCAL_TOKEN_CLAIMS_EXPRESSION` | — | CEL expression to inject custom claims into issued JWTs. |
 
-**Default**: The OAuth2 authorization server is **disabled** when `mode` is not set. All three modes must be enabled explicitly. The broker will reject startup if any auth server field is set without a valid `mode`.
+**Required**: `oauth2_authorization_server.mode` is mandatory — the broker rejects startup when the block is absent or `mode` is empty or invalid. Set `mode` to `proxy`, `local`, or `hybrid` before deploying.
 
 **Startup validation**: The broker validates configuration at startup and rejects incompatible combinations — proxy-only fields in local mode, local-only fields in proxy mode, or missing sections in hybrid mode.
 
