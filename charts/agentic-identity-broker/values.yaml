@@ -427,7 +427,7 @@ broker:
     # proxy: forward all requests to an upstream OAuth2 server (proxy.* required)
     # local: issue tokens locally (no proxy config required; token TTL defaults to 1h)
     # hybrid: serve both proxy and local agents (both proxy.* and local.* required)
-    mode: "local"
+    mode: "proxy"
 
     # -- Upstream OAuth2 server configuration (required in proxy/hybrid mode)
     proxy:
