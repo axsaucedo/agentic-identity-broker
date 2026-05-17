@@ -105,6 +105,9 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // handleTokenExchange processes RFC 8693 token exchange requests.
 func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.Request, formData url.Values) {
 	if h.TokenExchange == nil {
+		if h.Logger != nil {
+			h.Logger.Info("token exchange not wired, returning unsupported_grant_type")
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{
