@@ -463,7 +463,6 @@ func TestBuilder_ModeStrategyWiring(t *testing.T) {
 		}
 	})
 
-
 	t.Run("hybrid mode — JWKS handler is non-nil", func(t *testing.T) {
 		cfg := baseConfig(jweKey)
 		cfg.OAuth2AuthServer = ports.OAuth2AuthServerConfig{
