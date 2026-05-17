@@ -1413,3 +1413,89 @@ func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
 		})
 	}
 }
+
+// TestService_HandleAuthorization_ModeBoundary verifies that ModeStrategy.AcceptsClientMode
+// is enforced on the authorize endpoint, mirroring TestService_ResolveForTokenGrant_ModeBoundary.
+func TestService_HandleAuthorization_ModeBoundary(t *testing.T) {
+	ctx := context.Background()
+
+	proxyAgent := &storage.Agent{
+		ID:           id.NewAgentID(),
+		DisplayName:  "Proxy Agent",
+		Description:  "proxy",
+		ClientID:     ptr.To(id.ClientID("upstream-client")),
+		RedirectURIs: []string{"https://app.example.com/callback"},
+	}
+	localAgent := &storage.Agent{
+		ID:           id.NewAgentID(),
+		DisplayName:  "Local Agent",
+		Description:  "local",
+		RedirectURIs: []string{"https://app.example.com/callback"},
+	}
+
+	buildSvc := func(strategy ModeStrategy, agents ...*storage.Agent) ports.OAuth2Service {
+		repo := NewMockAgentRepository()
+		for _, a := range agents {
+			_ = repo.Create(ctx, a)
+		}
+		return NewService(repo, NewMockGrantRepository(), &OAuth2Config{ModeStrategy: strategy})
+	}
+
+	authReq := func(agentID id.AgentID) *ports.AuthorizationRequest {
+		return &ports.AuthorizationRequest{
+			ClientID:     id.ClientID(agentID.String()),
+			RedirectURI:  "https://app.example.com/callback",
+			ResponseType: "code",
+		}
+	}
+	principal := id.NewPrincipal("user@example.com")
+
+	cases := []struct {
+		name        string
+		strategy    ModeStrategy
+		agent       *storage.Agent
+		wantAction  string
+		wantErrCode string
+	}{
+		{
+			name:       "proxy-mode accepts ProxyClient",
+			strategy:   NewProxyModeStrategy(),
+			agent:      proxyAgent,
+			wantAction: "proceed",
+		},
+		{
+			name:        "proxy-mode rejects LocalClient",
+			strategy:    NewProxyModeStrategy(),
+			agent:       localAgent,
+			wantAction:  "error",
+			wantErrCode: "unauthorized_client",
+		},
+		{
+			name:       "local-mode accepts LocalClient",
+			strategy:   NewLocalModeStrategy(),
+			agent:      localAgent,
+			wantAction: "proceed",
+		},
+		{
+			name:        "local-mode rejects ProxyClient",
+			strategy:    NewLocalModeStrategy(),
+			agent:       proxyAgent,
+			wantAction:  "error",
+			wantErrCode: "unauthorized_client",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := buildSvc(tc.strategy, tc.agent)
+			decision, err := svc.HandleAuthorization(ctx, authReq(tc.agent.ID), principal)
+
+			require.NoError(t, err)
+			require.NotNil(t, decision)
+			assert.Equal(t, tc.wantAction, decision.Action)
+			if tc.wantErrCode != "" {
+				assert.Equal(t, tc.wantErrCode, decision.ErrorCode)
+			}
+		})
+	}
+}
