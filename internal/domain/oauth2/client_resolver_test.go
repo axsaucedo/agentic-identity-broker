@@ -117,6 +117,53 @@ func TestOpaqueClientResolver_CIMDAgent_URLRejectedBefore_Lookup(t *testing.T) {
 	assert.Contains(t, clientErr.Desc, "CIMD")
 }
 
+// TestOpaqueClientResolver_CIMDAgent_UUIDRejected verifies that a CIMD agent cannot be
+// addressed by its bare entity UUID when CIMD is disabled.
+func TestOpaqueClientResolver_CIMDAgent_UUIDRejected(t *testing.T) {
+	repo := NewMockAgentRepository()
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000010")
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientURIs:  []string{"https://agent.example.com/.well-known/openid-configuration"},
+		DisplayName: "CIMD Agent",
+		Description: "Agent identified by URL",
+	}
+	require.NoError(t, repo.Create(context.Background(), agent))
+
+	resolver := NewOpaqueClientResolver(repo)
+	_, err := resolver.ResolveClient(context.Background(), id.ClientID(agentID.String()))
+
+	require.Error(t, err)
+	var clientErr *ports.ClientIDError
+	require.True(t, errors.As(err, &clientErr))
+	assert.Equal(t, "invalid_client", clientErr.Code)
+}
+
+// TestOpaqueClientResolver_AmbiguousAgent_UUIDRejected verifies that an agent with both
+// ClientID and ClientURIs (storage invariant violation) is always rejected.
+func TestOpaqueClientResolver_AmbiguousAgent_UUIDRejected(t *testing.T) {
+	repo := NewMockAgentRepository()
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000011")
+	cid := id.ClientID("some-upstream-client")
+	// Bypass domain Validate() to simulate a storage invariant violation.
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    &cid,
+		ClientURIs:  []string{"https://agent.example.com/.well-known/openid-configuration"},
+		DisplayName: "Ambiguous Agent",
+		Description: "Has both ClientID and ClientURIs",
+	}
+	require.NoError(t, repo.Create(context.Background(), agent))
+
+	resolver := NewOpaqueClientResolver(repo)
+	_, err := resolver.ResolveClient(context.Background(), id.ClientID(agentID.String()))
+
+	require.Error(t, err)
+	var clientErr *ports.ClientIDError
+	require.True(t, errors.As(err, &clientErr))
+	assert.Equal(t, "invalid_client", clientErr.Code)
+}
+
 // T045: Mode enforcement — proxy mode rejects local/CIMD agents.
 func TestModeStrategy_ProxyMode_RejectsLocalAndCIMD(t *testing.T) {
 	s := NewProxyModeStrategy()
