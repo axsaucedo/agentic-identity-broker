@@ -2,6 +2,7 @@ package oauth2
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1252,4 +1253,52 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 	assert.Equal(t, "error", decision.Action)
 	assert.Equal(t, "server_error", decision.ErrorCode)
 	assert.Contains(t, decision.RedirectURL, "error=server_error")
+}
+
+// TestService_GenerateMetadata_TokenExchangeGrant verifies that the token-exchange
+// grant type is included in discovery only when TokenExchangeEnabled is true, and
+// is filtered out when false — even if manually present in SupportedGrantTypes.
+func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
+	const tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
+	baseGrants := []string{"authorization_code", "refresh_token"}
+
+	t.Run("enabled — appended when absent from SupportedGrantTypes", func(t *testing.T) {
+		svc := NewService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+			PublicURL:            "https://broker.example.com",
+			SupportedGrantTypes:  baseGrants,
+			TokenExchangeEnabled: true,
+		})
+		metadata, err := svc.GenerateMetadata(context.Background())
+		require.NoError(t, err)
+		assert.Contains(t, metadata.GrantTypesSupported, tokenExchangeGrant)
+	})
+
+	t.Run("enabled — not duplicated when already in SupportedGrantTypes", func(t *testing.T) {
+		svc := NewService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+			PublicURL:            "https://broker.example.com",
+			SupportedGrantTypes:  append(slices.Clone(baseGrants), tokenExchangeGrant),
+			TokenExchangeEnabled: true,
+		})
+		metadata, err := svc.GenerateMetadata(context.Background())
+		require.NoError(t, err)
+		count := 0
+		for _, g := range metadata.GrantTypesSupported {
+			if g == tokenExchangeGrant {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count, "token-exchange grant must not be duplicated")
+	})
+
+	t.Run("disabled — removed when manually present in SupportedGrantTypes", func(t *testing.T) {
+		svc := NewService(NewMockAgentRepository(), NewMockGrantRepository(), &OAuth2Config{
+			PublicURL:            "https://broker.example.com",
+			SupportedGrantTypes:  append(slices.Clone(baseGrants), tokenExchangeGrant),
+			TokenExchangeEnabled: false,
+		})
+		metadata, err := svc.GenerateMetadata(context.Background())
+		require.NoError(t, err)
+		assert.NotContains(t, metadata.GrantTypesSupported, tokenExchangeGrant,
+			"token-exchange grant must not appear in discovery when service is not wired")
+	})
 }

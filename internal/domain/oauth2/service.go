@@ -483,10 +483,18 @@ func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationReq
 func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
 	issuer := s.config.PublicURL
 
-	grantTypes := s.config.SupportedGrantTypes
 	const tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
-	if s.config.TokenExchangeEnabled && !slices.Contains(grantTypes, tokenExchangeGrant) {
-		grantTypes = append(slices.Clone(grantTypes), tokenExchangeGrant)
+	var grantTypes []string
+	if s.config.TokenExchangeEnabled {
+		if !slices.Contains(s.config.SupportedGrantTypes, tokenExchangeGrant) {
+			grantTypes = append(slices.Clone(s.config.SupportedGrantTypes), tokenExchangeGrant)
+		} else {
+			grantTypes = s.config.SupportedGrantTypes
+		}
+	} else {
+		grantTypes = slices.DeleteFunc(slices.Clone(s.config.SupportedGrantTypes), func(g string) bool {
+			return g == tokenExchangeGrant
+		})
 	}
 
 	metadata := &ports.MetadataResponse{
