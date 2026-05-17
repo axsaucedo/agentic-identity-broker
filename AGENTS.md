@@ -11,14 +11,18 @@ The constitution at `.specify/memory/constitution.md` is **BINDING**. Key princi
 3. **Library-First Security** — No custom crypto. Use Go `crypto/*`, `golang.org/x/crypto`, or AWS Encryption SDK. Escalate if insufficient.
 4. **OpenAPI Transparency** — APIs documented in `/api/enduser/openapi.yaml` and `/api/admin/openapi.yaml` before implementation. Follow Zalando RESTful API Guidelines.
 5. **Domain-Driven Design** — Ubiquitous language enforced. New domain concepts must be added to `ARCHITECTURE.md` glossary.
-6. **Hexagonal Architecture** — Domain depends on ports (interfaces), never adapters. Adapters implement ports. See `internal/` structure.
+6. **Hexagonal Architecture** — Domain depends on ports (interfaces), never adapters. Adapters implement ports. See `internal/` structure. Violation catalog:
+   - **Port bypass**: Handlers must go through domain services. Calling a port interface directly from a handler is still a violation, even if the call target is an interface rather than a concrete type.
+   - **Anemic domain**: If removing a domain service and having the handler call the port directly would lose no business rules, the service is anemic and adds no value. Domain services must enforce invariants or orchestrate logic.
+   - **Domain logic leakage**: Conditional logic beyond input parsing and error mapping belongs in domain services, not handlers.
+   - **Domain packaging**: A new `domain/X/` package must be a genuinely independent bounded context. If its primary interactions are with a single existing domain service, it likely belongs as a sub-package — not a peer package. Separate packages imply independent lifecycles.
 7. **Configuration-Driven** — All config via `internal/ports/config.go` port. No ad-hoc config loading.
 8. **TDD** — Red-green-refactor. Tests written first, must compile and fail semantically before implementation.
 9. **Persistence Consistency** — ISP repositories in `internal/ports/storage.go`. sqlx for PostgreSQL. Migrations in `/migrations/` with go-migrate naming. Both in-memory and postgres adapters required.
 10. **API-First** — Design APIs before implementation. API changes require stakeholder confirmation, even for bug fixes.
 11. **Design System Compliance** — Refined Trust Architecture aesthetic, WCAG 2.1 AA, semantic tokens. See `web/src/design-system/`.
 12. **DI via Builder** — All wiring in `internal/app/builder.go`. Routing functions in `internal/adapters/http/routing/` receive pre-wired deps, never instantiate services.
-13. **E2E Acceptance Tests** — 1:1 spec-to-test mapping in `tests/e2e/`. Ginkgo/Gomega BDD. Written before implementation (red-green).
+13. **E2E Acceptance Tests** — 1:1 spec-to-test mapping in `tests/e2e/`. Ginkgo/Gomega BDD. Written before implementation (red-green). A test that hits only one endpoint of a multi-step flow is a **segment test**, not a true e2e test. True e2e tests exercise a complete user journey where each step's output feeds the next step's input.
 
 Full constitution: `.specify/memory/constitution.md`
 
@@ -71,7 +75,7 @@ The `id` package provides one named type per entity with a UUID primary key (`Ag
 
 ## ADR Decision Index
 
-Read full ADRs in `adrs/` before implementing in their domain.
+Read full ADRs in `adrs/` before implementing in their domain. Pre-existing ADRs are authoritative. An ADR introduced within the same PR is a proposal — it cannot self-justify the PR's own design choices.
 
 | ADR | Decision |
 |---|---|
@@ -164,6 +168,7 @@ These rules apply to all code in the monorepo (Go, TypeScript, CDK).
 - **No debug artifacts in committed code.** Never leave debug logging, commented-out code, TODO stubs, or references to future implementations unless explicitly asked.
 - **Match the style of surrounding code.** Naming conventions, error handling patterns, and file structure must be consistent with adjacent code.
 - **Prefer explicit over clever.** Reviewers (human and AI) must understand intent immediately without tracing abstractions.
+- **Prefer extending over introducing parallel mechanisms.** If a problem is already solved (e.g., stateless JWE tokens for ephemeral state), do not introduce a competing mechanism. New mechanisms require strong justification beyond "this feature needed it."
 
 ## Database Migrations
 
