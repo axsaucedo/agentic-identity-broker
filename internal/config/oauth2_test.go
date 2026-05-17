@@ -230,6 +230,16 @@ func TestOAuth2AuthServerConfig_LocalMode(t *testing.T) {
 		assert.Contains(t, cfg.SupportedGrantTypes, "client_credentials")
 	})
 
+	t.Run("multi_agent_client enabled in local mode is rejected", func(t *testing.T) {
+		cfg := &ports.OAuth2AuthServerConfig{
+			Mode:             "local",
+			MultiAgentClient: ports.MultiAgentClientConfig{Enabled: true},
+		}
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "multi_agent_client is not supported in local mode")
+	})
+
 	t.Run("proxy mode unchanged - still requires upstream fields", func(t *testing.T) {
 		cfg := &ports.OAuth2AuthServerConfig{
 			Mode: "proxy",

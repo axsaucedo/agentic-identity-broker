@@ -468,7 +468,11 @@ func (c *OAuth2AuthServerConfig) validateLocalMode() error {
 		return c.newValidationError("oauth2_authorization_server.cimd.cache.min_ttl must not exceed max_ttl")
 	}
 
-	return c.validateMultiAgentClient()
+	if c.MultiAgentClient.Enabled {
+		return c.newValidationError("oauth2_authorization_server.multi_agent_client is not supported in local mode")
+	}
+
+	return nil
 }
 
 // validateHybridMode validates configuration for hybrid mode (proxy + local token minting).
