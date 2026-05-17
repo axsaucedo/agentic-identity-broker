@@ -129,7 +129,10 @@ func (s *Service) ResolveForTokenGrant(ctx context.Context, rawClientID string) 
 		if errors.As(resolveErr, &clientErr) {
 			return nil, clientErr
 		}
-		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "unexpected error from client resolver", "error", resolveErr)
+		}
+		return nil, &ports.ClientIDError{Code: "server_error", Desc: "client resolution failed"}
 	}
 
 	agent := resolution.Agent

@@ -94,6 +94,10 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			status := tokenEndpointStatus(clientErr.Code)
 			writeOAuth2ErrorJSON(w, status, clientErr.Code, clientErr.Desc)
 		} else {
+			if h.Logger != nil {
+				h.Logger.ErrorContext(r.Context(), "unexpected error during client resolution",
+					"error", resolveErr, "client_id", rawClientID)
+			}
 			writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "client resolution failed")
 		}
 		return
