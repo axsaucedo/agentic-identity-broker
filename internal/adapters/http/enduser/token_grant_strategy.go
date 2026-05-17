@@ -67,6 +67,10 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 
 	upstreamReq, err := http.NewRequestWithContext(ctx, "POST", s.upstreamTokenURL, strings.NewReader(body))
 	if err != nil {
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "failed to create upstream token request",
+				"upstream_url", s.upstreamTokenURL, "error", err)
+		}
 		http.Error(w, "failed to create upstream request", http.StatusInternalServerError)
 		return
 	}
@@ -87,6 +91,10 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 
 	upstreamResp, err := client.Do(upstreamReq)
 	if err != nil {
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "upstream token request failed",
+				"upstream_url", s.upstreamTokenURL, "error", err)
+		}
 		http.Error(w, "failed to contact upstream server", http.StatusBadGateway)
 		return
 	}
