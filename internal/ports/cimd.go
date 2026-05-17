@@ -68,7 +68,7 @@ type CIMDFetchResult struct {
 }
 
 // ClientIDError signals a client resolution failure with an OAuth2 error code.
-// CIMDClientResolver returns this type so that HandleAuthorization can extract
+// ClientResolver implementations return this type so that HandleAuthorization can extract
 // Code/Desc via errors.As without an import cycle.
 type ClientIDError struct {
 	Code string
