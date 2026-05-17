@@ -10,16 +10,23 @@ import (
 )
 
 // CIMDClientResolver resolves client_id values by:
-//   - Detecting URL-format client_id (https://) → CIMD fetch path
+//   - Detecting URL-format client_id (https://) → CIMD fetch path (or rejected when disabled)
 //   - Falling back to opaque UUID lookup for non-URL client_id
+//
+// When cimdService is nil, URL-format client_id values are rejected with invalid_client.
 type CIMDClientResolver struct {
 	agentRepo   ports.AgentRepository
 	cimdService *Service
 	logger      *slog.Logger
 }
 
-// NewCIMDClientResolver creates a CIMD-enabled client resolver.
+// NewCIMDClientResolver creates a client resolver. When cimdService is nil, URL-format
+// client_id values are rejected with invalid_client (CIMD disabled mode). When logger is
+// nil, slog.Default() is used.
 func NewCIMDClientResolver(agentRepo ports.AgentRepository, cimdService *Service, logger *slog.Logger) *CIMDClientResolver {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &CIMDClientResolver{
 		agentRepo:   agentRepo,
 		cimdService: cimdService,
@@ -38,6 +45,10 @@ func (r *CIMDClientResolver) ResolveClient(ctx context.Context, clientID id.Clie
 }
 
 func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*ports.ClientResolution, error) {
+	if r.cimdService == nil {
+		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "URL-format client_id requires CIMD support (disabled)"}
+	}
+
 	// Look up agent by pre-registered client URI (FR-026)
 	agent, err := r.agentRepo.GetByClientURI(ctx, rawURL)
 	if err != nil {

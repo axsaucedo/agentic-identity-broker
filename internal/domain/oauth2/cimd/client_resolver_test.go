@@ -178,3 +178,63 @@ func TestCIMDClientResolver_ResolvesViaCIMDURINotClientID(t *testing.T) {
 	require.NoError(t, err, "should resolve via ClientURI even when ClientID is a different value")
 	assert.Equal(t, agentID, resolution.Agent.ID)
 }
+
+// --- CIMD disabled (nil service) tests ---
+
+func TestCIMDClientResolver_Disabled_URLFormat_Rejected(t *testing.T) {
+	repo := newMockAgentRepoForCR()
+	resolver := NewCIMDClientResolver(repo, nil, nil)
+
+	for _, clientID := range []string{
+		"https://agent.example.com/client",
+		"http://agent.example.com/client",
+	} {
+		_, err := resolver.ResolveClient(context.Background(), id.ClientID(clientID))
+		require.Error(t, err, "expected error for %s", clientID)
+
+		var clientErr *ports.ClientIDError
+		require.True(t, errors.As(err, &clientErr))
+		assert.Equal(t, "invalid_client", clientErr.Code)
+	}
+}
+
+func TestCIMDClientResolver_Disabled_NonUUID_Rejected(t *testing.T) {
+	repo := newMockAgentRepoForCR()
+	resolver := NewCIMDClientResolver(repo, nil, nil)
+
+	_, err := resolver.ResolveClient(context.Background(), "not-a-uuid")
+	require.Error(t, err)
+
+	var clientErr *ports.ClientIDError
+	require.True(t, errors.As(err, &clientErr))
+	assert.Equal(t, "invalid_client", clientErr.Code)
+}
+
+func TestCIMDClientResolver_Disabled_OpaqueUUID_Success(t *testing.T) {
+	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000001")
+	agent := &storage.Agent{
+		ID:          agentID,
+		ClientID:    ptr.To(id.ClientID(agentID.String())),
+		DisplayName: "Test Agent",
+	}
+	repo := newMockAgentRepoForCR(agent)
+	resolver := NewCIMDClientResolver(repo, nil, nil)
+
+	resolution, err := resolver.ResolveClient(context.Background(), id.ClientID(agentID.String()))
+	require.NoError(t, err)
+	require.NotNil(t, resolution)
+	assert.Equal(t, agent.ID, resolution.Agent.ID)
+	assert.Nil(t, resolution.CIMDMetadata)
+}
+
+func TestCIMDClientResolver_Disabled_AgentNotFound(t *testing.T) {
+	repo := newMockAgentRepoForCR()
+	resolver := NewCIMDClientResolver(repo, nil, nil)
+
+	_, err := resolver.ResolveClient(context.Background(), id.ClientID("00000000-0000-0000-0000-000000000099"))
+	require.Error(t, err)
+
+	var clientErr *ports.ClientIDError
+	require.True(t, errors.As(err, &clientErr))
+	assert.Equal(t, "invalid_client", clientErr.Code)
+}

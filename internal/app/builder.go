@@ -343,7 +343,7 @@ func (b *Builder) Build() (*App, error) {
 				"max_response_bytes", cimdCfg.MaxResponseBytes,
 			)
 		} else {
-			clientResolver = oauth2service.NewOpaqueClientResolver(b.storage.Agents())
+			clientResolver = domaincimd.NewCIMDClientResolver(b.storage.Agents(), nil, b.logger)
 		}
 
 		app.OAuth2Service = oauth2service.NewServiceWithClientResolver(
