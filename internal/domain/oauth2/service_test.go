@@ -2,6 +2,7 @@ package oauth2
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -1315,4 +1316,100 @@ func TestService_GenerateMetadata_TokenExchangeGrant(t *testing.T) {
 		assert.NotContains(t, metadata.GrantTypesSupported, tokenExchangeGrant)
 		assert.Contains(t, metadata.GrantTypesSupported, "authorization_code")
 	})
+}
+
+// TestService_ResolveForTokenGrant_ModeBoundary verifies that ModeStrategy.AcceptsClientMode
+// is enforced on the token endpoint: a proxy-mode server must reject LocalClient agents and
+// vice versa, while a nil strategy must accept all modes.
+func TestService_ResolveForTokenGrant_ModeBoundary(t *testing.T) {
+	ctx := context.Background()
+
+	proxyAgent := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "Proxy Agent",
+		ClientID:    ptr.To(id.ClientID("upstream-client")),
+	}
+	localAgent := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "Local Agent",
+	}
+	cimdAgent := &storage.Agent{
+		ID:          id.NewAgentID(),
+		DisplayName: "CIMD Agent",
+		ClientURIs:  []string{"https://agent.example.com/client"},
+	}
+
+	buildSvc := func(strategy ModeStrategy, agents ...*storage.Agent) ports.OAuth2Service {
+		repo := NewMockAgentRepository()
+		for _, a := range agents {
+			_ = repo.Create(ctx, a)
+		}
+		return NewService(repo, NewMockGrantRepository(), &OAuth2Config{ModeStrategy: strategy})
+	}
+
+	cases := []struct {
+		name        string
+		strategy    ModeStrategy
+		agent       *storage.Agent
+		wantMode    storage.ClientMode
+		wantErrCode string
+	}{
+		{
+			name:     "proxy-mode accepts ProxyClient",
+			strategy: NewProxyModeStrategy(),
+			agent:    proxyAgent,
+			wantMode: storage.ProxyClient,
+		},
+		{
+			name:        "proxy-mode rejects LocalClient",
+			strategy:    NewProxyModeStrategy(),
+			agent:       localAgent,
+			wantErrCode: "unauthorized_client",
+		},
+		{
+			// OpaqueClientResolver rejects CIMDClient agents by UUID before mode strategy
+			// fires — the agent returns invalid_client, not unauthorized_client.
+			name:        "proxy-mode: CIMD agent rejected by resolver before mode check",
+			strategy:    NewProxyModeStrategy(),
+			agent:       cimdAgent,
+			wantErrCode: "invalid_client",
+		},
+		{
+			name:     "local-mode accepts LocalClient",
+			strategy: NewLocalModeStrategy(),
+			agent:    localAgent,
+			wantMode: storage.LocalClient,
+		},
+		{
+			name:        "local-mode rejects ProxyClient",
+			strategy:    NewLocalModeStrategy(),
+			agent:       proxyAgent,
+			wantErrCode: "unauthorized_client",
+		},
+		{
+			name:     "nil strategy accepts ProxyClient (no enforcement)",
+			strategy: nil,
+			agent:    proxyAgent,
+			wantMode: storage.ProxyClient,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := buildSvc(tc.strategy, tc.agent)
+			res, err := svc.ResolveForTokenGrant(ctx, tc.agent.ID.String())
+
+			if tc.wantErrCode != "" {
+				require.Error(t, err)
+				var clientErr *ports.ClientIDError
+				require.True(t, errors.As(err, &clientErr))
+				assert.Equal(t, tc.wantErrCode, clientErr.Code)
+				assert.Nil(t, res)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, res)
+				assert.Equal(t, tc.wantMode, res.ClientMode)
+			}
+		})
+	}
 }
