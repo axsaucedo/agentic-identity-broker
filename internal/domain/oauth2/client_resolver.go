@@ -10,29 +10,34 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// AgentClientResolver resolves client_id values by:
-//   - Detecting URL-format client_id (https://) → CIMD fetch path (or rejected when disabled)
-//   - Falling back to opaque UUID lookup for non-URL client_id
-//
-// When cimdService is nil, URL-format client_id values are rejected with invalid_client.
+// AgentClientResolver resolves client_id values to an Agent.
+// Constructed via NewAgentClientResolver (opaque UUID-only) or
+// NewAgentClientResolverWithCIMD (CIMD-enabled).
 type AgentClientResolver struct {
 	agentRepo   ports.AgentRepository
 	cimdService *cimd.Service
 	logger      *slog.Logger
 }
 
-// NewAgentClientResolver creates a client resolver. When cimdService is nil, URL-format
-// client_id values are rejected with invalid_client (CIMD disabled mode). When logger is
-// nil, slog.Default() is used.
-func NewAgentClientResolver(agentRepo ports.AgentRepository, cimdService *cimd.Service, logger *slog.Logger) *AgentClientResolver {
+// NewAgentClientResolver creates a resolver for opaque (UUID-based) client IDs.
+// URL-format client_id values are rejected with invalid_client.
+// When logger is nil, slog.Default() is used.
+func NewAgentClientResolver(agentRepo ports.AgentRepository, logger *slog.Logger) *AgentClientResolver {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &AgentClientResolver{
-		agentRepo:   agentRepo,
-		cimdService: cimdService,
-		logger:      logger,
+	return &AgentClientResolver{agentRepo: agentRepo, logger: logger}
+}
+
+// NewAgentClientResolverWithCIMD creates a CIMD-enabled resolver.
+// URL-format client_id values are resolved via CIMD fetch/validate/cache;
+// non-URL client_id values fall through to opaque UUID lookup.
+// When logger is nil, slog.Default() is used.
+func NewAgentClientResolverWithCIMD(agentRepo ports.AgentRepository, cimdService *cimd.Service, logger *slog.Logger) *AgentClientResolver {
+	if logger == nil {
+		logger = slog.Default()
 	}
+	return &AgentClientResolver{agentRepo: agentRepo, cimdService: cimdService, logger: logger}
 }
 
 // ResolveClient resolves a client_id to an Agent and optional CIMD metadata.
