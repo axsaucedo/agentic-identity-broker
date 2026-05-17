@@ -34,6 +34,14 @@ type LocalStackContainer struct {
 // Usage: In BeforeEach, `ls := bootstrap.StartLocalStack(ctx, GinkgoT())`
 // Usage: In AfterEach, `defer ls.Terminate(ctx)`
 func StartLocalStack(ctx context.Context, t *testing.T) *LocalStackContainer {
+	t.Helper()
+	// testcontainers panics (via sync.Once) when no Docker host is reachable.
+	// Catch it here so the test fails cleanly with a diagnostic message.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Docker runtime unavailable — ensure Colima or Docker Desktop is running: %v", r)
+		}
+	}()
 	// Use default bridge network to avoid network creation issues with testcontainers reaper
 	// The bridge network is always available and compatible with all Docker configurations
 	req := testcontainers.ContainerRequest{
