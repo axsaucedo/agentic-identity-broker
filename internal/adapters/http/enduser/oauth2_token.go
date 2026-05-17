@@ -105,14 +105,11 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // handleTokenExchange processes RFC 8693 token exchange requests.
 func (h *OAuth2TokenHandler) handleTokenExchange(w http.ResponseWriter, r *http.Request, formData url.Values) {
 	if h.TokenExchange == nil {
-		if h.Logger != nil {
-			h.Logger.Error("Token exchange service not configured")
-		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":             "server_error",
-			"error_description": "token exchange service not configured",
+			"error":             "unsupported_grant_type",
+			"error_description": "token exchange is not available in this deployment mode",
 		})
 		return
 	}
