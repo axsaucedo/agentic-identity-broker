@@ -349,6 +349,9 @@ type ProxyModeConfig struct {
 
 // LocalModeConfig holds local token issuance configuration for local/hybrid mode.
 type LocalModeConfig struct {
+	// IssuerURI is the JWT iss claim for locally-minted tokens. Optional — defaults to
+	// server.enduser.public_url when empty, allowing independent control behind CDNs or proxies.
+	IssuerURI             string        `mapstructure:"issuer_uri"`
 	TokenTTL              time.Duration `mapstructure:"token_ttl"`
 	TokenClaimsExpression string        `mapstructure:"token_claims_expression"`
 }

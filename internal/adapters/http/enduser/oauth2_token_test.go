@@ -116,7 +116,11 @@ func (m *mockOAuth2ServiceForToken) ResolveForTokenGrant(ctx context.Context, ra
 func newResolvingOAuth2Service(agent *storage.Agent) *mockOAuth2ServiceForToken {
 	return &mockOAuth2ServiceForToken{
 		resolveFn: func(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
-			return &ports.TokenGrantResolution{Agent: agent}, nil
+			return &ports.TokenGrantResolution{
+				AgentID:    agent.ID,
+				ClientID:   agent.ClientID,
+				ClientMode: agent.ClientMode(),
+			}, nil
 		},
 	}
 }
@@ -139,7 +143,7 @@ func newLocalModeOAuth2Service() *mockOAuth2ServiceForToken {
 				return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "client authentication failed"}
 			}
 			return &ports.TokenGrantResolution{
-				Agent:      &storage.Agent{ID: id.NewAgentID()},
+				AgentID:    id.NewAgentID(),
 				ClientMode: storage.LocalClient,
 			}, nil
 		},
@@ -905,7 +909,7 @@ type mockTokenGrantStrategy struct {
 	capturedFormData url.Values
 }
 
-func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http.Request, _ string, formData url.Values, _ *storage.Agent) {
+func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http.Request, _ string, formData url.Values, _ *ports.TokenGrantResolution) {
 	m.capturedFormData = formData
 	w.WriteHeader(http.StatusOK)
 }
@@ -915,13 +919,6 @@ func (m *mockTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, _ *http
 func TestLocalGrantStrategy_AcceptsLocalClient(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000012")
 
-	// Agent with neither ClientID nor ClientURIs → LocalClient mode.
-	localRepo := &stubAgentRepo{
-		agent: &storage.Agent{
-			ID:          agentID,
-			DisplayName: "Local Agent",
-		},
-	}
 	expected := &ports.TokenResponse{AccessToken: "local-tok", TokenType: "Bearer", ExpiresIn: 3600}
 	strategy := NewLocalGrantStrategy(fixedMinting(expected, nil), nil)
 
@@ -930,7 +927,10 @@ func TestLocalGrantStrategy_AcceptsLocalClient(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req), localRepo.agent)
+	strategy.HandleTokenGrant(w, req, "client_credentials", parseForm(req), &ports.TokenGrantResolution{
+		AgentID:    agentID,
+		ClientMode: storage.LocalClient,
+	})
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
@@ -973,26 +973,26 @@ func TestHybridTokenGrantStrategy_DispatchByClientMode(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000099")
 	cases := []struct {
 		name         string
-		agent        *storage.Agent
+		resolution   *ports.TokenGrantResolution
 		expectsProxy bool
 		expectsError bool
 	}{
 		{
 			name:         "ProxyClient routes to proxy sub-strategy",
-			agent:        &storage.Agent{ID: agentID, ClientID: ptr.To(id.ClientID("upstream-client"))},
+			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientID: ptr.To(id.ClientID("upstream-client")), ClientMode: storage.ProxyClient},
 			expectsProxy: true,
 		},
 		{
-			name:  "LocalClient routes to local sub-strategy",
-			agent: &storage.Agent{ID: agentID},
+			name:       "LocalClient routes to local sub-strategy",
+			resolution: &ports.TokenGrantResolution{AgentID: agentID, ClientMode: storage.LocalClient},
 		},
 		{
-			name:  "CIMDClient routes to local sub-strategy",
-			agent: &storage.Agent{ID: agentID, ClientURIs: []string{"https://agent.example.com/meta"}},
+			name:       "CIMDClient routes to local sub-strategy",
+			resolution: &ports.TokenGrantResolution{AgentID: agentID, ClientMode: storage.CIMDClient},
 		},
 		{
 			name:         "AmbiguousClient returns server_error",
-			agent:        &storage.Agent{ID: agentID, ClientID: ptr.To(id.ClientID("x")), ClientURIs: []string{"https://agent.example.com/meta"}},
+			resolution:   &ports.TokenGrantResolution{AgentID: agentID, ClientMode: storage.AmbiguousClient},
 			expectsError: true,
 		},
 	}
@@ -1006,7 +1006,7 @@ func TestHybridTokenGrantStrategy_DispatchByClientMode(t *testing.T) {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
 
-			strategy.HandleTokenGrant(w, req, "client_credentials", url.Values{"grant_type": {"client_credentials"}}, tc.agent)
+			strategy.HandleTokenGrant(w, req, "client_credentials", url.Values{"grant_type": {"client_credentials"}}, tc.resolution)
 
 			if tc.expectsError {
 				assert.Equal(t, http.StatusInternalServerError, w.Code)

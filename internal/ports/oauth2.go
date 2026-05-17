@@ -35,7 +35,8 @@ type OAuth2Service interface {
 
 // TokenGrantResolution is the result of client resolution for the token endpoint.
 type TokenGrantResolution struct {
-	Agent      *storage.Agent
+	AgentID    id.AgentID
+	ClientID   *id.ClientID // nil for local/CIMD agents
 	ClientMode storage.ClientMode
 }
 

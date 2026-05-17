@@ -205,6 +205,14 @@ func TestOAuth2AuthServerConfig_Validate_LocalMode(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "proxy")
 	})
+
+	t.Run("local mode preserves explicit issuer_uri", func(t *testing.T) {
+		cfg := validLocalOAuth2Config()
+		cfg.Local.IssuerURI = "https://auth.cdn.example.com"
+		err := cfg.Validate()
+		require.NoError(t, err)
+		assert.Equal(t, "https://auth.cdn.example.com", cfg.Local.IssuerURI)
+	})
 }
 
 // T035: Hybrid mode config validation.

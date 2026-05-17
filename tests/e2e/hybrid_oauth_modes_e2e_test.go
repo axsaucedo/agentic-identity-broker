@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -268,5 +271,274 @@ var _ = Describe("US2+US3: Hybrid Mode with CIMD", func() {
 
 		Expect(resp).To(matchers.HaveStatusCode(http.StatusFound))
 		Expect(resp.Header.Get("Location")).To(ContainSubstring("/consent/agent/" + proxyAgent.ID.String()))
+	})
+})
+
+var _ = Describe("US2: Hybrid Mode — Local Agent Full Authorization Code Journey", func() {
+	var (
+		logger         *slog.Logger
+		storageFactory *bootstrap.StorageFactory
+		mockUpstream   *helpers.MockUpstreamOAuth2Server
+		testStorage    *storageadapter.Adapter
+		adminServer    *bootstrap.TestServer
+		enduserServer  *bootstrap.TestServer
+		agent          *storage.Agent
+		clientSecret   string
+	)
+
+	const localAgentRedirectURI = "http://localhost:9999/callback"
+
+	BeforeEach(func() {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		storageFactory = bootstrap.NewStorageFactory(logger)
+		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
+
+		var err error
+		testStorage, err = storageFactory.NewTestStorage()
+		Expect(err).ToNot(HaveOccurred())
+
+		agent = fixtures.LocalAgent()
+		agent.RedirectURIs = []string{localAgentRedirectURI}
+		Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+		config := fixtures.HybridConfig(mockUpstream.Server.URL)
+		serverFactory := bootstrap.NewServerFactory(config, logger)
+		app, err := serverFactory.BuildApp(testStorage)
+		Expect(err).ToNot(HaveOccurred())
+
+		adminServer, err = bootstrap.NewAdminTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+		enduserServer, err = bootstrap.NewEndUserTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+
+		credResp, err := http.Post(
+			adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials",
+			"application/json", nil,
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = credResp.Body.Close() }()
+		Expect(credResp.StatusCode).To(Equal(http.StatusCreated))
+		var creds map[string]interface{}
+		Expect(json.NewDecoder(credResp.Body).Decode(&creds)).ToNot(HaveOccurred())
+		clientSecret = creds["client_secret"].(string)
+	})
+
+	AfterEach(func() {
+		if adminServer != nil {
+			adminServer.Close()
+		}
+		if enduserServer != nil {
+			enduserServer.Close()
+		}
+		if mockUpstream != nil {
+			mockUpstream.Close()
+		}
+		if testStorage != nil {
+			_ = storageFactory.CloseStorage(testStorage)
+		}
+	})
+
+	// Scenario US2.2 (full journey) from specs/030-hybrid-oauth-modes/spec.md
+	It("local agent in hybrid mode issues JWT via full authorization code flow with PKCE", func() {
+		principal := fixtures.DefaultPrincipal().String()
+		verifier := helpers.PKCEVerifier()
+		challenge := helpers.GenerateCodeChallenge(verifier)
+		authorizeURL := "/oauth2/authorize?" + url.Values{
+			"client_id":             {agent.ID.String()},
+			"redirect_uri":          {localAgentRedirectURI},
+			"response_type":         {"code"},
+			"state":                 {"hybrid-local-state"},
+			"code_challenge":        {challenge},
+			"code_challenge_method": {"S256"},
+		}.Encode()
+
+		// Step 1: Authorize — no grant → consent redirect.
+		// Non-CIMD agents use redirect_uri (not session_token) in the consent URL.
+		authResp, err := enduserServer.AuthenticatedGET(authorizeURL, principal)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = authResp.Body.Close() }()
+		Expect(authResp.StatusCode).To(Equal(http.StatusFound))
+		consentLoc, err := url.Parse(authResp.Header.Get("Location"))
+		Expect(err).ToNot(HaveOccurred())
+		originalAuthorizeURL := consentLoc.Query().Get("redirect_uri")
+		Expect(originalAuthorizeURL).ToNot(BeEmpty())
+
+		// Step 2: Submit grant — no service delegations required for this local agent.
+		grantBodyBytes, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
+		grantResp, err := enduserServer.AuthenticatedPOST(
+			fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape(originalAuthorizeURL)),
+			principal, "application/json", bytes.NewReader(grantBodyBytes),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = grantResp.Body.Close() }()
+		Expect(grantResp.StatusCode).To(Equal(http.StatusCreated))
+		var grantRespBody map[string]any
+		Expect(json.NewDecoder(grantResp.Body).Decode(&grantRespBody)).To(Succeed())
+		reAuthorizeURL := grantRespBody["redirect_url"].(string)
+
+		// Step 3: Re-authorize — grant satisfied → local path issues authorization code.
+		codeResp, err := enduserServer.AuthenticatedGET(reAuthorizeURL, principal)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = codeResp.Body.Close() }()
+		Expect(codeResp.StatusCode).To(Equal(http.StatusFound))
+		codeLoc := codeResp.Header.Get("Location")
+		Expect(codeLoc).To(HavePrefix(localAgentRedirectURI))
+		Expect(codeLoc).To(ContainSubstring("state=hybrid-local-state"))
+		parsedCodeLoc, _ := url.Parse(codeLoc)
+		code := parsedCodeLoc.Query().Get("code")
+		Expect(code).ToNot(BeEmpty())
+
+		// Step 4: Exchange code for locally-issued JWT access token.
+		tokenResp, err := http.Post(
+			enduserServer.BaseURL()+"/oauth2/token",
+			"application/x-www-form-urlencoded",
+			strings.NewReader(url.Values{
+				"grant_type":    {"authorization_code"},
+				"client_id":     {agent.ID.String()},
+				"client_secret": {clientSecret},
+				"code":          {code},
+				"redirect_uri":  {localAgentRedirectURI},
+				"code_verifier": {verifier},
+			}.Encode()),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = tokenResp.Body.Close() }()
+		Expect(tokenResp.StatusCode).To(Equal(http.StatusOK))
+		var tokenBody map[string]interface{}
+		Expect(json.NewDecoder(tokenResp.Body).Decode(&tokenBody)).ToNot(HaveOccurred())
+		Expect(tokenBody).To(HaveKey("access_token"))
+		Expect(tokenBody["token_type"]).To(Equal("Bearer"))
+	})
+})
+
+var _ = Describe("US2: Hybrid Mode — Proxy Agent Full Authorization Code Journey", func() {
+	var (
+		logger         *slog.Logger
+		storageFactory *bootstrap.StorageFactory
+		mockUpstream   *helpers.MockUpstreamOAuth2Server
+		testStorage    *storageadapter.Adapter
+		server         *bootstrap.TestServer
+		proxyAgent     *storage.Agent
+	)
+
+	const proxyRedirectURI = "https://example.com/cb"
+
+	BeforeEach(func() {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		storageFactory = bootstrap.NewStorageFactory(logger)
+		mockUpstream = helpers.NewMockUpstreamOAuth2Server()
+
+		var err error
+		testStorage, err = storageFactory.NewTestStorage()
+		Expect(err).ToNot(HaveOccurred())
+
+		now := time.Now()
+		proxyAgent = &storage.Agent{
+			ID:           id.NewAgentID(),
+			ClientID:     ptr.To(id.ClientID("upstream-client-abc")),
+			DisplayName:  "Proxy Journey Agent",
+			Description:  "Proxy agent for full authorization code journey test",
+			RedirectURIs: []string{proxyRedirectURI},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+		Expect(testStorage.Agents().Create(context.Background(), proxyAgent)).To(Succeed())
+
+		config := fixtures.HybridConfig(mockUpstream.Server.URL)
+		serverFactory := bootstrap.NewServerFactory(config, logger)
+		app, err := serverFactory.BuildApp(testStorage)
+		Expect(err).ToNot(HaveOccurred())
+
+		server, err = bootstrap.NewEndUserTestServer(app, logger)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		if server != nil {
+			server.Close()
+		}
+		if mockUpstream != nil {
+			mockUpstream.Close()
+		}
+		if testStorage != nil {
+			_ = storageFactory.CloseStorage(testStorage)
+		}
+	})
+
+	// Scenario US2.1 (full journey) from specs/030-hybrid-oauth-modes/spec.md
+	It("proxy agent in hybrid mode forwards authorize to upstream and proxies token response", func() {
+		principal := fixtures.DefaultPrincipal().String()
+		authorizeURL := "/oauth2/authorize?" + url.Values{
+			"client_id":     {proxyAgent.ID.String()},
+			"redirect_uri":  {proxyRedirectURI},
+			"response_type": {"code"},
+			"state":         {"hybrid-proxy-state"},
+		}.Encode()
+
+		// Step 1: Authorize — no grant → consent redirect.
+		// Non-CIMD agents use redirect_uri (not session_token) in the consent URL.
+		authResp, err := server.AuthenticatedGET(authorizeURL, principal)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = authResp.Body.Close() }()
+		Expect(authResp.StatusCode).To(Equal(http.StatusFound))
+		consentLoc, err := url.Parse(authResp.Header.Get("Location"))
+		Expect(err).ToNot(HaveOccurred())
+		originalAuthorizeURL := consentLoc.Query().Get("redirect_uri")
+		Expect(originalAuthorizeURL).ToNot(BeEmpty())
+
+		// Step 2: Submit grant.
+		grantBodyBytes, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
+		grantResp, err := server.AuthenticatedPOST(
+			fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", proxyAgent.ID, url.QueryEscape(originalAuthorizeURL)),
+			principal, "application/json", bytes.NewReader(grantBodyBytes),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = grantResp.Body.Close() }()
+		Expect(grantResp.StatusCode).To(Equal(http.StatusCreated))
+		var grantRespBody map[string]any
+		Expect(json.NewDecoder(grantResp.Body).Decode(&grantRespBody)).To(Succeed())
+		reAuthorizeURL := grantRespBody["redirect_url"].(string)
+
+		// Step 3: Re-authorize — grant satisfied → proxy path redirects to upstream authorize.
+		proxyResp, err := server.AuthenticatedGET(reAuthorizeURL, principal)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = proxyResp.Body.Close() }()
+		Expect(proxyResp.StatusCode).To(Equal(http.StatusFound))
+		upstreamAuthorizeURL := proxyResp.Header.Get("Location")
+		Expect(upstreamAuthorizeURL).To(ContainSubstring(mockUpstream.Server.URL + "/oauth/authorize"))
+		Expect(upstreamAuthorizeURL).To(ContainSubstring("client_id=upstream-client-abc"))
+
+		// Step 4: Follow redirect to mock upstream — upstream returns code at client redirect_uri.
+		noFollow := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+		upstreamResp, err := noFollow.Get(upstreamAuthorizeURL)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = upstreamResp.Body.Close() }()
+		Expect(upstreamResp.StatusCode).To(Equal(http.StatusFound))
+		parsedCodeLoc, err := url.Parse(upstreamResp.Header.Get("Location"))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(parsedCodeLoc.String()).To(HavePrefix(proxyRedirectURI))
+		code := parsedCodeLoc.Query().Get("code")
+		Expect(code).ToNot(BeEmpty())
+
+		// Step 5: Exchange code at broker — broker proxies request to upstream token endpoint.
+		tokenResp, err := http.Post(
+			server.BaseURL()+"/oauth2/token",
+			"application/x-www-form-urlencoded",
+			strings.NewReader(url.Values{
+				"grant_type":   {"authorization_code"},
+				"client_id":    {proxyAgent.ID.String()},
+				"code":         {code},
+				"redirect_uri": {proxyRedirectURI},
+			}.Encode()),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() { _ = tokenResp.Body.Close() }()
+		Expect(tokenResp.StatusCode).To(Equal(http.StatusOK))
+		var tokenBody map[string]interface{}
+		Expect(json.NewDecoder(tokenResp.Body).Decode(&tokenBody)).ToNot(HaveOccurred())
+		Expect(tokenBody["access_token"]).To(Equal("mock-access-token"))
+		Expect(mockUpstream.GetTokenCalled()).To(BeTrue())
 	})
 })

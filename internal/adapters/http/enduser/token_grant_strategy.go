@@ -20,10 +20,10 @@ import (
 )
 
 // TokenGrantStrategy handles OAuth2 token grant requests at the HTTP transport layer.
-// The resolved agent is provided by the caller (OAuth2TokenHandler) after domain-level
+// The resolution is provided by the caller (OAuth2TokenHandler) after domain-level
 // resolution and mode enforcement via OAuth2Service.ResolveForTokenGrant.
 type TokenGrantStrategy interface {
-	HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, agent *storage.Agent)
+	HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, resolution *ports.TokenGrantResolution)
 }
 
 // proxyTokenGrantStrategy forwards token grant requests to an upstream OAuth2 server.
@@ -53,16 +53,16 @@ func NewProxyTokenGrantStrategy(
 // The agent is pre-resolved by the domain layer; this method replaces the broker-internal
 // UUID with the upstream client_id before forwarding. When MultiAgentVerifier is set,
 // the upstream response body is buffered and the agent ID claim is verified before forwarding.
-func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, _ string, formData url.Values, agent *storage.Agent) {
+func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, _ string, formData url.Values, resolution *ports.TokenGrantResolution) {
 	ctx, span := otel.Tracer("upstream").Start(r.Context(), "oauth2.token_proxy")
 	defer span.End()
 	span.SetAttributes(attribute.String("http.method", "POST"))
 
-	if agent.ClientID == nil {
+	if resolution.ClientID == nil {
 		writeOAuth2ErrorJSON(w, http.StatusBadRequest, "invalid_client", "agent has no upstream client_id configured")
 		return
 	}
-	formData.Set("client_id", agent.ClientID.String())
+	formData.Set("client_id", resolution.ClientID.String())
 	body := formData.Encode()
 
 	upstreamReq, err := http.NewRequestWithContext(ctx, "POST", s.upstreamTokenURL, strings.NewReader(body))
@@ -111,7 +111,7 @@ func (s *proxyTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *htt
 		}
 	}
 
-	agentID := agent.ID
+	agentID := resolution.AgentID
 	if s.multiAgentVerifier != nil && upstreamResp.StatusCode == http.StatusOK {
 		responseBody, readErr := io.ReadAll(upstreamResp.Body)
 		if readErr != nil {
@@ -180,7 +180,7 @@ func NewLocalGrantStrategy(minting ports.TokenMintingStrategy, logger *slog.Logg
 }
 
 // HandleTokenGrant dispatches client_credentials and authorization_code grants to the local minting strategy.
-func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, _ *storage.Agent) {
+func (s *localGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, _ *ports.TokenGrantResolution) {
 	switch grantType {
 	case "client_credentials":
 		rawClientID := formData.Get("client_id")
@@ -324,12 +324,12 @@ func NewHybridTokenGrantStrategy(proxy, local TokenGrantStrategy) TokenGrantStra
 	return &hybridTokenGrantStrategy{proxy: proxy, local: local}
 }
 
-func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, agent *storage.Agent) {
-	switch agent.ClientMode() {
+func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, resolution *ports.TokenGrantResolution) {
+	switch resolution.ClientMode {
 	case storage.ProxyClient:
-		s.proxy.HandleTokenGrant(w, r, grantType, formData, agent)
+		s.proxy.HandleTokenGrant(w, r, grantType, formData, resolution)
 	case storage.CIMDClient, storage.LocalClient:
-		s.local.HandleTokenGrant(w, r, grantType, formData, agent)
+		s.local.HandleTokenGrant(w, r, grantType, formData, resolution)
 	default:
 		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "unexpected client mode in hybrid dispatch")
 	}

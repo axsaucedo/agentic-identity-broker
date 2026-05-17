@@ -108,7 +108,7 @@ func (h *OAuth2TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.GrantHandler.HandleTokenGrant(w, r, grantType, formData, resolution.Agent)
+	h.GrantHandler.HandleTokenGrant(w, r, grantType, formData, resolution)
 }
 
 // handleTokenExchange processes RFC 8693 token exchange requests.
