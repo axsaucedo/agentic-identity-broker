@@ -28,9 +28,11 @@ func (m *mockCIMDFetcher) Fetch(_ context.Context, _ string) (*ports.CIMDFetchRe
 }
 
 // cimdServiceForTest creates a cimd.Service backed by the given fetch result.
-func cimdServiceForTest(fetchResult *ports.CIMDFetchResult, fetchErr error) *cimd.Service {
+func cimdServiceForTest(t *testing.T, fetchResult *ports.CIMDFetchResult, fetchErr error) *cimd.Service {
+	t.Helper()
 	fetcher := &mockCIMDFetcher{result: fetchResult, err: fetchErr}
-	cache, _ := cimd.NewCIMDCache(60*time.Second, time.Hour, 1000)
+	cache, err := cimd.NewCIMDCache(60*time.Second, time.Hour, 1000)
+	require.NoError(t, err)
 	return cimd.NewService(fetcher, cache, nil, slog.Default())
 }
 
@@ -45,7 +47,7 @@ func TestAgentClientResolver_OpaqueUUID_Success(t *testing.T) {
 	}
 	repo := NewMockAgentRepository()
 	require.NoError(t, repo.Create(context.Background(), agent))
-	svc := cimdServiceForTest(nil, nil)
+	svc := cimdServiceForTest(t, nil, nil)
 	resolver := NewAgentClientResolverWithCIMD(repo, svc, slog.Default())
 
 	resolution, err := resolver.ResolveClient(context.Background(), id.ClientID(agentID.String()))
@@ -56,7 +58,7 @@ func TestAgentClientResolver_OpaqueUUID_Success(t *testing.T) {
 
 func TestAgentClientResolver_OpaqueUUID_NotFound(t *testing.T) {
 	repo := NewMockAgentRepository()
-	svc := cimdServiceForTest(nil, nil)
+	svc := cimdServiceForTest(t, nil, nil)
 	resolver := NewAgentClientResolverWithCIMD(repo, svc, slog.Default())
 
 	_, err := resolver.ResolveClient(context.Background(), id.ClientID("00000000-0000-0000-0000-000000000099"))
@@ -69,7 +71,7 @@ func TestAgentClientResolver_OpaqueUUID_NotFound(t *testing.T) {
 
 func TestAgentClientResolver_InvalidURL_Rejected(t *testing.T) {
 	repo := NewMockAgentRepository()
-	svc := cimdServiceForTest(nil, nil)
+	svc := cimdServiceForTest(t, nil, nil)
 	resolver := NewAgentClientResolverWithCIMD(repo, svc, slog.Default())
 
 	_, err := resolver.ResolveClient(context.Background(), "http://agent.example.com/client")
@@ -82,7 +84,7 @@ func TestAgentClientResolver_InvalidURL_Rejected(t *testing.T) {
 
 func TestAgentClientResolver_URLNotRegistered(t *testing.T) {
 	repo := NewMockAgentRepository()
-	svc := cimdServiceForTest(nil, nil)
+	svc := cimdServiceForTest(t, nil, nil)
 	resolver := NewAgentClientResolverWithCIMD(repo, svc, slog.Default())
 
 	_, err := resolver.ResolveClient(context.Background(), "https://agent.example.com/client")
@@ -104,7 +106,7 @@ func TestAgentClientResolver_CIMDFetchFails(t *testing.T) {
 	repo := NewMockAgentRepository()
 	require.NoError(t, repo.Create(context.Background(), agent))
 	repo.RegisterURI("https://agent.example.com/client", agent)
-	svc := cimdServiceForTest(nil, fmt.Errorf("connection refused"))
+	svc := cimdServiceForTest(t, nil, fmt.Errorf("connection refused"))
 	resolver := NewAgentClientResolverWithCIMD(repo, svc, slog.Default())
 
 	_, err := resolver.ResolveClient(context.Background(), "https://agent.example.com/client")
@@ -131,7 +133,7 @@ func TestAgentClientResolver_URLFormat_Success(t *testing.T) {
 		clientURL,
 	)
 	fetchResult := &ports.CIMDFetchResult{Body: []byte(body), CacheControl: "max-age=300"}
-	svc := cimdServiceForTest(fetchResult, nil)
+	svc := cimdServiceForTest(t, fetchResult, nil)
 	resolver := NewAgentClientResolverWithCIMD(repo, svc, slog.Default())
 
 	resolution, err := resolver.ResolveClient(context.Background(), clientURL)
@@ -161,7 +163,7 @@ func TestAgentClientResolver_ResolvesViaCIMDURINotClientID(t *testing.T) {
 
 	body := fmt.Sprintf(`{"client_id":%q,"client_name":"URI-Only Agent","redirect_uris":["https://agent.example.com/cb"]}`, cimdURI)
 	fetchResult := &ports.CIMDFetchResult{Body: []byte(body), CacheControl: "max-age=300"}
-	svc := cimdServiceForTest(fetchResult, nil)
+	svc := cimdServiceForTest(t, fetchResult, nil)
 	resolver := NewAgentClientResolverWithCIMD(repo, svc, slog.Default())
 
 	resolution, err := resolver.ResolveClient(context.Background(), cimdURI)
