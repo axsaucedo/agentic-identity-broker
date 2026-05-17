@@ -1,33 +1,34 @@
-package cimd
+package oauth2
 
 import (
 	"context"
 	"log/slog"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/urivalidation"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
-// CIMDClientResolver resolves client_id values by:
+// AgentClientResolver resolves client_id values by:
 //   - Detecting URL-format client_id (https://) → CIMD fetch path (or rejected when disabled)
 //   - Falling back to opaque UUID lookup for non-URL client_id
 //
 // When cimdService is nil, URL-format client_id values are rejected with invalid_client.
-type CIMDClientResolver struct {
+type AgentClientResolver struct {
 	agentRepo   ports.AgentRepository
-	cimdService *Service
+	cimdService *cimd.Service
 	logger      *slog.Logger
 }
 
-// NewCIMDClientResolver creates a client resolver. When cimdService is nil, URL-format
+// NewAgentClientResolver creates a client resolver. When cimdService is nil, URL-format
 // client_id values are rejected with invalid_client (CIMD disabled mode). When logger is
 // nil, slog.Default() is used.
-func NewCIMDClientResolver(agentRepo ports.AgentRepository, cimdService *Service, logger *slog.Logger) *CIMDClientResolver {
+func NewAgentClientResolver(agentRepo ports.AgentRepository, cimdService *cimd.Service, logger *slog.Logger) *AgentClientResolver {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &CIMDClientResolver{
+	return &AgentClientResolver{
 		agentRepo:   agentRepo,
 		cimdService: cimdService,
 		logger:      logger,
@@ -37,14 +38,14 @@ func NewCIMDClientResolver(agentRepo ports.AgentRepository, cimdService *Service
 // ResolveClient resolves a client_id to an Agent and optional CIMD metadata.
 // For URL-format client_id: validates URL, looks up agent by client URI, fetches/validates CIMD.
 // For opaque client_id: parses UUID and looks up agent by ID.
-func (r *CIMDClientResolver) ResolveClient(ctx context.Context, clientID id.ClientID) (*ports.ClientResolution, error) {
+func (r *AgentClientResolver) ResolveClient(ctx context.Context, clientID id.ClientID) (*ports.ClientResolution, error) {
 	if urivalidation.ValidateCIMDClientURL(string(clientID)) == nil {
 		return r.resolveCIMD(ctx, string(clientID))
 	}
 	return r.resolveOpaque(ctx, clientID)
 }
 
-func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*ports.ClientResolution, error) {
+func (r *AgentClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*ports.ClientResolution, error) {
 	if r.cimdService == nil {
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "URL-format client_id requires CIMD support (disabled)"}
 	}
@@ -66,28 +67,10 @@ func (r *CIMDClientResolver) resolveCIMD(ctx context.Context, rawURL string) (*p
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "CIMD document validation failed"}
 	}
 
-	return ports.NewClientResolution(agent, toDTO(doc)), nil
+	return ports.NewClientResolution(agent, toCIMDMetadataDTO(doc)), nil
 }
 
-// toDTO converts a domain ClientIDMetadataDocument to the port DTO.
-func toDTO(doc *ClientIDMetadataDocument) *ports.CIMDMetadataDTO {
-	if doc == nil {
-		return nil
-	}
-	return &ports.CIMDMetadataDTO{
-		ClientID:      doc.ClientID,
-		ClientName:    doc.ClientName,
-		LogoURI:       doc.LogoURI,
-		RedirectURIs:  append([]string(nil), doc.RedirectURIs...),
-		AuthMethod:    doc.AuthMethod,
-		GrantTypes:    append([]string(nil), doc.GrantTypes...),
-		ResponseTypes: append([]string(nil), doc.ResponseTypes...),
-		PolicyURI:     doc.PolicyURI,
-		TosURI:        doc.TosURI,
-	}
-}
-
-func (r *CIMDClientResolver) resolveOpaque(ctx context.Context, clientID id.ClientID) (*ports.ClientResolution, error) {
+func (r *AgentClientResolver) resolveOpaque(ctx context.Context, clientID id.ClientID) (*ports.ClientResolution, error) {
 	agentUUID, parseErr := id.ParseAgentID(string(clientID))
 	if parseErr != nil {
 		return nil, &ports.ClientIDError{Code: "invalid_client", Desc: "Client not registered"}
@@ -103,4 +86,22 @@ func (r *CIMDClientResolver) resolveOpaque(ctx context.Context, clientID id.Clie
 	}
 
 	return ports.NewClientResolution(agent, nil), nil
+}
+
+// toCIMDMetadataDTO converts a domain ClientIDMetadataDocument to the port DTO.
+func toCIMDMetadataDTO(doc *cimd.ClientIDMetadataDocument) *ports.CIMDMetadataDTO {
+	if doc == nil {
+		return nil
+	}
+	return &ports.CIMDMetadataDTO{
+		ClientID:      doc.ClientID,
+		ClientName:    doc.ClientName,
+		LogoURI:       doc.LogoURI,
+		RedirectURIs:  append([]string(nil), doc.RedirectURIs...),
+		AuthMethod:    doc.AuthMethod,
+		GrantTypes:    append([]string(nil), doc.GrantTypes...),
+		ResponseTypes: append([]string(nil), doc.ResponseTypes...),
+		PolicyURI:     doc.PolicyURI,
+		TosURI:        doc.TosURI,
+	}
 }

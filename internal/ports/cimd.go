@@ -11,10 +11,10 @@ import (
 // and optional CIMD metadata. The builder selects the implementation based on
 // cimd.enabled configuration.
 //
-// When CIMD is disabled: CIMDClientResolver is wired with a nil cimdService —
+// When CIMD is disabled: AgentClientResolver is wired with a nil cimdService —
 // URL-format client_id values are rejected with invalid_client immediately.
 //
-// When CIMD is enabled: CIMDClientResolver is wired with a live cimdService —
+// When CIMD is enabled: AgentClientResolver is wired with a live cimdService —
 // handles URL-format client_id via CIMD fetch/validate/cache, delegates non-URL
 // client_id to opaque UUID resolution.
 type ClientResolver interface {

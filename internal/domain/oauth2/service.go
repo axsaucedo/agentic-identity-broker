@@ -59,7 +59,7 @@ type Service struct {
 func NewService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, config *OAuth2Config) ports.OAuth2Service {
 	return &Service{
 		grantRepo:      grantRepo,
-		clientResolver: cimd.NewCIMDClientResolver(agentRepo, nil, nil),
+		clientResolver: NewAgentClientResolver(agentRepo, nil, nil),
 		config:         config,
 	}
 }
@@ -76,7 +76,7 @@ func NewServiceWithSessions(
 	return &Service{
 		grantRepo:      grantRepo,
 		sessionRepo:    sessionRepo,
-		clientResolver: cimd.NewCIMDClientResolver(agentRepo, nil, logger),
+		clientResolver: NewAgentClientResolver(agentRepo, nil, logger),
 		config:         config,
 		logger:         logger,
 	}
