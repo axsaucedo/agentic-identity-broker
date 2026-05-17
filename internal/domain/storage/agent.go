@@ -16,8 +16,10 @@ import (
 type ClientMode int
 
 const (
+	// UnknownClient is the zero value — uninitialized; must never reach dispatch logic.
+	UnknownClient ClientMode = iota
 	// ProxyClient: agent has a ClientID — requests are forwarded to an upstream OAuth2 server.
-	ProxyClient ClientMode = iota
+	ProxyClient
 	// CIMDClient: agent has ClientURIs but no ClientID — tokens are issued locally via CIMD.
 	CIMDClient
 	// LocalClient: agent has neither ClientID nor ClientURIs — tokens are issued locally.

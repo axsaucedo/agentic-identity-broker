@@ -967,14 +967,15 @@ func TestHybridTokenGrant_EmptyClientIDReturns400(t *testing.T) {
 }
 
 // TestHybridTokenGrantStrategy_DispatchByClientMode verifies that hybridTokenGrantStrategy
-// routes ProxyClient agents to the proxy sub-strategy and all other client modes (LocalClient,
-// CIMDClient) to the local sub-strategy.
+// routes ProxyClient agents to the proxy sub-strategy and local modes (LocalClient,
+// CIMDClient) to the local sub-strategy, while rejecting ambiguous/unknown modes.
 func TestHybridTokenGrantStrategy_DispatchByClientMode(t *testing.T) {
 	agentID := id.MustParseAgentID("00000000-0000-0000-0000-000000000099")
 	cases := []struct {
 		name         string
 		agent        *storage.Agent
 		expectsProxy bool
+		expectsError bool
 	}{
 		{
 			name:         "ProxyClient routes to proxy sub-strategy",
@@ -982,14 +983,17 @@ func TestHybridTokenGrantStrategy_DispatchByClientMode(t *testing.T) {
 			expectsProxy: true,
 		},
 		{
-			name:         "LocalClient routes to local sub-strategy",
-			agent:        &storage.Agent{ID: agentID},
-			expectsProxy: false,
+			name:  "LocalClient routes to local sub-strategy",
+			agent: &storage.Agent{ID: agentID},
 		},
 		{
-			name:         "CIMDClient routes to local sub-strategy",
-			agent:        &storage.Agent{ID: agentID, ClientURIs: []string{"https://agent.example.com/meta"}},
-			expectsProxy: false,
+			name:  "CIMDClient routes to local sub-strategy",
+			agent: &storage.Agent{ID: agentID, ClientURIs: []string{"https://agent.example.com/meta"}},
+		},
+		{
+			name:         "AmbiguousClient returns server_error",
+			agent:        &storage.Agent{ID: agentID, ClientID: ptr.To(id.ClientID("x")), ClientURIs: []string{"https://agent.example.com/meta"}},
+			expectsError: true,
 		},
 	}
 	for _, tc := range cases {
@@ -1004,6 +1008,12 @@ func TestHybridTokenGrantStrategy_DispatchByClientMode(t *testing.T) {
 
 			strategy.HandleTokenGrant(w, req, "client_credentials", url.Values{"grant_type": {"client_credentials"}}, tc.agent)
 
+			if tc.expectsError {
+				assert.Equal(t, http.StatusInternalServerError, w.Code)
+				assert.Nil(t, proxyMock.capturedFormData, "proxy sub-strategy must not be called")
+				assert.Nil(t, localMock.capturedFormData, "local sub-strategy must not be called")
+				return
+			}
 			assert.Equal(t, tc.expectsProxy, proxyMock.capturedFormData != nil, "proxy sub-strategy called")
 			assert.Equal(t, !tc.expectsProxy, localMock.capturedFormData != nil, "local sub-strategy called")
 		})

@@ -118,10 +118,13 @@ func NewHybridProceedStrategy(proxy, local AuthorizationProceedStrategy) Authori
 }
 
 func (s *hybridProceedStrategy) HandleProceed(w http.ResponseWriter, r *http.Request, decision *ports.AuthorizationDecision, req *ports.AuthorizationRequest, principal id.Principal) {
-	if decision.ClientMode == storage.ProxyClient {
+	switch decision.ClientMode {
+	case storage.ProxyClient:
 		s.proxy.HandleProceed(w, r, decision, req, principal)
-	} else {
+	case storage.CIMDClient, storage.LocalClient:
 		s.local.HandleProceed(w, r, decision, req, principal)
+	default:
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "unexpected client mode in hybrid dispatch")
 	}
 }
 

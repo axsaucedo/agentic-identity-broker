@@ -320,10 +320,13 @@ func NewHybridTokenGrantStrategy(proxy, local TokenGrantStrategy) TokenGrantStra
 }
 
 func (s *hybridTokenGrantStrategy) HandleTokenGrant(w http.ResponseWriter, r *http.Request, grantType string, formData url.Values, agent *storage.Agent) {
-	if agent.ClientMode() == storage.ProxyClient {
+	switch agent.ClientMode() {
+	case storage.ProxyClient:
 		s.proxy.HandleTokenGrant(w, r, grantType, formData, agent)
-	} else {
+	case storage.CIMDClient, storage.LocalClient:
 		s.local.HandleTokenGrant(w, r, grantType, formData, agent)
+	default:
+		writeOAuth2ErrorJSON(w, http.StatusInternalServerError, "server_error", "unexpected client mode in hybrid dispatch")
 	}
 }
 

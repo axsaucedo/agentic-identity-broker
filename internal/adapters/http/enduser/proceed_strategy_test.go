@@ -2,6 +2,7 @@ package enduser
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -183,6 +184,27 @@ func TestHybridProceedStrategy_DispatchesByClientMode(t *testing.T) {
 
 			assert.Equal(t, tc.expectsProxy, proxyMock.called, "proxy strategy called")
 			assert.Equal(t, !tc.expectsProxy, localMock.called, "local strategy called")
+		})
+	}
+}
+
+// TestHybridProceedStrategy_RejectsAmbiguousClientMode verifies that the hybrid proceed
+// strategy returns server_error for AmbiguousClient and UnknownClient rather than
+// silently dispatching to either sub-strategy.
+func TestHybridProceedStrategy_RejectsAmbiguousClientMode(t *testing.T) {
+	for _, mode := range []storage.ClientMode{storage.AmbiguousClient, storage.UnknownClient} {
+		t.Run(fmt.Sprintf("mode_%d", mode), func(t *testing.T) {
+			proxyMock := &captureProceedStrategy{}
+			localMock := &captureProceedStrategy{}
+			strategy := NewHybridProceedStrategy(proxyMock, localMock)
+
+			w := httptest.NewRecorder()
+			decision := &ports.AuthorizationDecision{Action: "proceed", ClientMode: mode}
+			strategy.HandleProceed(w, newProceedRequest(t), decision, &ports.AuthorizationRequest{}, id.NewPrincipal("u@example.com"))
+
+			assert.Equal(t, http.StatusInternalServerError, w.Code)
+			assert.False(t, proxyMock.called, "proxy strategy must not be called")
+			assert.False(t, localMock.called, "local strategy must not be called")
 		})
 	}
 }

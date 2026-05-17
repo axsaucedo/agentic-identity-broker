@@ -40,7 +40,7 @@ type hybridModeStrategy struct{}
 func NewHybridModeStrategy() ModeStrategy { return &hybridModeStrategy{} }
 
 func (s *hybridModeStrategy) AcceptsClientMode(mode storage.ClientMode) bool {
-	return mode != storage.AmbiguousClient
+	return mode == storage.ProxyClient || mode == storage.CIMDClient || mode == storage.LocalClient
 }
 
 func (s *hybridModeStrategy) Mode() servermode.Mode { return servermode.Hybrid }
