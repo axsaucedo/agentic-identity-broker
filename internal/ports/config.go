@@ -403,7 +403,7 @@ func (c *OAuth2AuthServerConfig) validateProxyMode() error {
 		return c.newValidationError("oauth2_authorization_server.cimd.enabled requires mode 'local' or 'hybrid'; CIMD is incompatible with proxy mode")
 	}
 
-	if c.Local.TokenTTL != 0 || c.Local.TokenClaimsExpression != "" {
+	if c.Local.TokenTTL != 0 || c.Local.TokenClaimsExpression != "" || c.Local.IssuerURI != "" {
 		return c.newValidationError("oauth2_authorization_server.local must be empty in proxy mode")
 	}
 

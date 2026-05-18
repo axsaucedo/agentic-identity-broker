@@ -284,16 +284,18 @@ func TestConfigurationFromExamples(t *testing.T) {
 			// Set config path in environment
 			t.Setenv("IDENTITY_BROKER_CONFIG_PATH", configPath)
 
-			// Set mandatory JWESigningKey, encryption key, and oauth2 mode
+			// Set mandatory JWESigningKey only — example configs now carry their own mode
 			t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", testJWESigningKey)
-			t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 
 			// Set encryption backend environment variables based on config type
 			if tt.name == "production config" {
-				// Production config expects AWS KMS backend
+				// Production config expects AWS KMS backend and proxy-mode upstream config
 				t.Setenv("IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN", "arn:aws:kms:us-east-1:123456789012:key/test-key-id")
+				t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_ISSUER_URI", "https://idp.example.com")
+				t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_AUTHORIZE_ENDPOINT", "https://idp.example.com/oauth2/authorize")
+				t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_PROXY_UPSTREAM_TOKEN_ENDPOINT", "https://idp.example.com/oauth2/token")
 			} else {
-				// Development and staging configs use Memory backend
+				// Development and staging configs use Memory backend and local mode
 				t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", testEncryptionKey)
 			}
 

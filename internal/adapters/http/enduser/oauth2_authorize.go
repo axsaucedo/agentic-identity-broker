@@ -83,7 +83,7 @@ func (h *OAuth2AuthorizeHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	switch decision.Action {
 	case "proceed":
 		if h.ProceedHandler == nil {
-			writeOAuth2ErrorJSON(w, http.StatusServiceUnavailable, "server_error", "OAuth2 authorization server not configured")
+			redirectWithError(w, r, authReq.RedirectURI, authReq.State, "server_error", "OAuth2 authorization server not configured")
 			return
 		}
 		h.ProceedHandler.HandleProceed(w, r, decision, authReq, id.NewPrincipal(principalValue))

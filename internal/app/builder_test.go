@@ -533,6 +533,15 @@ func TestBuilder_MissingOAuth2AuthServerConfig(t *testing.T) {
 	}
 }
 
+func TestModeStrategyFor_PanicsOnUnknownMode(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected modeStrategyFor to panic on unknown mode, but it did not")
+		}
+	}()
+	modeStrategyFor("bogus")
+}
+
 func TestResolveUpstreamTimeout(t *testing.T) {
 	tests := []struct {
 		configured int

@@ -62,6 +62,10 @@ encryption:
   #   key_arn: ${IDENTITY_BROKER_ENCRYPTION_AWS_KMS_KEY_ARN}
   #   dynamodb_table_name: "IdentityBrokerEncryptionBranchKeys-Staging"
 
+oauth2_authorization_server:
+  # Staging uses local mode — broker mints tokens directly, no upstream OAuth2 server needed
+  mode: local
+
 # Future sections for expanded configuration:
 # database:
 #   connection_string: ${IDENTITY_BROKER_DB_CONNECTION}

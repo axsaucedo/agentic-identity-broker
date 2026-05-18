@@ -207,6 +207,22 @@ func setMinimalConfigEnv(t *testing.T) {
 	t.Setenv("IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE", "local")
 }
 
+func TestConfigLoader_MissingOAuth2Mode(t *testing.T) {
+	t.Run("GetConfig fails when oauth2_authorization_server.mode is not set", func(t *testing.T) {
+		t.Setenv("IDENTITY_BROKER_JWE_SIGNING_KEY", generateBase64EncodedString(t, 32))
+		t.Setenv("IDENTITY_BROKER_ENCRYPTION_MEMORY_RAW_KEY", generateBase64EncodedString(t, 32))
+		t.Setenv("IDENTITY_BROKER_SERVER_ENDUSER_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		t.Setenv("IDENTITY_BROKER_SERVER_ADMIN_AUTHENTICATION_PREAUTH_PRINCIPAL_HEADER_NAME", "X-Remote-User")
+		// Intentionally not setting IDENTITY_BROKER_OAUTH2_AUTH_SERVER_MODE
+
+		loader := NewLoader()
+		_, err := loader.GetConfig(context.Background())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "oauth2_authorization_server.mode")
+	})
+}
+
 func TestTokenExchangeExpectedAudienceConfiguration(t *testing.T) {
 	t.Run("default expected_audience is token-exchange-broker when not configured", func(t *testing.T) {
 		setMinimalConfigEnv(t)

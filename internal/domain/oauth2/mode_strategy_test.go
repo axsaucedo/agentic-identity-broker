@@ -31,6 +31,8 @@ func TestModeStrategy_Hybrid(t *testing.T) {
 	assert.True(t, s.AcceptsClientMode(storage.ProxyClient))
 	assert.True(t, s.AcceptsClientMode(storage.CIMDClient))
 	assert.True(t, s.AcceptsClientMode(storage.LocalClient))
+	assert.False(t, s.AcceptsClientMode(storage.AmbiguousClient))
+	assert.False(t, s.AcceptsClientMode(storage.UnknownClient))
 }
 
 func TestAgent_ClientMode(t *testing.T) {
