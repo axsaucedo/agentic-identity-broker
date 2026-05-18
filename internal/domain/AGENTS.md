@@ -44,7 +44,12 @@ Acceptable within domain ring: `tokenexchange/` → `consent/`, `oauth2session/`
 | `User` | ID + email, timestamps |
 
 ### Value Objects
-`OAuthScope` | `RequirementType` (mandatory/optional) | `ServiceRequirement` | `DelegatedToken` | `EncryptionContext` (JSONB, `driver.Valuer`/`sql.Scanner`) | `ConnectionParameters` | `StorageBackend` (memory/postgres) | `DiscoveryConfig` | `OAuth2Endpoints`
+- `OAuthScope` — permission scope (`ScopeValue` + `Description`)
+- `RequirementType` — enum: mandatory/optional
+- `ServiceRequirement` — agent's declared need: `ServiceID` + `RequirementType` + `RequiredScopes[]`
+- `DelegatedToken` — grant component: `ThirdpartyOAuth2ServiceID` + `Scopes[]`
+- `EncryptionContext` — AAD metadata (JSONB, implements `driver.Valuer`/`sql.Scanner`)
+- `ConnectionParameters`, `StorageBackend` (memory/postgres), `DiscoveryConfig`, `OAuth2Endpoints`
 
 ### Validation
 All entities implement `Validate() error`. Some add `ValidateForCreate()`/`ValidateForUpdate()`. Validation is pure — no I/O.

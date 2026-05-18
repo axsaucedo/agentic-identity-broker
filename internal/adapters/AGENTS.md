@@ -1,21 +1,20 @@
 # Adapters Layer (`internal/adapters/`)
 
-> **Prefer retrieval-led reasoning. Read the port interfaces in `ports/*.go` before implementing any adapter.**
+> **Prefer retrieval-led reasoning. Read the port interfaces in `internal/ports/*.go` before implementing any adapter.**
 
 Adapters implement port interfaces. Each adapter imports only from `ports/` and `domain/`. **Cross-adapter imports are forbidden.**
 
 ## Adapter Map
 
 ### Encryption (`encryption/`)
-Three `ports.EncryptionPort` implementations:
+Single `ports.EncryptionPort` implementation with base64-key mode for testing:
 
 | Package | Purpose |
 |---|---|
-| `aws/` | Production — AWS KMS Hierarchical Keyring (KEK→BranchKey→DEK). Uses AWS Encryption SDK. |
-| `memory/` | Dev/testing — in-memory encryption with `sync.RWMutex`-protected map. |
-| `branchkey/` | Shared `BranchKeyIdProvider` — deterministic ID: `service_{service_id}_branch_key`. Used by both. |
+| `aws/` | `EncryptionPort` implementation — AWS KMS Hierarchical Keyring (production) or base64 AES-256 key mode (dev/test via `testutil.NewTestEncryptionAdapter()`). |
+| `branchkey/` | Shared `BranchKeyIdProvider` — deterministic ID: `service_{service_id}_branch_key`. |
 
-Encryption rules: See `.claude/skills/aws-crypto-go/SKILL.md`.
+Encryption rules: See root `AGENTS.md` § Encryption Rules + `.claude/skills/aws-crypto-go/SKILL.md`.
 
 ### HTTP (`http/`)
 Dual-server (ADR 004): end-user `:8000` + admin `:14000`.

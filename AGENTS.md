@@ -109,9 +109,16 @@ Read full ADRs in `adrs/` before implementing. Pre-existing ADRs are authoritati
 | 009 | `adrs/009-envelope-encryption-design.md` | Three-layer envelope: KEK→BranchKey→DEK |
 | 009 | `adrs/009-separate-migration-docker-image.md` | Separate migration Docker image |
 | 010 | `adrs/010-cdk-encryption-infrastructure.md` | AWS CDK for encryption IaC |
+| 011 | `adrs/011-extproc-standalone-binary.md` | ExtProc as standalone binary |
+| 011 | `adrs/011-opentelemetry-provider-pattern.md` | OpenTelemetry provider pattern |
+| 012 | `adrs/012-encryption-layer-separation.md` | Encryption layer separation |
+| 012 | `adrs/012-extproc-in-memory-token-cache.md` | ExtProc in-memory token cache |
 | 013 | `adrs/013-strongly-typed-entity-ids.md` | Typed entity IDs (`XxxID`) in `domain/id/` |
 | 014 | `adrs/014-oauth2-server-mode.md` | OAuth2 authorization server mode |
+| 015 | `adrs/015-cimd-fetcher-architecture.md` | CIMD fetcher architecture |
+| 016 | `adrs/016-authorization-session-anti-spoofing.md` | Authorization session anti-spoofing |
 | 017 | `adrs/017-optional-agent-client-id.md` | Optional/nullable Agent client_id |
+| 027 | `adrs/027-extproc-telemetry-shared-dependency.md` | ExtProc telemetry shared dependency |
 
 ## Domain Glossary
 
