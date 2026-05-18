@@ -54,10 +54,11 @@ func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalV
 func newExpiredTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string) string {
 	past := time.Now().Add(-time.Hour)
 	claims := &domotp2.AuthorizationSessionClaims{
-		AgentID:   agentID,
-		Principal: id.Principal(principalVal),
-		IssuedAt:  past,
-		ExpiresAt: past,
+		AgentID:     agentID,
+		Principal:   id.Principal(principalVal),
+		OriginalURL: "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
+		IssuedAt:    past,
+		ExpiresAt:   past,
 	}
 	token, err := ts.Encrypt(claims)
 	if err != nil {
@@ -588,6 +589,38 @@ func TestCreateGrant_SessionToken_InvalidToken(t *testing.T) {
 	handler.CreateGrant(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+}
+
+// TestCreateGrant_SessionToken_Expired verifies that a valid but expired JWE session
+// token produces 400 with "session_expired" error code.
+func TestCreateGrant_SessionToken_Expired(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+	principalVal := "user@example.com"
+
+	ts := newTestJWETokenService()
+	expiredToken := newExpiredTestSessionToken(ts, testAgentID, principalVal)
+
+	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token="+expiredToken,
+		principalVal,
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+	var resp ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, "session_expired", resp.Error)
 }
 
 // TestCreateGrant_SessionToken_AgentMismatch verifies that a session token issued for
