@@ -2,6 +2,7 @@ package enduser
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,7 +11,10 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
@@ -20,6 +24,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func newTestJWETokenService() *domjwe.TokenService {
+	keyBytes, err := base64.StdEncoding.DecodeString("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=")
+	if err != nil {
+		panic("oauth2_authorize_test: failed to decode test JWE key: " + err.Error())
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		panic("oauth2_authorize_test: failed to import test JWE key: " + err.Error())
+	}
+	return domjwe.New(jweKey)
+}
 
 // TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal tests handler when principal is not provided
 func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
@@ -204,14 +220,16 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
-	svc := oauth2.NewService(
-		agentRepo,
+	svc := oauth2.NewServiceWithClientResolver(
 		newMockGrantRepo(),
+		nil,
+		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
-	)
+		nil,
+	).WithJWETokenService(newTestJWETokenService())
 
 	handler := &OAuth2AuthorizeHandler{
 		Service: svc,
@@ -227,10 +245,11 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 
 	handler.ServeHTTP(w, req)
 
-	// Should redirect to consent UI
+	// Should redirect to consent UI with a JWE session token
 	assert.Equal(t, http.StatusFound, w.Code)
 	redirectURL := w.Header().Get("Location")
 	assert.Contains(t, redirectURL, "https://broker.example.com/consent/agent/"+agentID.String())
+	assert.Contains(t, redirectURL, "session_token=")
 }
 
 // TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream tests redirect to upstream with active grant

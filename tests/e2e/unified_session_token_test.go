@@ -49,10 +49,11 @@ func newExpiredE2ESessionToken(agentID id.AgentID, principalVal string) string {
 	ts := newE2EJWETokenService()
 	past := time.Now().Add(-time.Hour)
 	claims := &domotp2.AuthorizationSessionClaims{
-		AgentID:   agentID,
-		Principal: id.Principal(principalVal),
-		IssuedAt:  past,
-		ExpiresAt: past,
+		AgentID:     agentID,
+		Principal:   id.Principal(principalVal),
+		OriginalURL: "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
+		IssuedAt:    past,
+		ExpiresAt:   past,
 	}
 	token, err := ts.Encrypt(claims)
 	if err != nil {
