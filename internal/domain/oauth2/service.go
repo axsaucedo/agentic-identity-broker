@@ -400,36 +400,28 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 }
 
 // buildConsentURL builds the consent redirect URL for a given agent and request.
-// For CIMD flows (cimdMeta != nil), seals an AuthorizationSessionClaims JWE and returns
-// a URL with ?session_token=<jwe>. For opaque flows, falls back to ?redirect_uri=<OriginalURL>.
+// ALL agent modes (local, proxy, CIMD) receive a JWE session_token sealing the
+// authorization context (agent_id, principal, original_url, TTL). CIMD agents
+// additionally embed cimd_metadata; for local/proxy agents cimd_metadata is nil.
 func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
+	var meta *cimd.ClientIDMetadataDocument
 	if cimdMeta != nil {
-		meta := &cimd.ClientIDMetadataDocument{
+		meta = &cimd.ClientIDMetadataDocument{
 			ClientID:     cimdMeta.ClientID,
 			ClientName:   cimdMeta.ClientName,
 			LogoURI:      cimdMeta.LogoURI,
 			RedirectURIs: cimdMeta.RedirectURIs,
 		}
-		claims, err := NewAuthorizationSessionClaims(
-			agent.ID,
-			principal,
-			req.OriginalURL,
-			meta,
-		)
-		if err != nil {
-			return "", fmt.Errorf("failed to create authorization session claims: %w", err)
-		}
-		token, err := s.CreateAuthorizationSessionToken(claims)
-		if err != nil {
-			return "", fmt.Errorf("failed to create authorization session token: %w", err)
-		}
-		return fmt.Sprintf("%s/consent/agent/%s?session_token=%s", s.config.PublicURL, agent.ID, url.QueryEscape(token)), nil
 	}
-	return fmt.Sprintf("%s/consent/agent/%s?redirect_uri=%s",
-		s.config.PublicURL,
-		agent.ID,
-		url.QueryEscape(req.OriginalURL),
-	), nil
+	claims, err := NewAuthorizationSessionClaims(agent.ID, principal, req.OriginalURL, meta)
+	if err != nil {
+		return "", fmt.Errorf("failed to create authorization session claims: %w", err)
+	}
+	token, err := s.CreateAuthorizationSessionToken(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed to create authorization session token: %w", err)
+	}
+	return fmt.Sprintf("%s/consent/agent/%s?session_token=%s", s.config.PublicURL, agent.ID, url.QueryEscape(token)), nil
 }
 
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.

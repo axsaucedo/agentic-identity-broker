@@ -638,13 +638,13 @@ OAuth2 /authorize request
   ↓  │         ↓ Cache store with HTTP-header-derived TTL (clamped to operator bounds)
   ↓  │    ↓ Return ClientResolution{Agent, CIMDDocument}
   ↓  └─ UUID detected → AgentClientResolver (opaque path, cimdService may be nil)
-  ↓ HandleAuthorization: CIMD metadata present → create AuthorizationSession
-  ↓ Redirect to consent with ?session_id= (no CIMD params in URL)
-  ↓ Consent handler loads AuthorizationSession (trusted server-side state)
+  ↓ HandleAuthorization: ALL agent modes create a JWE session token (cimd_metadata nil for non-CIMD)
+  ↓ Redirect to consent with ?session_token= (JWE seals agent_id, principal, original_url, TTL)
+  ↓ Consent handler decrypts and validates session token (expiry, principal, agent ID binding)
   ↓ User grants → grants endpoint consumes session → authorization code redirect
 ```
 
-**Security Properties**: SSRF blocked at TCP-connect time (TOCTOU-safe); CIMD params never relay through browser URL (AuthorizationSession binds context server-side, SR-013/SR-014).
+**Security Properties**: SSRF blocked at TCP-connect time (TOCTOU-safe); authorization context never relay through browser URL as plain params (JWE session_token seals context server-side, SR-013/SR-014). All agent modes (local, proxy, CIMD) use session_token — no redirect_uri fallback.
 
 **See Also**: ADR 015 — CIMD Fetcher Architecture (SSRF hardening, caching, strategy pattern)
 

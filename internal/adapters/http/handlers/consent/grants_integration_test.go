@@ -367,8 +367,8 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 		assert.Empty(t, data["delegated_oauth2_tokens"])
 	})
 
-	// Empty tokens with redirect_uri: creates grant and honours the redirect.
-	t.Run("empty_tokens_with_redirect_uri_creates_grant_and_redirects", func(t *testing.T) {
+	// redirect_uri without session_token is rejected (FR-005: no insecure fallback).
+	t.Run("empty_tokens_with_redirect_uri_rejected", func(t *testing.T) {
 		reqBody := GrantRequest{
 			DelegatedOAuth2Tokens: []DelegatedTokenRequest{},
 		}
@@ -383,10 +383,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 		rr := httptest.NewRecorder()
 		handler.CreateGrant(rr, req)
 
-		assert.Equal(t, http.StatusCreated, rr.Code)
-		var resp map[string]interface{}
-		require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-		assert.Equal(t, "/callback", resp["redirect_url"])
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 }
 

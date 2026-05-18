@@ -24,8 +24,8 @@
 
 **Constitution Reference**: Principles II, V
 
-- [ ] T001 Confirm no new entities needed — existing `AuthorizationSessionClaims` reused with `CIMDMetadata=nil` for non-CIMD agents
-- [ ] T002 [P] Update ARCHITECTURE.md Glossary to note session tokens apply to ALL agent modes (not CIMD-only)
+- [X] T001 Confirm no new entities needed — existing `AuthorizationSessionClaims` reused with `CIMDMetadata=nil` for non-CIMD agents
+- [X] T002 [P] Update ARCHITECTURE.md Glossary to note session tokens apply to ALL agent modes (not CIMD-only)
 
 **Checkpoint**: Domain model confirmed (no changes), glossary updated
 
@@ -33,7 +33,7 @@
 
 **Constitution Reference**: Principle VII
 
-- [ ] T003 Confirm no new configuration parameters — feature reuses existing JWE key and TTL settings
+- [X] T003 Confirm no new configuration parameters — feature reuses existing JWE key and TTL settings
 
 **Checkpoint**: No config changes needed — N/A
 
@@ -41,7 +41,7 @@
 
 **Constitution Reference**: Principles IV, X
 
-- [ ] T004 Confirm no public API contract changes — consent URL parameter change is internal state transport, not a documented API
+- [X] T004 Confirm no public API contract changes — consent URL parameter change is internal state transport, not a documented API
 
 **Checkpoint**: No API changes — N/A
 
@@ -49,13 +49,13 @@
 
 **Constitution Reference**: Principle IX
 
-- [ ] T005 Confirm no database schema changes — session tokens remain stateless (JWE-sealed)
+- [X] T005 Confirm no database schema changes — session tokens remain stateless (JWE-sealed)
 
 **Checkpoint**: No DB changes — N/A
 
 ### Phase 2e: Frontend/Design System Review [MANDATORY IF FRONTEND]
 
-- [ ] T006 Confirm no frontend UI changes — consent page renders identically; only URL parameter name changes
+- [X] T006 Confirm no frontend UI changes — consent page renders identically; only URL parameter name changes
 
 **Checkpoint**: No frontend changes — N/A
 
@@ -63,12 +63,12 @@
 
 **Constitution Reference**: Principle XIII
 
-- [ ] T007 Write E2E acceptance tests in `tests/e2e/unified_session_token_test.go` for all 7 spec scenarios
-- [ ] T007a Map each acceptance scenario to one `It()` block using Ginkgo/Gomega BDD framework
-- [ ] T007b Organize: `Describe("Unified Session Token")` → `Context("local agent")`, `Context("proxy agent")`, `Context("consent handlers")`
-- [ ] T007c Use existing fixtures from `tests/e2e/fixtures/` — create local agent fixture and proxy agent fixture (without CIMD metadata)
-- [ ] T007d Add comment references to spec scenarios (e.g., `// Scenario 1.1 from specs/031-unified-session-token/spec.md`)
-- [ ] T007e Verify E2E tests FAIL semantically: assertions target HTTP redirect Location header (`session_token=` present, `redirect_uri=` absent), status codes (400/403 for rejections)
+- [X] T007 Write E2E acceptance tests in `tests/e2e/unified_session_token_test.go` for all 7 spec scenarios
+- [X] T007a Map each acceptance scenario to one `It()` block using Ginkgo/Gomega BDD framework
+- [X] T007b Organize: `Describe("Unified Session Token")` → `Context("local agent")`, `Context("proxy agent")`, `Context("consent handlers")`
+- [X] T007c Use existing fixtures from `tests/e2e/fixtures/` — create local agent fixture and proxy agent fixture (without CIMD metadata)
+- [X] T007d Add comment references to spec scenarios (e.g., `// Scenario 1.1 from specs/031-unified-session-token/spec.md`)
+- [X] T007e Verify E2E tests FAIL semantically: assertions target HTTP redirect Location header (`session_token=` present, `redirect_uri=` absent), status codes (400/403 for rejections)
 
 **Checkpoint**: E2E acceptance tests written and verified to fail semantically before implementation
 
@@ -82,13 +82,13 @@
 
 ### Tests for User Story 1 [MANDATORY - Principle VIII] ⚠️
 
-- [ ] T008 [P] [US1] Unit tests for `buildConsentURL` with nil cimdMeta in `internal/domain/oauth2/service_test.go` — assert session_token output
-- [ ] T009 [P] [US1] Unit test verifying `NewAuthorizationSessionClaims` with nil CIMDMetadata produces valid claims with correct TTL in `internal/domain/oauth2/authorization_session_token_test.go`
+- [X] T008 [P] [US1] Unit tests for `buildConsentURL` with nil cimdMeta in `internal/domain/oauth2/service_test.go` — assert session_token output
+- [X] T009 [P] [US1] Unit test verifying `NewAuthorizationSessionClaims` with nil CIMDMetadata produces valid claims with correct TTL in `internal/domain/oauth2/authorization_session_token_test.go`
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Modify `buildConsentURL` in `internal/domain/oauth2/service.go` — remove `if cimdMeta != nil` branch; always create session token for all agents
-- [ ] T011 [US1] Verify existing CIMD E2E tests still pass (regression check) by running `ginkgo -v ./tests/e2e/ --focus="CIMD"`
+- [X] T010 [US1] Modify `buildConsentURL` in `internal/domain/oauth2/service.go` — remove `if cimdMeta != nil` branch; always create session token for all agents
+- [X] T011 [US1] Verify existing CIMD E2E tests still pass (regression check) by running `ginkgo -v ./tests/e2e/ --focus="CIMD"`
 
 **Checkpoint**: Local agent authorize requests produce session_token; CIMD flow unchanged
 
@@ -102,8 +102,8 @@
 
 **Note**: US1's change to `buildConsentURL` removes the CIMD conditional entirely, so proxy agents are automatically covered. This phase is verification-only.
 
-- [ ] T012 [US2] Add proxy agent fixture to `tests/e2e/fixtures/` if not already present
-- [ ] T013 [US2] Verify proxy agent E2E scenario (US2 Scenario 1) passes after US1 implementation
+- [X] T012 [US2] Add proxy agent fixture to `tests/e2e/fixtures/` if not already present
+- [X] T013 [US2] Verify proxy agent E2E scenario (US2 Scenario 1) passes after US1 implementation
 
 **Checkpoint**: Proxy agent coverage confirmed — no additional code changes needed
 
@@ -117,18 +117,18 @@
 
 ### Tests for User Story 3 [MANDATORY - Principle VIII] ⚠️
 
-- [ ] T014 [P] [US3] Unit tests for `agent_detail_handler` requiring session_token in `internal/adapters/http/handlers/consent/agent_detail_handler_test.go`
-- [ ] T015 [P] [US3] Unit tests for `grants_handler` requiring session_token in `internal/adapters/http/handlers/consent/grants_handler_test.go`
-- [ ] T016 [P] [US3] Unit test for principal mismatch rejection (403) in consent handlers
-- [ ] T017 [P] [US3] Unit test for expired token rejection (400) in consent handlers
-- [ ] T017a [P] [US3] Unit test for malformed JWE token (not valid compact serialization) returns 400 in `internal/adapters/http/handlers/consent/agent_detail_handler_test.go`
-- [ ] T017b [P] [US3] Unit test for agent ID mismatch (token agent ≠ URL path agent) returns 400 in `internal/adapters/http/handlers/consent/agent_detail_handler_test.go`
+- [X] T014 [P] [US3] Unit tests for `agent_detail_handler` requiring session_token in `internal/adapters/http/handlers/consent/agent_detail_handler_test.go`
+- [X] T015 [P] [US3] Unit tests for `grants_handler` requiring session_token in `internal/adapters/http/handlers/consent/grants_handler_test.go`
+- [X] T016 [P] [US3] Unit test for principal mismatch rejection (403) in consent handlers
+- [X] T017 [P] [US3] Unit test for expired token rejection (400) in consent handlers
+- [X] T017a [P] [US3] Unit test for malformed JWE token (not valid compact serialization) returns 400 in `internal/adapters/http/handlers/consent/agent_detail_handler_test.go`
+- [X] T017b [P] [US3] Unit test for agent ID mismatch (token agent ≠ URL path agent) returns 400 in `internal/adapters/http/handlers/consent/agent_detail_handler_test.go`
 
 ### Implementation for User Story 3
 
-- [ ] T018 [US3] Remove `redirect_uri` fallback from `internal/adapters/http/handlers/consent/agent_detail_handler.go` — return 400 if `session_token` absent
-- [ ] T019 [US3] Remove `redirect_uri` fallback from `internal/adapters/http/handlers/consent/grants_handler.go` — return 400 if `session_token` absent
-- [ ] T020 [US3] Verify all E2E tests pass: `ginkgo -v ./tests/e2e/unified_session_token_test.go`
+- [X] T018 [US3] Remove `redirect_uri` fallback from `internal/adapters/http/handlers/consent/agent_detail_handler.go` — return 400 if `session_token` absent
+- [X] T019 [US3] Remove `redirect_uri` fallback from `internal/adapters/http/handlers/consent/grants_handler.go` — return 400 if `session_token` absent
+- [X] T020 [US3] Verify all E2E tests pass: `ginkgo -v ./tests/e2e/unified_session_token_test.go`
 
 **Checkpoint**: Consent handlers reject requests without session_token; all agent modes unified
 
@@ -142,36 +142,36 @@
 
 #### Design Phase Verification [MANDATORY]
 
-- [ ] T021 Verify ARCHITECTURE.md Glossary updated with session token scope change (Principle V)
-- [ ] T022 Verify no config changes needed — confirmed in Phase 2b (Principle VII)
-- [ ] T023 Verify no API changes needed — confirmed in Phase 2c (Principles IV, X)
-- [ ] T024 Verify no database changes needed — confirmed in Phase 2d (Principle IX)
-- [ ] T025 Verify E2E acceptance tests written in `tests/e2e/unified_session_token_test.go` for all 7 spec scenarios (Principle XIII)
-- [ ] T026 Verify E2E tests failed semantically before implementation (red phase) (Principle XIII)
+- [X] T021 Verify ARCHITECTURE.md Glossary updated with session token scope change (Principle V)
+- [X] T022 Verify no config changes needed — confirmed in Phase 2b (Principle VII)
+- [X] T023 Verify no API changes needed — confirmed in Phase 2c (Principles IV, X)
+- [X] T024 Verify no database changes needed — confirmed in Phase 2d (Principle IX)
+- [X] T025 Verify E2E acceptance tests written in `tests/e2e/unified_session_token_test.go` for all 7 spec scenarios (Principle XIII)
+- [X] T026 Verify E2E tests failed semantically before implementation (red phase) (Principle XIII)
 
 #### Implementation Phase Verification [MANDATORY]
 
 **Security** (Principles I, III):
-- [ ] T027 Verify security is strengthened (insecure fallback removed, fail-closed on missing token)
-- [ ] T028 [P] Verify no custom cryptography — uses existing `lestrrat-go/jwx` JWE (Principle III)
+- [X] T027 Verify security is strengthened (insecure fallback removed, fail-closed on missing token)
+- [X] T028 [P] Verify no custom cryptography — uses existing `lestrrat-go/jwx` JWE (Principle III)
 
 **Architecture Patterns** (Principle VI):
-- [ ] T029 Verify domain logic uses ports — `buildConsentURL` calls `CreateAuthorizationSessionToken` via domain service
+- [X] T029 Verify domain logic uses ports — `buildConsentURL` calls `CreateAuthorizationSessionToken` via domain service
 
 **Testing** (Principle VIII):
-- [ ] T030 Verify unit tests written first and failed before implementation
-- [ ] T031 Verify tests changed minimally during implementation
+- [X] T030 Verify unit tests written first and failed before implementation
+- [X] T031 Verify tests changed minimally during implementation
 
 **E2E Acceptance Testing** (Principle XIII):
-- [ ] T032 Verify all 7 spec scenarios have passing E2E tests
-- [ ] T033 Verify E2E tests changed minimally during implementation
-- [ ] T034 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
-- [ ] T035 Run full unit test suite: `just test`
+- [X] T032 Verify all 7 spec scenarios have passing E2E tests
+- [X] T033 Verify E2E tests changed minimally during implementation
+- [X] T034 Run full E2E test suite: `ginkgo -v ./tests/e2e/` (all tests must pass)
+- [X] T035 Run full unit test suite: `just test`
 
 ### Additional Polish
 
-- [ ] T036 Remove any dead code left by redirect_uri removal (unused imports, helper functions)
-- [ ] T037 Run `just check` (fmt → vet → lint → test) — all must pass
+- [X] T036 Remove any dead code left by redirect_uri removal (unused imports, helper functions)
+- [X] T037 Run `just check` (fmt → vet → lint → test) — all must pass
 
 ---
 

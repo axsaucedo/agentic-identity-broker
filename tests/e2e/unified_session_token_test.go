@@ -1,0 +1,356 @@
+package e2e_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
+	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+)
+
+// newE2EJWETokenService returns a JWE token service backed by the same key as DefaultOAuth2Config.
+// Used to create test tokens (including expired ones) for E2E rejection scenarios.
+func newE2EJWETokenService() *domjwe.TokenService {
+	keyBytes, err := base64.StdEncoding.DecodeString(
+		base64.StdEncoding.EncodeToString([]byte("test-32-byte-key-must-be-exact-x")),
+	)
+	if err != nil {
+		panic("newE2EJWETokenService: failed to decode key: " + err.Error())
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		panic("newE2EJWETokenService: failed to import key: " + err.Error())
+	}
+	return domjwe.New(jweKey)
+}
+
+// newExpiredE2ESessionToken creates a JWE session token whose TTL has already elapsed,
+// using the same key as the test server.
+func newExpiredE2ESessionToken(agentID id.AgentID, principalVal string) string {
+	ts := newE2EJWETokenService()
+	past := time.Now().Add(-time.Hour)
+	claims := &domotp2.AuthorizationSessionClaims{
+		AgentID:   agentID,
+		Principal: id.Principal(principalVal),
+		IssuedAt:  past,
+		ExpiresAt: past,
+	}
+	token, err := ts.Encrypt(claims)
+	if err != nil {
+		panic("newExpiredE2ESessionToken: " + err.Error())
+	}
+	return token
+}
+
+var _ = Describe("Unified Session Token State Transport", func() {
+	var (
+		logger         *slog.Logger
+		storageFactory *bootstrap.StorageFactory
+		serverFactory  *bootstrap.ServerFactory
+		testStorage    *storageadapter.Adapter
+		server         *bootstrap.TestServer
+	)
+
+	BeforeEach(func() {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		storageFactory = bootstrap.NewStorageFactory(logger)
+		var err error
+		testStorage, err = storageFactory.NewTestStorage()
+		Expect(err).ToNot(HaveOccurred())
+
+		config := fixtures.IssueTokenConfig()
+		serverFactory = bootstrap.NewServerFactory(config, logger)
+		appInstance, err := serverFactory.BuildApp(testStorage)
+		Expect(err).ToNot(HaveOccurred())
+		server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		if server != nil {
+			server.Close()
+		}
+		if testStorage != nil {
+			_ = storageFactory.CloseStorage(testStorage)
+		}
+	})
+
+	Context("local agent", func() {
+		var agent *storage.Agent
+
+		BeforeEach(func() {
+			now := time.Now()
+			agent = &storage.Agent{
+				ID:           id.NewAgentID(),
+				ClientID:     ptr.To(id.ClientID("test-local-client")),
+				DisplayName:  "Local Test Agent",
+				Description:  "E2E test agent for unified session token scenarios",
+				RedirectURIs: []string{"https://client.example.com/cb"},
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+		})
+
+		// Scenario 1.1 from specs/031-unified-session-token/spec.md
+		It("includes session_token and omits redirect_uri for local agent authorize", func() {
+			principal := fixtures.DefaultPrincipal().String()
+			authorizeURL := fmt.Sprintf(
+				"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=state123",
+				agent.ID,
+				url.QueryEscape("https://client.example.com/cb"),
+			)
+
+			resp, err := server.AuthenticatedGET(authorizeURL, principal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusFound))
+			loc := resp.Header.Get("Location")
+			Expect(loc).To(ContainSubstring("/consent/agent/"))
+			Expect(loc).To(ContainSubstring("session_token="), "consent URL must contain session_token")
+			Expect(loc).NotTo(ContainSubstring("redirect_uri="), "consent URL must NOT contain redirect_uri")
+		})
+
+		// Scenario 1.2 from specs/031-unified-session-token/spec.md
+		It("session token contains agent ID, principal, original URL, iat, exp with 10min TTL", func() {
+			principal := fixtures.DefaultPrincipal().String()
+			originalURL := fmt.Sprintf(
+				"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=state456",
+				agent.ID,
+				url.QueryEscape("https://client.example.com/cb"),
+			)
+
+			resp, err := server.AuthenticatedGET(originalURL, principal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusFound))
+
+			loc := resp.Header.Get("Location")
+			consentLoc, err := url.Parse(loc)
+			Expect(err).ToNot(HaveOccurred())
+			sessionToken := consentLoc.Query().Get("session_token")
+			Expect(sessionToken).ToNot(BeEmpty())
+
+			ts := newE2EJWETokenService()
+			var claims domotp2.AuthorizationSessionClaims
+			Expect(ts.Decrypt(sessionToken, &claims)).To(Succeed())
+
+			Expect(claims.AgentID).To(Equal(agent.ID))
+			Expect(string(claims.Principal)).To(Equal(principal))
+			Expect(claims.OriginalURL).ToNot(BeEmpty())
+			Expect(claims.IssuedAt.IsZero()).To(BeFalse())
+			Expect(claims.ExpiresAt.IsZero()).To(BeFalse())
+			ttl := claims.ExpiresAt.Sub(claims.IssuedAt)
+			Expect(ttl).To(BeNumerically("~", 10*time.Minute, 5*time.Second))
+			Expect(claims.CIMDMetadata).To(BeNil(), "local agent token must not contain CIMD metadata")
+		})
+
+		// Scenario 1.3 from specs/031-unified-session-token/spec.md
+		It("rejects session token when principal does not match authenticated user", func() {
+			principalA := fixtures.DefaultPrincipal().String()
+			principalB := fixtures.AnotherPrincipal().String()
+
+			authorizeURL := fmt.Sprintf(
+				"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=state789",
+				agent.ID,
+				url.QueryEscape("https://client.example.com/cb"),
+			)
+
+			// User A performs authorize — gets session_token bound to principalA
+			resp, err := server.AuthenticatedGET(authorizeURL, principalA)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusFound))
+
+			loc := resp.Header.Get("Location")
+			consentLoc, err := url.Parse(loc)
+			Expect(err).ToNot(HaveOccurred())
+			sessionToken := consentLoc.Query().Get("session_token")
+			Expect(sessionToken).ToNot(BeEmpty())
+
+			// User B tries to use principalA's session_token on the consent page
+			consentPath := fmt.Sprintf("/api/consent/agent/%s?session_token=%s",
+				agent.ID, url.QueryEscape(sessionToken))
+			consentResp, err := server.AuthenticatedGET(consentPath, principalB)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = consentResp.Body.Close() }()
+			Expect(consentResp.StatusCode).To(Equal(http.StatusBadRequest),
+				"principal mismatch must be rejected with 400")
+		})
+	})
+
+	Context("proxy agent", func() {
+		var (
+			agent        *storage.Agent
+			proxyServer  *bootstrap.TestServer
+			proxyStorage *storageadapter.Adapter
+		)
+
+		BeforeEach(func() {
+			// Proxy agent uses the default proxy mode config
+			proxyStorage, _ = storageFactory.NewTestStorage()
+			proxyCfg := fixtures.DefaultOAuth2Config()
+			proxyFactory := bootstrap.NewServerFactory(proxyCfg, logger)
+			appInstance, err := proxyFactory.BuildApp(proxyStorage)
+			Expect(err).ToNot(HaveOccurred())
+			proxyServer, err = bootstrap.NewEndUserTestServer(appInstance, logger)
+			Expect(err).ToNot(HaveOccurred())
+
+			now := time.Now()
+			agent = &storage.Agent{
+				ID:           id.NewAgentID(),
+				ClientID:     ptr.To(id.ClientID("proxy-test-client")),
+				DisplayName:  "Proxy Test Agent",
+				Description:  "E2E test agent for proxy mode unified session token scenarios",
+				RedirectURIs: []string{"https://client.example.com/cb"},
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+			Expect(proxyStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if proxyServer != nil {
+				proxyServer.Close()
+			}
+			if proxyStorage != nil {
+				_ = storageFactory.CloseStorage(proxyStorage)
+			}
+		})
+
+		// Scenario 2.1 from specs/031-unified-session-token/spec.md
+		It("includes session_token for proxy agent authorize", func() {
+			principal := fixtures.DefaultPrincipal().String()
+			authorizeURL := fmt.Sprintf(
+				"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=proxystate",
+				agent.ID,
+				url.QueryEscape("https://client.example.com/cb"),
+			)
+
+			resp, err := proxyServer.AuthenticatedGET(authorizeURL, principal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusFound))
+			loc := resp.Header.Get("Location")
+			Expect(loc).To(ContainSubstring("session_token="), "proxy agent consent URL must contain session_token")
+			Expect(loc).NotTo(ContainSubstring("redirect_uri="), "proxy agent consent URL must NOT contain redirect_uri")
+		})
+
+		// Scenario 2.2 from specs/031-unified-session-token/spec.md
+		It("rejects expired session token for proxy agent", func() {
+			principal := fixtures.DefaultPrincipal().String()
+			expiredToken := newExpiredE2ESessionToken(agent.ID, principal)
+
+			grantBody, _ := json.Marshal(map[string]any{
+				"delegated_oauth2_tokens": []any{},
+			})
+			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s",
+				agent.ID, url.QueryEscape(expiredToken))
+
+			resp, err := proxyServer.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest), "expired session token must be rejected with 400")
+		})
+	})
+
+	Context("consent handlers", func() {
+		var agent *storage.Agent
+
+		BeforeEach(func() {
+			now := time.Now()
+			agent = &storage.Agent{
+				ID:           id.NewAgentID(),
+				ClientID:     ptr.To(id.ClientID("consent-handler-client")),
+				DisplayName:  "Consent Handler Test Agent",
+				Description:  "E2E test agent for consent handler unified session token scenarios",
+				RedirectURIs: []string{"https://client.example.com/cb"},
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+		})
+
+		// Scenario 3.1 from specs/031-unified-session-token/spec.md
+		It("consent handler extracts context from session token for any agent mode", func() {
+			principal := fixtures.DefaultPrincipal().String()
+			authorizeURL := fmt.Sprintf(
+				"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=ctxstate",
+				agent.ID,
+				url.QueryEscape("https://client.example.com/cb"),
+			)
+
+			// Get session_token from authorize redirect
+			authResp, err := server.AuthenticatedGET(authorizeURL, principal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = authResp.Body.Close() }()
+			Expect(authResp.StatusCode).To(Equal(http.StatusFound))
+
+			loc := authResp.Header.Get("Location")
+			consentLoc, err := url.Parse(loc)
+			Expect(err).ToNot(HaveOccurred())
+			sessionToken := consentLoc.Query().Get("session_token")
+			Expect(sessionToken).ToNot(BeEmpty())
+
+			// Submit grant using session_token — must succeed
+			grantBody, _ := json.Marshal(map[string]any{
+				"delegated_oauth2_tokens": []any{},
+			})
+			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s",
+				agent.ID, url.QueryEscape(sessionToken))
+
+			grantResp, err := server.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = grantResp.Body.Close() }()
+
+			Expect(grantResp.StatusCode).To(Equal(http.StatusCreated))
+
+			var body map[string]any
+			Expect(json.NewDecoder(grantResp.Body).Decode(&body)).To(Succeed())
+			Expect(body["redirect_url"]).ToNot(BeEmpty(), "session token claims must provide redirect_url")
+		})
+
+		// Scenario 3.2 from specs/031-unified-session-token/spec.md
+		It("consent handler rejects request with redirect_uri but no session_token", func() {
+			principal := fixtures.DefaultPrincipal().String()
+			grantBody, _ := json.Marshal(map[string]any{
+				"delegated_oauth2_tokens": []any{},
+			})
+			// Send redirect_uri but NO session_token — old insecure fallback
+			grantPath := fmt.Sprintf(
+				"/api/consent/agent/%s/grants?redirect_uri=%s",
+				agent.ID,
+				url.QueryEscape("https://client.example.com/cb"),
+			)
+
+			resp, err := server.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
+				"redirect_uri without session_token must be rejected (no fallback)")
+		})
+	})
+})

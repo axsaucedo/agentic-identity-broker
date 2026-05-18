@@ -361,6 +361,35 @@ func TestGetAgentDetail_ExpiredSessionToken(t *testing.T) {
 	assert.Equal(t, "session_expired", resp.Error)
 }
 
+// TestGetAgentDetail_MalformedSessionToken verifies that a session_token that is not
+// valid JWE compact serialization returns 400 (T017a).
+func TestGetAgentDetail_MalformedSessionToken(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	mockService := &mockAgentDetailService{
+		getAgentWithServiceRequirementsFunc: func(_ context.Context, _ id.Principal, aID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error) {
+			return &storage.Agent{ID: aID, ClientID: ptr.To(id.NewClientID("test")), DisplayName: "Agent"}, []consent.ServiceRequirementStatus{}, nil
+		},
+	}
+
+	handler := NewAgentDetailHandler(mockService, nil, newTestJWETokenService())
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/consent/agent/"+agentID.String()+"?session_token=notvalidjwe", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", agentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(principal.WithPrincipal(req.Context(), "user@example.com"))
+
+	rr := httptest.NewRecorder()
+	handler.GetAgentDetail(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
+	var resp ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	assert.Equal(t, "session_expired", resp.Error)
+}
+
 func TestGetAgentDetail_SortsMandatoryFirst(t *testing.T) {
 	agentID := id.NewAgentID()
 	optionalServiceID := id.NewServiceID()

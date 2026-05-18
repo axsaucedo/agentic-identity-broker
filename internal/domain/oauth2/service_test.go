@@ -2,17 +2,47 @@ package oauth2
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// newServiceTestJWETokenService returns a JWE token service backed by a deterministic test key.
+func newServiceTestJWETokenService() *domjwe.TokenService {
+	keyBytes, err := base64.StdEncoding.DecodeString("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=")
+	if err != nil {
+		panic("newServiceTestJWETokenService: failed to decode key: " + err.Error())
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		panic("newServiceTestJWETokenService: failed to import key: " + err.Error())
+	}
+	return domjwe.New(jweKey)
+}
+
+// newTestServiceWithJWE creates an OAuth2Service with a test JWE token service.
+// Required because buildConsentURL now always uses session tokens (FR-001).
+func newTestServiceWithJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
+	return NewServiceWithClientResolver(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), cfg, nil).
+		WithJWETokenService(newServiceTestJWETokenService())
+}
+
+// newTestServiceWithSessionsAndJWE creates an OAuth2Service with sessions and a test JWE token service.
+func newTestServiceWithSessionsAndJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
+	return NewServiceWithClientResolver(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil).
+		WithJWETokenService(newServiceTestJWETokenService())
+}
 
 type MockAgentRepository struct {
 	agents map[id.AgentID]*storage.Agent
@@ -370,7 +400,7 @@ func TestService_HandleAuthorization(t *testing.T) {
 			tt.setupAgent(agentRepo)
 			tt.setupGrant(grantRepo)
 
-			svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
 				SupportedResponseTypes:    []string{"code"},
@@ -479,7 +509,7 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 			activeGrant(grantRepo)
 			tt.setupSession(sessionRepo)
 
-			svc := NewServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg, nil)
+			svc := newTestServiceWithSessionsAndJWE(agentRepo, grantRepo, sessionRepo, cfg)
 
 			decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
 
@@ -880,7 +910,7 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 			grantRepo := NewMockGrantRepository()
 			_ = agentRepo.Create(context.Background(), makeAgent(tt.redirectURIs))
 
-			svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
 				PublicURL: "https://broker.example.com",
 			})
 
@@ -962,7 +992,7 @@ func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
 			grantRepo := NewMockGrantRepository()
 			_ = agentRepo.Create(context.Background(), makeAgent(tt.allowedScopes))
 
-			svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+			svc := newTestServiceWithJWE(agentRepo, grantRepo, &OAuth2Config{
 				PublicURL: "https://broker.example.com",
 			})
 
@@ -1210,7 +1240,7 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 			setupGrant(grantRepo)
 			tt.setupSess(sessionRepo)
 
-			svc := NewServiceWithSessions(agentRepo, grantRepo, sessionRepo, cfg, nil)
+			svc := newTestServiceWithSessionsAndJWE(agentRepo, grantRepo, sessionRepo, cfg)
 			decision, err := svc.HandleAuthorization(context.Background(), authReq, id.NewPrincipal("user@example.com"))
 
 			require.NoError(t, err)
@@ -1261,4 +1291,38 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 	assert.Equal(t, "error", decision.Action)
 	assert.Equal(t, "server_error", decision.ErrorCode)
 	assert.Contains(t, decision.RedirectURL, "error=server_error")
+}
+
+// TestBuildConsentURL_AlwaysProducesSessionToken verifies that buildConsentURL always
+// generates a session_token URL regardless of whether cimdMeta is nil (T008).
+func TestBuildConsentURL_AlwaysProducesSessionToken(t *testing.T) {
+	agentID := id.NewAgentID()
+
+	svc := NewServiceWithClientResolver(
+		NewMockGrantRepository(),
+		nil,
+		NewAgentClientResolver(NewMockAgentRepository(), nil),
+		&OAuth2Config{PublicURL: "https://broker.example.com"},
+		nil,
+	).WithJWETokenService(newServiceTestJWETokenService())
+
+	req := &ports.AuthorizationRequest{
+		ClientID:     id.ClientID(agentID.String()),
+		RedirectURI:  "https://client.example.com/callback",
+		ResponseType: "code",
+		OriginalURL:  "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
+	}
+	agent := &storage.Agent{
+		ID:           agentID,
+		ClientID:     ptr.To(id.ClientID("client-1")),
+		DisplayName:  "Test Agent",
+		RedirectURIs: []string{"https://client.example.com/callback"},
+	}
+
+	// T008: nil cimdMeta must produce session_token URL (not redirect_uri fallback)
+	consentURL, err := svc.buildConsentURL(context.Background(), req, id.NewPrincipal("user@example.com"), agent, nil)
+	require.NoError(t, err)
+	assert.Contains(t, consentURL, "session_token=", "buildConsentURL must always produce session_token")
+	assert.NotContains(t, consentURL, "redirect_uri=", "buildConsentURL must never produce redirect_uri fallback")
+	assert.Contains(t, consentURL, "/consent/agent/"+agentID.String())
 }

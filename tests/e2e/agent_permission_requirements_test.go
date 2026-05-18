@@ -1260,10 +1260,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 			userPrincipalForGrant = "grant-user@example.com"
 		})
 
-		// Scenario 1: spec.md User Story 6, Scenario 1
-		// Spec: Issue HTTP redirect (302/303) when redirect_uri parameter provided
-		It("should issue HTTP redirect with 302/303 status when redirect_uri parameter provided", func() {
-			// Given: User approves consent with redirect_uri query parameter
+		// Scenario 1: spec.md User Story 6, Scenario 1 (updated for 031: no redirect_uri fallback)
+		// FR-005: redirect_uri without session_token is rejected — session_token is the only state transport
+		It("should reject redirect_uri without session_token (no insecure fallback)", func() {
 			payload := map[string]interface{}{
 				"delegated_oauth2_tokens": []map[string]interface{}{
 					{
@@ -1274,7 +1273,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 			}
 			body, _ := json.Marshal(payload)
 
-			// When: User submits grant approval with redirect_uri parameter
 			resp, err := enduserServer.AuthenticatedPOST(
 				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("/callback")),
 				userPrincipalForGrant,
@@ -1282,29 +1280,15 @@ var _ = Describe("Agent Permission Requirements", func() {
 				bytes.NewReader(body),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
+			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Backend returns 201 Created with redirect_url in response body
-			// (changed from HTTP 303 redirect to avoid CORS issues with cross-origin redirects)
-			Expect(resp.StatusCode).To(Equal(http.StatusCreated))
-
-			// Verify response body contains redirect_url
-			var respBody map[string]interface{}
-			err = json.NewDecoder(resp.Body).Decode(&respBody)
-			Expect(err).ToNot(HaveOccurred())
-
-			redirectUrl, ok := respBody["redirect_url"].(string)
-			Expect(ok).To(BeTrue(), "redirect_url should be present in response body")
-			Expect(redirectUrl).ToNot(BeEmpty())
-			Expect(redirectUrl).To(ContainSubstring("/callback"))
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
+				"redirect_uri without session_token must be rejected (FR-005)")
 		})
 
-		// Scenario 2: spec.md User Story 6, Scenario 2
-		// Spec: Response body contains redirect_url (changed from Location header to avoid CORS)
-		It("should include redirect_uri in response body when redirecting", func() {
-			// Given: User approves consent with specific redirect_uri
+		// Scenario 2: spec.md User Story 6, Scenario 2 (updated for 031: no redirect_uri fallback)
+		// FR-005: redirect_uri without session_token is rejected — use session_token for redirect context
+		It("should reject redirect_uri without session_token (session_token carries redirect context)", func() {
 			payload := map[string]interface{}{
 				"delegated_oauth2_tokens": []map[string]interface{}{
 					{
@@ -1318,7 +1302,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 			customCallback := "/oauth2/callback?code=abc123&state=xyz"
 			encodedCallback := url.QueryEscape(customCallback)
 
-			// When: User submits grant approval
 			resp, err := enduserServer.AuthenticatedPOST(
 				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, encodedCallback),
 				userPrincipalForGrant,
@@ -1326,20 +1309,10 @@ var _ = Describe("Agent Permission Requirements", func() {
 				bytes.NewReader(body),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
+			defer func() { _ = resp.Body.Close() }()
 
-			// Then: Response body contains redirect_url with the redirect_uri
-			Expect(resp.StatusCode).To(Equal(http.StatusCreated))
-
-			var respBody map[string]interface{}
-			err = json.NewDecoder(resp.Body).Decode(&respBody)
-			Expect(err).ToNot(HaveOccurred())
-
-			redirectUrl, ok := respBody["redirect_url"].(string)
-			Expect(ok).To(BeTrue(), "redirect_url should be present in response body")
-			Expect(redirectUrl).To(ContainSubstring("/oauth2/callback"))
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
+				"redirect_uri without session_token must be rejected (FR-005)")
 		})
 
 		// Scenario 3: spec.md User Story 6, Scenario 3
@@ -1376,10 +1349,9 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(location).To(BeEmpty(), "No redirect should occur without redirect_uri")
 		})
 
-		// Scenario 4: spec.md User Story 6, Scenario 4
-		// Spec: Accept same-origin redirect_uri and relative URLs
-		It("should accept same-origin redirect_uri and relative URLs", func() {
-			// Given: Valid same-origin redirect_uri
+		// Scenario 4: spec.md User Story 6, Scenario 4 (updated for 031: no redirect_uri fallback)
+		// FR-005: redirect_uri without session_token is rejected regardless of origin
+		It("should reject redirect_uri without session_token even for same-origin URLs", func() {
 			payload := map[string]interface{}{
 				"delegated_oauth2_tokens": []map[string]interface{}{
 					{
@@ -1390,7 +1362,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 			}
 			body, _ := json.Marshal(payload)
 
-			// When: User submits grant approval with same-origin redirect_uri
 			resp, err := enduserServer.AuthenticatedPOST(
 				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("/local/callback")),
 				userPrincipalForGrant,
@@ -1398,17 +1369,10 @@ var _ = Describe("Agent Permission Requirements", func() {
 				bytes.NewReader(body),
 			)
 			Expect(err).ToNot(HaveOccurred())
-			defer func() {
-				_ = resp.Body.Close()
-			}()
+			defer func() { _ = resp.Body.Close() }()
 
-			// Then: System accepts and redirects to the same-origin URL
-			Expect(resp.StatusCode).To(Or(
-				Equal(http.StatusFound),    // 302
-				Equal(http.StatusSeeOther), // 303
-				Equal(http.StatusCreated),  // 201 (if relative URL treated as local)
-				Equal(http.StatusOK),       // 200 (if relative URL treated as local)
-			))
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
+				"redirect_uri without session_token must be rejected (FR-005)")
 		})
 
 		// Scenario 5: spec.md User Story 6, Scenario 5
