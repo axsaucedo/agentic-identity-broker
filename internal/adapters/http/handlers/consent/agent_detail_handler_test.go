@@ -387,7 +387,7 @@ func TestGetAgentDetail_MalformedSessionToken(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
 	var resp ErrorResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	assert.Equal(t, "session_expired", resp.Error)
+	assert.Equal(t, "invalid_token", resp.Error)
 }
 
 func TestGetAgentDetail_SortsMandatoryFirst(t *testing.T) {

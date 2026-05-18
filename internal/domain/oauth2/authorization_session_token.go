@@ -3,6 +3,7 @@ package oauth2
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
@@ -46,6 +47,9 @@ func NewAuthorizationSessionClaims(
 	}
 	if originalURL == "" {
 		return nil, errors.New("originalURL must not be empty")
+	}
+	if u, err := url.Parse(originalURL); err != nil || (u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https") {
+		return nil, errors.New("originalURL must be a valid relative or http(s) URL")
 	}
 	now := time.Now()
 	return &AuthorizationSessionClaims{

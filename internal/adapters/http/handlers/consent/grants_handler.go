@@ -111,8 +111,13 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	if sessionToken != "" {
 		var claims domotp2.AuthorizationSessionClaims
 		if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
-			h.logger.Error("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
-			h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
+			if errors.Is(err, domjwe.ErrExpired) {
+				h.logger.Info("authorization session token expired", "agent_id", agentID, "principal", principalValue)
+				h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
+			} else {
+				h.logger.Error("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
+				h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
+			}
 			return
 		}
 		if claims.AgentID != parsedAgentID {

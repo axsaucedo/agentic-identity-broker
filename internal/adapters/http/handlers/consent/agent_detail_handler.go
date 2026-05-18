@@ -33,12 +33,15 @@ type ScopeWithDescription struct {
 	Description string `json:"description,omitempty"`
 }
 
-// errSessionExpired is returned by resolveCIMDMetadata when the JWE session token
-// cannot be decrypted or has passed its TTL. Callers use errors.Is to distinguish
-// this from other validation errors (agent mismatch, principal mismatch) and return
-// a machine-readable "session_expired" error code so the frontend can redirect the
-// user back through the /oauth2/authorize flow.
+// errSessionExpired is returned by resolveSessionContext when the JWE session token
+// TTL has elapsed. Callers return "session_expired" so the frontend can restart the
+// /oauth2/authorize flow.
 var errSessionExpired = errors.New("authorization session expired")
+
+// errInvalidToken is returned by resolveSessionContext when the JWE session token
+// cannot be decrypted or unmarshalled (tampered, wrong key, truncated). Distinct from
+// errSessionExpired to allow callers to log at appropriate severity.
+var errInvalidToken = errors.New("authorization session token invalid")
 
 // AgentDetailHandler handles HTTP requests for retrieving detailed agent information.
 // Implements User Story 2: Review Agent-Specific Grants (GET /api/consent/agent/:agentId).
@@ -151,6 +154,11 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 			h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
 			return
 		}
+		if errors.Is(err, errInvalidToken) {
+			h.logger.Error("authorization session token invalid", "agent_id", agentID)
+			h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
+			return
+		}
 		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
 		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
 		return
@@ -239,7 +247,10 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 
 	var claims domotp2.AuthorizationSessionClaims
 	if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
-		return nil, errSessionExpired
+		if errors.Is(err, domjwe.ErrExpired) {
+			return nil, errSessionExpired
+		}
+		return nil, errInvalidToken
 	}
 	if claims.AgentID != agentID {
 		return nil, errors.New("authorization session does not match requested agent")

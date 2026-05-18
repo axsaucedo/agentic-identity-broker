@@ -3,7 +3,6 @@ package e2e_test
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -30,13 +29,7 @@ import (
 // newE2EJWETokenService returns a JWE token service backed by the same key as DefaultOAuth2Config.
 // Used to create test tokens (including expired ones) for E2E rejection scenarios.
 func newE2EJWETokenService() *domjwe.TokenService {
-	keyBytes, err := base64.StdEncoding.DecodeString(
-		base64.StdEncoding.EncodeToString([]byte("test-32-byte-key-must-be-exact-x")),
-	)
-	if err != nil {
-		panic("newE2EJWETokenService: failed to decode key: " + err.Error())
-	}
-	jweKey, err := jwk.Import(keyBytes)
+	jweKey, err := jwk.Import([]byte("test-32-byte-key-must-be-exact-x"))
 	if err != nil {
 		panic("newE2EJWETokenService: failed to import key: " + err.Error())
 	}
