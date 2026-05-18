@@ -14,7 +14,7 @@ Single `ports.EncryptionPort` implementation with base64-key mode for testing:
 | `aws/` | `EncryptionPort` implementation — AWS KMS Hierarchical Keyring (production) or base64 AES-256 key mode (dev/test via `testutil.NewTestEncryptionAdapter()`). |
 | `branchkey/` | Shared `BranchKeyIdProvider` — deterministic ID: `service_{service_id}_branch_key`. |
 
-Encryption rules: See root `AGENTS.md` § Encryption Rules + `.claude/skills/aws-crypto-go/SKILL.md`.
+Encryption rules: See `.claude/skills/aws-crypto-go/SKILL.md`.
 
 ### HTTP (`http/`)
 Dual-server (ADR 004): end-user `:8000` + admin `:14000`.
