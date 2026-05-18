@@ -111,8 +111,8 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	if sessionToken != "" {
 		var claims domotp2.AuthorizationSessionClaims
 		if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
-			h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
-			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session not found or expired")
+			h.logger.Error("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
+			h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
 			return
 		}
 		if claims.AgentID != parsedAgentID {
@@ -128,6 +128,12 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessionRedirectURI = claims.OriginalURL
+		if sessionRedirectURI == "" {
+			h.logger.Error("authorization session token contains empty original_url",
+				"agent_id", agentID, "principal", principalValue)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 	} else if r.URL.Query().Get("redirect_uri") != "" {
 		// redirect_uri without session_token is the old insecure fallback — reject it.
 		h.logger.Warn("redirect_uri without session_token rejected",
@@ -223,8 +229,8 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if grant == nil {
-		err := errors.New("grant consent returned nil grant without error")
-		handleGrantError(err)
+		h.logger.Error("grant consent returned nil grant without error", "agent_id", agentID)
+		h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 		return
 	}
 
