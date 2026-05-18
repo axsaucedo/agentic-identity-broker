@@ -22,8 +22,8 @@ Innermost hexagonal ring. Zero infrastructure dependencies. Never import `adapte
 ## Critical Rules
 
 ### Zero Infrastructure Imports
-Forbidden: `database/sql`, `pgx`, `sqlx`, `chi`, `net/http` (except `oauth2session`), AWS SDKs, `internal/adapters/`, `internal/app/`.
-Allowed: Go stdlib (non-I/O), `internal/ports/`, other `internal/domain/`, declared external libs (`jwx`, `oauth2`, `cel-go`).
+Forbidden: `database/sql`, `pgx`, `sqlx`, `chi`, AWS SDKs, `internal/adapters/`, `internal/app/`. `net/http` is forbidden by default and allowed only in domain packages with established protocol/domain needs: `oauth2session`, `storage` (RFC 8414 discovery), and `oauth2server` (HTTP status code mapping).
+Allowed: Go stdlib (non-I/O by default), `internal/ports/`, other `internal/domain/`, declared external libs (`jwx`, `oauth2`, `cel-go`), plus the explicit `net/http` exceptions above.
 
 ### Domain Services Pattern
 Constructor injection with port interfaces. Services instantiated in `app/builder.go` — never self-instantiate. Read existing services for patterns.
