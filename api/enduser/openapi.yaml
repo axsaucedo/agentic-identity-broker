@@ -650,7 +650,7 @@ paths:
                   delegated_oauth2_tokens: []
       responses:
         '201':
-          description: 'Grant created or updated. When session_token was provided, response includes redirect_url containing the original authorization URL for flow resumption.'
+          description: Grant created or updated. When session_token was provided, response includes redirect_url containing the original authorization URL for flow resumption.
           content:
             application/json:
               schema:
