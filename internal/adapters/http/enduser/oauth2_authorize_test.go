@@ -41,7 +41,7 @@ func newTestJWETokenService() *domjwe.TokenService {
 func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 	// Setup
 	agentRepo := newMockAgentRepo()
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),
@@ -76,7 +76,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 // TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters tests handler when required OAuth2 parameters missing
 func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 	agentRepo := newMockAgentRepo()
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),
@@ -152,7 +152,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 	mockAgentRepo := newMockAgentRepo()
 	handler := &OAuth2AuthorizeHandler{
-		Service: oauth2.New(
+		Service: oauth2.NewAuthorizationService(
 			newMockGrantRepo(),
 			nil,
 			oauth2.NewAgentClientResolver(mockAgentRepo, nil),
@@ -186,7 +186,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 // RFC 6749 §4.1.2.1: MUST NOT redirect when the client cannot be verified.
 func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
 	agentRepo := newMockAgentRepo()
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),
@@ -236,7 +236,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),
@@ -294,7 +294,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		grantRepo,
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),
@@ -358,7 +358,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		grantRepo,
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),
@@ -406,7 +406,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 // TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat tests error responses use proper JSON format
 func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
 	agentRepo := newMockAgentRepo()
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),
@@ -733,7 +733,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
 		getErr:              storageErr,
 	}
 
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),

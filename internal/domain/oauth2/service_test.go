@@ -551,7 +551,7 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
 	}, nil, nil)
@@ -654,7 +654,7 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			tt.setupAgent(agentRepo)
 			tt.setupGrant(grantRepo)
 
-			svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+			svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
 				SupportedResponseTypes:    []string{"code"},
@@ -708,7 +708,7 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
 	}, nil, nil)
@@ -745,7 +745,7 @@ func TestService_GenerateMetadata(t *testing.T) {
 		SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 	}
 
-	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, nil)
+	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, nil)
 
 	tests := []struct {
 		name string
@@ -821,7 +821,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 
 	t.Run("param injected when multi_agent_client enabled", func(t *testing.T) {
 		agentRepo, grantRepo := makeRepos()
-		svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+		svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 			MultiAgentClient: ports.MultiAgentClientConfig{
@@ -840,7 +840,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 
 	t.Run("param absent when multi_agent_client disabled", func(t *testing.T) {
 		agentRepo, grantRepo := makeRepos()
-		svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+		svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 			MultiAgentClient:          ports.MultiAgentClientConfig{Enabled: false},
@@ -1046,7 +1046,7 @@ func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 		SupportedGrantTypes:       []string{"authorization_code"},
 	}
 
-	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, nil)
+	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, nil)
 	metadata, err := svc.GenerateMetadata(context.Background())
 
 	require.NoError(t, err)
@@ -1097,7 +1097,7 @@ func TestService_HandleAuthorization_GrantLookupError(t *testing.T) {
 		findErr:             connErr,
 	}
 
-	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		PublicURL: "https://broker.example.com",
 	}, nil, nil)
 
@@ -1288,7 +1288,7 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{},
 	}))
 
-	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
+	svc := NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "%",
 		PublicURL:                 "https://broker.example.com",
 	}, nil, nil)
@@ -1313,7 +1313,7 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 func TestBuildConsentURL_AlwaysProducesSessionToken(t *testing.T) {
 	agentID := id.NewAgentID()
 
-	svc := New(
+	svc := NewAuthorizationService(
 		NewMockGrantRepository(),
 		nil,
 		NewAgentClientResolver(NewMockAgentRepository(), nil),

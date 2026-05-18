@@ -346,7 +346,7 @@ func (b *Builder) Build() (*App, error) {
 			clientResolver = oauth2service.NewAgentClientResolver(b.storage.Agents(), b.logger)
 		}
 
-		app.OAuth2Service = oauth2service.New(
+		app.OAuth2Service = oauth2service.NewAuthorizationService(
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
 			clientResolver,

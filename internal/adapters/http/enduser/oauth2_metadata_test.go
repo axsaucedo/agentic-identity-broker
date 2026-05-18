@@ -15,7 +15,7 @@ import (
 
 // TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata tests successful metadata generation
 func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
@@ -56,7 +56,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_SuccessfulMetadata(t *testing.T) {
 
 // TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding tests proper JSON encoding
 func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
@@ -98,7 +98,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_JSONEncoding(t *testing.T) {
 
 // TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders tests appropriate cache headers
 func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
@@ -127,7 +127,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_CacheHeaders(t *testing.T) {
 
 // TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly tests only GET method allowed
 func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),
@@ -158,7 +158,7 @@ func TestOAuth2MetadataHandler_ServeHTTP_AllowGETOnly(t *testing.T) {
 
 // TestOAuth2MetadataHandler_ServeHTTP_PublicEndpoint tests endpoint is public (no auth required)
 func TestOAuth2MetadataHandler_ServeHTTP_PublicEndpoint(t *testing.T) {
-	svc := oauth2.New(
+	svc := oauth2.NewAuthorizationService(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(newMockAgentRepo(), nil),

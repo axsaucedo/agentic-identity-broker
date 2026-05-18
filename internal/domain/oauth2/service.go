@@ -55,9 +55,9 @@ type AuthorizationService struct {
 	logger          *slog.Logger
 }
 
-// New creates an AuthorizationService. jweTokenService is required for any flow that
+// NewAuthorizationService creates an AuthorizationService. jweTokenService is required for any flow that
 // redirects to consent; passing nil is only safe for paths that never reach buildConsentURL.
-func New(
+func NewAuthorizationService(
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
 	clientResolver ports.ClientResolver,
