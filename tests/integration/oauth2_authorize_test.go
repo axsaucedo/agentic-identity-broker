@@ -2,17 +2,22 @@ package integration
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/enduser"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/http/middleware"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -20,8 +25,19 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"log/slog"
 )
+
+func newIntegrationJWETokenService() *domjwe.TokenService {
+	keyBytes, err := base64.StdEncoding.DecodeString("ASNFZ4mrze/+3LqYdlQyEAEjRWeJq83v/ty6mHZUMhA=")
+	if err != nil {
+		panic("newIntegrationJWETokenService: " + err.Error())
+	}
+	jweKey, err := jwk.Import(keyBytes)
+	if err != nil {
+		panic("newIntegrationJWETokenService: " + err.Error())
+	}
+	return domjwe.New(jweKey)
+}
 
 // TestOAuth2AuthorizeEndpoint_NonUUIDClientIDError tests that a non-UUID client_id
 // returns a direct 400 invalid_client (not a redirect).
@@ -147,7 +163,7 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 	svc := oauth2.New(grantRepo, nil, oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newIntegrationJWETokenService())
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service: svc,
@@ -262,7 +278,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	svc := oauth2.New(grantRepo, nil, oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, nil)
+	}, nil, newIntegrationJWETokenService())
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service: svc,
