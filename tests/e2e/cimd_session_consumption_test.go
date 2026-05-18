@@ -73,8 +73,8 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 
 	// buildToken creates a valid JWE session token for the given agent and principal.
 	buildToken := func(agentID id.AgentID, principal, redirectURI, originalURL string) string {
-		svc, ok := appInstance.OAuth2Service.(*domotp2.Service)
-		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
+		svc, ok := appInstance.OAuth2Service.(*domotp2.AuthorizationService)
+		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.AuthorizationService")
 		claims, err := domotp2.NewAuthorizationSessionClaims(
 			agentID,
 			id.Principal(principal),
@@ -93,8 +93,8 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 
 	// buildExpiredToken creates a JWE token with a past ExpiresAt.
 	buildExpiredToken := func(agentID id.AgentID, principal string) string {
-		svc, ok := appInstance.OAuth2Service.(*domotp2.Service)
-		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
+		svc, ok := appInstance.OAuth2Service.(*domotp2.AuthorizationService)
+		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.AuthorizationService")
 		past := time.Now().Add(-1 * time.Hour)
 		claims := &domotp2.AuthorizationSessionClaims{
 			AgentID:   agentID,

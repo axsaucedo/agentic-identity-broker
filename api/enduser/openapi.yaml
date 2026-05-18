@@ -373,11 +373,12 @@ paths:
         in: query
         required: false
         description: >-
-          JWE authorization session token for CIMD-based flows. When present, the
-          response includes CIMD metadata (client_id_url, redirect_uri,
-          verified_domain, requested_scopes, logo_uri) extracted from the decrypted token.
-          Required for agents identified by a Client ID Metadata Document URL; omit
-          for pre-registered opaque client_id flows.
+          JWE authorization session token for all agent modes (local, proxy, CIMD).
+          When present, the response includes authorization context extracted from the
+          decrypted token (agent_id, principal, original_url). For CIMD agents, also
+          includes CIMD metadata (client_id_url, redirect_uri, verified_domain,
+          requested_scopes, logo_uri). Present whenever the user arrived via an
+          OAuth2 authorization redirect.
         schema:
           type: string
           minLength: 1
@@ -545,36 +546,32 @@ paths:
         - Deletes the grant entirely
 
 
-        **CIMD Session-Based Consent (FR-029)**:
+        **Session-Based Consent (FR-029)**:
 
-        - Use `session_token` query parameter for CIMD authorization flows
+        - Use `session_token` query parameter to resume an OAuth2 authorization flow after consent
 
-        - Token is a self-contained JWE carrying all authorization session claims (agent, principal, redirect_uri) — no server-side session lookup is performed
+        - Applies to all agent modes: local, proxy, and CIMD
 
-        - Returns HTTP 201 with `redirect_url` field containing the original authorization URL
+        - Token is a self-contained JWE carrying all authorization session claims (agent_id, principal, original_url, TTL) — no server-side session lookup is performed
 
-        - Returns `400 Bad Request` if the token is invalid, expired, or the session agent does not match
+        - Returns HTTP 201 with `redirect_url` field containing the original authorization URL (with original `state`, `redirect_uri`, PKCE, and `client_id` parameters intact)
+
+        - Frontend must navigate to `redirect_url` using `window.location.href` to resume the OAuth2 flow
+
+        - Returns `400 Bad Request` with error code `session_expired` if the token is invalid or expired
+
+        - Returns `400 Bad Request` if the session agent does not match the agent in the URL path
 
         - Returns `403 Forbidden` if the session principal does not match the authenticated user
 
 
-        **Redirect After Approval (Optional)**:
+        **Standalone Consent Management**:
 
-        - Use `redirect_uri` query parameter to continue OAuth2 flow after grant approval
+        - Requests without `session_token` are treated as direct consent-management operations (not authorization resumption)
 
-        - Must be same-origin URL or relative URL (prevents open redirect attacks)
+        - Returns HTTP 201 with grant data only (no `redirect_url` field)
 
-        - External domain redirects are rejected with HTTP 400
-
-        - Returns HTTP 201 with `redirect_url` field in response body when redirect_uri is provided and valid
-
-        - Frontend should navigate to `redirect_url` using `window.location.href` (not XHR) to properly handle cross-origin redirect chains
-
-        - Returns HTTP 201 with grant data (no redirect_url field) when redirect_uri is not provided
-
-        - Relative URLs (e.g., `/callback`) are always allowed
-
-        - Absolute URLs must match current origin (scheme, host, port)
+        - Use `redirect_uri` query parameter is **no longer supported** — providing `redirect_uri` without `session_token` returns `400 Bad Request`
 
 
         **Validation**:
@@ -612,13 +609,6 @@ paths:
         required: false
         schema:
           type: string
-      - name: redirect_uri
-        in: query
-        description: 'Optional URL for OAuth2 flow continuation after grant approval. Must be same-origin or relative URL (per FR-026, FR-027). When provided, response includes redirect_url field in body instead of HTTP redirect (avoids CORS issues with cross-origin redirect chains). Relative URLs like "/callback" are always allowed. Absolute URLs must match the current request origin (scheme, host, port). External domain redirects are rejected. Ignored when session_token is also present.'
-        required: false
-        schema:
-          type: string
-          format: uri-reference
       requestBody:
         required: true
         description: Grant request with delegated services and optional expiration
@@ -660,14 +650,14 @@ paths:
                   delegated_oauth2_tokens: []
       responses:
         '201':
-          description: Grant created or updated successfully. If redirect_uri was provided, response includes redirect_url field for frontend to navigate to.
+          description: 'Grant created or updated. When session_token was provided, response includes redirect_url containing the original authorization URL for flow resumption.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateOrUpdateGrantResponse'
               examples:
-                grantCreated:
-                  summary: New grant created (no redirect_uri)
+                grantCreatedStandalone:
+                  summary: Grant created (no session_token — standalone consent management)
                   value:
                     data:
                       id: 770e8400-e29b-41d4-a716-446655440002
@@ -685,8 +675,8 @@ paths:
                         - write:repos
                       created_at: '2025-12-19T10:00:00Z'
                       updated_at: '2025-12-19T10:00:00Z'
-                grantCreatedWithRedirect:
-                  summary: Grant created with redirect_uri (includes redirect_url)
+                grantCreatedWithSessionToken:
+                  summary: Grant created with session_token (includes redirect_url for flow resumption)
                   value:
                     data:
                       id: 770e8400-e29b-41d4-a716-446655440002
@@ -700,21 +690,26 @@ paths:
                         - write:files
                       created_at: '2025-12-19T10:00:00Z'
                       updated_at: '2025-12-19T10:00:00Z'
-                    redirect_url: /oauth2/authorize?client_id=example&redirect_uri=http://localhost:9002/callback
+                    redirect_url: /oauth2/authorize?client_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https%3A%2F%2Fagent.example.com%2Fcb&response_type=code&state=abc123
         '204':
           description: Grant revoked successfully (empty delegated_oauth2_tokens)
         '400':
-          description: Bad Request - Invalid grant or redirect_uri. Response includes error code and message for debugging.
+          description: Bad Request - Expired or invalid session token, missing session_token when redirect_uri provided, or invalid grant data.
           content:
             application/json:
               schema:
                 $ref: '#/components/responses/ValidationError'
               examples:
-                invalidRedirectUri:
-                  summary: Invalid redirect_uri (external domain)
+                sessionExpired:
+                  summary: Session token expired or invalid
                   value:
-                    error: invalid_redirect_uri
-                    message: redirect_uri must be same-origin or relative
+                    error: session_expired
+                    message: 'authorization session has expired, please restart the authorization flow'
+                missingSessionToken:
+                  summary: redirect_uri provided without session_token
+                  value:
+                    error: bad request
+                    message: missing session_token
                 invalidGrant:
                   summary: Invalid grant data
                   value:

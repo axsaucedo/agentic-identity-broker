@@ -3,7 +3,7 @@
 **Feature Branch**: `031-unified-session-token`  
 **Created**: 2026-05-17  
 **Status**: Draft  
-**Predecessor**: `specs/028-cimd-support/` — introduced JWE session token transport and `AuthorizationSessionClaims` for CIMD agents (see also [ADR 016](../../adrs/016-stateless-authorization-sessions.md))  
+**Predecessor**: `specs/028-cimd-support/` — introduced JWE session token transport and `AuthorizationSessionClaims` for CIMD agents (see also [ADR 016](../../adrs/016-authorization-session-anti-spoofing.md))  
 **Input**: Align all agent modes (local, proxy, CIMD) to use the session_token JWE approach for consent URL state transport, eliminating the less secure redirect_uri query parameter fallback.
 
 ## User Scenarios & Testing
@@ -41,7 +41,7 @@ A user interacts with a proxy agent. The system creates a JWE session token for 
 
 ### User Story 3 - Consent Handlers Accept Session Token for All Agent Modes (Priority: P2)
 
-The consent page (agent detail and grant submission handlers) resolves authorization context exclusively from the session token for all agent modes, removing the redirect_uri resolution path.
+The consent page (agent detail and grant submission handlers) resolves authorization context exclusively from the `session_token` when resuming an OAuth2 authorization flow, removing the `redirect_uri` resolution path. Standalone consent-management requests (browsing agent details, managing grants) without a `session_token` continue to work unchanged — `session_token` is only required for authorization-resumption continuations.
 
 **Why this priority**: Depends on stories 1 and 2; ensures the receiving side of the consent flow is unified.
 
@@ -51,6 +51,22 @@ The consent page (agent detail and grant submission handlers) resolves authoriza
 
 1. **Given** a consent page request with a valid session token (any agent mode), **When** the handler processes it, **Then** it extracts agent ID, principal, and original URL from the decrypted token claims.
 2. **Given** a consent page request with a `redirect_uri` parameter but no `session_token`, **When** the handler processes it, **Then** the system rejects the request (no fallback to redirect_uri).
+3. **Given** a standalone consent-management request (GET agent detail or list grants) with no `session_token` and no `redirect_uri`, **When** the handler processes it, **Then** the system returns the resource normally — no authorization session required for browsing.
+
+---
+
+### User Story 4 - Grant Submission Returns Original Authorization Context (Priority: P2)
+
+After a user approves consent, the grant submission response includes the original authorization URL (`redirect_url`) so the frontend can resume the OAuth2 flow where it left off. The original request context — `state`, `redirect_uri`, PKCE challenge, and `client_id` — must be intact in the returned URL.
+
+**Why this priority**: The `redirect_url` is the mechanism for resuming the authorization flow after consent; losing the original request context would require the agent to restart from scratch.
+
+**Independent Test**: Can be tested by executing a full authorize → consent → grant flow and asserting the `redirect_url` in the grant response matches the original authorize URL with all parameters intact.
+
+**Acceptance Scenarios**:
+
+1. **Given** a user submits consent with a valid `session_token`, **When** the grant is created, **Then** the response body includes a `redirect_url` field containing the original authorization URL with the original `state`, `redirect_uri`, and `client_id` parameters intact.
+2. **Given** a user submits consent without a `session_token`, **When** the grant is created, **Then** the response body does NOT include a `redirect_url` field (no authorization flow to resume).
 
 ---
 
@@ -68,7 +84,7 @@ The consent page (agent detail and grant submission handlers) resolves authoriza
 - **FR-002**: The session token MUST contain: agent ID, principal, original authorize URL, issued-at timestamp, and expiry (10 minute TTL).
 - **FR-003**: For CIMD agents, the session token MUST additionally contain CIMD metadata (unchanged from current behavior).
 - **FR-004**: The `buildConsentURL` function MUST NOT include a raw `redirect_uri` query parameter for any agent mode.
-- **FR-005**: Consent handlers MUST resolve authorization context exclusively from the session token — no fallback to query parameters.
+- **FR-005**: When an authorization-resumption `session_token` is present, consent handlers MUST resolve authorization context exclusively from it — no fallback to raw query parameters. Requests without a `session_token` (standalone consent-management) continue to work normally.
 - **FR-006**: Consent handlers MUST validate: token expiry, principal match (authenticated user matches token principal), and agent ID match (URL path matches token).
 - **FR-007**: System MUST return appropriate error responses when session token validation fails (expired, tampered, mismatched principal, mismatched agent).
 
@@ -110,7 +126,7 @@ sequenceDiagram
 
 ## Assumptions
 
-- The existing `AuthorizationSessionClaims` structure and JWE `TokenService` (introduced in `specs/028-cimd-support/`, governed by [ADR 016](../../adrs/016-stateless-authorization-sessions.md)) can be reused for non-CIMD agents with `CIMDMetadata` set to nil.
+- The existing `AuthorizationSessionClaims` structure and JWE `TokenService` (introduced in `specs/028-cimd-support/`, governed by [ADR 016](../../adrs/016-authorization-session-anti-spoofing.md)) can be reused for non-CIMD agents with `CIMDMetadata` set to nil.
 - The 10-minute TTL is appropriate for all agent modes (same as current CIMD behavior).
 - No database changes are required — session tokens remain stateless (sealed in JWE).
 - The transition can be atomic (deploy once, old redirect_uri format immediately unsupported) because consent sessions are short-lived (10 min max).

@@ -333,6 +333,53 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			Expect(body["redirect_url"]).ToNot(BeEmpty(), "session token claims must provide redirect_url")
 		})
 
+		// Scenario 4.1 from specs/031-unified-session-token/spec.md
+		It("grant response redirect_url preserves original authorization request context", func() {
+			principal := fixtures.DefaultPrincipal().String()
+			state := "originalstate456"
+			redirectURI := "https://client.example.com/cb"
+			originalAuthorize := fmt.Sprintf(
+				"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s",
+				agent.ID,
+				url.QueryEscape(redirectURI),
+				state,
+			)
+
+			// Step 1: authorize → consent redirect with session_token
+			authResp, err := server.AuthenticatedGET(originalAuthorize, principal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = authResp.Body.Close() }()
+			Expect(authResp.StatusCode).To(Equal(http.StatusFound))
+
+			loc := authResp.Header.Get("Location")
+			consentLoc, err := url.Parse(loc)
+			Expect(err).ToNot(HaveOccurred())
+			sessionToken := consentLoc.Query().Get("session_token")
+			Expect(sessionToken).ToNot(BeEmpty())
+
+			// Step 2: submit grant with session_token
+			grantBody, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
+			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s",
+				agent.ID, url.QueryEscape(sessionToken))
+			grantResp, err := server.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = grantResp.Body.Close() }()
+			Expect(grantResp.StatusCode).To(Equal(http.StatusCreated))
+
+			var body map[string]any
+			Expect(json.NewDecoder(grantResp.Body).Decode(&body)).To(Succeed())
+			redirectURL, _ := body["redirect_url"].(string)
+			Expect(redirectURL).ToNot(BeEmpty(), "grant response must include redirect_url when session_token was present")
+
+			// Step 3: verify redirect_url preserves original authorization context
+			resumeURL, err := url.Parse(redirectURL)
+			Expect(err).ToNot(HaveOccurred())
+			q := resumeURL.Query()
+			Expect(q.Get("state")).To(Equal(state), "original state must be preserved in redirect_url")
+			Expect(q.Get("redirect_uri")).To(Equal(redirectURI), "original redirect_uri must be preserved in redirect_url")
+			Expect(q.Get("client_id")).To(Equal(agent.ID.String()), "original client_id must be preserved in redirect_url")
+		})
+
 		// Scenario 3.2 from specs/031-unified-session-token/spec.md
 		It("consent handler rejects request with redirect_uri but no session_token", func() {
 			principal := fixtures.DefaultPrincipal().String()

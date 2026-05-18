@@ -25,16 +25,16 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
-// cimdOAuth2Service extracts the concrete *domotp2.Service from an app instance
+// cimdOAuth2Service extracts the concrete *domotp2.AuthorizationService from an app instance
 // so tests can call CreateAuthorizationSessionToken.
-func cimdOAuth2Service(appInstance *app.App) *domotp2.Service {
-	svc, ok := appInstance.OAuth2Service.(*domotp2.Service)
-	Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.Service")
+func cimdOAuth2Service(appInstance *app.App) *domotp2.AuthorizationService {
+	svc, ok := appInstance.OAuth2Service.(*domotp2.AuthorizationService)
+	Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.AuthorizationService")
 	return svc
 }
 
 // createCIMDSessionToken builds a JWE authorization session token for use in CIMD tests.
-func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, redirectURI string, meta *domcimd.ClientIDMetadataDocument) string {
+func createCIMDSessionToken(svc *domotp2.AuthorizationService, agentID id.AgentID, principal string, redirectURI string, meta *domcimd.ClientIDMetadataDocument) string {
 	q := url.Values{}
 	q.Set("client_id", "https://agent.example.com/client")
 	q.Set("redirect_uri", redirectURI)
@@ -52,7 +52,7 @@ func createCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal 
 }
 
 // createExpiredCIMDSessionToken builds a JWE token with a past ExpiresAt.
-func createExpiredCIMDSessionToken(svc *domotp2.Service, agentID id.AgentID, principal string, meta *domcimd.ClientIDMetadataDocument) string {
+func createExpiredCIMDSessionToken(svc *domotp2.AuthorizationService, agentID id.AgentID, principal string, meta *domcimd.ClientIDMetadataDocument) string {
 	past := time.Now().Add(-1 * time.Hour)
 	claims := &domotp2.AuthorizationSessionClaims{
 		AgentID:      agentID,
