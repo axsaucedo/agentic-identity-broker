@@ -191,12 +191,15 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	// redirect_uri is validated above, so a redirect-with-error is now safe.
 	if len(agent.AllowedScopes) > 0 && req.Scope != "" {
 		allowedSet := make(map[string]bool, len(agent.AllowedScopes))
-		for _, s := range agent.AllowedScopes {
-			allowedSet[s] = true
+		for _, scope := range agent.AllowedScopes {
+			allowedSet[scope] = true
 		}
-		for _, s := range strings.Fields(req.Scope) {
-			if !allowedSet[s] {
-				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted")
+		for _, scope := range strings.Fields(req.Scope) {
+			if !allowedSet[scope] {
+				errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "invalid_scope", "requested scope is not permitted")
+				if buildURLErr != nil && s.logger != nil {
+					s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+				}
 				return &ports.AuthorizationDecision{
 					Action:      "error",
 					ErrorCode:   "invalid_scope",
@@ -211,7 +214,10 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	grant, err := s.grantRepo.FindByPrincipalAndAgent(ctx, principal, agent.ID)
 	if err != nil && !errors.Is(err, ports.ErrNotFound) {
 		// redirect_uri is validated above so a redirect-with-error is safe here.
-		errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+		errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+		if buildURLErr != nil && s.logger != nil {
+			s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+		}
 		return &ports.AuthorizationDecision{
 			Action:      "error",
 			ErrorCode:   "server_error",
@@ -224,7 +230,13 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if grant == nil || !grant.IsActive() {
 		consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 		if buildErr != nil {
-			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			if s.logger != nil {
+				s.logger.Error("failed to build consent URL", "error", buildErr)
+			}
+			errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			if buildURLErr != nil && s.logger != nil {
+				s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+			}
 			return &ports.AuthorizationDecision{
 				Action:      "error",
 				ErrorCode:   "server_error",
@@ -246,7 +258,10 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 	if s.sessionRepo != nil {
 		expired, err := s.anyDelegatedSessionExpired(ctx, principal, grant.DelegatedOAuth2Tokens)
 		if err != nil {
-			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			if buildURLErr != nil && s.logger != nil {
+				s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+			}
 			return &ports.AuthorizationDecision{
 				Action:      "error",
 				ErrorCode:   "server_error",
@@ -264,7 +279,13 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 			}
 			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 			if buildErr != nil {
-				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				if s.logger != nil {
+					s.logger.Error("failed to build consent URL", "error", buildErr)
+				}
+				errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				if buildURLErr != nil && s.logger != nil {
+					s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+				}
 				return &ports.AuthorizationDecision{
 					Action:      "error",
 					ErrorCode:   "server_error",
@@ -292,7 +313,10 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 						"error", err.Error(),
 					)
 				}
-				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				if buildURLErr != nil && s.logger != nil {
+					s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+				}
 				return &ports.AuthorizationDecision{
 					Action:      "error",
 					ErrorCode:   "server_error",
@@ -309,7 +333,13 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 			}
 			consentURL, buildErr := s.buildConsentURL(ctx, req, principal, agent, cimdMeta)
 			if buildErr != nil {
-				errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				if s.logger != nil {
+					s.logger.Error("failed to build consent URL", "error", buildErr)
+				}
+				errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+				if buildURLErr != nil && s.logger != nil {
+					s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+				}
 				return &ports.AuthorizationDecision{
 					Action:      "error",
 					ErrorCode:   "server_error",
@@ -332,7 +362,10 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 		var urlErr error
 		upstreamURL, urlErr = s.buildUpstreamAuthorizeURL(req, agent)
 		if urlErr != nil {
-			errRedirect, _ := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			errRedirect, buildURLErr := BuildErrorRedirectURL(req.RedirectURI, req.State, "server_error", "server error")
+			if buildURLErr != nil && s.logger != nil {
+				s.logger.Error("failed to build error redirect URL", "redirect_uri", req.RedirectURI, "error", buildURLErr)
+			}
 			return &ports.AuthorizationDecision{
 				Action:      "error",
 				ErrorCode:   "server_error",
