@@ -9,10 +9,12 @@ Ports are **interfaces only** + minimal DTOs. No business logic. No implementati
 | File | Interface(s) | Purpose |
 |---|---|---|
 | `cel.go` | `CELCompilerPort`, `CELProgram` | CEL expression compilation/evaluation. DTOs: `CELAuthorizationContext`, `CELRequestContext`, `CELClaimExtractionContext` |
+| `cimd.go` | See `cimd.go` for authoritative interface/error/DTO names | CIMD client resolution/fetching ports. Read the file directly for the exact contract surface. |
 | `config.go` | `ConfigPort` | Configuration loading/access. DTOs: `Config` + all nested config types (largest port file) |
 | `encryption.go` | `EncryptionPort`, `BranchKeyRepository`, `BranchKeyIdProvider` | Envelope encryption with AAD + branch key management. Alias: `BranchKeyManager = BranchKeyRepository` |
 | `jwks.go` | `JWKSPort` | JWKS fetching/caching. Returns `jwk.Set`/`jwk.Key` from `lestrrat-go/jwx/v3` |
 | `oauth2.go` | `OAuth2Service` | OAuth2 authorization + RFC 8414 metadata. DTOs: `AuthorizationRequest`, `AuthorizationDecision`, `MetadataResponse` |
+| `oauth2server.go` | See `oauth2server.go` for authoritative interface/error/DTO names | OAuth2 server signing key + credential generation ports. Read the file directly for the exact contract surface. |
 | `server.go` | `HealthState` (enum) | Server lifecycle: `Starting`, `Healthy`, `ShuttingDown`, `Unhealthy` |
 | `storage.go` | `HealthChecker`, `UserRepository`, `AgentRepository`, `UserGrantRepository`, `UserSessionRepository` | All storage repos. Sentinel: `ErrNotFound` |
 | `thirdparty_provider.go` | `ThirdpartyOAuth2ProviderRepository` | Provider config storage. Uses `model.ThirdpartyOAuth2ProviderEntity` (encrypted `Secret`). Adapters never decrypt. |
