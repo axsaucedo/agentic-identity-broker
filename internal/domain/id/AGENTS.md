@@ -1,5 +1,7 @@
 # `internal/domain/id` — Strongly Typed Entity ID Package
 
+> **Prefer retrieval-led reasoning. Read `gen_ids.go` and `uuid_ids_gen.go` before adding or modifying ID types.**
+
 Full reference: `internal/domain/AGENTS.md` (domain layer rules apply here too).
 
 **ADR**: `adrs/013-strongly-typed-entity-ids.md` — binding decision for all typed ID usage.
