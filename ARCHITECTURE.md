@@ -1081,6 +1081,8 @@ Define any project-specific terms or acronyms.)
 
 **OAuth2StateToken**: A JWE-encrypted ephemeral token that binds an OAuth2 callback to the initiating request. Contains principal, PKCE verifier, service_id, and redirect_uri claims. Short-lived (10 min TTL, max 15 min per spec) to limit CSRF exposure. Uses authenticated encryption (A256GCMKW + A256GCM) for tamper detection.
 
+**AuthorizationSessionToken**: A JWE-encrypted ephemeral token that binds a consent session to the initiating authorization request (ADR 016). Contains agent_id, principal, original authorize URL, and optional CIMD metadata snapshot. Short-lived (10 min TTL). Prevents consent screen spoofing by ensuring all displayed metadata originates from server-attested claims. Used for all authorization modes (local, proxy, CIMD).
+
 **PKCE**: Proof Key for Code Exchange (RFC 7636). Security extension for OAuth2 that prevents authorization code interception attacks. Uses code_verifier (random 32-128 byte secret, base64url-encoded) and code_challenge (SHA256 hash of verifier). Mandatory for all OAuth2 flows with no bypass allowed.
 
 **Token Vault**: Secure storage for encrypted OAuth2 tokens. Tokens are encrypted using AES-GCM with encryption context binding them to principal, service_id, and session_id. Uses EncryptionPort for all cryptographic operations. All tokens stored as ciphertext (BYTEA in PostgreSQL).

@@ -37,6 +37,11 @@ func newTestJWETokenService() *domjwe.TokenService {
 	return domjwe.New(jweKey)
 }
 
+// newTestSessionTokenValidator returns a SessionTokenValidator backed by a test JWE key.
+func newTestSessionTokenValidator() SessionTokenValidator {
+	return domotp2.NewAuthorizationService(nil, nil, nil, nil, nil, newTestJWETokenService())
+}
+
 // newTestSessionToken creates a valid JWE session token for the given agent and principal.
 func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string, originalURL string) string {
 	claims, err := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
@@ -84,7 +89,7 @@ func newRequestWithPrincipal(method, path, principalValue string, body any) *htt
 
 func TestCreateGrant_NoPrincipal(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	testAgentID := id.NewAgentID()
 
 	reqBody := GrantRequest{
@@ -114,7 +119,7 @@ func TestCreateGrant_NoPrincipal(t *testing.T) {
 
 func TestCreateGrant_InvalidJSON(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	testAgentID := id.NewAgentID()
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", nil)
@@ -145,7 +150,7 @@ func TestCreateGrant_InvalidJSON(t *testing.T) {
 
 func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 	testAgentID := id.NewAgentID()
 
 	pastTime := time.Now().Add(-1 * time.Hour)
@@ -191,7 +196,7 @@ func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 
 func TestToGrantResponse(t *testing.T) {
 	t.Parallel()
-	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(nil, nil, newTestSessionTokenValidator())
 
 	testGrantID := id.NewGrantID()
 	testAgentID := id.NewAgentID()
@@ -323,7 +328,7 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 					return nil, tt.serviceError
 				},
 			}
-			handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+			handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 			// Create valid request
 			reqBody := GrantRequest{
@@ -392,7 +397,7 @@ func TestCreateGrant_Success(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	// Create request
 	reqBody := GrantRequest{
@@ -479,7 +484,7 @@ func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	reqBody := GrantRequest{
 		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
@@ -543,7 +548,7 @@ func TestCreateGrant_SessionToken_ValidFlow(t *testing.T) {
 		},
 	}
 
-	handler := NewGrantsHandler(mockService, nil, ts)
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -572,8 +577,7 @@ func TestCreateGrant_SessionToken_InvalidToken(t *testing.T) {
 	testAgentID := id.NewAgentID()
 	principalVal := "user@example.com"
 
-	ts := newTestJWETokenService()
-	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -602,7 +606,7 @@ func TestCreateGrant_SessionToken_Expired(t *testing.T) {
 	ts := newTestJWETokenService()
 	expiredToken := newExpiredTestSessionToken(ts, testAgentID, principalVal)
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -635,7 +639,7 @@ func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
 	ts := newTestJWETokenService()
 	tokenForAgentA := newTestSessionToken(ts, agentA, principalVal, "/callback")
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",
@@ -664,7 +668,7 @@ func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
 	ts := newTestJWETokenService()
 	tokenForUserA := newTestSessionToken(ts, testAgentID, "userA@example.com", "/callback")
 
-	handler := NewGrantsHandler(&mockConsentService{}, nil, ts)
+	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestSessionTokenValidator())
 
 	req := newRequestWithPrincipal(
 		"POST",

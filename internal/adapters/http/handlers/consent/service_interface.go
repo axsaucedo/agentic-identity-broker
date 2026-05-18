@@ -5,6 +5,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 )
 
@@ -24,3 +25,11 @@ type ConsentService interface {
 
 // Ensure consent.Service implements ConsentService interface
 var _ ConsentService = (*consent.Service)(nil)
+
+// SessionTokenValidator validates JWE authorization session tokens.
+type SessionTokenValidator interface {
+	ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*domotp2.AuthorizationSessionClaims, error)
+}
+
+// Ensure AuthorizationService implements SessionTokenValidator.
+var _ SessionTokenValidator = (*domotp2.AuthorizationService)(nil)

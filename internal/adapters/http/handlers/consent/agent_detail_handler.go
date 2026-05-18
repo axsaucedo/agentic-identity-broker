@@ -11,7 +11,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/go-chi/chi/v5"
@@ -47,23 +46,23 @@ var errInvalidToken = errors.New("authorization session token invalid")
 // Implements User Story 2: Review Agent-Specific Grants (GET /api/consent/agent/:agentId).
 // Phase 6 extension: Includes service requirements with user connection status.
 type AgentDetailHandler struct {
-	consentService  ConsentService
-	jweTokenService *domjwe.TokenService
-	logger          *slog.Logger
+	consentService        ConsentService
+	sessionTokenValidator SessionTokenValidator
+	logger                *slog.Logger
 }
 
 // NewAgentDetailHandler creates a new agent detail handler.
-func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, jweTokenService *domjwe.TokenService) *AgentDetailHandler {
-	if jweTokenService == nil {
-		panic("AgentDetailHandler requires a non-nil JWE token service")
+func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, sessionTokenValidator SessionTokenValidator) *AgentDetailHandler {
+	if sessionTokenValidator == nil {
+		panic("AgentDetailHandler requires a non-nil SessionTokenValidator")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentDetailHandler{
-		consentService:  consentService,
-		jweTokenService: jweTokenService,
-		logger:          logger,
+		consentService:        consentService,
+		sessionTokenValidator: sessionTokenValidator,
+		logger:                logger,
 	}
 }
 
@@ -245,19 +244,19 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 		return nil, nil
 	}
 
-	var claims domotp2.AuthorizationSessionClaims
-	if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
-		if errors.Is(err, domjwe.ErrExpired) {
-			return nil, errSessionExpired
-		}
-		return nil, errInvalidToken
-	}
-	if claims.AgentID != agentID {
-		return nil, errors.New("authorization session does not match requested agent")
-	}
 	userID, _ := getPrincipalFromContext(r.Context())
-	if string(claims.Principal) != userID {
-		return nil, errors.New("authorization session does not belong to this user")
+	claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, agentID, id.Principal(userID))
+	if err != nil {
+		switch {
+		case errors.Is(err, domotp2.ErrSessionExpired):
+			return nil, errSessionExpired
+		case errors.Is(err, domotp2.ErrSessionAgentMismatch):
+			return nil, errors.New("authorization session does not match requested agent")
+		case errors.Is(err, domotp2.ErrSessionPrincipalMismatch):
+			return nil, errors.New("authorization session does not belong to this user")
+		default:
+			return nil, errInvalidToken
+		}
 	}
 
 	if claims.CIMDMetadata == nil {

@@ -57,11 +57,12 @@ type App struct {
 	BranchKeyManager ports.BranchKeyManager
 
 	// Domain services
-	ConsentService       *consentservice.Service
-	ProviderService      *thirdparty.ThirdpartyOAuth2ProviderService
-	OAuth2SessionService *oauth2session.OAuth2SessionService
-	OAuth2Service        ports.OAuth2Service
-	TokenExchangeService *tokenexchange.TokenExchangeService
+	ConsentService        *consentservice.Service
+	ProviderService       *thirdparty.ThirdpartyOAuth2ProviderService
+	OAuth2SessionService  *oauth2session.OAuth2SessionService
+	OAuth2Service         ports.OAuth2Service
+	TokenExchangeService  *tokenexchange.TokenExchangeService
+	sessionTokenValidator *oauth2service.AuthorizationService
 
 	// JWT pre-authentication (optional, nil when not configured)
 	JWTAuthenticator domjwtauth.JWTAuthenticator
@@ -346,7 +347,7 @@ func (b *Builder) Build() (*App, error) {
 			clientResolver = oauth2service.NewAgentClientResolver(b.storage.Agents(), b.logger)
 		}
 
-		app.OAuth2Service = oauth2service.NewAuthorizationService(
+		authService := oauth2service.NewAuthorizationService(
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
 			clientResolver,
@@ -354,6 +355,8 @@ func (b *Builder) Build() (*App, error) {
 			b.logger,
 			jweTokenService,
 		)
+		app.OAuth2Service = authService
+		app.sessionTokenValidator = authService
 	}
 
 	// OAuth2SessionService is always created because JWESigningKey is mandatory.
@@ -561,7 +564,7 @@ func (b *Builder) Build() (*App, error) {
 		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
-	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, jweTokenService)
+	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, app.sessionTokenValidator)
 
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
 	// Config validation makes this error unreachable in practice, but structural fail-closed
@@ -658,7 +661,7 @@ func (b *Builder) Build() (*App, error) {
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:    agentDetailHandler,
 		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, jweTokenService),
+		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, app.sessionTokenValidator),
 		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{

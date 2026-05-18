@@ -32,11 +32,11 @@ func newServiceTestJWETokenService() *domjwe.TokenService {
 }
 
 func newTestServiceWithJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
-	return New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), cfg, nil, newServiceTestJWETokenService())
+	return NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), cfg, nil, newServiceTestJWETokenService())
 }
 
 func newTestServiceWithSessionsAndJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
-	return New(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil, newServiceTestJWETokenService())
+	return NewAuthorizationService(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil, newServiceTestJWETokenService())
 }
 
 type MockAgentRepository struct {

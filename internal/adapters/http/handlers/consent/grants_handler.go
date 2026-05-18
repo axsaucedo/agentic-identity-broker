@@ -11,7 +11,6 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -21,23 +20,23 @@ import (
 // GrantsHandler handles HTTP requests for user grants management.
 // Implements FR-011 through FR-014 (grant CRUD operations).
 type GrantsHandler struct {
-	consentService  ConsentService
-	jweTokenService *domjwe.TokenService
-	logger          *slog.Logger
+	consentService        ConsentService
+	sessionTokenValidator SessionTokenValidator
+	logger                *slog.Logger
 }
 
 // NewGrantsHandler creates a new grants handler.
-func NewGrantsHandler(consentService ConsentService, logger *slog.Logger, jweTokenService *domjwe.TokenService) *GrantsHandler {
-	if jweTokenService == nil {
-		panic("GrantsHandler requires a non-nil JWE token service")
+func NewGrantsHandler(consentService ConsentService, logger *slog.Logger, sessionTokenValidator SessionTokenValidator) *GrantsHandler {
+	if sessionTokenValidator == nil {
+		panic("GrantsHandler requires a non-nil SessionTokenValidator")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &GrantsHandler{
-		consentService:  consentService,
-		jweTokenService: jweTokenService,
-		logger:          logger,
+		consentService:        consentService,
+		sessionTokenValidator: sessionTokenValidator,
+		logger:                logger,
 	}
 }
 
@@ -109,27 +108,24 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	sessionToken := r.URL.Query().Get("session_token")
 	var sessionRedirectURI string
 	if sessionToken != "" {
-		var claims domotp2.AuthorizationSessionClaims
-		if err := h.jweTokenService.DecryptAndValidate(sessionToken, &claims); err != nil {
-			if errors.Is(err, domjwe.ErrExpired) {
+		claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, parsedAgentID, id.Principal(principalValue))
+		if err != nil {
+			switch {
+			case errors.Is(err, domotp2.ErrSessionExpired):
 				h.logger.Info("authorization session token expired", "agent_id", agentID, "principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
-			} else {
+			case errors.Is(err, domotp2.ErrSessionAgentMismatch):
+				h.logger.Warn("authorization session agent mismatch",
+					"expected_agent", parsedAgentID,
+					"principal", principalValue)
+				h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
+			case errors.Is(err, domotp2.ErrSessionPrincipalMismatch):
+				h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
+				h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
+			default:
 				h.logger.Error("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
 				h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
 			}
-			return
-		}
-		if claims.AgentID != parsedAgentID {
-			h.logger.Warn("authorization session agent mismatch",
-				"expected_agent", parsedAgentID, "session_agent", claims.AgentID,
-				"principal", principalValue)
-			h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
-			return
-		}
-		if claims.Principal != id.Principal(principalValue) {
-			h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
-			h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
 			return
 		}
 		sessionRedirectURI = claims.OriginalURL

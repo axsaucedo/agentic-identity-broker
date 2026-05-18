@@ -9,7 +9,7 @@ import (
 )
 
 func TestGenerateMetadata_ProxyMode(t *testing.T) {
-	svc := New(nil, nil, nil, &OAuth2Config{
+	svc := NewAuthorizationService(nil, nil, nil, &OAuth2Config{
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},
 		SupportedGrantTypes:    []string{"authorization_code", "refresh_token"},
@@ -26,7 +26,7 @@ func TestGenerateMetadata_ProxyMode(t *testing.T) {
 }
 
 func TestGenerateMetadata_IssueTokenMode(t *testing.T) {
-	svc := New(nil, nil, nil, &OAuth2Config{
+	svc := NewAuthorizationService(nil, nil, nil, &OAuth2Config{
 		Mode:                   "issue_token",
 		PublicURL:              "https://broker.example.com",
 		SupportedResponseTypes: []string{"code"},

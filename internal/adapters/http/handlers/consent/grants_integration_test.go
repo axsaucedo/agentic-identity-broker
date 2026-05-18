@@ -101,7 +101,7 @@ func TestGrantsIntegration_CreateUpdateRevoke(t *testing.T) {
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
 
 	// Create handler
-	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	// Test 1: Create initial grant
 	t.Run("create_grant", func(t *testing.T) {
@@ -252,7 +252,7 @@ func TestGrantsIntegration_SessionToken_CreateGrantWithRedirect(t *testing.T) {
 	sessionToken := newTestSessionToken(ts, agentID, principalValue.String(), originalURL)
 
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
-	handler := NewGrantsHandler(consentService, nil, ts)
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	validUntil := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 
@@ -341,7 +341,7 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
-	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	// Approval with no selected services creates a grant with empty delegations (201).
 	t.Run("approve_with_no_services_optional_only_agent", func(t *testing.T) {
@@ -416,7 +416,7 @@ func TestGrantsIntegration_Validation(t *testing.T) {
 	require.NoError(t, err)
 
 	consentService := consent.NewService(agentRepo, providerService, grantRepo, nil, slog.Default())
-	handler := NewGrantsHandler(consentService, nil, newTestJWETokenService())
+	handler := NewGrantsHandler(consentService, nil, newTestSessionTokenValidator())
 
 	tests := []struct {
 		name           string

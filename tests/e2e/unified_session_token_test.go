@@ -350,7 +350,16 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			sessionToken := consentLoc.Query().Get("session_token")
 			Expect(sessionToken).ToNot(BeEmpty())
 
-			// Step 2: submit grant with session_token
+			// Step 2: consent page load — GET /api/consent/agent/{id}?session_token=...
+			consentPagePath := fmt.Sprintf("/api/consent/agent/%s?session_token=%s",
+				agent.ID, url.QueryEscape(sessionToken))
+			consentPageResp, err := server.AuthenticatedGET(consentPagePath, principal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = consentPageResp.Body.Close() }()
+			Expect(consentPageResp.StatusCode).To(Equal(http.StatusOK),
+				"consent page load must succeed with valid session_token")
+
+			// Step 3: submit grant with session_token
 			grantBody, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
 			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants?session_token=%s",
 				agent.ID, url.QueryEscape(sessionToken))
@@ -364,13 +373,20 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			redirectURL, _ := body["redirect_url"].(string)
 			Expect(redirectURL).ToNot(BeEmpty(), "grant response must include redirect_url when session_token was present")
 
-			// Step 3: verify redirect_url preserves original authorization context
+			// Step 4: verify redirect_url preserves original authorization context
 			resumeURL, err := url.Parse(redirectURL)
 			Expect(err).ToNot(HaveOccurred())
 			q := resumeURL.Query()
 			Expect(q.Get("state")).To(Equal(state), "original state must be preserved in redirect_url")
 			Expect(q.Get("redirect_uri")).To(Equal(redirectURI), "original redirect_uri must be preserved in redirect_url")
 			Expect(q.Get("client_id")).To(Equal(agent.ID.String()), "original client_id must be preserved in redirect_url")
+
+			// Step 5: verify redirect_url is a valid authorize endpoint (full journey completion)
+			resumeResp, err := server.AuthenticatedGET(resumeURL.RequestURI(), principal)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resumeResp.Body.Close() }()
+			Expect(resumeResp.StatusCode).To(Equal(http.StatusFound),
+				"resuming the authorize flow after consent must redirect (grant now exists)")
 		})
 
 		// Scenario 3.2 from specs/031-unified-session-token/spec.md

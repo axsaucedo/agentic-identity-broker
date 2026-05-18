@@ -86,3 +86,13 @@ After consent submission, the frontend needs the original authorize URL to re-en
 - Token size is bounded by the `AuthorizationSessionClaims` struct; CIMD metadata snapshot adds ~200–400 bytes to the compact JWE
 
 **New invariant**: For CIMD flows, all authorization context displayed on the consent screen MUST originate from the decrypted `session_token`. Any future consent UI path that bypasses token decryption for CIMD agents violates this ADR.
+
+---
+
+## Amendment (2026-05-18): Extension to All Authorization Modes
+
+The original decision scoped JWE session tokens to "every CIMD-based authorization request." This amendment extends the mechanism to all authorization modes (local UUID-based `client_id`, proxy, and CIMD).
+
+**Rationale**: Using a unified state transport for all modes eliminates the `redirect_uri` query parameter as a spoofable vector regardless of agent type, simplifies handler logic (single validation path), and removes the need for mode-conditional branching in consent submission.
+
+**Impact**: The "Non-CIMD Flows" section above is superseded. All flows now use `session_token` as the sole state transport to the consent page. The `redirect_uri` query parameter fallback is removed.
