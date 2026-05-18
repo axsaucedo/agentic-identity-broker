@@ -22,6 +22,6 @@ Ports are **interfaces only** + minimal DTOs. No business logic. No implementati
 - **ISP**: Repositories expose only operations their consumers need. Justify new operations.
 - **No business logic**: No validation, orchestration, conditionals, or error handling beyond sentinels.
 - **New ports**: New architectural boundaries require an ADR. New methods require consumer justification.
-- **Minimal DTOs**: Prefer domain types from `domain/storage/`; port DTOs only when domain types don't fit.
+- **Minimal DTOs**: Prefer domain types from `internal/domain/storage/`; port DTOs only when domain types don't fit.
 - **Encryption context**: `Encrypt/Decrypt` accept `{"service_id": "<id>"}` only (ADR 008). Never secrets.
 - **Error conventions**: Storage → `storage.StorageError` (domain). Encryption → `encryption.EncryptionError` (domain). Quick identity check: `ports.ErrNotFound`.
