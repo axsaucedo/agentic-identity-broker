@@ -59,7 +59,7 @@ type Service struct {
 func NewService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, config *OAuth2Config) ports.OAuth2Service {
 	return &Service{
 		grantRepo:      grantRepo,
-		clientResolver: NewOpaqueClientResolver(agentRepo),
+		clientResolver: NewAgentClientResolver(agentRepo, nil),
 		config:         config,
 	}
 }
@@ -76,7 +76,7 @@ func NewServiceWithSessions(
 	return &Service{
 		grantRepo:      grantRepo,
 		sessionRepo:    sessionRepo,
-		clientResolver: NewOpaqueClientResolver(agentRepo),
+		clientResolver: NewAgentClientResolver(agentRepo, logger),
 		config:         config,
 		logger:         logger,
 	}
@@ -114,7 +114,7 @@ func (s *Service) WithJWETokenService(ts *jwe.TokenService) *Service {
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
 func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
-	// Resolve the client via the injected strategy (OpaqueClientResolver or CIMDClientResolver).
+	// Resolve the client via the injected ClientResolver strategy.
 	var agent *storage.Agent
 	var cimdMeta *ports.CIMDMetadataDTO
 
