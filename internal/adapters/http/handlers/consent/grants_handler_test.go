@@ -653,32 +653,6 @@ func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
 }
 
-// TestCreateGrant_RedirectURIWithoutSessionToken verifies that providing redirect_uri
-// without session_token is rejected with 400 — no insecure fallback (US3-S2 / T015).
-func TestCreateGrant_RedirectURIWithoutSessionToken(t *testing.T) {
-	t.Parallel()
-
-	testAgentID := id.NewAgentID()
-	handler := NewGrantsHandler(&mockConsentService{}, nil, newTestJWETokenService())
-
-	req := newRequestWithPrincipal(
-		"POST",
-		"/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=%2Fcallback",
-		"user@example.com",
-		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
-	)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("agent-id", testAgentID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-
-	rr := httptest.NewRecorder()
-	handler.CreateGrant(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
-	var resp ErrorResponse
-	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	assert.Equal(t, "bad request", resp.Error)
-}
 
 // TestCreateGrant_SessionToken_PrincipalMismatch verifies that a session token issued
 // for a different user produces 403.

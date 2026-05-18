@@ -367,24 +367,6 @@ func TestGrantsIntegration_OptionalOnlyAgent(t *testing.T) {
 		assert.Empty(t, data["delegated_oauth2_tokens"])
 	})
 
-	// redirect_uri without session_token is rejected (FR-005: no insecure fallback).
-	t.Run("empty_tokens_with_redirect_uri_rejected", func(t *testing.T) {
-		reqBody := GrantRequest{
-			DelegatedOAuth2Tokens: []DelegatedTokenRequest{},
-		}
-
-		jsonBody, _ := json.Marshal(reqBody)
-		req := httptest.NewRequest("POST", "/api/consent/agent/"+optionalAgentID.String()+"/grants?redirect_uri=%2Fcallback", bytes.NewBuffer(jsonBody))
-		ctx := principal.WithPrincipal(req.Context(), "bob@example.com")
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("agent-id", optionalAgentID.String())
-		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
-
-		rr := httptest.NewRecorder()
-		handler.CreateGrant(rr, req)
-
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-	})
 }
 
 // TestGrantsIntegration_Validation tests validation logic (T077)

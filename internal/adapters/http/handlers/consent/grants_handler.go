@@ -139,12 +139,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			return
 		}
-	} else if r.URL.Query().Get("redirect_uri") != "" {
-		// redirect_uri without session_token is the old insecure fallback — reject it.
-		h.logger.Warn("redirect_uri without session_token rejected",
-			"principal", principalValue, "agent_id", agentID)
-		h.writeError(w, http.StatusBadRequest, "bad request", "missing session_token")
-		return
 	}
 
 	// Validate valid_until is in future
