@@ -239,20 +239,11 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		"agent_id", agentID,
 		"grant_id", grant.ID)
 
-	if sessionToken != "" {
-		response := h.toGrantResponse(grant)
-		h.writeJSON(w, http.StatusCreated, map[string]interface{}{
-			"data":         response,
-			"redirect_url": sessionRedirectURI,
-		})
-		return
+	resp := map[string]interface{}{"data": h.toGrantResponse(grant)}
+	if sessionRedirectURI != "" {
+		resp["redirect_url"] = sessionRedirectURI
 	}
-
-	// No session_token: return success response without redirect.
-	response := h.toGrantResponse(grant)
-	h.writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"data": response,
-	})
+	h.writeJSON(w, http.StatusCreated, resp)
 }
 
 // toGrantResponse converts a UserGrant to GrantResponse.
