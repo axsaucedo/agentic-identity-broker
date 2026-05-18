@@ -18,11 +18,13 @@ import (
 
 type MockAgentRepository struct {
 	agents map[id.AgentID]*storage.Agent
+	byURI  map[string]*storage.Agent
 }
 
 func NewMockAgentRepository() *MockAgentRepository {
 	return &MockAgentRepository{
 		agents: make(map[id.AgentID]*storage.Agent),
+		byURI:  make(map[string]*storage.Agent),
 	}
 }
 
@@ -70,7 +72,14 @@ func (m *MockAgentRepository) GetByClientID(ctx context.Context, clientID id.Cli
 }
 
 func (m *MockAgentRepository) GetByClientURI(ctx context.Context, uri string) (*storage.Agent, error) {
+	if a, ok := m.byURI[uri]; ok {
+		return a, nil
+	}
 	return nil, storage.NewStorageError("GetAgentByClientURI", storage.ErrorKindNotFound, ports.ErrNotFound, "not found")
+}
+
+func (m *MockAgentRepository) RegisterURI(uri string, agent *storage.Agent) {
+	m.byURI[uri] = agent
 }
 
 func (m *MockAgentRepository) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {

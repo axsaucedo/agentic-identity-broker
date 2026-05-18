@@ -29,66 +29,6 @@ func (m *mockFetcher) Fetch(_ context.Context, _ string) (*ports.CIMDFetchResult
 	return m.result, m.err
 }
 
-type mockAgentRepo struct {
-	agents    map[id.AgentID]*storage.Agent
-	updateErr error
-	updated   []*storage.Agent
-}
-
-func newMockAgentRepo(agents ...*storage.Agent) *mockAgentRepo {
-	r := &mockAgentRepo{agents: make(map[id.AgentID]*storage.Agent)}
-	for _, a := range agents {
-		r.agents[a.ID] = a
-	}
-	return r
-}
-
-func (m *mockAgentRepo) Create(_ context.Context, a *storage.Agent) error {
-	m.agents[a.ID] = a
-	return nil
-}
-func (m *mockAgentRepo) Get(_ context.Context, id id.AgentID) (*storage.Agent, error) {
-	a, ok := m.agents[id]
-	if !ok {
-		return nil, ports.ErrNotFound
-	}
-	return a, nil
-}
-func (m *mockAgentRepo) Update(_ context.Context, a *storage.Agent) error {
-	m.updated = append(m.updated, a)
-	if m.updateErr != nil {
-		return m.updateErr
-	}
-	m.agents[a.ID] = a
-	return nil
-}
-func (m *mockAgentRepo) Delete(_ context.Context, id id.AgentID) error {
-	delete(m.agents, id)
-	return nil
-}
-func (m *mockAgentRepo) List(_ context.Context) ([]*storage.Agent, error) {
-	var out []*storage.Agent
-	for _, a := range m.agents {
-		out = append(out, a)
-	}
-	return out, nil
-}
-func (m *mockAgentRepo) GetByClientID(_ context.Context, clientID id.ClientID) (*storage.Agent, error) {
-	for _, a := range m.agents {
-		if a.ClientID != nil && *a.ClientID == clientID {
-			return a, nil
-		}
-	}
-	return nil, ports.ErrNotFound
-}
-func (m *mockAgentRepo) GetByClientURI(_ context.Context, _ string) (*storage.Agent, error) {
-	return nil, ports.ErrNotFound
-}
-
-func (m *mockAgentRepo) ExistsOtherWithClientID(_ context.Context, _ id.ClientID, _ *id.AgentID) (bool, error) {
-	return false, nil
-}
-
 // --- helpers ---
 
 func cimdFetchResult(t *testing.T, clientID string, authMethod string) *ports.CIMDFetchResult {

@@ -366,13 +366,13 @@ func (b *Builder) Build() (*App, error) {
 				return nil, fmt.Errorf("failed to create CIMD cache: %w", cacheErr)
 			}
 			cimdSvc := domaincimd.NewService(activeFetcher, cimdCache, cimdCfg.ClientNameBlocklist, b.logger)
-			clientResolver = domaincimd.NewCIMDClientResolver(b.storage.Agents(), cimdSvc, b.logger)
+			clientResolver = oauth2service.NewAgentClientResolverWithCIMD(b.storage.Agents(), cimdSvc, b.logger)
 			b.logger.Info("CIMD client resolution enabled",
 				"fetch_timeout", cimdCfg.FetchTimeout,
 				"max_response_bytes", cimdCfg.MaxResponseBytes,
 			)
 		} else {
-			clientResolver = oauth2service.NewOpaqueClientResolver(b.storage.Agents())
+			clientResolver = oauth2service.NewAgentClientResolver(b.storage.Agents(), b.logger)
 		}
 
 		app.OAuth2Service = oauth2service.NewServiceWithClientResolver(
