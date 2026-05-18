@@ -15,7 +15,7 @@ Three `ports.EncryptionPort` implementations:
 | `memory/` | Dev/testing — in-memory encryption with `sync.RWMutex`-protected map. |
 | `branchkey/` | Shared `BranchKeyIdProvider` — deterministic ID: `service_{service_id}_branch_key`. Used by both. |
 
-Encryption rules: See root `AGENTS.md` § Encryption Rules + `.claude/skills/aws-crypto-go/SKILL.md`.
+Encryption rules: See `.claude/skills/aws-crypto-go/SKILL.md`.
 
 ### HTTP (`http/`)
 Dual-server (ADR 004): end-user `:8000` + admin `:14000`.

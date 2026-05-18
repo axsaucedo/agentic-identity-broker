@@ -132,15 +132,6 @@ Read full ADRs in `adrs/` before implementing. Pre-existing ADRs are authoritati
 | **ResourceURI** | Normalized URI for RFC 8693 token exchange protected resources |
 | **CEL Expression** | Policy for privileged client authorization + JWT claim extraction |
 
-## Encryption Rules (Mandatory)
-
-Read `.claude/skills/aws-crypto-go/SKILL.md` for full reference. Four non-negotiable rules:
-
-1. **Commitment Policy**: Always `RequireEncryptRequireDecrypt`. Never `ForbidEncryptAllowDecrypt`.
-2. **Encryption Context**: Always provide `{"service_id": "<id>"}`. Never include secrets. Verify on decrypt.
-3. **Hierarchical Keyring**: Go SDK has no Caching CMM — use Hierarchical Keyring with DynamoDB branch key store.
-4. **Explicit Wrapping Keys**: Always specify KMS key ARN. No discovery mode.
-
 ## Development Workflow
 
 `just` command runner. Run `just --list` for full listing.
@@ -150,10 +141,6 @@ Read `.claude/skills/aws-crypto-go/SKILL.md` for full reference. Four non-negoti
 | `just check` | **Pre-commit**: fmt → vet → lint → test (all must pass) |
 | `just build` | Build Go binary → `./bin/agentic-identity-broker` |
 | `just test` | All tests (verbose, race detection) |
-| `just dev` | Hot-reload dev server (Air) |
-| `just web-install` | Install frontend deps (once after clone) |
-| `just web-dev` | Vite :3000 (proxies → Go :8000, injects `X-Remote-User`) |
-| `just web-build` | Production bundle → `web/dist/consent/` |
 | `just build-all` | Backend + frontend build |
 | `just test-e2e` | E2E tests only |
 | `just test-integration` | Integration tests (requires Docker) |
