@@ -72,7 +72,7 @@ The constitution at `.specify/memory/constitution.md` is **BINDING**. Summary:
    - **Domain packaging**: New `domain/X/` must be genuinely independent bounded context.
 7. **Configuration-Driven** — All config via `internal/ports/config.go`. No ad-hoc loading.
 8. **TDD** — Red-green-refactor. Tests first, must fail before implementation.
-9. **Persistence Consistency** — ISP repos in `ports/storage.go`. sqlx for PostgreSQL. Both in-memory + postgres adapters required.
+9. **Persistence Consistency** — ISP repos in `internal/ports/storage.go`. sqlx for PostgreSQL. Both in-memory + postgres adapters required.
 10. **API-First** — Design APIs before implementation. Changes require stakeholder confirmation.
 11. **Design System Compliance** — Refined Trust Architecture, WCAG 2.1 AA, semantic tokens → `web/src/design-system/`
 12. **DI via Builder** — All wiring in `internal/app/builder.go`. Routing never instantiates services.
