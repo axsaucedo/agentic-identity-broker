@@ -414,6 +414,10 @@ func TestService_HandleAuthorization(t *testing.T) {
 			require.NotNil(t, decision, "Decision should not be nil")
 
 			assert.Equal(t, tt.wantAction, decision.Action, "Action mismatch")
+			if tt.wantAction == "redirect_to_consent" {
+				assert.Contains(t, decision.RedirectURL, "session_token=", "redirect_to_consent must include a session_token")
+				assert.NotContains(t, decision.RedirectURL, "redirect_uri=", "redirect_to_consent must not fall back to redirect_uri")
+			}
 		})
 	}
 }
@@ -516,6 +520,10 @@ func TestService_HandleAuthorization_SessionExpiry(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, decision)
 			assert.Equal(t, tt.wantAction, decision.Action)
+			if tt.wantAction == "redirect_to_consent" {
+				assert.Contains(t, decision.RedirectURL, "session_token=", "redirect_to_consent must include a session_token")
+				assert.NotContains(t, decision.RedirectURL, "redirect_uri=", "redirect_to_consent must not fall back to redirect_uri")
+			}
 		})
 	}
 }
@@ -926,6 +934,10 @@ func TestService_HandleAuthorization_RedirectURIValidation(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, decision)
 			assert.Equal(t, tt.wantAction, decision.Action)
+			if tt.wantAction == "redirect_to_consent" {
+				assert.Contains(t, decision.RedirectURL, "session_token=", "redirect_to_consent must include a session_token")
+				assert.NotContains(t, decision.RedirectURL, "redirect_uri=", "redirect_to_consent must not fall back to redirect_uri")
+			}
 			if tt.wantErrorCode != "" {
 				assert.Equal(t, tt.wantErrorCode, decision.ErrorCode)
 				assert.Empty(t, decision.RedirectURL, "invalid_redirect_uri must not include a redirect URL")
@@ -1010,6 +1022,10 @@ func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, decision)
 			assert.Equal(t, tt.wantAction, decision.Action)
+			if tt.wantAction == "redirect_to_consent" {
+				assert.Contains(t, decision.RedirectURL, "session_token=", "redirect_to_consent must include a session_token")
+				assert.NotContains(t, decision.RedirectURL, "redirect_uri=", "redirect_to_consent must not fall back to redirect_uri")
+			}
 			if tt.wantErrorCode != "" {
 				assert.Equal(t, tt.wantErrorCode, decision.ErrorCode)
 			}
@@ -1246,6 +1262,10 @@ func TestService_HandleAuthorization_MandatoryRequirements(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, decision)
 			assert.Equal(t, tt.wantAction, decision.Action)
+			if tt.wantAction == "redirect_to_consent" {
+				assert.Contains(t, decision.RedirectURL, "session_token=", "redirect_to_consent must include a session_token")
+				assert.NotContains(t, decision.RedirectURL, "redirect_uri=", "redirect_to_consent must not fall back to redirect_uri")
+			}
 			if tt.wantErrorCode != "" {
 				assert.Equal(t, tt.wantErrorCode, decision.ErrorCode)
 			}
