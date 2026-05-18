@@ -3,6 +3,7 @@
 **Feature Branch**: `031-unified-session-token`  
 **Created**: 2026-05-17  
 **Status**: Draft  
+**Predecessor**: `specs/028-cimd-support/` — introduced JWE session token transport and `AuthorizationSessionClaims` for CIMD agents (see also [ADR 016](../../adrs/016-stateless-authorization-sessions.md))  
 **Input**: Align all agent modes (local, proxy, CIMD) to use the session_token JWE approach for consent URL state transport, eliminating the less secure redirect_uri query parameter fallback.
 
 ## User Scenarios & Testing
@@ -50,20 +51,6 @@ The consent page (agent detail and grant submission handlers) resolves authoriza
 
 1. **Given** a consent page request with a valid session token (any agent mode), **When** the handler processes it, **Then** it extracts agent ID, principal, and original URL from the decrypted token claims.
 2. **Given** a consent page request with a `redirect_uri` parameter but no `session_token`, **When** the handler processes it, **Then** the system rejects the request (no fallback to redirect_uri).
-
----
-
-### User Story 4 - Backward Compatibility During Transition (Priority: P3)
-
-In-flight consent sessions that were initiated before the upgrade (with redirect_uri) should either be handled gracefully or the transition should be atomic with no in-flight sessions affected.
-
-**Why this priority**: Operational safety during deployment.
-
-**Independent Test**: Can be tested by verifying behavior when an old-format redirect_uri request arrives after the change is deployed.
-
-**Acceptance Scenarios**:
-
-1. **Given** the system has been upgraded, **When** an old-format consent request arrives with only `redirect_uri`, **Then** the system returns a clear error indicating the session has expired or is invalid, prompting the user to restart the flow.
 
 ---
 
@@ -123,7 +110,7 @@ sequenceDiagram
 
 ## Assumptions
 
-- The existing `AuthorizationSessionClaims` structure and JWE `TokenService` can be reused for non-CIMD agents with `CIMDMetadata` set to nil.
+- The existing `AuthorizationSessionClaims` structure and JWE `TokenService` (introduced in `specs/028-cimd-support/`, governed by [ADR 016](../../adrs/016-stateless-authorization-sessions.md)) can be reused for non-CIMD agents with `CIMDMetadata` set to nil.
 - The 10-minute TTL is appropriate for all agent modes (same as current CIMD behavior).
 - No database changes are required — session tokens remain stateless (sealed in JWE).
 - The transition can be atomic (deploy once, old redirect_uri format immediately unsupported) because consent sessions are short-lived (10 min max).
