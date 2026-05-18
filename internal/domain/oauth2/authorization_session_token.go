@@ -59,7 +59,7 @@ func NewAuthorizationSessionClaims(
 }
 
 // CreateAuthorizationSessionToken seals claims into a compact JWE string.
-func (s *Service) CreateAuthorizationSessionToken(claims *AuthorizationSessionClaims) (string, error) {
+func (s *AuthorizationService) CreateAuthorizationSessionToken(claims *AuthorizationSessionClaims) (string, error) {
 	if s.jweTokenService == nil {
 		return "", fmt.Errorf("jweTokenService not configured")
 	}

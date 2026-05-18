@@ -31,17 +31,12 @@ func newServiceTestJWETokenService() *domjwe.TokenService {
 	return domjwe.New(jweKey)
 }
 
-// newTestServiceWithJWE creates an OAuth2Service with a test JWE token service.
-// Required because buildConsentURL now always uses session tokens (FR-001).
 func newTestServiceWithJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
-	return NewServiceWithClientResolver(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), cfg, nil).
-		WithJWETokenService(newServiceTestJWETokenService())
+	return New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), cfg, nil, newServiceTestJWETokenService())
 }
 
-// newTestServiceWithSessionsAndJWE creates an OAuth2Service with sessions and a test JWE token service.
 func newTestServiceWithSessionsAndJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
-	return NewServiceWithClientResolver(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil).
-		WithJWETokenService(newServiceTestJWETokenService())
+	return New(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil, newServiceTestJWETokenService())
 }
 
 type MockAgentRepository struct {
@@ -556,10 +551,10 @@ func TestService_HandleAuthorization_PreservesParameters(t *testing.T) {
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
-	})
+	}, nil, nil)
 
 	authReq := &ports.AuthorizationRequest{
 		ClientID:            id.ClientID(agentID.String()),
@@ -659,11 +654,11 @@ func TestService_HandleAuthorization_UUIDResolution(t *testing.T) {
 			tt.setupAgent(agentRepo)
 			tt.setupGrant(grantRepo)
 
-			svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+			svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
 				SupportedResponseTypes:    []string{"code"},
-			})
+			}, nil, nil)
 
 			req := &ports.AuthorizationRequest{
 				ClientID:     tt.clientID,
@@ -713,10 +708,10 @@ func TestService_HandleAuthorization_UUIDResolution_UpstreamClientID(t *testing.
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
-	})
+	}, nil, nil)
 
 	req := &ports.AuthorizationRequest{
 		ClientID:     id.ClientID(agentID.String()),
@@ -750,7 +745,7 @@ func TestService_GenerateMetadata(t *testing.T) {
 		SupportedGrantTypes:       []string{"authorization_code", "refresh_token"},
 	}
 
-	svc := NewService(agentRepo, grantRepo, config)
+	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, nil)
 
 	tests := []struct {
 		name string
@@ -826,7 +821,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 
 	t.Run("param injected when multi_agent_client enabled", func(t *testing.T) {
 		agentRepo, grantRepo := makeRepos()
-		svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+		svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 			MultiAgentClient: ports.MultiAgentClientConfig{
@@ -834,7 +829,7 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 				AgentIDParamName: "x_agent_id",
 				AgentIDClaimName: "x_agent_id",
 			},
-		})
+		}, nil, nil)
 
 		decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
 		require.NoError(t, err)
@@ -845,11 +840,11 @@ func TestService_HandleAuthorization_MultiAgentParamInjection(t *testing.T) {
 
 	t.Run("param absent when multi_agent_client disabled", func(t *testing.T) {
 		agentRepo, grantRepo := makeRepos()
-		svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+		svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 			MultiAgentClient:          ports.MultiAgentClientConfig{Enabled: false},
-		})
+		}, nil, nil)
 
 		decision, err := svc.HandleAuthorization(context.Background(), req, id.NewPrincipal("user@example.com"))
 		require.NoError(t, err)
@@ -1051,7 +1046,7 @@ func TestService_GenerateMetadata_RFC8414Compliance(t *testing.T) {
 		SupportedGrantTypes:       []string{"authorization_code"},
 	}
 
-	svc := NewService(agentRepo, grantRepo, config)
+	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), config, nil, nil)
 	metadata, err := svc.GenerateMetadata(context.Background())
 
 	require.NoError(t, err)
@@ -1102,9 +1097,9 @@ func TestService_HandleAuthorization_GrantLookupError(t *testing.T) {
 		findErr:             connErr,
 	}
 
-	svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		PublicURL: "https://broker.example.com",
-	})
+	}, nil, nil)
 
 	req := &ports.AuthorizationRequest{
 		ClientID:     id.ClientID(agentID.String()),
@@ -1293,10 +1288,10 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 		DelegatedOAuth2Tokens: []storage.DelegatedToken{},
 	}))
 
-	svc := NewService(agentRepo, grantRepo, &OAuth2Config{
+	svc := New(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), &OAuth2Config{
 		UpstreamAuthorizeEndpoint: "%",
 		PublicURL:                 "https://broker.example.com",
-	}).(*Service)
+	}, nil, nil)
 
 	decision, err := svc.HandleAuthorization(context.Background(), &ports.AuthorizationRequest{
 		ClientID:     id.ClientID(agentID.String()),
@@ -1318,13 +1313,14 @@ func TestService_HandleAuthorization_InvalidUpstreamAuthorizeURL(t *testing.T) {
 func TestBuildConsentURL_AlwaysProducesSessionToken(t *testing.T) {
 	agentID := id.NewAgentID()
 
-	svc := NewServiceWithClientResolver(
+	svc := New(
 		NewMockGrantRepository(),
 		nil,
 		NewAgentClientResolver(NewMockAgentRepository(), nil),
 		&OAuth2Config{PublicURL: "https://broker.example.com"},
 		nil,
-	).WithJWETokenService(newServiceTestJWETokenService())
+		newServiceTestJWETokenService(),
+	)
 
 	req := &ports.AuthorizationRequest{
 		ClientID:     id.ClientID(agentID.String()),

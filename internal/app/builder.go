@@ -346,13 +346,14 @@ func (b *Builder) Build() (*App, error) {
 			clientResolver = oauth2service.NewAgentClientResolver(b.storage.Agents(), b.logger)
 		}
 
-		app.OAuth2Service = oauth2service.NewServiceWithClientResolver(
+		app.OAuth2Service = oauth2service.New(
 			b.storage.UserGrants(),
 			b.storage.UserSessions(),
 			clientResolver,
 			oauth2Config,
 			b.logger,
-		).WithJWETokenService(jweTokenService)
+			jweTokenService,
+		)
 	}
 
 	// OAuth2SessionService is always created because JWESigningKey is mandatory.

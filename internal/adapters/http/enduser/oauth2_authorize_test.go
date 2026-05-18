@@ -40,13 +40,17 @@ func newTestJWETokenService() *domjwe.TokenService {
 // TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal tests handler when principal is not provided
 func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 	// Setup
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	agentRepo := newMockAgentRepo()
+	svc := oauth2.New(
 		newMockGrantRepo(),
+		nil,
+		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		nil,
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -71,13 +75,17 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingPrincipal(t *testing.T) {
 
 // TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters tests handler when required OAuth2 parameters missing
 func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	agentRepo := newMockAgentRepo()
+	svc := oauth2.New(
 		newMockGrantRepo(),
+		nil,
+		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		nil,
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -142,14 +150,18 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MissingParameters(t *testing.T) {
 // TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID tests direct 400 for an unregistered client_id.
 // The service returns invalid_client when no agent matches, without redirecting to an unverified redirect_uri.
 func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
+	mockAgentRepo := newMockAgentRepo()
 	handler := &OAuth2AuthorizeHandler{
-		Service: oauth2.NewService(
-			newMockAgentRepo(),
+		Service: oauth2.New(
 			newMockGrantRepo(),
+			nil,
+			oauth2.NewAgentClientResolver(mockAgentRepo, nil),
 			&oauth2.OAuth2Config{
 				UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 				PublicURL:                 "https://broker.example.com",
 			},
+			nil,
+			nil,
 		),
 	}
 
@@ -173,13 +185,17 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_MalformedClientID(t *testing.T) {
 // that does not match any registered agent returns a direct 400 JSON response.
 // RFC 6749 §4.1.2.1: MUST NOT redirect when the client cannot be verified.
 func TestOAuth2AuthorizeHandler_ServeHTTP_UnknownAgent(t *testing.T) {
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	agentRepo := newMockAgentRepo()
+	svc := oauth2.New(
 		newMockGrantRepo(),
+		nil,
+		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		nil,
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -220,7 +236,7 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 	}
 	_ = agentRepo.Create(context.Background(), agent)
 
-	svc := oauth2.NewServiceWithClientResolver(
+	svc := oauth2.New(
 		newMockGrantRepo(),
 		nil,
 		oauth2.NewAgentClientResolver(agentRepo, nil),
@@ -229,7 +245,8 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 			PublicURL:                 "https://broker.example.com",
 		},
 		nil,
-	).WithJWETokenService(newTestJWETokenService())
+		newTestJWETokenService(),
+	)
 
 	handler := &OAuth2AuthorizeHandler{
 		Service: svc,
@@ -277,13 +294,16 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := oauth2.NewService(
-		agentRepo,
+	svc := oauth2.New(
 		grantRepo,
+		nil,
+		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		nil,
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -338,13 +358,16 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
-	svc := oauth2.NewService(
-		agentRepo,
+	svc := oauth2.New(
 		grantRepo,
+		nil,
+		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		nil,
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -382,13 +405,17 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 
 // TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat tests error responses use proper JSON format
 func TestOAuth2AuthorizeHandler_ServeHTTP_JSONResponseFormat(t *testing.T) {
-	svc := oauth2.NewService(
-		newMockAgentRepo(),
+	agentRepo := newMockAgentRepo()
+	svc := oauth2.New(
 		newMockGrantRepo(),
+		nil,
+		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		nil,
 	)
 
 	handler := &OAuth2AuthorizeHandler{
@@ -706,13 +733,16 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_StorageErrorReturns500(t *testing.T) {
 		getErr:              storageErr,
 	}
 
-	svc := oauth2.NewService(
-		agentRepo,
+	svc := oauth2.New(
 		newMockGrantRepo(),
+		nil,
+		oauth2.NewAgentClientResolver(agentRepo, nil),
 		&oauth2.OAuth2Config{
 			UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 			PublicURL:                 "https://broker.example.com",
 		},
+		nil,
+		nil,
 	)
 	handler := &OAuth2AuthorizeHandler{Service: svc}
 

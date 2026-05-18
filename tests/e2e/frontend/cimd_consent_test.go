@@ -16,11 +16,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// oauth2ServiceFromApp extracts the concrete *domotp2.Service via type assertion so tests
+// oauth2ServiceFromApp extracts the concrete *domotp2.AuthorizationService via type assertion so tests
 // can call CreateAuthorizationSessionToken (which is not on the ports.OAuth2Service interface).
-func oauth2ServiceFromApp() *domotp2.Service {
-	svc, ok := GetTestServer().App().OAuth2Service.(*domotp2.Service)
-	Expect(ok).To(BeTrue(), "OAuth2Service must be *oauth2.Service")
+func oauth2ServiceFromApp() *domotp2.AuthorizationService {
+	svc, ok := GetTestServer().App().OAuth2Service.(*domotp2.AuthorizationService)
+	Expect(ok).To(BeTrue(), "OAuth2Service must be *oauth2.AuthorizationService")
 	return svc
 }
 

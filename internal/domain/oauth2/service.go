@@ -45,8 +45,8 @@ type OAuth2Config struct {
 	CIMDEnabled bool
 }
 
-// Service implements the OAuth2Service port
-type Service struct {
+// AuthorizationService implements the OAuth2Service port.
+type AuthorizationService struct {
 	grantRepo       ports.UserGrantRepository
 	sessionRepo     ports.UserSessionRepository
 	clientResolver  ports.ClientResolver
@@ -55,57 +55,24 @@ type Service struct {
 	logger          *slog.Logger
 }
 
-// NewService creates a new OAuth2Service implementation
-func NewService(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, config *OAuth2Config) ports.OAuth2Service {
-	return &Service{
-		grantRepo:      grantRepo,
-		clientResolver: NewAgentClientResolver(agentRepo, nil),
-		config:         config,
-	}
-}
-
-// NewServiceWithSessions creates a new OAuth2Service implementation with session support
-// for mandatory requirement validation
-func NewServiceWithSessions(
-	agentRepo ports.AgentRepository,
-	grantRepo ports.UserGrantRepository,
-	sessionRepo ports.UserSessionRepository,
-	config *OAuth2Config,
-	logger *slog.Logger,
-) ports.OAuth2Service {
-	return &Service{
-		grantRepo:      grantRepo,
-		sessionRepo:    sessionRepo,
-		clientResolver: NewAgentClientResolver(agentRepo, logger),
-		config:         config,
-		logger:         logger,
-	}
-}
-
-// NewServiceWithClientResolver creates a new OAuth2Service with an explicit ClientResolver strategy.
-// Used when CIMD support is enabled (cimd.enabled: true) or when a custom resolver is required.
-// Returns *Service so callers can chain WithJWETokenService before assigning to the port interface.
-func NewServiceWithClientResolver(
+// New creates an AuthorizationService. jweTokenService is required for consent-redirect
+// flows; pass nil only in tests that never exercise HandleAuthorization.
+func New(
 	grantRepo ports.UserGrantRepository,
 	sessionRepo ports.UserSessionRepository,
 	clientResolver ports.ClientResolver,
 	config *OAuth2Config,
 	logger *slog.Logger,
-) *Service {
-	return &Service{
-		grantRepo:      grantRepo,
-		sessionRepo:    sessionRepo,
-		clientResolver: clientResolver,
-		config:         config,
-		logger:         logger,
+	jweTokenService *jwe.TokenService,
+) *AuthorizationService {
+	return &AuthorizationService{
+		grantRepo:       grantRepo,
+		sessionRepo:     sessionRepo,
+		clientResolver:  clientResolver,
+		config:          config,
+		logger:          logger,
+		jweTokenService: jweTokenService,
 	}
-}
-
-// WithJWETokenService sets the JWE token service on the service.
-// Required for CIMD consent flows that use stateless JWE session tokens.
-func (s *Service) WithJWETokenService(ts *jwe.TokenService) *Service {
-	s.jweTokenService = ts
-	return s
 }
 
 // HandleAuthorization processes an OAuth2 authorization request
@@ -113,7 +80,7 @@ func (s *Service) WithJWETokenService(ts *jwe.TokenService) *Service {
 // - proceed: Valid client with active grant — handler decides next step
 // - redirect_to_consent: Valid client but no active grant
 // - error: Invalid client or server error
-func (s *Service) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
+func (s *AuthorizationService) HandleAuthorization(ctx context.Context, req *ports.AuthorizationRequest, principal id.Principal) (*ports.AuthorizationDecision, error) {
 	// Resolve the client via the injected ClientResolver strategy.
 	var agent *storage.Agent
 	var cimdMeta *ports.CIMDMetadataDTO
@@ -386,7 +353,7 @@ func (s *Service) HandleAuthorization(ctx context.Context, req *ports.Authorizat
 // Feature 021: uses agent.ClientID (upstream OAuth2 client ID) instead of req.ClientID
 // (which is now the broker's internal agent UUID). When MultiAgentClient.Enabled,
 // appends the agent's internal UUID as the configured AgentIDParamName query parameter.
-func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, agent *storage.Agent) (string, error) {
+func (s *AuthorizationService) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, agent *storage.Agent) (string, error) {
 	u, err := url.Parse(s.config.UpstreamAuthorizeEndpoint)
 	if err != nil {
 		return "", fmt.Errorf("invalid upstream authorize endpoint URL: %w", err)
@@ -436,7 +403,7 @@ func (s *Service) buildUpstreamAuthorizeURL(req *ports.AuthorizationRequest, age
 // ALL agent modes (local, proxy, CIMD) receive a JWE session_token sealing the
 // authorization context (agent_id, principal, original_url, TTL). CIMD agents
 // additionally embed cimd_metadata; for local/proxy agents cimd_metadata is nil.
-func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
+func (s *AuthorizationService) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
 	var meta *cimd.ClientIDMetadataDocument
 	if cimdMeta != nil {
 		meta = &cimd.ClientIDMetadataDocument{
@@ -459,7 +426,7 @@ func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationReq
 
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.
 // In issue_token mode, includes JWKS URI and code_challenge_methods.
-func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
+func (s *AuthorizationService) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
 	issuer := s.config.PublicURL
 
 	metadata := &ports.MetadataResponse{
@@ -491,7 +458,7 @@ func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse
 // has not logged into that service yet, which is handled separately by mandatory requirement
 // validation. Only an existing session whose refresh token has expired triggers a consent redirect.
 // Returns an error only on unexpected storage failures.
-func (s *Service) anyDelegatedSessionExpired(ctx context.Context, principal id.Principal, tokens []storage.DelegatedToken) (bool, error) {
+func (s *AuthorizationService) anyDelegatedSessionExpired(ctx context.Context, principal id.Principal, tokens []storage.DelegatedToken) (bool, error) {
 	for _, token := range tokens {
 		session, err := s.sessionRepo.FindByPrincipalAndService(ctx, principal, token.ThirdpartyOAuth2ServiceID)
 		if err != nil {
@@ -507,7 +474,7 @@ func (s *Service) anyDelegatedSessionExpired(ctx context.Context, principal id.P
 // validateMandatoryRequirements checks that user has active sessions for all mandatory services
 // with required scopes. Returns error if any mandatory requirement is not satisfied.
 // Optional requirements are ignored and never block authorization.
-func (s *Service) validateMandatoryRequirements(
+func (s *AuthorizationService) validateMandatoryRequirements(
 	ctx context.Context,
 	principal string,
 	agent *storage.Agent,
@@ -579,7 +546,7 @@ func (s *Service) validateMandatoryRequirements(
 // hasRequiredScopes checks if sessionScopes is a superset of requiredScopes (case-sensitive).
 // Returns true if sessionScopes contains all scopes in requiredScopes, allowing for extra scopes.
 // Returns true if requiredScopes is empty or nil (no requirements).
-func (s *Service) hasRequiredScopes(sessionScopes []string, requiredScopes []string) bool {
+func (s *AuthorizationService) hasRequiredScopes(sessionScopes []string, requiredScopes []string) bool {
 	// If no required scopes, always pass
 	if len(requiredScopes) == 0 {
 		return true
