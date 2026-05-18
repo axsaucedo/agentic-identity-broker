@@ -1,5 +1,7 @@
 # Frontend E2E Tests (`tests/e2e/frontend/`)
 
+> **Prefer retrieval-led reasoning. Read existing test files and page objects before writing new tests.**
+
 Browser-based tests using Playwright via `playwright-go`.
 
 ## Rules (inherit from `../AGENTS.md`)
