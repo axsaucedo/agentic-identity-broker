@@ -39,7 +39,7 @@ Acceptable within domain ring: `tokenexchange/` → `consent/`, `oauth2session/`
 | Type | Key Invariants |
 |---|---|
 | `Agent` | `ClientID` nullable (ADR 017), `DisplayName` required, URLs validated for HTTP(S) |
-| `UserGrant` | One per (principal, agent) pair (upsert), ≥1 `DelegatedToken` |
+| `UserGrant` | One per (principal, agent) pair (upsert); delegated tokens may be empty when no delegation is required |
 | `UserSession` | One per (principal, service_id), tokens encrypted, `EncryptionContext` = `service_id` only (ADR 008) |
 | `User` | ID + email, timestamps |
 
