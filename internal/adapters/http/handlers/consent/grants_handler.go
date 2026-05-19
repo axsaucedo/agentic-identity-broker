@@ -103,8 +103,6 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// FR-029: Validate JWE session_token when present.
-	// FR-005: redirect_uri fallback is not permitted — session_token is the only
-	// accepted state transport for all agent modes (local, proxy, CIMD).
 	sessionToken := r.URL.Query().Get("session_token")
 	var sessionRedirectURI string
 	if sessionToken != "" {

@@ -44,10 +44,8 @@ export function AgentGrantDetailPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Extract query parameters for both session-based (CIMD) and redirect-based flows.
   const searchParams = new URLSearchParams(location.search);
   const sessionToken = searchParams.get('session_token') || undefined;
-  const redirectUri = searchParams.get('redirect_uri') || undefined;
 
   const resolvedAgentId = agentId ?? '';
 
@@ -157,7 +155,7 @@ export function AgentGrantDetailPage() {
     try {
       const result = await submit(
         getValidUntil(),
-        sessionToken ? { sessionToken } : { redirectUri },
+        sessionToken ? { sessionToken } : undefined,
       );
 
       if (!result) return;

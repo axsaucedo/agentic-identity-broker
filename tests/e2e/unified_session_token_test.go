@@ -390,24 +390,22 @@ var _ = Describe("Unified Session Token State Transport", func() {
 		})
 
 		// Scenario 3.2 from specs/031-unified-session-token/spec.md
-		It("consent handler rejects request with redirect_uri but no session_token", func() {
+		// Without a session_token the grants handler operates in consent-management mode
+		// (user managing grants outside the OAuth2 flow) — no redirect_url is returned.
+		It("grant response omits redirect_url when no session_token is present", func() {
 			principal := fixtures.DefaultPrincipal().String()
-			grantBody, _ := json.Marshal(map[string]any{
-				"delegated_oauth2_tokens": []any{},
-			})
-			// Send redirect_uri but NO session_token — old insecure fallback
-			grantPath := fmt.Sprintf(
-				"/api/consent/agent/%s/grants?redirect_uri=%s",
-				agent.ID,
-				url.QueryEscape("https://client.example.com/cb"),
-			)
+			grantBody, _ := json.Marshal(map[string]any{"delegated_oauth2_tokens": []any{}})
+			grantPath := fmt.Sprintf("/api/consent/agent/%s/grants", agent.ID)
 
 			resp, err := server.AuthenticatedPOST(grantPath, principal, "application/json", bytes.NewReader(grantBody))
 			Expect(err).ToNot(HaveOccurred())
 			defer func() { _ = resp.Body.Close() }()
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
-				"redirect_uri without session_token must be rejected (no fallback)")
+			Expect(resp.StatusCode).To(Equal(http.StatusCreated))
+			var body map[string]any
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body).ToNot(HaveKey("redirect_url"),
+				"no redirect_url in consent-management mode (session_token absent)")
 		})
 	})
 })

@@ -180,13 +180,11 @@ export class ConsentApiService {
   async createOrUpdateGrant(
     agentId: string,
     request: CreateOrUpdateGrantRequest,
-    options?: { redirectUri?: string; sessionToken?: string },
+    options?: { sessionToken?: string },
   ): Promise<GrantResult> {
     let url = `/consent/agent/${agentId}/grants`;
     if (options?.sessionToken) {
       url += `?session_token=${encodeURIComponent(options.sessionToken)}`;
-    } else if (options?.redirectUri) {
-      url += `?redirect_uri=${encodeURIComponent(options.redirectUri)}`;
     }
 
     const response = await apiClient.post<CreateOrUpdateGrantResponse>(

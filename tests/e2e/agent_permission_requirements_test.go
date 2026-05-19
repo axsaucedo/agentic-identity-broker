@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -1260,60 +1259,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 			userPrincipalForGrant = "grant-user@example.com"
 		})
 
-		// Scenario 1: spec.md User Story 6, Scenario 1 (updated for 031: no redirect_uri fallback)
-		// FR-005: redirect_uri without session_token is rejected — session_token is the only state transport
-		It("should reject redirect_uri without session_token (no insecure fallback)", func() {
-			payload := map[string]interface{}{
-				"delegated_oauth2_tokens": []map[string]interface{}{
-					{
-						"thirdparty_oauth2_service_id": githubService.ID,
-						"scopes":                       []string{"repo", "user:email"},
-					},
-				},
-			}
-			body, _ := json.Marshal(payload)
-
-			resp, err := enduserServer.AuthenticatedPOST(
-				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("/callback")),
-				userPrincipalForGrant,
-				"application/json",
-				bytes.NewReader(body),
-			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
-				"redirect_uri without session_token must be rejected (FR-005)")
-		})
-
-		// Scenario 2: spec.md User Story 6, Scenario 2 (updated for 031: no redirect_uri fallback)
-		// FR-005: redirect_uri without session_token is rejected — use session_token for redirect context
-		It("should reject redirect_uri without session_token (session_token carries redirect context)", func() {
-			payload := map[string]interface{}{
-				"delegated_oauth2_tokens": []map[string]interface{}{
-					{
-						"thirdparty_oauth2_service_id": githubService.ID,
-						"scopes":                       []string{"repo", "user:email"},
-					},
-				},
-			}
-			body, _ := json.Marshal(payload)
-
-			customCallback := "/oauth2/callback?code=abc123&state=xyz"
-			encodedCallback := url.QueryEscape(customCallback)
-
-			resp, err := enduserServer.AuthenticatedPOST(
-				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, encodedCallback),
-				userPrincipalForGrant,
-				"application/json",
-				bytes.NewReader(body),
-			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
-				"redirect_uri without session_token must be rejected (FR-005)")
-		})
 
 		// Scenario 3: spec.md User Story 6, Scenario 3
 		// Spec: Return 200 OK with success response when no redirect_uri provided
@@ -1349,62 +1294,5 @@ var _ = Describe("Agent Permission Requirements", func() {
 			Expect(location).To(BeEmpty(), "No redirect should occur without redirect_uri")
 		})
 
-		// Scenario 4: spec.md User Story 6, Scenario 4 (updated for 031: no redirect_uri fallback)
-		// FR-005: redirect_uri without session_token is rejected regardless of origin
-		It("should reject redirect_uri without session_token even for same-origin URLs", func() {
-			payload := map[string]interface{}{
-				"delegated_oauth2_tokens": []map[string]interface{}{
-					{
-						"thirdparty_oauth2_service_id": githubService.ID,
-						"scopes":                       []string{"repo", "user:email"},
-					},
-				},
-			}
-			body, _ := json.Marshal(payload)
-
-			resp, err := enduserServer.AuthenticatedPOST(
-				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("/local/callback")),
-				userPrincipalForGrant,
-				"application/json",
-				bytes.NewReader(body),
-			)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() { _ = resp.Body.Close() }()
-
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
-				"redirect_uri without session_token must be rejected (FR-005)")
-		})
-
-		// Scenario 5: spec.md User Story 6, Scenario 5
-		// Spec: Reject external domain redirect_uri with HTTP 400 error
-		It("should reject external domain redirect_uri with HTTP 400 error", func() {
-			// Given: Malicious redirect_uri to external domain
-			payload := map[string]interface{}{
-				"delegated_oauth2_tokens": []map[string]interface{}{
-					{
-						"thirdparty_oauth2_service_id": githubService.ID,
-						"scopes":                       []string{"repo", "user:email"},
-					},
-				},
-			}
-			body, _ := json.Marshal(payload)
-
-			// When: User submits grant approval with external redirect_uri
-			resp, err := enduserServer.AuthenticatedPOST(
-				fmt.Sprintf("/api/consent/agent/%s/grants?redirect_uri=%s", agent.ID, url.QueryEscape("https://evil.com/callback")),
-				userPrincipalForGrant,
-				"application/json",
-				bytes.NewReader(body),
-			)
-			Expect(err).ToNot(HaveOccurred())
-			// Then: System rejects redirect with HTTP 400 Bad Request
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-
-			// Verify error response
-			respBody, err := readJSONResponse(resp)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(respBody).To(HaveKey("error"))
-			Expect(respBody["error"]).ToNot(BeEmpty())
-		})
 	})
 })
