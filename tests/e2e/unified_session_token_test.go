@@ -24,6 +24,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
+	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/helpers"
 )
 
 // newE2EJWETokenService returns a JWE token service backed by the same key as DefaultOAuth2Config.
@@ -62,6 +63,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 		serverFactory  *bootstrap.ServerFactory
 		testStorage    *storageadapter.Adapter
 		server         *bootstrap.TestServer
+		adminServer    *bootstrap.TestServer
 	)
 
 	BeforeEach(func() {
@@ -77,9 +79,14 @@ var _ = Describe("Unified Session Token State Transport", func() {
 		Expect(err).ToNot(HaveOccurred())
 		server, err = bootstrap.NewEndUserTestServer(appInstance, logger)
 		Expect(err).ToNot(HaveOccurred())
+		adminServer, err = bootstrap.NewAdminTestServer(appInstance, logger)
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	AfterEach(func() {
+		if adminServer != nil {
+			adminServer.Close()
+		}
 		if server != nil {
 			server.Close()
 		}
@@ -285,6 +292,12 @@ var _ = Describe("Unified Session Token State Transport", func() {
 				UpdatedAt:    now,
 			}
 			Expect(testStorage.Agents().Create(context.Background(), agent)).To(Succeed())
+
+			// Register broker credentials so the issue_token code issuer can authenticate this client.
+			resp, err := http.Post(adminServer.BaseURL()+"/api/agents/"+agent.ID.String()+"/client-credentials", "application/json", nil)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
+			Expect(resp.StatusCode).To(Equal(http.StatusCreated))
 		})
 
 		// Scenario 3.1 from specs/031-unified-session-token/spec.md
@@ -331,11 +344,14 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			principal := fixtures.DefaultPrincipal().String()
 			state := "originalstate456"
 			redirectURI := "https://client.example.com/cb"
+			pkceVerifier := helpers.PKCEVerifier()
+			pkceChallenge := helpers.GenerateCodeChallenge(pkceVerifier)
 			originalAuthorize := fmt.Sprintf(
-				"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s",
+				"/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s&code_challenge=%s&code_challenge_method=S256",
 				agent.ID,
 				url.QueryEscape(redirectURI),
 				state,
+				pkceChallenge,
 			)
 
 			// Step 1: authorize → consent redirect with session_token
