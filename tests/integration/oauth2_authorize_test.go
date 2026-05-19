@@ -20,6 +20,7 @@ import (
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
@@ -163,7 +164,7 @@ func TestOAuth2AuthorizeEndpoint_NoGrantRedirectsToConsent(t *testing.T) {
 	svc := oauth2.NewAuthorizationService(grantRepo, nil, oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, newIntegrationJWETokenService())
+	}, nil, sessiontoken.NewService(newIntegrationJWETokenService()))
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service: svc,
@@ -280,7 +281,7 @@ func TestOAuth2AuthorizeEndpoint_ExpiredGrantRedirectsToConsent(t *testing.T) {
 	svc := oauth2.NewAuthorizationService(grantRepo, nil, oauth2.NewAgentClientResolver(agentRepo, nil), &oauth2.OAuth2Config{
 		UpstreamAuthorizeEndpoint: "https://auth.example.com/authorize",
 		PublicURL:                 "https://broker.example.com",
-	}, nil, newIntegrationJWETokenService())
+	}, nil, sessiontoken.NewService(newIntegrationJWETokenService()))
 
 	handler := &enduser.OAuth2AuthorizeHandler{
 		Service: svc,

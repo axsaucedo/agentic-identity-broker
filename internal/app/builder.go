@@ -40,8 +40,8 @@ import (
 	domaincimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
-	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -58,12 +58,12 @@ type App struct {
 	BranchKeyManager ports.BranchKeyManager
 
 	// Domain services
-	ConsentService        *consentservice.Service
-	ProviderService       *thirdparty.ThirdpartyOAuth2ProviderService
-	OAuth2SessionService  *oauth2session.OAuth2SessionService
-	OAuth2Service         ports.OAuth2Service
-	TokenExchangeService  *tokenexchange.TokenExchangeService
-	sessionTokenValidator *sessiontoken.Service
+	ConsentService       *consentservice.Service
+	ProviderService      *thirdparty.ThirdpartyOAuth2ProviderService
+	OAuth2SessionService *oauth2session.OAuth2SessionService
+	OAuth2Service        ports.OAuth2Service
+	TokenExchangeService *tokenexchange.TokenExchangeService
+	SessionTokenService  *sessiontoken.Service
 
 	// JWT pre-authentication (optional, nil when not configured)
 	JWTAuthenticator domjwtauth.JWTAuthenticator
@@ -260,7 +260,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 	jweTokenService := domjwe.New(jweKey)
 	sessionTokenSvc := sessiontoken.NewService(jweTokenService)
-	app.sessionTokenValidator = sessionTokenSvc
+	app.SessionTokenService = sessionTokenSvc
 
 	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
@@ -566,7 +566,7 @@ func (b *Builder) Build() (*App, error) {
 		Services: admin.NewServicesHandler(app.ProviderService, b.config, b.logger),
 	}
 
-	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, app.sessionTokenValidator)
+	agentDetailHandler := consent.NewAgentDetailHandler(app.ConsentService, b.logger, app.SessionTokenService)
 
 	// T040: Build OAuth2TokenHandler — fail-fast if multi-agent verifier construction fails.
 	// Config validation makes this error unreachable in practice, but structural fail-closed
@@ -663,7 +663,7 @@ func (b *Builder) Build() (*App, error) {
 		Agents:         consent.NewAgentsHandler(app.ConsentService, b.logger),
 		AgentDetail:    agentDetailHandler,
 		AgentGrants:    consent.NewAgentGrantsHandler(app.ConsentService, b.logger),
-		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, app.sessionTokenValidator),
+		Grants:         consent.NewGrantsHandler(app.ConsentService, b.logger, app.SessionTokenService),
 		RevokeGrant:    consent.NewRevokeGrantHandler(app.ConsentService, b.logger),
 		OAuth2Sessions: oauth2_sessions.NewHandler(app.OAuth2SessionService),
 		OAuth2Authorize: &enduser.OAuth2AuthorizeHandler{

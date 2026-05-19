@@ -16,7 +16,6 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
@@ -73,8 +72,6 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 
 	// buildToken creates a valid JWE session token for the given agent and principal.
 	buildToken := func(agentID id.AgentID, principal, redirectURI, originalURL string) string {
-		svc, ok := appInstance.OAuth2Service.(*domotp2.AuthorizationService)
-		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.AuthorizationService")
 		claims, err := sessiontoken.NewAuthorizationSessionClaims(
 			agentID,
 			id.Principal(principal),
@@ -86,15 +83,13 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())
-		token, err := svc.CreateAuthorizationSessionToken(claims)
+		token, err := appInstance.SessionTokenService.Create(claims)
 		Expect(err).ToNot(HaveOccurred())
 		return token
 	}
 
 	// buildExpiredToken creates a JWE token with a past ExpiresAt.
 	buildExpiredToken := func(agentID id.AgentID, principal string) string {
-		svc, ok := appInstance.OAuth2Service.(*domotp2.AuthorizationService)
-		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.AuthorizationService")
 		past := time.Now().Add(-1 * time.Hour)
 		claims := &sessiontoken.AuthorizationSessionClaims{
 			AgentID:   agentID,
@@ -102,7 +97,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 			IssuedAt:  past,
 			ExpiresAt: past,
 		}
-		token, err := svc.CreateAuthorizationSessionToken(claims)
+		token, err := appInstance.SessionTokenService.Create(claims)
 		Expect(err).ToNot(HaveOccurred())
 		return token
 	}

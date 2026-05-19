@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
@@ -16,20 +15,12 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// oauth2ServiceFromApp extracts the concrete *domotp2.AuthorizationService via type assertion so tests
-// can call CreateAuthorizationSessionToken (which is not on the ports.OAuth2Service interface).
-func oauth2ServiceFromApp() *domotp2.AuthorizationService {
-	svc, ok := GetTestServer().App().OAuth2Service.(*domotp2.AuthorizationService)
-	Expect(ok).To(BeTrue(), "OAuth2Service must be *oauth2.AuthorizationService")
-	return svc
-}
-
 // newCIMDSessionToken builds a JWE authorization session token for use in CIMD consent UI tests.
 func newCIMDSessionToken(agentID id.AgentID, redirectURI string, meta *sessiontoken.CIMDMetadata) string {
 	originalURL := "https://cimd-example.com/authorize?client_id=https://cimd-example.com/client_metadata.json&redirect_uri=" + redirectURI + "&scope=read"
 	claims, err := sessiontoken.NewAuthorizationSessionClaims(agentID, id.Principal("user@example.com"), originalURL, meta)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create authorization session claims")
-	token, err := oauth2ServiceFromApp().CreateAuthorizationSessionToken(claims)
+	token, err := GetTestServer().App().SessionTokenService.Create(claims)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create authorization session token")
 	return token
 }
