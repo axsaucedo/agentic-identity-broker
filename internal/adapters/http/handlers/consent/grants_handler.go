@@ -111,7 +111,7 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			switch {
 			case errors.Is(err, sessiontoken.ErrSessionExpired):
-				h.logger.Info("authorization session token expired", "agent_id", agentID, "principal", principalValue)
+				h.logger.Warn("authorization session token expired", "agent_id", agentID, "principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
 			case errors.Is(err, sessiontoken.ErrSessionAgentMismatch):
 				h.logger.Warn("authorization session agent mismatch",
@@ -121,9 +121,15 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 			case errors.Is(err, sessiontoken.ErrSessionPrincipalMismatch):
 				h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
 				h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
-			default:
-				h.logger.Error("authorization session token invalid", "agent_id", agentID, "principal", principalValue, "error", err)
+			case errors.Is(err, sessiontoken.ErrSessionInvalidToken):
+				h.logger.Warn("authorization session token invalid", "agent_id", agentID, "principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
+			case errors.Is(err, sessiontoken.ErrSessionServiceNotConfigured):
+				h.logger.Error("session token service misconfigured", "agent_id", agentID, "error", err)
+				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			default:
+				h.logger.Error("unexpected error validating authorization session token", "agent_id", agentID, "principal", principalValue, "error", err)
+				h.writeError(w, http.StatusInternalServerError, "internal server error", "")
 			}
 			return
 		}

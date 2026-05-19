@@ -4,6 +4,7 @@ package consent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -42,6 +43,10 @@ var errSessionExpired = errors.New("authorization session expired")
 // cannot be decrypted or unmarshalled (tampered, wrong key, truncated). Distinct from
 // errSessionExpired to allow callers to log at appropriate severity.
 var errInvalidToken = errors.New("authorization session token invalid")
+
+// errInternalSession is returned by resolveSessionContext when session validation fails
+// due to a server-side misconfiguration or invariant violation (not a bad client token).
+var errInternalSession = errors.New("internal session validation error")
 
 // AgentDetailHandler handles HTTP requests for retrieving detailed agent information.
 // Implements User Story 2: Review Agent-Specific Grants (GET /api/consent/agent/:agentId).
@@ -159,6 +164,11 @@ func (h *AgentDetailHandler) GetAgentDetail(w http.ResponseWriter, r *http.Reque
 			h.writeError(w, http.StatusBadRequest, "invalid_token", "authorization session token is invalid")
 			return
 		}
+		if errors.Is(err, errInternalSession) {
+			h.logger.Error("internal session validation error", "agent_id", agentID, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal server error", "")
+			return
+		}
 		h.logger.Warn("authorization session error", "agent_id", agentID, "error", err)
 		h.writeError(w, http.StatusBadRequest, "bad request", err.Error())
 		return
@@ -245,7 +255,10 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 		return nil, nil
 	}
 
-	userID, _ := getPrincipalFromContext(r.Context())
+	userID, ok := getPrincipalFromContext(r.Context())
+	if !ok {
+		return nil, fmt.Errorf("%w: principal not found in context", errInternalSession)
+	}
 	claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, agentID, id.Principal(userID))
 	if err != nil {
 		switch {
@@ -255,6 +268,10 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 			return nil, errors.New("authorization session does not match requested agent")
 		case errors.Is(err, sessiontoken.ErrSessionPrincipalMismatch):
 			return nil, errors.New("authorization session does not belong to this user")
+		case errors.Is(err, sessiontoken.ErrSessionInvalidToken):
+			return nil, errInvalidToken
+		case errors.Is(err, sessiontoken.ErrSessionServiceNotConfigured):
+			return nil, fmt.Errorf("%w: %w", errInternalSession, err)
 		default:
 			return nil, errInvalidToken
 		}
