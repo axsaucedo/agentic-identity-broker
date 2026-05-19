@@ -260,6 +260,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 	jweTokenService := domjwe.New(jweKey)
 	sessionTokenSvc := sessiontoken.NewService(jweTokenService)
+	app.sessionTokenValidator = sessionTokenSvc
 
 	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
@@ -358,7 +359,6 @@ func (b *Builder) Build() (*App, error) {
 			sessionTokenSvc,
 		)
 		app.OAuth2Service = authService
-		app.sessionTokenValidator = sessionTokenSvc
 	}
 
 	// OAuth2SessionService is always created because JWESigningKey is mandatory.
