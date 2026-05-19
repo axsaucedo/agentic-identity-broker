@@ -2,7 +2,6 @@ package sessiontoken
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
@@ -21,7 +20,7 @@ func NewService(jweTokenService *jwe.TokenService) *Service {
 // Create seals claims into a compact JWE string.
 func (s *Service) Create(claims *AuthorizationSessionClaims) (string, error) {
 	if s.jweTokenService == nil {
-		return "", fmt.Errorf("jweTokenService not configured")
+		return "", ErrSessionServiceNotConfigured
 	}
 	return s.jweTokenService.Encrypt(claims)
 }
@@ -30,7 +29,7 @@ func (s *Service) Create(claims *AuthorizationSessionClaims) (string, error) {
 // expiry, agent binding, and principal binding.
 func (s *Service) ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*AuthorizationSessionClaims, error) {
 	if s.jweTokenService == nil {
-		return nil, fmt.Errorf("jweTokenService not configured")
+		return nil, ErrSessionServiceNotConfigured
 	}
 	var claims AuthorizationSessionClaims
 	if err := s.jweTokenService.DecryptAndValidate(token, &claims); err != nil {

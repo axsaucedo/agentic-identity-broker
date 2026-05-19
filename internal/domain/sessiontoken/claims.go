@@ -53,7 +53,9 @@ func NewAuthorizationSessionClaims(
 	if originalURL == "" {
 		return nil, errors.New("originalURL must not be empty")
 	}
-	if u, err := url.Parse(originalURL); err != nil || (u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https") {
+	if u, err := url.Parse(originalURL); err != nil ||
+		(u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https") ||
+		(u.Scheme == "" && u.Host != "") {
 		return nil, errors.New("originalURL must be a valid relative or http(s) URL")
 	}
 	now := time.Now()
@@ -78,3 +80,7 @@ var ErrSessionAgentMismatch = errors.New("authorization session does not match r
 
 // ErrSessionPrincipalMismatch indicates the token's principal does not match the authenticated user.
 var ErrSessionPrincipalMismatch = errors.New("authorization session does not belong to this user")
+
+// ErrSessionServiceNotConfigured indicates the session token service is misconfigured
+// (nil JWE token service). This is a server-side error, not a client token error.
+var ErrSessionServiceNotConfigured = errors.New("authorization session service not configured")
