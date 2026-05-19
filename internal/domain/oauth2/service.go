@@ -9,8 +9,7 @@ import (
 	"strings"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
-	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
@@ -47,15 +46,15 @@ type OAuth2Config struct {
 
 // AuthorizationService implements the OAuth2Service port.
 type AuthorizationService struct {
-	grantRepo       ports.UserGrantRepository
-	sessionRepo     ports.UserSessionRepository
-	clientResolver  ports.ClientResolver
-	jweTokenService *jwe.TokenService
-	config          *OAuth2Config
-	logger          *slog.Logger
+	grantRepo           ports.UserGrantRepository
+	sessionRepo         ports.UserSessionRepository
+	clientResolver      ports.ClientResolver
+	sessionTokenService *sessiontoken.Service
+	config              *OAuth2Config
+	logger              *slog.Logger
 }
 
-// NewAuthorizationService creates an AuthorizationService. jweTokenService is required for any flow that
+// NewAuthorizationService creates an AuthorizationService. sessionTokenService is required for any flow that
 // redirects to consent; passing nil is only safe for paths that never reach buildConsentURL.
 func NewAuthorizationService(
 	grantRepo ports.UserGrantRepository,
@@ -63,15 +62,15 @@ func NewAuthorizationService(
 	clientResolver ports.ClientResolver,
 	config *OAuth2Config,
 	logger *slog.Logger,
-	jweTokenService *jwe.TokenService,
+	sessionTokenService *sessiontoken.Service,
 ) *AuthorizationService {
 	return &AuthorizationService{
-		grantRepo:       grantRepo,
-		sessionRepo:     sessionRepo,
-		clientResolver:  clientResolver,
-		config:          config,
-		logger:          logger,
-		jweTokenService: jweTokenService,
+		grantRepo:           grantRepo,
+		sessionRepo:         sessionRepo,
+		clientResolver:      clientResolver,
+		config:              config,
+		logger:              logger,
+		sessionTokenService: sessionTokenService,
 	}
 }
 
@@ -404,20 +403,20 @@ func (s *AuthorizationService) buildUpstreamAuthorizeURL(req *ports.Authorizatio
 // authorization context (agent_id, principal, original_url, TTL). CIMD agents
 // additionally embed cimd_metadata; for local/proxy agents cimd_metadata is nil.
 func (s *AuthorizationService) buildConsentURL(_ context.Context, req *ports.AuthorizationRequest, principal id.Principal, agent *storage.Agent, cimdMeta *ports.CIMDMetadataDTO) (string, error) {
-	var meta *cimd.ClientIDMetadataDocument
+	var meta *sessiontoken.CIMDMetadata
 	if cimdMeta != nil {
-		meta = &cimd.ClientIDMetadataDocument{
+		meta = &sessiontoken.CIMDMetadata{
 			ClientID:     cimdMeta.ClientID,
 			ClientName:   cimdMeta.ClientName,
 			LogoURI:      cimdMeta.LogoURI,
 			RedirectURIs: cimdMeta.RedirectURIs,
 		}
 	}
-	claims, err := NewAuthorizationSessionClaims(agent.ID, principal, req.OriginalURL, meta)
+	claims, err := sessiontoken.NewAuthorizationSessionClaims(agent.ID, principal, req.OriginalURL, meta)
 	if err != nil {
 		return "", fmt.Errorf("failed to create authorization session claims: %w", err)
 	}
-	token, err := s.CreateAuthorizationSessionToken(claims)
+	token, err := s.sessionTokenService.Create(claims)
 	if err != nil {
 		return "", fmt.Errorf("failed to create authorization session token: %w", err)
 	}

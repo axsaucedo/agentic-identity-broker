@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 )
 
 // MultiAgentVerifier verifies agent ID claims in proxied upstream token responses.
@@ -140,4 +141,9 @@ type AuthorizationCodeIssuer interface {
 	// an authorization code. The handler is responsible for redirect_uri validation
 	// and PKCE enforcement before calling this method.
 	IssueAuthorizationCode(ctx context.Context, req *AuthorizationRequest, principal id.Principal) (code string, err error)
+}
+
+// SessionTokenValidator validates JWE authorization session tokens.
+type SessionTokenValidator interface {
+	ValidateAuthorizationSessionToken(token string, agentID id.AgentID, principal id.Principal) (*sessiontoken.AuthorizationSessionClaims, error)
 }

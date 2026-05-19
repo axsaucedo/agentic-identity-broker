@@ -41,6 +41,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2server"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2session"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/tokenexchange"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
@@ -62,7 +63,7 @@ type App struct {
 	OAuth2SessionService  *oauth2session.OAuth2SessionService
 	OAuth2Service         ports.OAuth2Service
 	TokenExchangeService  *tokenexchange.TokenExchangeService
-	sessionTokenValidator *oauth2service.AuthorizationService
+	sessionTokenValidator *sessiontoken.Service
 
 	// JWT pre-authentication (optional, nil when not configured)
 	JWTAuthenticator domjwtauth.JWTAuthenticator
@@ -258,6 +259,7 @@ func (b *Builder) Build() (*App, error) {
 		return nil, fmt.Errorf("failed to import JWE signing key: %w", err)
 	}
 	jweTokenService := domjwe.New(jweKey)
+	sessionTokenSvc := sessiontoken.NewService(jweTokenService)
 
 	// Phase 2: Create domain services
 	// Constitution Principle VI: domain depends on ports (repository interfaces), not adapters
@@ -353,10 +355,10 @@ func (b *Builder) Build() (*App, error) {
 			clientResolver,
 			oauth2Config,
 			b.logger,
-			jweTokenService,
+			sessionTokenSvc,
 		)
 		app.OAuth2Service = authService
-		app.sessionTokenValidator = authService
+		app.sessionTokenValidator = sessionTokenSvc
 	}
 
 	// OAuth2SessionService is always created because JWESigningKey is mandatory.

@@ -11,9 +11,10 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -21,12 +22,12 @@ import (
 // Implements FR-011 through FR-014 (grant CRUD operations).
 type GrantsHandler struct {
 	consentService        ConsentService
-	sessionTokenValidator SessionTokenValidator
+	sessionTokenValidator ports.SessionTokenValidator
 	logger                *slog.Logger
 }
 
 // NewGrantsHandler creates a new grants handler.
-func NewGrantsHandler(consentService ConsentService, logger *slog.Logger, sessionTokenValidator SessionTokenValidator) *GrantsHandler {
+func NewGrantsHandler(consentService ConsentService, logger *slog.Logger, sessionTokenValidator ports.SessionTokenValidator) *GrantsHandler {
 	if sessionTokenValidator == nil {
 		panic("GrantsHandler requires a non-nil SessionTokenValidator")
 	}
@@ -109,15 +110,15 @@ func (h *GrantsHandler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, parsedAgentID, id.Principal(principalValue))
 		if err != nil {
 			switch {
-			case errors.Is(err, domotp2.ErrSessionExpired):
+			case errors.Is(err, sessiontoken.ErrSessionExpired):
 				h.logger.Info("authorization session token expired", "agent_id", agentID, "principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "session_expired", "authorization session has expired, please restart the authorization flow")
-			case errors.Is(err, domotp2.ErrSessionAgentMismatch):
+			case errors.Is(err, sessiontoken.ErrSessionAgentMismatch):
 				h.logger.Warn("authorization session agent mismatch",
 					"expected_agent", parsedAgentID,
 					"principal", principalValue)
 				h.writeError(w, http.StatusBadRequest, "bad request", "authorization session does not match requested agent")
-			case errors.Is(err, domotp2.ErrSessionPrincipalMismatch):
+			case errors.Is(err, sessiontoken.ErrSessionPrincipalMismatch):
 				h.logger.Warn("authorization session principal mismatch", "principal", principalValue)
 				h.writeError(w, http.StatusForbidden, "forbidden", "authorization session does not belong to this user")
 			default:

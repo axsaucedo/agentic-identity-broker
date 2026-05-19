@@ -19,7 +19,7 @@ import (
 	storageadapter "github.com/agentic-identity-broker/agentic-identity-broker/internal/adapters/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
@@ -41,7 +41,7 @@ func newE2EJWETokenService() *domjwe.TokenService {
 func newExpiredE2ESessionToken(agentID id.AgentID, principalVal string) string {
 	ts := newE2EJWETokenService()
 	past := time.Now().Add(-time.Hour)
-	claims := &domotp2.AuthorizationSessionClaims{
+	claims := &sessiontoken.AuthorizationSessionClaims{
 		AgentID:     agentID,
 		Principal:   id.Principal(principalVal),
 		OriginalURL: "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
@@ -146,7 +146,7 @@ var _ = Describe("Unified Session Token State Transport", func() {
 			Expect(sessionToken).ToNot(BeEmpty())
 
 			ts := newE2EJWETokenService()
-			var claims domotp2.AuthorizationSessionClaims
+			var claims sessiontoken.AuthorizationSessionClaims
 			Expect(ts.Decrypt(sessionToken, &claims)).To(Succeed())
 
 			Expect(claims.AgentID).To(Equal(agent.ID))

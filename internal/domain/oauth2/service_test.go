@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
@@ -31,12 +32,16 @@ func newServiceTestJWETokenService() *domjwe.TokenService {
 	return domjwe.New(jweKey)
 }
 
+func newTestSessionTokenService() *sessiontoken.Service {
+	return sessiontoken.NewService(newServiceTestJWETokenService())
+}
+
 func newTestServiceWithJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, cfg *OAuth2Config) ports.OAuth2Service {
-	return NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), cfg, nil, newServiceTestJWETokenService())
+	return NewAuthorizationService(grantRepo, nil, NewAgentClientResolver(agentRepo, nil), cfg, nil, newTestSessionTokenService())
 }
 
 func newTestServiceWithSessionsAndJWE(agentRepo ports.AgentRepository, grantRepo ports.UserGrantRepository, sessionRepo ports.UserSessionRepository, cfg *OAuth2Config) ports.OAuth2Service {
-	return NewAuthorizationService(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil, newServiceTestJWETokenService())
+	return NewAuthorizationService(grantRepo, sessionRepo, NewAgentClientResolver(agentRepo, nil), cfg, nil, newTestSessionTokenService())
 }
 
 type MockAgentRepository struct {
@@ -1319,7 +1324,7 @@ func TestBuildConsentURL_AlwaysProducesSessionToken(t *testing.T) {
 		NewAgentClientResolver(NewMockAgentRepository(), nil),
 		&OAuth2Config{PublicURL: "https://broker.example.com"},
 		nil,
-		newServiceTestJWETokenService(),
+		newTestSessionTokenService(),
 	)
 
 	req := &ports.AuthorizationRequest{

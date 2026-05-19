@@ -16,10 +16,11 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/model"
-	oauth2service "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/thirdparty"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/testutil"
 	"github.com/go-chi/chi/v5"
@@ -38,8 +39,8 @@ func newIntegrationJWETokenService() *domjwe.TokenService {
 	return domjwe.New(key)
 }
 
-func newIntegrationSessionTokenValidator() consent.SessionTokenValidator {
-	return oauth2service.NewAuthorizationService(nil, nil, nil, nil, nil, newIntegrationJWETokenService())
+func newIntegrationSessionTokenValidator() ports.SessionTokenValidator {
+	return sessiontoken.NewService(newIntegrationJWETokenService())
 }
 
 func newIntegrationProviderService(t *testing.T) *thirdparty.ThirdpartyOAuth2ProviderService {

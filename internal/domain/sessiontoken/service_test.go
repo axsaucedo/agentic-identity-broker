@@ -1,4 +1,4 @@
-package oauth2
+package sessiontoken
 
 import (
 	"testing"
@@ -11,8 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNewAuthorizationSessionClaims_NilCIMDMetadata verifies that nil CIMDMetadata
-// produces valid claims containing all required fields with correct 10-minute TTL (T009).
+func newTestService(t *testing.T) *Service {
+	t.Helper()
+	key, err := jwk.Import([]byte("test-32-byte-key-must-be-exact-x"))
+	require.NoError(t, err)
+	return NewService(jwe.New(key))
+}
+
 func TestNewAuthorizationSessionClaims_NilCIMDMetadata(t *testing.T) {
 	agentID := id.NewAgentID()
 	principal := id.NewPrincipal("user@example.com")
@@ -28,16 +33,13 @@ func TestNewAuthorizationSessionClaims_NilCIMDMetadata(t *testing.T) {
 	assert.Equal(t, agentID, claims.AgentID)
 	assert.Equal(t, principal, claims.Principal)
 	assert.Equal(t, originalURL, claims.OriginalURL)
-	assert.Nil(t, claims.CIMDMetadata, "nil CIMDMetadata must produce claims with nil CIMDMetadata")
+	assert.Nil(t, claims.CIMDMetadata)
 
 	assert.True(t, !claims.IssuedAt.Before(before) && !claims.IssuedAt.After(after))
-	ttl := claims.ExpiresAt.Sub(claims.IssuedAt)
-	assert.InDelta(t, authorizationSessionTokenTTL.Seconds(), ttl.Seconds(), 1)
-
+	assert.InDelta(t, (10 * time.Minute).Seconds(), claims.ExpiresAt.Sub(claims.IssuedAt).Seconds(), 1)
 	assert.False(t, claims.IsExpired())
 }
 
-// TestNewAuthorizationSessionClaims_ValidationErrors verifies required field validation.
 func TestNewAuthorizationSessionClaims_ValidationErrors(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -47,21 +49,21 @@ func TestNewAuthorizationSessionClaims_ValidationErrors(t *testing.T) {
 		wantErr     string
 	}{
 		{
-			name:        "zero agent ID returns error",
+			name:        "zero agent ID",
 			agentID:     id.AgentID{},
 			principal:   id.NewPrincipal("user@example.com"),
 			originalURL: "https://example.com",
 			wantErr:     "agentID must not be zero",
 		},
 		{
-			name:        "zero principal returns error",
+			name:        "zero principal",
 			agentID:     id.NewAgentID(),
 			principal:   id.Principal(""),
 			originalURL: "https://example.com",
 			wantErr:     "principal must not be zero",
 		},
 		{
-			name:        "empty originalURL returns error",
+			name:        "empty originalURL",
 			agentID:     id.NewAgentID(),
 			principal:   id.NewPrincipal("user@example.com"),
 			originalURL: "",
@@ -79,27 +81,13 @@ func TestNewAuthorizationSessionClaims_ValidationErrors(t *testing.T) {
 	}
 }
 
-func newTestJWEService(t *testing.T) *jwe.TokenService {
-	t.Helper()
-	key, err := jwk.Import([]byte("test-32-byte-key-must-be-exact-x"))
-	require.NoError(t, err)
-	return jwe.New(key)
-}
-
-func newTestAuthorizationService(t *testing.T) *AuthorizationService {
-	t.Helper()
-	return &AuthorizationService{
-		jweTokenService: newTestJWEService(t),
-	}
-}
-
-func TestValidateAuthorizationSessionToken_Success(t *testing.T) {
-	svc := newTestAuthorizationService(t)
+func TestService_ValidateAuthorizationSessionToken_Success(t *testing.T) {
+	svc := newTestService(t)
 	agentID := id.NewAgentID()
 	p := id.NewPrincipal("user@example.com")
 
 	claims, _ := NewAuthorizationSessionClaims(agentID, p, "https://example.com/authorize?client_id=test", nil)
-	token, err := svc.CreateAuthorizationSessionToken(claims)
+	token, err := svc.Create(claims)
 	require.NoError(t, err)
 
 	validated, err := svc.ValidateAuthorizationSessionToken(token, agentID, p)
@@ -108,8 +96,8 @@ func TestValidateAuthorizationSessionToken_Success(t *testing.T) {
 	assert.Equal(t, p, validated.Principal)
 }
 
-func TestValidateAuthorizationSessionToken_Expired(t *testing.T) {
-	svc := newTestAuthorizationService(t)
+func TestService_ValidateAuthorizationSessionToken_Expired(t *testing.T) {
+	svc := newTestService(t)
 	agentID := id.NewAgentID()
 	p := id.NewPrincipal("user@example.com")
 
@@ -128,36 +116,36 @@ func TestValidateAuthorizationSessionToken_Expired(t *testing.T) {
 	assert.ErrorIs(t, err, ErrSessionExpired)
 }
 
-func TestValidateAuthorizationSessionToken_AgentMismatch(t *testing.T) {
-	svc := newTestAuthorizationService(t)
+func TestService_ValidateAuthorizationSessionToken_AgentMismatch(t *testing.T) {
+	svc := newTestService(t)
 	agentID := id.NewAgentID()
 	otherAgent := id.NewAgentID()
 	p := id.NewPrincipal("user@example.com")
 
 	claims, _ := NewAuthorizationSessionClaims(agentID, p, "https://example.com/authorize?client_id=test", nil)
-	token, err := svc.CreateAuthorizationSessionToken(claims)
+	token, err := svc.Create(claims)
 	require.NoError(t, err)
 
 	_, err = svc.ValidateAuthorizationSessionToken(token, otherAgent, p)
 	assert.ErrorIs(t, err, ErrSessionAgentMismatch)
 }
 
-func TestValidateAuthorizationSessionToken_PrincipalMismatch(t *testing.T) {
-	svc := newTestAuthorizationService(t)
+func TestService_ValidateAuthorizationSessionToken_PrincipalMismatch(t *testing.T) {
+	svc := newTestService(t)
 	agentID := id.NewAgentID()
 	p := id.NewPrincipal("user@example.com")
 	otherP := id.NewPrincipal("other@example.com")
 
 	claims, _ := NewAuthorizationSessionClaims(agentID, p, "https://example.com/authorize?client_id=test", nil)
-	token, err := svc.CreateAuthorizationSessionToken(claims)
+	token, err := svc.Create(claims)
 	require.NoError(t, err)
 
 	_, err = svc.ValidateAuthorizationSessionToken(token, agentID, otherP)
 	assert.ErrorIs(t, err, ErrSessionPrincipalMismatch)
 }
 
-func TestValidateAuthorizationSessionToken_InvalidToken(t *testing.T) {
-	svc := newTestAuthorizationService(t)
+func TestService_ValidateAuthorizationSessionToken_InvalidToken(t *testing.T) {
+	svc := newTestService(t)
 	_, err := svc.ValidateAuthorizationSessionToken("garbage-token", id.NewAgentID(), id.NewPrincipal("x"))
 	assert.ErrorIs(t, err, ErrSessionInvalidToken)
 }

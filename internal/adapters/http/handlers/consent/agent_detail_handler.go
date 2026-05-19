@@ -11,8 +11,9 @@ import (
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -47,12 +48,12 @@ var errInvalidToken = errors.New("authorization session token invalid")
 // Phase 6 extension: Includes service requirements with user connection status.
 type AgentDetailHandler struct {
 	consentService        ConsentService
-	sessionTokenValidator SessionTokenValidator
+	sessionTokenValidator ports.SessionTokenValidator
 	logger                *slog.Logger
 }
 
 // NewAgentDetailHandler creates a new agent detail handler.
-func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, sessionTokenValidator SessionTokenValidator) *AgentDetailHandler {
+func NewAgentDetailHandler(consentService ConsentService, logger *slog.Logger, sessionTokenValidator ports.SessionTokenValidator) *AgentDetailHandler {
 	if sessionTokenValidator == nil {
 		panic("AgentDetailHandler requires a non-nil SessionTokenValidator")
 	}
@@ -248,11 +249,11 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 	claims, err := h.sessionTokenValidator.ValidateAuthorizationSessionToken(sessionToken, agentID, id.Principal(userID))
 	if err != nil {
 		switch {
-		case errors.Is(err, domotp2.ErrSessionExpired):
+		case errors.Is(err, sessiontoken.ErrSessionExpired):
 			return nil, errSessionExpired
-		case errors.Is(err, domotp2.ErrSessionAgentMismatch):
+		case errors.Is(err, sessiontoken.ErrSessionAgentMismatch):
 			return nil, errors.New("authorization session does not match requested agent")
-		case errors.Is(err, domotp2.ErrSessionPrincipalMismatch):
+		case errors.Is(err, sessiontoken.ErrSessionPrincipalMismatch):
 			return nil, errors.New("authorization session does not belong to this user")
 		default:
 			return nil, errInvalidToken

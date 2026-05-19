@@ -17,7 +17,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/app"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
-	domcimd "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/cimd"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
@@ -75,11 +75,11 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 	buildToken := func(agentID id.AgentID, principal, redirectURI, originalURL string) string {
 		svc, ok := appInstance.OAuth2Service.(*domotp2.AuthorizationService)
 		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.AuthorizationService")
-		claims, err := domotp2.NewAuthorizationSessionClaims(
+		claims, err := sessiontoken.NewAuthorizationSessionClaims(
 			agentID,
 			id.Principal(principal),
 			originalURL,
-			&domcimd.ClientIDMetadataDocument{
+			&sessiontoken.CIMDMetadata{
 				ClientID:     "https://agent.example.com/client",
 				ClientName:   "Test CIMD Agent",
 				RedirectURIs: []string{redirectURI},
@@ -96,7 +96,7 @@ var _ = Describe("CIMD Session Consumption on Grant Submission", func() {
 		svc, ok := appInstance.OAuth2Service.(*domotp2.AuthorizationService)
 		Expect(ok).To(BeTrue(), "OAuth2Service must be *domotp2.AuthorizationService")
 		past := time.Now().Add(-1 * time.Hour)
-		claims := &domotp2.AuthorizationSessionClaims{
+		claims := &sessiontoken.AuthorizationSessionClaims{
 			AgentID:   agentID,
 			Principal: id.Principal(principal),
 			IssuedAt:  past,

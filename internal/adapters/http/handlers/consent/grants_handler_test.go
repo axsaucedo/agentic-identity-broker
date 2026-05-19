@@ -16,9 +16,10 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/consent"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	domjwe "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/jwe"
-	domotp2 "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/principal"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/sessiontoken"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,13 +39,13 @@ func newTestJWETokenService() *domjwe.TokenService {
 }
 
 // newTestSessionTokenValidator returns a SessionTokenValidator backed by a test JWE key.
-func newTestSessionTokenValidator() SessionTokenValidator {
-	return domotp2.NewAuthorizationService(nil, nil, nil, nil, nil, newTestJWETokenService())
+func newTestSessionTokenValidator() ports.SessionTokenValidator {
+	return sessiontoken.NewService(newTestJWETokenService())
 }
 
 // newTestSessionToken creates a valid JWE session token for the given agent and principal.
 func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string, originalURL string) string {
-	claims, err := domotp2.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
+	claims, err := sessiontoken.NewAuthorizationSessionClaims(agentID, id.Principal(principalVal), originalURL, nil)
 	if err != nil {
 		panic("newTestSessionToken: invalid claims: " + err.Error())
 	}
@@ -58,7 +59,7 @@ func newTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalV
 // newExpiredTestSessionToken creates a JWE session token whose TTL has already elapsed.
 func newExpiredTestSessionToken(ts *domjwe.TokenService, agentID id.AgentID, principalVal string) string {
 	past := time.Now().Add(-time.Hour)
-	claims := &domotp2.AuthorizationSessionClaims{
+	claims := &sessiontoken.AuthorizationSessionClaims{
 		AgentID:     agentID,
 		Principal:   id.Principal(principalVal),
 		OriginalURL: "https://broker.example.com/oauth2/authorize?client_id=" + agentID.String(),
