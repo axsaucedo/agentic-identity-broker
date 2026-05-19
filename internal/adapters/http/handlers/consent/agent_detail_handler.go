@@ -273,7 +273,7 @@ func (h *AgentDetailHandler) resolveSessionContext(r *http.Request, agentID id.A
 		case errors.Is(err, sessiontoken.ErrSessionServiceNotConfigured):
 			return nil, fmt.Errorf("%w: %w", errInternalSession, err)
 		default:
-			return nil, errInvalidToken
+			return nil, fmt.Errorf("%w: unexpected error: %v", errInternalSession, err)
 		}
 	}
 
