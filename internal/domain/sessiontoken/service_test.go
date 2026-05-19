@@ -90,6 +90,20 @@ func TestNewAuthorizationSessionClaims_ValidationErrors(t *testing.T) {
 			originalURL: "//evil.example.com/path",
 			wantErr:     "originalURL must be a valid relative or http(s) URL",
 		},
+		{
+			name:        "backslash protocol-relative URL rejected",
+			agentID:     id.NewAgentID(),
+			principal:   id.NewPrincipal("user@example.com"),
+			originalURL: `\\evil.example.com`,
+			wantErr:     "originalURL must be a valid relative or http(s) URL",
+		},
+		{
+			name:        "mixed-slash protocol-relative URL rejected",
+			agentID:     id.NewAgentID(),
+			principal:   id.NewPrincipal("user@example.com"),
+			originalURL: `/\evil.example.com`,
+			wantErr:     "originalURL must be a valid relative or http(s) URL",
+		},
 	}
 
 	for _, tt := range tests {
