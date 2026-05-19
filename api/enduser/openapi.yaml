@@ -571,9 +571,6 @@ paths:
 
         - Returns HTTP 201 with grant data only (no `redirect_url` field)
 
-        - Use `redirect_uri` query parameter is **no longer supported** — providing `redirect_uri` without `session_token` returns `400 Bad Request`
-
-
         **Validation**:
 
         - All service IDs must exist and be available to the agent
@@ -581,8 +578,6 @@ paths:
         - All scopes must be valid for the specified services
 
         - At least one scope required per service
-
-        - redirect_uri must be same-origin or relative (security requirement)
 
         - Returns `400 Bad Request` with details if validation fails
 
@@ -694,7 +689,7 @@ paths:
         '204':
           description: Grant revoked successfully (empty delegated_oauth2_tokens)
         '400':
-          description: Bad Request - Expired or invalid session token, missing session_token when redirect_uri provided, or invalid grant data.
+          description: Bad Request - Expired or invalid session token, or invalid grant data.
           content:
             application/json:
               schema:
@@ -705,11 +700,6 @@ paths:
                   value:
                     error: session_expired
                     message: 'authorization session has expired, please restart the authorization flow'
-                missingSessionToken:
-                  summary: redirect_uri provided without session_token
-                  value:
-                    error: bad request
-                    message: missing session_token
                 invalidGrant:
                   summary: Invalid grant data
                   value:
