@@ -686,3 +686,91 @@ func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
 
 	require.Equal(t, http.StatusForbidden, rr.Code, rr.Body.String())
 }
+
+// mockTokenValidator is a configurable SessionTokenValidator for tests that need
+// to inject specific claims or errors without a real JWE round-trip.
+type mockTokenValidator struct {
+	claims *sessiontoken.AuthorizationSessionClaims
+	err    error
+}
+
+func (m *mockTokenValidator) ValidateAuthorizationSessionToken(_ string, _ id.AgentID, _ id.Principal) (*sessiontoken.AuthorizationSessionClaims, error) {
+	return m.claims, m.err
+}
+
+// TestCreateGrant_RedirectURIWithoutSessionTokenIsIgnored verifies spec scenario 3.2:
+// a redirect_uri query param without a session_token is silently ignored (not echoed back).
+// This pins the behaviour so any future re-introduction of a redirect_uri fallback is caught.
+func TestCreateGrant_RedirectURIWithoutSessionTokenIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+	testGrantID := id.NewGrantID()
+	now := time.Now()
+	futureTime := now.Add(24 * time.Hour)
+
+	mockService := &mockConsentService{
+		grantConsentFunc: func(_ context.Context, _ *consent.GrantRequest) (*storage.UserGrant, error) {
+			return &storage.UserGrant{
+				ID:                    testGrantID,
+				Principal:             id.Principal("user@example.com"),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				DelegatedOAuth2Tokens: []storage.DelegatedToken{},
+				CreatedAt:             now,
+				UpdatedAt:             now,
+			}, nil
+		},
+	}
+
+	handler := NewGrantsHandler(mockService, nil, newTestSessionTokenValidator())
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=https://evil.example.com",
+		"user@example.com",
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	_, hasRedirectURL := resp["redirect_url"]
+	assert.False(t, hasRedirectURL, "redirect_url must not appear in response when only redirect_uri (no session_token) is provided")
+}
+
+// TestCreateGrant_ValidTokenWithEmptyOriginalURLReturns500 verifies the defense-in-depth
+// guard at the handler layer: if a validated token somehow has an empty OriginalURL,
+// the handler returns 500 rather than silently succeeding with no redirect.
+func TestCreateGrant_ValidTokenWithEmptyOriginalURLReturns500(t *testing.T) {
+	t.Parallel()
+
+	testAgentID := id.NewAgentID()
+
+	validator := &mockTokenValidator{
+		claims: &sessiontoken.AuthorizationSessionClaims{OriginalURL: ""},
+		err:    nil,
+	}
+	handler := NewGrantsHandler(&mockConsentService{}, nil, validator)
+
+	req := newRequestWithPrincipal(
+		"POST",
+		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token=dummy",
+		"user@example.com",
+		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+	)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("agent-id", testAgentID.String())
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	handler.CreateGrant(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code, rr.Body.String())
+}

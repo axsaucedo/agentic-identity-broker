@@ -69,6 +69,27 @@ func TestNewAuthorizationSessionClaims_ValidationErrors(t *testing.T) {
 			originalURL: "",
 			wantErr:     "originalURL must not be empty",
 		},
+		{
+			name:        "ftp scheme rejected",
+			agentID:     id.NewAgentID(),
+			principal:   id.NewPrincipal("user@example.com"),
+			originalURL: "ftp://bad.example.com",
+			wantErr:     "originalURL must be a valid relative or http(s) URL",
+		},
+		{
+			name:        "javascript scheme rejected",
+			agentID:     id.NewAgentID(),
+			principal:   id.NewPrincipal("user@example.com"),
+			originalURL: "javascript:void(0)",
+			wantErr:     "originalURL must be a valid relative or http(s) URL",
+		},
+		{
+			name:        "protocol-relative URL rejected",
+			agentID:     id.NewAgentID(),
+			principal:   id.NewPrincipal("user@example.com"),
+			originalURL: "//evil.example.com/path",
+			wantErr:     "originalURL must be a valid relative or http(s) URL",
+		},
 	}
 
 	for _, tt := range tests {
@@ -79,6 +100,17 @@ func TestNewAuthorizationSessionClaims_ValidationErrors(t *testing.T) {
 			assert.Nil(t, claims)
 		})
 	}
+}
+
+func TestNewAuthorizationSessionClaims_RelativeURLAllowed(t *testing.T) {
+	claims, err := NewAuthorizationSessionClaims(
+		id.NewAgentID(),
+		id.NewPrincipal("user@example.com"),
+		"/oauth2/authorize?client_id=test",
+		nil,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "/oauth2/authorize?client_id=test", claims.OriginalURL)
 }
 
 func TestService_ValidateAuthorizationSessionToken_Success(t *testing.T) {
