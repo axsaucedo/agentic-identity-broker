@@ -1259,7 +1259,6 @@ var _ = Describe("Agent Permission Requirements", func() {
 			userPrincipalForGrant = "grant-user@example.com"
 		})
 
-
 		// Scenario 3: spec.md User Story 6, Scenario 3
 		// Spec: Return 200 OK with success response when no redirect_uri provided
 		It("should return 200/201 without redirect when no redirect_uri parameter provided", func() {

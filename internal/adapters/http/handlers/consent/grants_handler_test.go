@@ -658,7 +658,6 @@ func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
 }
 
-
 // TestCreateGrant_SessionToken_PrincipalMismatch verifies that a session token issued
 // for a different user produces 403.
 func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
