@@ -144,10 +144,10 @@ type AuthorizationCodeIssuer interface {
 
 // SessionCIMDMetadata carries CIMD-resolved client metadata from a validated session token.
 type SessionCIMDMetadata struct {
-	ClientID     string
-	ClientName   string
-	LogoURI      string
-	RedirectURIs []string
+	ClientID     string   `json:"client_id"`
+	ClientName   string   `json:"client_name,omitempty"`
+	LogoURI      string   `json:"logo_uri,omitempty"`
+	RedirectURIs []string `json:"redirect_uris"`
 }
 
 // AuthorizationSession is the port-local DTO returned by SessionTokenValidator.

@@ -18,6 +18,7 @@ import (
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/sessiontoken"
 	domstorage "github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/bootstrap"
 	"github.com/agentic-identity-broker/agentic-identity-broker/tests/e2e/fixtures"
@@ -25,7 +26,7 @@ import (
 )
 
 // createCIMDSessionToken builds a JWE authorization session token for use in CIMD tests.
-func createCIMDSessionToken(svc *sessiontoken.Service, agentID id.AgentID, principal string, redirectURI string, meta *sessiontoken.CIMDMetadata) string {
+func createCIMDSessionToken(svc *sessiontoken.Service, agentID id.AgentID, principal string, redirectURI string, meta *ports.SessionCIMDMetadata) string {
 	q := url.Values{}
 	q.Set("client_id", "https://agent.example.com/client")
 	q.Set("redirect_uri", redirectURI)
@@ -43,7 +44,7 @@ func createCIMDSessionToken(svc *sessiontoken.Service, agentID id.AgentID, princ
 }
 
 // createExpiredCIMDSessionToken builds a JWE token with a past ExpiresAt.
-func createExpiredCIMDSessionToken(svc *sessiontoken.Service, agentID id.AgentID, principal string, meta *sessiontoken.CIMDMetadata) string {
+func createExpiredCIMDSessionToken(svc *sessiontoken.Service, agentID id.AgentID, principal string, meta *ports.SessionCIMDMetadata) string {
 	past := time.Now().Add(-1 * time.Hour)
 	claims := &sessiontoken.AuthorizationSessionClaims{
 		AgentID:      agentID,
@@ -114,7 +115,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token := createCIMDSessionToken(appInstance.SessionTokenService, agent.ID,
 				fixtures.DefaultPrincipal().String(),
 				"https://agent.example.com/callback",
-				&sessiontoken.CIMDMetadata{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -158,7 +159,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token := createCIMDSessionToken(appInstance.SessionTokenService, agent.ID,
 				fixtures.DefaultPrincipal().String(),
 				"http://localhost:3000/callback",
-				&sessiontoken.CIMDMetadata{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"http://localhost:3000/callback"},
@@ -208,7 +209,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 				agent.ID,
 				id.Principal(fixtures.DefaultPrincipal().String()),
 				"/oauth2/authorize?"+origQ.Encode(),
-				&sessiontoken.CIMDMetadata{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -294,7 +295,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 
 			token := createExpiredCIMDSessionToken(appInstance.SessionTokenService, agent.ID,
 				fixtures.DefaultPrincipal().String(),
-				&sessiontoken.CIMDMetadata{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -354,7 +355,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token := createCIMDSessionToken(appInstance.SessionTokenService, differentAgentID,
 				fixtures.DefaultPrincipal().String(),
 				"https://agent.example.com/callback",
-				&sessiontoken.CIMDMetadata{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},
@@ -389,7 +390,7 @@ var _ = Describe("CIMD Consent Screen", func() {
 			token := createCIMDSessionToken(appInstance.SessionTokenService, agent.ID,
 				"other-user@example.com",
 				"https://agent.example.com/callback",
-				&sessiontoken.CIMDMetadata{
+				&ports.SessionCIMDMetadata{
 					ClientID:     "https://agent.example.com/client",
 					ClientName:   "Test CIMD Agent",
 					RedirectURIs: []string{"https://agent.example.com/callback"},

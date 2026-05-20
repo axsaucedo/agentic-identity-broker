@@ -12,40 +12,16 @@ import (
 
 const ttl = 10 * time.Minute
 
-// CIMDMetadata carries the CIMD-resolved client metadata embedded in a session token.
-type CIMDMetadata struct {
-	ClientID     string   `json:"client_id"`
-	ClientName   string   `json:"client_name,omitempty"`
-	LogoURI      string   `json:"logo_uri,omitempty"`
-	RedirectURIs []string `json:"redirect_uris"`
-}
-
-// NewCIMDMetadataFromDTO converts a port-layer CIMDMetadataDTO to the minimal
-// session token representation. Returns nil for nil input.
-func NewCIMDMetadataFromDTO(dto *ports.CIMDMetadataDTO) *CIMDMetadata {
-	if dto == nil {
-		return nil
-	}
-	return &CIMDMetadata{
-		ClientID:     dto.ClientID,
-		ClientName:   dto.ClientName,
-		LogoURI:      dto.LogoURI,
-		RedirectURIs: dto.RedirectURIs,
-	}
-}
-
 // AuthorizationSessionClaims carries the full authorization context in a JWE token.
-// It replaces the DB-backed AuthorizationSession: the same tamper-proof, expiring,
-// principal-bound properties are achieved by sealing the claims in a JWE.
 // OriginalURL is the raw authorize request URL; scope and redirect_uri are parsed from
 // it at the consumption site rather than duplicated as flat fields.
 type AuthorizationSessionClaims struct {
-	AgentID      id.AgentID    `json:"agent_id"`
-	Principal    id.Principal  `json:"principal"`
-	OriginalURL  string        `json:"original_url"`
-	CIMDMetadata *CIMDMetadata `json:"cimd_metadata,omitempty"`
-	IssuedAt     time.Time     `json:"iat"`
-	ExpiresAt    time.Time     `json:"exp"`
+	AgentID      id.AgentID                 `json:"agent_id"`
+	Principal    id.Principal               `json:"principal"`
+	OriginalURL  string                     `json:"original_url"`
+	CIMDMetadata *ports.SessionCIMDMetadata `json:"cimd_metadata,omitempty"`
+	IssuedAt     time.Time                  `json:"iat"`
+	ExpiresAt    time.Time                  `json:"exp"`
 }
 
 // IsExpired reports whether the session token TTL has elapsed.
@@ -53,30 +29,12 @@ func (c *AuthorizationSessionClaims) IsExpired() bool {
 	return time.Now().After(c.ExpiresAt)
 }
 
-// ToResult maps internal claims to the port-local DTO.
-func (c *AuthorizationSessionClaims) ToResult() *ports.AuthorizationSession {
-	r := &ports.AuthorizationSession{
-		AgentID:     c.AgentID,
-		Principal:   c.Principal,
-		OriginalURL: c.OriginalURL,
-	}
-	if c.CIMDMetadata != nil {
-		r.CIMDMetadata = &ports.SessionCIMDMetadata{
-			ClientID:     c.CIMDMetadata.ClientID,
-			ClientName:   c.CIMDMetadata.ClientName,
-			LogoURI:      c.CIMDMetadata.LogoURI,
-			RedirectURIs: c.CIMDMetadata.RedirectURIs,
-		}
-	}
-	return r
-}
-
 // NewAuthorizationSessionClaims initialises claims with IssuedAt and ExpiresAt set from now.
 func NewAuthorizationSessionClaims(
 	agentID id.AgentID,
 	principal id.Principal,
 	originalURL string,
-	cimdMetadata *CIMDMetadata,
+	cimdMetadata *ports.SessionCIMDMetadata,
 ) (*AuthorizationSessionClaims, error) {
 	if agentID.IsZero() {
 		return nil, errors.New("agentID must not be zero")

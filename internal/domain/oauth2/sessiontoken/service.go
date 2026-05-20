@@ -45,5 +45,10 @@ func (s *Service) ValidateAuthorizationSessionToken(token string, agentID id.Age
 	if claims.Principal != principal {
 		return nil, ErrSessionPrincipalMismatch
 	}
-	return claims.ToResult(), nil
+	return &ports.AuthorizationSession{
+		AgentID:      claims.AgentID,
+		Principal:    claims.Principal,
+		OriginalURL:  claims.OriginalURL,
+		CIMDMetadata: claims.CIMDMetadata,
+	}, nil
 }
