@@ -78,6 +78,8 @@ tags:
     description: Administrative operations for AI agent registry management
   - name: Services
     description: Administrative operations for third-party OAuth2 service configurations
+  - name: PermissionSets
+    description: CRUD operations for permission set management
   - name: Client Credentials
     description: Broker-issued client credential management for agents
   - name: Signing Keys
@@ -170,6 +172,9 @@ paths:
                       description: AI assistant that helps with academic research
                       governance_url: https://example.com/governance/research-assistant
                       user_documentation_url: https://example.com/docs/research-assistant
+                      permission_sets:
+                        - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                          requirement_type: mandatory
                       created_at: '2025-12-01T10:00:00Z'
                       updated_at: '2025-12-01T10:00:00Z'
                     - id: 660e8400-e29b-41d4-a716-446655440001
@@ -177,6 +182,9 @@ paths:
                       external_id: gov-sys-12345
                       display_name: Data Analyst
                       description: Analyzes datasets and generates insights
+                      permission_sets:
+                        - permission_set_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                          requirement_type: mandatory
                       created_at: '2025-12-05T14:30:00Z'
                       updated_at: '2025-12-10T09:15:00Z'
                 empty_list:
@@ -222,6 +230,9 @@ paths:
                   client_id: agent-simple-assistant
                   display_name: Simple Assistant
                   description: A basic AI assistant for general tasks
+                  permission_sets:
+                    - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                      requirement_type: mandatory
               full:
                 summary: Full agent with all fields
                 value:
@@ -232,6 +243,11 @@ paths:
                   governance_url: https://example.com/governance/research-assistant
                   user_documentation_url: https://example.com/docs/research-assistant
                   agent_interface_url: https://example.com/agent/research-assistant
+                  permission_sets:
+                    - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                      requirement_type: mandatory
+                    - permission_set_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                      requirement_type: optional
       responses:
         '201':
           description: Agent created successfully
@@ -248,6 +264,9 @@ paths:
                 governance_url: https://example.com/governance/research-assistant
                 user_documentation_url: https://example.com/docs/research-assistant
                 agent_interface_url: https://example.com/agent/research-assistant
+                permission_sets:
+                  - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    requirement_type: mandatory
                 created_at: '2025-12-19T10:30:00Z'
                 updated_at: '2025-12-19T10:30:00Z'
         '400':
@@ -282,6 +301,9 @@ paths:
                 display_name: Research Assistant
                 description: AI assistant that helps with academic research
                 governance_url: https://example.com/governance/research-assistant
+                permission_sets:
+                  - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    requirement_type: mandatory
                 created_at: '2025-12-19T10:30:00Z'
                 updated_at: '2025-12-19T10:30:00Z'
         '400':
@@ -336,6 +358,9 @@ paths:
                   client_id: agent-research-assistant
                   display_name: Advanced Research Assistant
                   description: AI assistant that helps with academic research
+                  permission_sets:
+                    - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                      requirement_type: mandatory
               update_urls:
                 summary: Update documentation URLs
                 value:
@@ -344,6 +369,9 @@ paths:
                   description: AI assistant that helps with academic research
                   governance_url: https://example.com/governance/v2/research-assistant
                   user_documentation_url: https://docs.example.com/research-assistant
+                  permission_sets:
+                    - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                      requirement_type: mandatory
       responses:
         '200':
           description: Agent updated successfully
@@ -356,6 +384,9 @@ paths:
                 client_id: agent-research-assistant
                 display_name: Advanced Research Assistant
                 description: AI assistant that helps with academic research
+                permission_sets:
+                  - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    requirement_type: mandatory
                 created_at: '2025-12-19T10:30:00Z'
                 updated_at: '2025-12-19T15:45:00Z'
         '400':
@@ -753,6 +784,198 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/permission-sets:
+    post:
+      summary: Create a permission set
+      operationId: createPermissionSet
+      tags:
+        - PermissionSets
+      description: |
+        Creates a new named permission set grouping OAuth2 scopes across one or more
+        third-party services.
+
+        **Validation rules**:
+        - `name` must be unique (409 Conflict if duplicate)
+        - `service_scopes` must contain at least one entry (400)
+        - Each `service_id` in `service_scopes` must reference an existing service (400)
+        - Each `scopes` list must contain at least one scope string (400)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePermissionSetRequest'
+      responses:
+        '201':
+          description: Permission set created successfully
+          headers:
+            Location:
+              description: URL of the created permission set
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionSetResponse'
+        '400':
+          description: |
+            Invalid request format, missing service_scopes, empty scopes, or
+            referenced service_id does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Permission set name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List permission sets
+      operationId: listPermissionSets
+      tags:
+        - PermissionSets
+      description: |
+        Returns all permission sets. Optionally filter by service ID to find all
+        permission sets that include scopes for a specific third-party service.
+      parameters:
+        - name: service_id
+          in: query
+          required: false
+          description: Filter permission sets to those containing a ServiceScope for this service
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of permission sets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PermissionSetResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/permission-sets/{permission-set-id}:
+    get:
+      summary: Get permission set by ID
+      operationId: getPermissionSet
+      tags:
+        - PermissionSets
+      parameters:
+        - $ref: '#/components/parameters/PermissionSetId'
+      responses:
+        '200':
+          description: Permission set found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionSetResponse'
+        '400':
+          description: Invalid permission set ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Replace a permission set
+      operationId: updatePermissionSet
+      tags:
+        - PermissionSets
+      description: |
+        Fully replaces a permission set's name, description, and service_scopes.
+        All fields are required (PUT semantics — full replacement).
+
+        **Note**: Changing `service_scopes` takes effect immediately; the next token exchange
+        for any grant referencing this set will use the updated scopes (cache TTL ≤ 60s delay).
+      parameters:
+        - $ref: '#/components/parameters/PermissionSetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePermissionSetRequest'
+      responses:
+        '200':
+          description: Permission set updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionSetResponse'
+        '400':
+          description: |
+            Invalid request format or ID, missing service_scopes, empty scopes, or
+            referenced service_id does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Name conflict with another permission set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a permission set
+      operationId: deletePermissionSet
+      tags:
+        - PermissionSets
+      description: |
+        Deletes a permission set by ID.
+
+        **Rejected with 409 Conflict** if any agent's `permission_sets` list references this ID,
+        or if any active user grant references this permission set.
+        Admins must remove the permission set from all agents and revoke all active grants
+        referencing it before deletion.
+
+        **Irreversible**: This operation cannot be undone.
+      parameters:
+        - $ref: '#/components/parameters/PermissionSetId'
+      responses:
+        '204':
+          description: Permission set deleted successfully (no content). Idempotent — returns 204 even if the permission set does not exist.
+        '400':
+          description: Invalid permission set ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Permission set is referenced by one or more agents or active user grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/agents/{agent-id}/client-credentials:
     post:
       summary: Generate or rotate broker-issued client credentials for an agent
@@ -761,10 +984,8 @@ paths:
         credentials. This allows the broker to act as an OAuth2 authorization server
         and authenticate agents directly.
 
-        **Runtime usage**: Agents always use their `agent.id` (UUID) as `client_id` at
-        the `/oauth2/authorize` and `/oauth2/token` endpoints. The `client_id`
-        returned here is internal metadata used for rotation safety — it is never sent
-        by agents in OAuth2 flows.
+        **Runtime usage**: Agents use the `client_id` returned here as `client_id` at
+        the `/oauth2/token` endpoint. The value is the agent's UUID.
 
         **First Generation** (no existing credentials):
         - Returns `201 Created` with new `client_id` (metadata) and `client_secret`
@@ -787,7 +1008,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BrokerClientCredentialResponse'
               example:
-                client_id: brk_550e8400e29b41d4a716446655440000
+                client_id: 550e8400-e29b-41d4-a716-446655440000
                 client_secret: brk_sec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
                 created_at: '2025-12-19T10:30:00Z'
         '200':
@@ -797,7 +1018,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BrokerClientCredentialResponse'
               example:
-                client_id: brk_550e8400e29b41d4a716446655440000
+                client_id: 550e8400-e29b-41d4-a716-446655440000
                 client_secret: brk_sec_q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
                 created_at: '2025-12-19T15:45:00Z'
                 previous_invalidated_at: '2025-12-19T15:45:00Z'
@@ -837,7 +1058,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BrokerClientCredentialMetadata'
               example:
-                client_id: brk_550e8400e29b41d4a716446655440000
+                client_id: 550e8400-e29b-41d4-a716-446655440000
                 created_at: '2025-12-19T10:30:00Z'
                 rotated_at: '2025-12-19T15:45:00Z'
         '400':
@@ -1095,6 +1316,15 @@ components:
         format: uuid
         example: 770e8400-e29b-41d4-a716-446655440002
 
+    PermissionSetId:
+      name: permission-set-id
+      in: path
+      required: true
+      description: Unique identifier of the permission set (UUID format)
+      schema:
+        type: string
+        format: uuid
+        example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
     SigningKeyId:
       name: kid
       in: path
@@ -1219,6 +1449,14 @@ components:
               requirement_type: optional
               required_scopes:
                 - https://www.googleapis.com/auth/drive.readonly
+        permission_sets:
+          type: array
+          description: Permission set declarations for this agent (FR-006).
+          items:
+            $ref: '#/components/schemas/AgentPermissionSetEntry'
+          example:
+            - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              requirement_type: mandatory
         redirect_uris:
           type: array
           nullable: true
@@ -1275,6 +1513,7 @@ components:
       required:
         - display_name
         - description
+        - permission_sets
       properties:
         client_id:
           type: string
@@ -1334,6 +1573,18 @@ components:
               required_scopes:
                 - repo
                 - user:email
+        permission_sets:
+          type: array
+          description: |
+            List of permission set declarations for this agent (FR-006).
+            Must contain at least one entry — an empty list or omitted field is a 400 error.
+            All referenced permission_set_id values must exist.
+          items:
+            $ref: '#/components/schemas/AgentPermissionSetEntry'
+          minItems: 1
+          example:
+            - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              requirement_type: mandatory
         redirect_uris:
           type: array
           nullable: true
@@ -1378,6 +1629,7 @@ components:
       required:
         - display_name
         - description
+        - permission_sets
       properties:
         client_id:
           type: string
@@ -1443,6 +1695,18 @@ components:
               required_scopes:
                 - repo
                 - user:email
+        permission_sets:
+          type: array
+          description: |
+            List of permission set declarations for this agent (FR-006).
+            Must contain at least one entry — an empty list or omitted field is a 400 error.
+            All referenced permission_set_id values must exist.
+          items:
+            $ref: '#/components/schemas/AgentPermissionSetEntry'
+          minItems: 1
+          example:
+            - permission_set_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              requirement_type: mandatory
         redirect_uris:
           type: array
           nullable: true
@@ -1959,8 +2223,9 @@ components:
       properties:
         client_id:
           type: string
+          format: uuid
           description: Broker-issued client identifier for the agent
-          example: brk_550e8400e29b41d4a716446655440000
+          example: 550e8400-e29b-41d4-a716-446655440000
         client_secret:
           type: string
           description: |
@@ -1990,8 +2255,9 @@ components:
       properties:
         client_id:
           type: string
+          format: uuid
           description: Broker-issued client identifier for the agent
-          example: brk_550e8400e29b41d4a716446655440000
+          example: 550e8400-e29b-41d4-a716-446655440000
         created_at:
           type: string
           format: date-time
@@ -2080,6 +2346,120 @@ components:
           type: string
           description: Additional context about the error
           example: display_name exceeds 255 characters (got 300)
+
+    ServiceScope:
+      type: object
+      required:
+        - service_id
+        - scopes
+      properties:
+        service_id:
+          type: string
+          format: uuid
+          description: UUID of the third-party OAuth2 service
+          example: 550e8400-e29b-41d4-a716-446655440001
+        scopes:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: One or more OAuth2 scope strings for this service
+          example:
+            - repo:read
+            - user:email
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          default: optional
+          description: Whether this service is mandatory or optional within the permission set
+
+    AgentPermissionSetEntry:
+      type: object
+      required:
+        - permission_set_id
+        - requirement_type
+      properties:
+        permission_set_id:
+          type: string
+          format: uuid
+          description: UUID of the permission set to associate with this agent
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        requirement_type:
+          type: string
+          enum:
+            - mandatory
+            - optional
+          description: |
+            Whether this permission set is mandatory (always granted, non-negotiable) or
+            optional (user-togglable in the consent UI).
+          example: mandatory
+
+    CreatePermissionSetRequest:
+      type: object
+      required:
+        - name
+        - description
+        - service_scopes
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Unique human-readable name for the permission set
+          example: GitHub Read Access
+        description:
+          type: string
+          description: Human-readable explanation of what capabilities this set grants
+          example: Read repository contents and user profile from GitHub
+        service_scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceScope'
+          minItems: 1
+          description: One or more service/scope entries covered by this permission set
+
+    PermissionSetResponse:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - service_scopes
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Stable UUID assigned on creation
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+          readOnly: true
+        name:
+          type: string
+          description: Unique human-readable name for the permission set
+          example: GitHub Read Access
+        description:
+          type: string
+          description: Human-readable explanation of capabilities
+          example: Read repository contents and user profile from GitHub
+        service_scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceScope'
+          description: Scopes across one or more third-party services
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the permission set was created (RFC3339 format)
+          example: '2026-03-25T12:00:00Z'
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the permission set was last updated (RFC3339 format)
+          example: '2026-03-25T12:00:00Z'
+          readOnly: true
 
   responses:
     BadRequestError:

@@ -1275,6 +1275,26 @@ func (cp *ConsentPage) WaitForRevokeDialogDismissed(ctx context.Context) error {
 	return nil
 }
 
+// ServiceScopeRequiredIndicatorCount returns the number of service-scope chips
+// marked as required within the given permission-set card (identified by data-testid).
+// Locked service chips carry aria-label="<ServiceName> (required)" — this method counts them.
+// Returns an error if more than one element matches psTestID to prevent silent false positives.
+func (cp *ConsentPage) ServiceScopeRequiredIndicatorCount(ctx context.Context, psTestID string) (int, error) {
+	locator := cp.page().GetByTestId(psTestID)
+	count, err := locator.Count()
+	if err != nil {
+		return 0, fmt.Errorf("failed to locate PS card %q: %w", psTestID, err)
+	}
+	if count == 0 {
+		return 0, nil
+	}
+	if count > 1 {
+		return 0, fmt.Errorf("ambiguous locator: %d elements found with testid %q; use a unique test ID per card", count, psTestID)
+	}
+	chips := locator.GetByLabel("(required)", playwright.LocatorGetByLabelOptions{Exact: playwright.Bool(false)})
+	return chips.Count()
+}
+
 // WaitForServiceToAppear waits for a specific service to appear on the page.
 //
 // Parameters:

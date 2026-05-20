@@ -265,12 +265,25 @@ var _ = Describe("Multi-Agent Client Delegation", func() {
 				defer enduserSrv.Close()
 
 				// Given: alpha and beta both have SharedUpstreamClientID (created in outer BeforeEach).
+				// Seed a permission set so the PUT update satisfies the FR-006 non-empty requirement.
+				ps := &storagedomain.PermissionSet{
+					ID:          fixtures.PlaceholderPermissionSetID,
+					Name:        "Multi-Agent Test PS",
+					Description: "Permission set for multi-agent client update regression test",
+					ServiceScopes: []storagedomain.ServiceScope{
+						{ServiceID: fixtures.PlaceholderServiceID, Scopes: []string{"read"}, RequirementType: storagedomain.RequirementTypeOptional},
+					},
+				}
+				Expect(testStorage.PermissionSets().Create(ctx, ps)).ToNot(HaveOccurred())
 
 				// When: Admin changes alpha's client_id to a unique value.
 				updatePayload := map[string]interface{}{
 					"client_id":    "other-unique-client", // new, distinct from SharedUpstreamClientID
 					"display_name": alpha.DisplayName,
 					"description":  alpha.Description,
+					"permission_sets": []map[string]interface{}{
+						{"permission_set_id": fixtures.PlaceholderPermissionSetID.String(), "requirement_type": "mandatory"},
+					},
 				}
 				body, err := json.Marshal(updatePayload)
 				Expect(err).ToNot(HaveOccurred())

@@ -32,7 +32,8 @@ import (
 type ThirdpartyOAuth2ProviderService struct {
 	repo                ports.ThirdpartyOAuth2ProviderRepository
 	encryption          ports.EncryptionPort
-	branchKeyManager    ports.BranchKeyManager // may be nil
+	branchKeyManager    ports.BranchKeyManager        // may be nil
+	permissionSetRepo   ports.PermissionSetRepository // may be nil
 	skipHTTPSValidation bool
 	logger              *slog.Logger
 }
@@ -45,6 +46,7 @@ func NewThirdpartyOAuth2ProviderService(
 	repo ports.ThirdpartyOAuth2ProviderRepository,
 	encryption ports.EncryptionPort,
 	branchKeyManager ports.BranchKeyManager,
+	permissionSetRepo ports.PermissionSetRepository,
 	skipHTTPSValidation bool,
 	logger *slog.Logger,
 ) *ThirdpartyOAuth2ProviderService {
@@ -55,6 +57,7 @@ func NewThirdpartyOAuth2ProviderService(
 		repo:                repo,
 		encryption:          encryption,
 		branchKeyManager:    branchKeyManager,
+		permissionSetRepo:   permissionSetRepo,
 		skipHTTPSValidation: skipHTTPSValidation,
 		logger:              logger,
 	}
@@ -256,10 +259,29 @@ func (s *ThirdpartyOAuth2ProviderService) List(
 }
 
 // Delete removes a provider from storage.
+// Delete removes a provider by ID.
+// Returns a conflict error if permission sets reference this service.
 func (s *ThirdpartyOAuth2ProviderService) Delete(
 	ctx context.Context,
 	serviceID id.ServiceID,
 ) error {
+	// Check if any permission sets reference this service (deletion protection)
+	if s.permissionSetRepo != nil {
+		count, err := s.permissionSetRepo.CountPermissionSetsForService(ctx, serviceID)
+		if err != nil {
+			return fmt.Errorf("failed to check permission set references: %w", err)
+		}
+
+		if count > 0 {
+			return storage.NewStorageError(
+				"DeleteService",
+				storage.ErrorKindConflict,
+				nil,
+				fmt.Sprintf("cannot delete service: %d permission set(s) reference it", count),
+			)
+		}
+	}
+
 	if err := s.repo.Delete(ctx, serviceID); err != nil {
 		return fmt.Errorf("failed to delete provider: %w", err)
 	}

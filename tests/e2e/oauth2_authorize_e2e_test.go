@@ -49,8 +49,8 @@ var _ = Describe("US4: Authorization Code Flow with PKCE (issue_token mode)", fu
 		agent.RedirectURIs = []string{"http://localhost:9999/callback"}
 		Expect(testStorage.Agents().Create(ctx, agent)).ToNot(HaveOccurred())
 
-		// Create a grant for the principal so consent is satisfied
-		// Grant must include at least one DelegatedOAuth2Token (third-party service delegation)
+		// Create a grant for the principal so consent is satisfied.
+		// Grant must include at least one GrantedPermissionSetEntry.
 		grant := fixtures.ActiveGrant("test@example.com", agent.ID.String(), githubService.ID.String(), []string{"repo", "user"})
 		Expect(testStorage.UserGrants().Create(ctx, grant)).ToNot(HaveOccurred())
 

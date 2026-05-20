@@ -34,11 +34,11 @@ func NewUserGrantRepository(adapter *Adapter) *UserGrantRepository {
 // The grant ID should be generated before calling this method.
 // Uses ON CONFLICT to implement upsert semantics (one grant per principal-agent pair).
 func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGrant) error {
-	ctx, span := otel.Tracer("storage").Start(ctx, "storage.upsert.userGrant")
+	ctx, span := otel.Tracer("storage").Start(ctx, "storage.create.user_grant")
 	defer span.End()
 	span.SetAttributes(
 		semconv.DBSystemKey.String("postgresql"),
-		attribute.String("db.operation", "UpsertUserGrant"),
+		attribute.String("db.operation", "CreateUserGrant"),
 	)
 
 	if r.adapter.db == nil {
@@ -64,14 +64,24 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 		grant.ID = id.NewGrantID()
 	}
 
-	// Marshal delegated tokens to JSONB
-	tokensJSON, err := json.Marshal(grant.DelegatedOAuth2Tokens)
+	// Validate before storing
+	if err := grant.ValidateForCreate(); err != nil {
+		return storage.NewStorageError(
+			"CreateUserGrant",
+			storage.ErrorKindValidation,
+			err,
+			"grant validation failed",
+		)
+	}
+
+	// Serialize granted permission sets to JSON for PostgreSQL JSONB
+	permissionSetsJSON, err := json.Marshal(grant.GrantedPermissionSets)
 	if err != nil {
 		return storage.NewStorageError(
 			"CreateUserGrant",
 			storage.ErrorKindUnknown,
 			err,
-			"failed to marshal delegated tokens",
+			"failed to serialize granted permission sets",
 		)
 	}
 
@@ -79,34 +89,60 @@ func (r *UserGrantRepository) Create(ctx context.Context, grant *storage.UserGra
 	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
+	tx, err := r.adapter.db.BeginTx(ctxTimeout, nil)
+	if err != nil {
+		return r.handlePostgresError("CreateUserGrant", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Lock referenced permission set rows within the transaction to prevent
+	// concurrent deletes from committing before this write (TOCTOU guard).
+	if len(grant.GrantedPermissionSets) > 0 {
+		psIDs := make([]id.PermissionSetID, len(grant.GrantedPermissionSets))
+		for i, entry := range grant.GrantedPermissionSets {
+			psIDs[i] = entry.PermissionSetID
+		}
+		if err = verifyPermissionSetExistenceInTx(ctxTimeout, tx, psIDs); err != nil {
+			return err
+		}
+	}
+
 	// Use ON CONFLICT to implement upsert semantics
 	query := `
 		INSERT INTO user_grants (
-			id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+			id, principal, agent_id, valid_until, granted_permission_sets, created_at, updated_at
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (principal, agent_id)
 		DO UPDATE SET
 			valid_until = EXCLUDED.valid_until,
-			delegated_oauth2_tokens = EXCLUDED.delegated_oauth2_tokens,
+			granted_permission_sets = EXCLUDED.granted_permission_sets,
 			updated_at = EXCLUDED.updated_at
 		RETURNING id
 	`
 
 	var returnedID id.GrantID
-	err = r.adapter.db.QueryRowContext(
+	err = tx.QueryRowContext(
 		ctxTimeout,
 		query,
 		grant.ID,
 		grant.Principal,
 		grant.AgentID,
 		grant.ValidUntil,
-		tokensJSON,
+		permissionSetsJSON,
 		grant.CreatedAt,
 		grant.UpdatedAt,
 	).Scan(&returnedID)
 
 	if err != nil {
+		return r.handlePostgresError("CreateUserGrant", err)
+	}
+
+	if err = tx.Commit(); err != nil {
 		return r.handlePostgresError("CreateUserGrant", err)
 	}
 
@@ -133,20 +169,20 @@ func (r *UserGrantRepository) Get(ctx context.Context, grantID id.GrantID) (*sto
 	defer cancel()
 
 	query := `
-		SELECT id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		SELECT id, principal, agent_id, valid_until, granted_permission_sets, created_at, updated_at
 		FROM user_grants
 		WHERE id = $1
 	`
 
 	var grant storage.UserGrant
-	var tokensJSON []byte
+	var permissionSetsJSON []byte
 
 	err := r.adapter.db.QueryRowContext(ctxTimeout, query, grantID).Scan(
 		&grant.ID,
 		&grant.Principal,
 		&grant.AgentID,
 		&grant.ValidUntil,
-		&tokensJSON,
+		&permissionSetsJSON,
 		&grant.CreatedAt,
 		&grant.UpdatedAt,
 	)
@@ -163,13 +199,13 @@ func (r *UserGrantRepository) Get(ctx context.Context, grantID id.GrantID) (*sto
 		return nil, r.handlePostgresError("GetUserGrant", err)
 	}
 
-	// Unmarshal JSONB tokens
-	if err := json.Unmarshal(tokensJSON, &grant.DelegatedOAuth2Tokens); err != nil {
+	// Deserialize JSONB to GrantedPermissionSetEntry slice
+	if err := json.Unmarshal(permissionSetsJSON, &grant.GrantedPermissionSets); err != nil {
 		return nil, storage.NewStorageError(
 			"GetUserGrant",
 			storage.ErrorKindUnknown,
 			err,
-			"failed to unmarshal delegated tokens",
+			"failed to parse granted permission sets",
 		)
 	}
 
@@ -197,14 +233,14 @@ func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 		)
 	}
 
-	// Marshal delegated tokens to JSONB
-	tokensJSON, err := json.Marshal(grant.DelegatedOAuth2Tokens)
+	// Serialize granted permission sets to JSON for PostgreSQL JSONB
+	permissionSetsJSON, err := json.Marshal(grant.GrantedPermissionSets)
 	if err != nil {
 		return storage.NewStorageError(
 			"UpdateUserGrant",
 			storage.ErrorKindUnknown,
 			err,
-			"failed to marshal delegated tokens",
+			"failed to serialize granted permission sets",
 		)
 	}
 
@@ -212,20 +248,29 @@ func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Write)
 	defer cancel()
 
+	tx, err := r.adapter.db.BeginTx(ctxTimeout, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return storage.NewStorageError("UpdateUserGrant", storage.ErrorKindConnection, err, "failed to begin transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Run the UPDATE first so a stale grant ID returns NotFound before any PS check,
+	// preserving the documented error contract. The UPDATE result is not yet committed,
+	// so we can still lock PS rows to close the concurrent-delete window.
 	query := `
 		UPDATE user_grants
 		SET valid_until = $2,
-		    delegated_oauth2_tokens = $3,
+		    granted_permission_sets = $3,
 		    updated_at = $4
 		WHERE id = $1
 	`
 
-	result, err := r.adapter.db.ExecContext(
+	result, err := tx.ExecContext(
 		ctxTimeout,
 		query,
 		grant.ID,
 		grant.ValidUntil,
-		tokensJSON,
+		permissionSetsJSON,
 		grant.UpdatedAt,
 	)
 
@@ -250,6 +295,20 @@ func (r *UserGrantRepository) Update(ctx context.Context, grant *storage.UserGra
 			ports.ErrNotFound,
 			"user grant not found",
 		)
+	}
+
+	// After confirming the grant exists, lock PS rows to prevent concurrent deletes
+	// from creating dangling references before this transaction commits.
+	psIDs := make([]id.PermissionSetID, 0, len(grant.GrantedPermissionSets))
+	for _, entry := range grant.GrantedPermissionSets {
+		psIDs = append(psIDs, entry.PermissionSetID)
+	}
+	if err := verifyPermissionSetExistenceInTx(ctxTimeout, tx, psIDs); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return storage.NewStorageError("UpdateUserGrant", storage.ErrorKindUnknown, err, "failed to commit transaction")
 	}
 
 	return nil
@@ -300,7 +359,7 @@ func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 	defer cancel()
 
 	query := `
-		SELECT id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		SELECT id, principal, agent_id, valid_until, granted_permission_sets, created_at, updated_at
 		FROM user_grants
 		WHERE principal = $1 AND agent_id = $2
 		ORDER BY created_at DESC
@@ -316,14 +375,14 @@ func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 
 	for rows.Next() {
 		var grant storage.UserGrant
-		var tokensJSON []byte
+		var permissionSetsJSON []byte
 
 		err := rows.Scan(
 			&grant.ID,
 			&grant.Principal,
 			&grant.AgentID,
 			&grant.ValidUntil,
-			&tokensJSON,
+			&permissionSetsJSON,
 			&grant.CreatedAt,
 			&grant.UpdatedAt,
 		)
@@ -336,13 +395,12 @@ func (r *UserGrantRepository) ListByPrincipalAndAgent(ctx context.Context, princ
 			)
 		}
 
-		// Unmarshal JSONB tokens
-		if err := json.Unmarshal(tokensJSON, &grant.DelegatedOAuth2Tokens); err != nil {
+		if err := json.Unmarshal(permissionSetsJSON, &grant.GrantedPermissionSets); err != nil {
 			return nil, storage.NewStorageError(
 				"ListUserGrants",
 				storage.ErrorKindUnknown,
 				err,
-				"failed to unmarshal delegated tokens",
+				"failed to parse granted permission sets",
 			)
 		}
 
@@ -378,21 +436,21 @@ func (r *UserGrantRepository) FindByPrincipalAndAgent(ctx context.Context, princ
 	defer cancel()
 
 	query := `
-		SELECT id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		SELECT id, principal, agent_id, valid_until, granted_permission_sets, created_at, updated_at
 		FROM user_grants
 		WHERE principal = $1 AND agent_id = $2
 		LIMIT 1
 	`
 
 	var grant storage.UserGrant
-	var tokensJSON []byte
+	var permissionSetsJSON []byte
 
 	err := r.adapter.db.QueryRowContext(ctxTimeout, query, principal, agentID).Scan(
 		&grant.ID,
 		&grant.Principal,
 		&grant.AgentID,
 		&grant.ValidUntil,
-		&tokensJSON,
+		&permissionSetsJSON,
 		&grant.CreatedAt,
 		&grant.UpdatedAt,
 	)
@@ -409,13 +467,12 @@ func (r *UserGrantRepository) FindByPrincipalAndAgent(ctx context.Context, princ
 		return nil, r.handlePostgresError("FindUserGrant", err)
 	}
 
-	// Unmarshal JSONB tokens
-	if err := json.Unmarshal(tokensJSON, &grant.DelegatedOAuth2Tokens); err != nil {
+	if err := json.Unmarshal(permissionSetsJSON, &grant.GrantedPermissionSets); err != nil {
 		return nil, storage.NewStorageError(
 			"FindUserGrant",
 			storage.ErrorKindUnknown,
 			err,
-			"failed to unmarshal delegated tokens",
+			"failed to parse granted permission sets",
 		)
 	}
 
@@ -454,11 +511,11 @@ func (r *UserGrantRepository) DeleteByAgent(ctx context.Context, agentID id.Agen
 // Filters expired grants (valid_until < NOW()).
 // Returns empty slice if no active grants exist (not an error).
 func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]storage.UserGrant, error) {
-	ctx, span := otel.Tracer("storage").Start(ctx, "storage.list.userGrants")
+	ctx, span := otel.Tracer("storage").Start(ctx, "storage.list.user_grants_by_principal")
 	defer span.End()
 	span.SetAttributes(
 		semconv.DBSystemKey.String("postgresql"),
-		attribute.String("db.operation", "ListUserGrantsByPrincipal"),
+		attribute.String("db.operation", "ListByPrincipal"),
 	)
 
 	if r.adapter.db == nil {
@@ -475,7 +532,7 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 	defer cancel()
 
 	query := `
-		SELECT id, principal, agent_id, valid_until, delegated_oauth2_tokens, created_at, updated_at
+		SELECT id, principal, agent_id, valid_until, granted_permission_sets, created_at, updated_at
 		FROM user_grants
 		WHERE principal = $1
 		  AND (valid_until IS NULL OR valid_until > NOW())
@@ -492,14 +549,14 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 
 	for rows.Next() {
 		var grant storage.UserGrant
-		var tokensJSON []byte
+		var permissionSetsJSON []byte
 
 		err := rows.Scan(
 			&grant.ID,
 			&grant.Principal,
 			&grant.AgentID,
 			&grant.ValidUntil,
-			&tokensJSON,
+			&permissionSetsJSON,
 			&grant.CreatedAt,
 			&grant.UpdatedAt,
 		)
@@ -512,13 +569,12 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 			)
 		}
 
-		// Unmarshal JSONB tokens
-		if err := json.Unmarshal(tokensJSON, &grant.DelegatedOAuth2Tokens); err != nil {
+		if err := json.Unmarshal(permissionSetsJSON, &grant.GrantedPermissionSets); err != nil {
 			return nil, storage.NewStorageError(
 				"ListByPrincipal",
 				storage.ErrorKindUnknown,
 				err,
-				"failed to unmarshal delegated tokens",
+				"failed to parse granted permission sets",
 			)
 		}
 
@@ -537,9 +593,9 @@ func (r *UserGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 	return grants, nil
 }
 
-// CountAgentsByServiceID counts how many agents have delegated OAuth2 tokens for a given service.
-// This is used to show dependent agent count when terminating a session.
-// Returns the count of distinct agents with delegated_oauth2_tokens JSONB entries for the service.
+// CountAgentsByServiceID counts how many agents have grants referencing
+// permission sets that include the given service.
+// Uses JSONB containment to check if any entry's included_service_ids contains the service ID.
 func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	if r.adapter.db == nil {
 		return 0, storage.NewStorageError(
@@ -550,18 +606,18 @@ func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 		)
 	}
 
-	// Query to count distinct agents that have delegated tokens for this service
-	// Uses jsonb_array_elements to unnest the delegated_oauth2_tokens array
-	// and filters by thirdparty_oauth2_service_id
 	query := `
-		SELECT COUNT(DISTINCT agent_id)
-		FROM user_grants,
-		     jsonb_array_elements(delegated_oauth2_tokens) AS token
-		WHERE token->>'thirdparty_oauth2_service_id' = $1
+		SELECT COUNT(DISTINCT ug.agent_id)
+		FROM user_grants ug,
+		     jsonb_array_elements(ug.granted_permission_sets) AS entry
+		WHERE entry->'included_service_ids' @> to_jsonb($1::text)
 	`
 
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
 	var count int
-	err := r.adapter.db.GetContext(ctx, &count, query, serviceID)
+	err := r.adapter.db.QueryRowContext(ctxTimeout, query, serviceID.String()).Scan(&count)
 	if err != nil {
 		return 0, r.handlePostgresError("CountAgentsByServiceID", err)
 	}
@@ -569,10 +625,10 @@ func (r *UserGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 	return count, nil
 }
 
-// ListByServiceID retrieves all agent IDs that have delegated OAuth2 tokens for a given service.
-// This is used to show the actual dependent agents when terminating a session.
-// Returns the list of distinct agent IDs with delegated_oauth2_tokens entries for the service.
-// Returns empty slice if no agents have delegated tokens for the service.
+// ListByServiceID retrieves all agent IDs that have grants referencing
+// permission sets that include the given service.
+// Returns the list of distinct agent IDs.
+// Returns empty slice if no agents have grants for the service.
 func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	if r.adapter.db == nil {
 		return nil, storage.NewStorageError(
@@ -583,15 +639,12 @@ func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID id.
 		)
 	}
 
-	// Query to get distinct agent IDs that have delegated tokens for this service
-	// Uses jsonb_array_elements to unnest the delegated_oauth2_tokens array
-	// and filters by thirdparty_oauth2_service_id
 	query := `
-		SELECT DISTINCT agent_id
-		FROM user_grants,
-		     jsonb_array_elements(delegated_oauth2_tokens) AS token
-		WHERE token->>'thirdparty_oauth2_service_id' = $1
-		ORDER BY agent_id
+		SELECT DISTINCT ug.agent_id
+		FROM user_grants ug,
+		     jsonb_array_elements(ug.granted_permission_sets) AS entry
+		WHERE entry->'included_service_ids' @> to_jsonb($1::text)
+		ORDER BY ug.agent_id
 	`
 
 	// Create context with timeout
@@ -630,6 +683,33 @@ func (r *UserGrantRepository) ListByServiceID(ctx context.Context, serviceID id.
 	}
 
 	return agentIDs, nil
+}
+
+// CountGrantsReferencingPermissionSet counts user grants whose granted_permission_sets JSONB
+// array contains an entry with the given permission set ID.
+func (r *UserGrantRepository) CountGrantsReferencingPermissionSet(ctx context.Context, psID id.PermissionSetID) (int, error) {
+	if r.adapter.db == nil {
+		return 0, storage.NewStorageError("CountGrantsReferencingPermissionSet", storage.ErrorKindConnection, nil, "database not initialized")
+	}
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, r.adapter.timeouts.Read)
+	defer cancel()
+
+	jsonFilter, err := json.Marshal([]map[string]string{{"permission_set_id": psID.String()}})
+	if err != nil {
+		return 0, storage.NewStorageError("CountGrantsReferencingPermissionSet", storage.ErrorKindUnknown, err, "failed to build JSONB filter")
+	}
+
+	var count int
+	err = r.adapter.db.QueryRowContext(ctxTimeout,
+		`SELECT COUNT(*) FROM user_grants WHERE granted_permission_sets @> $1::jsonb AND (valid_until IS NULL OR valid_until > NOW())`,
+		jsonFilter,
+	).Scan(&count)
+	if err != nil {
+		return 0, r.handlePostgresError("CountGrantsReferencingPermissionSet", err)
+	}
+
+	return count, nil
 }
 
 // DeleteByPrincipalAndAgentID deletes the grant owned by principal for the given agent.

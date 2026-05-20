@@ -72,12 +72,7 @@ const mockGrant: UserGrant = {
   id: 'grant-1',
   agent_id: 'agent-123',
   principal: 'user@example.com',
-  delegated_oauth2_tokens: [
-    {
-      thirdparty_oauth2_service_id: 'github',
-      scopes: ['read:user', 'repo'],
-    },
-  ],
+  granted_permission_sets: { 'ps-id-1': ['svc-1'] },
   valid_until: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
@@ -278,11 +273,7 @@ describe('AgentGrantDetailPage', () => {
       </RouterWrapper>,
     );
 
-    // Check services section
-    expect(screen.getByText('Services')).toBeInTheDocument();
-    expect(screen.getByText('(2)')).toBeInTheDocument();
-
-    // Check individual services
+    // Services appear in the Connect Your Accounts section
     expect(screen.getByText('GitHub')).toBeInTheDocument();
     expect(screen.getByText('Google Drive')).toBeInTheDocument();
   });
@@ -304,10 +295,8 @@ describe('AgentGrantDetailPage', () => {
       </RouterWrapper>,
     );
 
-    expect(screen.getByText('No services available')).toBeInTheDocument();
-    expect(
-      screen.getByText('This agent has no services configured yet.'),
-    ).toBeInTheDocument();
+    // When there are no services, the "Connect Your Accounts" section is not rendered
+    expect(screen.queryByText('Connect Your Accounts')).not.toBeInTheDocument();
   });
 
   it('renders breadcrumb navigation', () => {
@@ -436,7 +425,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
 
       // Services should be visible without toggling edit mode
       // (This is verified by the fact that the page renders services by default)
-      expect(screen.getByText('Services')).toBeInTheDocument();
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
     });
 
     it('should NOT conditionally render UI based on edit mode', () => {
@@ -459,7 +448,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
 
       // Verify the page structure is not dependent on edit mode
       // The services list should always be visible
-      expect(screen.getByText('Services')).toBeInTheDocument();
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
 
       // No edit mode toggle should exist to conditionally show/hide content
       const editToggle = screen.queryByRole('switch');
@@ -518,7 +507,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       expect(screen.getByText('Google Drive')).toBeInTheDocument();
 
       // Verify services are displayed
-      expect(screen.getByText('Services')).toBeInTheDocument();
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
     });
   });
 
@@ -605,7 +594,7 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
       expect(screen.getByText('Google Drive')).toBeInTheDocument();
 
       // Services section should be visible (not conditional on edit mode)
-      expect(screen.getByText('Services')).toBeInTheDocument();
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
     });
 
     it('should not require toggling edit mode to interact with services', () => {
@@ -640,14 +629,12 @@ describe('AgentGrantDetailPage - User Story 5: Simplified UI Without Edit Mode (
 });
 
 describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
-  // A grant with active delegated tokens
+  // A grant with active permission set IDs
   const grantWithTokens = {
     id: 'grant-1',
     agent_id: 'agent-123',
     principal: 'user@example.com',
-    delegated_oauth2_tokens: [
-      { thirdparty_oauth2_service_id: 'github', scopes: ['read:user'] },
-    ],
+    granted_permission_sets: { 'ps-id-1': ['svc-1'] },
     valid_until: null,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
@@ -719,7 +706,7 @@ describe('AgentGrantDetailPage - Revoke All Access (T017)', () => {
   it('RevokeGrantButton absent when grant has empty delegated tokens', () => {
     const emptyGrant = {
       ...grantWithTokens,
-      delegated_oauth2_tokens: [],
+      granted_permission_sets: {},
     };
 
     vi.spyOn(useAgentGrantsModule, 'useAgentGrants').mockReturnValue({

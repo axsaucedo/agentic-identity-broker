@@ -16,6 +16,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 )
 
@@ -96,7 +97,7 @@ func setupTestContainer(t *testing.T) (testcontainers.Container, string, func())
 // any issues with passing multi-statement SQL as a command-line argument.
 func applyMigrations(t *testing.T, container testcontainers.Container) {
 	t.Helper()
-	applyMigrationsUpTo(t, container, 15)
+	applyMigrationsUpTo(t, container, 19)
 }
 
 // applyMigrationsUpTo applies migrations sequentially from 001 up to and including
@@ -133,6 +134,10 @@ func applyMigrationsUpTo(t *testing.T, container testcontainers.Container, upTo 
 		{"013_add_client_id_to_auth_codes.up.sql", 13},
 		{"014_create_pkce_sessions.up.sql", 14},
 		{"015_add_cimd_support.up.sql", 15},
+		{"017_add_permission_sets.up.sql", 17},
+		{"018_add_agent_permission_sets.up.sql", 18},
+		{"019_migrate_user_grants_to_permission_sets.up.sql", 19},
+		{"020_add_service_scope_requirement_type.up.sql", 20},
 	}
 
 	for _, migration := range migrations {
@@ -209,15 +214,15 @@ func findProjectRoot() (string, error) {
 	}
 }
 
-// setupAgentTestDBWithCIMD creates a test database with migrations applied up to and including
-// migration 015 (CIMD fields, agent_client_uris, cimd_redirect_uris, authorization_sessions). Use for tests that exercise ClientURIs.
+// setupAgentTestDBWithCIMD creates a test database with all migrations applied.
+// Use for tests that exercise CIMD features (ClientURIs, GetByClientURI).
 func setupAgentTestDBWithCIMD(t *testing.T) (*Adapter, func()) {
 	t.Helper()
 
 	container, connString, cleanup := setupTestContainer(t)
 	t.Cleanup(cleanup)
 
-	applyMigrationsUpTo(t, container, 15)
+	applyMigrations(t, container)
 
 	config := &ports.StorageConfig{
 		Backend: "postgres",
@@ -255,4 +260,17 @@ func testStorageConfig(connString string) *ports.StorageConfig {
 			Write: 10 * time.Second,
 		},
 	}
+}
+
+// seedPermissionSet inserts a permission_sets row so verifyPermissionSetExistenceInTx can find it.
+// Must be called before creating UserGrant rows that reference the given permission set ID.
+func seedPermissionSet(t *testing.T, adapter *Adapter, psID id.PermissionSetID) {
+	t.Helper()
+	_, err := adapter.db.ExecContext(context.Background(),
+		`INSERT INTO permission_sets (id, name, description, created_at, updated_at)
+		 VALUES ($1, $2, 'test permission set', NOW(), NOW())
+		 ON CONFLICT DO NOTHING`,
+		psID.String(), "test-ps-"+psID.String()[:8],
+	)
+	require.NoError(t, err, "failed to seed permission set %s", psID)
 }

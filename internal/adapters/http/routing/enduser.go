@@ -49,10 +49,11 @@ type EnduserRouteConfig struct {
 //
 //	Consent Routes (authenticated):
 //	GET    /api/consent/agents                        - List agents with delegations
-//	GET    /api/consent/agent/{agent-id}              - Get agent details
-//	GET    /api/consent/agent/{agent-id}/grants       - Get agent grants
-//	POST   /api/consent/agent/{agent-id}/grants       - Create grant
-//	DELETE /api/consent/agent/{agent-id}/grants       - Revoke grant (FR-014)
+//	GET    /api/consent/agents/{agent-id}             - Get agent details
+//	GET    /api/consent/agents/{agent-id}/consent-info - Extended consent info with permission sets
+//	GET    /api/consent/agents/{agent-id}/grants      - Get agent grants
+//	POST   /api/consent/agents/{agent-id}/grants      - Create grant
+//	DELETE /api/consent/agents/{agent-id}/grants      - Revoke grant (FR-014)
 //
 //	OAuth2 Session Routes (authenticated, optional):
 //	GET    /api/third-party/sessions                  - List sessions
@@ -100,7 +101,7 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 			}
 
 			// Register consent routes if handlers are available
-			if h.Agents != nil && h.AgentDetail != nil && h.AgentGrants != nil && h.Grants != nil {
+			if h.Agents != nil && h.AgentDetail != nil && h.Grants != nil {
 				authRouter.Route("/consent", func(consentRouter chi.Router) {
 					if cfg.CSRFStore != nil {
 						consentRouter.Use(middleware.CSRFProtection(cfg.CSRFStore))
@@ -109,13 +110,14 @@ func SetupEnduserRoutes(r chi.Router, h *app.EnduserHandlers, cfg EnduserRouteCo
 					// Agents list endpoint
 					consentRouter.Get("/agents", h.Agents.GetAgentDelegations)
 
-					// Agent-specific routes
-					consentRouter.Route("/agent/{agent-id}", func(r chi.Router) {
+					// Agent-specific routes: /api/consent/agents/{agent-id}/...
+					consentRouter.Route("/agents/{agent-id}", func(r chi.Router) {
 						r.Get("/", h.AgentDetail.GetAgentDetail)
-						r.Get("/grants", h.AgentGrants.GetAgentGrants)
+						r.Get("/grants", h.Grants.GetGrant)
 						r.Post("/grants", h.Grants.CreateGrant)
-						if h.RevokeGrant != nil {
-							r.Delete("/grants", h.RevokeGrant.RevokeGrant)
+						r.Delete("/grants", h.Grants.RevokeGrant)
+						if h.AgentInfo != nil {
+							r.Get("/consent-info", h.AgentInfo.GetAgentConsentInfo)
 						}
 					})
 				})

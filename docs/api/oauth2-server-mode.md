@@ -134,7 +134,7 @@ Generates a new `client_id` and `client_secret` for the specified agent. The sec
 **Response:** `201 Created`
 ```json
 {
-  "client_id": "broker_a1b2c3d4",
+  "client_id": "550e8400-e29b-41d4-a716-446655440000",
   "client_secret": "bsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "created_at": "2025-01-15T10:00:00Z"
 }
@@ -154,7 +154,7 @@ Returns metadata about the agent's broker-issued credentials (without the secret
 **Response:** `200 OK`
 ```json
 {
-  "client_id": "broker_a1b2c3d4",
+  "client_id": "550e8400-e29b-41d4-a716-446655440000",
   "created_at": "2025-01-15T10:00:00Z"
 }
 ```

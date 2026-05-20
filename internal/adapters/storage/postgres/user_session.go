@@ -148,7 +148,8 @@ func (r *PostgresUserSessionRepository) FindByPrincipalAndService(ctx context.Co
 	return recordToSession(&rec), nil
 }
 
-// ListByPrincipal retrieves all sessions for a principal.
+// ListByPrincipal retrieves all sessions for a principal, including expired ones.
+// Used for user-visible session lists.
 func (r *PostgresUserSessionRepository) ListByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
 	if principal.IsZero() {
 		return nil, errors.New("principal required")
@@ -160,6 +161,27 @@ func (r *PostgresUserSessionRepository) ListByPrincipal(ctx context.Context, pri
 	err := r.adapter.db.SelectContext(ctx, &records, query, principal)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, r.wrapError(err, "ListByPrincipal")
+	}
+	sessions := make([]*storage.UserSession, len(records))
+	for i, rec := range records {
+		sessions[i] = recordToSession(rec)
+	}
+	return sessions, nil
+}
+
+// ListActiveByPrincipal retrieves only non-expired sessions for a principal.
+// Used for FR-020 consent submission validation.
+func (r *PostgresUserSessionRepository) ListActiveByPrincipal(ctx context.Context, principal id.Principal) ([]*storage.UserSession, error) {
+	if principal.IsZero() {
+		return nil, errors.New("principal required")
+	}
+
+	var records []*userSessionRecord
+	query := `SELECT * FROM user_sessions WHERE principal = $1 AND (refresh_token_expires_at IS NULL OR refresh_token_expires_at > NOW()) ORDER BY created_at DESC`
+
+	err := r.adapter.db.SelectContext(ctx, &records, query, principal)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, r.wrapError(err, "ListActiveByPrincipal")
 	}
 	sessions := make([]*storage.UserSession, len(records))
 	for i, rec := range records {

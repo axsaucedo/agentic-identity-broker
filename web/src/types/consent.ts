@@ -47,7 +47,7 @@ export interface AgentDelegation {
 
 /**
  * Detailed agent information for grant management page.
- * Returned by GET /api/consent/agent/:agent-id
+ * Returned by GET /api/consent/agents/{id}/consent-info
  */
 export interface AgentDetail {
   /** Unique agent identifier */
@@ -70,6 +70,21 @@ export interface AgentDetail {
 
   /** Link to agent's public interface (if applicable) */
   agentInterfaceUrl?: string;
+
+  /** Permission sets for this agent (spec 019) */
+  permission_sets?: ResolvedPermissionSetEntry[];
+
+  /** Service IDs with active OAuth2 sessions (spec 019) */
+  active_session_service_ids?: string[];
+
+  /** All available services for display (spec 019) */
+  available_services?: AvailableServiceInfo[];
+
+  /** Agent's service requirements with mandatory/optional types (spec 019, FR-008) */
+  service_requirements?: Array<{
+    service_id: string;
+    requirement_type: 'mandatory' | 'optional';
+  }>;
 }
 
 /**
@@ -82,6 +97,8 @@ export interface ServiceWithScopes {
   displayName?: string;
   logoUrl?: string;
   scopes?: ServiceScope[];
+  /** Effective requirement type, set by the permission-sets layer (PS feature). */
+  requirementType?: 'mandatory' | 'optional';
 }
 
 export type ThirdpartyService = ServiceWithScopes | ServiceRequirement;
@@ -98,8 +115,60 @@ export interface ServiceScope {
 }
 
 /**
+ * Service entry within a permission set for the consent-info response.
+ * Raw scopes are intentionally omitted per FR-007; use requirement_type to determine lock status.
+ */
+export interface ServiceScopeInfo {
+  /** Third-party service identifier */
+  service_id: string;
+
+  /** Whether this service is mandatory or optional within the permission set */
+  requirement_type: 'mandatory' | 'optional';
+}
+
+/**
+ * Permission set definition with grouped OAuth2 scopes.
+ */
+export interface PermissionSetInfo {
+  /** Unique permission set identifier */
+  id: string;
+
+  /** Human-readable permission set name */
+  name: string;
+
+  /** Permission set description */
+  description: string;
+
+  /** Scopes grouped by service */
+  service_scopes: ServiceScopeInfo[];
+}
+
+/**
+ * Permission set entry with requirement type (mandatory or optional).
+ * Returned by GET /api/consent/agents/{id}/consent-info
+ */
+export interface ResolvedPermissionSetEntry {
+  /** Permission set definition */
+  permission_set: PermissionSetInfo;
+
+  /** Whether mandatory (locked) or optional (user-selectable) */
+  requirement_type: 'mandatory' | 'optional';
+}
+
+/**
+ * Available third-party service (for display purposes).
+ */
+export interface AvailableServiceInfo {
+  /** Unique service identifier */
+  id: string;
+
+  /** Human-readable service display name */
+  display_name: string;
+}
+
+/**
  * User's existing grant to an agent.
- * Returned by GET /api/consent/agent/:agent-id/grants
+ * Returned by GET /api/consent/agents/:agent-id/grants
  * Note: Uses snake_case to match backend API response
  */
 export interface UserGrant {
@@ -112,8 +181,8 @@ export interface UserGrant {
   /** User principal who created the grant */
   principal: string;
 
-  /** Delegated service access tokens */
-  delegated_oauth2_tokens: DelegatedToken[];
+  /** Granted permission sets: map of PS ID → included service IDs (positive-inclusion model) */
+  granted_permission_sets: Record<string, string[]>;
 
   /** Optional expiration timestamp (null = indefinite) */
   valid_until?: string | null;
@@ -171,18 +240,21 @@ export interface CIMDMetadata {
 }
 
 /**
- * Response from GET /api/consent/agent/:agent-id
+ * Response from GET /api/consent/agents/{id}/consent-info (spec 019)
  */
 export interface GetAgentDetailResponse {
   data: {
     agent: AgentDetail;
-    services: ThirdpartyService[];
+    permission_sets?: ResolvedPermissionSetEntry[];
+    active_session_service_ids?: string[];
+    available_services?: AvailableServiceInfo[];
+    services?: ThirdpartyService[];
     cimd_metadata?: CIMDMetadata | null;
   };
 }
 
 /**
- * Response from GET /api/consent/agent/:agent-id/grants
+ * Response from GET /api/consent/agents/:agent-id/grants
  * Returns a single grant (or null if no grant exists) due to 1:1 relationship per (principal, agent_id)
  */
 export interface GetAgentGrantsResponse {
@@ -190,21 +262,18 @@ export interface GetAgentGrantsResponse {
 }
 
 /**
- * Request body for POST /api/consent/agent/:agent-id/grants
+ * Request body for POST /api/consent/agents/{id}/grants (spec 019)
  */
 export interface CreateOrUpdateGrantRequest {
-  /** Service delegations (empty array = revoke grant) */
-  delegated_oauth2_tokens: {
-    thirdparty_oauth2_service_id: string;
-    scopes: string[];
-  }[];
+  /** Granted permission sets: map of PS ID → included service IDs */
+  granted_permission_sets: Record<string, string[]>;
 
   /** Optional expiration timestamp (omit for indefinite) */
   valid_until?: string | null;
 }
 
 /**
- * Response from POST /api/consent/agent/:agent-id/grants
+ * Response from POST /api/consent/agents/:agent-id/grants
  */
 export interface CreateOrUpdateGrantResponse {
   data: UserGrant;
@@ -280,7 +349,7 @@ export interface ServiceRequirement {
 
 /**
  * Agent with service requirements (Phase 6).
- * Response from GET /api/consent/agent/:agent-id with requirements.
+ * Response from GET /api/consent/agents/:agent-id with requirements.
  */
 export interface AgentWithServiceRequirements extends AgentDetail {
   /** List of service requirements for this agent */

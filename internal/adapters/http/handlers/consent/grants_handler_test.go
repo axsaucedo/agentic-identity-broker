@@ -89,12 +89,7 @@ func TestCreateGrant_NoPrincipal(t *testing.T) {
 	testAgentID := id.NewAgentID()
 
 	reqBody := GrantRequest{
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-				Scopes:                    []string{"repo"},
-			},
-		},
+		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
@@ -151,13 +146,8 @@ func TestCreateGrant_ValidUntilInPast(t *testing.T) {
 
 	pastTime := time.Now().Add(-1 * time.Hour)
 	reqBody := GrantRequest{
-		ValidUntil: &pastTime,
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-				Scopes:                    []string{"repo"},
-			},
-		},
+		ValidUntil:            &pastTime,
+		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
@@ -196,30 +186,21 @@ func TestToGrantResponse(t *testing.T) {
 
 	testGrantID := id.NewGrantID()
 	testAgentID := id.NewAgentID()
-	testServiceID1 := id.NewServiceID()
-	testServiceID2 := id.NewServiceID()
+	testPSID1 := id.NewPermissionSetID()
+	testPSID2 := id.NewPermissionSetID()
 
 	validUntil := time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC)
 	createdAt := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 
 	grant := &storage.UserGrant{
-		ID:         testGrantID,
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    testAgentID,
-		ValidUntil: &validUntil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{
-				ThirdpartyOAuth2ServiceID: testServiceID1,
-				Scopes:                    []string{"repo", "user"},
-			},
-			{
-				ThirdpartyOAuth2ServiceID: testServiceID2,
-				Scopes:                    []string{"email"},
-			},
-		},
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
+		ID:                    testGrantID,
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               testAgentID,
+		ValidUntil:            &validUntil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: testPSID1, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}, {PermissionSetID: testPSID2, IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+		CreatedAt:             createdAt,
+		UpdatedAt:             updatedAt,
 	}
 
 	response := handler.toGrantResponse(grant)
@@ -242,25 +223,16 @@ func TestToGrantResponse(t *testing.T) {
 		t.Errorf("expected valid_until %v, got %v", validUntil, *response.ValidUntil)
 	}
 
-	// Verify tokens
-	if len(response.DelegatedOAuth2Tokens) != 2 {
-		t.Fatalf("expected 2 tokens, got %d", len(response.DelegatedOAuth2Tokens))
+	// Verify permission sets
+	if len(response.GrantedPermissionSets) != 2 {
+		t.Fatalf("expected 2 permission sets, got %d", len(response.GrantedPermissionSets))
 	}
 
-	token1 := response.DelegatedOAuth2Tokens[0]
-	if token1.ThirdpartyOAuth2ServiceID != testServiceID1.String() {
-		t.Errorf("expected service '%s', got '%s'", testServiceID1.String(), token1.ThirdpartyOAuth2ServiceID)
+	if _, ok := response.GrantedPermissionSets[testPSID1.String()]; !ok {
+		t.Errorf("expected permission set ID '%s' to be present", testPSID1.String())
 	}
-	if len(token1.Scopes) != 2 {
-		t.Errorf("expected 2 scopes, got %d", len(token1.Scopes))
-	}
-
-	token2 := response.DelegatedOAuth2Tokens[1]
-	if token2.ThirdpartyOAuth2ServiceID != testServiceID2.String() {
-		t.Errorf("expected service '%s', got '%s'", testServiceID2.String(), token2.ThirdpartyOAuth2ServiceID)
-	}
-	if len(token2.Scopes) != 1 {
-		t.Errorf("expected 1 scope, got %d", len(token2.Scopes))
+	if _, ok := response.GrantedPermissionSets[testPSID2.String()]; !ok {
+		t.Errorf("expected permission set ID '%s' to be present", testPSID2.String())
 	}
 
 	// Verify timestamps are formatted correctly (RFC3339)
@@ -328,12 +300,7 @@ func TestCreateGrant_ServiceErrors(t *testing.T) {
 
 			// Create valid request
 			reqBody := GrantRequest{
-				DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-					{
-						ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-						Scopes:                    []string{"repo"},
-					},
-				},
+				GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 			}
 
 			req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", reqBody)
@@ -377,18 +344,13 @@ func TestCreateGrant_Success(t *testing.T) {
 		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
 			capturedRequest = req
 			return &storage.UserGrant{
-				ID:         testGrantID,
-				Principal:  id.Principal("user@example.com"),
-				AgentID:    testAgentID,
-				ValidUntil: &futureTime,
-				DelegatedOAuth2Tokens: []storage.DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.NewServiceID(),
-						Scopes:                    []string{"repo", "user"},
-					},
-				},
-				CreatedAt: now,
-				UpdatedAt: now,
+				ID:                    testGrantID,
+				Principal:             id.Principal("user@example.com"),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+				CreatedAt:             now,
+				UpdatedAt:             now,
 			}, nil
 		},
 	}
@@ -397,13 +359,8 @@ func TestCreateGrant_Success(t *testing.T) {
 
 	// Create request
 	reqBody := GrantRequest{
-		ValidUntil: &futureTime,
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-				Scopes:                    []string{"repo", "user"},
-			},
-		},
+		ValidUntil:            &futureTime,
+		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 	}
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", reqBody)
@@ -622,18 +579,13 @@ func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
 	mockService := &mockConsentService{
 		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
 			return &storage.UserGrant{
-				ID:         testGrantID,
-				Principal:  id.Principal("user@example.com"),
-				AgentID:    testAgentID,
-				ValidUntil: &futureTime,
-				DelegatedOAuth2Tokens: []storage.DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.NewServiceID(),
-						Scopes:                    []string{"repo"},
-					},
-				},
-				CreatedAt: now,
-				UpdatedAt: now,
+				ID:                    testGrantID,
+				Principal:             id.Principal("user@example.com"),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+				CreatedAt:             now,
+				UpdatedAt:             now,
 			}, nil
 		},
 	}
@@ -641,12 +593,7 @@ func TestCreateGrant_WithRedirectURI_Valid(t *testing.T) {
 	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-				Scopes:                    []string{"repo"},
-			},
-		},
+		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 	}
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=%2Fcallback&code=xyz", "user@example.com", reqBody)
@@ -690,18 +637,13 @@ func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
 	mockService := &mockConsentService{
 		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
 			return &storage.UserGrant{
-				ID:         testGrantID,
-				Principal:  id.Principal("user@example.com"),
-				AgentID:    testAgentID,
-				ValidUntil: &futureTime,
-				DelegatedOAuth2Tokens: []storage.DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.NewServiceID(),
-						Scopes:                    []string{"repo"},
-					},
-				},
-				CreatedAt: now,
-				UpdatedAt: now,
+				ID:                    testGrantID,
+				Principal:             id.Principal("user@example.com"),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+				CreatedAt:             now,
+				UpdatedAt:             now,
 			}, nil
 		},
 	}
@@ -709,12 +651,7 @@ func TestCreateGrant_WithRedirectURI_RelativeValid(t *testing.T) {
 	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-				Scopes:                    []string{"repo"},
-			},
-		},
+		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 	}
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=/auth/return", "user@example.com", reqBody)
@@ -754,12 +691,7 @@ func TestCreateGrant_WithRedirectURI_InvalidDomain(t *testing.T) {
 	handler := NewGrantsHandler(nil, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-				Scopes:                    []string{"repo"},
-			},
-		},
+		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 	}
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants?redirect_uri=https://evil.com/callback", "user@example.com", reqBody)
@@ -798,18 +730,13 @@ func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 	mockService := &mockConsentService{
 		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
 			return &storage.UserGrant{
-				ID:         testGrantID,
-				Principal:  id.Principal("user@example.com"),
-				AgentID:    testAgentID,
-				ValidUntil: &futureTime,
-				DelegatedOAuth2Tokens: []storage.DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.NewServiceID(),
-						Scopes:                    []string{"repo"},
-					},
-				},
-				CreatedAt: now,
-				UpdatedAt: now,
+				ID:                    testGrantID,
+				Principal:             id.Principal("user@example.com"),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+				CreatedAt:             now,
+				UpdatedAt:             now,
 			}, nil
 		},
 	}
@@ -817,12 +744,7 @@ func TestCreateGrant_WithoutRedirectURI(t *testing.T) {
 	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-				Scopes:                    []string{"repo"},
-			},
-		},
+		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 	}
 
 	req := newRequestWithPrincipal("POST", "/api/consent/agent/"+testAgentID.String()+"/grants", "user@example.com", reqBody)
@@ -861,18 +783,13 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 	mockService := &mockConsentService{
 		grantConsentFunc: func(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error) {
 			return &storage.UserGrant{
-				ID:         testGrantID,
-				Principal:  id.Principal("user@example.com"),
-				AgentID:    testAgentID,
-				ValidUntil: &futureTime,
-				DelegatedOAuth2Tokens: []storage.DelegatedToken{
-					{
-						ThirdpartyOAuth2ServiceID: id.NewServiceID(),
-						Scopes:                    []string{"repo"},
-					},
-				},
-				CreatedAt: now,
-				UpdatedAt: now,
+				ID:                    testGrantID,
+				Principal:             id.Principal("user@example.com"),
+				AgentID:               testAgentID,
+				ValidUntil:            &futureTime,
+				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
+				CreatedAt:             now,
+				UpdatedAt:             now,
 			}, nil
 		},
 	}
@@ -880,12 +797,7 @@ func TestCreateGrant_WithRedirectURI_PreservesQueryParams(t *testing.T) {
 	handler := NewGrantsHandler(mockService, nil, newTestJWETokenService())
 
 	reqBody := GrantRequest{
-		DelegatedOAuth2Tokens: []DelegatedTokenRequest{
-			{
-				ThirdpartyOAuth2ServiceID: id.NewServiceID().String(),
-				Scopes:                    []string{"repo"},
-			},
-		},
+		GrantedPermissionSets: map[string][]string{id.NewPermissionSetID().String(): {id.NewServiceID().String()}},
 	}
 
 	// redirect_uri already has query params, and we have additional OAuth params
@@ -941,7 +853,7 @@ func TestCreateGrant_SessionToken_ValidFlow(t *testing.T) {
 				Principal:             id.Principal(principalVal),
 				AgentID:               testAgentID,
 				ValidUntil:            &futureTime,
-				DelegatedOAuth2Tokens: []storage.DelegatedToken{},
+				GrantedPermissionSets: []storage.GrantedPermissionSetEntry{},
 				CreatedAt:             now,
 				UpdatedAt:             now,
 			}, nil
@@ -954,7 +866,7 @@ func TestCreateGrant_SessionToken_ValidFlow(t *testing.T) {
 		"POST",
 		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token="+sessionToken,
 		principalVal,
-		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+		GrantRequest{GrantedPermissionSets: map[string][]string{}},
 	)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", testAgentID.String())
@@ -984,7 +896,7 @@ func TestCreateGrant_SessionToken_InvalidToken(t *testing.T) {
 		"POST",
 		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token=notavalidjwetoken",
 		principalVal,
-		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+		GrantRequest{GrantedPermissionSets: map[string][]string{}},
 	)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", testAgentID.String())
@@ -1014,7 +926,7 @@ func TestCreateGrant_SessionToken_AgentMismatch(t *testing.T) {
 		"POST",
 		"/api/consent/agent/"+agentB.String()+"/grants?session_token="+tokenForAgentA,
 		principalVal,
-		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+		GrantRequest{GrantedPermissionSets: map[string][]string{}},
 	)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", agentB.String())
@@ -1042,7 +954,7 @@ func TestCreateGrant_SessionToken_PrincipalMismatch(t *testing.T) {
 		"POST",
 		"/api/consent/agent/"+testAgentID.String()+"/grants?session_token="+tokenForUserA,
 		"userB@example.com",
-		GrantRequest{DelegatedOAuth2Tokens: []DelegatedTokenRequest{}},
+		GrantRequest{GrantedPermissionSets: map[string][]string{}},
 	)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("agent-id", testAgentID.String())

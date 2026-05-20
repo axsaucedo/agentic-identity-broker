@@ -123,7 +123,7 @@ var _ = Describe("OAuth2 Security and Validation", func() {
 
 			// Then: Returns direct 400 error — per RFC 6749 §4.1.2.1 MUST NOT redirect
 			// when redirect_uri is unverified. client_id must be a UUID-format agent ID.
-			// Specification T043: Client validation must return OAuth2 error response
+			// Specification T043: invalid client_id format returns 400 non-redirect JSON error
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 
 			body, err := io.ReadAll(resp.Body)

@@ -237,7 +237,6 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_NoGrantRedirectsToConsent(t *testing.T
 func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *testing.T) {
 	agentRepo := newMockAgentRepo()
 	agentID := id.NewAgentID()
-	serviceID := id.NewServiceID()
 	agent := &storage.Agent{
 		ID:           agentID,
 		ClientID:     ptr.To(id.ClientID("client-1")),
@@ -248,13 +247,11 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 
 	grantRepo := newMockGrantRepo()
 	grant := &storage.UserGrant{
-		ID:         id.NewGrantID(),
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    agentID,
-		ValidUntil: nil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
-		},
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		ValidUntil:            nil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -298,7 +295,6 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_ActiveGrantRedirectsToUpstream(t *test
 func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T) {
 	agentRepo := newMockAgentRepo()
 	agentID := id.NewAgentID()
-	serviceID := id.NewServiceID()
 	agent := &storage.Agent{
 		ID:           agentID,
 		ClientID:     ptr.To(id.ClientID("client-1")),
@@ -309,13 +305,11 @@ func TestOAuth2AuthorizeHandler_ServeHTTP_PreservesOAuth2Parameters(t *testing.T
 
 	grantRepo := newMockGrantRepo()
 	grant := &storage.UserGrant{
-		ID:         id.NewGrantID(),
-		Principal:  id.Principal("user@example.com"),
-		AgentID:    agentID,
-		ValidUntil: nil,
-		DelegatedOAuth2Tokens: []storage.DelegatedToken{
-			{ThirdpartyOAuth2ServiceID: serviceID, Scopes: []string{"openid"}},
-		},
+		ID:                    id.NewGrantID(),
+		Principal:             id.Principal("user@example.com"),
+		AgentID:               agentID,
+		ValidUntil:            nil,
+		GrantedPermissionSets: []storage.GrantedPermissionSetEntry{{PermissionSetID: id.NewPermissionSetID(), IncludedServiceIDs: []id.ServiceID{id.NewServiceID()}}},
 	}
 	_ = grantRepo.Create(context.Background(), grant)
 
@@ -631,10 +625,11 @@ func (m *mockGrantRepository) ListByPrincipal(ctx context.Context, principal id.
 func (m *mockGrantRepository) CountAgentsByServiceID(ctx context.Context, serviceID id.ServiceID) (int, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
-		for _, token := range grant.DelegatedOAuth2Tokens {
-			if token.ThirdpartyOAuth2ServiceID == serviceID {
-				agents[grant.AgentID] = true
-				break
+		for _, entry := range grant.GrantedPermissionSets {
+			for _, svcID := range entry.IncludedServiceIDs {
+				if svcID == serviceID {
+					agents[grant.AgentID] = true
+				}
 			}
 		}
 	}
@@ -644,10 +639,11 @@ func (m *mockGrantRepository) CountAgentsByServiceID(ctx context.Context, servic
 func (m *mockGrantRepository) ListByServiceID(ctx context.Context, serviceID id.ServiceID) ([]id.AgentID, error) {
 	agents := make(map[id.AgentID]bool)
 	for _, grant := range m.grants {
-		for _, token := range grant.DelegatedOAuth2Tokens {
-			if token.ThirdpartyOAuth2ServiceID == serviceID {
-				agents[grant.AgentID] = true
-				break
+		for _, entry := range grant.GrantedPermissionSets {
+			for _, svcID := range entry.IncludedServiceIDs {
+				if svcID == serviceID {
+					agents[grant.AgentID] = true
+				}
 			}
 		}
 	}
@@ -666,6 +662,10 @@ func (m *mockGrantRepository) DeleteByPrincipalAndAgentID(ctx context.Context, p
 		}
 	}
 	return ports.ErrNotFound
+}
+
+func (m *mockGrantRepository) CountGrantsReferencingPermissionSet(_ context.Context, _ id.PermissionSetID) (int, error) {
+	return 0, nil
 }
 
 // errorAgentRepository returns a configurable error from Get to simulate infrastructure failures.

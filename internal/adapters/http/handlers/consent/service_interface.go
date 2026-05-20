@@ -11,7 +11,7 @@ import (
 // ConsentService defines the interface that handlers depend on.
 // This allows for easier testing with mock implementations.
 type ConsentService interface {
-	GetAgentConsentInfo(ctx context.Context, agentID id.AgentID) (*consent.AgentConsentInfo, error)
+	GetAgentConsentInfo(ctx context.Context, agentID id.AgentID, principal id.Principal) (*consent.AgentConsentInfo, error)
 	GetAgentWithServiceRequirements(ctx context.Context, userPrincipal id.Principal, agentID id.AgentID) (*storage.Agent, []consent.ServiceRequirementStatus, error)
 	GrantConsent(ctx context.Context, req *consent.GrantRequest) (*storage.UserGrant, error)
 	RevokeConsent(ctx context.Context, principal id.Principal, agentID id.AgentID) error

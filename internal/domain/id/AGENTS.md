@@ -24,6 +24,7 @@ This package defines per-entity ID types that the compiler enforces. Without typ
 | `SessionID` | OAuth2 user session | `user_sessions.id` |
 | `SigningKeyID` | JWT signing key | `signing_keys.id` |
 | `UserID` | User account | `users.id` |
+| `PermissionSetID` | Admin-defined permission set | `permission_sets.id`, `permission_set_service_scopes.permission_set_id`, `agents.permission_sets[*].permission_set_id` (JSONB), `user_grants.granted_permission_set_ids` (UUID[]) |
 
 Each UUID type exposes:
 

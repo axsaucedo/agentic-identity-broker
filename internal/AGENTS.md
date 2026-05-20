@@ -86,7 +86,7 @@ All service instantiation happens in `app/builder.go` via `NewBuilder().With*().
 
 **AdminHandlers**: `Agents` (`*admin.AgentsHandler`), `Services` (`*admin.ServicesHandler`)
 
-**EnduserHandlers**: `UserInfo`, `Agents`, `AgentDetail`, `AgentGrants`, `Grants`, `OAuth2Sessions`, `OAuth2Authorize`, `OAuth2Token`, `OAuth2Metadata`, `SPA`
+**EnduserHandlers**: `UserInfo`, `Agents`, `AgentDetail`, `Grants`, `OAuth2Sessions`, `OAuth2Authorize`, `OAuth2Token`, `OAuth2Metadata`, `SPA`
 
 ### Routing Signatures
 

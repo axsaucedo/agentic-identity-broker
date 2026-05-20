@@ -23,7 +23,7 @@ Dual-server (ADR 004): end-user `:8000` + admin `:14000`.
 |---|---|
 | `routing/{admin,enduser}.go` | Route registration ONLY — receives pre-wired handler structs, never instantiates services |
 | `handlers/admin/` | `AgentsHandler`, `ServicesHandler` (CRUD) |
-| `handlers/consent/` | `UserInfoHandler`, `AgentsHandler`, `AgentDetailHandler`, `AgentGrantsHandler`, `GrantsHandler` |
+| `handlers/consent/` | `UserInfoHandler`, `AgentsHandler`, `AgentDetailHandler`, `AgentInfoHandler`, `GrantsHandler` |
 | `enduser/` | `OAuth2AuthorizeHandler`, `OAuth2TokenHandler`, `OAuth2MetadataHandler` |
 | `oauth2_sessions/` | Session initiate/callback/terminate |
 | `middleware/` | Auth (`RequirePrincipal`), CORS, CSRF, audit |
