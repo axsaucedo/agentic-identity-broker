@@ -150,7 +150,7 @@ func (s *Service) ResolveForTokenGrant(ctx context.Context, rawClientID string) 
 		}
 	}
 
-	return &ports.TokenGrantResolution{AgentID: agent.ID, ClientID: agent.ClientID, ClientMode: mode}, nil
+	return ports.NewTokenGrantResolution(agent.ID, agent.ClientID, mode)
 }
 
 // HandleAuthorization processes an OAuth2 authorization request

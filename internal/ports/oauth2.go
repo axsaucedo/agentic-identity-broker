@@ -3,6 +3,7 @@ package ports
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
@@ -38,6 +39,15 @@ type TokenGrantResolution struct {
 	AgentID    id.AgentID
 	ClientID   *id.ClientID // nil for local/CIMD agents
 	ClientMode storage.ClientMode
+}
+
+// NewTokenGrantResolution constructs a TokenGrantResolution and enforces that
+// ProxyClient always carries a non-nil ClientID.
+func NewTokenGrantResolution(agentID id.AgentID, clientID *id.ClientID, mode storage.ClientMode) (*TokenGrantResolution, error) {
+	if mode == storage.ProxyClient && clientID == nil {
+		return nil, fmt.Errorf("TokenGrantResolution: ProxyClient requires a non-nil ClientID")
+	}
+	return &TokenGrantResolution{AgentID: agentID, ClientID: clientID, ClientMode: mode}, nil
 }
 
 // AuthorizationRequest represents an OAuth2 authorization request (RFC 6749 Section 4.1.1).

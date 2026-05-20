@@ -116,11 +116,7 @@ func (m *mockOAuth2ServiceForToken) ResolveForTokenGrant(ctx context.Context, ra
 func newResolvingOAuth2Service(agent *storage.Agent) *mockOAuth2ServiceForToken {
 	return &mockOAuth2ServiceForToken{
 		resolveFn: func(_ context.Context, _ string) (*ports.TokenGrantResolution, error) {
-			return &ports.TokenGrantResolution{
-				AgentID:    agent.ID,
-				ClientID:   agent.ClientID,
-				ClientMode: agent.ClientMode(),
-			}, nil
+			return ports.NewTokenGrantResolution(agent.ID, agent.ClientID, agent.ClientMode())
 		},
 	}
 }
