@@ -348,10 +348,15 @@ func (b *Builder) Build() (*App, error) {
 			b.config.TokenExchange.ClaimExtraction.PrincipalExpression != "" &&
 			b.config.TokenExchange.Authorization.CEL.Expression != ""
 
+		issuerURI := b.config.OAuth2AuthServer.Local.IssuerURI
+		if issuerURI == "" {
+			issuerURI = b.config.Server.EndUser.PublicURL
+		}
 		oauth2Config := &oauth2service.OAuth2Config{
 			UpstreamAuthorizeEndpoint: b.config.OAuth2AuthServer.Proxy.UpstreamAuthorizeEndpoint,
 			UpstreamTokenEndpoint:     b.config.OAuth2AuthServer.Proxy.UpstreamTokenEndpoint,
 			PublicURL:                 b.config.Server.EndUser.PublicURL,
+			IssuerURI:                 issuerURI,
 			SupportedResponseTypes:    b.config.OAuth2AuthServer.SupportedResponseTypes,
 			SupportedGrantTypes:       b.config.OAuth2AuthServer.SupportedGrantTypes,
 			MultiAgentClient:          b.config.OAuth2AuthServer.MultiAgentClient,

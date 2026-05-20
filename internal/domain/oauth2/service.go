@@ -28,6 +28,11 @@ type OAuth2Config struct {
 	// Broker's public URL (from enduser ServerInstanceConfig.PublicURL)
 	PublicURL string
 
+	// IssuerURI is the JWT iss claim for locally-minted tokens. Defaults to PublicURL when
+	// local.issuer_uri is not set. GenerateMetadata uses this so the RFC 8414 discovery
+	// document advertises the same issuer that tokens actually carry.
+	IssuerURI string
+
 	// Supported response types (default: ["code"])
 	SupportedResponseTypes []string
 
@@ -483,7 +488,10 @@ func (s *Service) buildConsentURL(_ context.Context, req *ports.AuthorizationReq
 // GenerateMetadata returns RFC 8414 OAuth2 metadata for this broker.
 // In local mode, includes JWKS URI and code_challenge_methods.
 func (s *Service) GenerateMetadata(ctx context.Context) (*ports.MetadataResponse, error) {
-	issuer := s.config.PublicURL
+	issuer := s.config.IssuerURI
+	if issuer == "" {
+		issuer = s.config.PublicURL
+	}
 
 	const tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
 	var grantTypes []string

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/id"
+	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/oauth2/servermode"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/domain/storage"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ports"
 	"github.com/agentic-identity-broker/agentic-identity-broker/internal/ptr"
@@ -999,6 +1000,29 @@ func TestService_HandleAuthorization_ScopeValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestService_GenerateMetadata_IssuerURIOverride verifies that when IssuerURI differs from
+// PublicURL, GenerateMetadata uses IssuerURI so the discovery document matches token iss claims.
+func TestService_GenerateMetadata_IssuerURIOverride(t *testing.T) {
+	agentRepo := NewMockAgentRepository()
+	grantRepo := NewMockGrantRepository()
+
+	config := &OAuth2Config{
+		PublicURL:  "https://broker.example.com",
+		IssuerURI:  "https://sso.example.com",
+		Mode:       servermode.Local,
+		SupportedResponseTypes: []string{"code"},
+		SupportedGrantTypes:    []string{"authorization_code"},
+	}
+	svc := NewService(agentRepo, grantRepo, config)
+	metadata, err := svc.GenerateMetadata(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://sso.example.com", metadata.Issuer)
+	assert.Equal(t, "https://sso.example.com/oauth2/authorize", metadata.AuthorizationEndpoint)
+	assert.Equal(t, "https://sso.example.com/oauth2/token", metadata.TokenEndpoint)
+	assert.Equal(t, "https://sso.example.com/oauth2/jwks.json", metadata.JWKSURI)
 }
 
 // TestService_GenerateMetadata_RFC8414Compliance tests RFC 8414 compliance
