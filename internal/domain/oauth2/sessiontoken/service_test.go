@@ -128,6 +128,21 @@ func TestNewAuthorizationSessionClaims_RelativeURLAllowed(t *testing.T) {
 	assert.Equal(t, "/oauth2/authorize?client_id=test", claims.OriginalURL)
 }
 
+func TestNewAuthorizationSessionClaims_BackslashNormalizationPreservesQueryParams(t *testing.T) {
+	// Backslashes in the path/scheme are normalized to block \\evil.com browser redirect
+	// tricks, but backslashes in query parameters (e.g. state tokens) must be preserved
+	// exactly to avoid breaking client-side CSRF validation.
+	claims, err := NewAuthorizationSessionClaims(
+		id.NewAgentID(),
+		id.NewPrincipal("user@example.com"),
+		"/oauth2/authorize?state=foo%5Cbar&client_id=test",
+		nil,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "/oauth2/authorize?state=foo%5Cbar&client_id=test", claims.OriginalURL,
+		"query parameters must not be mutated by backslash normalization")
+}
+
 func TestService_ValidateAuthorizationSessionToken_Success(t *testing.T) {
 	svc := newTestService(t)
 	agentID := id.NewAgentID()

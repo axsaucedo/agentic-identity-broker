@@ -45,7 +45,15 @@ func NewAuthorizationSessionClaims(
 	if originalURL == "" {
 		return nil, errors.New("originalURL must not be empty")
 	}
-	normalized := strings.ReplaceAll(originalURL, "\\", "/")
+	// Normalize backslashes only in the path/scheme portion, not in query parameters
+	// or fragments. Browsers normalize \\evil.com to //evil.com (open-redirect vector),
+	// but backslashes in state= or other query values must be preserved as-is to avoid
+	// mutating CSRF tokens the client will verify on return.
+	qIdx := strings.IndexByte(originalURL, '?')
+	if qIdx == -1 {
+		qIdx = len(originalURL)
+	}
+	normalized := strings.ReplaceAll(originalURL[:qIdx], "\\", "/") + originalURL[qIdx:]
 	if u, err := url.Parse(normalized); err != nil ||
 		(u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https") ||
 		(u.Scheme == "" && u.Host != "") {
