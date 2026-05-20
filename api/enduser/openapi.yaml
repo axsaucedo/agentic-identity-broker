@@ -2293,7 +2293,7 @@ components:
         redirect_url:
           type: string
           format: uri-reference
-          description: 'Optional redirect URL returned when redirect_uri query parameter was provided. Frontend should navigate to this URL using window.location.href (not XHR) to properly handle cross-origin redirect chains in OAuth2 flow continuation.'
+          description: 'Optional redirect URL returned when a valid session_token query parameter was present. Contains the original authorization request URL so the frontend can resume the OAuth2 flow via window.location.href (not XHR).'
           example: /oauth2/authorize?client_id=example&redirect_uri=http://localhost:9002/callback
 
     # OAuth2 Schemas
