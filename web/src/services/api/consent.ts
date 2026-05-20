@@ -201,7 +201,6 @@ export class ConsentApiService {
    *
    * @param agentId - Unique agent identifier
    * @param request - Grant configuration
-   * @param redirectUri - Optional redirect URI for seamless flow continuation (FR-025)
    * @returns Created or updated grant (or null if redirected)
    * @throws {ApiError} if request fails or validation errors
    */
